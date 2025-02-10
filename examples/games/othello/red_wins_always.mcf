@@ -1,0 +1,11 @@
+% The formula below expresses that red wins in the Othello game.
+% Either red wins right away, or red, who starts the game, can do a move, after which red wins,
+% or it is possible that white can do a move or pass, such that after each move of such a move,
+% red wins. As the game terminates, either a maximal or minimal fixed point can be used. 
+
+mu X.((exists nr_red,nr_white:Nat.val(nr_red>nr_white) && <Outcome(nr_red,nr_white)>true) || 
+      (<Pass(Red)||exists x,y:Pos.Move(Red,x,y)>
+           (exists  nr_red,nr_white:Nat.val(nr_red>nr_white) && (exists nr_red,nr_white:Nat.val(nr_red>nr_white) && <Outcome(nr_red,nr_white)>true) || 
+            (<Pass(White)||exists x,y:Pos.Move(White,x,y)>true && [Pass(White)||exists x,y:Pos.Move(White,x,y)]X))))
+
+

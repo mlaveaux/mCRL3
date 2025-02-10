@@ -1,0 +1,12 @@
+! mu W. (
+    <label(a_noncritA)>(
+      nu Y. forall a:Label.(val(!blocking(a)) && <label(a)>true) =>
+        mu Q. (
+	  ( exists a':Label.val(conflict(a,a') && (a'!=a_critA)) && <label(a')>Y)
+        ||
+	  ( exists a':Label.val(!conflict(a,a') && (a'!=a_critA)) && <label(a')>Q )
+	)
+    )
+  ||
+    exists a:Label.<label(a)>W
+  )

@@ -1,0 +1,15 @@
+map max_rounds:Nat;
+eqn max_rounds=100;
+
+form mu X(gain:Int=0, rounds:Nat=0).
+            val(rounds==max_rounds) && val(gain/rounds) ||
+            val(rounds<max_rounds) &&
+               ( <true><win> X(gain+1,rounds+1) ||
+                 <true><lose> X(gain-1, rounds+1)
+               );
+            
+
+
+%form nu X.val(200) && (<true>(<win>(val(1)+X)||<lose>(val(-1)+X)));
+%form mu X.val(300) && (<true>(<win>(val(1)+X)||<lose>(val(-1)+X)));
+
