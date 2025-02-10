@@ -35,7 +35,7 @@ where
     // Set all bits to the right of the highest 1-bit
     let bits = std::mem::size_of::<T>() * 8;
     for i in 0..bits {
-        value = value | (value >> (1 << i));
+        value = value | (value >> i);
     }
 
     // Add one to get the next power of two
