@@ -1,5 +1,5 @@
 [package]
-name = "mcrl2-syntax"
+name = "mcrl3-syntax"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true

@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_no_policy() {
-        let mut policy = NoPolicy::default();
+        let mut policy = NoPolicy;
         let mut cache = HashMap::new();
         cache.insert(1, "one");
         cache.insert(2, "two");

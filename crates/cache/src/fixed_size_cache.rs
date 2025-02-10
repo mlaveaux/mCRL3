@@ -180,7 +180,7 @@ mod tests {
         assert_eq!(*cache.get(&2), 4);
 
         // Should evict the first entry (1)
-        assert_eq(*cache.get(&3), 9);
+        assert_eq!(*cache.get(&3), 9);
         assert!(cache.cache.get(&1).is_none());
         assert_eq!(*cache.get(&2), 4);
         assert_eq!(*cache.get(&3), 9);
