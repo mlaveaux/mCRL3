@@ -19,6 +19,7 @@
 /// ```
 pub fn ceil_log2(mut n: usize) -> usize {
     assert!(n > 0, "Cannot compute logarithm of zero");
+
     let mut result = 0;
     while n != 0 {
         n >>= 1;

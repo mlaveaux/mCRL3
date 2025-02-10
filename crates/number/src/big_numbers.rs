@@ -47,10 +47,8 @@ impl BigNatural {
     }
 
     /// Removes trailing zeros from the internal representation.
-    fn normalize(&mut self) {
-        while let Some(&0) = self.digits.last() {
-            self.digits.pop();
-        }
+    fn is_well_defined(&mut self) {
+        debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
     }
 
     // Helper functions for arithmetic operations
@@ -114,18 +112,6 @@ impl BigNatural {
         result
     }
 
-    /// Divides this number by a single digit, returning the remainder.
-    fn divide_by_single(&mut self, n: usize) -> usize {
-        let mut remainder = 0;
-        for digit in self.digits.iter_mut().rev() {
-            let (div, rem) = Self::divide_single_number(*digit, n, remainder);
-            *digit = div;
-            remainder = rem;
-        }
-        self.normalize();
-        remainder
-    }
-
     /// Divides a single number with remainder, handling the carry.
     /// Returns (quotient, remainder).
     fn divide_single_number(p: usize, q: usize, mut remainder: usize) -> (usize, usize) {
@@ -155,12 +141,13 @@ impl BigNatural {
     }
 
     /// Calculates the greatest common divisor of two numbers.
-    pub fn gcd(mut a: usize, mut b: usize) -> usize {
+    pub fn greatest_common_divisor(mut a: usize, mut b: usize) -> usize {
         while b != 0 {
             let t = b;
             b = a % b;
             a = t;
         }
+        
         a
     }
 
@@ -227,25 +214,6 @@ impl BigNatural {
         remainder.normalize();
     }
 
-    /// Adds another number to this one.
-    pub fn add(&mut self, other: &Self) {
-        let mut carry = 0;
-        let max_len = self.digits.len().max(other.digits.len());
-        
-        // Ensure we have enough space
-        self.digits.resize(max_len, 0);
-        
-        // Add corresponding digits
-        for i in 0..max_len {
-            let n2 = other.digits.get(i).copied().unwrap_or(0);
-            self.digits[i] = Self::add_single_number(self.digits[i], n2, &mut carry);
-        }
-        
-        if carry > 0 {
-            self.digits.push(carry);
-        }
-    }
-
     /// Subtracts another number from this one.
     /// Assumes this number is larger than the other.
     pub fn subtract(&mut self, other: &Self) {
@@ -297,6 +265,46 @@ impl BigNatural {
         self.digits = result;
         self.normalize();
     }
+
+    /// Adds another number to this one.
+    fn add_impl(&mut self, other: &Self) {
+        let mut carry = 0;
+        let max_len = self.digits.len().max(other.digits.len());
+        
+        // Ensure we have enough space
+        self.digits.resize(max_len, 0);
+        
+        // Add corresponding digits
+        for i in 0..max_len {
+            let n2 = other.digits.get(i).copied().unwrap_or(0);
+            self.digits[i] = Self::add_single_number(self.digits[i], n2, &mut carry);
+        }
+        
+        if carry > 0 {
+            self.digits.push(carry);
+        }
+    }
+
+    /// Divide the current number by n. If there is a remainder return it.
+    pub fn divide_by(&mut self, n: usize) -> usize {
+        let mut remainder = 0;
+        for digit in self.digits.iter_mut().rev() {
+            let (quotient, new_remainder) = Self::divide_single_number(*digit, n, remainder);
+            *digit = quotient;
+            remainder = new_remainder;
+        }
+        self.normalize();
+        remainder
+    }
+
+    /// Removes trailing zeros from the internal representation.
+    pub fn normalize(&mut self) {
+        while self.digits.last() == Some(&0) {
+            self.digits.pop();
+        }
+        debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
+    }
+
 }
 
 // Standard trait implementations
@@ -338,19 +346,8 @@ impl fmt::Display for BigNatural {
             write!(f, "0")
         } else {
             let mut temp = self.clone();
-            let mut digits = Vec::new();
             while !temp.is_zero() {
-                let mut remainder = 0;
-                let mut carry = 0;
-                for digit in temp.digits.iter_mut().rev() {
-                    remainder = (remainder << (usize::BITS as usize)) | *digit;
-                    *digit = remainder / 10;
-                    remainder %= 10;
-                }
-                digits.push(remainder);
-                temp.normalize();
-            }
-            for digit in digits.iter().rev() {
+                let digit = temp.divide_by(10);
                 write!(f, "{}", digit)?;
             }
             Ok(())
@@ -417,7 +414,7 @@ impl Add for &BigNatural {
 
     fn add(self, other: &BigNatural) -> BigNatural {
         let mut result = self.clone();
-        result.add(other);
+        result.add_impl(other);
         result
     }
 }
@@ -475,7 +472,7 @@ mod tests {
     #[test]
     fn test_single_digit_division() {
         let mut n = BigNatural::from_str("123").unwrap();
-        assert_eq!(n.divide_by_single(10), 3);
+        assert_eq!(n.divide_by(10), 3);
         assert_eq!(n.to_string(), "12");
     }
 

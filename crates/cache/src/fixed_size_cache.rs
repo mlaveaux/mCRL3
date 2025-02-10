@@ -170,4 +170,43 @@ mod tests {
         // Should recompute
         assert_eq!(*cache.get(&2), 4);
     }
+
+    #[test]
+    fn test_function_cache_eviction() {
+        let f = |x: &i32| x * x;
+        let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
+
+        assert_eq!(*cache.get(&1), 1);
+        assert_eq!(*cache.get(&2), 4);
+
+        // Should evict the first entry (1)
+        assert_eq(*cache.get(&3), 9);
+        assert!(cache.cache.get(&1).is_none());
+        assert_eq!(*cache.get(&2), 4);
+        assert_eq!(*cache.get(&3), 9);
+    }
+
+    #[test]
+    fn test_function_cache_clear() {
+        let f = |x: &i32| x * x;
+        let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
+
+        assert_eq!(*cache.get(&1), 1);
+        assert_eq!(*cache.get(&2), 4);
+
+        cache.clear();
+
+        assert!(cache.cache.get(&1).is_none());
+        assert!(cache.cache.get(&2).is_none());
+    }
+
+    #[test]
+    fn test_function_cache_contains_key() {
+        let f = |x: &i32| x * x;
+        let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
+
+        assert_eq!(*cache.get(&1), 1);
+        assert!(cache.cache.contains_key(&1));
+        assert!(!cache.cache.contains_key(&2));
+    }
 }
