@@ -1,0 +1,10 @@
+[package]
+name = "mcrl3-utilities"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror.workspace = true
+regex.workspace = true
+bitstream-io.workspace = true
+once_cell.workspace = true

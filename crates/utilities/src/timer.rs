@@ -1,0 +1,119 @@
+use std::time::{Duration, Instant};
+
+/// A timer that can be started, stopped, and reset.
+/// Keeps track of accumulated time when running.
+#[derive(Debug)]
+pub struct Timer {
+    /// The instant when the timer was last started
+    start: Instant,
+    /// Total time accumulated from previous runs
+    accumulated: Duration,
+    /// Whether the timer is currently running
+    running: bool,
+}
+
+impl Timer {
+    /// Creates a new stopped timer with zero accumulated time.
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            accumulated: Duration::from_secs(0),
+            running: false,
+        }
+    }
+
+    /// Starts the timer if it's not already running.
+    /// 
+    /// # Postconditions
+    /// - Timer is running
+    /// - Start time is set to current instant
+    pub fn start(&mut self) {
+        if !self.running {
+            self.start = Instant::now();
+            self.running = true;
+        }
+    }
+
+    /// Stops the timer if it's running and accumulates elapsed time.
+    /// 
+    /// # Postconditions
+    /// - Timer is stopped
+    /// - Elapsed time since last start is added to accumulated time
+    pub fn stop(&mut self) {
+        if self.running {
+            self.accumulated += self.start.elapsed();
+            self.running = false;
+        }
+    }
+
+    /// Resets the accumulated time to zero.
+    /// If the timer is running, also resets the start time.
+    /// 
+    /// # Postconditions
+    /// - Accumulated time is zero
+    /// - If running, start time is reset to current instant
+    pub fn reset(&mut self) {
+        self.accumulated = Duration::from_secs(0);
+        if self.running {
+            self.start = Instant::now();
+        }
+    }
+
+    /// Returns the total elapsed time.
+    /// If running, includes time since last start.
+    pub fn elapsed(&self) -> Duration {
+        if self.running {
+            self.accumulated + self.start.elapsed()
+        } else {
+            self.accumulated
+        }
+    }
+
+    /// Returns whether the timer is currently running.
+    pub fn running(&self) -> bool {
+        self.running
+    }
+}
+
+impl Default for Timer {
+    /// Creates a new timer with default settings.
+    /// Equivalent to `Timer::new()`.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread::sleep;
+
+    #[test]
+    fn test_timer_basic() {
+        let mut timer = Timer::new();
+        assert!(!timer.running());
+        
+        timer.start();
+        assert!(timer.running());
+        
+        sleep(Duration::from_millis(10));
+        timer.stop();
+        
+        let elapsed = timer.elapsed();
+        assert!(!timer.running());
+        assert!(elapsed >= Duration::from_millis(10));
+    }
+
+    #[test]
+    fn test_timer_reset() {
+        let mut timer = Timer::new();
+        timer.start();
+        sleep(Duration::from_millis(10));
+        timer.stop();
+        
+        let first_elapsed = timer.elapsed();
+        timer.reset();
+        assert_eq!(timer.elapsed(), Duration::from_secs(0));
+        assert!(first_elapsed > timer.elapsed());
+    }
+}
