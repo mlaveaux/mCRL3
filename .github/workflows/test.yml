@@ -1,0 +1,41 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: on
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:      
+        os: [ubuntu-latest, macos-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:    
+    - name: Install stable rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.4
+      
+    - name: Install nextest
+      uses: taiki-e/install-action@nextest
+      
+    - name: Checkout the repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Run tests
+      run: cargo nextest run --no-fail-fast -- --include-ignored
+      env:
+        RUST_BACKTRACE: full
+        RUST_LOG: debug
+        RUSTC_WRAPPER: sccache

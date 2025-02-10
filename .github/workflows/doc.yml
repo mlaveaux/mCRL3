@@ -1,0 +1,80 @@
+name: Deploy Documentation to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+  
+env:
+  CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: on
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Install stable rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.4
+
+      - name: Install LLVM Tools for Rust
+        run: rustup component add llvm-tools-preview
+  
+      - name: Install grcov
+        run: cargo install grcov
+        
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+  
+      - name: Generating Code Coverage
+        run: cargo xtask coverage nextest run       
+        env:
+          RUSTC_WRAPPER: sccache
+
+      - name: Build Documentation
+        run: |
+          cargo doc --no-deps
+          rm target/doc/.lock
+          cp -r target/coverage/html target/doc/coverage/
+          echo "<meta http-equiv=\"refresh\" content=\"0; url=mcrl2\">" > target/doc/index.html
+        env:
+          RUSTC_WRAPPER: sccache
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload the documentation directory
+          path: 'target/doc/'
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

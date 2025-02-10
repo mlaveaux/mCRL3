@@ -1,0 +1,36 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: on
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:      
+        os: [ubuntu-latest, macos-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Install stable rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.4
+      
+    - name: Checkout the repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Run Benchmarks
+      run: cargo bench -p benchmarks-sabre && cargo bench -p benchmarks-ltsgraph
+      env:
+        RUSTC_WRAPPER: sccache
