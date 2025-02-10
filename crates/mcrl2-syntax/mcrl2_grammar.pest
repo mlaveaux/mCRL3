@@ -1,0 +1,486 @@
+//!
+//! This contains the grammar for .mcrl2 specifications.
+//!
+//! Considerations for PEG parsers
+//! 
+
+//! AFTER parsing we can use a PrattParser to define the associativity and 
+//! precedence of operators for rules of the following shape:
+//!
+//! expr  =   { prefix? ~ primary ~ postfix? ~ (infix ~ prefix? ~ primary ~ postfix? )* }
+//!
+
+//! The | operator defines a choice operator and does not mean OR with
+//! backtracking. This means the following rules
+//! 
+//! Expr = { "Bool" ~ ASCII_ALPHANUMERIC* }
+//!
+//! Will match the expression "Boolean" by eating up "Bool" and leaving "ean" as
+//! the remaining. However, this is undesirable since this should be an identifier
+//! Boolean. This is resolved by only allowing keywords to match whenever it is not
+//! by something that is part of an identifier.
+
+/// This is a silent rule eating all the comments.
+COMMENT = _{ "%" ~ (!NEWLINE ~ ANY)* }
+
+/// This is a silent rule eating all the white space in the input.
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+
+/// Identifiers
+Id = @{ (ASCII_ALPHANUMERIC|"_"|"'")+ }
+
+/// List of identifiers
+IdList = { Id ~ ( "," ~ Id )* }
+
+/// Numbers
+Number = { "0|([1-9][0-9]*)" }
+
+/// Parsing a single term
+TermSpec = { SOI ~ Term ~ EOI }
+
+/// Rules for terms f(t0, ..., tn)
+Term = { Id ~ Args? }
+Args = { "(" ~ Term ~ ("," ~ Term)*  ~ ")"}
+
+/// Parsing an mCRL2 specification
+MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec | VarSpec)* ~ EOI } 
+
+/// Action specification
+ActSpec = { "act" ~ ActDecl+ }
+
+/// Declaration of actions
+ActDecl = { IdList ~ ( ":" ~  SortProduct )? ~ ";" }
+
+//
+// Rules related to data expressions and sorts.
+//
+
+/// Sort specification
+SortSpec = { "sort" ~ SortDecl+ } 
+
+SortDecl = {                                             
+        Id ~ "=" ~ SortExpr ~ ";"                                    // Sort alias  
+    |   IdList ~ ";"                                                 // List of sort identifiers                                               
+}
+
+/// A general sort expression with infix operators.
+SortExpr = {
+    SortExprAtom ~ (SortExprInfix ~ SortExprAtom)*
+}
+
+/// A single sort expression
+SortExprAtom = { 
+        SortExprBool
+    |   SortExprPos                                                  
+    |   SortExprNat                                                  
+    |   SortExprInt                                                  
+    |   SortExprReal                                                
+    |   SortExprList
+    |   SortExprSet
+    |   SortExprBag
+    |   SortExprFSet
+    |   SortExprFBag
+    |   "(" ~ SortExpr ~ ")"                                         // Sort expression with parentheses
+    |   "struct" ~ ConstrDeclList                                    // Structured sort
+    |   Id                                                           // Sort reference
+}
+    SortExprBool = { "Bool" ~ !Id }
+    SortExprPos  = { "Pos" ~ !Id }
+    SortExprNat  = { "Nat" ~ !Id }
+    SortExprInt  = { "Int" ~ !Id }
+    SortExprReal = { "Real" ~ !Id }
+    SortExprList = { "List" ~ "(" ~ SortExpr ~ ")" }
+    SortExprSet = { "Set" ~ "(" ~ SortExpr ~ ")" }
+    SortExprBag  = { "Bag" ~ "(" ~ SortExpr ~ ")" }
+    SortExprFSet = { "FSet" ~ "(" ~ SortExpr ~ ")" }
+    SortExprFBag = { "FBag" ~ "(" ~ SortExpr ~ ")" }
+
+SortExprInfix = _{
+    |   SortExprFunction
+    |   SortExprProduct
+}
+    SortExprFunction = { "->" }
+    SortExprProduct = { "#" }
+
+/// Constructor declaration
+ConstrDecl = { Id ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ Id )? } 
+
+/// Constructor declaration list
+ConstrDeclList = { ConstrDecl ~ ( "|" ~ ConstrDecl )* }             
+
+/// A single sort A -> B -> ...
+SortProduct = {
+    SortExprAtom ~ (SortExprProduct ~ SortExprAtom)*
+}
+
+/// Data Expression
+DataExpr = { DataExprPrimary ~ DataExprSuffix* ~ (DataExprInfix ~ DataExprPrimary ~ DataExprSuffix*)* }
+
+// A single data expressions
+DataExprPrimary = {
+        "true" ~ !Id                                                 // True
+    |   "false" ~ !Id                                                // False
+    |   "[" ~ "]"                                                    // Empty list
+    |   "{" ~ "}"                                                    // Empty set
+    |   "{" ~ ":" ~ "}"                                              // Empty bag
+    |   "[" ~ DataExprList ~ "]"                                     // List enumeration
+    |   "{" ~ BagEnumEltList ~ "}"                                   // Bag enumeration
+    |   "{" ~ VarDecl ~ "|" ~ DataExpr ~ "}"                         // Set/bag comprehension
+    |   "{" ~ DataExprList ~ "}"                                     // Set enumeration
+    |   "(" ~ DataExpr ~ ")"                                         // Brackets
+    |   "!" ~ DataExpr                                               // Negation, set complement
+    |   "-" ~ DataExpr                                               // Unary minus
+    |   "#" ~ DataExpr                                               // Size of a list
+    |   "forall" ~ VarsDeclList ~ "." ~ DataExpr                     // Universal quantifier
+    |   "exists" ~ VarsDeclList ~ "." ~ DataExpr                     // Existential quantifier
+    |   "lambda" ~ VarsDeclList ~ "." ~ DataExpr                     // Lambda abstraction
+    |   Number                                                       // Number
+    |   Id                                                           // Identifier
+}
+
+DataExprSuffix = _{
+        DataExprUpdate
+    |   DataExprApplication
+    |   DataExprWhr
+}
+    DataExprUpdate = { "[" ~ DataExpr ~ "->" ~ DataExpr ~ "]" }
+    DataExprApplication = { "(" ~ DataExprList ~ ")" }
+    DataExprWhr     = { "whr" ~ AssignmentList ~ "end" }
+
+DataExprInfix = _{
+        DataExprImpl
+    |   DataExprDisj
+    |   DataExprConj
+    |   DataExprEq
+    |   DataExprNeq
+    |   DataExprLeq
+    |   DataExprSnoc
+    |   DataExprLess
+    |   DataExprGeq
+    |   DataExprGreater
+    |   DataExprIn
+    |   DataExprCons
+    |   DataExprConcat
+    |   DataExprAdd
+    |   DataExprMinus
+    |   DataExprDiv
+    |   DataExprIntDiv
+    |   DataExprMod
+    |   DataExprMult
+    |   DataExprAt
+}
+    DataExprImpl    = { "=>" }
+    DataExprDisj    = { "||" }
+    DataExprConj    = { "&&" }
+    DataExprEq      = { "==" }
+    DataExprNeq     = { "!=" }
+    DataExprLeq     = { "<=" }
+    DataExprSnoc    = { "<|" }
+    DataExprLess    = { "<" }
+    DataExprGeq     = { ">=" }
+    DataExprGreater = { ">" }
+    DataExprIn      = { "in" }
+    DataExprCons    = { "|>" }
+    DataExprConcat  = { "++" }
+    DataExprAdd     = { "+" }
+    DataExprMinus   = { "-" ~ !">" }
+    DataExprDiv     = { "/" }
+    DataExprIntDiv  = { "div" }
+    DataExprMod     = { "mod" }
+    DataExprMult    = { "*" }
+    DataExprAt      = { "." }
+
+/// List of data expressions
+DataExprList = { DataExpr ~ ( "," ~ DataExpr )* }
+
+/// Assignment x = expression
+Assignment = { Id ~ "=" ~ DataExpr }
+
+/// List of assignments
+AssignmentList = { Assignment ~ ( "," ~ Assignment )* }
+
+//
+// Rules related to processes.
+//
+
+/// Typed variable
+VarDecl = { Id ~ ":" ~ SortExpr }
+
+/// Typed variables
+VarsDecl = { IdList ~ ":" ~ SortExpr }
+
+/// Individually typed variables
+VarsDeclList = { VarsDecl ~ ( "," ~ VarsDecl )* }
+
+/// Bag element with multiplicity
+BagEnumElt = { DataExpr ~ ":" ~ DataExpr }                              
+
+/// Elements in a finite bag
+BagEnumEltList = { BagEnumElt ~ ( "," ~ BagEnumElt )* }
+
+/// Action, process instantiation
+Action = { Id ~ ( "(" ~ DataExprList ~ ")" )? }    
+
+/// Action set        
+ActIdSet = { "{" ~ IdList ~ "}" }                                               
+
+/// List of actions
+MultiAct = { Action ~ ( "|" ~ Action )* }                            
+
+/// Multi-action label
+MultActId = { Id ~ ( "|" ~ Id )* }                                      
+
+MultActIdList = { MultActId ~ ( "," ~ MultActId )* }
+
+/// Multi-action label set
+MultActIdSet = { "{" ~ MultActIdList? ~ "}" }
+
+/// Domain with optional projection
+ProjDecl = { ( Id ~ ":" )? ~ SortExpr }                             
+
+/// Declaration of projection functions
+ProjDeclList = { ProjDecl ~ ( "," ~ ProjDecl )* }                  
+
+/// Action synchronization
+CommExpr = { Id ~ "|" ~ MultActId ~ "->" ~ Id }
+
+/// Action synchronizations
+CommExprList = { CommExpr ~ ( "," ~ CommExpr )* }
+
+/// Action synchronization set
+CommExprSet = { "{" ~ CommExprList? ~ "}" }                             
+
+/// Action renaming
+RenExpr = { Id ~ "->" ~ Id }
+
+/// Multiple action renamings
+RenExprList = { RenExpr ~ ( "," ~ RenExpr )* }
+
+/// An action renaming set.
+RenExprSet = { "{" ~ RenExprList? ~ "}" }
+
+ProcExpr = { ProcExprUnit ~ (ProcExprInfix ~ ProcExprUnit)* }
+
+/// Single Process expressions
+ProcExprUnit = {
+        "delta" ~ !Id                                            // Delta, deadlock, inaction
+    |   "tau" ~ !Id                                              // Tau, hidden action, empty multi-action
+    |   "block" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")"          // Block or encapsulation operator
+    |   "allow" ~ "(" ~ MultActIdSet ~ "," ~ ProcExpr ~ ")"      // Allow operator
+    |   "hide" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")"           // Hiding operator
+    |   "rename" ~ "(" ~ RenExprSet ~ "," ~ ProcExpr ~ ")"       // Action renaming operator
+    |   "comm" ~ "(" ~ CommExprSet ~ "," ~ ProcExpr ~ ")"        // Communication operator
+    |   "sum" ~ VarsDeclList ~ "." ~ ProcExpr                    // Sum operator
+    |   "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." ~ ProcExpr
+    |   DataExpr ~ "->" ~ ProcExpr ~ ("<>" ~ ProcExpr)?
+    |   "(" ~ ProcExpr ~ ")"                                     // Brackets
+    |   Id ~ "(" ~ AssignmentList? ~ ")"                         // Process instantiation with assignment shorthand
+    |   Action                                                   // Action or process instantiation
+}
+
+ProcExprInfix = {
+    |   "+"                                                      // Sum operator
+    |   "||_"
+    |   "||"
+    |   "|"
+    |   "<<"
+    |   "."
+    |   "@"
+}
+
+// Process declaration/
+ProcDecl = { Id ~ ( "(" ~ VarsDeclList ~ ")" )? ~ "=" ~ ProcExpr ~ ";" }
+
+/// Process specification
+ProcSpec = { "proc" ~ ProcDecl+ }                                     
+
+/// Initial process
+Init = { "init" ~ ProcExpr ~ ";" }   
+
+/// Typed parameters
+IdsDecl = { IdList ~ ":" ~ SortExpr }                                   
+
+/// Declaration of constructors
+ConsSpec = { "cons" ~ ( IdsDecl ~ ";" )+ }
+
+/// Declaration of mappings
+MapSpec = { "map" ~ ( IdsDecl ~ ";" )+ }    
+
+/// Declaration of global variables
+GlobVarSpec = { "glob" ~ ( VarsDeclList ~ ";" )+ }                     
+ 
+/// Declaration of variables      
+VarSpec = { "var" ~ ( VarsDeclList ~ ";" )+ }                                               
+
+/// Definition of equations
+EqnSpec = { VarSpec? ~ "eqn" ~ EqnDecl+ }                               
+
+/// Conditional equation
+EqnDecl = { (DataExpr ~ "->")? ~ DataExpr ~ "=" ~ DataExpr ~ ";" }            
+
+
+//
+// Rules related to modal formulas
+//
+
+/// Single state formula or state formula specification
+StateFrmSpec = {
+    SOI ~ StateFrm | (StateFrmSpecElt* ~ FormSpec ~ StateFrmSpecElt*) ~ EOI
+}
+
+FormSpec = { "form" ~ StateFrm ~ ";" }
+
+StateFrmSpecElt = {
+        SortSpec                                                     // Sort specification
+    |   ConsSpec                                                     // Constructor specification
+    |   MapSpec                                                      // Map specification
+    |   EqnSpec                                                      // Equation specification
+    |   ActSpec                                                      // Action specification
+}
+
+StateFrm = { StateFrmPrimary ~ StateFrmSuffix? ~ (StateFrmInfix ~ StateFrmPrimary ~ StateFrmSuffix?)*}
+
+StateFrmPrimary = {
+        "(" ~ StateFrm ~ ")"                                     // Brackets
+    |   "true"                                                   // True, can also be infinity
+    |   "false"                                                  // False, can also be minus infinity
+    |   "delay" ~ ( "@" ~ DataExpr )?                            // Delay
+    |   "yaled" ~ ( "@" ~ DataExpr )?                            // Yaled
+    |   "mu" ~ StateVarDecl ~ "." ~ StateFrm                     // Minimal fixed point
+    |   "nu" ~ StateVarDecl ~ "." ~ StateFrm                     // Maximal fixed point
+    |   "forall" ~ VarsDeclList ~ "." ~ StateFrm                 // Universal quantification
+    |   "exists" ~ VarsDeclList ~ "." ~ StateFrm                 // Existential quantification
+    |   "inf" ~ VarsDeclList ~ "." ~ StateFrm                    // The infimum operator
+    |   "sup" ~ VarsDeclList ~ "." ~ StateFrm                    // The supremum operator
+    |   "[" ~ RegFrm ~ "]" ~ StateFrm                            // Box modality
+    |   "<" ~ RegFrm ~ ">" ~ StateFrm                            // Diamond modality
+    |   "-" ~ StateFrm                                           // Unary minus. 
+    |   "!" ~ StateFrm                                           // Negation
+    |   Id ~ ( "(" ~ DataExprList ~ ")" )?                       // Instantiated fixpoint variable
+    |   DataValExpr ~ "*" ~ StateFrm                             // Multiplication with a positive constant
+    |   DataValExpr                                              // Boolean or real data expression
+}
+
+StateFrmInfix = {
+    |   "+"                                                      // Addition
+    |   "*"                                                      // Left constant multiply
+    |   "=>"                                                     // Implication
+    |   "||"                                                     // Disjunction, and max
+    |   "&&"                                                     // Conjunction, and min
+}
+
+StateFrmSuffix = {
+        "*" ~ DataValExpr   
+}
+
+/// Regular formulas.
+/// To guard for the ambiguity of a + b and a+ we use a negative premise
+RegFrm = { ActFrm ~ (RegFrmSuffix ~ !ActFrm)? ~ (RegFrmInfix ~ ActFrm ~ (RegFrmSuffix ~ !ActFrm)?)* }
+
+RegFrmInfix = {
+        "+"                                                      // Alternative composition
+    |   "."                                                      // Sequential composition
+}
+
+RegFrmSuffix = {
+        "*"                                                      // Iteration
+    |   "+"                                                      // Nonempty iteration
+}
+
+
+ActFrm = { ActFrmPrefix? ~ ActFrmPrimary ~ ActFrmSuffix? ~ (ActFrmInfix ~ ActFrmPrefix? ~ ActFrmPrimary ~ ActFrmSuffix?)* }
+
+ActFrmPrimary = {
+        "(" ~ ActFrm ~ ")"                                       // Brackets
+    |   "true"                                                   // True
+    |   "false"                                                  // False
+    |   "forall" ~ VarsDeclList ~ "." ~ ActFrm                   // Universal quantifier
+    |   "exists" ~ VarsDeclList ~ "." ~ ActFrm                   // Existential quantifier
+    |   DataValExpr                                              // Boolean/real data expression
+    |   MultAct                                                  // Multi-action
+}
+
+ActFrmPrefix = {
+    "!"                                          // Negation
+}
+
+ActFrmInfix = {
+        "=>"                                     // Implication
+    |   "||"                                     // Union of actions
+    |   "&&"                                     // Intersection of actions
+}
+
+ActFrmSuffix = {
+    "@" ~ DataExpr                                       // At operator
+}
+
+MultAct = {
+        "tau"                                                    // Tau, hidden action, empty multi-action
+    |   ActionList                                               // Multi-action
+}
+
+ActionList = { Action ~ ( "|" ~ Action )* }                      // List of actions
+
+/// Marked data expression
+DataValExpr = { "val" ~ "(" ~ DataExpr ~ ")" }                  
+
+/// State variable declaration
+StateVarDecl = { Id ~ ( "(" ~ StateVarAssignmentList ~ ")" )? }           
+
+/// Typed variable with initial value
+StateVarAssignment = { Id ~ ":" ~ SortExpr ~ "=" ~ DataExpr }           
+
+/// Typed variable list
+StateVarAssignmentList = { StateVarAssignment ~ ( "," ~ StateVarAssignment )* }
+
+//
+// Rules for action rename specifications
+//
+  
+/// Action rename specification
+ActionRenameSpec = { SOI ~ (SortSpec | ConsSpec | MapSpec | EqnSpec | ActSpec | ActionRenameRuleSpec)+ ~ EOI }
+
+/// Action rename rule section
+ActionRenameRuleSpec = { VarSpec? ~ "rename" ~ ActionRenameRule+ }      
+
+/// Conditional action renaming
+ActionRenameRule = { (DataExpr ~ "->")? ~ Action ~ "=>" ~ ActionRenameRuleRHS ~ ";" }
+
+ActionRenameRuleRHS = {
+        "tau"                                                        // Tau, hidden action, empty multi-action
+    |   "delta"                                                      // Delta, deadlock, inaction
+    |    Action                                                      // Action
+}
+
+/// Boolean equation system
+BesSpec = { BesEqnSpec ~ BesInit }
+
+/// Boolean equation declaration
+BesEqnSpec = { "bes" ~ BesEqnDecl+ }                                 
+
+/// Boolean fixed point equation
+BesEqnDecl = { FixedPointOperator ~ BesVar ~ "=" ~ BesExpr ~ ";" }    
+
+FixedPointOperator = { "mu" | "nu" }
+
+/// BES variable
+BesVar = { Id }                                                     
+
+BesExpr = { BesExprPrimary ~ (BesExprInfix ~ BesExprPrimary)* }
+
+BesExprPrimary = {
+    BesVar                                                       // Boolean variable
+  | "true"                                                       // True
+  | "false"                                                      // False
+  | "!" ~ BesExpr                                                // Negation
+  | "(" ~ BesExpr ~ ")"                                          // Brackets                                  
+}
+
+BesExprInfix = {
+    "=>" // Implication
+  | "||" // Disjunction
+  | "&&" // Conjunction
+}
+
+/// Initial BES variable
+BesInit = { "init" ~ BesVar ~ ";" }
