@@ -1,0 +1,13 @@
+[package]
+name = "aterm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mcrl3-utilities.workspace = true
+
+thiserror.workspace = true
+hashbrown.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
