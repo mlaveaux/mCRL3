@@ -59,9 +59,7 @@ impl BigNatural {
         // Set carry to 1 if we had an overflow, 0 otherwise
         *carry = if *carry == 0 {
             if result < n1 { 1 } else { 0 }  // Overflow if result wrapped around
-        } else {
-            if result > n1 { 0 } else { 1 }  // No overflow if result increased
-        };
+        } else if result > n1 { 0 } else { 1 };
         result
     }
 
@@ -70,9 +68,7 @@ impl BigNatural {
         let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
         *carry = if *carry == 0 {
             if result > n1 { 1 } else { 0 }
-        } else {
-            if result < n1 { 0 } else { 1 }
-        };
+        } else if result < n1 { 0 } else { 1 };
         result
     }
 
@@ -123,7 +119,7 @@ impl BigNatural {
         let p_low = p & ((1 << bits) - 1);
         
         // First handle the high part combined with previous remainder
-        let high_part = (p_high as usize) + ((remainder as usize) << bits);
+        let high_part = p_high + (remainder << bits);
         let result_high = high_part / q;
         let remainder_high = high_part % q;
         

@@ -1,0 +1,9 @@
+[package]
+name = "mcrl22lps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mcrl3-syntax.workspace = true
+
+clap.workspace = true

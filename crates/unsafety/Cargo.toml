@@ -1,0 +1,5 @@
+[package]
+name = "mcrl3-unsafety"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true

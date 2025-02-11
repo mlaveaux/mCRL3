@@ -1,0 +1,9 @@
+[package]
+name = "mcrl3-typecheck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mcrl3-syntax.workspace = true
+
+thiserror.workspace = true

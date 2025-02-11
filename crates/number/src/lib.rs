@@ -5,7 +5,7 @@ mod power_of_two;
 mod big_numbers;
 mod probabilistic_fraction;
 
-pub use math::{ceil_log2, power};
+pub use math::*;
 pub use power_of_two::*;
 pub use big_numbers::*;
 pub use probabilistic_fraction::*;

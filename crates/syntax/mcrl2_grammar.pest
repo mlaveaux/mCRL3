@@ -80,9 +80,9 @@ SortExprAtom = {
     |   SortExprBag
     |   SortExprFSet
     |   SortExprFBag
-    |   "(" ~ SortExpr ~ ")"                                         // Sort expression with parentheses
-    |   "struct" ~ ConstrDeclList                                    // Structured sort
-    |   Id                                                           // Sort reference
+    |   SortExprParens
+    |   SortExprStruct
+    |   Id
 }
     SortExprBool = { "Bool" ~ !Id }
     SortExprPos  = { "Pos" ~ !Id }
@@ -94,6 +94,8 @@ SortExprAtom = {
     SortExprBag  = { "Bag" ~ "(" ~ SortExpr ~ ")" }
     SortExprFSet = { "FSet" ~ "(" ~ SortExpr ~ ")" }
     SortExprFBag = { "FBag" ~ "(" ~ SortExpr ~ ")" }
+    SortExprParens = { "(" ~ SortExpr ~ ")" }
+    SortExprStruct = { "struct" ~ ConstrDeclList }
 
 SortExprInfix = _{
     |   SortExprFunction
@@ -118,25 +120,41 @@ DataExpr = { DataExprPrimary ~ DataExprSuffix* ~ (DataExprInfix ~ DataExprPrimar
 
 // A single data expressions
 DataExprPrimary = {
-        "true" ~ !Id                                                 // True
-    |   "false" ~ !Id                                                // False
-    |   "[" ~ "]"                                                    // Empty list
-    |   "{" ~ "}"                                                    // Empty set
-    |   "{" ~ ":" ~ "}"                                              // Empty bag
-    |   "[" ~ DataExprList ~ "]"                                     // List enumeration
-    |   "{" ~ BagEnumEltList ~ "}"                                   // Bag enumeration
-    |   "{" ~ VarDecl ~ "|" ~ DataExpr ~ "}"                         // Set/bag comprehension
-    |   "{" ~ DataExprList ~ "}"                                     // Set enumeration
-    |   "(" ~ DataExpr ~ ")"                                         // Brackets
-    |   "!" ~ DataExpr                                               // Negation, set complement
-    |   "-" ~ DataExpr                                               // Unary minus
-    |   "#" ~ DataExpr                                               // Size of a list
-    |   "forall" ~ VarsDeclList ~ "." ~ DataExpr                     // Universal quantifier
-    |   "exists" ~ VarsDeclList ~ "." ~ DataExpr                     // Existential quantifier
-    |   "lambda" ~ VarsDeclList ~ "." ~ DataExpr                     // Lambda abstraction
-    |   Number                                                       // Number
-    |   Id                                                           // Identifier
+      DataExprTrue
+    | DataExprFalse
+    | DataExprEmptyList
+    | DataExprEmptySet
+    | DataExprEmptyBag
+    | DataExprListEnum
+    | DataExprBagEnum
+    | DataExprSetBagComp
+    | DataExprSetEnum
+    | DataExprBrackets
+    | DataExprNegation
+    | DataExprUnaryMinus
+    | DataExprSize
+    | DataExprForall
+    | DataExprExists
+    | DataExprLambda
+    | Number
+    | Id
 }
+    DataExprTrue = { "true" ~ !Id }
+    DataExprFalse = { "false" ~ !Id }
+    DataExprEmptyList = { "[" ~ "]" }
+    DataExprEmptySet = { "{" ~ "}" }
+    DataExprEmptyBag = { "{" ~ ":" ~ "}" }
+    DataExprListEnum = { "[" ~ DataExprList ~ "]" }
+    DataExprBagEnum = { "{" ~ BagEnumEltList ~ "}" }
+    DataExprSetBagComp = { "{" ~ VarDecl ~ "|" ~ DataExpr ~ "}" }
+    DataExprSetEnum = { "{" ~ DataExprList ~ "}" }
+    DataExprBrackets = { "(" ~ DataExpr ~ ")" }
+    DataExprNegation = { "!" ~ DataExpr }
+    DataExprUnaryMinus = { "-" ~ DataExpr }
+    DataExprSize = { "#" ~ DataExpr }
+    DataExprForall = { "forall" ~ VarsDeclList ~ "." ~ DataExpr }
+    DataExprExists = { "exists" ~ VarsDeclList ~ "." ~ DataExpr }
+    DataExprLambda = { "lambda" ~ VarsDeclList ~ "." ~ DataExpr }
 
 DataExprSuffix = _{
         DataExprUpdate
@@ -263,30 +281,50 @@ ProcExpr = { ProcExprUnit ~ (ProcExprInfix ~ ProcExprUnit)* }
 
 /// Single Process expressions
 ProcExprUnit = {
-        "delta" ~ !Id                                            // Delta, deadlock, inaction
-    |   "tau" ~ !Id                                              // Tau, hidden action, empty multi-action
-    |   "block" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")"          // Block or encapsulation operator
-    |   "allow" ~ "(" ~ MultActIdSet ~ "," ~ ProcExpr ~ ")"      // Allow operator
-    |   "hide" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")"           // Hiding operator
-    |   "rename" ~ "(" ~ RenExprSet ~ "," ~ ProcExpr ~ ")"       // Action renaming operator
-    |   "comm" ~ "(" ~ CommExprSet ~ "," ~ ProcExpr ~ ")"        // Communication operator
-    |   "sum" ~ VarsDeclList ~ "." ~ ProcExpr                    // Sum operator
-    |   "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." ~ ProcExpr
-    |   DataExpr ~ "->" ~ ProcExpr ~ ("<>" ~ ProcExpr)?
-    |   "(" ~ ProcExpr ~ ")"                                     // Brackets
-    |   Id ~ "(" ~ AssignmentList? ~ ")"                         // Process instantiation with assignment shorthand
-    |   Action                                                   // Action or process instantiation
+      ProcExprDelta
+    | ProcExprTau
+    | ProcExprBlock
+    | ProcExprAllow
+    | ProcExprHide
+    | ProcExprRename
+    | ProcExprComm
+    | ProcExprSum
+    | ProcExprDist
+    | ProcExprDataExpr
+    | ProcExprBrackets
+    | ProcExprId
+    | Action
 }
+    ProcExprDelta = { "delta" ~ !Id }                                            // Delta, deadlock, inaction
+    ProcExprTau = { "tau" ~ !Id }                                                // Tau, hidden action, empty multi-action
+    ProcExprBlock = { "block" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")" }          // Block or encapsulation operator
+    ProcExprAllow = { "allow" ~ "(" ~ MultActIdSet ~ "," ~ ProcExpr ~ ")" }      // Allow operator
+    ProcExprHide = { "hide" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")" }            // Hiding operator
+    ProcExprRename = { "rename" ~ "(" ~ RenExprSet ~ "," ~ ProcExpr ~ ")" }      // Action renaming operator
+    ProcExprComm = { "comm" ~ "(" ~ CommExprSet ~ "," ~ ProcExpr ~ ")" }         // Communication operator
+    ProcExprSum = { "sum" ~ VarsDeclList ~ "." ~ ProcExpr }                      // Sum operator
+    ProcExprDist = { "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." ~ ProcExpr }
+    ProcExprDataExpr = { DataExpr ~ "->" ~ ProcExpr ~ ("<>" ~ ProcExpr)? }
+    ProcExprBrackets = { "(" ~ ProcExpr ~ ")" }                                  // Brackets
+    ProcExprId = { Id ~ "(" ~ AssignmentList? ~ ")" }                            // Process instantiation with assignment shorthand
 
 ProcExprInfix = {
-    |   "+"                                                      // Sum operator
-    |   "||_"
-    |   "||"
-    |   "|"
-    |   "<<"
-    |   "."
-    |   "@"
+      ProcExprSum
+    | ProcExprChoice
+    | ProcExprLeftParallel
+    | ProcExprSeq
+    | ProcExprParallel
+    | ProcExprLeftMerge
+    | ProcExprSync
+    | ProcExprAt
 }
+    ProcExprChoice = { "+" } 
+    ProcExprLeftParallel = { "||_" }
+    ProcExprParallel = { "||" }
+    ProcExprSeq = { "." }
+    ProcExprLeftMerge = { "<<" }
+    ProcExprSync = { "|" }
+    ProcExprAt = { "@" }
 
 // Process declaration/
 ProcDecl = { Id ~ ( "(" ~ VarsDeclList ~ ")" )? ~ "=" ~ ProcExpr ~ ";" }
@@ -341,33 +379,56 @@ StateFrmSpecElt = {
 StateFrm = { StateFrmPrimary ~ StateFrmSuffix? ~ (StateFrmInfix ~ StateFrmPrimary ~ StateFrmSuffix?)*}
 
 StateFrmPrimary = {
-        "(" ~ StateFrm ~ ")"                                     // Brackets
-    |   "true"                                                   // True, can also be infinity
-    |   "false"                                                  // False, can also be minus infinity
-    |   "delay" ~ ( "@" ~ DataExpr )?                            // Delay
-    |   "yaled" ~ ( "@" ~ DataExpr )?                            // Yaled
-    |   "mu" ~ StateVarDecl ~ "." ~ StateFrm                     // Minimal fixed point
-    |   "nu" ~ StateVarDecl ~ "." ~ StateFrm                     // Maximal fixed point
-    |   "forall" ~ VarsDeclList ~ "." ~ StateFrm                 // Universal quantification
-    |   "exists" ~ VarsDeclList ~ "." ~ StateFrm                 // Existential quantification
-    |   "inf" ~ VarsDeclList ~ "." ~ StateFrm                    // The infimum operator
-    |   "sup" ~ VarsDeclList ~ "." ~ StateFrm                    // The supremum operator
-    |   "[" ~ RegFrm ~ "]" ~ StateFrm                            // Box modality
-    |   "<" ~ RegFrm ~ ">" ~ StateFrm                            // Diamond modality
-    |   "-" ~ StateFrm                                           // Unary minus. 
-    |   "!" ~ StateFrm                                           // Negation
-    |   Id ~ ( "(" ~ DataExprList ~ ")" )?                       // Instantiated fixpoint variable
-    |   DataValExpr ~ "*" ~ StateFrm                             // Multiplication with a positive constant
-    |   DataValExpr                                              // Boolean or real data expression
+    StateFrmBrackets
+    | StateFrmTrue
+    | StateFrmFalse
+    | StateFrmDelay
+    | StateFrmYaled
+    | StateFrmMu
+    | StateFrmNu
+    | StateFrmForall
+    | StateFrmExists
+    | StateFrmInf
+    | StateFrmSup
+    | StateFrmBox
+    | StateFrmDiamond
+    | StateFrmUnaryMinus
+    | StateFrmNegation
+    | StateFrmId
+    | StateFrmDataValExprMult
+    | StateFrmDataValExpr
 }
+    StateFrmBrackets = { "(" ~ StateFrm ~ ")" }
+    StateFrmTrue = { "true" }                                                       // True, can also be infinity
+    StateFrmFalse = { "false" }                                                     // False, can also be minus infinity
+    StateFrmDelay = { "delay" ~ ( "@" ~ DataExpr )? }
+    StateFrmYaled = { "yaled" ~ ( "@" ~ DataExpr )? }
+    StateFrmMu = { "mu" ~ StateVarDecl ~ "." ~ StateFrm }                           // Minimal fixed point
+    StateFrmNu = { "nu" ~ StateVarDecl ~ "." ~ StateFrm }                           // Maximal fixed point
+    StateFrmForall = { "forall" ~ VarsDeclList ~ "." ~ StateFrm }                   // Universal quantification
+    StateFrmExists = { "exists" ~ VarsDeclList ~ "." ~ StateFrm }                   // Existential quantification
+    StateFrmInf = { "inf" ~ VarsDeclList ~ "." ~ StateFrm }                         // The infimum operator
+    StateFrmSup = { "sup" ~ VarsDeclList ~ "." ~ StateFrm }                         // The supremum operator
+    StateFrmBox = { "[" ~ RegFrm ~ "]" ~ StateFrm }                                 // Box modality
+    StateFrmDiamond = { "<" ~ RegFrm ~ ">" ~ StateFrm }                             // Diamond modality
+    StateFrmUnaryMinus = { "-" ~ StateFrm }                                         // Unary minus
+    StateFrmNegation = { "!" ~ StateFrm }                                           // Negation
+    StateFrmId = { Id ~ ( "(" ~ DataExprList ~ ")" )? }                             // Instantiated fixpoint variable
+    StateFrmDataValExprMult = { DataValExpr ~ "*" ~ StateFrm }                      // Multiplication with a positive constant
+    StateFrmDataValExpr = { DataValExpr }                                           // Boolean or real data expression
 
 StateFrmInfix = {
-    |   "+"                                                      // Addition
-    |   "*"                                                      // Left constant multiply
-    |   "=>"                                                     // Implication
-    |   "||"                                                     // Disjunction, and max
-    |   "&&"                                                     // Conjunction, and min
+      StateFrmAddition
+    | StateFrmLeftConstantMultiply
+    | StateFrmImplication
+    | StateFrmDisjunction
+    | StateFrmConjunction
 }
+    StateFrmAddition = { "+" }
+    StateFrmLeftConstantMultiply = { "*" }
+    StateFrmImplication = { "=>" }
+    StateFrmDisjunction = { "||" }                                                   // Disjunction, and max
+    StateFrmConjunction = { "&&" }                                                   // Conjunction, and min
 
 StateFrmSuffix = {
         "*" ~ DataValExpr   

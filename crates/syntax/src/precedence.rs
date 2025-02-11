@@ -1,3 +1,4 @@
+
 use std::sync::LazyLock;
 
 use pest::iterators::Pairs;
@@ -19,6 +20,33 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::SortExprProduct, Right))
 });
 
+/// Parses a sequence of `Rule` pairs into a `SortExpression` using a Pratt parser for operator precedence.
+/// 
+/// # Arguments
+/// 
+/// * `pairs` - A sequence of `Rule` pairs to be parsed.
+/// 
+/// # Returns
+/// 
+/// A `SortExpression` representing the parsed input.
+/// 
+/// # Panics
+/// 
+/// This function will panic if it encounters an unexpected rule during parsing.
+/// 
+/// # Example
+/// 
+/// ```
+/// use pest::Parser;
+/// use crate::Mcrl2Parser;
+/// use crate::Rule;
+/// use crate::parse_sortexpr;
+/// 
+/// let term = "List(Data)";
+/// let result = Mcrl2Parser::parse(Rule::SortExpr, term).unwrap();
+/// let sort_expr = parse_sortexpr(result);
+/// println!("{}", sort_expr);
+/// ```
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
     SORT_PRATT_PARSER
         .map_primary(|primary|
@@ -60,6 +88,8 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
         })
         .parse(pairs)
 }
+
+
 
 #[cfg(test)]
 mod tests {

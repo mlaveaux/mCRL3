@@ -9,13 +9,7 @@ use crate::Mcrl2Parser;
 use crate::Rule;
 use crate::Sort;
 use crate::SortExpression;
-
-/// An mCRL2 specification containing declarations.
-#[derive(Debug)]
-pub struct UntypedProcessSpecification {
-    /// Vector of identifier declarations
-    pub map: Vec<IdsDecl>,
-}
+use crate::UntypedProcessSpecification;
 
 
 /// Parses the given mCRL2 specification into an AST.
@@ -51,9 +45,7 @@ impl Mcrl2Parser {
             }
         }
 
-        Ok(UntypedProcessSpecification {
-            map
-        })
+        unimplemented!();
     }
 
     fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdsDecl>> {
@@ -63,14 +55,17 @@ impl Mcrl2Parser {
             ids.push(Mcrl2Parser::IdsDecl(decl)?);
         }
 
-        Ok(ids)
+        Ok(ids.into_iter().flatten().collect())
     }
 
-    fn IdsDecl(decl: ParseNode) -> ParseResult<IdsDecl> {
+    fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdsDecl>> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
             [IdList(identifiers), SortExpr(sort)] => {
-                return Ok(IdsDecl { identifiers, sort, span: span.into() });
+                unimplemented!();
+                // return identifiers.iter().map(|i| {
+                //     IdDecl { identifier: i.clone(), sort: sort.clone(), span: span.into() }
+                // }).collect();
             },
         );
     }
@@ -134,6 +129,8 @@ impl Mcrl2Parser {
     pub fn SortExprFBag(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(ComplexSort::FBag, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
     }
+
+    
 
     fn EOI(_input: ParseNode) -> ParseResult<()> {
         Ok(())

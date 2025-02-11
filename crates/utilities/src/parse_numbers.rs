@@ -28,7 +28,7 @@ pub fn parse_natural_number(text: &str) -> Result<usize, ParseNumberError> {
         });
     }
 
-    trimmed.parse().map_err(|e| {
+    trimmed.parse::<usize>().map_err(|e| {
         if trimmed.chars().any(|c| !c.is_ascii_digit()) {
             ParseNumberError::InvalidInteger { text: text.to_string() }
         } else {

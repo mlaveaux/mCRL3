@@ -1,9 +1,31 @@
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
-use crate::UntypedProcessSpecification;
+/// An mCRL2 specification containing declarations.
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct UntypedProcessSpecification {
+    /// Sort declarations
+    pub sort_decls: Vec<SortDecl>,
+    /// Constructor declarations
+    pub cons_decls: Vec<ConsDecl>,
+    /// Map declarations
+    pub map_decls: Vec<MapDecl>,
+    /// Variable declarations
+    pub var_decls: Vec<VarDecl>,
+    /// Equation declarations
+    pub eqn_decls: Vec<EqnDecl>,
+    /// Global variables
+    pub glob_vars: Vec<GlobVarDecl>,
+    /// Action declarations
+    pub act_decls: Vec<ActDecl>,
+    /// Process declarations
+    pub proc_decls: Vec<ProcDecl>,
+    /// Initial process
+    pub init: Option<ProcessExpr>,
+}
 
 /// A declaration of identifiers with their sort.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct IdsDecl {
     /// List of identifiers being declared
     pub identifiers: Vec<String>,
@@ -14,7 +36,7 @@ pub struct IdsDecl {
 }
 
 /// Source location information.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct Span {
     /// Start position in source
     pub start: usize,
@@ -32,7 +54,7 @@ impl From<pest::Span<'_>> for Span {
 }
 
 /// Expression representing a sort (type).
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SortExpression {
     /// Product of two sorts (A # B)
     Product {
@@ -53,7 +75,7 @@ pub enum SortExpression {
 }
 
 /// Built-in simple sorts.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Sort {
     Bool,
     Pos,
@@ -63,13 +85,178 @@ pub enum Sort {
 }
 
 /// Complex (parameterized) sorts.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ComplexSort {
     List,
     Set,
     FSet,
     FBag,
     Bag,
+}
+
+/// An mCRL2 specification containing all components.
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Mcrl2Specification {
+}
+
+/// Sort declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct SortDecl {
+    /// Sort identifier
+    pub name: String,
+    /// Sort parameters (if any)
+    pub params: Vec<String>,
+    /// Sort expression (if structured)
+    pub expr: Option<SortExpression>,
+    pub span: Span,
+}
+
+/// Constructor declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct ConsDecl {
+    pub name: String,
+    pub args: Vec<SortExpression>,
+    pub result: SortExpression,
+    pub span: Span,
+}
+
+/// Map declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct MapDecl {
+    pub name: String,
+    pub args: Vec<SortExpression>,
+    pub result: SortExpression,
+    pub span: Span,
+}
+
+/// Variable declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct VarDecl {
+    pub identifiers: Vec<String>,
+    pub sort: SortExpression,
+    pub span: Span,
+}
+
+/// Equation declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct EqnDecl {
+    pub vars: Vec<VarDecl>,
+    pub condition: Option<DataExpr>,
+    pub lhs: DataExpr,
+    pub rhs: DataExpr,
+    pub span: Span,
+}
+
+/// Global variable declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct GlobVarDecl {
+    pub identifiers: Vec<String>,
+    pub sort: SortExpression,
+    pub init: Option<DataExpr>,
+    pub span: Span,
+}
+
+/// Action declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct ActDecl {
+    pub names: Vec<String>,
+    pub args: Vec<SortExpression>,
+    pub span: Span,
+}
+
+/// Process declaration
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct ProcDecl {
+    pub name: String,
+    pub params: Vec<VarDecl>,
+    pub init: Option<DataExpr>,
+    pub body: ProcessExpr,
+    pub span: Span,
+}
+
+/// Data expression
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum DataExpr {
+    Id(String),
+    Number(i64),
+    Bool(bool),
+    Application {
+        function: Box<DataExpr>,
+        arguments: Vec<DataExpr>,
+    },
+    List(Vec<DataExpr>),
+    Set(Vec<DataExpr>),
+    Bag(Vec<(DataExpr, DataExpr)>),
+    Lambda {
+        variables: Vec<VarDecl>,
+        body: Box<DataExpr>,
+    },
+    Exists {
+        variables: Vec<VarDecl>,
+        body: Box<DataExpr>,
+    },
+    Forall {
+        variables: Vec<VarDecl>,
+        body: Box<DataExpr>,
+    },
+}
+
+/// Process expression
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum ProcessExpr {
+    Action(String, Vec<DataExpr>),
+    Delta,
+    Tau,
+    Sum {
+        variables: Vec<VarDecl>,
+        operand: Box<ProcessExpr>,
+    },
+    Sequence {
+        left: Box<ProcessExpr>,
+        right: Box<ProcessExpr>,
+    },
+    Choice {
+        left: Box<ProcessExpr>,
+        right: Box<ProcessExpr>,
+    },
+    Parallel {
+        left: Box<ProcessExpr>,
+        right: Box<ProcessExpr>,
+    },
+    Communication {
+        left: Box<ProcessExpr>,
+        right: Box<ProcessExpr>,
+        actions: Vec<CommAction>,
+    },
+    Hide {
+        actions: Vec<String>,
+        operand: Box<ProcessExpr>,
+    },
+    Rename {
+        renames: Vec<(String, String)>,
+        operand: Box<ProcessExpr>,
+    },
+    Allow {
+        actions: Vec<String>,
+        operand: Box<ProcessExpr>,
+    },
+    Block {
+        actions: Vec<String>,
+        operand: Box<ProcessExpr>,
+    },
+    Condition {
+        condition: DataExpr,
+        then: Box<ProcessExpr>,
+        else_: Option<Box<ProcessExpr>>,
+    },
+}
+
+/// Communication action
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct CommAction {
+    pub inputs: Vec<String>,
+    pub output: String,
+    pub span: Span,
 }
 
 /// Prints location information for a span in the source.
@@ -97,8 +284,8 @@ impl fmt::Display for ComplexSort {
 
 impl fmt::Display for UntypedProcessSpecification {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for decl in &self.map {
-            writeln!(f, "{}", decl)?;
+        for decl in &self.map_decls {
+            writeln!(f, "{:?}", decl)?;
         }
         Ok(())
     }

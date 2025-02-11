@@ -1,15 +1,11 @@
-use std::sync::Arc;
-
 /// Displays progress messages for a task that performs a fixed number of steps.
-/// Progress is reported through the logger's status messages.
+/// Progress is reported through a provided lambda function.
 #[derive(Debug)]
 pub struct ProgressMeter {
     /// Current step number
     current: usize,
     /// Total number of steps
     total: usize,
-    /// Logger instance for status updates
-    logger: Arc<Logger>,
 }
 
 impl ProgressMeter {
@@ -17,12 +13,10 @@ impl ProgressMeter {
     /// 
     /// # Arguments
     /// * `total` - Total number of steps (0 means unknown)
-    /// * `logger` - Logger instance for status updates
-    pub fn new(total: usize, logger: Arc<Logger>) -> Self {
+    pub fn new(total: usize) -> Self {
         Self {
             current: 0,
             total,
-            logger,
         }
     }
 
@@ -34,7 +28,13 @@ impl ProgressMeter {
     /// Should be called after every step. Regularly prints a status message.
     /// Messages are shown for each 0.1% progress increment, or more frequently
     /// for tasks with fewer than 1000 steps.
-    pub fn step(&mut self) {
+    /// 
+    /// # Arguments
+    /// * `log_fn` - Lambda function to print the status message
+    pub fn step<F>(&mut self, mut log_fn: F)
+    where
+        F: FnMut(&str),
+    {
         self.current += 1;
         
         // Show progress if:
@@ -43,10 +43,7 @@ impl ProgressMeter {
         // - We completed the task
         if self.total < 1000 || (self.current % (self.total / 1000) == 0) || self.current == self.total {
             let percentage = 1000 * self.current / self.total;
-            self.logger.log(
-                LogLevel::Status,
-                &format!("{}.{} percent completed", percentage / 10, percentage % 10)
-            );
+            log_fn(&format!("{}.{} percent completed", percentage / 10, percentage % 10));
         }
     }
 
@@ -83,23 +80,18 @@ mod tests {
 
     #[test]
     fn test_progress_reporting() {
-        let writer = TestWriter(Mutex::new(Vec::new()));
-        let logger = Arc::new(Logger::with_output(Box::new(writer)));
-        let mut meter = ProgressMeter::new(100, logger.clone());
+        let mut writer = TestWriter(Mutex::new(Vec::new()));
+        let mut log_fn = |msg: &str| {
+            writer.write_all(msg.as_bytes()).unwrap();
+        };
+        let mut meter = ProgressMeter::new(100);
 
         // Step through all iterations
         for _ in 0..100 {
-            meter.step();
+            meter.step(&mut log_fn);
         }
 
-        let output = String::from_utf8(
-            logger.output.borrow_mut()
-                .downcast_ref::<TestWriter>()
-                .unwrap()
-                .0.lock()
-                .unwrap()
-                .clone()
-        ).unwrap();
+        let output = String::from_utf8(writer.0.lock().unwrap().clone()).unwrap();
 
         // Verify some expected output
         assert!(output.contains("0.0 percent"));

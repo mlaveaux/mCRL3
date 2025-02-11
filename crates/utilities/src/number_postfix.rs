@@ -62,7 +62,7 @@ impl NumberPostfixGenerator {
         let id = id.as_ref();
         
         // Find last non-digit character
-        let (name, new_index) = match id.chars().rposition(|c| !c.is_ascii_digit()) {
+        let (name, new_index) = match id.chars().rev().position(|c| !c.is_ascii_digit()) {
             Some(i) if i + 1 < id.len() => {
                 let (name, num) = id.split_at(i + 1);
                 let index = num.parse().unwrap_or(0);
@@ -94,7 +94,7 @@ impl NumberPostfixGenerator {
         // Remove trailing digits
         if let Some(last) = hint.chars().last() {
             if last.is_ascii_digit() {
-                if let Some(i) = hint.chars().rposition(|c| !c.is_ascii_digit()) {
+                if let Some(i) = hint.chars().rev().position(|c| !c.is_ascii_digit()) {
                     hint.truncate(i + 1);
                 }
             }
@@ -121,7 +121,8 @@ impl NumberPostfixGenerator {
 
     /// Generates a fresh identifier using the default hint.
     pub fn generate_default(&mut self) -> String {
-        self.generate(&self.hint, true)
+        let hint = self.hint.clone();
+        self.generate(hint, true)
     }
 
     /// Returns the default hint.
