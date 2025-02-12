@@ -1,0 +1,16 @@
+[package]
+name = "mcrl3-ldd"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mcrl3-utilities.workspace = true
+
+rustc-hash.workspace = true
+ahash.workspace = true
+static_assertions.workspace = true
+log.workspace = true
+rand.workspace = true
