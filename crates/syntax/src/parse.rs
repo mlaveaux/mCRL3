@@ -4,13 +4,12 @@ use pest_consume::Error;
 
 use crate::parse_sortexpr;
 use crate::ComplexSort;
-use crate::IdsDecl;
+use crate::IdDecl;
 use crate::Mcrl2Parser;
 use crate::Rule;
 use crate::Sort;
 use crate::SortExpression;
 use crate::UntypedProcessSpecification;
-
 
 /// Parses the given mCRL2 specification into an AST.
 impl UntypedProcessSpecification {
@@ -23,8 +22,6 @@ impl UntypedProcessSpecification {
         Ok(Mcrl2Parser::MCRL2Spec(ParseNode::new(root)).unwrap())
     }
 }
-
-
 
 type ParseResult<T> = std::result::Result<T, Error<Rule>>;
 type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
@@ -48,32 +45,27 @@ impl Mcrl2Parser {
         unimplemented!();
     }
 
-    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdsDecl>> {
+    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let mut ids = Vec::new();
         
         for decl in spec.into_children() {
             ids.push(Mcrl2Parser::IdsDecl(decl)?);
         }
 
-        Ok(ids.into_iter().flatten().collect())
+        Ok(ids)
     }
 
-    fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdsDecl>> {
+    fn IdsDecl(decl: ParseNode) -> ParseResult<IdDecl> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [IdList(identifiers), SortExpr(sort)] => {
-                unimplemented!();
-                // return identifiers.iter().map(|i| {
-                //     IdDecl { identifier: i.clone(), sort: sort.clone(), span: span.into() }
-                // }).collect();
+            [Id(identifier), SortExpr(sort)] => {
+                Ok(IdDecl { identifier, sort, span: span.into() })
             },
-        );
+        )
     }
 
-    fn IdList(list: ParseNode) -> ParseResult<Vec<String>> {
-        Ok(list.into_children().map(|i| {
-            i.as_str().to_string()
-        }).collect())
+    pub fn Id(list: ParseNode) -> ParseResult<String> {
+        Ok(list.as_str().to_string())
     }
 
     pub fn SortExpr(expr: ParseNode) -> ParseResult<SortExpression> {
@@ -130,13 +122,10 @@ impl Mcrl2Parser {
         Ok(SortExpression::Complex(ComplexSort::FBag, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
     }
 
-    
-
     fn EOI(_input: ParseNode) -> ParseResult<()> {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

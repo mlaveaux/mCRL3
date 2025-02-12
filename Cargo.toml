@@ -14,7 +14,6 @@ members = [
 ]
 
 [workspace.dependencies]
-ldd-library = { git = "https://github.com/mlaveaux/ldd-library" }
 bf-shared-mutex = { git = "https://github.com/mlaveaux/bf-shared-mutex" }
 
 thiserror = "2.0"
@@ -27,9 +26,13 @@ pest = "2.7"
 pest_derive  = "2.7"
 pest_consume  = "1.1"
 log = "0.4"
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 parking_lot = "0.12"
 rand = "0.9"
+static_assertions = "1.1"
+rustc-hash = "2.1"
+ahash = "0.8"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 # Only used for xtask
 duct = "0.13"
@@ -45,3 +48,4 @@ env_logger = "0.11"
 # The workspace libraries.
 mcrl3-syntax = { path = "crates/syntax" }
 mcrl3-utilities = { path = "crates/utilities" }
+mcrl3-ldd = { path="crates/ldd" }

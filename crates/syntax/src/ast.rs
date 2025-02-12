@@ -24,12 +24,12 @@ pub struct UntypedProcessSpecification {
     pub init: Option<ProcessExpr>,
 }
 
-/// A declaration of identifiers with their sort.
+/// A declaration of an identifier with its sort.
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct IdsDecl {
-    /// List of identifiers being declared
-    pub identifiers: Vec<String>,
-    /// Sort expression for these identifiers
+pub struct IdDecl {
+    /// Identifier being declared
+    pub identifier: String,
+    /// Sort expression for this identifier
     pub sort: SortExpression,
     /// Source location information
     pub span: Span,
@@ -132,7 +132,7 @@ pub struct MapDecl {
 /// Variable declaration
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct VarDecl {
-    pub identifiers: Vec<String>,
+    pub identifier: String,
     pub sort: SortExpression,
     pub span: Span,
 }
@@ -150,7 +150,7 @@ pub struct EqnDecl {
 /// Global variable declaration
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct GlobVarDecl {
-    pub identifiers: Vec<String>,
+    pub identifier: String,
     pub sort: SortExpression,
     pub init: Option<DataExpr>,
     pub span: Span,
@@ -159,7 +159,7 @@ pub struct GlobVarDecl {
 /// Action declaration
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct ActDecl {
-    pub names: Vec<String>,
+    pub name: String,
     pub args: Vec<SortExpression>,
     pub span: Span,
 }
@@ -291,9 +291,9 @@ impl fmt::Display for UntypedProcessSpecification {
     }
 }
 
-impl fmt::Display for IdsDecl {
+impl fmt::Display for IdDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} : {}", self.identifiers.join(", "), self.sort)
+        write!(f, "{} : {}", self.identifier, self.sort)
     }
 }
 

@@ -1,11 +1,13 @@
 [package]
 name = "mcrl3-utilities"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-thiserror.workspace = true
-regex.workspace = true
+ahash.workspace = true
 bitstream-io.workspace = true
 once_cell.workspace = true
 rand.workspace = true
+regex.workspace = true
+rustc_hash.workspace = true
+thiserror.workspace = true

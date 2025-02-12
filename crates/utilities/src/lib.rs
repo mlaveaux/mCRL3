@@ -14,13 +14,13 @@ mod parse_numbers;
 mod protection_set;
 mod helper;
 
-pub use indexed_set::*;
-pub use timer::*;
 pub use bitstream::*;
-pub use text_utility::*;
-pub use progress_meter::*;
 pub use execution_timer::ExecutionTimer;
+pub use helper::*;
+pub use indexed_set::*;
 pub use number_postfix::NumberPostfixGenerator;
 pub use parse_numbers::*;
+pub use progress_meter::*;
 pub use protection_set::*;
-pub use helper::*;
+pub use text_utility::*;
+pub use timer::*;
