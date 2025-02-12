@@ -9,6 +9,8 @@ use std::ops::Deref;
 
 use mcrl3_utilities::PhantomUnsend;
 
+use crate::SymbolRef;
+
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
 
 /// This represents a lifetime bound reference to an existing ATerm that is
@@ -23,7 +25,7 @@ use super::global_aterm_pool::GLOBAL_TERM_POOL;
 /// this is not allowed since the temporary returned by the argument is dropped.
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ATermRef<'a> {
-    term: usize,
+    index: usize,
     marker: PhantomData<&'a ()>,
 }
 
@@ -36,7 +38,7 @@ unsafe impl Sync for ATermRef<'_> {}
 impl Default for ATermRef<'_> {
     fn default() -> Self {
         ATermRef {
-            term: 0,
+            index: 0,
             marker: PhantomData,
         }
     }
@@ -71,31 +73,39 @@ impl<'a> ATermRef<'a> {
             "Upgrade has been used on a witness that is not a parent term"
         );
 
-        ATermRef::new(self.term)
+        ATermRef::new(self.index)
     }
 
     /// A private unchecked version of [`ATermRef::upgrade`] to use in iterators.
     unsafe fn upgrade_unchecked<'b: 'a>(&'a self, _parent: &ATermRef<'b>) -> ATermRef<'b> {
-        ATermRef::new(self.term)
+        ATermRef::new(self.index)
     }
 }
 
 impl ATermRef<'_> {
+    /// Creates a new term reference from the given index.
+    pub(crate) fn new(index: usize) -> Self {
+        ATermRef {
+            index,
+            marker: PhantomData,
+        }
+    }
+
+    /// Returns the index of the term.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
     /// Returns the indexed argument of the term
     pub fn arg(&self, index: usize) -> ATermRef<'_> {
         self.require_valid();
         debug_assert!(
-            index < self.get_head_symbol().arity(),
+            index < self.symbol().arity(),
             "arg({index}) is not defined for term {:?}",
             self
         );
 
-        unsafe {
-            ATermRef {
-                term: ffi::get_term_argument(self.term, index),
-                marker: PhantomData,
-            }
-        }
+        GLOBAL_TERM_POOL.lock().get_argument(self, index).upgrade(self)
     }
 
     /// Returns the list of arguments as a collection
@@ -107,33 +117,33 @@ impl ATermRef<'_> {
 
     /// Makes a copy of the term with the same lifetime as itself.
     pub fn copy(&self) -> ATermRef<'_> {
-        ATermRef::new(self.term)
+        ATermRef::new(self.index)
     }
 
     /// Returns whether the term is the default term (not initialised)
     pub fn is_default(&self) -> bool {
-        self.term.is_null()
+        self.index == 0
+    }
+
+    /// Returns the function of an ATermRef
+    pub fn symbol(&self) -> SymbolRef<'_> {
+        //GLOBAL_TERM_POOL.lock().get_head_symbol(self)
+        unimplemented!();
     }
 
     /// Returns true iff this is an aterm_list
     pub fn is_list(&self) -> bool {
-        unsafe { ffi::aterm_is_list(self.term) }
+        GLOBAL_TERM_POOL.lock().symbol_pool().is_list(&self.symbol())
     }
 
     /// Returns true iff this is the empty aterm_list
     pub fn is_empty_list(&self) -> bool {
-        unsafe { ffi::aterm_is_empty_list(self.term) }
+        GLOBAL_TERM_POOL.lock().symbol_pool().is_empty_list(&self.symbol())
     }
 
     /// Returns true iff this is a aterm_int
     pub fn is_int(&self) -> bool {
-        unsafe { ffi::aterm_is_int(self.term) }
-    }
-
-    /// Returns the head function symbol of the term.
-    pub fn get_head_symbol(&self) -> SymbolRef<'_> {
-        self.require_valid();
-        unsafe { ffi::get_aterm_function_symbol(self.term).into() }
+        GLOBAL_TERM_POOL.lock().symbol_pool().is_int(&self.symbol())
     }
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
@@ -162,9 +172,7 @@ impl fmt::Debug for ATermRef<'_> {
         if self.is_default() {
             write!(f, "<default>")?;
         } else {
-            unsafe {
-                write!(f, "{}", ffi::print_aterm(self.term))?;
-            }
+            unimplemented!();
         }
 
         Ok(())
@@ -185,9 +193,9 @@ pub struct ATerm {
 impl ATerm {
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn new(term: ATermRef<'static>, root: usize) -> ATerm {
+    pub(crate) fn new(term: usize, root: usize) -> ATerm {
         ATerm {
-            term,
+            term: ATermRef::new(term),
             root,
             _marker: PhantomData,
         }
@@ -197,7 +205,7 @@ impl ATerm {
 impl Drop for ATerm {
     fn drop(&mut self) {
         if !self.is_default() {
-            GLOBAL_TERM_POOL.lock().unprotect(self);
+            GLOBAL_TERM_POOL.lock().unprotect(std::mem::take(self));
         }
     }
 }
@@ -270,7 +278,7 @@ pub struct ATermArgs<'a> {
 
 impl<'a> ATermArgs<'a> {
     fn new(term: ATermRef<'a>) -> ATermArgs<'a> {
-        let arity = term.get_head_symbol().arity();
+        let arity = term.symbol().arity();
         ATermArgs { term, arity, index: 0 }
     }
 

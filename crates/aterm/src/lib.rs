@@ -6,12 +6,14 @@
 //! - Garbage collection
 //! - Binary storage format
 
-mod global_symbol_pool;
+mod symbol_pool;
 mod symbol;
 mod global_aterm_pool;
 mod aterm;
+mod aterm_list;
 
 pub use global_aterm_pool::*;
-pub use global_symbol_pool::*;
+pub use symbol_pool::*;
 pub use symbol::*;
 pub use aterm::*;
+pub use aterm_list::*;

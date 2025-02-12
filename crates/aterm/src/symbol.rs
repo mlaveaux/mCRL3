@@ -7,30 +7,34 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 
-use crate::GLOBAL_SYMBOL_POOL;
+use crate::GLOBAL_TERM_POOL;
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
-    symbol: usize,
+    index: usize,
     marker: PhantomData<&'a ()>,
 }
 
 /// A Symbol references to an aterm function symbol, which has a name and an arity.
 impl<'a> SymbolRef<'a> {
-    fn new(symbol: usize) -> SymbolRef<'a> {
+    pub(crate) fn new(symbol: usize) -> SymbolRef<'a> {
         SymbolRef {
-            symbol,
+            index: symbol,
             marker: PhantomData,
         }
     }
 
     /// Protect the symbol from garbage collection
     pub fn protect(&self) -> Symbol {
-        GLOBAL_SYMBOL_POOL.lock().protect(self)
+        GLOBAL_TERM_POOL.lock().symbol_pool_mut().protect(self)
     }
 
     pub fn copy(&self) -> SymbolRef<'_> {
-        SymbolRef::new(self.symbol)
+        SymbolRef::new(self.index)
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 }
 
@@ -82,7 +86,7 @@ impl Symbol {
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        unimplemented!();
+        GLOBAL_TERM_POOL.lock().symbol_pool_mut().unprotect(&self.symbol);
     }
 }
 
