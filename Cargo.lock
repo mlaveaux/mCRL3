@@ -415,6 +415,7 @@ dependencies = [
  "once_cell",
  "rand",
  "regex",
+ "rustc-hash",
  "thiserror",
 ]
 

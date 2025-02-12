@@ -1,3 +1,7 @@
+use std::marker::PhantomData;
+
+use crate::{ATerm, ATermRef};
+
 
 
 pub struct ATermList<T> {

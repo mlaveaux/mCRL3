@@ -70,12 +70,9 @@ impl Iterator for Iter<'_>
         let vector: Vec<Value>;     
         loop
         {
-            let current = match self.stack.last() {
-                Some(x) => x,
-                None => return None,
-            };
+            let current = self.stack.last()?;
 
-            let Data(value, down, _) = self.storage.get(&current);
+            let Data(value, down, _) = self.storage.get(current);
             self.vector.push(value);
             if down == *self.storage.empty_vector()
             {

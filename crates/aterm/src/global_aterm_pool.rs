@@ -57,7 +57,7 @@ impl GlobalTermPool {
         let shared_term = self.terms.get(term.index()).unwrap().clone();
 
         // Get or insert the term
-        let (index, _) = self.terms.get_or_insert(shared_term);
+        let index = self.terms.insert(shared_term);
 
         // Protect the term by adding its index to the protection set
         let root = self.protection_set.protect(index);

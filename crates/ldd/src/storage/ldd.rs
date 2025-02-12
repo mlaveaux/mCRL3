@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use super::protection_set::ProtectionSet;
+use mcrl3_utilities::ProtectionSet;
 
 /// Every Ldd points to its root node in the Storage instance for maximal
 /// sharing. These Ldd instances can only be created from the storage.

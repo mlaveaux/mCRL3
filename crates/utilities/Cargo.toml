@@ -9,5 +9,5 @@ bitstream-io.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 regex.workspace = true
-rustc_hash.workspace = true
+rustc-hash = "2.1"
 thiserror.workspace = true

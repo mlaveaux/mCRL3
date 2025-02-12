@@ -68,8 +68,8 @@ pub fn project(storage: &mut Storage, set: &LddRef, proj: &LddRef) -> Ldd {
             "proj can be at most as high as set"
         );
 
-        let DataRef(proj_value, proj_down, _) = storage.get_ref(&proj);
-        let DataRef(value, down, right) = storage.get_ref(&set);
+        let DataRef(proj_value, proj_down, _) = storage.get_ref(proj);
+        let DataRef(value, down, right) = storage.get_ref(set);
 
         match proj_value {
             0 => {
@@ -161,16 +161,16 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
             rel,
             meta,
             |storage, set, rel, meta| {
-                let DataRef(meta_value, meta_down, _) = storage.get_ref(&meta);
+                let DataRef(meta_value, meta_down, _) = storage.get_ref(meta);
 
                 match meta_value {
                     0 => {
                         // Consider all values on this level part of the output and continue with rest.
-                        let DataRef(value, down, right) = storage.get_ref(&set);
+                        let DataRef(value, down, right) = storage.get_ref(set);
 
                         let right_result =
-                            relational_product(storage, &right, &rel, &meta);
-                        let down_result = relational_product(storage, &down, &rel, &meta_down);
+                            relational_product(storage, &right, rel, meta);
+                        let down_result = relational_product(storage, &down, rel, &meta_down);
                         if down_result == *storage.empty_set() {
                             right_result
                         } else {
@@ -179,16 +179,16 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                     }
                     1 => {
                         // Read the values present in the relation and continue with these values in the set.
-                        let DataRef(set_value, set_down, set_right) = storage.get_ref(&set);
-                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(&rel);
+                        let DataRef(set_value, set_down, set_right) = storage.get_ref(set);
+                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
                         match set_value.cmp(&rel_value) {
-                            Ordering::Less => relational_product(storage, &set_right, &rel, &meta),
+                            Ordering::Less => relational_product(storage, &set_right, rel, meta),
                             Ordering::Equal => {
                                 let down_result =
                                     relational_product(storage, &set_down, &rel_down, &meta_down);
                                 let right_result =
-                                    relational_product(storage, &set_right, &rel_right, &meta);
+                                    relational_product(storage, &set_right, &rel_right, meta);
                                 if down_result == *storage.empty_set() {
                                     right_result
                                 } else {
@@ -199,13 +199,13 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                                     )
                                 }
                             }
-                            Ordering::Greater => relational_product(storage, &set, &rel_right, &meta),
+                            Ordering::Greater => relational_product(storage, set, &rel_right, meta),
                         }
                     }
                     2 => {
                         // All values in set should be considered.
                         let mut combined = storage.empty_set().clone();
-                        let mut current = storage.protect(&set);
+                        let mut current = storage.protect(set);
                         loop {
                             let DataRef(_, set_down, set_right) = storage.get_ref(&current);
                             combined = union(storage, &combined, &set_down);
@@ -217,11 +217,11 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         }
 
                         // Write the values present in the relation.
-                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(&rel);
+                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
                         let down_result =
                             relational_product(storage, &combined, &rel_down, &meta_down);
-                        let right_result = relational_product(storage, &set, &rel_right, &meta);
+                        let right_result = relational_product(storage, set, &rel_right, meta);
                         if down_result == *storage.empty_set() {
                             right_result
                         } else {
@@ -229,28 +229,28 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         }
                     }
                     3 => {
-                        let DataRef(set_value, set_down, set_right) = storage.get_ref(&set);
-                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(&rel);
+                        let DataRef(set_value, set_down, set_right) = storage.get_ref(set);
+                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
                         match set_value.cmp(&rel_value) {
-                            Ordering::Less => relational_product(storage, &set_right, &rel, &meta),
+                            Ordering::Less => relational_product(storage, &set_right, rel, meta),
                             Ordering::Equal => {
                                 let down_result =
                                     relational_product(storage, &set_down, &rel_down, &meta_down);
                                 let right_result =
-                                    relational_product(storage, &set_right, &rel_right, &meta);
+                                    relational_product(storage, &set_right, &rel_right, meta);
                                 union(storage, &down_result, &right_result)
                             }
-                            Ordering::Greater => relational_product(storage, &set, &rel_right, &meta),
+                            Ordering::Greater => relational_product(storage, set, &rel_right, meta),
                         }
                     }
                     4 => {
                         // Write the values present in the relation.
-                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(&rel);
+                        let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
                         let down_result =
-                            relational_product(storage, &set, &rel_down, &meta_down);
-                        let right_result = relational_product(storage, &set, &rel_right, &meta);
+                            relational_product(storage, set, &rel_down, &meta_down);
+                        let right_result = relational_product(storage, set, &rel_right, meta);
                         if down_result == *storage.empty_set() {
                             right_result
                         } else {
@@ -274,12 +274,12 @@ pub fn minus(storage: &mut Storage, a: &LddRef, b: &LddRef) -> Ldd {
         storage.protect(a)
     } else {
         cache_binary_op(storage, BinaryOperator::Minus, a, b, |storage, a, b| {
-            let DataRef(a_value, a_down, a_right) = storage.get_ref(&a);
-            let DataRef(b_value, b_down, b_right) = storage.get_ref(&b);
+            let DataRef(a_value, a_down, a_right) = storage.get_ref(a);
+            let DataRef(b_value, b_down, b_right) = storage.get_ref(b);
 
             match a_value.cmp(&b_value) {
                 Ordering::Less => {
-                    let right_result = minus(storage, &a_right, &b);
+                    let right_result = minus(storage, &a_right, b);
                     storage.insert(a_value, &a_down, &right_result)
                 }
                 Ordering::Equal => {
@@ -291,7 +291,7 @@ pub fn minus(storage: &mut Storage, a: &LddRef, b: &LddRef) -> Ldd {
                         storage.insert(a_value, &down_result,& right_result)
                     }
                 }
-                Ordering::Greater => minus(storage, &a, &b_right),
+                Ordering::Greater => minus(storage, a, &b_right),
             }
         })
     }
@@ -312,7 +312,7 @@ pub fn union(storage: &mut Storage, a: &LddRef, b: &LddRef) -> Ldd {
 
             match a_value.cmp(&b_value) {
                 Ordering::Less => {
-                    let result = union(storage, &a_right, &b);
+                    let result = union(storage, &a_right, b);
                     storage.insert(a_value, &a_down, &result)
                 }
                 Ordering::Equal => {
@@ -321,7 +321,7 @@ pub fn union(storage: &mut Storage, a: &LddRef, b: &LddRef) -> Ldd {
                     storage.insert(a_value, &down_result, &right_result)
                 }
                 Ordering::Greater => {
-                    let result = union(storage, &a, &b_right);
+                    let result = union(storage, a, &b_right);
                     storage.insert(b_value, &b_down, &result)
                 }
             }
@@ -339,10 +339,10 @@ pub fn merge(storage: &mut Storage, a: &LddRef, b: &LddRef) -> Ldd {
         storage.empty_set().clone()
     } else {
         cache_binary_op(storage, BinaryOperator::Merge, a, b, |storage, a, b| {
-            let DataRef(value, down, right) = storage.get_ref(&a);
+            let DataRef(value, down, right) = storage.get_ref(a);
 
-            let down_result = merge(storage, &b, &down);
-            let right_result = merge(storage, &right, &b);
+            let down_result = merge(storage, b, &down);
+            let right_result = merge(storage, &right, b);
 
             storage.insert(value, &down_result, &right_result)
         })
@@ -357,7 +357,7 @@ pub fn append(storage: &mut Storage, ldd: &LddRef, value: Value) -> Ldd {
         singleton(storage, &[value])
     } else {
         // Traverse the ldd.
-        let DataRef(val, down, right) = storage.get_ref(&ldd);
+        let DataRef(val, down, right) = storage.get_ref(ldd);
 
         let down_result = append(storage, &down, value);
         let right_result = append(storage, &right, value);
@@ -401,7 +401,7 @@ pub fn len(storage: &mut Storage, set: &LddRef) -> usize {
         cache_unary_function(storage, UnaryFunction::Len, set, |storage, a| {
             let mut result: usize = 0;
 
-            let mut current = storage.protect(&a);
+            let mut current = storage.protect(a);
             while current != *storage.empty_set() {
                 // Progress to the right LDD.
                 let DataRef(_, down, right) = storage.get_ref(&current);

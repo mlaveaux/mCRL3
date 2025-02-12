@@ -109,7 +109,7 @@ pub fn remove_comments(text: &str) -> String {
         match (c, chars.peek()) {
             ('/', Some(&'/')) => {
                 // Skip line comment
-                while let Some(ch) = chars.next() {
+                for ch in chars.by_ref() {
                     if ch == '\n' {
                         result.push(ch);
                         break;

@@ -32,13 +32,8 @@ impl Mcrl2Parser {
         let mut map = Vec::new();
 
         for child in spec.into_children() {
-            match child.as_rule() {
-                Rule::MapSpec => {
-                    map.append(&mut Mcrl2Parser::MapSpec(child)?);
-                },
-                _ => {
-
-                }
+            if child.as_rule() == Rule::MapSpec {
+                map.append(&mut Mcrl2Parser::MapSpec(child)?);
             }
         }
 
@@ -59,13 +54,9 @@ impl Mcrl2Parser {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
             [Id(identifier), SortExpr(sort)] => {
-                Ok(IdDecl { identifier, sort, span: span.into() })
+                Ok(IdDecl { identifier: "".into(), sort, span: span.into() })
             },
         )
-    }
-
-    pub fn Id(list: ParseNode) -> ParseResult<String> {
-        Ok(list.as_str().to_string())
     }
 
     pub fn SortExpr(expr: ParseNode) -> ParseResult<SortExpression> {

@@ -1,10 +1,9 @@
-use std::{cell::RefCell, rc::Rc, hash::{Hasher, BuildHasher}};
+use std::{cell::RefCell, rc::Rc, hash::BuildHasher};
 use core::hash::Hash;
 use ahash::RandomState;
+use mcrl3_utilities::ProtectionSet;
 
 use crate::{Storage, Ldd, LddRef};
-
-use super::protection_set::ProtectionSet;
 
 /// The operation cache can significantly speed up operations by caching
 /// intermediate results. This is necessary since the maximal sharing means that
@@ -194,9 +193,9 @@ impl<K: Default + Eq + Hash, V, S: BuildHasher> Cache<K, V, S>
         debug_assert!(*key != K::default(), "The key may never be equal to its default value.");
 
         // Compute the index in the table.
-        let mut hasher = self.hash_builder.build_hasher();
-        key.hash(&mut hasher);
-        let index = hasher.finish() % (self.table.len() as u64);
+        
+        
+        let index = self.hash_builder.hash_one(key) % (self.table.len() as u64);
 
         let entry = &self.table[index as usize];
         if entry.0 == *key 
@@ -215,9 +214,9 @@ impl<K: Default + Eq + Hash, V, S: BuildHasher> Cache<K, V, S>
         debug_assert!(key != K::default(), "The key may never be equal to its default value.");
 
         // Compute the index in the table.
-        let mut hasher = self.hash_builder.build_hasher();
-        key.hash(&mut hasher);
-        let index = hasher.finish() % (self.table.len() as u64);
+        
+        
+        let index = self.hash_builder.hash_one(&key) % (self.table.len() as u64);
         self.table[index as usize] = (key, value);
     }
 }

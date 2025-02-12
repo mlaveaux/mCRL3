@@ -1,17 +1,20 @@
-use std::collections::HashMap;
-
 use mcrl3_utilities::{ProtectionSet, IndexedSet};
 
 use crate::{Symbol, SymbolRef};
 
 /// Pool for maximal sharing of function symbols.
 /// Ensures that function symbols with the same name and arity are the same object.
-#[derive(Debug)]
 pub struct SymbolPool {
     /// Unique table of all function symbols
     symbols: IndexedSet<SharedSymbol>,
     /// Protection set to prevent garbage collection of symbols
     protection_set: ProtectionSet<usize>,
+}
+
+impl Default for SymbolPool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SymbolPool {
@@ -42,7 +45,7 @@ impl SymbolPool {
         let name = name.into();
         
         // Get or create symbol index
-        let (index, _) = self.symbols.get_or_insert(SharedSymbol::new(name, arity));
+        let index = self.symbols.insert(SharedSymbol::new(name, arity));
 
         // Return cloned symbol
         Symbol::new(index, self.protection_set.protect(index))

@@ -25,7 +25,6 @@
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
-use std::time::{Duration, Instant};
 use crate::timer::Timer;
 
 /// Records CPU time used by different parts of the code with a tool name and optional output file.
