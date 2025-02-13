@@ -1,0 +1,5 @@
+Ncons
+Ucons(d0)
+succ(d0)
+d0
+succ(d0)

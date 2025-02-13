@@ -1,0 +1,1 @@
+ct(two_cannibals_row_east,ct(cannibal_rows_west,ct(two_missionaries_row_east,ct(cannibal_rows_west,ct(two_cannibals_row_east,nil_tl)))))

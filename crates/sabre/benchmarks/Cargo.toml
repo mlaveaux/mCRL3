@@ -1,0 +1,20 @@
+[package]
+name = "benchmarks-sabre"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+criterion.workspace = true
+env_logger.workspace = true
+mcrl2.workspace = true
+rec-tests.workspace = true
+sabre.workspace = true
+utilities.workspace = true
+ahash.workspace = true
+
+[[bench]]
+name = "benchmark_sabre"
+harness = false

@@ -1,0 +1,21 @@
+[package]
+name = "mcrl3_sabre"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mcrl3_aterm.workspace = true
+
+rustc-hash.workspace = true
+smallvec.workspace = true
+html-escape.workspace = true
+ahash.workspace = true
+env_logger.workspace = true
+log.workspace = true
+itertools.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+test-case.workspace = true
+test-log.workspace = true

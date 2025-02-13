@@ -1,0 +1,6 @@
+nullary_constructor
+unary_constructor(nullary_constructor)
+nary_constructor(nullary_constructor,nullary_constructor,nullary_constructor)
+nullary_constructor
+unary_constructor(nullary_constructor)
+nary_constructor(nullary_constructor,nullary_constructor,nullary_constructor)
