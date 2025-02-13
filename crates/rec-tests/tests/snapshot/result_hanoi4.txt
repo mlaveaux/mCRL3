@@ -1,0 +1,1 @@
+cons(movedisk(d1,a,c),cons(movedisk(d2,a,b),cons(movedisk(d1,c,b),cons(movedisk(d3,a,c),cons(movedisk(d1,b,a),cons(movedisk(d2,b,c),cons(movedisk(d1,a,c),cons(movedisk(d4,a,b),cons(movedisk(d1,c,b),cons(movedisk(d2,c,a),cons(movedisk(d1,b,a),cons(movedisk(d3,c,b),cons(movedisk(d1,a,c),cons(movedisk(d2,a,b),cons(movedisk(d1,c,b),nil)))))))))))))))
