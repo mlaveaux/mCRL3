@@ -1,5 +1,5 @@
 [package]
-name = "mcrl3-utilities"
+name = "mcrl3_utilities"
 version.workspace = true
 edition.workspace = true
 
@@ -9,5 +9,6 @@ bitstream-io.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 regex.workspace = true
-rustc-hash = "2.1"
+rustc-hash.workspace = true
 thiserror.workspace = true
+log.workspace = true

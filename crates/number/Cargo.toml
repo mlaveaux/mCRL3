@@ -1,7 +1,8 @@
 [package]
-name = "number"
-version = "0.1.0"
-edition = "2021"
+name = "mcrl3_number"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 num.workspace = true

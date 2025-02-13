@@ -207,10 +207,5 @@ mod tests {
         assert!(!protection_set.is_empty());
 
         println!("{:?}", protection_set);
-
-        // TODO: Fix this test.
-        // for root in protection_set.iter() {
-        //     assert!(indices.contains(root.0), "Root must be valid");
-        // }
     }
 }

@@ -33,6 +33,7 @@ macro_rules! cast {
 
 impl<T> IndexedSet<T> {
 
+    /// Creates a new empty IndexedSet.
     pub fn new() -> IndexedSet<T> {
         IndexedSet {
             table: Vec::default(),
@@ -41,10 +42,12 @@ impl<T> IndexedSet<T> {
         }
     }
 
+    /// Returns the number of elements in the set.
     pub fn len(&self) -> usize {
         self.table.len()
     }
 
+    /// Returns a reference to the element at the given index, if it exists.
     pub fn get(&self, index: usize) -> Option<&T> {
         if let Some(entry) = self.table.get(index) {
             match entry {
@@ -56,10 +59,12 @@ impl<T> IndexedSet<T> {
         }
     }
 
+    /// Returns the capacity of the set.
     pub fn capacity(&self) -> usize {
         self.table.capacity()
     }
 
+    /// Returns an iterator over the elements in the set.
     pub fn iter(&self) -> Iter<T> {
         Iter {
             reference: self,
@@ -67,6 +72,7 @@ impl<T> IndexedSet<T> {
         }
     }
 
+    /// Returns a mutable iterator over the elements in the set.
     pub fn iter_mut(&mut self) -> IterMut<T> {
         let iter = self.table.iter_mut().filter(|element| {
                 matches!(element, Entry::Filled(_))
@@ -142,6 +148,7 @@ impl<T: Eq + Hash + Clone> IndexedSet<T> {
         }
     }
 
+    /// Removes the given element from the set.
     pub fn remove(&mut self, element: &T) {
         
         if let Some(index) = self.index.remove(element) {
@@ -201,7 +208,6 @@ impl<'a, T> Iterator for Iter<'a, T> {
         None
     }
 }
-
 
 pub struct IterMut<'a, T> {
     iter: Box<dyn Iterator<Item = (usize, &'a mut T)> + 'a>,
@@ -264,7 +270,6 @@ mod tests {
 
         for (value, index) in &indices {
             assert!(set.get(*index) == Some(value), "Index {index} should still match element {value}");
-
         }
 
     }

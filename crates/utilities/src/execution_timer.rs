@@ -115,7 +115,7 @@ impl ExecutionTimer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread::sleep;
+    use std::{thread::sleep, time::Duration};
 
     #[test]
     fn test_basic_timing() {

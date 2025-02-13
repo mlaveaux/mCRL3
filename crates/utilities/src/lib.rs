@@ -13,6 +13,7 @@ mod number_postfix;
 mod parse_numbers;
 mod protection_set;
 mod helper;
+mod timing;
 
 pub use bitstream::*;
 pub use execution_timer::ExecutionTimer;
@@ -24,3 +25,4 @@ pub use progress_meter::*;
 pub use protection_set::*;
 pub use text_utility::*;
 pub use timer::*;
+pub use timing::*;
