@@ -1,5 +1,5 @@
 [package]
-name = "mcrl3-ldd"
+name = "mcrl3_ldd"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcrl3-utilities.workspace = true
+mcrl3_utilities.workspace = true
 
 rustc-hash.workspace = true
 ahash.workspace = true

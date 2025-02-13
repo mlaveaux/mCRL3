@@ -1,13 +1,16 @@
 [package]
-name = "mcrl3-aterm"
+name = "mcrl3_aterm"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
-mcrl3-utilities.workspace = true
+mcrl3_utilities.workspace = true
+mcrl3_sharedmutex.workspace = true
 
-thiserror.workspace = true
+ahash.workspace = true
 hashbrown.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
+thiserror.workspace = true

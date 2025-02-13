@@ -1,11 +1,11 @@
 use std::{
-    error::Error, fmt::Debug, ops::{Deref, DerefMut}, sync::{atomic::{fence, AtomicBool, Ordering}, Arc}
+    error::Error, fmt::Debug, ops::{Deref, DerefMut}, sync::{atomic::{AtomicBool, Ordering}, Arc}
 };
 
-#[cfg(not(loom))]
+#[cfg(not(feature = "loom"))]
 use std::{sync::{Mutex, MutexGuard},  cell::UnsafeCell};
 
-#[cfg(loom)]
+#[cfg(feature = "loom")]
 use loom::{sync::{Mutex, MutexGuard}, cell::UnsafeCell};
 
 use crossbeam::utils::CachePadded;
@@ -95,12 +95,12 @@ pub struct BfSharedMutexWriteGuard<'a, T> {
     mutex: &'a BfSharedMutex<T>,
     guard: MutexGuard<'a, Vec<Option<Arc<CachePadded<SharedMutexControl>>>>>,
 
-    #[cfg(loom)]
+    #[cfg(feature = "loom")]
     access: loom::cell::MutPtr<T>,
 }
 
 /// Allow dereferencing the underlying object.
-#[cfg(not(loom))]
+#[cfg(not(feature = "loom"))]
 impl<'a, T> Deref for BfSharedMutexWriteGuard<'a, T> {
     type Target = T;
 
@@ -110,7 +110,7 @@ impl<'a, T> Deref for BfSharedMutexWriteGuard<'a, T> {
     }
 }
 
-#[cfg(feature = "loom")]
+#[cfg(not(feature = "loom"))]
 impl<'a, T> DerefMut for BfSharedMutexWriteGuard<'a, T> {
 
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -151,12 +151,12 @@ impl<'a, T> Drop for BfSharedMutexWriteGuard<'a, T> {
 pub struct BfSharedMutexReadGuard<'a, T> {
     mutex: &'a BfSharedMutex<T>,
 
-    #[cfg(loom)]
+    #[cfg(feature = "loom")]
     access: loom::cell::ConstPtr<T>,
 }
 
 /// Allow dereferences the underlying object.
-#[cfg(not(loom))]
+#[cfg(not(feature = "loom"))]
 impl<'a, T> Deref for BfSharedMutexReadGuard<'a, T> {
     type Target = T;
 
@@ -166,7 +166,7 @@ impl<'a, T> Deref for BfSharedMutexReadGuard<'a, T> {
     }
 }
 
-#[cfg(loom)]
+#[cfg(feature = "loom")]
 impl<'a, T> Deref for BfSharedMutexReadGuard<'a, T> {
     type Target = T;
 
@@ -191,7 +191,7 @@ impl<T> BfSharedMutex<T> {
         debug_assert!(!self.control.busy.load(Ordering::SeqCst), "Cannot acquire read access again inside a reader section");
 
         self.control.busy.store(true, Ordering::SeqCst);
-        #[cfg(loom)]
+        #[cfg(feature = "loom")]
         fence(Ordering::SeqCst);
         while self.control.forbidden.load(Ordering::SeqCst) {
             self.control.busy.store(false, Ordering::SeqCst);
@@ -203,13 +203,13 @@ impl<T> BfSharedMutex<T> {
         }
 
         // We now have immutable access to the object due to the protocol.
-        #[cfg(loom)]
+        #[cfg(feature = "loom")]
         return Ok(BfSharedMutexReadGuard {
             mutex: self,
             access: self.shared.object.get(),
         });
 
-        #[cfg(not(loom))]
+        #[cfg(not(feature = "loom"))]
         Ok(BfSharedMutexReadGuard {
             mutex: self,
         })
@@ -245,14 +245,14 @@ impl<T> BfSharedMutex<T> {
         }
 
         // We now have exclusive access to the object according to the protocol
-        #[cfg(loom)]
+        #[cfg(feature = "loom")]
         return Ok(BfSharedMutexWriteGuard {
             mutex: self,
             guard: other,
             access: self.shared.object.get_mut(),
         });
 
-        #[cfg(not(loom))]
+        #[cfg(not(feature = "loom"))]
         Ok(BfSharedMutexWriteGuard {
             mutex: self,
             guard: other,
@@ -260,7 +260,7 @@ impl<T> BfSharedMutex<T> {
     }
 
     /// Obtain mutable access to the object without locking, is safe because we have mutable access.
-    #[cfg(not(loom))]
+    #[cfg(not(feature = "loom"))]
     pub fn get_mut(&mut self) -> &mut T {
         unsafe {
             &mut *self.shared.object.get()
@@ -292,7 +292,7 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
 
 
 #[cfg(test)]
-#[cfg(not(loom))]
+#[cfg(not(feature = "loom"))]
 mod tests {
     use std::{thread, hint::black_box};
     use rand::prelude::*;
@@ -364,7 +364,7 @@ mod tests {
 }
 
 #[cfg(test)]
-#[cfg(loom)]
+#[cfg(feature = "loom")]
 mod loom_tests{
     use std::hint::black_box;
     

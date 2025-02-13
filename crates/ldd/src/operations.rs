@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn random_element_of() {
         let mut storage = Storage::new();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let length = 10;
         let set = random_vector_set(32, length, 10);
@@ -456,7 +456,7 @@ mod tests {
 
         // No shorter vectors should be contained in the ldd (try several times).
         for _ in 0..10 {
-            let short_vector = random_vector(rng.gen_range(0..length), 10);
+            let short_vector = random_vector(rng.random_range(0..length), 10);
             assert!(
                 !element_of(&storage, &short_vector, &ldd),
                 "Found shorter vector in ldd."
@@ -465,7 +465,7 @@ mod tests {
 
         // No longer vectors should be contained in the ldd.
         for _ in 0..10 {
-            let short_vector = random_vector(rng.gen_range(length + 1..20), 10);
+            let short_vector = random_vector(rng.random_range(length + 1..20), 10);
             assert!(
                 !element_of(&storage, &short_vector, &ldd),
                 "Found longer vector in ldd"

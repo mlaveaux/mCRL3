@@ -1,10 +1,9 @@
 [package]
-name = "mcrl3_typecheck"
+name = "mcrl3_data"
 version.workspace = true
-rust-version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
-mcrl3_syntax.workspace = true
-
+mcrl3_aterm.workspace = true
 thiserror.workspace = true

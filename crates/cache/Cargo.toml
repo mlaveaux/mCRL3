@@ -1,7 +1,8 @@
 [package]
-name = "cache"
-version = "0.1.0"
-edition = "2021"
+name = "mcrl3_cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 hashbrown.workspace = true

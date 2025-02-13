@@ -1,15 +1,22 @@
 use std::fmt::Debug;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
+use mcrl3_sharedmutex::BfSharedMutex;
 use parking_lot::Mutex;
 
-use mcrl3_utilities::{ProtectionSet, IndexedSet};
+use mcrl3_utilities::{IndexedSet, ProtectionSet};
 
-use crate::{ATerm, ATermRef, SymbolPool, SymbolRef};
-
+use crate::{ATerm, ATermRef, BfTermPool, Markable, SymbolPool, SymbolRef};
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
-pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> = LazyLock::new(|| Mutex::new(GlobalTermPool::new()));
+pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> =
+    LazyLock::new(|| Mutex::new(GlobalTermPool::new()));
+
+/// The protection set for terms.
+pub(crate) type SharedProtectionSet = Arc<BfTermPool<ProtectionSet<usize>>>;
+
+/// The protection set for containers.
+pub(crate) type SharedContainerProtectionSet = Arc<BfTermPool<ProtectionSet<Arc<dyn Markable + Sync + Send>>>>;
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
@@ -19,6 +26,10 @@ pub(crate) struct GlobalTermPool {
     protection_set: ProtectionSet<usize>,
     /// The symbol pool for managing function symbols.
     symbol_pool: SymbolPool,
+    /// The thread-specific protection sets.
+    thread_pools: Vec<Option<(Arc<ProtectionSet<usize>>, Arc<ProtectionSet<usize>>)>>,
+
+    lock: BfSharedMutex<()>,
 }
 
 impl GlobalTermPool {
@@ -27,9 +38,11 @@ impl GlobalTermPool {
             terms: IndexedSet::new(),
             protection_set: ProtectionSet::new(),
             symbol_pool: SymbolPool::new(),
+            thread_pools: Vec::new(),
+            lock: BfSharedMutex::new(()),
         }
     }
-    
+
     /// Protect the term by adding its index to the protection set
     pub fn protect(&mut self, term: ATermRef<'_>) -> ATerm {
         // Create a SharedTerm from the given ATermRef
@@ -49,7 +62,7 @@ impl GlobalTermPool {
     pub fn unprotect(&mut self, term: ATerm) {
         self.protection_set.unprotect(term.root);
     }
-    
+
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol(&self, term: &ATermRef<'_>) -> SymbolRef<'_> {
         self.terms.get(term.index()).unwrap().symbol()
@@ -92,6 +105,43 @@ impl GlobalTermPool {
 
         let index = self.terms.insert(shared_term);
         ATerm::new(index, self.protection_set.protect(index))
+    }
+
+    /// Registers a new thread term pool.
+    pub fn register_thread_term_pool(
+        &mut self,
+    ) -> (
+        Arc<ProtectionSet<usize>>,
+        Arc<ProtectionSet<usize>>,
+        BfSharedMutex<()>,
+        usize,
+    ) {
+        let index = self.thread_pools.len();
+        let protection_set = Arc::new(ProtectionSet::new());
+        let container_set = Arc::new(ProtectionSet::new());
+
+        self.thread_pools
+            .push(Some((protection_set.clone(), container_set.clone())));
+
+        (protection_set, container_set, self.lock.clone(), index)
+    }
+
+    /// Deregisters a thread pool.
+    pub fn deregister_thread_pool(&mut self, index: usize) {
+        if let Some(entry) = self.thread_pools.get_mut(index) {
+            *entry = None;
+        }
+    }
+
+    /// Tests if garbage collection should run.
+    pub fn test_garbage_collection(&mut self) {
+        // Check if any terms are no longer protected
+        self.collect_garbage();
+    }
+
+    /// Collects garbage terms.
+    fn collect_garbage(&mut self) {
+        // Implement garbage collection logic here
     }
 }
 

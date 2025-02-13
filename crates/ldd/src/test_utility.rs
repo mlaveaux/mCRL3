@@ -1,18 +1,19 @@
+//! Functions in this module are only relevant for testing purposes.
+
 use crate::{Ldd, Storage, operations::*, Value, iterators::*};
 
 use std::collections::HashSet;
 use rand::Rng;
 
-///! Functions in this module are only relevant for testing purposes.
 
 /// Returns a vector of the given length with random u64 values (from 0..max_value).
 pub fn random_vector(length: usize, max_value: Value) -> Vec<Value> 
 {
-    let mut rng = rand::thread_rng();    
+    let mut rng = rand::rng();    
     let mut vector: Vec<Value> = Vec::new();
     for _ in 0..length
     {
-        vector.push(rng.gen_range(0..max_value));
+        vector.push(rng.random_range(0..max_value));
     }
 
     vector
@@ -23,7 +24,7 @@ pub fn random_sorted_vector(length: usize, max_value: Value) -> Vec<Value>
 {
     use rand::prelude::IteratorRandom;
 
-    let mut rng = rand::thread_rng(); 
+    let mut rng = rand::rng(); 
     let mut result = (0..max_value).choose_multiple(&mut rng, length);
     result.sort();
     result
