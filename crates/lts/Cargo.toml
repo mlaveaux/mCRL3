@@ -1,0 +1,16 @@
+[package]
+name = "mcrl3_lts"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mcrl3_utilities.workspace = true
+
+bumpalo.workspace = true
+rustc-hash.workspace = true
+log.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+test-log.workspace = true
