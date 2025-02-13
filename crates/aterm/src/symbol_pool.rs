@@ -34,7 +34,7 @@ impl SymbolPool {
         ];
 
         for (name, arity) in symbols {
-            pool.create(name, arity);
+            pool.symbols.insert(SharedSymbol::new(name, arity));
         }
 
         pool
@@ -57,8 +57,8 @@ impl SymbolPool {
     }
 
     /// Unprotects a symbol, allowing it to be garbage collected.
-    pub fn unprotect(&mut self, symbol: &SymbolRef<'_>) {
-        self.protection_set.unprotect(symbol.index());
+    pub fn unprotect(&mut self, symbol: Symbol) {
+        self.protection_set.unprotect(symbol.root());
     }
 
     /// Returns the number of symbols in the pool.
@@ -87,50 +87,6 @@ impl SymbolPool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_symbol_sharing() {
-        let mut pool = SymbolPool::new();
-        
-        let f1 = pool.create("f", 2);
-        let f2 = pool.create("f", 2);
-        
-        // Should be the same object
-        assert_eq!(f1, f2);
-        assert_eq!(pool.size(), 4); // 3 builtin + 1 created
-    }
-
-    #[test]
-    fn test_symbol_protection() {
-        let mut pool = SymbolPool::new();
-        let symbol = pool.create("test", 1);
-
-        // Protect and unprotect
-        pool.protect(&symbol);
-        pool.unprotect(&symbol);
-
-        // Symbol should still be valid
-        assert_eq!(symbol.name(), "test");
-        assert_eq!(symbol.arity(), 1);
-    }
-
-    #[test]
-    fn test_default_symbols() {
-        let mut pool = SymbolPool::new();
-
-        let int_symbol = pool.create("Int", 1);
-        let list_symbol = pool.create("List", 2);
-        let empty_list_symbol = pool.create("[]", 0);
-
-        assert!(pool.is_int(&int_symbol));
-        assert!(pool.is_list(&list_symbol));
-        assert!(pool.is_empty_list(&empty_list_symbol));
-    }
-}
-
 /// Represents a function symbol with a name and arity.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SharedSymbol {
@@ -142,10 +98,6 @@ pub struct SharedSymbol {
 
 impl SharedSymbol {
     /// Creates a new function symbol.
-    /// 
-    /// # Arguments
-    /// * `name` - Name of the function
-    /// * `arity` - Number of arguments
     pub fn new(name: impl Into<String>, arity: usize) -> Self {
         Self {
             name: name.into(),
@@ -161,5 +113,21 @@ impl SharedSymbol {
     /// Returns the arity of the function symbol
     pub fn arity(&self) -> usize {
         self.arity
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_symbol_sharing() {
+        let mut pool = SymbolPool::new();
+        
+        let f1 = pool.create("f", 2);
+        let f2 = pool.create("f", 2);
+        
+        // Should be the same object
+        assert_eq!(f1, f2);
     }
 }

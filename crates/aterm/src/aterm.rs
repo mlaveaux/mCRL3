@@ -200,6 +200,11 @@ impl ATerm {
             _marker: PhantomData,
         }
     }
+
+    /// Creates a new term using the pool
+    pub fn create(symbol: &SymbolRef<'_>, args: Vec<ATermRef<'static>>) -> ATerm {
+        GLOBAL_TERM_POOL.lock().create_term(symbol, args)
+    }
 }
 
 impl Drop for ATerm {

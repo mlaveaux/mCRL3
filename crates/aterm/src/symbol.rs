@@ -9,7 +9,7 @@ use std::ops::Deref;
 
 use crate::GLOBAL_TERM_POOL;
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
     index: usize,
     marker: PhantomData<&'a ()>,
@@ -33,7 +33,7 @@ impl<'a> SymbolRef<'a> {
         SymbolRef::new(self.index)
     }
 
-    pub fn index(&self) -> usize {
+    pub(crate) fn index(&self) -> usize {
         self.index
     }
 }
@@ -62,6 +62,7 @@ impl fmt::Debug for SymbolRef<'_> {
     }
 }
 
+#[derive(Default)]
 pub struct Symbol {
     symbol: SymbolRef<'static>,
     root: usize,
@@ -82,11 +83,15 @@ impl Symbol {
     pub fn arity(&self) -> usize {
         self.symbol.arity()
     }
+
+    pub(crate) fn root(&self) -> usize {
+        self.root
+    }
 }
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        GLOBAL_TERM_POOL.lock().symbol_pool_mut().unprotect(&self.symbol);
+        GLOBAL_TERM_POOL.lock().symbol_pool_mut().unprotect(std::mem::take(self));
     }
 }
 

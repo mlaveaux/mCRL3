@@ -7,30 +7,9 @@ use mcrl3_utilities::{ProtectionSet, IndexedSet};
 
 use crate::{ATerm, ATermRef, SymbolPool, SymbolRef};
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-pub struct SharedTerm {
-    symbol: SymbolRef<'static>,
-    arguments: Vec<ATermRef<'static>>,
-}
 
-impl Clone for SharedTerm {
-    fn clone(&self) -> Self {
-        SharedTerm {
-            symbol: SymbolRef::new(self.symbol.index()),
-            arguments: self.arguments.iter().map(|x| ATermRef::new(x.index())).collect(),
-        }
-    }
-}
-
-impl SharedTerm {
-    pub fn symbol(&self) -> SymbolRef<'_> {
-        self.symbol.copy()
-    }
-
-    pub fn arguments(&self) -> &[ATermRef<'static>] {
-        &self.arguments
-    }
-}
+/// This is the global set of protection sets that are managed by the ThreadTermPool
+pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> = LazyLock::new(|| Mutex::new(GlobalTermPool::new()));
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
@@ -100,7 +79,43 @@ impl GlobalTermPool {
     pub fn symbol_pool_mut(&mut self) -> &mut SymbolPool {
         &mut self.symbol_pool
     }
+
+    /// Create a term from a head symbol and an iterator over its arguments
+    pub fn create_term<I>(&mut self, symbol: &SymbolRef<'_>, args: I) -> ATerm
+    where
+        I: IntoIterator<Item = ATermRef<'static>>,
+    {
+        let shared_term = SharedTerm {
+            symbol: SymbolRef::new(symbol.index()),
+            arguments: args.into_iter().collect(),
+        };
+
+        let index = self.terms.insert(shared_term);
+        ATerm::new(index, self.protection_set.protect(index))
+    }
 }
 
-/// This is the global set of protection sets that are managed by the ThreadTermPool
-pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> = LazyLock::new(|| Mutex::new(GlobalTermPool::new()));
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct SharedTerm {
+    symbol: SymbolRef<'static>,
+    arguments: Vec<ATermRef<'static>>,
+}
+
+impl Clone for SharedTerm {
+    fn clone(&self) -> Self {
+        SharedTerm {
+            symbol: SymbolRef::new(self.symbol.index()),
+            arguments: self.arguments.iter().map(|x| ATermRef::new(x.index())).collect(),
+        }
+    }
+}
+
+impl SharedTerm {
+    pub fn symbol(&self) -> SymbolRef<'_> {
+        self.symbol.copy()
+    }
+
+    pub fn arguments(&self) -> &[ATermRef<'static>] {
+        &self.arguments
+    }
+}
