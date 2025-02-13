@@ -1,0 +1,9 @@
+REC-SPEC Hanoi16 : Hanoi
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   solve (a, b, d16)  
+END-SPEC

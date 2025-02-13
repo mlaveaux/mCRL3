@@ -1,0 +1,194 @@
+REC-SPEC Int # imports Bool Nat
+
+# definition of integer numbers (cf WADT'16 article) - Hubert Garavel 2016, 2019
+
+SORTS
+   Int
+
+CONS
+   posInt : Nat -> Int
+   negInt : Nat -> Int
+
+OPNS
+   i0 : -> Int
+   i1 : -> Int
+   i2 : -> Int
+   i3 : -> Int
+   i4 : -> Int
+   i5 : -> Int
+   i6 : -> Int
+   i7 : -> Int
+   i8 : -> Int
+   i9 : -> Int
+   i10 : -> Int
+   i11 : -> Int
+   i12 : -> Int
+   i13 : -> Int
+   i14 : -> Int
+   i15 : -> Int
+   i16 : -> Int
+   i17 : -> Int
+   i18 : -> Int
+   i19 : -> Int
+   i20 : -> Int
+   i21 : -> Int
+   i22 : -> Int
+
+   im1 : -> Int
+   im2 : -> Int
+   im3 : -> Int
+   im4 : -> Int
+   im5 : -> Int
+   im6 : -> Int
+   im7 : -> Int
+   im8 : -> Int
+   im9 : -> Int
+   im10 : -> Int
+   im11 : -> Int
+   im12 : -> Int
+   im13 : -> Int
+   im14 : -> Int
+   im15 : -> Int
+   im16 : -> Int
+   im17 : -> Int
+   im18 : -> Int
+   im19 : -> Int
+   im20 : -> Int
+   im21 : -> Int
+   im22 : -> Int
+
+   eqInt : Int Int -> Bool            # "="
+   ltInt : Int Int -> Bool            # "<"
+
+   evenInt : Int -> Bool
+   oddInt : Int -> Bool
+
+   absInt : Int -> Nat
+
+   succInt : Int -> Int
+   predInt : Int -> Int
+   minusInt : Int -> Int              # unary "-"
+
+   addInt : Int Int -> Int            # "+"
+   subInt : Int Int -> Int            # binary "-"
+
+   mulInt : Int Int -> Int            # "*"
+   divInt : Int Int -> Int            # div (partially-defined function)
+   modInt : Int Int -> Int            # mod (partially-defined function)
+   remInt : Int Int -> Int            # rem (partially-defined function)
+
+VARS
+   N N' : Nat
+   I I' : Int
+
+RULES
+   i0 -> posInt (n0)
+   i1 -> posInt (n1)
+   i2 -> posInt (n2)
+   i3 -> posInt (n3)
+   i4 -> posInt (n4)
+   i5 -> posInt (n5)
+   i6 -> posInt (n6)
+   i7 -> posInt (n7)
+   i8 -> posInt (n8)
+   i9 -> posInt (n9)
+   i10 -> posInt (n10)
+   i11 -> posInt (n11)
+   i12 -> posInt (n12)
+   i13 -> posInt (n13)
+   i14 -> posInt (n14)
+   i15 -> posInt (n15)
+   i16 -> posInt (n16)
+   i17 -> posInt (n17)
+   i18 -> posInt (n18)
+   i19 -> posInt (n19)
+   i20 -> posInt (n20)
+   i21 -> posInt (n21)
+   i22 -> posInt (n22)
+
+   im1 -> negInt (n0)
+   im2 -> negInt (n1)
+   im3 -> negInt (n2)
+   im4 -> negInt (n3)
+   im5 -> negInt (n4)
+   im6 -> negInt (n5)
+   im7 -> negInt (n6)
+   im8 -> negInt (n7)
+   im9 -> negInt (n8)
+   im10 -> negInt (n9)
+   im11 -> negInt (n10)
+   im12 -> negInt (n11)
+   im13 -> negInt (n12)
+   im14 -> negInt (n13)
+   im15 -> negInt (n14)
+   im16 -> negInt (n15)
+   im17 -> negInt (n16)
+   im18 -> negInt (n17)
+   im19 -> negInt (n18)
+   im20 -> negInt (n19)
+   im21 -> negInt (n20)
+   im22 -> negInt (n21)
+
+   eqInt (posInt (N), posInt (N')) -> eqNat (N, N')
+   eqInt (posInt (N), negInt (N')) -> false
+   eqInt (negInt (N), posInt (N')) -> false
+   eqInt (negInt (N), negInt (N')) -> eqNat (N, N')
+
+   ltInt (posInt (N), posInt (N')) -> ltNat (N, N')
+   ltInt (posInt (N), negInt (N')) -> false
+   ltInt (negInt (N), posInt (N')) -> true
+   ltInt (negInt (N), negInt (N')) -> ltNat (N', N)
+
+   evenInt (posInt (N)) -> evenNat (N)
+   evenInt (negInt (N)) -> oddNat (N)
+
+   oddInt (posInt (N)) -> oddNat (N)
+   oddInt (negInt (N)) -> evenNat (N)
+
+   absInt (posInt (N)) -> N
+   absInt (negInt (N)) -> succNat (N)
+
+   succInt (posInt (N)) -> posInt (succNat (N))
+   succInt (negInt (n0)) -> posInt (n0)
+   succInt (negInt (succNat (N))) -> negInt (N)
+
+   predInt (posInt (n0)) -> negInt (n0)
+   predInt (posInt (succNat (N))) -> posInt (N)
+   predInt (negInt (N)) -> negInt (succNat (N))
+
+   minusInt (posInt (n0)) -> posInt (n0)
+   minusInt (posInt (succNat (N))) -> negInt (N)
+   minusInt (negInt (N)) -> posInt (succNat (N))
+
+   addInt (posInt (n0), I) -> I
+   addInt (posInt (succNat (N)), I) -> addInt (posInt (N), succInt (I))
+   addInt (negInt (n0), I) -> predInt (I)
+   addInt (negInt (succNat (N)), I) -> addInt (negInt (N), predInt (I))
+
+   subInt (I, I') -> addInt (I, minusInt (I'))
+
+   mulInt (posInt (N), posInt (N')) -> posInt (mulNat (N, N'))
+   mulInt (posInt (N), negInt (N')) -> minusInt (posInt (mulNat (N, succNat (N'))))
+   mulInt (negInt (N), posInt (N')) -> minusInt (posInt (mulNat (succNat (N), N')))
+   mulInt (negInt (N), negInt (N')) -> posInt (mulNat (succNat (N), succNat (N')))
+
+   # note: divInt (I, I') is undefined if eqInt (I', n0)
+   divInt (posInt (N), posInt (N')) -> posInt (divNat (N, N'))
+   divInt (posInt (N), negInt (N')) -> minusInt (posInt (divNat (N, succNat (N'))))
+   divInt (negInt (N), posInt (N')) -> minusInt (posInt (divNat (succNat (N), N')))
+   divInt (negInt (N), negInt (N')) -> posInt (divNat (succNat (N), succNat (N')))
+
+   # note: modInt (I, I') is undefined if eqInt (I', n0)
+   modInt (posInt (N), posInt (N')) -> posInt (modNat (N, N'))
+   modInt (posInt (N), negInt (N')) -> minusInt (posInt (modNat (subNat (succNat (N'), modNat (N, succNat (N'))), succNat (N'))))
+   modInt (negInt (N), posInt (N')) -> posInt (modNat (subNat (N', modNat (succNat (N), N')), N'))
+   modInt (negInt (N), negInt (N')) -> minusInt (posInt (modNat (succNat (N), succNat (N'))))
+
+   # note: remInt (I, I') is undefined if eqInt (I', n0)
+   remInt (posInt (N), I') -> posInt (modNat (N, absInt (I')))
+   remInt (negInt (N), I') -> minusInt (posInt (modNat (succNat (N), absInt (I'))))
+
+EVAL
+
+END-SPEC
+

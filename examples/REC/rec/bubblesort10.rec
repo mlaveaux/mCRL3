@@ -1,0 +1,9 @@
+REC-SPEC BubbleSort10 : Bubblesort
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   rev(d10)
+END-SPEC

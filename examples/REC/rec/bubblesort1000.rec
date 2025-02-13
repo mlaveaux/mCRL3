@@ -1,0 +1,10 @@
+REC-SPEC BubbleSort1000 : Bubblesort
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   rev(times(d10, times(d10, d10)))
+
+END-SPEC

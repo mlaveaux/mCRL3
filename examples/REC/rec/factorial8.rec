@@ -1,0 +1,10 @@
+REC-SPEC Factorial8 : Factorial
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   fact(s(s(s(s(s(s(s(s(d0))))))))) # fact(8)
+END-SPEC
+

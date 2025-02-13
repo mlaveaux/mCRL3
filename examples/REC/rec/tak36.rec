@@ -1,0 +1,10 @@
+REC-SPEC Tak36 : Tak
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   tak(Pos(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0))))))))))))))))))))))))))))))))))))), Pos(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0))))))))))))))))))), Pos(s(s(s(s(s(s(s(s(s(s(s(s(d0))))))))))))))    # tak(36,18,12)
+END-SPEC
+

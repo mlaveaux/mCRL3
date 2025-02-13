@@ -1,0 +1,9 @@
+REC-SPEC RevNat1000 : Revnat
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+    rev(gen(times(d10, times(d10, d10))))
+END-SPEC

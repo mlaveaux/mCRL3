@@ -1,0 +1,10 @@
+REC-SPEC Fibonacci21 : Fibonacci
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   fibb(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))))))))))
+   # fibb(21) should return 10946
+END-SPEC

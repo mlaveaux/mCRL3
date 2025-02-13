@@ -1,0 +1,10 @@
+REC-SPEC BenchSym22 : Asfsdfbenchmark
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+  benchevalsym17(twentytwo)
+
+END-SPEC

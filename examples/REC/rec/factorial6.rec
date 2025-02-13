@@ -1,0 +1,9 @@
+REC-SPEC Factorial6 : Factorial
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   fact(s(s(s(s(s(s(d0))))))) # fact(6)
+END-SPEC

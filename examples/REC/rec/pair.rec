@@ -1,0 +1,49 @@
+REC-SPEC Pair # imports Bool Bit Octet OctetSum Half HalfSum Block BlockSum
+
+# Pair (64-bit machine words) with 32x32 binary multiplier - H. Garavel 2016, 2019
+# (the name Pair comes from the Message Authentication Algorithm terminology)
+
+SORTS
+   Pair
+CONS
+   buildPair : Block Block -> Pair
+   # the first argument of buildPair contain the most significant bits
+OPNS
+   eqPair : Pair Pair -> Bool
+
+   mulBlock : Block Block -> Pair
+   # the 1st part of the resulting Pair is the highMul
+   # the 2nd part of the resulting Pair is the lowMul
+
+   mulBlockA : Block Block Block Block -> Pair
+
+   mulBlock4 : Half Half Half Half Half Half Half Half -> Pair
+   mulBlock3 : Half Half Half Half Block Half -> Pair
+   mulBlock2 : Half Block Half Half -> Pair
+   mulBlock1 : Block Half Half Half -> Pair
+
+   mulBlockB : Half Half Half Half -> Pair
+VARS
+   O1U O1L O2U O2L O3U O3L O4U O4L : Octet
+   H"1 H"2 H"3 H"4 H11L H11U H12L H12U H21L H21U H22L H22U Hcarry : Half
+   W W1 W2 W'1 W'2 W11 W12 W21 W22 : Block
+RULES
+   eqPair (buildPair (W1, W2), buildPair (W'1, W'2)) -> andBool (eqBlock (W1, W'1), eqBlock (W2, W'2))
+
+   mulBlock (W1, W2) -> mulBlockA (mulHalf (HalfU (W1), HalfU (W2)), mulHalf (HalfU (W1), HalfL (W2)), mulHalf (HalfL (W1), HalfU (W2)), mulHalf (HalfL (W1), HalfL (W2)))
+
+   mulBlockA (W11, W12, W21, W22) -> mulBlock4 (HalfU (W11), HalfL (W11), HalfU (W12), HalfL (W12), HalfU (W21), HalfL (W21), HalfU (W22), HalfL (W22))
+
+  mulBlock4 (H11U, H11L, H12U, H12L, H21U, H21L, H22U, H"4) -> mulBlock3 (H11U, H11L, H12U, H21U, addBlockHalf (H12L, addBlockHalves (H21L, H22U)), H"4)
+
+  mulBlock3 (H11U, H11L, H12U, H21U, W, H"4) -> mulBlock2 (H11U, addBlockHalf (HalfU (W), addBlockHalf (H11L, addBlockHalves (H12U, H21U))), HalfL (W), H"4)
+
+  mulBlock2 (H11U, W, H"3, H"4) -> mulBlock1 (addBlockHalves (HalfU (W), H11U), HalfL (W), H"3, H"4)
+
+  mulBlock1 (W, H"2, H"3, H"4) -> mulBlockB (HalfL (W), H"2, H"3, H"4)
+# assert eqHalf (HalfU (W), x0000)
+
+  mulBlockB (buildHalf (O1U, O1L), buildHalf (O2U, O2L), buildHalf (O3U, O3L), buildHalf (O4U, O4L)) -> buildPair (buildBlock (O1U, O1L, O2U, O2L), buildBlock (O3U, O3L, O4U, O4L))
+EVAL
+END-SPEC
+

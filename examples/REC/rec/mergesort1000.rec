@@ -1,0 +1,10 @@
+REC-SPEC MergeSort1000 : MergeSort
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+     mergesort(rev(times(d10, times(d10, d10))))
+END-SPEC
+
