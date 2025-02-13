@@ -1,0 +1,10 @@
+[package]
+name = "mcrl3_gui"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+log.workspace = true
+streaming-iterator.workspace = true
+winapi.workspace = true
