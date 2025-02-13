@@ -14,13 +14,16 @@ members = [
 ]
 
 [workspace.dependencies]
-bf-shared-mutex = { git = "https://github.com/mlaveaux/bf-shared-mutex" }
-
 ahash = "0.8"
+anyhow = "1.0"
 bitstream-io = "2.6"
+bumpalo = "3.17"
 clap = { version = "4.5", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports"] }
+crossbeam = "0.8"
 hashbrown = "0.15.2"
+html-escape = "0.2"
+itertools = "0.14"
 log = "0.4"
 num = "0.4"
 once_cell = "1.8"
@@ -28,11 +31,29 @@ parking_lot = "0.12"
 pest = "2.7"
 pest_consume  = "1.1"
 pest_derive  = "2.7"
+proc-macro2 = "1.0"
+quote = "1.0"
 rand = "0.9"
 regex = "1.0"
 rustc-hash = "2.1"
+smallvec = "1.13"
 static_assertions = "1.1"
+streaming-iterator = "0.1"
+syn = "2.0"
 thiserror = "2.0"
+tikv-jemallocator = "0.6"
+
+# Used for GUI tools
+cosmic-text = "0.12"
+glam = "0.29"
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+slint = "1.9"
+slint-build = "1.9"
+tiny-skia = "0.11"
+tobj = "4.0"
+tokio = { version = "1.41", features = ["rt", "macros"] }
+wgpu = "24.0"
+winapi = "0.3"
 
 # Only used for xtask
 duct = "0.13"
@@ -42,10 +63,23 @@ glob = "0.3"
 # Used in tests
 indoc  = "2.0"
 test-case  = "3.3"
+test-log = "0.2"
 env_logger = "0.11"
 
+# Experimental testing
+loom = { version = "0.7", features = ["checkpoint"] }
 
 # The workspace libraries.
-mcrl3-syntax = { path = "crates/syntax" }
-mcrl3-utilities = { path = "crates/utilities" }
-mcrl3-ldd = { path="crates/ldd" }
+mcrl3_aterm = { path = "crates/aterm" }
+mcrl3_data = { path = "crates/data" }
+mcrl3_gui = { path="crates/gui" }
+mcrl3_io = { path="crates/io" }
+mcrl3_ldd = { path="crates/ldd" }
+mcrl3_lts = { path="crates/lts" }
+mcrl3_rec-tests = { path="crates/rec-tests" }
+mcrl3_reduction = { path="crates/reduction" }
+mcrl3_sabre = { path="crates/sabre" }
+mcrl3_sharedmutex = { path="crates/sharedmutex" }
+mcrl3_syntax = { path = "crates/syntax" }
+mcrl3_unsafety = { path="crates/unsafety" }
+mcrl3_utilities = { path = "crates/utilities" }
