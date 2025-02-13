@@ -1,0 +1,254 @@
+import { HorizontalBox, Button, VerticalBox, Slider, ScrollView, CheckBox } from "std-widgets.slint";
+
+export global Settings {
+    
+    // This property is only used internally to force refreshing the view.
+    in property <bool> refresh;
+
+    // Settings for the simulation
+    in property <float> handle_length: 50.0;
+    in property <float> repulsion_strength: 5.0;
+    in property <float> timestep: 15.0;
+    
+    // Settings for the viewer itself.
+    in property <bool> draw_action_labels: true;
+    in property <float> zoom_level: 1.0;
+    in property <float> state_radius: 5.0;
+    in property <float> label_text_height: 14.0;
+    in property <length> view_x: 0px;
+    in property <length> view_y: 0px;
+}
+
+export component Application inherits Window {
+    title: @tr("LTSGraph");
+    icon: @image-url("../data/mcrl2-blue.png");
+
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    forward-focus: key-handler;
+
+    /// Render the simulation to an image.
+    pure callback update_canvas(length, length, bool) -> image;
+
+    /// Request the canvas to be redrawn.
+    pure callback request_redraw();
+
+    /// Called when some setting has been changed since we mirror it on the Rust side.
+    pure callback settings_changed();
+
+    /// Trigger a file dialog to open to select another LTS.
+    pure callback open_filedialog();
+
+    /// Moves the camera to focus on the loaded LTS.
+    pure callback focus_view();
+
+    /// Used to pause the simulation.
+    pure callback run_simulation(bool);
+
+    HorizontalLayout {
+        alignment: end;
+           
+        Image {
+            source: update_canvas(parent.width * 80%, parent.height, Settings.refresh);
+
+            TouchArea {
+                // Keep track of the original before it was moved to compute the delta.
+                out property <length> view_x_start: 0px;
+                out property <length> view_y_start: 0px;
+                out property <bool> dragging: false;
+
+                pointer-event(e) => {
+                    if e.button == PointerEventButton.left {
+                        if e.kind == PointerEventKind.down {
+                            view_x_start = Settings.view_x;
+                            view_y_start = Settings.view_y;
+                            dragging = true;
+                        } else {
+                            dragging = false
+                        }
+                    }
+                }
+
+                moved => {
+                    if dragging {
+                        // Scale the amount of panning by the zoom level for more consistency.
+                        Settings.view_x = view_x_start + (self.mouse-x - self.pressed-x) / Settings.zoom_level;
+                        Settings.view_y = view_y_start + (self.mouse-y - self.pressed-y) / Settings.zoom_level;
+                        settings_changed();
+                        request_redraw();
+                    }
+                }
+
+                scroll-event(e) => {
+                    Settings.zoom_level += e.delta-y / 200px *  Settings.zoom_level;
+
+                    // Put limits on the zoom level.
+                    Settings.zoom_level = max(Settings.zoom_level, 0.01);
+                    Settings.zoom_level = min(Settings.zoom_level, 75.0);
+
+                    settings_changed();
+                    request_redraw();
+
+                    EventResult.accept
+                }
+            }
+        }
+
+        Rectangle {
+            width: 2px;
+            background: gray;
+        }
+
+        VerticalBox { 
+            width: 20%;
+            alignment: start;
+            padding-right: 10px;
+            
+            Button {
+                text: @tr("Load LTS");
+                clicked => { open_filedialog(); }
+            }
+
+            Rectangle {
+                height: 1%;
+            }
+
+            // The controls for the layout algorithm
+            Text {
+                text: @tr("Layout controls");
+                font-size: 20px;
+            }
+            
+            CheckBox {
+                text: "Enable simulation";
+                checked: true;
+                toggled => {
+                    run_simulation(self.checked)
+                }
+            }
+
+            Text {
+                text: {
+                    "Handle Length: " + Settings.handle_length
+                };
+            }
+
+            Slider {
+                value: 50.0;
+                minimum: 5.0;
+                maximum: 250.0;
+                changed => { 
+                    Settings.handle_length = self.value;
+                    settings_changed();
+                }
+            }
+
+            Text {
+                text: "Repulsion strength: " + Settings.repulsion_strength;
+            }
+            
+            Slider {
+                value: 1.0;
+                minimum: 0.1;
+                maximum: 5.0;
+                changed => { 
+                    Settings.repulsion_strength = self.value; 
+                    settings_changed();
+                }
+            }
+            
+            Text {
+                text: "Timestep: " + Settings.timestep;
+            }
+
+            Slider {
+                value: 15.0;
+                minimum: 0.0;
+                maximum: 15.0;
+                changed => { 
+                    Settings.timestep = self.value; 
+                    settings_changed();
+                }
+            }
+
+            Rectangle {
+                height: 1%;
+            }
+
+            // Controls for the viewer
+            Text {
+                text: "View controls";
+                font-size: 20px;
+            }
+
+            CheckBox {
+                text: "Draw Action Labels";
+                checked: true;
+                toggled => {
+                    Settings.draw_action_labels = self.checked; 
+                    settings_changed();
+                }
+            }
+            
+            Text {
+                text: "State radius:" + Settings.state_radius;
+            }
+
+            Slider {
+                value: 5.0;
+                minimum: 5.0;
+                maximum: 25.0;
+                changed => { 
+                    Settings.state_radius = self.value; 
+                    settings_changed();
+                }
+            }
+
+            Text {
+                text: "Label text size:" + Settings.label_text_height;
+            }
+
+            Slider {
+                value: 14.0;
+                minimum: 14.0;
+                maximum: 100.0;
+                changed => { 
+                    Settings.label_text_height = self.value; 
+                    settings_changed();
+                }
+            }
+        }
+    }
+
+    key-handler := FocusScope {
+
+        key-pressed(e) => {
+            if e.text == "f" {
+                focus_view();
+                return EventResult.accept;
+            }
+
+            return EventResult.reject;
+        }   
+    }
+}
+
+import { StandardButton, Button } from "std-widgets.slint";
+
+export component ErrorDialog inherits Dialog {
+    min-width: 100px;
+    min-height: 100px;
+    title: error_title;
+
+    in property <string> error_text: "Message";
+    in property <string> error_title: "Error!";
+
+    VerticalLayout {
+        Text {
+            vertical-alignment: center;
+            text: error_text;
+        }
+    }
+
+    StandardButton { kind: ok; }
+}

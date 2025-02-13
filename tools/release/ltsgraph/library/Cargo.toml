@@ -1,0 +1,17 @@
+[package]
+name = "ltsgraph-lib"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mcrl3_io.workspace = true
+mcrl3_lts.workspace = true
+mcrl3_unsafety.workspace = true
+
+
+cosmic-text.workspace = true
+glam.workspace = true
+log.workspace = true
+rand.workspace = true
+tiny-skia.workspace = true

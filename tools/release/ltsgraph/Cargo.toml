@@ -1,0 +1,23 @@
+[package]
+name = "ltsgraph"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mcrl3_gui.workspace = true
+mcrl3_io.workspace = true
+ltsgraph-lib = { path = "./library" }
+
+anyhow.workspace = true
+clap.workspace = true
+env_logger.workspace = true
+log.workspace = true
+rfd.workspace = true
+slint.workspace = true
+tiny-skia.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
