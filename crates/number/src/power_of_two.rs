@@ -1,28 +1,28 @@
 //! Utilities for working with numbers, particularly powers of two.
 
 /// Returns true when the given value is a power of two.
-/// 
+///
 /// A number is a power of two when exactly a single bit is one.
-pub fn is_power_of_two<T>(value: T) -> bool 
+pub fn is_power_of_two<T>(value: T) -> bool
 where
-    T: num::PrimInt
+    T: num::PrimInt,
 {
     !value.is_zero() && (value & (value - T::one())).is_zero()
 }
 
 /// Returns the smallest power of two that is larger than or equal to the given value.
-/// 
+///
 /// # Examples
 /// ```
 /// use number::round_up_to_power_of_two;
-/// 
+///
 /// assert_eq!(round_up_to_power_of_two(3u32), 4);
 /// assert_eq!(round_up_to_power_of_two(4u32), 4);
 /// assert_eq!(round_up_to_power_of_two(5u32), 8);
 /// ```
-pub fn round_up_to_power_of_two<T>(mut value: T) -> T 
+pub fn round_up_to_power_of_two<T>(mut value: T) -> T
 where
-    T: num::PrimInt
+    T: num::PrimInt,
 {
     if is_power_of_two(value) {
         return value;

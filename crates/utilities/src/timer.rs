@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 /// A timer that can be started, stopped, and reset.
 /// Keeps track of accumulated time when running.
@@ -23,7 +24,7 @@ impl Timer {
     }
 
     /// Starts the timer if it's not already running.
-    /// 
+    ///
     /// # Postconditions
     /// - Timer is running
     /// - Start time is set to current instant
@@ -35,7 +36,7 @@ impl Timer {
     }
 
     /// Stops the timer if it's running and accumulates elapsed time.
-    /// 
+    ///
     /// # Postconditions
     /// - Timer is stopped
     /// - Elapsed time since last start is added to accumulated time
@@ -48,7 +49,7 @@ impl Timer {
 
     /// Resets the accumulated time to zero.
     /// If the timer is running, also resets the start time.
-    /// 
+    ///
     /// # Postconditions
     /// - Accumulated time is zero
     /// - If running, start time is reset to current instant
@@ -92,13 +93,13 @@ mod tests {
     fn test_timer_basic() {
         let mut timer = Timer::new();
         assert!(!timer.running());
-        
+
         timer.start();
         assert!(timer.running());
-        
+
         sleep(Duration::from_millis(10));
         timer.stop();
-        
+
         let elapsed = timer.elapsed();
         assert!(!timer.running());
         assert!(elapsed >= Duration::from_millis(10));
@@ -110,7 +111,7 @@ mod tests {
         timer.start();
         sleep(Duration::from_millis(10));
         timer.stop();
-        
+
         let first_elapsed = timer.elapsed();
         timer.reset();
         assert_eq!(timer.elapsed(), Duration::from_secs(0));

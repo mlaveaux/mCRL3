@@ -16,7 +16,7 @@ use mcrl3_gui::console;
 async fn main() -> Result<ExitCode, Box<dyn Error>> {
     // Attach the standard output to the command line.
     let _console = console::init()?;
-    
+
     // Parse the command line arguments and enable the logger.
     env_logger::init();
 
@@ -33,15 +33,18 @@ async fn main() -> Result<ExitCode, Box<dyn Error>> {
         .cloned()
         .unwrap();
 
-    let (device, queue) = adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            label: None,
-            memory_hints: Default::default(),
-        },
-        None,
-    ).await.unwrap();
+    let (device, queue) = adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                label: None,
+                memory_hints: Default::default(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
 
     // Load a model to render
 
@@ -64,15 +67,15 @@ async fn main() -> Result<ExitCode, Box<dyn Error>> {
     // doing the GPU work of filling the texture texels
     // executing copy_texture_to_buffer to copy texels from this texture into the buffer (it has to be non-mapped at this point)
     // requesting to map that buffer to CPU with map_read_async
-    // callback is provided that gets you the slice of data    
+    // callback is provided that gets you the slice of data
     device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
-        size: (models.len() * std::mem::size_of::<Model>()) as u64,
+        size: 0 as u64,
         usage: wgpu::BufferUsages::STORAGE,
         mapped_at_creation: false,
     });
 
-    let app = Application::new()?;    
+    let app = Application::new()?;
     {
         app.on_update_canvas(move |width, height, _| {
             if render_texture.width() != width as u32 || render_texture.height() != height as u32 {

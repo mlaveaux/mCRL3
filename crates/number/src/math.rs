@@ -1,17 +1,17 @@
 //! Mathematical utility functions.
 
 /// Computes the base 2 logarithm of n (ceiling), by checking the leftmost bit.
-/// 
+///
 /// # Arguments
 /// * `n` - The number to compute the logarithm of
-/// 
+///
 /// # Panics
 /// Panics if n is zero
-/// 
+///
 /// # Examples
 /// ```
 /// use number::ceil_log2;
-/// 
+///
 /// assert_eq!(ceil_log2(1), 1);
 /// assert_eq!(ceil_log2(2), 2);
 /// assert_eq!(ceil_log2(3), 2);
@@ -29,22 +29,22 @@ pub fn ceil_log2(mut n: usize) -> usize {
 }
 
 /// Calculates n^m for usize numbers using fast exponentiation.
-/// 
+///
 /// # Arguments
 /// * `n` - The base number
 /// * `m` - The exponent
-/// 
+///
 /// # Examples
 /// ```
 /// use number::power;
-/// 
+///
 /// assert_eq!(power(2, 3), 8);
 /// assert_eq!(power(3, 2), 9);
 /// assert_eq!(power(5, 0), 1);
 /// ```
 pub fn power(mut n: usize, mut m: usize) -> usize {
     let mut result = 1;
-    
+
     // Invariant: result * n^m = n_initial^m_initial
     while m > 0 {
         if m % 2 == 1 {

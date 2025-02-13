@@ -1,6 +1,8 @@
-use mcrl3_utilities::{ProtectionSet, IndexedSet};
+use mcrl3_utilities::IndexedSet;
+use mcrl3_utilities::ProtectionSet;
 
-use crate::{Symbol, SymbolRef};
+use crate::Symbol;
+use crate::SymbolRef;
 
 /// Pool for maximal sharing of function symbols.
 /// Ensures that function symbols with the same name and arity are the same object.
@@ -27,11 +29,7 @@ impl SymbolPool {
 
         // Initialize built-in symbols
         // Create built-in symbols
-        let symbols = [
-            ("Int", 1),
-            ("List", 2),
-            ("[]", 0),
-        ];
+        let symbols = [("Int", 1), ("List", 2), ("[]", 0)];
 
         for (name, arity) in symbols {
             pool.symbols.insert(SharedSymbol::new(name, arity));
@@ -43,7 +41,7 @@ impl SymbolPool {
     /// Creates or retrieves a function symbol with the given name and arity.
     pub fn create(&mut self, name: impl Into<String>, arity: usize) -> Symbol {
         let name = name.into();
-        
+
         // Get or create symbol index
         let index = self.symbols.insert(SharedSymbol::new(name, arity));
 
@@ -123,10 +121,10 @@ mod tests {
     #[test]
     fn test_symbol_sharing() {
         let mut pool = SymbolPool::new();
-        
+
         let f1 = pool.create("f", 2);
         let f2 = pool.create("f", 2);
-        
+
         // Should be the same object
         assert_eq!(f1, f2);
     }

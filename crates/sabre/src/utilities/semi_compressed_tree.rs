@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::utilities::ExplicitPosition;
+use mcrl2::data::is_data_variable;
+use mcrl2::data::DataVariable;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::TermPool;
 use mcrl3_aterm::Yield;
-use mcrl2::data::is_data_variable;
-use mcrl2::data::DataVariable;
 
 /// A SemiCompressedTermTree (SCTT) is a mix between a [ATerm] and a syntax tree and is used
 /// to represent the rhs of rewrite rules and the lhs and rhs of conditions.

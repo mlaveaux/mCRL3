@@ -1,8 +1,10 @@
-use crate::{Ldd, Storage, Data, Value};
+use crate::Data;
+use crate::Ldd;
+use crate::Storage;
+use crate::Value;
 
 // Returns an iterator over all right siblings of the given LDD.
-pub fn iter_right<'a>(storage: &'a Storage, ldd: &Ldd) -> IterRight<'a>
-{
+pub fn iter_right<'a>(storage: &'a Storage, ldd: &Ldd) -> IterRight<'a> {
     IterRight {
         storage,
         current: ldd.clone(),
@@ -10,9 +12,8 @@ pub fn iter_right<'a>(storage: &'a Storage, ldd: &Ldd) -> IterRight<'a>
 }
 
 // Returns an iterator over all vectors contained in the given LDD.
-pub fn iter<'a>(storage: &'a Storage, ldd: &Ldd) -> Iter<'a>
-{       
-    if ldd == storage.empty_set() {        
+pub fn iter<'a>(storage: &'a Storage, ldd: &Ldd) -> Iter<'a> {
+    if ldd == storage.empty_set() {
         Iter {
             storage,
             vector: Vec::new(),
@@ -27,75 +28,60 @@ pub fn iter<'a>(storage: &'a Storage, ldd: &Ldd) -> Iter<'a>
     }
 }
 
-pub struct IterRight<'a>
-{
+pub struct IterRight<'a> {
     storage: &'a Storage,
     current: Ldd,
 }
 
-impl Iterator for IterRight<'_>
-{
+impl Iterator for IterRight<'_> {
     type Item = Data;
 
-    fn next(&mut self) -> Option<Self::Item>
-    {             
-        if self.current == *self.storage.empty_set()
-        {
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current == *self.storage.empty_set() {
             None
-        }
-        else
-        {
+        } else {
             // Progress to the right LDD.
-            let Data(value, down, right) = self.storage.get(&self.current);       
+            let Data(value, down, right) = self.storage.get(&self.current);
             self.current = right.clone();
             Some(Data(value, down, right))
         }
     }
 }
 
-pub struct Iter<'a>
-{
+pub struct Iter<'a> {
     storage: &'a Storage,
     vector: Vec<Value>, // Stores the values of the returned vector.
-    stack: Vec<Ldd>, // Stores the stack for the depth-first search (only non 'true' or 'false' nodes)
+    stack: Vec<Ldd>,    // Stores the stack for the depth-first search (only non 'true' or 'false' nodes)
 }
 
-impl Iterator for Iter<'_>
-{
+impl Iterator for Iter<'_> {
     type Item = Vec<Value>;
 
-    fn next(&mut self) -> Option<Self::Item>
-    { 
+    fn next(&mut self) -> Option<Self::Item> {
         // Find the next vector by going down the chain.
-        let vector: Vec<Value>;     
-        loop
-        {
+        let vector: Vec<Value>;
+        loop {
             let current = self.stack.last()?;
 
             let Data(value, down, _) = self.storage.get(current);
             self.vector.push(value);
-            if down == *self.storage.empty_vector()
-            {
+            if down == *self.storage.empty_vector() {
                 vector = self.vector.clone();
                 break; // Stop iteration.
-            }
-            else 
-            {
+            } else {
                 self.stack.push(down.clone());
             }
         }
 
-        // Go up the chain to find the next right sibling that is not 'false'. 
-        while let Some(current) = self.stack.pop() 
-        {
+        // Go up the chain to find the next right sibling that is not 'false'.
+        while let Some(current) = self.stack.pop() {
             self.vector.pop();
             let Data(_, _, right) = self.storage.get(&current);
 
-            if right != *self.storage.empty_set()
-            {
+            if right != *self.storage.empty_set() {
                 self.stack.push(right); // This is the first right sibling.
                 break;
-            }           
+            }
         }
 
         Some(vector)
@@ -103,24 +89,24 @@ impl Iterator for Iter<'_>
 }
 
 #[cfg(test)]
-mod tests
-{
-    use super::*;    
+mod tests {
+    use super::*;
     use crate::test_utility::*;
-    
+
     // Test the iterator implementation.
     #[test]
-    fn random_iter()
-    {
+    fn random_iter() {
         let mut storage = Storage::new();
 
         let set = random_vector_set(32, 10, 10);
         let ldd = from_iter(&mut storage, set.iter());
 
-        assert!(iter(&storage, &ldd).count() == set.len(), "Number of iterations does not match the number of elements in the set.");
+        assert!(
+            iter(&storage, &ldd).count() == set.len(),
+            "Number of iterations does not match the number of elements in the set."
+        );
 
-        for vector in iter(&storage, &ldd)
-        {
+        for vector in iter(&storage, &ldd) {
             assert!(set.contains(&vector), "Found element not in the set.");
         }
     }

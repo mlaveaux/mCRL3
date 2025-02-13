@@ -1,12 +1,24 @@
-use std::{
-    error::Error, fmt::Debug, ops::{Deref, DerefMut}, sync::{atomic::{AtomicBool, Ordering}, Arc}
-};
+use std::error::Error;
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 #[cfg(not(feature = "loom"))]
-use std::{sync::{Mutex, MutexGuard},  cell::UnsafeCell};
+use std::cell::UnsafeCell;
+#[cfg(not(feature = "loom"))]
+use std::sync::Mutex;
+#[cfg(not(feature = "loom"))]
+use std::sync::MutexGuard;
 
 #[cfg(feature = "loom")]
-use loom::{sync::{Mutex, MutexGuard}, cell::UnsafeCell};
+use loom::cell::UnsafeCell;
+#[cfg(feature = "loom")]
+use loom::sync::Mutex;
+#[cfg(feature = "loom")]
+use loom::sync::MutexGuard;
 
 use crossbeam::utils::CachePadded;
 
@@ -38,7 +50,6 @@ struct SharedMutexControl {
 }
 
 struct SharedData<T> {
-
     /// The object that is being protected.
     object: UnsafeCell<T>,
 
@@ -47,7 +58,6 @@ struct SharedData<T> {
 }
 
 impl<T> BfSharedMutex<T> {
-
     /// Constructs a new shared mutex for protecting access to the given object.
     pub fn new(object: T) -> Self {
         let control = Arc::new(CachePadded::new(SharedMutexControl::default()));
@@ -65,7 +75,6 @@ impl<T> BfSharedMutex<T> {
 
 impl<T> Clone for BfSharedMutex<T> {
     fn clone(&self) -> Self {
-
         // Register a new instance in the other list.
         let control = Arc::new(CachePadded::new(SharedMutexControl::default()));
 
@@ -112,7 +121,6 @@ impl<'a, T> Deref for BfSharedMutexWriteGuard<'a, T> {
 
 #[cfg(not(feature = "loom"))]
 impl<'a, T> DerefMut for BfSharedMutexWriteGuard<'a, T> {
-
     fn deref_mut(&mut self) -> &mut Self::Target {
         // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
         unsafe { &mut *self.mutex.shared.object.get() }
@@ -130,7 +138,6 @@ impl<'a, T> Deref for BfSharedMutexWriteGuard<'a, T> {
 
 #[cfg(feature = "loom")]
 impl<'a, T> DerefMut for BfSharedMutexWriteGuard<'a, T> {
-
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.access.deref() }
     }
@@ -138,7 +145,6 @@ impl<'a, T> DerefMut for BfSharedMutexWriteGuard<'a, T> {
 
 impl<'a, T> Drop for BfSharedMutexWriteGuard<'a, T> {
     fn drop(&mut self) {
-
         // Allow other threads to acquire access to the shared mutex.
         for control in self.guard.iter().flatten() {
             control.forbidden.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -177,28 +183,33 @@ impl<'a, T> Deref for BfSharedMutexReadGuard<'a, T> {
 
 impl<'a, T> Drop for BfSharedMutexReadGuard<'a, T> {
     fn drop(&mut self) {
-        debug_assert!(self.mutex.control.busy.load(Ordering::SeqCst), "Cannot unlock shared lock that was not acquired");
+        debug_assert!(
+            self.mutex.control.busy.load(Ordering::SeqCst),
+            "Cannot unlock shared lock that was not acquired"
+        );
 
         self.mutex.control.busy.store(false, Ordering::SeqCst);
     }
 }
 
 impl<T> BfSharedMutex<T> {
-
     /// Provides read access to the underlying object, allowing multiple immutable references to it.
     #[inline]
     pub fn read<'a>(&'a self) -> Result<BfSharedMutexReadGuard<'a, T>, Box<dyn Error + 'a>> {
-        debug_assert!(!self.control.busy.load(Ordering::SeqCst), "Cannot acquire read access again inside a reader section");
+        debug_assert!(
+            !self.control.busy.load(Ordering::SeqCst),
+            "Cannot acquire read access again inside a reader section"
+        );
 
         self.control.busy.store(true, Ordering::SeqCst);
         #[cfg(feature = "loom")]
         fence(Ordering::SeqCst);
         while self.control.forbidden.load(Ordering::SeqCst) {
             self.control.busy.store(false, Ordering::SeqCst);
-    
+
             // Wait for the mutex of the writer.
             let mut _guard = self.shared.other.lock()?;
-            
+
             self.control.busy.store(true, Ordering::SeqCst);
         }
 
@@ -210,26 +221,29 @@ impl<T> BfSharedMutex<T> {
         });
 
         #[cfg(not(feature = "loom"))]
-        Ok(BfSharedMutexReadGuard {
-            mutex: self,
-        })
+        Ok(BfSharedMutexReadGuard { mutex: self })
     }
 
     /// Provide write access to the underlying object, only a single mutable reference to the object exists.
     #[inline]
     pub fn write<'a>(&'a self) -> Result<BfSharedMutexWriteGuard<'a, T>, Box<dyn Error + 'a>> {
-
         let other = self.shared.other.lock()?;
 
-        debug_assert!(!self.control.busy.load(std::sync::atomic::Ordering::SeqCst), 
-            "Can only exclusive lock outside of a shared lock, no upgrading!");
-        debug_assert!(!self.control.forbidden.load(std::sync::atomic::Ordering::SeqCst), 
-            "Can not acquire exclusive lock inside of exclusive section");
+        debug_assert!(
+            !self.control.busy.load(std::sync::atomic::Ordering::SeqCst),
+            "Can only exclusive lock outside of a shared lock, no upgrading!"
+        );
+        debug_assert!(
+            !self.control.forbidden.load(std::sync::atomic::Ordering::SeqCst),
+            "Can not acquire exclusive lock inside of exclusive section"
+        );
 
         // Make all instances wait due to forbidden access.
         for control in other.iter().flatten() {
-            debug_assert!(!control.forbidden.load(std::sync::atomic::Ordering::SeqCst), 
-                "Other instance is already forbidden, this cannot happen");
+            debug_assert!(
+                !control.forbidden.load(std::sync::atomic::Ordering::SeqCst),
+                "Other instance is already forbidden, this cannot happen"
+            );
 
             control.forbidden.store(true, std::sync::atomic::Ordering::SeqCst);
         }
@@ -237,11 +251,12 @@ impl<T> BfSharedMutex<T> {
         // Wait for the instances to exit their busy status.
         for (index, option) in other.iter().enumerate() {
             if index != self.index {
-
                 if let Some(object) = option {
-                    while object.busy.load(std::sync::atomic::Ordering::SeqCst) { std::hint::spin_loop(); }
+                    while object.busy.load(std::sync::atomic::Ordering::SeqCst) {
+                        std::hint::spin_loop();
+                    }
                 }
-            }            
+            }
         }
 
         // We now have exclusive access to the object according to the protocol
@@ -262,27 +277,26 @@ impl<T> BfSharedMutex<T> {
     /// Obtain mutable access to the object without locking, is safe because we have mutable access.
     #[cfg(not(feature = "loom"))]
     pub fn get_mut(&mut self) -> &mut T {
-        unsafe {
-            &mut *self.shared.object.get()
-        }
+        unsafe { &mut *self.shared.object.get() }
     }
 }
 
 impl<T: Debug> Debug for BfSharedMutex<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        
-        f.debug_map().entry(&"busy", &self.control.busy.load(Ordering::SeqCst))
-        .entry(&"forbidden", &self.control.forbidden.load(Ordering::SeqCst))
-        .entry(&"index", &self.index)
-        .entry(&"len(other)", &self.shared.other.lock().unwrap().len())
-        .finish()?;
+        f.debug_map()
+            .entry(&"busy", &self.control.busy.load(Ordering::SeqCst))
+            .entry(&"forbidden", &self.control.forbidden.load(Ordering::SeqCst))
+            .entry(&"index", &self.index)
+            .entry(&"len(other)", &self.shared.other.lock().unwrap().len())
+            .finish()?;
 
         writeln!(f)?;
         writeln!(f, "other values: [")?;
         for control in self.shared.other.lock().unwrap().iter().flatten() {
-            f.debug_map().entry(&"busy", &control.busy.load(Ordering::SeqCst))
-            .entry(&"forbidden", &control.forbidden.load(Ordering::SeqCst))
-            .finish()?;
+            f.debug_map()
+                .entry(&"busy", &control.busy.load(Ordering::SeqCst))
+                .entry(&"forbidden", &control.forbidden.load(Ordering::SeqCst))
+                .finish()?;
             writeln!(f)?;
         }
 
@@ -290,19 +304,18 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
     }
 }
 
-
 #[cfg(test)]
 #[cfg(not(feature = "loom"))]
 mod tests {
-    use std::{thread, hint::black_box};
     use rand::prelude::*;
+    use std::hint::black_box;
+    use std::thread;
 
     use crate::bf_sharedmutex::BfSharedMutex;
 
     // These are just simple tests.
     #[test]
     fn test_exclusive() {
-        
         let mut threads = vec![];
 
         let shared_number = BfSharedMutex::new(5);
@@ -313,8 +326,8 @@ mod tests {
             let shared_number = shared_number.clone();
             threads.push(thread::spawn(move || {
                 for _ in 0..num_iterations {
-                    *shared_number.write().unwrap() += 5;    
-                }            
+                    *shared_number.write().unwrap() += 5;
+                }
             }));
         }
 
@@ -337,7 +350,7 @@ mod tests {
         for _ in 1..num_threads {
             let shared_vector = shared_vector.clone();
             threads.push(thread::spawn(move || {
-                let mut rng = rand::rng();  
+                let mut rng = rand::rng();
 
                 for _ in 0..num_iterations {
                     if rng.random_bool(0.95) {
@@ -352,7 +365,6 @@ mod tests {
                         shared_vector.write().unwrap().push(5);
                     }
                 }
-             
             }));
         }
 
@@ -365,11 +377,11 @@ mod tests {
 
 #[cfg(test)]
 #[cfg(feature = "loom")]
-mod loom_tests{
+mod loom_tests {
     use std::hint::black_box;
-    
+
     use loom::thread;
-    
+
     use crate::bf_sharedmutex::BfSharedMutex;
 
     // This is a forced interleaving test using Loom
@@ -381,7 +393,7 @@ mod loom_tests{
             let mut threads = vec![];
             for _ in 1..3 {
                 let shared_vector = shared_vector.clone();
-                threads.push(thread::spawn(move || {    
+                threads.push(thread::spawn(move || {
                     {
                         // Read a random index.
                         let _guard = black_box(shared_vector.read().unwrap());
@@ -390,10 +402,10 @@ mod loom_tests{
                     }
 
                     // Add a new vector element.
-                    let _guard = black_box(shared_vector.write().unwrap());                 
+                    let _guard = black_box(shared_vector.write().unwrap());
                 }));
             }
-    
+
             // Check whether threads have completed succesfully.
             for thread in threads {
                 thread.join().unwrap();

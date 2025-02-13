@@ -10,14 +10,11 @@ pub struct ProgressMeter {
 
 impl ProgressMeter {
     /// Creates a new progress meter with the specified number of total steps.
-    /// 
+    ///
     /// # Arguments
     /// * `total` - Total number of steps (0 means unknown)
     pub fn new(total: usize) -> Self {
-        Self {
-            current: 0,
-            total,
-        }
+        Self { current: 0, total }
     }
 
     /// Sets the total number of steps for the task.
@@ -28,7 +25,7 @@ impl ProgressMeter {
     /// Should be called after every step. Regularly prints a status message.
     /// Messages are shown for each 0.1% progress increment, or more frequently
     /// for tasks with fewer than 1000 steps.
-    /// 
+    ///
     /// # Arguments
     /// * `log_fn` - Lambda function to print the status message
     pub fn step<F>(&mut self, mut log_fn: F)
@@ -36,7 +33,7 @@ impl ProgressMeter {
         F: FnMut(&str),
     {
         self.current += 1;
-        
+
         // Show progress if:
         // - Task has less than 1000 steps, or
         // - We hit a 0.1% increment, or
@@ -61,12 +58,12 @@ impl ProgressMeter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use std::io::Write;
+    use std::sync::Mutex;
 
     // Helper test writer that captures output
     struct TestWriter(Mutex<Vec<u8>>);
-    
+
     impl Write for TestWriter {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             self.0.lock().unwrap().extend_from_slice(buf);

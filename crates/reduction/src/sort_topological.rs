@@ -231,8 +231,8 @@ mod tests {
 
         let new_lts = reorder_states(&lts, |i| order[i]);
 
-        trace!("{:?}", lts);	
-        trace!("{:?}", new_lts);	
+        trace!("{:?}", lts);
+        trace!("{:?}", new_lts);
 
         //assert_eq!(new_lts.num_of_states(), lts.num_of_states());
         assert_eq!(new_lts.num_of_labels(), lts.num_of_labels());

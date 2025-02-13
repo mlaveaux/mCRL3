@@ -35,12 +35,12 @@ fn read_transition(input: &str) -> Result<(&str, &str, &str), Box<dyn Error>> {
     let start_second_comma = input.rfind(',').ok_or(IOError::InvalidTransition())?;
     let end_paren = input.rfind(')').ok_or(IOError::InvalidTransition())?;
 
-    let from = &input[start_paren+1..start_comma].trim();
-    let label = &input[start_comma+1..start_second_comma].trim();
-    let to = &input[start_second_comma+1..end_paren].trim();
+    let from = &input[start_paren + 1..start_comma].trim();
+    let label = &input[start_comma + 1..start_second_comma].trim();
+    let to = &input[start_second_comma + 1..end_paren].trim();
     // Handle the special case where it has quotes.
     if label.starts_with('"') && label.ends_with('"') {
-        return Ok((from, &label[1..label.len()-1], to))
+        return Ok((from, &label[1..label.len() - 1], to));
     }
 
     Ok((from, label, to))

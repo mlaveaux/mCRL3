@@ -1,5 +1,11 @@
-use std::io::{self, Read, Write};
-use bitstream_io::{BitWrite, BitRead, BigEndian, BitWriter, BitReader};
+use bitstream_io::BigEndian;
+use bitstream_io::BitRead;
+use bitstream_io::BitReader;
+use bitstream_io::BitWrite;
+use bitstream_io::BitWriter;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 
 /// Writer for bit-level output operations using an underlying writer.
 pub struct BitStreamWriter<W: Write> {
@@ -79,14 +85,13 @@ impl<R: Read> BitStreamReader<R> {
         let length = self.read_integer()?;
         self.text_buffer.clear();
         self.text_buffer.reserve(length + 1);
-        
+
         for _ in 0..length {
             let byte = self.reader.read::<u64>(8)? as u8;
             self.text_buffer.push(byte);
         }
-        
-        String::from_utf8(self.text_buffer.clone())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+
+        String::from_utf8(self.text_buffer.clone()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     /// Reads a variable-width encoded integer.
@@ -136,7 +141,7 @@ fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Resu
 
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "Failed to read integer: too many bytes"
+        "Failed to read integer: too many bytes",
     ))
 }
 
@@ -162,7 +167,7 @@ mod tests {
     #[test]
     fn test_variable_int_encoding() -> io::Result<()> {
         let test_values = vec![0, 127, 128, 16383, 16384, 2097151, 2097152];
-        
+
         for value in test_values {
             let mut buffer = Vec::new();
             {

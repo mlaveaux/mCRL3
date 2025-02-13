@@ -1,12 +1,15 @@
 use log::trace;
-use mcrl3_sharedmutex::{BfSharedMutex, BfSharedMutexReadGuard, BfSharedMutexWriteGuard};
+use mcrl3_sharedmutex::BfSharedMutex;
+use mcrl3_sharedmutex::BfSharedMutexReadGuard;
+use mcrl3_sharedmutex::BfSharedMutexWriteGuard;
+use mcrl3_utilities::ProtectionSet;
 use std::cell::RefCell;
-use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use crate::aterm::{ATerm, ATermRef};
+use crate::aterm::ATerm;
+use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
-use crate::{Markable, SharedContainerProtectionSet, SharedProtectionSet};
+use crate::Markable;
 
 /// The number of times before garbage collection is tested again.
 const TEST_GC_INTERVAL: usize = 100;
@@ -19,9 +22,9 @@ thread_local! {
 /// Per-thread term pool managing local protection sets.
 pub struct ThreadTermPool {
     /// Protection set for terms
-    protection_set: SharedProtectionSet,
+    protection_set: Arc<ProtectionSet<usize>>,
     /// Protection set for containers
-    container_protection_set: SharedContainerProtectionSet,
+    container_protection_set: Arc<ProtectionSet<Arc<dyn Markable + Sync + Send>>>,
     /// Index in global pool's thread pools list
     index: usize,
     /// Counter for garbage collection tests
@@ -34,7 +37,8 @@ impl ThreadTermPool {
     /// Creates a new thread-local term pool.
     pub fn new() -> Self {
         // Register protection sets with global pool
-        let (protection_set, container_protection_set, lock, index) = GLOBAL_TERM_POOL.lock().register_thread_term_pool();
+        let (protection_set, container_protection_set, lock, index) =
+            GLOBAL_TERM_POOL.lock().register_thread_term_pool();
 
         Self {
             protection_set,
@@ -45,59 +49,40 @@ impl ThreadTermPool {
         }
     }
 
-    /// Protects a term in this thread's protection set.
+    /// Protect the term by adding its index to the protection set
     pub fn protect(&mut self, term: ATermRef<'_>) -> ATerm {
-        let guard = self.protection_set.write();
-        let term_index = GLOBAL_TERM_POOL.lock().get_or_create_index(term);
-        let root = guard.protect(term_index);
+        // Protect the term by adding its index to the protection set
+        let root = self.protection_set.protect(term.index());
 
-        trace!(
-            "Protected term {:?}, index {}, protection set {}",
-            term,
-            root,
-            self.index
-        );
-
-        // Check garbage collection
-        self.gc_counter = self.gc_counter.saturating_sub(1);
-        if self.gc_counter == 0 {
-            self.test_garbage_collection();
-            self.gc_counter = TEST_GC_INTERVAL;
-        }
-
-        ATerm::new(term_index, root)
+        // Return the protected term
+        ATerm::new(term.index(), root)
     }
 
-    /// Protects a container in this thread's container protection set.
-    pub fn protect_container(&mut self, container: Arc<dyn Markable + Send + Sync>) -> usize {
-        let root = self.container_protection_set.write().protect(container);
-        trace!("Protected container index {}, protection set {}", root, self.index);
-        root
-    }
 
     /// Unprotects a term from this thread's protection set.
     pub fn unprotect(&mut self, term: &ATerm) {
         term.require_valid();
-        let mut guard = self.protection_set.write();
+        
         trace!(
             "Unprotected term {:?}, index {}, protection set {}",
-            term.term(),
+            term,
             term.root(),
             self.index
         );
-        guard.unprotect(&term.root());
+        self.protection_set.unprotect(term.root());
+    }
+
+    /// Protects a container in this thread's container protection set.
+    pub fn protect_container(&mut self, container: Arc<dyn Markable + Send + Sync>) -> usize {
+        let root = self.container_protection_set.borrow_mut().protect(container);
+        trace!("Protected container index {}, protection set {}", root, self.index);
+        root
     }
 
     /// Unprotects a container from this thread's container protection set.
     pub fn unprotect_container(&mut self, root: usize) {
-        let mut guard = self.container_protection_set.write();
         trace!("Unprotected container index {}, protection set {}", root, self.index);
-        guard.unprotect(root);
-    }
-
-    /// Tests if garbage collection should run.
-    fn test_garbage_collection(&self) {
-        GLOBAL_TERM_POOL.lock().test_garbage_collection();
+        self.container_protection_set.unprotect(root);
     }
 
     /// Locks the thread local lock in shared mode.
@@ -106,7 +91,7 @@ impl ThreadTermPool {
     }
 
     /// Locks the thread local lock in exclusive mode.
-    pub fn lock_exclusive(&self) -> BfSharedMutexWriteGuard<()>{
+    pub fn lock_exclusive(&self) -> BfSharedMutexWriteGuard<()> {
         self.lock.write().unwrap()
     }
 }

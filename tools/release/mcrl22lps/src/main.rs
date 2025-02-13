@@ -1,8 +1,10 @@
-use clap::{Parser, ValueEnum};
+use clap::Parser;
+use clap::ValueEnum;
 use mcrl3_syntax::UntypedProcessSpecification;
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::Read;
+use std::io::{self};
 use std::process::ExitCode;
 
 #[derive(ValueEnum, Debug, Clone)]
@@ -16,7 +18,9 @@ enum Method {
 #[command(name = "mcrl22lps")]
 #[command(author = "Jan Friso Groote")]
 #[command(about = "Translate an mCRL2 specification to an LPS")]
-#[command(long_about = "Linearises the mCRL2 specification in INFILE and writes the resulting LPS to OUTFILE. If OUTFILE is not present, stdout is used. If INFILE is not present, stdin is used.")]
+#[command(
+    long_about = "Linearises the mCRL2 specification in INFILE and writes the resulting LPS to OUTFILE. If OUTFILE is not present, stdout is used. If INFILE is not present, stdin is used."
+)]
 struct Args {
     input: Option<String>,
     output: Option<String>,

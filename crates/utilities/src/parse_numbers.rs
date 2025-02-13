@@ -11,11 +11,11 @@ pub enum ParseNumberError {
 }
 
 /// Parses a natural number from a string, skipping leading and trailing whitespace.
-/// 
+///
 /// # Examples
 /// ```
 /// use utilities::parse_natural_number;
-/// 
+///
 /// assert_eq!(parse_natural_number("42").unwrap(), 42);
 /// assert_eq!(parse_natural_number("  123  ").unwrap(), 123);
 /// assert!(parse_natural_number("abc").is_err());
@@ -23,9 +23,7 @@ pub enum ParseNumberError {
 pub fn parse_natural_number(text: &str) -> Result<usize, ParseNumberError> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        return Err(ParseNumberError::InvalidInteger { 
-            text: text.to_string() 
-        });
+        return Err(ParseNumberError::InvalidInteger { text: text.to_string() });
     }
 
     trimmed.parse::<usize>().map_err(|e| {
@@ -38,11 +36,11 @@ pub fn parse_natural_number(text: &str) -> Result<usize, ParseNumberError> {
 }
 
 /// Parses a sequence of natural numbers separated by whitespace.
-/// 
+///
 /// # Examples
 /// ```
 /// use utilities::parse_natural_number_sequence;
-/// 
+///
 /// assert_eq!(parse_natural_number_sequence("1 2 3").unwrap(), vec![1, 2, 3]);
 /// assert_eq!(parse_natural_number_sequence("  42  123  ").unwrap(), vec![42, 123]);
 /// assert!(parse_natural_number_sequence("1 a 3").is_err());
@@ -53,10 +51,7 @@ pub fn parse_natural_number_sequence(text: &str) -> Result<Vec<usize>, ParseNumb
         return Ok(vec![]);
     }
 
-    trimmed
-        .split_whitespace()
-        .map(parse_natural_number)
-        .collect()
+    trimmed.split_whitespace().map(parse_natural_number).collect()
 }
 
 #[cfg(test)]

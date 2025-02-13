@@ -33,10 +33,7 @@ impl SortSpecification {
     }
 
     /// Creates a new sort specification with initial sorts and context sorts.
-    pub fn with_sorts_and_contexts(
-        sorts: HashSet<SortDeclaration>,
-        context_sorts: HashSet<SortExpression>,
-    ) -> Self {
+    pub fn with_sorts_and_contexts(sorts: HashSet<SortDeclaration>, context_sorts: HashSet<SortExpression>) -> Self {
         Self { sorts, context_sorts }
     }
 
@@ -53,7 +50,7 @@ impl SortSpecification {
     /// Finds all sort expressions used in this specification.
     pub fn find_sort_expressions(&self) -> HashSet<SortExpression> {
         let mut result = HashSet::new();
-        
+
         // Add context sorts
         result.extend(self.context_sorts.clone());
 
@@ -70,11 +67,7 @@ impl SortSpecification {
 
 impl SortDeclaration {
     /// Creates a new sort declaration.
-    pub fn new(
-        name: impl Into<String>,
-        parameters: Vec<String>,
-        definition: Option<SortExpression>,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, parameters: Vec<String>, definition: Option<SortExpression>) -> Self {
         Self {
             name: name.into(),
             parameters,

@@ -8,7 +8,6 @@ fn test(device: &Device, queue: &Queue) -> Result<(), Box<dyn Error>> {
     let (models, _) = tobj::load_obj("data/teapot.obj", &tobj::GPU_LOAD_OPTIONS)?;
 
     for model in &models {
-
         // Bring the models into the GPU
         device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
@@ -17,7 +16,6 @@ fn test(device: &Device, queue: &Queue) -> Result<(), Box<dyn Error>> {
             mapped_at_creation: false,
         });
     }
-    
 
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,

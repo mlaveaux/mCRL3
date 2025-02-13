@@ -77,8 +77,7 @@ pub fn quotient_lts(
             let to_block = partition.block_number(to);
 
             // If we eliminate tau loops then check if the 'to' and 'from' end up in the same block
-            if !(eliminate_tau_loops && lts.is_hidden_label(label) && block == to_block)
-            {
+            if !(eliminate_tau_loops && lts.is_hidden_label(label) && block == to_block) {
                 debug_assert!(
                     partition.block_number(state_index) < partition.num_of_blocks(),
                     "Quotienting assumes that the block numbers do not exceed the number of blocks"
@@ -99,7 +98,7 @@ pub fn quotient_lts(
         Some(partition.num_of_blocks()),
         || transitions.iter().cloned(),
         lts.labels().into(),
-        lts.hidden_labels().into()
+        lts.hidden_labels().into(),
     );
     debug!("Time quotient: {:.3}s", start.elapsed().as_secs_f64());
     result

@@ -1,9 +1,11 @@
 use core::panic;
-use std::{hash::Hash, ops::{Index, IndexMut}};
+use std::hash::Hash;
+use std::ops::Index;
+use std::ops::IndexMut;
 
 use rustc_hash::FxHashMap;
 
-pub struct IndexedSet<T> {    
+pub struct IndexedSet<T> {
     table: Vec<Entry<T>>,
     index: FxHashMap<T, usize>,
     free: Option<usize>, // A list of free nodes.
@@ -11,28 +13,24 @@ pub struct IndexedSet<T> {
 
 enum Entry<T> {
     Filled(T),
-    Empty(usize)
+    Empty(usize),
 }
 
 /// A macro to return the pat type of an enum class target, and panics otherwise.
-/// 
+///
 /// Usage cast!(instance, type)
 macro_rules! cast {
-    ($target: expr, $pat: path) => {
-        {
-            if let $pat(a) = $target { // #1
-                a
-            } else {
-                panic!(
-                    "mismatch variant when cast to {}", 
-                    stringify!($pat)); // #2
-            }
+    ($target: expr, $pat: path) => {{
+        if let $pat(a) = $target {
+            // #1
+            a
+        } else {
+            panic!("mismatch variant when cast to {}", stringify!($pat)); // #2
         }
-    };
+    }};
 }
 
 impl<T> IndexedSet<T> {
-
     /// Creates a new empty IndexedSet.
     pub fn new() -> IndexedSet<T> {
         IndexedSet {
@@ -52,7 +50,7 @@ impl<T> IndexedSet<T> {
         if let Some(entry) = self.table.get(index) {
             match entry {
                 Entry::Filled(element) => Some(element),
-                Entry::Empty(_) => None
+                Entry::Empty(_) => None,
             }
         } else {
             None
@@ -68,72 +66,65 @@ impl<T> IndexedSet<T> {
     pub fn iter(&self) -> Iter<T> {
         Iter {
             reference: self,
-            index: 0
+            index: 0,
         }
     }
 
     /// Returns a mutable iterator over the elements in the set.
     pub fn iter_mut(&mut self) -> IterMut<T> {
-        let iter = self.table.iter_mut().filter(|element| {
-                matches!(element, Entry::Filled(_))
-            }).map(|element| {
-                cast!(element, Entry::Filled)                
-            }).enumerate();
+        let iter = self
+            .table
+            .iter_mut()
+            .filter(|element| matches!(element, Entry::Filled(_)))
+            .map(|element| cast!(element, Entry::Filled))
+            .enumerate();
 
-        IterMut {
-            iter: Box::new(iter),
-        }
+        IterMut { iter: Box::new(iter) }
     }
-
 }
 
 impl<T: Eq + Hash + Clone> IndexedSet<T> {
-    
     /// Inserts the given element into the set, and returns the corresponding index.
     pub fn insert(&mut self, value: T) -> usize {
-        *self.index.entry(value.clone()).or_insert_with(
-            || 
-            {
-                match self.free {
-                    Some(first) =>
-                    {
-                        let next = match self.table[first] {
-                            Entry::Empty(x) => x,
-                            Entry::Filled(_) => panic!("The free list contains a filled element")
-                        };
+        *self.index.entry(value.clone()).or_insert_with(|| {
+            match self.free {
+                Some(first) => {
+                    let next = match self.table[first] {
+                        Entry::Empty(x) => x,
+                        Entry::Filled(_) => panic!("The free list contains a filled element"),
+                    };
 
-                        if first == next {
-                            // The list is now empty as its first element points to itself.
-                            self.free = None;
-                        } else {
-                            // Update free to be the next element in the list.
-                            self.free = Some(next);
-                        }
-        
-                        self.table[first] = Entry::Filled(value);
-                        first
+                    if first == next {
+                        // The list is now empty as its first element points to itself.
+                        self.free = None;
+                    } else {
+                        // Update free to be the next element in the list.
+                        self.free = Some(next);
                     }
-                    None =>
-                    {
-                        // No free positions so insert new.
-                        self.table.push(Entry::Filled(value));
-                        self.table.len() - 1
-                    }
+
+                    self.table[first] = Entry::Filled(value);
+                    first
                 }
-            })
+                None => {
+                    // No free positions so insert new.
+                    self.table.push(Entry::Filled(value));
+                    self.table.len() - 1
+                }
+            }
+        })
     }
 
     /// Erases all elements for which f(index, element) returns false. Allows
     /// modifying the given element (as long as the hash/equality does not change).
-    pub fn retain_mut<F>(&mut self, mut f: F) 
-        where 
-            F: FnMut(usize, &mut T) -> bool {
-        
+    pub fn retain_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(usize, &mut T) -> bool,
+    {
         for (index, element) in self.table.iter_mut().enumerate() {
             if let Entry::Filled(value) = element {
                 if !f(index, value) {
                     self.index.remove(value);
-                    
+
                     match self.free {
                         Some(next) => {
                             *element = Entry::Empty(next);
@@ -150,18 +141,12 @@ impl<T: Eq + Hash + Clone> IndexedSet<T> {
 
     /// Removes the given element from the set.
     pub fn remove(&mut self, element: &T) {
-        
         if let Some(index) = self.index.remove(element) {
-                                    
             let next = match self.free {
-                Some(next) => {
-                    next
-                }
-                None => {
-                    index
-                }
+                Some(next) => next,
+                None => index,
             };
-            
+
             self.table[index] = Entry::Empty(next);
             self.free = Some(index);
         }
@@ -230,7 +215,7 @@ impl<'a, T> IntoIterator for &'a IndexedSet<T> {
     }
 }
 
-#[cfg(test)] 
+#[cfg(test)]
 mod tests {
     use ahash::HashMap;
     use rand::Rng;
@@ -239,7 +224,6 @@ mod tests {
 
     #[test]
     fn test_construction() {
-
         let mut rand = rand::rng();
 
         let mut input = vec![];
@@ -247,14 +231,17 @@ mod tests {
             input.push(rand.random::<u64>() as usize);
         }
 
-        let mut indices: HashMap::<usize, usize> = HashMap::default();
+        let mut indices: HashMap<usize, usize> = HashMap::default();
 
         // Insert several elements and keep track of the resulting indices.
-        let mut set: IndexedSet::<usize> = IndexedSet::default();
+        let mut set: IndexedSet<usize> = IndexedSet::default();
         for element in &input {
             let index = set.insert(*element);
 
-            assert!(indices.get(&index).is_none() || indices.get(&index).unwrap() == element, "Index was already used for another element");
+            assert!(
+                indices.get(&index).is_none() || indices.get(&index).unwrap() == element,
+                "Index was already used for another element"
+            );
             indices.insert(*element, index);
         }
 
@@ -265,13 +252,17 @@ mod tests {
 
         // Check consistency of the indexed set.
         for (index, value) in &set {
-            assert_eq!(indices[value], index, "The resulting index does not match the returned value");
+            assert_eq!(
+                indices[value], index,
+                "The resulting index does not match the returned value"
+            );
         }
 
         for (value, index) in &indices {
-            assert!(set.get(*index) == Some(value), "Index {index} should still match element {value}");
+            assert!(
+                set.get(*index) == Some(value),
+                "Index {index} should still match element {value}"
+            );
         }
-
     }
-
 }

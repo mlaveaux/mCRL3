@@ -1,33 +1,36 @@
 use std::fmt::Debug;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
+use std::sync::LazyLock;
 
 use mcrl3_sharedmutex::BfSharedMutex;
 use parking_lot::Mutex;
 
-use mcrl3_utilities::{IndexedSet, ProtectionSet};
+use mcrl3_utilities::IndexedSet;
+use mcrl3_utilities::ProtectionSet;
 
-use crate::{ATerm, ATermRef, BfTermPool, Markable, SymbolPool, SymbolRef};
+use crate::ATerm;
+use crate::ATermRef;
+use crate::BfTermPool;
+use crate::Markable;
+use crate::SymbolPool;
+use crate::SymbolRef;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> =
     LazyLock::new(|| Mutex::new(GlobalTermPool::new()));
 
-/// The protection set for terms.
-pub(crate) type SharedProtectionSet = Arc<BfTermPool<ProtectionSet<usize>>>;
-
-/// The protection set for containers.
-pub(crate) type SharedContainerProtectionSet = Arc<BfTermPool<ProtectionSet<Arc<dyn Markable + Sync + Send>>>>;
+struct SharedTermProtection {
+    (Arc<ProtectionSet<usize>>, Arc<ProtectionSet<Arc<dyn Markable + Sync + Send>>>)
+}
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
     /// Unique table of all terms
     terms: IndexedSet<SharedTerm>,
-    /// The protection set for global terms.
-    protection_set: ProtectionSet<usize>,
     /// The symbol pool for managing function symbols.
     symbol_pool: SymbolPool,
     /// The thread-specific protection sets.
-    thread_pools: Vec<Option<(Arc<ProtectionSet<usize>>, Arc<ProtectionSet<usize>>)>>,
+    thread_pools: Vec<Option<>>,
 
     lock: BfSharedMutex<()>,
 }
@@ -36,31 +39,10 @@ impl GlobalTermPool {
     fn new() -> GlobalTermPool {
         GlobalTermPool {
             terms: IndexedSet::new(),
-            protection_set: ProtectionSet::new(),
             symbol_pool: SymbolPool::new(),
             thread_pools: Vec::new(),
             lock: BfSharedMutex::new(()),
         }
-    }
-
-    /// Protect the term by adding its index to the protection set
-    pub fn protect(&mut self, term: ATermRef<'_>) -> ATerm {
-        // Create a SharedTerm from the given ATermRef
-        let shared_term = self.terms.get(term.index()).unwrap().clone();
-
-        // Get or insert the term
-        let index = self.terms.insert(shared_term);
-
-        // Protect the term by adding its index to the protection set
-        let root = self.protection_set.protect(index);
-
-        // Return the protected term
-        ATerm::new(index, root)
-    }
-
-    /// Unprotect the term by removing its index from the protection set
-    pub fn unprotect(&mut self, term: ATerm) {
-        self.protection_set.unprotect(term.root);
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
@@ -94,9 +76,10 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term<I>(&mut self, symbol: &SymbolRef<'_>, args: I) -> ATerm
+    pub fn create_term<I, P>(&mut self, symbol: &SymbolRef<'_>, args: I, protect: P) -> ATerm
     where
         I: IntoIterator<Item = ATermRef<'static>>,
+        P: FnOnce(usize) -> ATerm,
     {
         let shared_term = SharedTerm {
             symbol: SymbolRef::new(symbol.index()),
@@ -104,7 +87,7 @@ impl GlobalTermPool {
         };
 
         let index = self.terms.insert(shared_term);
-        ATerm::new(index, self.protection_set.protect(index))
+        protect(index)
     }
 
     /// Registers a new thread term pool.
@@ -112,7 +95,7 @@ impl GlobalTermPool {
         &mut self,
     ) -> (
         Arc<ProtectionSet<usize>>,
-        Arc<ProtectionSet<usize>>,
+        Arc<ProtectionSet<Arc<dyn Markable + Sync + Send>>>,
         BfSharedMutex<()>,
         usize,
     ) {
@@ -131,12 +114,6 @@ impl GlobalTermPool {
         if let Some(entry) = self.thread_pools.get_mut(index) {
             *entry = None;
         }
-    }
-
-    /// Tests if garbage collection should run.
-    pub fn test_garbage_collection(&mut self) {
-        // Check if any terms are no longer protected
-        self.collect_garbage();
     }
 
     /// Collects garbage terms.

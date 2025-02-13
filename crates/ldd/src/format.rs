@@ -1,13 +1,15 @@
-use crate::{Ldd, Storage, iterators::*, Data};
+use crate::iterators::*;
+use crate::Data;
+use crate::Ldd;
+use crate::Storage;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::io;
 use std::io::Write;
-use std::collections::HashSet;
 
 /// Print the vector set represented by the LDD.
-pub fn fmt_node<'a>(storage: &'a Storage, ldd: &Ldd) -> Display<'a>
-{
+pub fn fmt_node<'a>(storage: &'a Storage, ldd: &Ldd) -> Display<'a> {
     Display {
         storage,
         ldd: ldd.clone(),
@@ -15,15 +17,17 @@ pub fn fmt_node<'a>(storage: &'a Storage, ldd: &Ldd) -> Display<'a>
 }
 
 /// Prints the given LDD is the 'dot' format, which can be converted into an image using 'GraphViz'.
-pub fn print_dot(storage: &Storage, f: &mut impl Write, ldd: &Ldd) -> io::Result<()>
-{
-    write!(f, r#"
+pub fn print_dot(storage: &Storage, f: &mut impl Write, ldd: &Ldd) -> io::Result<()> {
+    write!(
+        f,
+        r#"
 digraph "DD" {{
 graph [dpi = 300];
 center = true;
 edge [dir = forward];
 
-"#)?;
+"#
+    )?;
 
     // Every node must be printed once, so keep track of already printed ones.
     let mut marked: HashSet<Ldd> = HashSet::new();
@@ -42,29 +46,23 @@ edge [dir = forward];
     writeln!(f, "}}")
 }
 
-pub struct Display<'a>
-{
+pub struct Display<'a> {
     storage: &'a Storage,
     ldd: Ldd,
 }
 
-impl fmt::Display for Display<'_>
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
+impl fmt::Display for Display<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
         print(self.storage, &self.ldd, f)?;
         write!(f, "}}")
     }
 }
 
-fn print(storage: &Storage, ldd: &Ldd, f: &mut fmt::Formatter<'_>) -> fmt::Result
-{
-    for vector in iter(storage, ldd) 
-    {
+fn print(storage: &Storage, ldd: &Ldd, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for vector in iter(storage, ldd) {
         write!(f, "<")?;
-        for val in vector
-        {
+        for val in vector {
             write!(f, "{} ", val)?;
         }
         writeln!(f, ">")?;
@@ -73,22 +71,16 @@ fn print(storage: &Storage, ldd: &Ldd, f: &mut fmt::Formatter<'_>) -> fmt::Resul
     Ok(())
 }
 
-fn print_node(storage: &Storage, f: &mut impl Write, marked: &mut HashSet<Ldd>, ldd: &Ldd) -> io::Result<()>
-{
-    if marked.contains(ldd) || ldd == storage.empty_set() || ldd == storage.empty_vector()
-    {
+fn print_node(storage: &Storage, f: &mut impl Write, marked: &mut HashSet<Ldd>, ldd: &Ldd) -> io::Result<()> {
+    if marked.contains(ldd) || ldd == storage.empty_set() || ldd == storage.empty_vector() {
         Ok(())
-    }
-    else 
-    {
+    } else {
         // Print the node values
         write!(f, "{} [shape=record, label=\"", ldd.index())?;
-        
+
         let mut first = true;
-        for Data(value, _, _) in iter_right(storage, ldd)
-        {
-            if !first 
-            {
+        for Data(value, _, _) in iter_right(storage, ldd) {
+            if !first {
                 write!(f, "|")?;
             }
 
@@ -96,19 +88,23 @@ fn print_node(storage: &Storage, f: &mut impl Write, marked: &mut HashSet<Ldd>, 
             first = false;
         }
         writeln!(f, "\"];")?;
-        
+
         // Print the edges.
-        for Data(value, down, _) in iter_right(storage, ldd)
-        {
-            if down != *storage.empty_set() && down != *storage.empty_vector()
-            {
-                writeln!(f, "{}:{} -> {}:{};", ldd.index(), value, down.index(), storage.get_ref(&down).0)?;
+        for Data(value, down, _) in iter_right(storage, ldd) {
+            if down != *storage.empty_set() && down != *storage.empty_vector() {
+                writeln!(
+                    f,
+                    "{}:{} -> {}:{};",
+                    ldd.index(),
+                    value,
+                    down.index(),
+                    storage.get_ref(&down).0
+                )?;
             }
         }
-        
+
         // Print all nodes.
-        for Data(_, down, _) in iter_right(storage, ldd)
-        {
+        for Data(_, down, _) in iter_right(storage, ldd) {
             print_node(storage, f, marked, &down)?;
         }
 

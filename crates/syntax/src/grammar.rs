@@ -4,7 +4,6 @@ use pest_derive::Parser;
 #[grammar = "mcrl2_grammar.pest"]
 pub struct Mcrl2Parser;
 
-
 #[cfg(test)]
 mod tests {
     use indoc::indoc;

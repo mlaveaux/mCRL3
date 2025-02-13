@@ -2,8 +2,8 @@ use mcrl3_reduction::branching_bisim_sigref;
 use mcrl3_reduction::branching_bisim_sigref_naive;
 use mcrl3_reduction::strong_bisim_sigref;
 use mcrl3_reduction::strong_bisim_sigref_naive;
-use test_case::test_case;
 use mcrl3_utilities::Timing;
+use test_case::test_case;
 
 use mcrl3_io::io_aut::read_aut;
 

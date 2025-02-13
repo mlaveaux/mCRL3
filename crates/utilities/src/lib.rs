@@ -3,16 +3,16 @@
 // Forbid unsafe code in this crate.
 #![forbid(unsafe_code)]
 
-mod indexed_set;
-mod timer;
 mod bitstream;
-mod text_utility;
-mod progress_meter;
 mod execution_timer;
+mod helper;
+mod indexed_set;
 mod number_postfix;
 mod parse_numbers;
+mod progress_meter;
 mod protection_set;
-mod helper;
+mod text_utility;
+mod timer;
 mod timing;
 
 pub use bitstream::*;

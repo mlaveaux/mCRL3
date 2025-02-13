@@ -1,9 +1,20 @@
-use crate::{
-    cache_binary_op, cache_comm_binary_op, cache_terniary_op, cache_unary_function, iterators::*,
-    BinaryOperator, Data, DataRef, Ldd, LddRef, Storage, TernaryOperator, UnaryFunction, Value,
-};
+use crate::cache_binary_op;
+use crate::cache_comm_binary_op;
+use crate::cache_terniary_op;
+use crate::cache_unary_function;
+use crate::iterators::*;
+use crate::BinaryOperator;
+use crate::Data;
+use crate::DataRef;
+use crate::Ldd;
+use crate::LddRef;
+use crate::Storage;
+use crate::TernaryOperator;
+use crate::UnaryFunction;
+use crate::Value;
 
-use std::cmp::{self, Ordering};
+use std::cmp::Ordering;
+use std::cmp::{self};
 
 /// Returns an LDD containing only the given vector, i.e., { vector }.
 pub fn singleton(storage: &mut Storage, vector: &[Value]) -> Ldd {
@@ -62,11 +73,7 @@ pub fn project(storage: &mut Storage, set: &LddRef, proj: &LddRef) -> Ldd {
     } else if set == storage.empty_set() {
         storage.empty_set().clone()
     } else {
-        debug_assert_ne!(
-            set,
-            storage.empty_vector(),
-            "proj can be at most as high as set"
-        );
+        debug_assert_ne!(set, storage.empty_vector(), "proj can be at most as high as set");
 
         let DataRef(proj_value, proj_down, _) = storage.get_ref(proj);
         let DataRef(value, down, right) = storage.get_ref(set);
@@ -168,8 +175,7 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         // Consider all values on this level part of the output and continue with rest.
                         let DataRef(value, down, right) = storage.get_ref(set);
 
-                        let right_result =
-                            relational_product(storage, &right, rel, meta);
+                        let right_result = relational_product(storage, &right, rel, meta);
                         let down_result = relational_product(storage, &down, rel, &meta_down);
                         if down_result == *storage.empty_set() {
                             right_result
@@ -185,18 +191,12 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         match set_value.cmp(&rel_value) {
                             Ordering::Less => relational_product(storage, &set_right, rel, meta),
                             Ordering::Equal => {
-                                let down_result =
-                                    relational_product(storage, &set_down, &rel_down, &meta_down);
-                                let right_result =
-                                    relational_product(storage, &set_right, &rel_right, meta);
+                                let down_result = relational_product(storage, &set_down, &rel_down, &meta_down);
+                                let right_result = relational_product(storage, &set_right, &rel_right, meta);
                                 if down_result == *storage.empty_set() {
                                     right_result
                                 } else {
-                                    storage.insert(
-                                        set_value,
-                                        &down_result,
-                                        &right_result,
-                                    )
+                                    storage.insert(set_value, &down_result, &right_result)
                                 }
                             }
                             Ordering::Greater => relational_product(storage, set, &rel_right, meta),
@@ -219,8 +219,7 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         // Write the values present in the relation.
                         let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
-                        let down_result =
-                            relational_product(storage, &combined, &rel_down, &meta_down);
+                        let down_result = relational_product(storage, &combined, &rel_down, &meta_down);
                         let right_result = relational_product(storage, set, &rel_right, meta);
                         if down_result == *storage.empty_set() {
                             right_result
@@ -235,10 +234,8 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         match set_value.cmp(&rel_value) {
                             Ordering::Less => relational_product(storage, &set_right, rel, meta),
                             Ordering::Equal => {
-                                let down_result =
-                                    relational_product(storage, &set_down, &rel_down, &meta_down);
-                                let right_result =
-                                    relational_product(storage, &set_right, &rel_right, meta);
+                                let down_result = relational_product(storage, &set_down, &rel_down, &meta_down);
+                                let right_result = relational_product(storage, &set_right, &rel_right, meta);
                                 union(storage, &down_result, &right_result)
                             }
                             Ordering::Greater => relational_product(storage, set, &rel_right, meta),
@@ -248,8 +245,7 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         // Write the values present in the relation.
                         let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
-                        let down_result =
-                            relational_product(storage, set, &rel_down, &meta_down);
+                        let down_result = relational_product(storage, set, &rel_down, &meta_down);
                         let right_result = relational_product(storage, set, &rel_right, meta);
                         if down_result == *storage.empty_set() {
                             right_result
@@ -288,7 +284,7 @@ pub fn minus(storage: &mut Storage, a: &LddRef, b: &LddRef) -> Ldd {
                     if down_result == *storage.empty_set() {
                         right_result
                     } else {
-                        storage.insert(a_value, &down_result,& right_result)
+                        storage.insert(a_value, &down_result, &right_result)
                     }
                 }
                 Ordering::Greater => minus(storage, a, &b_right),
@@ -466,10 +462,7 @@ mod tests {
         // No longer vectors should be contained in the ldd.
         for _ in 0..10 {
             let short_vector = random_vector(rng.random_range(length + 1..20), 10);
-            assert!(
-                !element_of(&storage, &short_vector, &ldd),
-                "Found longer vector in ldd"
-            );
+            assert!(!element_of(&storage, &short_vector, &ldd), "Found longer vector in ldd");
         }
 
         // Try vectors of correct size with both the set and ldd.
@@ -547,11 +540,7 @@ mod tests {
         let mut it = iter(&storage, &ldd);
         let result = it.next().unwrap();
         assert_eq!(vector, result, "Contained vector did not match expected");
-        assert_eq!(
-            it.next(),
-            None,
-            "The ldd should not contain any other vector"
-        );
+        assert_eq!(it.next(), None, "The ldd should not contain any other vector");
     }
 
     // Test the len function with random inputs.
@@ -562,11 +551,7 @@ mod tests {
         let set = random_vector_set(32, 10, 10);
         let ldd = from_iter(&mut storage, set.iter());
 
-        assert_eq!(
-            set.len(),
-            len(&mut storage, &ldd),
-            "Length did not match expected set"
-        );
+        assert_eq!(set.len(), len(&mut storage, &ldd), "Length did not match expected set");
     }
 
     // Test the minus function with random inputs.
@@ -611,8 +596,7 @@ mod tests {
         let proj_ldd = compute_proj(&mut storage, &read_proj);
         let relation = project(&mut storage, &ldd, &proj_ldd);
 
-        let result =
-            relational_product(&mut storage, &ldd, &relation, &meta);
+        let result = relational_product(&mut storage, &ldd, &relation, &meta);
         let read_project = project(&mut storage, &result, &proj_ldd);
 
         // relational_product(R, S, read_proj, []) = { x | project(x, read_proj) = x' and (x', <>) in R and x in S }
@@ -633,8 +617,7 @@ mod tests {
         let proj_ldd = compute_proj(&mut storage, &write_proj);
         let relation = project(&mut storage, &ldd, &proj_ldd);
 
-        let result =
-            relational_product(&mut storage, &ldd, &relation, &meta);
+        let result = relational_product(&mut storage, &ldd, &relation, &meta);
         let write_project = project(&mut storage, &result, &proj_ldd);
 
         // relational_product(R, S, [], write_proj) = { x[write_proj := y'] | (<>, y') in R and x in S }
@@ -758,10 +741,7 @@ mod tests {
             expected_result.insert(project_vector(element, &proj));
         }
         let expected = from_iter(&mut storage, expected_result.iter());
-        assert_eq!(
-            result, expected,
-            "projected result does not match vector projection."
-        );
+        assert_eq!(result, expected, "projected result does not match vector projection.");
     }
 
     // Test the append function with random inputs.
@@ -782,9 +762,6 @@ mod tests {
         let expected = from_iter(&mut storage, expected_result.iter());
 
         print_differences(&storage, &result, &expected);
-        assert_eq!(
-            result, expected,
-            "appended result does not match vector append"
-        );
+        assert_eq!(result, expected, "appended result does not match vector append");
     }
 }

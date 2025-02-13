@@ -5,7 +5,8 @@ use ahash::AHashSet;
 use log::trace;
 
 use crate::aterm::ATerm;
-use crate::{Symbol, ThreadTermPool};
+use crate::Symbol;
+use crate::ThreadTermPool;
 
 /// This can be used to construct a term from a given input of (inductive) type I,
 /// without using the system stack, i.e. recursion. See evaluate.

@@ -1,4 +1,3 @@
-
 use std::sync::LazyLock;
 
 use pest::iterators::Pairs;
@@ -21,27 +20,27 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into a `SortExpression` using a Pratt parser for operator precedence.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `pairs` - A sequence of `Rule` pairs to be parsed.
-/// 
+///
 /// # Returns
-/// 
+///
 /// A `SortExpression` representing the parsed input.
-/// 
+///
 /// # Panics
-/// 
+///
 /// This function will panic if it encounters an unexpected rule during parsing.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use pest::Parser;
 /// use crate::Mcrl2Parser;
 /// use crate::Rule;
 /// use crate::parse_sortexpr;
-/// 
+///
 /// let term = "List(Data)";
 /// let result = Mcrl2Parser::parse(Rule::SortExpr, term).unwrap();
 /// let sort_expr = parse_sortexpr(result);
@@ -49,9 +48,8 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 /// ```
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
     SORT_PRATT_PARSER
-        .map_primary(|primary|
-        {
-           match primary.as_rule() {
+        .map_primary(|primary| {
+            match primary.as_rule() {
                 Rule::Id => Mcrl2Parser::Id(Node::new(primary)).unwrap(),
                 Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)).unwrap(),
                 Rule::SortExprAtom => Mcrl2Parser::SortExprAtom(Node::new(primary)).unwrap(),
@@ -70,26 +68,21 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
 
                 //Rule::SortExprStruct => unimplemented!(),
                 _ => unreachable!(),
-           }
-        })
-        .map_infix(|lhs, op, rhs| 
-        {
-            match op.as_rule() {
-                Rule::SortExprFunction => SortExpression::Function {
-                    domain: Box::new(lhs),
-                    range: Box::new(rhs),
-                },
-                Rule::SortExprProduct => SortExpression::Product {
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                },
-                _ => unreachable!(),
             }
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::SortExprFunction => SortExpression::Function {
+                domain: Box::new(lhs),
+                range: Box::new(rhs),
+            },
+            Rule::SortExprProduct => SortExpression::Product {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            _ => unreachable!(),
         })
         .parse(pairs)
 }
-
-
 
 #[cfg(test)]
 mod tests {

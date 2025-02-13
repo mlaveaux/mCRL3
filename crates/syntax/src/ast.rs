@@ -1,5 +1,5 @@
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 /// An mCRL2 specification containing declarations.
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -96,8 +96,7 @@ pub enum ComplexSort {
 
 /// An mCRL2 specification containing all components.
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Mcrl2Specification {
-}
+pub struct Mcrl2Specification {}
 
 /// Sort declaration
 #[derive(Debug, Eq, PartialEq, Hash)]

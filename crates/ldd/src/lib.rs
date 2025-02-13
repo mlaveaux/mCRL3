@@ -2,7 +2,7 @@
 //!
 //! A library to create and manipulate so called list decision diagrams,
 //! abbreviated as LDDs. List decision diagrams are data structures that can
-//! efficiently represent sets of vectors containing natural numbers \[Dijk18\]. 
+//! efficiently represent sets of vectors containing natural numbers \[Dijk18\].
 
 //! # Representation
 //!
@@ -28,17 +28,17 @@
 //! \[Dijk18\] --- Tom van Dijk, Jaco van de Pol. Sylvan: multi-core framework
 //! for decision diagrams. International Journal on Software Tools for
 //! Technology Transfer. 19(6):675-696, 2017.
-//! 
+//!
 extern crate static_assertions;
 
-mod storage;
-mod operations;
 mod format;
 pub mod iterators;
+mod operations;
+mod storage;
 
 #[cfg(test)]
 mod test_utility;
 
-pub use storage::*;
-pub use operations::*;
 pub use format::*;
+pub use operations::*;
+pub use storage::*;

@@ -113,8 +113,8 @@ impl BlockPartition {
                     block.marked_split
                 } else {
                     // Use this as the zero block.
-                self.blocks[block_index] = Block::new_unmarked(block.begin, block.begin + *size);
-                block.begin
+                    self.blocks[block_index] = Block::new_unmarked(block.begin, block.begin + *size);
+                    block.begin
                 }
             } else {
                 // Introduce a new block for every other non-empty block.
@@ -144,7 +144,8 @@ impl BlockPartition {
         }
 
         // Swap the first block and the maximum sized block.
-        let max_block_index =  (block_index..=block_index).chain(end_of_blocks..self.blocks.len())
+        let max_block_index = (block_index..=block_index)
+            .chain(end_of_blocks..self.blocks.len())
             .max_by_key(|block_index| self.block(*block_index).len())
             .unwrap();
         self.swap_blocks(block_index, max_block_index);
@@ -212,11 +213,7 @@ impl BlockPartition {
 
     /// Makes the marked elements closed under the silent closure of incoming
     /// tau-transitions within the current block.
-    pub fn mark_backward_closure(
-        &mut self,
-        block_index: usize,
-        incoming_transitions: &IncomingTransitions,
-    ) {
+    pub fn mark_backward_closure(&mut self, block_index: usize, incoming_transitions: &IncomingTransitions) {
         let block = self.blocks[block_index];
         let mut it = block.end - 1;
 

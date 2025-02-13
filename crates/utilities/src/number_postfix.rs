@@ -1,28 +1,28 @@
-//! 
+//!
 //! # Examples
-//! 
+//!
 //! Using the number postfix generator:
 //! ```
 //! use utilities::NumberPostfixGenerator;
-//! 
+//!
 //! // Create a generator with default hint "FRESH_VAR"
 //! let mut gen = NumberPostfixGenerator::default();
-//! 
+//!
 //! // Generate unique identifiers
 //! assert_eq!(gen.generate_default(), "FRESH_VAR");
 //! assert_eq!(gen.generate_default(), "FRESH_VAR1");
-//! 
+//!
 //! // Create with existing context
 //! let mut gen = NumberPostfixGenerator::with_context(
-//!     ["x1", "x2", "y"], 
+//!     ["x1", "x2", "y"],
 //!     "x"
 //! );
-//! 
+//!
 //! // Generate from context
 //! assert_eq!(gen.generate("x", true), "x3");  // Next after x2
 //! assert_eq!(gen.generate("y", true), "y1");  // Next after y
 //! ```
-//! 
+//!
 //! See individual module documentation for more examples.
 
 use std::collections::HashMap;
@@ -47,7 +47,7 @@ impl NumberPostfixGenerator {
     }
 
     /// Creates a new generator with context from an iterator of strings.
-    pub fn with_context<I, S>(iter: I, hint: impl Into<String>) -> Self 
+    pub fn with_context<I, S>(iter: I, hint: impl Into<String>) -> Self
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -60,7 +60,7 @@ impl NumberPostfixGenerator {
     /// Adds an identifier to the context.
     pub fn add_identifier(&mut self, id: impl AsRef<str>) {
         let id = id.as_ref();
-        
+
         // Find last non-digit character
         let (name, new_index) = match id.chars().rev().position(|c| !c.is_ascii_digit()) {
             Some(i) if i + 1 < id.len() => {
@@ -90,7 +90,7 @@ impl NumberPostfixGenerator {
     /// If add_to_context is true, the new identifier is added to the context.
     pub fn generate(&mut self, hint: impl AsRef<str>, add_to_context: bool) -> String {
         let mut hint = hint.as_ref().to_string();
-        
+
         // Remove trailing digits
         if let Some(last) = hint.chars().last() {
             if last.is_ascii_digit() {
@@ -161,10 +161,7 @@ mod tests {
 
     #[test]
     fn test_with_context() {
-        let mut gen = NumberPostfixGenerator::with_context(
-            ["x1", "x2", "y", "z3"], 
-            "x"
-        );
+        let mut gen = NumberPostfixGenerator::with_context(["x1", "x2", "y", "z3"], "x");
         assert_eq!(gen.generate("x", true), "x3");
         assert_eq!(gen.generate("y", true), "y1");
         assert_eq!(gen.generate("z", true), "z4");
@@ -175,7 +172,7 @@ mod tests {
         let mut gen = NumberPostfixGenerator::default();
         assert_eq!(gen.generate("test", false), "test");
         assert_eq!(gen.generate("test", false), "test");
-        
+
         gen.add_identifier("test1");
         assert_eq!(gen.generate("test", false), "test2");
     }

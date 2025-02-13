@@ -24,10 +24,10 @@ use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
 
-use mcrl3_gui::console;
-use mcrl3_io::io_aut::read_aut;
 use ltsgraph_lib::GraphLayout;
 use ltsgraph_lib::Viewer;
+use mcrl3_gui::console;
+use mcrl3_io::io_aut::read_aut;
 use pauseable_thread::PauseableThread;
 
 mod error_dialog;

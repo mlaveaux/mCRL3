@@ -13,7 +13,6 @@ static MEASURE_ALLOC: unsafety::AllocCounter = unsafety::AllocCounter;
 #[cfg(feature = "measure-allocs")]
 use log::info;
 
-
 use mcrl3_io::io_aut::read_aut;
 use mcrl3_io::io_aut::write_aut;
 use mcrl3_reduction::branching_bisim_sigref;

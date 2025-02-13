@@ -1,7 +1,8 @@
+use regex::Regex;
 use std::fmt::Write as FmtWrite;
 use std::fs::File;
-use std::io::{self, Read};
-use regex::Regex;
+use std::io::Read;
+use std::io::{self};
 
 /// Indents each line of text by the specified number of spaces.
 pub fn indent_text(text: &str, indent: usize) -> String {
@@ -77,9 +78,7 @@ pub fn remove_percentage_comments(text: &str) -> String {
 
 /// Removes all whitespace from text.
 pub fn remove_whitespace(text: &str) -> String {
-    text.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect()
+    text.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
 /// Performs regular expression replacement in text.
@@ -115,18 +114,18 @@ pub fn remove_comments(text: &str) -> String {
                         break;
                     }
                 }
-            },
+            }
             ('/', Some(&'*')) => {
                 chars.next(); // consume *
                 in_comment = true;
-            },
+            }
             ('*', Some(&'/')) if in_comment => {
                 chars.next(); // consume /
                 in_comment = false;
-            },
+            }
             (c, _) if !in_comment => {
                 result.push(c);
-            },
+            }
             _ => {}
         }
     }
@@ -181,10 +180,7 @@ mod tests {
     #[test]
     fn test_regex_replace() {
         let text = "hello world";
-        assert_eq!(
-            regex_replace(r"(\w+)\s+(\w+)", "$2 $1", text),
-            "world hello"
-        );
+        assert_eq!(regex_replace(r"(\w+)\s+(\w+)", "$2 $1", text), "world hello");
     }
 
     #[test]

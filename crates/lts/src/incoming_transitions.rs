@@ -18,9 +18,9 @@ struct TransitionIndex {
 
 impl IncomingTransitions {
     pub fn new(lts: &LabelledTransitionSystem) -> IncomingTransitions {
-        let mut incoming_transitions: Vec<(LabelIndex, StateIndex)> = vec![(0,0); lts.num_of_transitions()];
+        let mut incoming_transitions: Vec<(LabelIndex, StateIndex)> = vec![(0, 0); lts.num_of_transitions()];
         let mut state2incoming: Vec<TransitionIndex> = vec![TransitionIndex::default(); lts.num_of_states()];
-        
+
         // Compute the number of incoming (silent) transitions for each state.
         for state_index in lts.iter_states() {
             for (label_index, to) in lts.outgoing_transitions(state_index) {
@@ -56,18 +56,21 @@ impl IncomingTransitions {
                 }
             }
         }
-        
-        IncomingTransitions { incoming_transitions, state2incoming}
+
+        IncomingTransitions {
+            incoming_transitions,
+            state2incoming,
+        }
     }
 
     /// Returns an iterator over the incoming transitions for the given state.
     pub fn incoming_transitions(&self, state_index: usize) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
-        self.incoming_transitions[self.state2incoming[state_index].start .. self.state2incoming[state_index].end].iter()
+        self.incoming_transitions[self.state2incoming[state_index].start..self.state2incoming[state_index].end].iter()
     }
 
     // Return an iterator over the incoming silent transitions for the given state.
-    pub fn incoming_silent_transitions(&self, state_index: usize) -> impl Iterator<Item = &(LabelIndex, StateIndex)>  {
-        self.incoming_transitions[self.state2incoming[state_index].silent .. self.state2incoming[state_index].end].iter()
+    pub fn incoming_silent_transitions(&self, state_index: usize) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
+        self.incoming_transitions[self.state2incoming[state_index].silent..self.state2incoming[state_index].end].iter()
     }
 }
 

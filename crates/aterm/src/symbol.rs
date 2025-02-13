@@ -91,7 +91,10 @@ impl Symbol {
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        GLOBAL_TERM_POOL.lock().symbol_pool_mut().unprotect(std::mem::take(self));
+        GLOBAL_TERM_POOL
+            .lock()
+            .symbol_pool_mut()
+            .unprotect(std::mem::take(self));
     }
 }
 
@@ -164,4 +167,3 @@ impl Borrow<SymbolRef<'static>> for Symbol {
 }
 
 impl Eq for Symbol {}
-

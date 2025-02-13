@@ -1,31 +1,32 @@
 //! # Examples
-//! 
+//!
 //! Using the execution timer:
-//! 
+//!
 //! ```
 //! use utilities::ExecutionTimer;
 //! use std::thread::sleep;
 //! use std::time::Duration;
-//! 
+//!
 //! let mut timer = ExecutionTimer::new("example_tool", "");
-//! 
+//!
 //! // Time multiple operations
 //! timer.start("operation1");
 //! sleep(Duration::from_millis(10));
 //! timer.finish("operation1");
-//! 
+//!
 //! timer.start("operation2");
 //! sleep(Duration::from_millis(20));
 //! timer.finish("operation2");
-//! 
+//!
 //! // Print timings to stderr (since filename is empty)
 //! timer.report().expect("Failed to write timing report");
 //! ```
 
+use crate::timer::Timer;
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
-use std::io::{self, Write};
-use crate::timer::Timer;
+use std::io::Write;
+use std::io::{self};
 
 /// Records CPU time used by different parts of the code with a tool name and optional output file.
 /// Output is written in YAML format to a file or stderr.
@@ -50,13 +51,16 @@ impl ExecutionTimer {
     }
 
     /// Starts timing measurement with the given name.
-    /// 
+    ///
     /// # Panics
     /// Panics if timing with this name already exists
     pub fn start(&mut self, timing_name: impl Into<String>) {
         let name = timing_name.into();
         if self.timings.contains_key(&name) {
-            panic!("Starting already known timing '{}'. This causes unreliable results.", name);
+            panic!(
+                "Starting already known timing '{}'. This causes unreliable results.",
+                name
+            );
         }
 
         let mut timer = Timer::new();
@@ -65,7 +69,7 @@ impl ExecutionTimer {
     }
 
     /// Finishes timing measurement with the given name.
-    /// 
+    ///
     /// # Panics
     /// Panics if timing wasn't started or was already finished
     pub fn finish(&mut self, timing_name: &str) {
@@ -84,10 +88,7 @@ impl ExecutionTimer {
         if self.filename.is_empty() {
             self.write_report(&mut io::stderr())
         } else {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.filename)?;
+            let mut file = OpenOptions::new().create(true).append(true).open(&self.filename)?;
             self.write_report(&mut file)
         }
     }
@@ -98,12 +99,7 @@ impl ExecutionTimer {
 
         for (name, timer) in &self.timings {
             if !timer.running() {
-                writeln!(
-                    writer,
-                    "    {}: {:.3}s",
-                    name,
-                    timer.elapsed().as_secs_f64()
-                )?;
+                writeln!(writer, "    {}: {:.3}s", name, timer.elapsed().as_secs_f64())?;
             } else {
                 writeln!(writer, "    {}: did not finish.", name)?;
             }
@@ -115,19 +111,20 @@ impl ExecutionTimer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{thread::sleep, time::Duration};
+    use std::thread::sleep;
+    use std::time::Duration;
 
     #[test]
     fn test_basic_timing() {
         let mut timer = ExecutionTimer::new("test_tool", "");
-        
+
         timer.start("operation");
         sleep(Duration::from_millis(10));
         timer.finish("operation");
 
         let mut output = Vec::new();
         timer.write_report(&mut output).unwrap();
-        
+
         let report = String::from_utf8(output).unwrap();
         assert!(report.contains("test_tool"));
         assert!(report.contains("operation:"));

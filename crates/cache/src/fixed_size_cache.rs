@@ -1,30 +1,30 @@
 //! Cache implementations including fixed-size caches with configurable eviction policies.
-//! 
+//!
 //! # Example
-//! 
+//!
 //! ```
 //! use crate::fixed_size_cache::FixedSizeCache;
 //! use crate::FifoPolicy;
-//! 
+//!
 //! let mut cache = FixedSizeCache::new(2, FifoPolicy::new());
-//! 
+//!
 //! cache.insert(1, "one");
 //! cache.insert(2, "two");
-//! 
+//!
 //! assert_eq!(cache.get(&1), Some(&"one"));
 //! assert_eq!(cache.get(&2), Some(&"two"));
-//! 
+//!
 //! // Insert a third item, which should evict the first one (FIFO policy)
 //! cache.insert(3, "three");
-//! 
+//!
 //! assert_eq!(cache.get(&1), None);
 //! assert_eq!(cache.get(&2), Some(&"two"));
 //! assert_eq!(cache.get(&3), Some(&"three"));
 //! ```
-//! 
+//!
 
-use std::hash::Hash;
 use hashbrown::HashMap;
+use std::hash::Hash;
 
 use crate::CachePolicy;
 
@@ -37,10 +37,10 @@ pub struct FixedSizeCache<K, V, P: CachePolicy<K>> {
     maximum_size: usize,
 }
 
-impl<K, V, P> FixedSizeCache<K, V, P> 
-where 
+impl<K, V, P> FixedSizeCache<K, V, P>
+where
     K: Eq + Hash + Clone,
-    P: CachePolicy<K>
+    P: CachePolicy<K>,
 {
     /// Creates a new cache with the specified maximum size and policy.
     pub fn new(max_size: usize, policy: P) -> Self {
@@ -143,13 +143,13 @@ mod tests {
     #[test]
     fn test_fixed_size_cache() {
         let mut cache = FixedSizeCache::new(2, FifoPolicy::new());
-        
+
         assert!(cache.insert(1, "one").is_none());
         assert!(cache.insert(2, "two").is_none());
-        
+
         // Should evict first entry
         assert!(cache.insert(3, "three").is_none());
-        
+
         assert!(cache.get(&1).is_none());
         assert_eq!(cache.get(&2), Some(&"two"));
         assert_eq!(cache.get(&3), Some(&"three"));
@@ -159,14 +159,14 @@ mod tests {
     fn test_function_cache() {
         let f = |x: &i32| x * x;
         let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
-        
+
         assert_eq!(*cache.get(&2), 4);
         assert_eq!(*cache.get(&3), 9);
         assert_eq!(*cache.get(&2), 4); // Should be cached
-        
+
         // Should evict first entry (2)
         assert_eq!(*cache.get(&4), 16);
-        
+
         // Should recompute
         assert_eq!(*cache.get(&2), 4);
     }

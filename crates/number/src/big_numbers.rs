@@ -1,6 +1,10 @@
 use std::cmp::Ordering;
 use std::fmt;
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::Add;
+use std::ops::Div;
+use std::ops::Mul;
+use std::ops::Rem;
+use std::ops::Sub;
 use std::str::FromStr;
 
 /// A big natural number implementation that stores numbers as a vector of machine-sized words.
@@ -58,8 +62,16 @@ impl BigNatural {
         let result = n1.wrapping_add(n2).wrapping_add(*carry);
         // Set carry to 1 if we had an overflow, 0 otherwise
         *carry = if *carry == 0 {
-            if result < n1 { 1 } else { 0 }  // Overflow if result wrapped around
-        } else if result > n1 { 0 } else { 1 };
+            if result < n1 {
+                1
+            } else {
+                0
+            } // Overflow if result wrapped around
+        } else if result > n1 {
+            0
+        } else {
+            1
+        };
         result
     }
 
@@ -67,8 +79,16 @@ impl BigNatural {
         debug_assert!(*carry <= 1);
         let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
         *carry = if *carry == 0 {
-            if result > n1 { 1 } else { 0 }
-        } else if result < n1 { 0 } else { 1 };
+            if result > n1 {
+                1
+            } else {
+                0
+            }
+        } else if result < n1 {
+            0
+        } else {
+            1
+        };
         result
     }
 
@@ -76,35 +96,35 @@ impl BigNatural {
         // Split numbers into high and low parts to avoid overflow
         let bits = usize::BITS as usize / 2;
         let mask = (1 << bits) - 1;
-        
+
         // Extract high and low parts of both numbers
         let n1_low = n1 & mask;
         let n1_high = n1 >> bits;
         let n2_low = n2 & mask;
         let n2_high = n2 >> bits;
-        
+
         // Multiply parts and accumulate carries
         let mut local_carry = 0;
         // First multiply low parts
         let mut result = Self::add_single_number(n1_low * n2_low, *carry, &mut local_carry);
         let mut cumulative_carry = local_carry;
-        
+
         // Add product of n1_high * n2_low shifted left
         local_carry = 0;
         result = Self::add_single_number(result, (n1_high * n2_low) << bits, &mut local_carry);
         cumulative_carry += local_carry;
-        
+
         // Add product of n1_low * n2_high shifted left
         local_carry = 0;
         result = Self::add_single_number(result, (n1_low * n2_high) << bits, &mut local_carry);
         cumulative_carry += local_carry;
-        
+
         // Calculate final carry including high parts
         *carry = cumulative_carry;
-        *carry += (n1_high * n2_low) >> bits;  // Add overflow from cross products
+        *carry += (n1_high * n2_low) >> bits; // Add overflow from cross products
         *carry += (n1_low * n2_high) >> bits;
-        *carry += n1_high * n2_high;  // Add product of high parts
-        
+        *carry += n1_high * n2_high; // Add product of high parts
+
         result
     }
 
@@ -113,25 +133,25 @@ impl BigNatural {
     fn divide_single_number(p: usize, q: usize, mut remainder: usize) -> (usize, usize) {
         debug_assert!(q > remainder);
         let bits = usize::BITS as usize / 2;
-        
+
         // Split dividend into high and low parts
         let p_high = p >> bits;
         let p_low = p & ((1 << bits) - 1);
-        
+
         // First handle the high part combined with previous remainder
         let high_part = p_high + (remainder << bits);
         let result_high = high_part / q;
         let remainder_high = high_part % q;
-        
+
         // Then handle the low part with remainder from high part
         let low_part = p_low + (remainder_high << bits);
         let result_low = low_part / q;
         remainder = low_part % q;
-        
+
         // Ensure our bit splitting worked correctly
         debug_assert!(result_high < (1 << bits));
         debug_assert!(result_low < (1 << bits));
-        
+
         // Combine results and return with new remainder
         ((result_high << bits) | result_low, remainder)
     }
@@ -143,18 +163,18 @@ impl BigNatural {
             b = a % b;
             a = t;
         }
-        
+
         a
     }
 
     /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
     pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self) {
         assert!(!other.is_zero(), "Division by zero");
-        
+
         // Initialize results
         *quotient = Self::new();
         *remainder = self.clone();
-        
+
         // If dividend is smaller than divisor, quotient is 0
         if self.digits.len() < other.digits.len() {
             return;
@@ -162,11 +182,7 @@ impl BigNatural {
 
         // Handle single-digit division as a special case for efficiency
         if self.digits.len() == 1 && other.digits.len() == 1 {
-            let (q, r) = Self::divide_single_number(
-                self.digits[0], 
-                other.digits[0], 
-                0
-            );
+            let (q, r) = Self::divide_single_number(self.digits[0], other.digits[0], 0);
             if q > 0 {
                 quotient.digits.push(q);
             }
@@ -179,7 +195,7 @@ impl BigNatural {
         // Long division algorithm
         let mut shift = self.digits.len() - other.digits.len();
         let mut divisor = other.clone();
-        
+
         // Align divisor with dividend by adding leading zeros
         for _ in 0..shift {
             divisor.digits.insert(0, 0);
@@ -187,7 +203,7 @@ impl BigNatural {
 
         // Initialize quotient with proper size
         quotient.digits = vec![0; shift + 1];
-        
+
         // Perform division by repeated subtraction
         while shift > 0 {
             while *remainder >= divisor {
@@ -214,13 +230,13 @@ impl BigNatural {
     /// Assumes this number is larger than the other.
     pub fn subtract(&mut self, other: &Self) {
         assert!(*self >= *other, "Subtraction would result in negative number");
-        
+
         let mut carry = 0;
         for i in 0..self.digits.len() {
             let n2 = other.digits.get(i).copied().unwrap_or(0);
             self.digits[i] = Self::subtract_single_number(self.digits[i], n2, &mut carry);
         }
-        
+
         assert!(carry == 0, "Subtraction overflow");
         self.normalize();
     }
@@ -233,14 +249,14 @@ impl BigNatural {
         }
 
         let mut result = vec![0; self.digits.len() + other.digits.len()];
-        
+
         for (i, &n1) in self.digits.iter().enumerate() {
             let mut carry = 0;
             for (j, &n2) in other.digits.iter().enumerate() {
                 let mut local_carry = 0;
                 let prod = Self::multiply_single_number(n1, n2, &mut carry);
                 result[i + j] = Self::add_single_number(result[i + j], prod, &mut local_carry);
-                
+
                 let mut k = 1;
                 let mut c = local_carry;
                 while c > 0 {
@@ -250,11 +266,8 @@ impl BigNatural {
                 }
             }
             if carry > 0 {
-                result[i + other.digits.len()] = Self::add_single_number(
-                    result[i + other.digits.len()], 
-                    carry, 
-                    &mut carry
-                );
+                result[i + other.digits.len()] =
+                    Self::add_single_number(result[i + other.digits.len()], carry, &mut carry);
             }
         }
 
@@ -266,16 +279,16 @@ impl BigNatural {
     fn add_impl(&mut self, other: &Self) {
         let mut carry = 0;
         let max_len = self.digits.len().max(other.digits.len());
-        
+
         // Ensure we have enough space
         self.digits.resize(max_len, 0);
-        
+
         // Add corresponding digits
         for i in 0..max_len {
             let n2 = other.digits.get(i).copied().unwrap_or(0);
             self.digits[i] = Self::add_single_number(self.digits[i], n2, &mut carry);
         }
-        
+
         if carry > 0 {
             self.digits.push(carry);
         }
@@ -300,7 +313,6 @@ impl BigNatural {
         }
         debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
     }
-
 }
 
 // Standard trait implementations
@@ -443,7 +455,7 @@ mod tests {
     fn test_basic_operations() {
         let zero = BigNatural::new();
         let one = BigNatural::from_usize(1);
-        
+
         assert!(zero.is_zero());
         assert!(one.is_number(1));
         assert_eq!(zero.to_string(), "0");
@@ -514,7 +526,7 @@ mod tests {
         let a = BigNatural::from_str("123").unwrap();
         let b = BigNatural::from_str("456").unwrap();
         let c = BigNatural::from_str("123").unwrap();
-        
+
         assert!(a < b);
         assert!(b > a);
         assert!(a == c);

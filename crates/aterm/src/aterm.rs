@@ -10,6 +10,7 @@ use std::ops::Deref;
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::SymbolRef;
+use crate::THREAD_TERM_POOL;
 
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
 
@@ -50,7 +51,9 @@ impl<'a> ATermRef<'a> {
         if self.is_default() {
             ATerm::default()
         } else {
-            GLOBAL_TERM_POOL.lock().protect(self.copy())
+            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+                tp.protect(self.copy())
+            })
         }
     }
 
@@ -182,8 +185,8 @@ impl fmt::Debug for ATermRef<'_> {
 /// The protected version of [ATermRef], mostly derived from it.
 #[derive(Default)]
 pub struct ATerm {
-    pub(crate) term: ATermRef<'static>,
-    pub(crate) root: usize,
+    term: ATermRef<'static>,
+    root: usize,
 
     // ATerm is not Send because it uses thread-local state for its protection
     // mechanism.
@@ -204,6 +207,16 @@ impl ATerm {
     /// Creates a new term using the pool
     pub fn create(symbol: &SymbolRef<'_>, args: Vec<ATermRef<'static>>) -> ATerm {
         GLOBAL_TERM_POOL.lock().create_term(symbol, args)
+    }
+
+    /// Returns the root of the term
+    pub fn root(&self) -> usize {
+        self.root
+    }
+
+    /// Returns the term
+    pub fn term(&self) -> usize {
+        self.term.index()
     }
 }
 

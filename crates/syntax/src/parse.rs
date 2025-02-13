@@ -42,7 +42,7 @@ impl Mcrl2Parser {
 
     fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let mut ids = Vec::new();
-        
+
         for decl in spec.into_children() {
             ids.push(Mcrl2Parser::IdsDecl(decl)?);
         }
@@ -69,7 +69,7 @@ impl Mcrl2Parser {
 
     pub fn Id(identifier: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Reference(identifier.as_str().to_string()))
-    } 
+    }
 
     // Simple sorts.
     pub fn SortExprBool(_input: ParseNode) -> ParseResult<SortExpression> {
@@ -94,23 +94,38 @@ impl Mcrl2Parser {
 
     // Complex sorts
     pub fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(ComplexSort::List, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
+        Ok(SortExpression::Complex(
+            ComplexSort::List,
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+        ))
     }
 
     pub fn SortExprSet(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(ComplexSort::Set, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
+        Ok(SortExpression::Complex(
+            ComplexSort::Set,
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+        ))
     }
 
     pub fn SortExprBag(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(ComplexSort::Bag, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
+        Ok(SortExpression::Complex(
+            ComplexSort::Bag,
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+        ))
     }
 
     pub fn SortExprFSet(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(ComplexSort::FSet, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
+        Ok(SortExpression::Complex(
+            ComplexSort::FSet,
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+        ))
     }
 
     pub fn SortExprFBag(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(ComplexSort::FBag, Box::new(parse_sortexpr(inner.children().as_pairs().clone()))))
+        Ok(SortExpression::Complex(
+            ComplexSort::FBag,
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+        ))
     }
 
     fn EOI(_input: ParseNode) -> ParseResult<()> {

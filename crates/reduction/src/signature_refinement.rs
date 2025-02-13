@@ -30,9 +30,14 @@ pub fn strong_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timing) 
     timepre.finish();
 
     let mut time = timing.start("reduction");
-    let partition = signature_refinement::<_, _, false>(lts, &incoming, |state_index, partition, _, builder| {
-        strong_bisim_signature(state_index, lts, partition, builder);
-    }, |_, _| { None });
+    let partition = signature_refinement::<_, _, false>(
+        lts,
+        &incoming,
+        |state_index, partition, _, builder| {
+            strong_bisim_signature(state_index, lts, partition, builder);
+        },
+        |_, _| None,
+    );
 
     debug_assert_eq!(
         partition,
@@ -67,8 +72,10 @@ pub fn branching_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timin
     let mut visited = FxHashSet::default();
     let mut stack = Vec::new();
 
-    let partition =
-        signature_refinement::<_, _, true>(&preprocessed_lts, &incoming, |state_index, partition, state_to_key, builder| {
+    let partition = signature_refinement::<_, _, true>(
+        &preprocessed_lts,
+        &incoming,
+        |state_index, partition, state_to_key, builder| {
             branching_bisim_signature_inductive(state_index, &preprocessed_lts, partition, state_to_key, builder);
 
             // Compute the expected signature, only used in debugging.
@@ -91,20 +98,21 @@ pub fn branching_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timin
                 );
             }
         },
-            |signature, key_to_signature| {                
-                // Inductive signatures.
-                for (label, key) in signature.iter().rev() {
-                    if *label == lts.num_of_labels() && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
-                        return Some(*key);
-                    }
-                    
-                    if *label != lts.num_of_labels() {
-                        return None;
-                    }
+        |signature, key_to_signature| {
+            // Inductive signatures.
+            for (label, key) in signature.iter().rev() {
+                if *label == lts.num_of_labels() && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
+                    return Some(*key);
                 }
 
-                None
-        });
+                if *label != lts.num_of_labels() {
+                    return None;
+                }
+            }
+
+            None
+        },
+    );
 
     debug_assert_eq!(
         partition,
@@ -180,12 +188,15 @@ pub fn branching_bisim_sigref_naive(lts: &LabelledTransitionSystem, timing: &mut
 /// The signature function is called for each state and should fill the
 /// signature builder with the signature of the state. It consists of the
 /// current partition, the signatures per state for the next partition.
-fn signature_refinement<F, G, const BRANCHING: bool>(lts: &LabelledTransitionSystem, incoming: &IncomingTransitions, 
+fn signature_refinement<F, G, const BRANCHING: bool>(
+    lts: &LabelledTransitionSystem,
+    incoming: &IncomingTransitions,
     mut signature: F,
-    mut renumber: G) -> BlockPartition
+    mut renumber: G,
+) -> BlockPartition
 where
     F: FnMut(usize, &BlockPartition, &[usize], &mut SignatureBuilder),
-    G: FnMut(&[(usize, usize)], &Vec<Signature>) -> Option<usize>
+    G: FnMut(&[(usize, usize)], &Vec<Signature>) -> Option<usize>,
 {
     trace!("{:?}", lts);
 
@@ -251,7 +262,7 @@ where
                     };
 
                     id.insert(Signature::new(slice), number);
-                    
+
                     // (branching)  Keep track of the signature for every block in the next partition.
                     state_to_key[state_index] = number;
 
@@ -280,7 +291,7 @@ where
                                     // If block was not already marked then add it to the worklist.
                                     worklist.push(other_block);
                                 }
-    
+
                                 partition.mark_element(incoming_state);
                             }
                         } else {
@@ -447,8 +458,8 @@ where
 #[cfg(test)]
 mod tests {
     use mcrl3_lts::random_lts;
-    use test_log::test;
     use mcrl3_utilities::Timing;
+    use test_log::test;
 
     use super::*;
 

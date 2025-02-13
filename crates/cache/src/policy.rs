@@ -1,9 +1,9 @@
+use hashbrown::HashMap;
 use std::collections::VecDeque;
 use std::hash::Hash;
-use hashbrown::HashMap;
 
 /// A trait for implementing cache replacement policies.
-/// 
+///
 /// Cache policies determine which elements to remove when the cache is full.
 pub trait CachePolicy<K>: Default {
     /// Called when the cache is cleared.
@@ -41,17 +41,13 @@ pub struct FifoPolicy<K> {
 
 impl<K> FifoPolicy<K> {
     pub fn new() -> Self {
-        Self {
-            queue: VecDeque::new(),
-        }
+        Self { queue: VecDeque::new() }
     }
 }
 
 impl<K> Default for FifoPolicy<K> {
     fn default() -> Self {
-        Self {
-            queue: VecDeque::new(),
-        }
+        Self { queue: VecDeque::new() }
     }
 }
 
@@ -86,9 +82,7 @@ pub struct LruPolicy<K> {
 
 impl<K> Default for LruPolicy<K> {
     fn default() -> Self {
-        Self {
-            queue: VecDeque::new(),
-        }
+        Self { queue: VecDeque::new() }
     }
 }
 
