@@ -41,7 +41,7 @@ where
                     Ok(Yield::Construct(t.symbol().protect()))
                 }
             },
-            |tp, symbol, args| Ok(tp.create(&symbol, args)),
+            |tp, symbol, args| Ok(tp.create_term(&symbol, args)),
         )
         .unwrap()
 }
@@ -219,7 +219,7 @@ pub fn random_term(
     let mut subterms = AHashSet::<ATerm>::from_iter(constants.iter().map(|name| {
         let symbol = tp.create_symbol(name, 0);
         let a: &[ATerm] = &[];
-        tp.create(&symbol, a)
+        tp.create_term(&symbol, a)
     }));
 
     let mut result = ATerm::default();
@@ -232,7 +232,7 @@ pub fn random_term(
         }
 
         let symbol = tp.create_symbol(symbol, *arity);
-        result = tp.create(&symbol, &arguments);
+        result = tp.create_term(&symbol, &arguments);
 
         // Make this term available as another subterm that can be used.
         subterms.insert(result.clone());

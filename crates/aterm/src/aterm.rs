@@ -52,7 +52,7 @@ impl<'a> ATermRef<'a> {
             ATerm::default()
         } else {
             THREAD_TERM_POOL.with_borrow_mut(|tp| {
-                tp.protect(self.copy())
+                tp.protect(&self.copy())
             })
         }
     }
@@ -80,7 +80,7 @@ impl<'a> ATermRef<'a> {
     }
 
     /// A private unchecked version of [`ATermRef::upgrade`] to use in iterators.
-    unsafe fn upgrade_unchecked<'b: 'a>(&'a self, _parent: &ATermRef<'b>) -> ATermRef<'b> {
+    pub(crate) unsafe fn upgrade_unchecked<'b: 'a>(&'a self) -> ATermRef<'b> {
         ATermRef::new(self.index)
     }
 }
@@ -205,8 +205,10 @@ impl ATerm {
     }
 
     /// Creates a new term using the pool
-    pub fn create(symbol: &SymbolRef<'_>, args: Vec<ATermRef<'static>>) -> ATerm {
-        GLOBAL_TERM_POOL.lock().create_term(symbol, args)
+    pub fn create<'a>(symbol: &SymbolRef<'_>, args: &Vec<ATermRef<'a>>) -> ATerm {
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.create_term(symbol, args)
+        })
     }
 
     /// Returns the root of the term
@@ -223,7 +225,9 @@ impl ATerm {
 impl Drop for ATerm {
     fn drop(&mut self) {
         if !self.is_default() {
-            GLOBAL_TERM_POOL.lock().unprotect(std::mem::take(self));
+            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+                tp.unprotect(&self)
+            })
         }
     }
 }
@@ -310,7 +314,7 @@ impl<'a> Iterator for ATermArgs<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
-            let res = unsafe { Some(self.term.arg(self.index).upgrade_unchecked(&self.term)) };
+            let res = unsafe { Some(self.term.arg(self.index).upgrade_unchecked()) };
 
             self.index += 1;
             res
@@ -323,7 +327,7 @@ impl<'a> Iterator for ATermArgs<'a> {
 impl DoubleEndedIterator for ATermArgs<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
-            let res = unsafe { Some(self.term.arg(self.arity - 1).upgrade_unchecked(&self.term)) };
+            let res = unsafe { Some(self.term.arg(self.arity - 1).upgrade_unchecked()) };
 
             self.arity -= 1;
             res
@@ -362,7 +366,7 @@ impl<'a> Iterator for TermIterator<'a> {
                 // Put subterms in the queue
                 for argument in term.arguments().rev() {
                     unsafe {
-                        self.queue.push_back(argument.upgrade_unchecked(&term));
+                        self.queue.push_back(argument.upgrade_unchecked());
                     }
                 }
 

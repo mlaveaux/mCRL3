@@ -3,13 +3,13 @@ use std::hash::Hash;
 use std::mem::transmute;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::aterm::ATermRef;
 use crate::BfTermPool;
+use crate::Marker;
 use crate::THREAD_TERM_POOL;
 
 use super::BfTermPoolThreadWrite;
@@ -34,7 +34,9 @@ impl<C: Markable + Send + 'static> Protected<C> {
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(BfTermPool::new(container));
 
-        let root = THREAD_TERM_POOL.with_borrow_mut(|tp| tp.protect_container(shared.clone()));
+        let root = THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.protect_container(shared.clone())
+        });
 
         Protected {
             container: shared,
@@ -113,13 +115,10 @@ impl<C> Drop for Protected<C> {
     }
 }
 
-/// A type for the todo queue.
-pub type Todo<'a> = Pin<&'a mut ffi::term_mark_stack>;
-
 /// This trait should be used on all objects and containers related to storing unprotected terms.
 pub trait Markable {
     /// Marks all the ATermRefs to prevent them from being garbage collected.
-    fn mark(&self, todo: Todo);
+    fn mark(&self, marker: &mut Marker);
 
     /// Should return true iff the given term is contained in the object. Used for runtime checks.
     fn contains_term(&self, term: &ATermRef<'_>) -> bool;
@@ -134,11 +133,9 @@ pub trait Markable {
 }
 
 impl Markable for ATermRef<'_> {
-    fn mark(&self, todo: Pin<&mut ffi::term_mark_stack>) {
+    fn mark(&self, marker: &mut Marker) {
         if !self.is_default() {
-            unsafe {
-                ffi::aterm_mark_address(self.get(), todo);
-            }
+            marker.mark(self);
         }
     }
 
@@ -152,9 +149,9 @@ impl Markable for ATermRef<'_> {
 }
 
 impl<T: Markable> Markable for Vec<T> {
-    fn mark(&self, mut todo: Pin<&mut ffi::term_mark_stack>) {
+    fn mark(&self, marker: &mut Marker) {
         for value in self {
-            value.mark(todo.as_mut());
+            value.mark(marker);
         }
     }
 
@@ -168,9 +165,9 @@ impl<T: Markable> Markable for Vec<T> {
 }
 
 impl<T: Markable + ?Sized> Markable for BfTermPool<T> {
-    fn mark(&self, mut todo: Pin<&mut ffi::term_mark_stack>) {
+    fn mark(&self, marker: &mut Marker) {
         unsafe {
-            self.get().mark(todo.as_mut());
+            self.get().mark(marker);
         }
     }
 
@@ -255,20 +252,19 @@ impl<C: Markable> Drop for Protector<'_, C> {
 mod tests {
     use super::*;
 
-    use crate::aterm::TermPool;
-
     #[test]
     fn test_aterm_container() {
-        let mut tp = TermPool::new();
-        let t = tp.from_string("f(g(a),b)").unwrap();
-
-        // First test the trait for a standard container.
-        let mut container = Protected::<Vec<ATermRef>>::new(vec![]);
-
-        for _ in 0..1000 {
-            let mut write = container.write();
-            let u = write.protect(&t);
-            write.push(u);
-        }
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            let t = tp.from_string("f(g(a),b)").unwrap();
+    
+            // First test the trait for a standard container.
+            let mut container = Protected::<Vec<ATermRef>>::new(vec![]);
+    
+            for _ in 0..1000 {
+                let mut write = container.write();
+                let u = write.protect(&t);
+                write.push(u);
+            }
+        });
     }
 }

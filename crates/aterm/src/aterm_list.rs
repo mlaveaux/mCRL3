@@ -63,7 +63,7 @@ impl<T: From<ATerm>> Iterator for ATermListIter<T> {
 
 impl<T> From<ATerm> for ATermList<T> {
     fn from(value: ATerm) -> Self {
-        debug_assert!(value.term.is_list(), "Can only convert a aterm_list");
+        debug_assert!(value.is_list(), "Can only convert a aterm_list");
         ATermList::<T> {
             term: value,
             _marker: PhantomData,

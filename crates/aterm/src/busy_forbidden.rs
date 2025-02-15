@@ -11,8 +11,7 @@ use crate::THREAD_TERM_POOL;
 
 /// Provides access to the mCRL2 busy forbidden protocol, where there
 /// are thread-local busy flags and one central storage for the forbidden
-/// flags. Care must be taken to avoid deadlocks since the FFI also uses
-/// the same flags.
+/// flags.
 pub struct BfTermPool<T: ?Sized> {
     object: UnsafeCell<T>,
 }
@@ -31,20 +30,22 @@ impl<T> BfTermPool<T> {
 impl<'a, T: ?Sized> BfTermPool<T> {
     /// Provides read access to the underlying object.
     pub fn read(&'a self) -> BfTermPoolRead<'a, T> {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolRead {
-            mutex: self,
-            guard: tp.lock_shared(),
-            _marker: Default::default(),
-        })
+        // THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolRead {
+        //     mutex: self,
+        //     guard: tp.lock_shared(),
+        //     _marker: Default::default(),
+        // })
+        unimplemented!();
     }
 
     /// Provides write access to the underlying object.
     pub fn write(&'a self) -> BfTermPoolWrite<'a, T> {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolWrite {
-            mutex: self,
-            guard: tp.lock_exclusive(),
-            _marker: Default::default(),
-        })
+        // THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolWrite {
+        //     mutex: self,
+        //     guard: tp.lock_exclusive(),
+        //     _marker: Default::default(),
+        // })
+        unimplemented!();
     }
 
     /// Provides read access to the underlying object.
@@ -119,7 +120,7 @@ impl<T: ?Sized> BfTermPoolThreadWrite<'_, T> {
     pub fn unlock(&mut self) -> bool {
         if self.locked {
             self.locked = false;
-            ffi::unlock_shared()
+            true
         } else {
             false
         }
@@ -145,15 +146,6 @@ impl<T: ?Sized> DerefMut for BfTermPoolThreadWrite<'_, T> {
 impl<T: ?Sized> Drop for BfTermPoolThreadWrite<'_, T> {
     fn drop(&mut self) {
         if self.locked {
-            ffi::unlock_shared();
         }
     }
-}
-
-/// Initialize the BfTermPool for each thread-local aterm pool.
-pub fn initialize_thread_local_pools() {
-    let mut global_pool = GLOBAL_TERM_POOL.lock();
-    let (protection_set, container_set, _) = global_pool.register_thread_term_pool();
-    let bf_term_pool = BfTermPool::new((protection_set, container_set));
-    // Store bf_term_pool in thread-local storage or use it as needed
 }
