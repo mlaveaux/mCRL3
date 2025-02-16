@@ -2,12 +2,10 @@
 //! 
 //! This crate provides data expressions and related functionality.
 
-mod data_term;
 mod data_expression;
-mod function_symbol;
-mod variable;
+mod default_terms;
+mod sort_terms;
 
-pub use data_term::*;
 pub use data_expression::*;
-pub use function_symbol::*;
-pub use variable::*;
+pub use default_terms::*;
+pub use sort_terms::*;

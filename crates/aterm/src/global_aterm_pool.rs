@@ -29,7 +29,7 @@ pub(crate) struct SharedTermProtection {
     index: usize,
 }
 
-pub(crate) struct Marker {
+pub struct Marker {
 
 }
 
@@ -169,21 +169,22 @@ impl GlobalTermPool {
         for pool in self.thread_pools.iter() {
             let mut marker = Marker {};
 
-
             if let Some(pool) = pool {
-                let mut pool = pool.lock();
+                let pool = pool.lock();
                 
-                for item in pool.protection_set.iter() {
+                for (term, _) in pool.protection_set.iter() {
                     // Remove all terms that are not protected
-
+                    ATermRef::new(*term).mark(&mut marker);
                 }
 
                 for (container, _) in pool.container_protection_set.iter() {
                     container.mark(&mut marker);
                 }
             }
-
         }
+
+        // Delete all terms that are not marked
+        //self.terms.retain_mut(|term| term.is_marked());
     }
 }
 

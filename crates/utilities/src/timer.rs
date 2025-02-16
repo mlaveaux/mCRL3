@@ -4,7 +4,7 @@ use std::time::Instant;
 /// A timer that can be started, stopped, and reset.
 /// Keeps track of accumulated time when running.
 #[derive(Debug)]
-pub struct Timer {
+pub struct SimpleTimer {
     /// The instant when the timer was last started
     start: Instant,
     /// Total time accumulated from previous runs
@@ -13,7 +13,7 @@ pub struct Timer {
     running: bool,
 }
 
-impl Timer {
+impl SimpleTimer {
     /// Creates a new stopped timer with zero accumulated time.
     pub fn new() -> Self {
         Self {
@@ -76,7 +76,7 @@ impl Timer {
     }
 }
 
-impl Default for Timer {
+impl Default for SimpleTimer {
     /// Creates a new timer with default settings.
     /// Equivalent to `Timer::new()`.
     fn default() -> Self {
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_timer_basic() {
-        let mut timer = Timer::new();
+        let mut timer = SimpleTimer::new();
         assert!(!timer.running());
 
         timer.start();
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_timer_reset() {
-        let mut timer = Timer::new();
+        let mut timer = SimpleTimer::new();
         timer.start();
         sleep(Duration::from_millis(10));
         timer.stop();

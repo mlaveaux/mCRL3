@@ -5,9 +5,9 @@
 
 #![forbid(unsafe_code)]
 
-mod mcrl2_derive_terms;
+mod mcrl3_derive_terms;
 
-use mcrl2_derive_terms::mcrl2_derive_terms_impl;
+use mcrl3_derive_terms::mcrl3_derive_terms_impl;
 
 /// This proc macro can be used to generate implementations for the types stored
 /// in an ATerm, for example data_expressions, applications, variables. This is
@@ -21,11 +21,11 @@ use mcrl2_derive_terms::mcrl2_derive_terms_impl;
 ///
 /// # Example
 #[proc_macro_attribute]
-pub fn mcrl2_derive_terms(
+pub fn mcrl3_derive_terms(
     _attributes: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    mcrl2_derive_terms_impl(
+    mcrl3_derive_terms_impl(
         proc_macro2::TokenStream::from(_attributes),
         proc_macro2::TokenStream::from(input),
     )
@@ -34,12 +34,12 @@ pub fn mcrl2_derive_terms(
 
 /// Marks a struct as a term.
 #[proc_macro_attribute]
-pub fn mcrl2_term(_attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn mcrl3_term(_attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     input
 }
 
 /// Marks a function to be ignored, meaning the Ref term will not have this function
 #[proc_macro_attribute]
-pub fn mcrl2_ignore(_attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn mcrl3_ignore(_attributes: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     input
 }

@@ -3139,6 +3139,9 @@ dependencies = [
  "mcrl3_sharedmutex",
  "mcrl3_utilities",
  "parking_lot",
+ "pest",
+ "pest_consume",
+ "pest_derive",
  "rand 0.9.0",
  "thiserror 2.0.11",
 ]
@@ -3155,6 +3158,7 @@ name = "mcrl3_data"
 version = "0.1.0"
 dependencies = [
  "mcrl3_aterm",
+ "mcrl3_macros",
  "thiserror 2.0.11",
 ]
 
@@ -3263,6 +3267,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "mcrl3_aterm",
+ "mcrl3_data",
  "rand 0.9.0",
  "rustc-hash 2.1.1",
  "smallvec",

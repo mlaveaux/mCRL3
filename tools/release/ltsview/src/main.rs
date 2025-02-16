@@ -77,19 +77,19 @@ async fn main() -> Result<ExitCode, Box<dyn Error>> {
 
     let app = Application::new()?;
     {
-        app.on_update_canvas(move |width, height, _| {
-            if render_texture.width() != width as u32 || render_texture.height() != height as u32 {
-                // Request another redraw when the size has changed.
-                debug!(
-                    "Canvas size changed from {}x{} to {width}x{height}",
-                    render_texture.width(),
-                    render_texture.height()
-                );
-            }
+        // app.on_update_canvas(move |width, height, _| {
+        //     if render_texture.width() != width as u32 || render_texture.height() != height as u32 {
+        //         // Request another redraw when the size has changed.
+        //         debug!(
+        //             "Canvas size changed from {}x{} to {width}x{height}",
+        //             render_texture.width(),
+        //             render_texture.height()
+        //         );
+        //     }
 
-            debug!("Updating canvas");
-            Image::from_rgba8_premultiplied(buffer)
-        })
+        //     debug!("Updating canvas");
+        //     Image::from_rgba8_premultiplied(buffer)
+        // })
     }
 
     app.run()?;

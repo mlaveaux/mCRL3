@@ -41,12 +41,12 @@ impl<'a> SymbolRef<'a> {
 impl SymbolRef<'_> {
     /// Obtain the symbol's name
     pub fn name(&self) -> &str {
-        unimplemented!();
+        GLOBAL_TERM_POOL.lock().symbol_pool().get(self).name()
     }
 
     /// Obtain the symbol's arity
     pub fn arity(&self) -> usize {
-        unimplemented!();
+        GLOBAL_TERM_POOL.lock().symbol_pool().get(self).arity()
     }
 }
 
@@ -69,7 +69,14 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub(crate) fn new(index: usize, root: usize) -> Symbol {
+    pub fn new(name: &str, arity: usize) -> Symbol {
+        GLOBAL_TERM_POOL
+            .lock()
+            .symbol_pool_mut()
+            .create(name, arity)
+    }
+
+    pub(crate) fn new_internal(index: usize, root: usize) -> Symbol {
         Self {
             symbol: SymbolRef::new(index),
             root,

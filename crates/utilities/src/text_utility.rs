@@ -1,8 +1,5 @@
 use regex::Regex;
 use std::fmt::Write as FmtWrite;
-use std::fs::File;
-use std::io::Read;
-use std::io::{self};
 
 /// Indents each line of text by the specified number of spaces.
 pub fn indent_text(text: &str, indent: usize) -> String {
@@ -52,22 +49,6 @@ pub fn split(text: &str, separators: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect()
-}
-
-/// Reads text from a file, optionally warning instead of failing if the file is not found.
-pub fn read_text(filename: &str, warn: bool) -> io::Result<String> {
-    match File::open(filename) {
-        Ok(mut file) => {
-            let mut content = String::new();
-            file.read_to_string(&mut content)?;
-            Ok(content)
-        }
-        Err(e) if warn => {
-            eprintln!("Warning: Could not open input file: {}", filename);
-            Ok(String::new())
-        }
-        Err(e) => Err(e),
-    }
 }
 
 /// Removes comments from text (from '%' until end of line).

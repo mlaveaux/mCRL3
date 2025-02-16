@@ -46,12 +46,12 @@ impl SymbolPool {
         let index = self.symbols.insert(SharedSymbol::new(name, arity));
 
         // Return cloned symbol
-        Symbol::new(index, self.protection_set.protect(index))
+        Symbol::new_internal(index, self.protection_set.protect(index))
     }
 
     /// Protects a symbol from garbage collection.
     pub fn protect(&mut self, symbol: &SymbolRef<'_>) -> Symbol {
-        Symbol::new(symbol.index(), self.protection_set.protect(symbol.index()))
+        Symbol::new_internal(symbol.index(), self.protection_set.protect(symbol.index()))
     }
 
     /// Unprotects a symbol, allowing it to be garbage collected.
@@ -65,7 +65,7 @@ impl SymbolPool {
     }
 
     /// Returns borrow of the shared symbol from a SymbolRef
-    fn get<'a>(&'a self, symbol: &SymbolRef<'_>) -> &'a SharedSymbol {
+    pub fn get<'a>(&self, symbol: &'a SymbolRef<'_>) -> &'a SharedSymbol {
         self.symbols.get(symbol.index()).unwrap()
     }
 

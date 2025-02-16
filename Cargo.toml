@@ -76,6 +76,7 @@ mcrl3_gui = { path="crates/gui" }
 mcrl3_io = { path="crates/io" }
 mcrl3_ldd = { path="crates/ldd" }
 mcrl3_lts = { path="crates/lts" }
+mcrl3_macros = { path = "crates/macros" }
 mcrl3_rec-tests = { path="crates/rec-tests" }
 mcrl3_reduction = { path="crates/reduction" }
 mcrl3_sabre = { path="crates/sabre" }

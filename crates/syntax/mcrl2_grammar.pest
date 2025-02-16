@@ -35,13 +35,6 @@ IdList = { Id ~ ( "," ~ Id )* }
 /// Numbers
 Number = { "0|([1-9][0-9]*)" }
 
-/// Parsing a single term
-TermSpec = { SOI ~ Term ~ EOI }
-
-/// Rules for terms f(t0, ..., tn)
-Term = { Id ~ Args? }
-Args = { "(" ~ Term ~ ("," ~ Term)*  ~ ")"}
-
 /// Parsing an mCRL2 specification
 MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec | VarSpec)* ~ EOI } 
 

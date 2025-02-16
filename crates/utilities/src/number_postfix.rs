@@ -99,6 +99,7 @@ impl NumberPostfixGenerator {
                 }
             }
         }
+        println!("{}", hint);
 
         match self.index.get_mut(&hint) {
             Some(index) => {
@@ -175,5 +176,13 @@ mod tests {
 
         gen.add_identifier("test1");
         assert_eq!(gen.generate("test", false), "test2");
+    }
+
+    #[test]
+    fn test_with_suffix() {
+        let mut gen = NumberPostfixGenerator::default();
+        assert_eq!(gen.generate("test1", true), "test1");
+        assert_eq!(gen.generate("test1", true), "test11");
+        assert_eq!(gen.generate("test1", true), "test12");
     }
 }

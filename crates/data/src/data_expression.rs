@@ -1,76 +1,30 @@
 use core::fmt;
+use std::borrow::Borrow;
+use std::ops::Deref;
 
-use crate::aterm::ATerm;
-use crate::aterm::ATermArgs;
-use crate::aterm::ATermRef;
-use crate::aterm::THREAD_TERM_POOL;
-use mcrl2_macros::mcrl2_derive_terms;
-use mcrl2_sys::data::ffi;
-pub struct DataExpressionSymbols;
+use mcrl3_aterm::ATerm;
+use mcrl3_aterm::ATermArgs;
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::Marker;
+use mcrl3_macros::mcrl3_derive_terms;
+use mcrl3_aterm::Markable;
+use mcrl3_macros::mcrl3_ignore;
+use mcrl3_macros::mcrl3_term;
 
-impl DataExpressionSymbols {
-    pub fn is_data_variable(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        unsafe { ffi::is_data_variable(term.get()) }
-    }
-
-    pub fn is_data_expression(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        Self::is_data_variable(term)
-            || Self::is_data_function_symbol(term)
-            || Self::is_data_machine_number(term)
-            || Self::is_data_application(term)
-            || Self::is_data_abstraction(term)
-            || Self::is_data_where_clause(term)
-    }
-
-    pub fn is_data_function_symbol(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        unsafe { ffi::is_data_function_symbol(term.get()) }
-    }
-
-    pub fn is_data_machine_number(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        unsafe { ffi::is_data_machine_number(term.get()) }
-    }
-
-    pub fn is_data_where_clause(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        unsafe { ffi::is_data_where_clause(term.get()) }
-    }
-
-    pub fn is_data_abstraction(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        unsafe { ffi::is_data_abstraction(term.get()) }
-    }
-
-    pub fn is_data_untyped_identifier(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-        unsafe { ffi::is_data_untyped_identifier(term.get()) }
-    }
-
-    pub fn is_data_application(term: &ATermRef<'_>) -> bool {
-        term.require_valid();
-
-        THREAD_TERM_POOL.with_borrow_mut(|tp| tp.is_data_application(term))
-    }
-}
+use crate::is_data_application;
+use crate::is_data_expression;
+use crate::is_data_function_symbol;
+use crate::is_data_machine_number;
+use crate::is_data_variable;
+use crate::SortExpression;
+use crate::SortExpressionRef;
 
 // This module is only used internally to run the proc macro.
-#[mcrl2_derive_terms]
+#[mcrl3_derive_terms]
 mod inner {
+    use crate::{get_data_function_symbol_index, DEFAULT_SYMBOLS};
+
     use super::*;
-
-    use std::borrow::Borrow;
-    use std::ops::Deref;
-
-    use crate::aterm::Markable;
-    use crate::aterm::TermPool;
-    use crate::aterm::Todo;
-    use crate::data::SortExpression;
-    use crate::data::SortExpressionRef;
-    use mcrl2_macros::mcrl2_ignore;
-    use mcrl2_macros::mcrl2_term;
 
     /// A data expression can be any of:
     ///     - a variable
@@ -84,7 +38,7 @@ mod inner {
     ///     - set enumeration
     ///     - bag enumeration
     ///
-    #[mcrl2_term(is_data_expression)]
+    #[mcrl3_term(is_data_expression)]
     pub struct DataExpression {
         term: ATerm,
     }
@@ -148,17 +102,19 @@ mod inner {
         }
     }
 
-    #[mcrl2_term(is_data_function_symbol)]
+    #[mcrl3_term(is_data_function_symbol)]
     pub struct DataFunctionSymbol {
         term: ATerm,
     }
 
     impl DataFunctionSymbol {
-        #[mcrl2_ignore]
-        pub fn new(tp: &mut TermPool, name: &str) -> DataFunctionSymbol {
-            DataFunctionSymbol {
-                term: tp.create_with(|| mcrl2_sys::data::ffi::create_data_function_symbol(name.to_string())),
-            }
+        #[mcrl3_ignore]
+        pub fn new(name: &str) -> DataFunctionSymbol {
+            DEFAULT_SYMBOLS.with_borrow(|ds| {
+                DataFunctionSymbol {
+                    term: ATerm::constant(&ds.data_function_symbol),
+                }
+            })
         }
 
         /// Returns the sort of the function symbol.
@@ -169,7 +125,7 @@ mod inner {
         /// Returns the name of the function symbol
         pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
+            unsafe { std::mem::transmute(self.term.arg(0).symbol().name()) }
         }
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
@@ -179,7 +135,8 @@ mod inner {
                 "term {} is not a data function symbol",
                 self.term
             );
-            unsafe { ffi::get_data_function_symbol_index(self.term.get()) }
+
+            get_data_function_symbol_index(&self.term)
         }
     }
 
@@ -193,17 +150,17 @@ mod inner {
         }
     }
 
-    #[mcrl2_term(is_data_variable)]
+    #[mcrl3_term(is_data_variable)]
     pub struct DataVariable {
         term: ATerm,
     }
 
     impl DataVariable {
         /// Create a new untyped variable with the given name.
-        #[mcrl2_ignore]
+        #[mcrl3_ignore]
         pub fn new(tp: &mut TermPool, name: &str) -> DataVariable {
             DataVariable {
-                term: tp.create_with(|| mcrl2_sys::data::ffi::create_data_variable(name.to_string())),
+                term: tp.create_with(|| mcrl3_sys::data::ffi::create_data_variable(name.to_string())),
             }
         }
 
@@ -211,7 +168,7 @@ mod inner {
         pub fn with_sort(tp: &mut TermPool, name: &str, sort: &SortExpressionRef<'_>) -> DataVariable {
             DataVariable {
                 term: tp.create_with(|| unsafe {
-                    mcrl2_sys::data::ffi::create_sorted_data_variable(name.to_string(), sort.term.get())
+                    mcrl3_sys::data::ffi::create_sorted_data_variable(name.to_string(), sort.term.get())
                 }),
             }
         }
@@ -219,7 +176,7 @@ mod inner {
         /// Returns the name of the variable.
         pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
+            unsafe { std::mem::transmute(self.term.arg(0).symbol().name()) }
         }
 
         /// Returns the sort of the variable.
@@ -234,20 +191,21 @@ mod inner {
         }
     }
 
-    #[mcrl2_term(is_data_application)]
+    #[mcrl3_term(is_data_application)]
     pub struct DataApplication {
         term: ATerm,
     }
 
     impl DataApplication {
-        #[mcrl2_ignore]
+        #[mcrl3_ignore]
         pub fn new<'a, 'b>(
-            tp: &mut TermPool,
             head: &impl Borrow<ATermRef<'a>>,
             arguments: &[impl Borrow<ATermRef<'b>>],
         ) -> DataApplication {
-            DataApplication {
-                term: tp.create_data_application(head, arguments),
+            DEFAULT_SYMBOLS.with_borrow(|ds| {
+                DataApplication {
+                    term: ATerm::with_args(ds. head, arguments),
+                }
             }
         }
 
@@ -294,7 +252,7 @@ mod inner {
         }
     }
 
-    #[mcrl2_term(is_data_machine_number)]
+    #[mcrl3_term(is_data_machine_number)]
     struct MachineNumber {
         pub term: ATerm,
     }
@@ -312,21 +270,21 @@ mod inner {
         }
     }
 
-    #[mcrl2_ignore]
+    #[mcrl3_ignore]
     impl From<DataFunctionSymbol> for DataExpression {
         fn from(value: DataFunctionSymbol) -> Self {
             value.term.into()
         }
     }
 
-    #[mcrl2_ignore]
+    #[mcrl3_ignore]
     impl From<DataApplication> for DataExpression {
         fn from(value: DataApplication) -> Self {
             value.term.into()
         }
     }
 
-    #[mcrl2_ignore]
+    #[mcrl3_ignore]
     impl From<DataVariable> for DataExpression {
         fn from(value: DataVariable) -> Self {
             value.term.into()
@@ -338,34 +296,30 @@ pub use inner::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::aterm::ATerm;
-    use crate::aterm::TermPool;
-    use crate::data::is_data_application;
-    use crate::data::DataApplication;
-    use crate::data::DataFunctionSymbol;
+    use mcrl3_aterm::ATerm;
+
+    use crate::is_data_application;
+    use crate::DataApplication;
+    use crate::DataFunctionSymbol;
 
     #[test]
     fn test_print() {
-        let mut tp = TermPool::new();
-
-        let a = DataFunctionSymbol::new(&mut tp, "a");
+        let a = DataFunctionSymbol::new("a");
         assert_eq!("a", format!("{}", a));
 
         // Check printing of data applications.
-        let f = DataFunctionSymbol::new(&mut tp, "f");
+        let f = DataFunctionSymbol::new("f");
         let a_term: ATerm = a.clone().into();
-        let appl = DataApplication::new(&mut tp, &f, &[a_term]);
+        let appl = DataApplication::new(&f, &[a_term]);
         assert_eq!("f(a)", format!("{}", appl));
     }
 
     #[test]
     fn test_recognizers() {
-        let mut tp = TermPool::new();
-
-        let a = DataFunctionSymbol::new(&mut tp, "a");
-        let f = DataFunctionSymbol::new(&mut tp, "f");
+        let a = DataFunctionSymbol::new("a");
+        let f = DataFunctionSymbol::new("f");
         let a_term: ATerm = a.clone().into();
-        let appl = DataApplication::new(&mut tp, &f, &[a_term]);
+        let appl = DataApplication::new(&f, &[a_term]);
 
         let term: ATerm = appl.into();
         assert!(is_data_application(&term));

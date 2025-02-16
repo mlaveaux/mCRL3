@@ -1,9 +1,9 @@
 use std::fmt;
 
 use itertools::Itertools;
-use mcrl2::data::is_data_variable;
-use mcrl2::data::DataVariable;
-use mcrl2::data::DataVariableRef;
+use mcrl3_data::is_data_variable;
+use mcrl3_data::DataVariable;
+use mcrl3_data::DataVariableRef;
 
 use crate::utilities::ExplicitPosition;
 use crate::utilities::PositionIndexed;

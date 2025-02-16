@@ -22,7 +22,7 @@
 //! timer.report().expect("Failed to write timing report");
 //! ```
 
-use crate::timer::Timer;
+use crate::timer::SimpleTimer;
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -37,7 +37,7 @@ pub struct ExecutionTimer {
     /// Output file path (empty for stderr)
     filename: String,
     /// Collection of timings by name
-    timings: BTreeMap<String, Timer>,
+    timings: BTreeMap<String, SimpleTimer>,
 }
 
 impl ExecutionTimer {
@@ -63,7 +63,7 @@ impl ExecutionTimer {
             );
         }
 
-        let mut timer = Timer::new();
+        let mut timer = SimpleTimer::new();
         timer.start();
         self.timings.insert(name, timer);
     }

@@ -78,7 +78,7 @@ impl ThreadTermPool {
         let root = self.protection_set.lock().protection_set.protect(term.index());
 
         // Return the protected term
-        ATerm::new(term.index(), root)
+        ATerm::new_interal(term.index(), root)
     }
 
 

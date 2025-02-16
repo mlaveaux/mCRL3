@@ -12,14 +12,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_term() {
-        let term = "f(a, b)";
-
-        let result = Mcrl2Parser::parse(Rule::TermSpec, term).unwrap();
-        print!("{}", result);
-    }
-
-    #[test]
     fn test_parse_ifthen() {
         let expr = "init a -> b -> c <> delta;";
 

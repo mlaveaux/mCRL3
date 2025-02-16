@@ -130,6 +130,8 @@ impl ATermRef<'_> {
 
     /// Returns the function of an ATermRef
     pub fn symbol(&self) -> SymbolRef<'_> {
+        self.require_valid();
+
         //GLOBAL_TERM_POOL.lock().get_head_symbol(self)
         unimplemented!();
     }
@@ -196,7 +198,7 @@ pub struct ATerm {
 impl ATerm {
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn new(term: usize, root: usize) -> ATerm {
+    pub(crate) fn new_interal(term: usize, root: usize) -> ATerm {
         ATerm {
             term: ATermRef::new(term),
             root,
@@ -205,9 +207,16 @@ impl ATerm {
     }
 
     /// Creates a new term using the pool
-    pub fn create<'a>(symbol: &SymbolRef<'_>, args: &Vec<ATermRef<'a>>) -> ATerm {
+    pub fn with_args<'a>(symbol: &SymbolRef<'_>, args: &Vec<ATermRef<'a>>) -> ATerm {
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
             tp.create_term(symbol, args)
+        })
+    }
+
+    /// Creates a new term using the pool
+    pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.create_constant(symbol)
         })
     }
 
