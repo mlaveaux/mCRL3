@@ -58,7 +58,7 @@ impl ThreadTermPool {
     }
 
     /// Create a term
-    pub fn create_term<'a>(&mut self, symbol: &SymbolRef<'_>, children: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
+    pub fn create<'a>(&mut self, symbol: &SymbolRef<'_>, children: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
         unimplemented!();
         // GLOBAL_TERM_POOL.lock().create_term(symbol, children, |index| {
         //     let protected = self.protect(&ATermRef::new(index));

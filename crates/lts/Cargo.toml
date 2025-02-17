@@ -8,9 +8,12 @@ edition.workspace = true
 mcrl3_utilities.workspace = true
 
 bumpalo.workspace = true
-rustc-hash.workspace = true
 log.workspace = true
 rand.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+streaming-iterator.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 test-log.workspace = true

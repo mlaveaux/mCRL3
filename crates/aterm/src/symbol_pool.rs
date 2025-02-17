@@ -66,7 +66,9 @@ impl SymbolPool {
 
     /// Returns borrow of the shared symbol from a SymbolRef
     pub fn get<'a>(&self, symbol: &'a SymbolRef<'_>) -> &'a SharedSymbol {
-        self.symbols.get(symbol.index()).unwrap()
+        unsafe { 
+            std::mem::transmute(self.symbols.get(symbol.index()).unwrap())
+        }
     }
 
     /// Check if the symbol is the default "Int" symbol

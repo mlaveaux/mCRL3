@@ -2994,7 +2994,7 @@ dependencies = [
  "log",
  "ltsgraph-lib",
  "mcrl3_gui",
- "mcrl3_io",
+ "mcrl3_lts",
  "rfd",
  "slint",
  "slint-build",
@@ -3009,7 +3009,6 @@ dependencies = [
  "cosmic-text",
  "glam",
  "log",
- "mcrl3_io",
  "mcrl3_lts",
  "mcrl3_unsafety",
  "rand 0.9.0",
@@ -3023,7 +3022,6 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
- "mcrl3_io",
  "mcrl3_lts",
  "mcrl3_reduction",
  "mcrl3_unsafety",
@@ -3123,6 +3121,7 @@ dependencies = [
  "env_logger",
  "log",
  "mcrl3_aterm",
+ "mcrl3_data",
  "mcrl3_rec-tests",
  "mcrl3_sabre",
  "mcrl3_unsafety",
@@ -3147,13 +3146,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcrl3_cache"
-version = "0.1.0"
-dependencies = [
- "hashbrown 0.15.2",
-]
-
-[[package]]
 name = "mcrl3_data"
 version = "0.1.0"
 dependencies = [
@@ -3169,24 +3161,6 @@ dependencies = [
  "log",
  "streaming-iterator",
  "winapi",
-]
-
-[[package]]
-name = "mcrl3_io"
-version = "0.1.0"
-dependencies = [
- "bitstream-io",
- "env_logger",
- "log",
- "mcrl3_lts",
- "mcrl3_reduction",
- "mcrl3_utilities",
- "regex",
- "rustc-hash 2.1.1",
- "streaming-iterator",
- "test-case",
- "test-log",
- "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -3209,8 +3183,11 @@ dependencies = [
  "log",
  "mcrl3_utilities",
  "rand 0.9.0",
+ "regex",
  "rustc-hash 2.1.1",
+ "streaming-iterator",
  "test-log",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -3226,6 +3203,7 @@ dependencies = [
 name = "mcrl3_number"
 version = "0.1.0"
 dependencies = [
+ "bitstream-io",
  "num",
  "once_cell",
 ]
@@ -3314,11 +3292,13 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "bitstream-io",
+ "hashbrown 0.15.2",
  "log",
  "once_cell",
  "rand 0.9.0",
  "regex",
  "rustc-hash 2.1.1",
+ "streaming-iterator",
  "thiserror 2.0.11",
 ]
 
@@ -4896,9 +4876,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.13.2"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+checksum = "7fcf8323ef1faaee30a44a340193b1ac6814fd9b7b4e88e9d4519a3e4abe1cfd"
 
 [[package]]
 name = "smithay-client-toolkit"

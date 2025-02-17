@@ -137,7 +137,7 @@ fn compute_repulsion_force(p1: &Vec3, p2: &Vec3, repulsion_strength: f32) -> Vec
 mod tests {
     use std::sync::Arc;
 
-    use mcrl3_io::io_aut::read_aut;
+    use mcrl3_lts::read_aut;
 
     use super::GraphLayout;
 

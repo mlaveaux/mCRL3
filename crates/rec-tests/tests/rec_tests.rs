@@ -1,17 +1,17 @@
-use mcrl2::data::DataExpression;
 use std::cell::RefCell;
 use std::rc::Rc;
+use mcrl3_aterm::ATerm;
 use test_case::test_case;
 
 use ahash::AHashSet;
 
-use mcrl2::aterm::TermPool;
-use rec_tests::load_REC_from_strings;
-use sabre::utilities::to_untyped_data_expression;
-use sabre::InnermostRewriter;
-use sabre::RewriteEngine;
-use sabre::RewriteSpecification;
-use sabre::SabreRewriter;
+use mcrl3_data::DataExpression;
+use mcrl3_rec_tests::load_REC_from_strings;
+use mcrl3_sabre::utilities::to_untyped_data_expression;
+use mcrl3_sabre::InnermostRewriter;
+use mcrl3_sabre::RewriteEngine;
+use mcrl3_sabre::RewriteSpecification;
+use mcrl3_sabre::SabreRewriter;
 
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr10.txt") ; "benchexpr10")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchsym10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchsym10.txt") ; "benchsym10")]
@@ -44,28 +44,27 @@ use sabre::SabreRewriter;
 #[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tricky.rec")], include_str!("snapshot/result_tricky.txt") ; "tricky")]
 fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
-    let tp = Rc::new(RefCell::new(TermPool::new()));
     let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
-        let (syntax_spec, syntax_terms) = load_REC_from_strings(&mut tp.borrow_mut(), &rec_files).unwrap();
-        let result = syntax_spec.to_rewrite_spec(&mut tp.borrow_mut());
+        let (syntax_spec, syntax_terms) = load_REC_from_strings(&rec_files).unwrap();
+        let result = syntax_spec.to_rewrite_spec();
         (
             result,
             syntax_terms
                 .iter()
-                .map(|t| to_untyped_data_expression(&mut tp.borrow_mut(), t, &AHashSet::new()))
+                .map(|t| to_untyped_data_expression(t, &AHashSet::new()))
                 .collect(),
         )
     };
 
     // Test Sabre rewriter
-    let mut sa = SabreRewriter::new(tp.clone(), &spec);
-    let mut inner = InnermostRewriter::new(tp.clone(), &spec);
+    let mut sa = SabreRewriter::new(&spec);
+    let mut inner = InnermostRewriter::new(&spec);
 
     let mut expected = expected_result.split('\n');
 
     for term in &terms {
-        let expected_term = tp.borrow_mut().from_string(expected.next().unwrap()).unwrap();
-        let expected_result = to_untyped_data_expression(&mut tp.borrow_mut(), &expected_term, &AHashSet::new());
+        let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
+        let expected_result = to_untyped_data_expression(&expected_term, &AHashSet::new());
 
         let result = inner.rewrite(term.clone());
         assert_eq!(

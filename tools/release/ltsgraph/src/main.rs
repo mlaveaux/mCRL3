@@ -27,7 +27,7 @@ use slint::SharedPixelBuffer;
 use ltsgraph_lib::GraphLayout;
 use ltsgraph_lib::Viewer;
 use mcrl3_gui::console;
-use mcrl3_io::io_aut::read_aut;
+use mcrl3_lts::read_aut;
 use pauseable_thread::PauseableThread;
 
 mod error_dialog;

@@ -307,7 +307,7 @@ impl Viewer {
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_io::io_aut::read_aut;
+    use mcrl3_lts::read_aut;
     use tiny_skia::Pixmap;
     use tiny_skia::PixmapMut;
 

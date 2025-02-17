@@ -1,15 +1,15 @@
 use std::fmt;
 
 use ahash::HashSet;
-use mcrl2::aterm::ATermRef;
-use mcrl2::data::is_data_application;
-use mcrl2::data::is_data_function_symbol;
-use mcrl2::data::is_data_variable;
-use mcrl2::data::DataExpressionRef;
-use mcrl2::data::DataFunctionSymbolRef;
-use mcrl2::data::DataVariableRef;
-use sabre::set_automaton::is_supported_rule;
-use sabre::RewriteSpecification;
+use mcrl3_aterm::ATermRef;
+use mcrl3_data::is_data_application;
+use mcrl3_data::is_data_function_symbol;
+use mcrl3_data::is_data_variable;
+use mcrl3_data::DataExpressionRef;
+use mcrl3_data::DataFunctionSymbolRef;
+use mcrl3_data::DataVariableRef;
+use mcrl3_sabre::set_automaton::is_supported_rule;
+use mcrl3_sabre::RewriteSpecification;
 
 /// Finds all data symbols in the term and adds them to the symbol index.
 fn find_variables(t: &DataExpressionRef<'_>, variables: &mut HashSet<String>) {
@@ -137,21 +137,5 @@ impl fmt::Display for TrsFormatter<'_> {
         writeln!(f, ")")?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use mcrl2::data::DataSpecification;
-
-    #[test]
-    fn test_convert_trs_format() {
-        // Although we do not check the output simply convert a concrete term rewrite system as test.
-        let spec = DataSpecification::new(include_str!("../../../examples/REC/mcrl2/benchsym20.dataspec")).unwrap();
-        let trs = RewriteSpecification::from(spec);
-
-        println!("{}", TrsFormatter::new(&trs));
     }
 }

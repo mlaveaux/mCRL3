@@ -3,14 +3,14 @@
 //!
 //! This crate does not use unsafe code.
 
-//#![forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 
-//mod strong_bisim_partition;
 mod incoming_transitions;
+mod io_aut;
 mod labelled_transition_system;
 mod random_lts;
 
-//pub use strong_bisim_partition::*;
 pub use incoming_transitions::*;
+pub use io_aut::*;
 pub use labelled_transition_system::*;
 pub use random_lts::*;

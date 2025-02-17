@@ -3,10 +3,12 @@ use std::rc::Rc;
 
 use log::info;
 use log::trace;
-use mcrl2::aterm::ATermRef;
-use mcrl2::aterm::TermPool;
-use mcrl2::data::DataExpression;
-use mcrl2::data::DataExpressionRef;
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::ThreadTermPool;
+use mcrl3_aterm::THREAD_TERM_POOL;
+use mcrl3_data::BoolSort;
+use mcrl3_data::DataExpression;
+use mcrl3_data::DataExpressionRef;
 
 use crate::matching::nonlinear::check_equivalence_classes;
 use crate::set_automaton::MatchAnnouncement;
@@ -37,7 +39,6 @@ pub struct RewritingStatistics {
 // A set automaton based rewrite engine described in  Mark Bouwman, Rick Erkens:
 // Term Rewriting Based On Set Automaton Matching. CoRR abs/2202.08687 (2022)
 pub struct SabreRewriter {
-    term_pool: Rc<RefCell<TermPool>>,
     automaton: SetAutomaton<AnnouncementSabre>,
 }
 
@@ -48,12 +49,10 @@ impl RewriteEngine for SabreRewriter {
 }
 
 impl SabreRewriter {
-    pub fn new(tp: Rc<RefCell<TermPool>>, spec: &RewriteSpecification) -> Self {
+    pub fn new(spec: &RewriteSpecification) -> Self {
         let automaton = SetAutomaton::new(spec, AnnouncementSabre::new, false);
 
-        info!("ATerm pool: {}", tp.borrow());
         SabreRewriter {
-            term_pool: tp.clone(),
             automaton,
         }
     }
@@ -62,8 +61,10 @@ impl SabreRewriter {
     pub fn stack_based_normalise(&mut self, t: DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let result =
-            SabreRewriter::stack_based_normalise_aux(&mut self.term_pool.borrow_mut(), &self.automaton, t, &mut stats);
+        let result = THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, t, &mut stats)
+        });
+        
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
@@ -74,7 +75,7 @@ impl SabreRewriter {
     /// The _aux function splits the [TermPool] pool and the [SetAutomaton] to make borrow checker happy.
     /// We can now mutate the term pool and read the state and transition information at the same time
     fn stack_based_normalise_aux(
-        tp: &mut TermPool,
+        tp: &mut ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         t: DataExpression,
         stats: &mut RewritingStatistics,
@@ -221,7 +222,7 @@ impl SabreRewriter {
 
     /// Apply a rewrite rule and prune back
     fn apply_rewrite_rule(
-        tp: &mut TermPool,
+        tp: &mut ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
@@ -254,7 +255,7 @@ impl SabreRewriter {
 
     /// Checks conditions and subterm equality of non-linear patterns.
     fn conditions_hold(
-        tp: &mut TermPool,
+        tp: &mut ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
@@ -270,7 +271,7 @@ impl SabreRewriter {
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {
                 let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, rhs, stats);
-                let lhs_normal = if &lhs == tp.true_term() {
+                let lhs_normal = if lhs == BoolSort::true_term() {
                     // TODO: Store the conditions in a better way. REC now uses a list of equalities while mCRL2 specifications have a simple condition.
                     lhs
                 } else {

@@ -1,16 +1,16 @@
-use std::error::Error;
 
+use pest_consume::Error;
 use pest_consume::match_nodes;
 use pest_derive::Parser;
 
 use crate::{ATerm, Symbol};
 
-type ParseResult<T> = std::result::Result<T, Error<Rule>>;
-type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
-
 #[derive(Parser)]
 #[grammar = "term_grammar.pest"]
 pub struct TermParser;
+
+type ParseResult<T> = std::result::Result<T, Error<Rule>>;
+type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 
 #[pest_consume::parser]
 impl TermParser {
@@ -19,13 +19,13 @@ impl TermParser {
     }
 
     fn Term(term: ParseNode) -> ATerm {
-        match_nodes!(term.into_children();
-            [Id(identifier), Term(t0), .., Term(tn)] => {
-                let symbol = Symbol::new(identifier, 0);
+        // match_nodes!(term.into_children();
+        //     [Id(identifier), Term(t0), .., Term(tn)] => {
+        //         let symbol = Symbol::new(identifier, 0);
 
-                Term::new(symbol, vec![t0, tn]);
-            }
-        );
+        //         Term::new(symbol, vec![t0, tn]);
+        //     }
+        // );
 
         unimplemented!();
     }

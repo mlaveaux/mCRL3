@@ -1,10 +1,7 @@
 use std::fmt;
 
 use itertools::Itertools;
-use mcrl2::aterm::ATerm;
-use mcrl2::data::BoolSort;
-use mcrl2::data::DataExpression;
-use mcrl2::data::DataSpecification;
+use mcrl3_data::DataExpression;
 
 /// A rewrite specification contains the bare info we need for rewriting (can be untyped).
 #[derive(Debug, Default, Clone)]
@@ -26,39 +23,6 @@ pub struct Rule {
     pub conditions: Vec<Condition>,
     pub lhs: DataExpression,
     pub rhs: DataExpression,
-}
-
-impl From<DataSpecification> for RewriteSpecification {
-    fn from(value: DataSpecification) -> Self {
-        let equations = value.equations();
-
-        // Convert the equations.
-        let mut rewrite_rules = vec![];
-        for equation in equations {
-            if *equation.condition == *BoolSort::true_term() {
-                // Ignore the condition if it is trivial.
-                rewrite_rules.push(Rule {
-                    conditions: vec![],
-                    lhs: equation.lhs,
-                    rhs: equation.rhs,
-                })
-            } else {
-                let t: ATerm = BoolSort::true_term().into();
-
-                rewrite_rules.push(Rule {
-                    conditions: vec![Condition {
-                        lhs: equation.condition,
-                        rhs: t.into(),
-                        equality: true,
-                    }],
-                    lhs: equation.lhs,
-                    rhs: equation.rhs,
-                })
-            }
-        }
-
-        RewriteSpecification { rewrite_rules }
-    }
 }
 
 impl fmt::Display for RewriteSpecification {

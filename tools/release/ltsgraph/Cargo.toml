@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 mcrl3_gui.workspace = true
-mcrl3_io.workspace = true
+mcrl3_lts.workspace = true
 ltsgraph-lib = { path = "./library" }
 
 anyhow.workspace = true

@@ -16,7 +16,7 @@ mod symbol;
 mod symbol_pool;
 mod thread_aterm_pool;
 mod parse_term;
-mod binary_io;
+mod aterm_int;
 
 pub use aterm::*;
 pub use aterm_builder::*;
@@ -28,4 +28,4 @@ pub use symbol::*;
 pub use symbol_pool::*;
 pub use thread_aterm_pool::*;
 pub use parse_term::*;
-pub use binary_io::*;
+pub use aterm_int::*;

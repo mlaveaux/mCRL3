@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 
-use mcrl3_aterm::{ATerm, ATermRef, Symbol};
+use mcrl3_aterm::{ATerm, ATermRef, Symbol, SymbolRef};
+
+use crate::DataExpression;
 
 thread_local! {
     pub static DEFAULT_SYMBOLS: RefCell<DefaultSymbols> = RefCell::new(DefaultSymbols::new());
@@ -40,7 +42,7 @@ impl DefaultSymbols {
     }
     
     pub fn is_sort_expression(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.sort_expression
+        term.get_head_symbol() == *self.sort_expression
     }
 
     pub fn is_bool_sort(&self, _term: &ATermRef<'_>) -> bool {
@@ -48,15 +50,15 @@ impl DefaultSymbols {
     }
 
     pub fn is_basic_sort(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.basic_sort
+        term.get_head_symbol() == *self.basic_sort
     }
 
     pub fn is_data_function_sort(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.function_sort
+        term.get_head_symbol() == *self.function_sort
     }
 
     pub fn is_data_variable(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.data_variable
+        term.get_head_symbol() == *self.data_variable
     }
 
     pub fn is_data_expression(&mut self, term: &ATermRef<'_>) -> bool {
@@ -70,31 +72,31 @@ impl DefaultSymbols {
     }
 
     pub fn is_data_function_symbol(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.data_function_symbol
+        term.get_head_symbol() == *self.data_function_symbol
     }
 
     pub fn is_data_machine_number(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.data_machine_number
+        term.get_head_symbol() == *self.data_machine_number
     }
 
     pub fn is_data_where_clause(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.data_where_clause
+        term.get_head_symbol() == *self.data_where_clause
     }
 
     pub fn is_data_abstraction(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.data_abstraction
+        term.get_head_symbol() == *self.data_abstraction
     }
 
     pub fn is_data_untyped_identifier(&self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *self.data_untyped_identifier
+        term.get_head_symbol() == *self.data_untyped_identifier
     }
 
     /// Returns true iff the given term is a data application.
     pub fn is_data_application(&mut self, term: &ATermRef<'_>) -> bool {
-        term.symbol() == *get_data_function_symbol_index(term.symbol().arity())
+        term.get_head_symbol() == *self.get_data_application_symbol(term.get_head_symbol().arity())
     }
 
-    pub fn get_data_function_symbol_index(&mut self, arity: usize) -> &SymbolRef<'_> {
+    pub fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
         // It can be that data_applications are created without create_data_application in the mcrl2 ffi.
         while self.data_appl.len() <= arity {
             let symbol = Symbol::new(

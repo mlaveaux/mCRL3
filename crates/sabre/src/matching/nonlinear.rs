@@ -89,9 +89,8 @@ impl fmt::Display for EquivalenceClass {
 #[cfg(test)]
 mod tests {
     use ahash::AHashSet;
-    use mcrl2::aterm::ATermRef;
-    use mcrl2::aterm::TermPool;
-    use mcrl2::data::DataVariable;
+    use mcrl3_aterm::{ATerm, ATermRef};
+    use mcrl3_data::DataVariable;
 
     use crate::test_utility::create_rewrite_rule;
     use crate::utilities::to_untyped_data_expression;
@@ -100,22 +99,21 @@ mod tests {
 
     #[test]
     fn test_derive_equivalence_classes() {
-        let mut tp = TermPool::new();
         let eq: Vec<EquivalenceClass> =
-            derive_equivalence_classes(&create_rewrite_rule(&mut tp, "f(x, h(x))", "result", &["x"]).unwrap());
+            derive_equivalence_classes(&create_rewrite_rule("f(x, h(x))", "result", &["x"]).unwrap());
 
         assert_eq!(
             eq,
             vec![EquivalenceClass {
-                variable: DataVariable::new(&mut tp, "x").into(),
+                variable: DataVariable::new("x").into(),
                 positions: vec![ExplicitPosition::new(&[2]), ExplicitPosition::new(&[3, 2])]
             },],
             "The resulting config stack is not as expected"
         );
 
         // Check the equivalence class for an example
-        let term = tp.from_string("f(a(b), h(a(b)))").unwrap();
-        let expression = to_untyped_data_expression(&mut tp, &term, &AHashSet::new());
+        let term = ATerm::from_string("f(a(b), h(a(b)))").unwrap();
+        let expression = to_untyped_data_expression(&term, &AHashSet::new());
 
         let t: &ATermRef<'_> = &expression;
         assert!(

@@ -36,10 +36,10 @@ quote = "1.0"
 rand = "0.9"
 regex = "1.0"
 rustc-hash = "2.1"
-smallvec = "1.13"
+smallvec = "1.14"
 static_assertions = "1.1"
 streaming-iterator = "0.1"
-syn = "2.0"
+syn = { version = "2.0", features = ["full"] }
 thiserror = "2.0"
 tikv-jemallocator = "0.6"
 
@@ -53,7 +53,7 @@ tiny-skia = "0.11"
 tobj = "4.0"
 tokio = { version = "1.41", features = ["rt", "macros"] }
 wgpu = "24.0"
-winapi = "0.3"
+winapi = { version = "0.3", features = ["consoleapi"] }
 
 # Only used for xtask
 duct = "0.13"
@@ -73,7 +73,6 @@ loom = { version = "0.7", features = ["checkpoint"] }
 mcrl3_aterm = { path = "crates/aterm" }
 mcrl3_data = { path = "crates/data" }
 mcrl3_gui = { path="crates/gui" }
-mcrl3_io = { path="crates/io" }
 mcrl3_ldd = { path="crates/ldd" }
 mcrl3_lts = { path="crates/lts" }
 mcrl3_macros = { path = "crates/macros" }

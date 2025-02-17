@@ -3,11 +3,14 @@ use std::rc::Rc;
 
 use log::info;
 use log::trace;
-use mcrl2::aterm::ATermRef;
-use mcrl2::aterm::TermPool;
-use mcrl2::data::DataApplication;
-use mcrl2::data::DataExpression;
-use mcrl2::data::DataExpressionRef;
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::ThreadTermPool;
+use mcrl3_aterm::THREAD_TERM_POOL;
+use mcrl3_data::true_term;
+use mcrl3_data::BoolSort;
+use mcrl3_data::DataApplication;
+use mcrl3_data::DataExpression;
+use mcrl3_data::DataExpressionRef;
 
 use crate::matching::conditions::extend_conditions;
 use crate::matching::conditions::EMACondition;
@@ -32,14 +35,17 @@ impl RewriteEngine for InnermostRewriter {
 
         trace!("input: {}", t);
 
-        let result = InnermostRewriter::rewrite_aux(
-            &mut self.tp.borrow_mut(),
-            &mut self.stack,
-            &mut self.builder,
-            &mut stats,
-            &self.apma,
-            t,
-        );
+        let result = THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            InnermostRewriter::rewrite_aux(
+                tp,
+                &mut self.stack,
+                &mut self.builder,
+                &mut stats,
+                &self.apma,
+                t,
+            )
+        });
+
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
@@ -49,13 +55,11 @@ impl RewriteEngine for InnermostRewriter {
 }
 
 impl InnermostRewriter {
-    pub fn new(tp: Rc<RefCell<TermPool>>, spec: &RewriteSpecification) -> InnermostRewriter {
+    pub fn new(spec: &RewriteSpecification) -> InnermostRewriter {
         let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);
 
-        info!("ATerm pool: {}", tp.borrow());
         InnermostRewriter {
             apma,
-            tp: tp.clone(),
             stack: InnermostStack::default(),
             builder: SCCTBuilder::new(),
         }
@@ -76,7 +80,7 @@ impl InnermostRewriter {
     ///     - Construct(arity, index, result):
     ///
     pub(crate) fn rewrite_aux(
-        tp: &mut TermPool,
+        tp: &mut ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut SCCTBuilder,
         stats: &mut RewritingStatistics,
@@ -138,7 +142,7 @@ impl InnermostRewriter {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::new(tp, &symbol, arguments).into()
+                            DataApplication::new(&symbol, arguments).into()
                         };
 
                         // Remove the arguments from the stack.
@@ -151,7 +155,7 @@ impl InnermostRewriter {
                                 trace!(
                                     "rewrite {} => {} using rule {}",
                                     term,
-                                    annotation.rhs_stack.evaluate(tp, &term),
+                                    annotation.rhs_stack.evaluate(&term),
                                     announcement.rule
                                 );
 
@@ -206,7 +210,7 @@ impl InnermostRewriter {
 
     /// Use the APMA to find a match for the given term.
     fn find_match<'a>(
-        tp: &mut TermPool,
+        tp: &mut ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut SCCTBuilder,
         stats: &mut RewritingStatistics,
@@ -250,7 +254,7 @@ impl InnermostRewriter {
 
     /// Checks whether the condition holds for given match announcement.
     fn check_conditions(
-        tp: &mut TermPool,
+        tp: &mut ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut SCCTBuilder,
         stats: &mut RewritingStatistics,
@@ -263,7 +267,7 @@ impl InnermostRewriter {
             let lhs: DataExpression = c.semi_compressed_lhs.evaluate_with(builder, t, tp).into();
 
             let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, rhs);
-            let lhs_normal = if &lhs == tp.true_term() {
+            let lhs_normal = if lhs == BoolSort::true_term() {
                 // TODO: Store the conditions in a better way. REC now uses a list of equalities while mCRL2 specifications have a simple condition.
                 lhs
             } else {
@@ -281,7 +285,6 @@ impl InnermostRewriter {
 
 /// Innermost Adaptive Pattern Matching Automaton (APMA) rewrite engine.
 pub struct InnermostRewriter {
-    tp: Rc<RefCell<TermPool>>,
     apma: SetAutomaton<AnnouncementInnermost>,
     stack: InnermostStack,
     builder: SCCTBuilder,
@@ -314,13 +317,12 @@ mod tests {
     use std::rc::Rc;
 
     use ahash::AHashSet;
-    use mcrl2::aterm::random_term;
-    use mcrl2::aterm::TermPool;
-
     use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
     use test_log::test;
+
+    use mcrl3_aterm::random_term;
 
     use crate::utilities::to_untyped_data_expression;
     use crate::InnermostRewriter;
@@ -329,23 +331,20 @@ mod tests {
 
     #[test]
     fn test_innermost_simple() {
-        let tp = Rc::new(RefCell::new(TermPool::new()));
-
         let spec = RewriteSpecification { rewrite_rules: vec![] };
-        let mut inner = InnermostRewriter::new(tp.clone(), &spec);
+        let mut inner = InnermostRewriter::new(&spec);
 
         let seed: u64 = rand::rng().random();
         println!("seed: {}", seed);
         let mut rng = StdRng::seed_from_u64(seed);
 
         let term = random_term(
-            &mut tp.borrow_mut(),
             &mut rng,
             &[("f".to_string(), 2)],
             &["a".to_string(), "b".to_string()],
             5,
         );
-        let term = to_untyped_data_expression(&mut tp.borrow_mut(), &term, &AHashSet::new());
+        let term = to_untyped_data_expression(&term, &AHashSet::new());
 
         assert_eq!(
             inner.rewrite(term.clone().into()),

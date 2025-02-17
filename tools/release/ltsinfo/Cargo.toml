@@ -8,7 +8,6 @@ edition.workspace = true
 measure-allocs = []
 
 [dependencies]
-mcrl3_io.workspace = true
 mcrl3_lts.workspace = true
 mcrl3_unsafety.workspace = true
 mcrl3_utilities.workspace = true

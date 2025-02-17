@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::utilities::ExplicitPosition;
-use mcrl2::data::is_data_variable;
-use mcrl2::data::DataVariable;
+use mcrl3_aterm::ThreadTermPool;
+use mcrl3_data::is_data_variable;
+use mcrl3_data::DataVariable;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::TermBuilder;
-use mcrl3_aterm::TermPool;
 use mcrl3_aterm::Yield;
 
 /// A SemiCompressedTermTree (SCTT) is a mix between a [ATerm] and a syntax tree and is used
@@ -59,7 +59,7 @@ impl SemiCompressedTermTree {
     /// evaluate will encounter an ExplicitNode and make two recursive calls to get the subterms.
     /// Both these recursive calls will return the term '0'.
     /// The term pool will be used to construct the term minus(0, 0).
-    pub fn evaluate_with<'a>(&'a self, builder: &mut SCCTBuilder, t: &ATermRef<'_>, tp: &mut TermPool) -> ATerm {
+    pub fn evaluate_with<'a>(&'a self, builder: &mut SCCTBuilder, t: &ATermRef<'_>, tp: &mut ThreadTermPool) -> ATerm {
         // TODO: Figure out if this can be done properly. This is safe because evaluate will always leave the
         // underlying vectors empty.
         let builder: &mut TermBuilder<&'a SemiCompressedTermTree, &'a Symbol> = unsafe { std::mem::transmute(builder) };
@@ -88,7 +88,7 @@ impl SemiCompressedTermTree {
     }
 
     /// The same as [evaluate_with], but allocates a [SCCTBuilder] internally.
-    pub fn evaluate(&self, t: &ATermRef<'_>, tp: &mut TermPool) -> ATerm {
+    pub fn evaluate(&self, t: &ATermRef<'_>, tp: &mut ThreadTermPool) -> ATerm {
         let mut builder = TermBuilder::<&SemiCompressedTermTree, &Symbol>::new();
 
         self.evaluate_with(&mut builder, t, tp)
@@ -183,8 +183,7 @@ pub fn create_var_map(t: &ATerm) -> HashMap<DataVariable, ExplicitPosition> {
 mod tests {
     use super::*;
     use ahash::AHashSet;
-    use mcrl2::aterm::apply;
-    use mcrl2::aterm::TermPool;
+    use mcrl3_aterm::{apply, THREAD_TERM_POOL};
 
     /// Converts a slice of static strings into a set of owned strings
     ///
@@ -195,21 +194,22 @@ mod tests {
     }
 
     /// Convert terms in variables to a [DataVariable].
-    pub fn convert_variables(tp: &mut TermPool, t: &ATerm, variables: &AHashSet<String>) -> ATerm {
-        apply(tp, t, &|tp, arg| {
-            if variables.contains(arg.get_head_symbol().name()) {
-                // Convert a constant variable, for example 'x', into an untyped variable.
-                Some(DataVariable::new(tp, &arg.get_head_symbol().name()).into())
-            } else {
-                None
-            }
+    pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            apply(tp, t, &|tp, arg| {
+                if variables.contains(arg.get_head_symbol().name()) {
+                    // Convert a constant variable, for example 'x', into an untyped variable.
+                    Some(DataVariable::new(&arg.get_head_symbol().name()).into())
+                } else {
+                    None
+                }
+            })
         })
     }
 
     #[test]
     fn test_constant() {
-        let mut tp = TermPool::new();
-        let t = tp.from_string("a").unwrap();
+        let t = ATerm::from_string("a").unwrap();
 
         let map = HashMap::new();
         let sctt = SemiCompressedTermTree::from_term(&t, &map);
@@ -218,8 +218,7 @@ mod tests {
 
     #[test]
     fn test_compressible() {
-        let mut tp = TermPool::new();
-        let t = tp.from_string("f(a,a)").unwrap();
+        let t = ATerm::from_string("f(a,a)").unwrap();
 
         let map = HashMap::new();
         let sctt = SemiCompressedTermTree::from_term(&t, &&map);
@@ -228,19 +227,18 @@ mod tests {
 
     #[test]
     fn test_not_compressible() {
-        let mut tp = TermPool::new();
         let t = {
-            let tmp = tp.from_string("f(x,x)").unwrap();
-            convert_variables(&mut tp, &tmp, &var_map(&["x"]))
+            let tmp = ATerm::from_string("f(x,x)").unwrap();
+            convert_variables(&tmp, &var_map(&["x"]))
         };
 
         let mut map = HashMap::new();
-        map.insert(DataVariable::new(&mut tp, "x"), ExplicitPosition::new(&[2]));
+        map.insert(DataVariable::new("x"), ExplicitPosition::new(&[2]));
 
         let sctt = SemiCompressedTermTree::from_term(&t, &map);
 
         let en = Explicit(ExplicitNode {
-            head: tp.create_symbol("f", 2),
+            head: Symbol::new("f", 2),
             children: vec![
                 Variable(ExplicitPosition::new(&[2])), // Note that both point to the second occurence of x.
                 Variable(ExplicitPosition::new(&[2])),
@@ -252,20 +250,19 @@ mod tests {
 
     #[test]
     fn test_partly_compressible() {
-        let mut tp = TermPool::new();
         let t = {
-            let tmp = tp.from_string("f(f(a,a),x)").unwrap();
-            convert_variables(&mut tp, &tmp, &var_map(&["x"]))
+            let tmp = ATerm::from_string("f(f(a,a),x)").unwrap();
+            convert_variables(&tmp, &var_map(&["x"]))
         };
-        let compressible = tp.from_string("f(a,a)").unwrap();
+        let compressible = ATerm::from_string("f(a,a)").unwrap();
 
         // Make a variable map with only x@2.
         let mut map = HashMap::new();
-        map.insert(DataVariable::new(&mut tp, "x"), ExplicitPosition::new(&[2]));
+        map.insert(DataVariable::new("x"), ExplicitPosition::new(&[2]));
 
         let sctt = SemiCompressedTermTree::from_term(&t, &map);
         let en = Explicit(ExplicitNode {
-            head: tp.create_symbol("f", 2),
+            head: Symbol::new("f", 2),
             children: vec![Compressed(compressible), Variable(ExplicitPosition::new(&[2]))],
         });
         assert_eq!(sctt, en);
@@ -273,31 +270,31 @@ mod tests {
 
     #[test]
     fn test_evaluation() {
-        let mut tp = TermPool::new();
         let t_rhs = {
-            let tmp = tp.from_string("f(f(a,a),x)").unwrap();
-            convert_variables(&mut tp, &tmp, &var_map(&["x"]))
+            let tmp = ATerm::from_string("f(f(a,a),x)").unwrap();
+            convert_variables(&tmp, &var_map(&["x"]))
         };
-        let t_lhs = tp.from_string("g(b)").unwrap();
+        let t_lhs = ATerm::from_string("g(b)").unwrap();
 
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
-        map.insert(DataVariable::new(&mut tp, "x"), ExplicitPosition::new(&[1]));
+        map.insert(DataVariable::new("x"), ExplicitPosition::new(&[1]));
 
         let sctt = SemiCompressedTermTree::from_term(&t_rhs, &map);
 
-        let t_expected = tp.from_string("f(f(a,a),b)").unwrap();
-        assert_eq!(sctt.evaluate(&t_lhs, &mut tp), t_expected);
+        let t_expected = ATerm::from_string("f(f(a,a),b)").unwrap();
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            assert_eq!(sctt.evaluate(&t_lhs, tp), t_expected);
+        });
     }
 
     #[test]
     fn test_create_varmap() {
-        let mut tp = TermPool::new();
         let t = {
-            let tmp = tp.from_string("f(x,x)").unwrap();
-            convert_variables(&mut tp, &tmp, &AHashSet::from([String::from("x")]))
+            let tmp = ATerm::from_string("f(x,x)").unwrap();
+            convert_variables(&tmp, &AHashSet::from([String::from("x")]))
         };
-        let x = DataVariable::new(&mut tp, "x");
+        let x = DataVariable::new("x");
 
         let map = create_var_map(&t);
         assert!(map.contains_key(&x));
@@ -305,15 +302,14 @@ mod tests {
 
     #[test]
     fn test_is_duplicating() {
-        let mut tp = TermPool::new();
         let t_rhs = {
-            let tmp = tp.from_string("f(x,x)").unwrap();
-            convert_variables(&mut tp, &tmp, &AHashSet::from([String::from("x")]))
+            let tmp = ATerm::from_string("f(x,x)").unwrap();
+            convert_variables(&tmp, &AHashSet::from([String::from("x")]))
         };
 
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
-        map.insert(DataVariable::new(&mut tp, "x"), ExplicitPosition::new(&[1]));
+        map.insert(DataVariable::new("x"), ExplicitPosition::new(&[1]));
 
         let sctt = SemiCompressedTermTree::from_term(&t_rhs, &map);
         assert!(sctt.contains_duplicate_var_references(), "This sctt is duplicating");

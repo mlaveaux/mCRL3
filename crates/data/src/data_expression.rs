@@ -125,7 +125,7 @@ mod inner {
         /// Returns the name of the function symbol
         pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).symbol().name()) }
+            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
         }
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
@@ -158,25 +158,23 @@ mod inner {
     impl DataVariable {
         /// Create a new untyped variable with the given name.
         #[mcrl3_ignore]
-        pub fn new(tp: &mut TermPool, name: &str) -> DataVariable {
-            DataVariable {
-                term: tp.create_with(|| mcrl3_sys::data::ffi::create_data_variable(name.to_string())),
-            }
+        pub fn new(name: &str) -> DataVariable {
+            DEFAULT_SYMBOLS.with_borrow(|ds| {
+                unimplemented!();
+            })
         }
 
         /// Create a variable with the given sort and name.
-        pub fn with_sort(tp: &mut TermPool, name: &str, sort: &SortExpressionRef<'_>) -> DataVariable {
-            DataVariable {
-                term: tp.create_with(|| unsafe {
-                    mcrl3_sys::data::ffi::create_sorted_data_variable(name.to_string(), sort.term.get())
-                }),
-            }
+        pub fn with_sort(name: &str, sort: &SortExpressionRef<'_>) -> DataVariable {
+            DEFAULT_SYMBOLS.with_borrow(|ds| {
+                unimplemented!();
+            })
         }
 
         /// Returns the name of the variable.
         pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).symbol().name()) }
+            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
         }
 
         /// Returns the sort of the variable.
@@ -203,10 +201,11 @@ mod inner {
             arguments: &[impl Borrow<ATermRef<'b>>],
         ) -> DataApplication {
             DEFAULT_SYMBOLS.with_borrow(|ds| {
-                DataApplication {
-                    term: ATerm::with_args(ds. head, arguments),
-                }
-            }
+                // DataApplication {
+                //     term: ATerm::with_args(ds.get_data_function_symbol_index(arguments.len()), head, arguments),
+                // }
+                unimplemented!();
+            })
         }
 
         /// Returns the head symbol a data application

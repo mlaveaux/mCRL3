@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
+use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -103,7 +104,7 @@ impl ATermRef<'_> {
     pub fn arg(&self, index: usize) -> ATermRef<'_> {
         self.require_valid();
         debug_assert!(
-            index < self.symbol().arity(),
+            index < self.get_head_symbol().arity(),
             "arg({index}) is not defined for term {:?}",
             self
         );
@@ -129,7 +130,7 @@ impl ATermRef<'_> {
     }
 
     /// Returns the function of an ATermRef
-    pub fn symbol(&self) -> SymbolRef<'_> {
+    pub fn get_head_symbol(&self) -> SymbolRef<'_> {
         self.require_valid();
 
         //GLOBAL_TERM_POOL.lock().get_head_symbol(self)
@@ -138,17 +139,17 @@ impl ATermRef<'_> {
 
     /// Returns true iff this is an aterm_list
     pub fn is_list(&self) -> bool {
-        GLOBAL_TERM_POOL.lock().symbol_pool().is_list(&self.symbol())
+        GLOBAL_TERM_POOL.lock().symbol_pool().is_list(&self.get_head_symbol())
     }
 
     /// Returns true iff this is the empty aterm_list
     pub fn is_empty_list(&self) -> bool {
-        GLOBAL_TERM_POOL.lock().symbol_pool().is_empty_list(&self.symbol())
+        GLOBAL_TERM_POOL.lock().symbol_pool().is_empty_list(&self.get_head_symbol())
     }
 
     /// Returns true iff this is a aterm_int
     pub fn is_int(&self) -> bool {
-        GLOBAL_TERM_POOL.lock().symbol_pool().is_int(&self.symbol())
+        GLOBAL_TERM_POOL.lock().symbol_pool().is_int(&self.get_head_symbol())
     }
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
@@ -196,20 +197,10 @@ pub struct ATerm {
 }
 
 impl ATerm {
-    /// Creates a new term from the given reference and protection set root
-    /// entry.
-    pub(crate) fn new_interal(term: usize, root: usize) -> ATerm {
-        ATerm {
-            term: ATermRef::new(term),
-            root,
-            _marker: PhantomData,
-        }
-    }
-
     /// Creates a new term using the pool
-    pub fn with_args<'a>(symbol: &SymbolRef<'_>, args: &Vec<ATermRef<'a>>) -> ATerm {
+    pub fn with_args<'a>(symbol: &SymbolRef<'_>, args: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            tp.create_term(symbol, args)
+            tp.create(symbol, args)
         })
     }
 
@@ -217,6 +208,12 @@ impl ATerm {
     pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
             tp.create_constant(symbol)
+        })
+    }
+
+    pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.from_string(s)
         })
     }
 
@@ -228,6 +225,16 @@ impl ATerm {
     /// Returns the term
     pub fn term(&self) -> usize {
         self.term.index()
+    }
+
+    /// Creates a new term from the given reference and protection set root
+    /// entry.
+    pub(crate) fn new_interal(term: usize, root: usize) -> ATerm {
+        ATerm {
+            term: ATermRef::new(term),
+            root,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -309,7 +316,7 @@ pub struct ATermArgs<'a> {
 
 impl<'a> ATermArgs<'a> {
     fn new(term: ATermRef<'a>) -> ATermArgs<'a> {
-        let arity = term.symbol().arity();
+        let arity = term.get_head_symbol().arity();
         ATermArgs { term, arity, index: 0 }
     }
 

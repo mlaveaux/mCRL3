@@ -4,9 +4,10 @@ use std::fmt;
 use ahash::AHashSet;
 use log::trace;
 
-use crate::aterm::ATerm;
+use crate::ATerm;
 use crate::Symbol;
 use crate::ThreadTermPool;
+use crate::THREAD_TERM_POOL;
 
 /// This can be used to construct a term from a given input of (inductive) type I,
 /// without using the system stack, i.e. recursion. See evaluate.
@@ -38,10 +39,10 @@ where
                         args.push(arg.protect());
                     }
 
-                    Ok(Yield::Construct(t.symbol().protect()))
+                    Ok(Yield::Construct(t.get_head_symbol().protect()))
                 }
             },
-            |tp, symbol, args| Ok(tp.create_term(&symbol, args)),
+            |tp, symbol, args| Ok(tp.create(&symbol, args)),
         )
         .unwrap()
 }
@@ -206,7 +207,6 @@ impl<I: fmt::Debug, C: fmt::Debug> fmt::Debug for Config<I, C> {
 /// iterations number of constructions, and uses chance_duplicates to choose the
 /// amount of subterms that are duplicated.
 pub fn random_term(
-    tp: &mut ThreadTermPool,
     rng: &mut impl rand::Rng,
     symbols: &[(String, usize)],
     constants: &[String],
@@ -216,11 +216,13 @@ pub fn random_term(
 
     debug_assert!(!constants.is_empty(), "We need constants to be able to create a term");
 
-    let mut subterms = AHashSet::<ATerm>::from_iter(constants.iter().map(|name| {
-        let symbol = tp.create_symbol(name, 0);
-        let a: &[ATerm] = &[];
-        tp.create_term(&symbol, a)
-    }));
+    let mut subterms = THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        AHashSet::<ATerm>::from_iter(constants.iter().map(|name| {
+            let symbol = tp.create_symbol(name, 0);
+            let a: &[ATerm] = &[];
+            tp.create(&symbol, a)
+        }))
+    });
 
     let mut result = ATerm::default();
     for _ in 0..iterations {
@@ -231,8 +233,8 @@ pub fn random_term(
             arguments.push(subterms.iter().choose(rng).unwrap().clone());
         }
 
-        let symbol = tp.create_symbol(symbol, *arity);
-        result = tp.create_term(&symbol, &arguments);
+        let symbol = Symbol::new(symbol, *arity);
+        result = ATerm::with_args(&symbol, &arguments);
 
         // Make this term available as another subterm that can be used.
         subterms.insert(result.clone());

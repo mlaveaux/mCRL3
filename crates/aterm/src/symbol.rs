@@ -69,7 +69,7 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn new(name: &str, arity: usize) -> Symbol {
+    pub fn new(name: impl Into<String>, arity: usize) -> Symbol {
         GLOBAL_TERM_POOL
             .lock()
             .symbol_pool_mut()

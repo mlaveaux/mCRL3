@@ -19,6 +19,8 @@ use crate::is_sort_expression;
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
+    use crate::{false_term, true_term, DataExpression};
+
     use super::*;
 
     #[mcrl3_term(is_bool_sort)]
@@ -29,16 +31,16 @@ mod inner {
     impl BoolSort {
         /// Returns the term representing true.
         pub fn true_term() -> DataExpression {
-            DataExpression::from(ATerm::from(true_term()))
+            DataExpression::from(true_term())
         }
 
         /// Returns the term representing false.
         pub fn false_term() -> DataExpression {
-            DataExpression::from(ATerm::from(false_term()))
+            DataExpression::from(false_term())
         }
     }
 
-    // #[mcrl3_term(is_sort_expression)]
+    #[mcrl3_term(is_sort_expression)]
     pub struct SortExpression {
         term: ATerm,
     }
@@ -47,7 +49,7 @@ mod inner {
         /// Returns the name of the sort.
         pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).symbol().name()) }
+            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
         }
 
         /// Returns true iff this is a basic sort
@@ -76,7 +78,7 @@ mod inner {
         /// Returns the name of the sort.
         pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).symbol().name()) }
+            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
         }
     }
 
@@ -98,14 +100,14 @@ mod inner {
         }
     }
 
-    // #[mcrl3_ignore]
+    #[mcrl3_ignore]
     impl From<SortExpression> for FunctionSort {
         fn from(sort: SortExpression) -> Self {
             Self { term: sort.term }
         }
     }
 
-    // #[mcrl3_ignore]
+    #[mcrl3_ignore]
     impl<'a> From<SortExpressionRef<'a>> for FunctionSortRef<'a> {
         fn from(sort: SortExpressionRef<'a>) -> Self {
             unsafe { std::mem::transmute(sort) }

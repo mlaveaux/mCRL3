@@ -14,6 +14,10 @@ mod protection_set;
 mod text_utility;
 mod timer;
 mod timing;
+mod fixed_cache_policy;
+mod fixed_size_cache;
+mod line_iterator;
+mod progress;
 
 pub use bitstream::*;
 pub use execution_timer::ExecutionTimer;
@@ -26,3 +30,7 @@ pub use protection_set::*;
 pub use text_utility::*;
 pub use timer::*;
 pub use timing::*;
+pub use fixed_cache_policy::*;
+pub use fixed_size_cache::*;
+pub use line_iterator::*;
+pub use progress::*;

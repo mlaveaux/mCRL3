@@ -1,9 +1,11 @@
 //! Module for storing positions of terms
 use core::fmt;
-use mcrl2::aterm::ATermRef;
+use std::collections::VecDeque;
+
+use mcrl3_aterm::ATermRef;
+
 use smallvec::smallvec;
 use smallvec::SmallVec;
-use std::collections::VecDeque;
 
 /// An ExplicitPosition stores a list of position indices. The index starts at 1.
 /// The subterm of term s(s(0)) at position 1.1 is 0.
@@ -125,23 +127,21 @@ impl<'a> Iterator for PositionIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use mcrl2::aterm::TermPool;
+    use mcrl3_aterm::ATerm;
 
     use super::*;
 
     #[test]
     fn test_get_position() {
-        let mut tp = TermPool::new();
-        let t = tp.from_string("f(g(a),b)").unwrap();
-        let expected = tp.from_string("a").unwrap();
+        let t = ATerm::from_string("f(g(a),b)").unwrap();
+        let expected = ATerm::from_string("a").unwrap();
 
         assert_eq!(t.get_position(&ExplicitPosition::new(&[1, 1])), expected.copy());
     }
 
     #[test]
     fn test_position_iterator() {
-        let mut tp = TermPool::new();
-        let t = tp.from_string("f(g(a),b)").unwrap();
+        let t = ATerm::from_string("f(g(a),b)").unwrap();
 
         for (term, pos) in PositionIterator::new(t.copy()) {
             assert_eq!(

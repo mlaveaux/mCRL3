@@ -1,19 +1,19 @@
 use std::fmt;
 
 use itertools::Itertools;
-use mcrl2::aterm::ATermRef;
-use mcrl2::aterm::Markable;
-use mcrl2::aterm::Protected;
-use mcrl2::aterm::Protector;
-use mcrl2::aterm::TermPool;
-use mcrl2::aterm::Todo;
-use mcrl2::data::is_data_expression;
-use mcrl2::data::is_data_machine_number;
-use mcrl2::data::is_data_variable;
-use mcrl2::data::DataApplication;
-use mcrl2::data::DataExpression;
-use mcrl2::data::DataExpressionRef;
-use mcrl2::data::DataFunctionSymbolRef;
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::Markable;
+use mcrl3_aterm::Protected;
+use mcrl3_aterm::Protector;
+use mcrl3_aterm::ThreadTermPool;
+use mcrl3_aterm::Marker;
+use mcrl3_data::is_data_expression;
+use mcrl3_data::is_data_machine_number;
+use mcrl3_data::is_data_variable;
+use mcrl3_data::DataApplication;
+use mcrl3_data::DataExpression;
+use mcrl3_data::DataExpressionRef;
+use mcrl3_data::DataFunctionSymbolRef;
 
 use crate::utilities::PositionIndexed;
 use crate::Rule;
@@ -132,10 +132,10 @@ pub enum Config {
 }
 
 impl Markable for Config {
-    fn mark(&self, todo: Todo<'_>) {
+    fn mark(&self, marker: &mut Marker) {
         if let Config::Construct(t, _, _) = self {
             let t: ATermRef<'_> = t.copy().into();
-            t.mark(todo);
+            t.mark(marker);
         }
     }
 
@@ -244,7 +244,7 @@ impl RHSStack {
     }
 
     /// Evaluate the rhs stack for the given term and returns the result.
-    pub fn evaluate(&self, tp: &mut TermPool, term: &DataExpression) -> DataExpression {
+    pub fn evaluate(&self, term: &DataExpression) -> DataExpression {
         let mut stack = InnermostStack::default();
         stack.terms.write().push(DataExpressionRef::default());
 
@@ -265,7 +265,7 @@ impl RHSStack {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::new(tp, &symbol.copy(), arguments).into()
+                            DataApplication::new(&symbol.copy(), arguments).into()
                         };
 
                         // Add the term on the stack.
@@ -329,8 +329,8 @@ impl Clone for RHSStack {
 mod tests {
     use super::*;
     use ahash::AHashSet;
-    use mcrl2::aterm::TermPool;
-    use mcrl2::data::DataFunctionSymbol;
+    use mcrl3_aterm::ATerm;
+    use mcrl3_data::DataFunctionSymbol;
 
     use crate::test_utility::create_rewrite_rule;
     use crate::utilities::to_untyped_data_expression;
@@ -339,20 +339,18 @@ mod tests {
 
     #[test]
     fn test_rhs_stack() {
-        let mut tp = TermPool::new();
-
         let rhs_stack =
-            RHSStack::new(&create_rewrite_rule(&mut tp, "fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
+            RHSStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
         let mut expected = Protected::new(vec![]);
 
         let mut write = expected.write();
-        let t = write.protect(&DataFunctionSymbol::new(&mut tp, "times").copy().into());
+        let t = write.protect(&DataFunctionSymbol::new("times").copy().into());
         write.push(Config::Construct(t.into(), 2, 0));
 
-        let t = write.protect(&DataFunctionSymbol::new(&mut tp, "s").copy().into());
+        let t = write.protect(&DataFunctionSymbol::new("s").copy().into());
         write.push(Config::Construct(t.into(), 1, 1));
 
-        let t = write.protect(&DataFunctionSymbol::new(&mut tp, "fact").copy().into());
+        let t = write.protect(&DataFunctionSymbol::new("fact").copy().into());
         write.push(Config::Construct(t.into(), 1, 2));
         drop(write);
 
@@ -365,14 +363,14 @@ mod tests {
         assert_eq!(rhs_stack.stack_size, 5, "The stack size does not match");
 
         // Test the evaluation
-        let lhs = tp.from_string("fact(s(a))").unwrap();
-        let lhs_expression = to_untyped_data_expression(&mut tp, &lhs, &AHashSet::new());
+        let lhs = ATerm::from_string("fact(s(a))").unwrap();
+        let lhs_expression = to_untyped_data_expression(&lhs, &AHashSet::new());
 
-        let rhs = tp.from_string("times(s(a), fact(a))").unwrap();
-        let rhs_expression = to_untyped_data_expression(&mut tp, &rhs, &AHashSet::new());
+        let rhs = ATerm::from_string("times(s(a), fact(a))").unwrap();
+        let rhs_expression = to_untyped_data_expression(&rhs, &AHashSet::new());
 
         assert_eq!(
-            rhs_stack.evaluate(&mut tp, &lhs_expression),
+            rhs_stack.evaluate(&lhs_expression),
             rhs_expression,
             "The rhs stack does not evaluate to the expected term"
         );
@@ -380,9 +378,7 @@ mod tests {
 
     #[test]
     fn test_rhs_stack_variable() {
-        let mut tp = TermPool::new();
-
-        let rhs = RHSStack::new(&create_rewrite_rule(&mut tp, "f(x)", "x", &["x"]).unwrap());
+        let rhs = RHSStack::new(&create_rewrite_rule("f(x)", "x", &["x"]).unwrap());
 
         // Check if the resulting construction succeeded.
         assert!(
