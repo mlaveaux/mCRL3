@@ -42,7 +42,7 @@ impl DefaultSymbols {
     }
     
     pub fn is_sort_expression(&self, term: &ATermRef<'_>) -> bool {
-        term.get_head_symbol() == *self.sort_expression
+        term.get_head_symbol() == self.sort_expression
     }
 
     pub fn is_bool_sort(&self, _term: &ATermRef<'_>) -> bool {

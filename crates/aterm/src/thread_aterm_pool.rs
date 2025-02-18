@@ -30,6 +30,9 @@ pub struct ThreadTermPool {
     gc_counter: usize,
     ///
     protection_set: Arc<Mutex<SharedTermProtection>>,
+    int_symbol: Symbol,
+    empty_list_symbol: Symbol,
+    list_symbol: Symbol,
     /// Thread local lock
     lock: BfSharedMutex<()>,
 }
@@ -38,38 +41,76 @@ impl ThreadTermPool {
     /// Creates a new thread-local term pool.
     pub fn new() -> Self {
         // Register protection sets with global pool
+        let mut tp = GLOBAL_TERM_POOL.lock();
         let protection_set =
-            GLOBAL_TERM_POOL.lock().register_thread_term_pool();
+            tp.register_thread_term_pool();
 
         Self {
-            protection_set,
             gc_counter: TEST_GC_INTERVAL,
             lock: BfSharedMutex::new(()),
+            int_symbol: tp.create_symbol("Int", 0, |index| {
+                Symbol::new_internal(index,protection_set.lock().symbol_protection_set.protect(index))
+            }),
+            list_symbol: tp.create_symbol("Int", 0, |index| {
+                Symbol::new_internal(index,protection_set.lock().symbol_protection_set.protect(index))
+            }),
+            empty_list_symbol: tp.create_symbol("Int", 0, |index| {
+                Symbol::new_internal(index, protection_set.lock().symbol_protection_set.protect(index))
+            }),
+            protection_set,
         }
     }
 
     pub fn create_constant<'a>(&mut self, symbol: &SymbolRef<'_>) -> ATerm {
-        unimplemented!();
-        // GLOBAL_TERM_POOL.lock().create_term(symbol, children, |index| {
-        //     let protected = self.protect(&ATermRef::new(index));
-
-        //     ATerm::new(protected.index(), protected.root())
-        // })
+        let t: [ATermRef<'a>; 0] = [];
+        GLOBAL_TERM_POOL.lock().create_term(symbol, &t, |index| {
+            self.protect(&ATermRef::new(index))
+        })
     }
 
     /// Create a term
     pub fn create<'a>(&mut self, symbol: &SymbolRef<'_>, children: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
-        unimplemented!();
-        // GLOBAL_TERM_POOL.lock().create_term(symbol, children, |index| {
-        //     let protected = self.protect(&ATermRef::new(index));
+        GLOBAL_TERM_POOL.lock().create_term(symbol, children, |index| {
+            self.protect(&ATermRef::new(index))
+        })
+    }
+    
+    /// Return the symbol of the SharedTerm for the given ATermRef
+    pub fn get_head_symbol<'a, 'b>(&'a self, term: &'a ATermRef<'b>) -> &'a SymbolRef<'b> 
+        where 'a: 'b
+    {
+        unsafe {
+            std::mem::transmute(GLOBAL_TERM_POOL.lock().get_head_symbol(term))
+        }
+    }
 
-        //     ATerm::new(protected.index(), protected.root())
-        // })
+    /// Return the i-th argument of the SharedTerm for the given ATermRef
+    pub fn get_argument<'a>(&'a self, term: &'a ATermRef<'a>, i: usize) -> &'a ATermRef<'a> {        
+        unsafe {
+            std::mem::transmute(GLOBAL_TERM_POOL.lock().get_argument(term, i))
+        }
+    }
+    
+    /// Return the symbol of the SharedTerm for the given ATermRef
+    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'_>) -> &'a str {
+        unsafe {
+            std::mem::transmute(GLOBAL_TERM_POOL.lock().symbol_name(symbol))
+        }
+    }
+
+    /// Return the i-th argument of the SharedTerm for the given ATermRef
+    pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
+        GLOBAL_TERM_POOL.lock().symbol_arity(symbol)
     }
 
     /// Create a function symbol
-    pub fn create_symbol(&mut self, name: &str, arity: usize) -> Symbol {
-        GLOBAL_TERM_POOL.lock().symbol_pool_mut().create(name, arity)
+    pub fn create_symbol(&mut self, name: impl Into<String>, arity: usize) -> Symbol {
+        GLOBAL_TERM_POOL.lock().create_symbol(name, arity, |index| {
+            let root = self.protection_set.lock().protection_set.protect(index);
+    
+            // Return the protected term
+            Symbol::new_internal(index, root)            
+        })
     }
 
     /// Protect the term by adding its index to the protection set
@@ -78,12 +119,11 @@ impl ThreadTermPool {
         let root = self.protection_set.lock().protection_set.protect(term.index());
 
         // Return the protected term
-        ATerm::new_interal(term.index(), root)
+        ATerm::new_internal(term.index(), root)
     }
 
-
     /// Unprotects a term from this thread's protection set.
-    pub fn unprotect(&mut self, term: &ATerm) {
+    pub fn drop(&mut self, term: &ATerm) {
         term.require_valid();
         
         trace!(
@@ -124,9 +164,35 @@ impl ThreadTermPool {
     pub fn lock_exclusive(&self) -> BfSharedMutexWriteGuard<()> {
         self.lock.write().unwrap()
     }
+    
+    /// Protects a symbol from garbage collection.
+    pub fn protect_symbol(&mut self, symbol: &SymbolRef<'_>) -> Symbol {
+        Symbol::new_internal(symbol.index(), self.protection_set.lock().symbol_protection_set.protect(symbol.index()))
+    }
 
+    /// Unprotects a symbol, allowing it to be garbage collected.
+    pub fn drop_symbol(&mut self, symbol: &mut Symbol) {
+        self.protection_set.lock().symbol_protection_set.unprotect(symbol.root());
+    }
+
+    /// Check if the symbol is the default "Int" symbol
+    pub fn is_int(&self, symbol: &SymbolRef<'_>) -> bool {
+        *self.int_symbol == *symbol
+    }
+
+    /// Check if the symbol is the default "List" symbol
+    pub fn is_list(&self, symbol: &SymbolRef<'_>) -> bool {
+        *self.list_symbol == *symbol
+    }
+
+    /// Check if the symbol is the default "[]" symbol
+    pub fn is_empty_list(&self, symbol: &SymbolRef<'_>) -> bool {
+        *self.empty_list_symbol == *symbol
+    }
+
+    /// Returns the index of the protection set.
     fn index(&self) -> usize {
-        0
+        self.protection_set.lock().index
     }
 }
 
@@ -152,7 +218,7 @@ mod tests {
                         //assert!(pool.protection_set.lock().protection_set.contains(&protected.root()));
 
                         // Unprotect
-                        pool.unprotect(&protected);
+                        pool.drop(&protected);
                         //assert!(!pool.protection_set.lock().protection_set.contains(&protected.root()));
                     });
                 });

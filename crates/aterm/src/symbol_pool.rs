@@ -9,22 +9,13 @@ use crate::SymbolRef;
 pub struct SymbolPool {
     /// Unique table of all function symbols
     symbols: IndexedSet<SharedSymbol>,
-    /// Protection set to prevent garbage collection of symbols
-    protection_set: ProtectionSet<usize>,
-}
-
-impl Default for SymbolPool {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl SymbolPool {
     /// Creates a new empty symbol pool.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut pool = Self {
             symbols: IndexedSet::new(),
-            protection_set: ProtectionSet::new(),
         };
 
         // Initialize built-in symbols
@@ -39,24 +30,27 @@ impl SymbolPool {
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create(&mut self, name: impl Into<String>, arity: usize) -> Symbol {
+    pub fn create<P>(&mut self, name: impl Into<String>, arity: usize, protect: P) -> Symbol 
+    where
+        P: FnOnce(usize) -> Symbol
+    {
         let name = name.into();
 
         // Get or create symbol index
         let index = self.symbols.insert(SharedSymbol::new(name, arity));
 
         // Return cloned symbol
-        Symbol::new_internal(index, self.protection_set.protect(index))
+        protect(index)
+    }
+    
+    /// Return the symbol of the SharedTerm for the given ATermRef
+    pub fn symbol_name<'a>(&'a self, symbol: &'a SymbolRef<'_>) -> &'a str {
+        self.symbols.get(symbol.index()).unwrap().name()
     }
 
-    /// Protects a symbol from garbage collection.
-    pub fn protect(&mut self, symbol: &SymbolRef<'_>) -> Symbol {
-        Symbol::new_internal(symbol.index(), self.protection_set.protect(symbol.index()))
-    }
-
-    /// Unprotects a symbol, allowing it to be garbage collected.
-    pub fn unprotect(&mut self, symbol: Symbol) {
-        self.protection_set.unprotect(symbol.root());
+    /// Return the i-th argument of the SharedTerm for the given ATermRef
+    pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
+        self.symbols.get(symbol.index()).unwrap().arity()
     }
 
     /// Returns the number of symbols in the pool.
@@ -69,21 +63,6 @@ impl SymbolPool {
         unsafe { 
             std::mem::transmute(self.symbols.get(symbol.index()).unwrap())
         }
-    }
-
-    /// Check if the symbol is the default "Int" symbol
-    pub fn is_int(&self, symbol: &SymbolRef<'_>) -> bool {
-        self.get(symbol).name() == "Int" && self.get(symbol).arity() == 1
-    }
-
-    /// Check if the symbol is the default "List" symbol
-    pub fn is_list(&self, symbol: &SymbolRef<'_>) -> bool {
-        self.get(symbol).name() == "List" && self.get(symbol).arity() == 2
-    }
-
-    /// Check if the symbol is the default "[]" symbol
-    pub fn is_empty_list(&self, symbol: &SymbolRef<'_>) -> bool {
-        self.get(symbol).name() == "[]" && self.get(symbol).arity() == 0
     }
 }
 
@@ -122,10 +101,8 @@ mod tests {
 
     #[test]
     fn test_symbol_sharing() {
-        let mut pool = SymbolPool::new();
-
-        let f1 = pool.create("f", 2);
-        let f2 = pool.create("f", 2);
+        let f1 = Symbol::new("f", 2);
+        let f2 = Symbol::new("f", 2);
 
         // Should be the same object
         assert_eq!(f1, f2);

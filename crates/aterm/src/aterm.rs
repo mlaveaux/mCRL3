@@ -130,26 +130,35 @@ impl ATermRef<'_> {
     }
 
     /// Returns the function of an ATermRef
-    pub fn get_head_symbol(&self) -> SymbolRef<'_> {
+    pub fn get_head_symbol(&self) -> &SymbolRef<'_> {
         self.require_valid();
 
-        //GLOBAL_TERM_POOL.lock().get_head_symbol(self)
-        unimplemented!();
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            unsafe {
+                std::mem::transmute(tp.get_head_symbol(self))
+            }
+        })
     }
 
     /// Returns true iff this is an aterm_list
     pub fn is_list(&self) -> bool {
-        GLOBAL_TERM_POOL.lock().symbol_pool().is_list(&self.get_head_symbol())
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.is_list(self.get_head_symbol())
+        })
     }
 
     /// Returns true iff this is the empty aterm_list
     pub fn is_empty_list(&self) -> bool {
-        GLOBAL_TERM_POOL.lock().symbol_pool().is_empty_list(&self.get_head_symbol())
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.is_empty_list(self.get_head_symbol())
+        })
     }
 
     /// Returns true iff this is a aterm_int
     pub fn is_int(&self) -> bool {
-        GLOBAL_TERM_POOL.lock().symbol_pool().is_int(&self.get_head_symbol())
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.is_int(self.get_head_symbol())
+        })
     }
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
@@ -178,7 +187,13 @@ impl fmt::Debug for ATermRef<'_> {
         if self.is_default() {
             write!(f, "<default>")?;
         } else {
-            unimplemented!();
+            write!(f, "{}(", self.get_head_symbol())?;
+
+            for arg in self.arguments() {
+                write!(f, "{}, ", arg)?;
+            }
+
+            write!(f, ")")?;
         }
 
         Ok(())
@@ -218,18 +233,13 @@ impl ATerm {
     }
 
     /// Returns the root of the term
-    pub fn root(&self) -> usize {
+    pub(crate) fn root(&self) -> usize {
         self.root
     }
-
-    /// Returns the term
-    pub fn term(&self) -> usize {
-        self.term.index()
-    }
-
+    
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn new_interal(term: usize, root: usize) -> ATerm {
+    pub(crate) fn new_internal(term: usize, root: usize) -> ATerm {
         ATerm {
             term: ATermRef::new(term),
             root,
@@ -242,7 +252,7 @@ impl Drop for ATerm {
     fn drop(&mut self) {
         if !self.is_default() {
             THREAD_TERM_POOL.with_borrow_mut(|tp| {
-                tp.unprotect(&self)
+                tp.drop(&self)
             })
         }
     }

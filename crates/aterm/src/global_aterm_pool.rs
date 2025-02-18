@@ -13,6 +13,7 @@ use mcrl3_utilities::ProtectionSet;
 use crate::ATerm;
 use crate::ATermRef;
 use crate::Markable;
+use crate::Symbol;
 use crate::SymbolPool;
 use crate::SymbolRef;
 
@@ -23,10 +24,12 @@ pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> =
 pub(crate) struct SharedTermProtection {    
     /// Protection set for terms
     pub(crate) protection_set: ProtectionSet<usize>,
+    /// Protection set to prevent garbage collection of symbols
+    pub(crate) symbol_protection_set: ProtectionSet<usize>,
     /// Protection set for containers
     pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
     /// Index in global pool's thread pools list
-    index: usize,
+    pub(crate) index: usize,
 }
 
 pub struct Marker {
@@ -72,13 +75,25 @@ impl GlobalTermPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn get_head_symbol(&self, term: &ATermRef<'_>) -> SymbolRef<'_> {
+    pub fn get_head_symbol<'a, 'b>(&'a self, term: &'a ATermRef<'b>) -> &'a SymbolRef<'b> 
+        where 'a: 'b
+    {
         self.terms.get(term.index()).unwrap().symbol()
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn get_argument(&self, term: &ATermRef<'_>, i: usize) -> ATermRef<'_> {
-        self.terms.get(term.index()).unwrap().arguments().get(i).unwrap().copy()
+    pub fn get_argument<'a>(&'a self, term: &ATermRef<'_>, i: usize) -> &'a ATermRef<'a> {
+        self.terms.get(term.index()).unwrap().arguments().get(i).unwrap()
+    }
+    
+    /// Return the symbol of the SharedTerm for the given ATermRef
+    pub fn symbol_name<'a>(&'a self, symbol: &'a SymbolRef<'_>) -> &'a str {
+        self.symbol_pool.symbol_name(symbol)
+    }
+
+    /// Return the i-th argument of the SharedTerm for the given ATermRef
+    pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
+        self.symbol_pool.symbol_arity(symbol)
     }
 
     /// Returns the number of terms in the pool.
@@ -89,16 +104,6 @@ impl GlobalTermPool {
     /// Returns the number of terms in the pool.
     pub fn capacity(&self) -> usize {
         self.terms.len()
-    }
-
-    /// Expose the symbol pool
-    pub fn symbol_pool(&self) -> &SymbolPool {
-        &self.symbol_pool
-    }
-
-    /// Expose the symbol pool as mutable
-    pub fn symbol_pool_mut(&mut self) -> &mut SymbolPool {
-        &mut self.symbol_pool
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
@@ -121,9 +126,8 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term<'a, I, P>(&'a mut self, symbol: &SymbolRef<'_>, args: &[I], protect: P) -> ATerm
+    pub fn create_term<'a, P>(&mut self, symbol: &SymbolRef<'_>, args: &[impl Borrow<ATermRef<'a>>], protect: P) -> ATerm
     where
-        I: Borrow<ATermRef<'a>>,
         P: FnOnce(usize) -> ATerm,
     {
         let shared_term = SharedTerm {
@@ -139,6 +143,14 @@ impl GlobalTermPool {
         protect(index)
     }
 
+    /// Create a function symbol
+    pub fn create_symbol<P>(&mut self, name: impl Into<String>, arity: usize, protect: P) -> Symbol 
+    where
+        P: FnOnce(usize) -> Symbol
+    {
+        self.symbol_pool.create(name, arity, protect)
+    }
+
     /// Registers a new thread term pool.
     pub fn register_thread_term_pool(
         &mut self,
@@ -146,6 +158,7 @@ impl GlobalTermPool {
     {
         let protection = Arc::new(Mutex::new(SharedTermProtection{
             protection_set: ProtectionSet::new(),
+            symbol_protection_set: ProtectionSet::new(),
             container_protection_set: ProtectionSet::new(),
             index: self.thread_pools.len(),
         }));
@@ -204,8 +217,8 @@ impl Clone for SharedTerm {
 }
 
 impl SharedTerm {
-    pub fn symbol(&self) -> SymbolRef<'_> {
-        self.symbol.copy()
+    pub fn symbol(&self) -> &SymbolRef<'_> {
+        &self.symbol
     }
 
     pub fn arguments(&self) -> &[ATermRef<'static>] {

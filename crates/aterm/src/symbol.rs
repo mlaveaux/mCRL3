@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
-
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::Hash;
@@ -8,7 +7,9 @@ use std::hash::Hasher;
 use std::ops::Deref;
 
 use crate::GLOBAL_TERM_POOL;
+use crate::THREAD_TERM_POOL;
 
+/// A reference to a function symbol in the term pool.
 #[derive(Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
     index: usize,
@@ -24,11 +25,14 @@ impl<'a> SymbolRef<'a> {
         }
     }
 
-    /// Protect the symbol from garbage collection
+    /// Protect the symbol from garbage collection.
     pub fn protect(&self) -> Symbol {
-        GLOBAL_TERM_POOL.lock().symbol_pool_mut().protect(self)
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.protect_symbol(self)
+        })
     }
 
+    /// Create a copy of the symbol reference.
     pub fn copy(&self) -> SymbolRef<'_> {
         SymbolRef::new(self.index)
     }
@@ -39,14 +43,18 @@ impl<'a> SymbolRef<'a> {
 }
 
 impl SymbolRef<'_> {
-    /// Obtain the symbol's name
+    /// Obtain the symbol's name.
     pub fn name(&self) -> &str {
-        GLOBAL_TERM_POOL.lock().symbol_pool().get(self).name()
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.symbol_name(self)
+        })
     }
 
-    /// Obtain the symbol's arity
+    /// Obtain the symbol's arity.
     pub fn arity(&self) -> usize {
-        GLOBAL_TERM_POOL.lock().symbol_pool().get(self).arity()
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.symbol_arity(self)
+        })
     }
 }
 
@@ -62,6 +70,7 @@ impl fmt::Debug for SymbolRef<'_> {
     }
 }
 
+/// A struct representing a function symbol with a name and arity.
 #[derive(Default)]
 pub struct Symbol {
     symbol: SymbolRef<'static>,
@@ -69,11 +78,11 @@ pub struct Symbol {
 }
 
 impl Symbol {
+    /// Create a new symbol with the given name and arity.
     pub fn new(name: impl Into<String>, arity: usize) -> Symbol {
-        GLOBAL_TERM_POOL
-            .lock()
-            .symbol_pool_mut()
-            .create(name, arity)
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.create_symbol(name, arity)
+        })
     }
 
     pub(crate) fn new_internal(index: usize, root: usize) -> Symbol {
@@ -83,10 +92,12 @@ impl Symbol {
         }
     }
 
+    /// Get the name of the symbol.
     pub fn name(&self) -> &str {
         self.symbol.name()
     }
 
+    /// Get the arity of the symbol.
     pub fn arity(&self) -> usize {
         self.symbol.arity()
     }
@@ -98,14 +109,14 @@ impl Symbol {
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        GLOBAL_TERM_POOL
-            .lock()
-            .symbol_pool_mut()
-            .unprotect(std::mem::take(self));
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.drop_symbol(self);
+        })
     }
 }
 
 impl Symbol {
+    /// Create a copy of the symbol reference.
     pub fn copy(&self) -> SymbolRef<'_> {
         self.symbol.copy()
     }

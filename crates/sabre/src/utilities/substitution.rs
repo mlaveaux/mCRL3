@@ -133,7 +133,7 @@ mod tests {
 
         // substitute the a for 0 in the term s(s(a))
         let result = THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            substitute(tp, &t, t0.clone(), &vec![1, 1]);
+            substitute(tp, &t, t0.clone(), &vec![1, 1])
         });
 
         // Check that indeed the new term as a 0 at position 1.1.
