@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 ahash.workspace = true
 bitstream-io.workspace = true
+env_logger.workspace = true
 hashbrown.workspace = true
 log.workspace = true
 once_cell.workspace = true

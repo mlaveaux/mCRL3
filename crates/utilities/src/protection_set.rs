@@ -55,6 +55,11 @@ impl<T> ProtectionSet<T> {
         }
     }
 
+    /// Returns whether the protection set contains the given index.
+    pub fn contains(&self, index: usize) -> bool {
+        matches!(self.roots[index], Entry::Filled(_))
+    }
+
     /// Protect the given root node to prevent garbage collection.
     pub fn protect(&mut self, object: T) -> usize {
         self.number_of_insertions += 1;

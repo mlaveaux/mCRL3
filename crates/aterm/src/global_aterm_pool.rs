@@ -32,13 +32,13 @@ pub(crate) struct SharedTermProtection {
     pub(crate) index: usize,
 }
 
-pub struct Marker {
-
+pub struct Marker<'a> {
+    marked: &'a mut Vec<bool>,
 }
 
-impl Marker {
-    pub fn mark(&self, term: &ATermRef<'_>) {
-        unimplemented!();
+impl Marker<'_> {
+    pub fn mark(&mut self, term: &ATermRef<'_>) {
+        self.marked[term.index()] = true;
     }
 }
 
@@ -61,6 +61,8 @@ pub(crate) struct GlobalTermPool {
     /// The thread-specific protection sets.
     thread_pools: Vec<Option<Arc<Mutex<SharedTermProtection>>>>,
 
+    marked: Vec<bool>,
+
     lock: BfSharedMutex<()>,
 }
 
@@ -71,6 +73,7 @@ impl GlobalTermPool {
             symbol_pool: SymbolPool::new(),
             thread_pools: Vec::new(),
             lock: BfSharedMutex::new(()),
+            marked: Vec::new(),
         }
     }
 
@@ -107,16 +110,17 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term_iter<'a, I, P>(&'a mut self, symbol: &SymbolRef<'_>, args: I, protect: P) -> ATerm
+    pub fn create_term_iter<'a, I, T, P>(&mut self, symbol: &SymbolRef<'_>, args: I, protect: P) -> ATerm
     where
-        I: IntoIterator<Item = ATermRef<'a>>,
+        I: IntoIterator<Item = T>,
+        T: Borrow<ATermRef<'a>>,
         P: FnOnce(usize) -> ATerm,
     {
         let shared_term = SharedTerm {
             symbol: SymbolRef::new(symbol.index()),
             arguments: args.into_iter().map(|t| {
                 unsafe {
-                    t.upgrade_unchecked()
+                    t.borrow().upgrade_unchecked()
                 }
             }).collect(),
         };
@@ -180,7 +184,9 @@ impl GlobalTermPool {
     fn collect_garbage(&mut self) {
         // Implement garbage collection logic here
         for pool in self.thread_pools.iter() {
-            let mut marker = Marker {};
+            let mut marker = Marker {
+                marked: &mut self.marked,
+            };
 
             if let Some(pool) = pool {
                 let pool = pool.lock();

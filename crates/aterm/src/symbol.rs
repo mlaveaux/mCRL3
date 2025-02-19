@@ -66,7 +66,7 @@ impl fmt::Display for SymbolRef<'_> {
 
 impl fmt::Debug for SymbolRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!();
+        write!(f, "{}", self.name())
     }
 }
 
@@ -109,9 +109,11 @@ impl Symbol {
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            tp.drop_symbol(self);
-        })
+        if self.index != 0 {
+            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+                tp.drop_symbol(self);
+            })
+        }
     }
 }
 

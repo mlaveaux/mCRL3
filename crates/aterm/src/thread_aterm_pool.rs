@@ -3,6 +3,7 @@ use mcrl3_sharedmutex::BfSharedMutex;
 use mcrl3_sharedmutex::BfSharedMutexReadGuard;
 use mcrl3_sharedmutex::BfSharedMutexWriteGuard;
 use parking_lot::Mutex;
+use pest_consume::Parser;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::error::Error;
@@ -11,10 +12,13 @@ use std::sync::Arc;
 use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
+use crate::parse_term;
 use crate::Markable;
+use crate::Rule;
 use crate::SharedTermProtection;
 use crate::Symbol;
 use crate::SymbolRef;
+use crate::TermParser;
 
 /// The number of times before garbage collection is tested again.
 const TEST_GC_INTERVAL: usize = 100;
@@ -75,6 +79,16 @@ impl ThreadTermPool {
         })
     }
     
+    pub fn create_term_iter<'a, I, T>(&mut self, symbol: &SymbolRef<'_>, iter: I) -> ATerm
+    where
+        I: IntoIterator<Item = T>,
+        T: Borrow<ATermRef<'a>>,
+    {
+        GLOBAL_TERM_POOL.lock().create_term_iter(symbol, iter, |index| {
+            self.protect(&ATermRef::new(index))
+        })
+    }
+    
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'a, 'b>(&'a self, term: &'a ATermRef<'b>) -> &'a SymbolRef<'b> 
         where 'a: 'b
@@ -123,9 +137,7 @@ impl ThreadTermPool {
     }
 
     /// Unprotects a term from this thread's protection set.
-    pub fn drop(&mut self, term: &ATerm) {
-        term.require_valid();
-        
+    pub fn drop(&mut self, term: &ATerm) {        
         trace!(
             "Unprotected term {:?}, index {}, protection set {}",
             term,
@@ -151,8 +163,10 @@ impl ThreadTermPool {
 
     /// 
     pub fn from_string(&mut self, term: &str) -> Result<ATerm, Box<dyn Error>> {
-        unimplemented!();
+        let mut result = TermParser::parse(Rule::Term, term)?;
+        let root = result.next().unwrap();
 
+        Ok(TermParser::Term(root).unwrap())
     }
 
     /// Locks the thread local lock in shared mode.
@@ -196,6 +210,15 @@ impl ThreadTermPool {
     }
 }
 
+impl Drop for ThreadTermPool {
+    fn drop(&mut self) {
+        // Deregister the protection set from the global pool
+        std::mem::forget(std::mem::take(&mut self.empty_list_symbol));
+        std::mem::forget(std::mem::take(&mut self.list_symbol));
+        std::mem::forget(std::mem::take(&mut self.int_symbol));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,11 +238,11 @@ mod tests {
                         let protected = pool.protect(&term);
 
                         // Verify protection
-                        //assert!(pool.protection_set.lock().protection_set.contains(&protected.root()));
+                        assert!(pool.protection_set.lock().protection_set.contains(protected.root()));
 
                         // Unprotect
                         pool.drop(&protected);
-                        //assert!(!pool.protection_set.lock().protection_set.contains(&protected.root()));
+                        assert!(!pool.protection_set.lock().protection_set.contains(protected.root()));
                     });
                 });
             }

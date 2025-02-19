@@ -3292,6 +3292,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "bitstream-io",
+ "env_logger",
  "hashbrown 0.15.2",
  "log",
  "once_cell",

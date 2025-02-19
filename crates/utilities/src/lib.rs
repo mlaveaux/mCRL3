@@ -34,3 +34,7 @@ pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
 pub use line_iterator::*;
 pub use progress::*;
+
+pub fn test_logger() -> Result<(), log::SetLoggerError> {
+    env_logger::builder().is_test(true).try_init()
+}

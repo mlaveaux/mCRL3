@@ -14,19 +14,9 @@ pub struct SymbolPool {
 impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
-        let mut pool = Self {
+        Self {
             symbols: IndexedSet::new(),
-        };
-
-        // Initialize built-in symbols
-        // Create built-in symbols
-        let symbols = [("Int", 1), ("List", 2), ("[]", 0)];
-
-        for (name, arity) in symbols {
-            pool.symbols.insert(SharedSymbol::new(name, arity));
         }
-
-        pool
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
@@ -100,7 +90,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_symbol_sharing() {
+    fn test_symbol_sharing() {        
+        let _ = mcrl3_utilities::test_logger();
+
         let f1 = Symbol::new("f", 2);
         let f2 = Symbol::new("f", 2);
 

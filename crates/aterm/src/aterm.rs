@@ -167,7 +167,7 @@ impl ATermRef<'_> {
     }
 
     /// Panics if the term is default
-    pub fn require_valid(&self) {
+    fn require_valid(&self) {
         debug_assert!(
             !self.is_default(),
             "This function can only be called on valid terms, i.e., not default terms"
@@ -187,6 +187,7 @@ impl fmt::Debug for ATermRef<'_> {
         if self.is_default() {
             write!(f, "<default>")?;
         } else {
+            // TODO: This is recursive and will overflow the stack for large terms!            
             write!(f, "{}(", self.get_head_symbol())?;
 
             for arg in self.arguments() {
@@ -220,12 +221,24 @@ impl ATerm {
     }
 
     /// Creates a new term using the pool
+    pub fn with_iter<'a, I, T>(symbol: &SymbolRef<'_>, iter: I) -> ATerm 
+    where
+        I: IntoIterator<Item = T>,
+        T: Borrow<ATermRef<'a>>
+    {
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.create_term_iter(symbol, iter)
+        })
+    }
+
+    /// Creates a new term using the pool
     pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
             tp.create_constant(symbol)
         })
     }
 
+    /// Constructs a term from the given string.
     pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
             tp.from_string(s)
