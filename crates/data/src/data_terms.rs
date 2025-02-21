@@ -1,48 +1,47 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, mem::ManuallyDrop};
 
 use mcrl3_aterm::{ATerm, ATermRef, Symbol, SymbolRef};
 
-use crate::DataExpression;
-
 thread_local! {
-    pub static DEFAULT_SYMBOLS: RefCell<DefaultSymbols> = RefCell::new(DefaultSymbols::new());
+    pub static DATA_SYMBOLS: RefCell<DataSymbols> = RefCell::new(DataSymbols::new());
 }
 
-pub struct DefaultSymbols {
-    sort_expression: Symbol,
-    basic_sort: Symbol,
-    function_sort: Symbol,
+/// Defines default symbols and terms for data elements.
+pub struct DataSymbols {
+    sort_expression: ManuallyDrop<Symbol>,
+    basic_sort: ManuallyDrop<Symbol>,
+    function_sort: ManuallyDrop<Symbol>,
 
-    pub data_function_symbol: Symbol,
-    data_variable: Symbol,
-    data_machine_number: Symbol,
-    data_where_clause: Symbol,
-    data_abstraction: Symbol,
-    data_untyped_identifier: Symbol,
+    pub data_function_symbol: ManuallyDrop<Symbol>,
+    data_variable: ManuallyDrop<Symbol>,
+    data_machine_number: ManuallyDrop<Symbol>,
+    data_where_clause: ManuallyDrop<Symbol>,
+    data_abstraction: ManuallyDrop<Symbol>,
+    data_untyped_identifier: ManuallyDrop<Symbol>,
     
     data_appl: Vec<Symbol>,
 }
 
-impl DefaultSymbols {
+impl DataSymbols {
     fn new() -> Self {
         Self {
-            sort_expression: Symbol::new("SortExpression", 2),
-            basic_sort: Symbol::new("SortExpression", 2),
-            function_sort: Symbol::new("SortExpression", 2),
+            sort_expression: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            basic_sort: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            function_sort: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
 
-            data_function_symbol: Symbol::new("SortExpression", 2),
-            data_variable: Symbol::new("SortExpression", 2),
-            data_machine_number: Symbol::new("SortExpression", 2),
-            data_where_clause: Symbol::new("SortExpression", 2),
-            data_abstraction: Symbol::new("SortExpression", 2),
-            data_untyped_identifier: Symbol::new("SortExpression", 2),
+            data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 3)),
+            data_variable: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            data_machine_number: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            data_where_clause: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            data_abstraction: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            data_untyped_identifier: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
 
             data_appl: vec![],
         }
     }
     
     pub fn is_sort_expression(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.sort_expression
+        *term.get_head_symbol() == **self.sort_expression
     }
 
     pub fn is_bool_sort(&self, _term: &ATermRef<'_>) -> bool {
@@ -50,15 +49,15 @@ impl DefaultSymbols {
     }
 
     pub fn is_basic_sort(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.basic_sort
+        *term.get_head_symbol() == **self.basic_sort
     }
 
     pub fn is_data_function_sort(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.function_sort
+        *term.get_head_symbol() == **self.function_sort
     }
 
     pub fn is_data_variable(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.data_variable
+        *term.get_head_symbol() == **self.data_variable
     }
 
     pub fn is_data_expression(&mut self, term: &ATermRef<'_>) -> bool {
@@ -71,23 +70,23 @@ impl DefaultSymbols {
     }
 
     pub fn is_data_function_symbol(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.data_function_symbol
+        *term.get_head_symbol() == **self.data_function_symbol
     }
 
     pub fn is_data_machine_number(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.data_machine_number
+        *term.get_head_symbol() == **self.data_machine_number
     }
 
     pub fn is_data_where_clause(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.data_where_clause
+        *term.get_head_symbol() == **self.data_where_clause
     }
 
     pub fn is_data_abstraction(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.data_abstraction
+        *term.get_head_symbol() == **self.data_abstraction
     }
 
     pub fn is_data_untyped_identifier(&self, term: &ATermRef<'_>) -> bool {
-        *term.get_head_symbol() == *self.data_untyped_identifier
+        *term.get_head_symbol() == **self.data_untyped_identifier
     }
 
     /// Returns true iff the given term is a data application.
@@ -111,51 +110,51 @@ impl DefaultSymbols {
 }
 
 pub fn is_sort_expression(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_sort_expression(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_sort_expression(term))
 }
 
 pub fn is_bool_sort(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_bool_sort(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_bool_sort(term))
 }
 
 pub fn is_basic_sort(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_basic_sort(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_basic_sort(term))
 }
 
 pub fn is_data_function_sort(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_function_sort(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_function_sort(term))
 }
 
 pub fn is_data_variable(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_variable(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_variable(term))
 }
 
 pub fn is_data_expression(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow_mut(|ds| ds.is_data_expression(term))
+    DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_expression(term))
 }
 
 pub fn is_data_function_symbol(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_function_symbol(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_function_symbol(term))
 }
 
 pub fn is_data_machine_number(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_machine_number(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_machine_number(term))
 }
 
 pub fn is_data_where_clause(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_where_clause(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_where_clause(term))
 }
 
 pub fn is_data_abstraction(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_abstraction(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_abstraction(term))
 }
 
 pub fn is_data_untyped_identifier(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow(|ds| ds.is_data_untyped_identifier(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_untyped_identifier(term))
 }
 
 pub fn is_data_application(term: &ATermRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
+    DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
 }
 
 pub fn true_term() -> ATerm {
@@ -166,6 +165,6 @@ pub fn false_term() -> ATerm {
     unimplemented!()
 }
 
-pub fn  get_data_function_symbol_index(term: &ATermRef<'_>) -> usize {
-    0
+pub fn  get_data_function_symbol_index(_term: &ATermRef<'_>) -> usize {
+    unimplemented!()
 }

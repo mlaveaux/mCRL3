@@ -1,118 +1,166 @@
-use std::collections::HashSet;
-use std::fmt;
+use std::collections::{HashMap, HashSet};
+use mcrl3_utilities::ast::{SortExpression, Sort};
+use mcrl3_utilities::NumberPostfixGenerator;
 
-use mcrl3_syntax::SortExpression;
-
-/// A specification of sorts, containing user-defined sorts with their definitions.
+/// Represents a sort specification containing declarations of basic sorts and aliases.
 #[derive(Debug, Clone)]
 pub struct SortSpecification {
-    /// Mapping of sort names to their definitions
-    sorts: HashSet<SortDeclaration>,
-    /// Context sorts that are used but not defined
-    context_sorts: HashSet<SortExpression>,
-}
+    /// Basic sorts declared by the user
+    user_defined_sorts: Vec<String>,
+    
+    /// Sort aliases mapping names to expressions 
+    user_defined_aliases: HashMap<String, SortExpression>,
 
-/// Declaration of a user-defined sort.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct SortDeclaration {
-    /// Name of the sort
-    name: String,
-    /// Parameters for parameterized sorts
-    parameters: Vec<String>,
-    /// Optional sort expression defining the sort
-    definition: Option<SortExpression>,
+    /// Sorts required by the context but not explicitly defined
+    sorts_in_context: HashSet<SortExpression>,
+
+    /// Cache for normalized sorts (cleared when specification changes)
+    normalized_sorts: HashSet<SortExpression>,
+
+    /// Maps sorts to their normalized form (cleared when specification changes)  
+    normalized_aliases: HashMap<SortExpression, SortExpression>,
+
+    /// Generator for fresh sort names
+    fresh_name_generator: NumberPostfixGenerator,
 }
 
 impl SortSpecification {
-    /// Creates a new empty sort specification.
+    /// Creates a new empty sort specification
     pub fn new() -> Self {
-        Self {
-            sorts: HashSet::new(),
-            context_sorts: HashSet::new(),
+        let mut spec = Self {
+            user_defined_sorts: Vec::new(),
+            user_defined_aliases: HashMap::new(), 
+            sorts_in_context: HashSet::new(),
+            normalized_sorts: HashSet::new(),
+            normalized_aliases: HashMap::new(),
+            fresh_name_generator: NumberPostfixGenerator::new("S"),
+        };
+
+        // Add predefined sorts like Bool
+        spec.add_predefined_sorts();
+        spec
+    }
+
+    /// Adds a basic sort declaration
+    pub fn add_sort(&mut self, name: impl Into<String>) {
+        let name = name.into();
+        if !self.user_defined_sorts.contains(&name) {
+            self.user_defined_sorts.push(name);
+            self.clear_normalized_cache();
         }
     }
 
-    /// Creates a new sort specification with initial sorts and context sorts.
-    pub fn with_sorts_and_contexts(sorts: HashSet<SortDeclaration>, context_sorts: HashSet<SortExpression>) -> Self {
-        Self { sorts, context_sorts }
+    /// Adds a sort alias declaration
+    pub fn add_alias(&mut self, name: impl Into<String>, expr: SortExpression) {
+        let name = name.into();
+        self.user_defined_aliases.insert(name, expr);
+        self.clear_normalized_cache();
     }
 
-    /// Returns all declared sorts.
-    pub fn sorts(&self) -> &HashSet<SortDeclaration> {
-        &self.sorts
+    /// Adds a sort required by the context
+    pub fn add_context_sort(&mut self, sort: SortExpression) {
+        self.sorts_in_context.insert(sort);
+        self.clear_normalized_cache();
     }
 
-    /// Returns all context sorts.
-    pub fn context_sorts(&self) -> &HashSet<SortExpression> {
-        &self.context_sorts
+    /// Returns the set of all normalized sorts
+    pub fn sorts(&self) -> &HashSet<SortExpression> {
+        self.normalize_if_needed();
+        &self.normalized_sorts
     }
 
-    /// Finds all sort expressions used in this specification.
-    pub fn find_sort_expressions(&self) -> HashSet<SortExpression> {
-        let mut result = HashSet::new();
-
-        // Add context sorts
-        result.extend(self.context_sorts.clone());
-
-        // Add sorts from declarations
-        for decl in &self.sorts {
-            if let Some(def) = &decl.definition {
-                result.insert(def.clone());
-            }
-        }
-
-        result
-    }
-}
-
-impl SortDeclaration {
-    /// Creates a new sort declaration.
-    pub fn new(name: impl Into<String>, parameters: Vec<String>, definition: Option<SortExpression>) -> Self {
-        Self {
-            name: name.into(),
-            parameters,
-            definition,
-        }
+    /// Returns all user-defined sort names
+    pub fn user_defined_sorts(&self) -> &[String] {
+        &self.user_defined_sorts
     }
 
-    /// Returns the name of the sort.
-    pub fn name(&self) -> &str {
-        &self.name
+    /// Returns all user-defined aliases
+    pub fn user_defined_aliases(&self) -> &HashMap<String, SortExpression> {
+        &self.user_defined_aliases
     }
 
-    /// Returns the parameters of the sort.
-    pub fn parameters(&self) -> &[String] {
-        &self.parameters
+    /// Returns the normalized form of a sort expression
+    pub fn normalize(&self, sort: &SortExpression) -> SortExpression {
+        self.normalize_if_needed();
+        // Look up in cache or return original
+        self.normalized_aliases.get(sort)
+            .cloned()
+            .unwrap_or_else(|| sort.clone())
     }
 
-    /// Returns the definition of the sort, if any.
-    pub fn definition(&self) -> Option<&SortExpression> {
-        self.definition.as_ref()
-    }
-}
-
-impl Default for SortSpecification {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl fmt::Display for SortDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if !self.parameters.is_empty() {
-            write!(f, "(")?;
-            for (i, param) in self.parameters.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
+    /// Checks if a sort is certainly finite (has finite domain)
+    pub fn is_certainly_finite(&self, sort: &SortExpression) -> bool {
+        match sort {
+            SortExpression::Simple(Sort::Bool) => true,
+            SortExpression::Reference(name) => {
+                // Check if alias exists and recursively check referenced sort
+                if let Some(referenced) = self.user_defined_aliases.get(name) {
+                    self.is_certainly_finite(referenced)
+                } else {
+                    false
                 }
-                write!(f, "{}", param)?;
             }
-            write!(f, ")")?;
+            _ => false
         }
-        if let Some(def) = &self.definition {
-            write!(f, " = {}", def)?;
+    }
+
+    // Private helper methods
+    
+    fn add_predefined_sorts(&mut self) {
+        // Add Bool as predefined sort
+        self.add_context_sort(SortExpression::Simple(Sort::Bool));
+    }
+
+    fn clear_normalized_cache(&mut self) {
+        self.normalized_sorts.clear();
+        self.normalized_aliases.clear();
+    }
+
+    fn normalize_if_needed(&self) {
+        if self.normalized_sorts.is_empty() {
+            // Normalize all sorts...
+            // Actual implementation would rebuild normalized forms
         }
-        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_sort_management() {
+        let mut spec = SortSpecification::new();
+        
+        spec.add_sort("A");
+        spec.add_sort("B");
+        
+        assert!(spec.user_defined_sorts().contains(&"A".to_string()));
+        assert!(spec.user_defined_sorts().contains(&"B".to_string()));
+    }
+
+    #[test]
+    fn test_sort_aliases() {
+        let mut spec = SortSpecification::new();
+        
+        spec.add_sort("A");
+        spec.add_alias("B", SortExpression::Reference("A".to_string()));
+        
+        assert_eq!(spec.user_defined_aliases().get("B").unwrap(),
+                  &SortExpression::Reference("A".to_string()));
+    }
+
+    #[test]
+    fn test_predefined_sorts() {
+        let spec = SortSpecification::new();
+        assert!(spec.sorts().contains(&SortExpression::Simple(Sort::Bool)));
+    }
+
+    #[test]
+    fn test_certainly_finite() {
+        let spec = SortSpecification::new();
+        
+        assert!(spec.is_certainly_finite(&SortExpression::Simple(Sort::Bool)));
+        assert!(!spec.is_certainly_finite(&SortExpression::Simple(Sort::Real)));
     }
 }

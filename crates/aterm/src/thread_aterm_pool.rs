@@ -7,12 +7,12 @@ use pest_consume::Parser;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::error::Error;
+use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
 use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
-use crate::parse_term;
 use crate::Markable;
 use crate::Rule;
 use crate::SharedTermProtection;
@@ -20,49 +20,61 @@ use crate::Symbol;
 use crate::SymbolRef;
 use crate::TermParser;
 
-/// The number of times before garbage collection is tested again.
-const TEST_GC_INTERVAL: usize = 100;
-
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
-    pub static THREAD_TERM_POOL: RefCell<ThreadTermPool> = RefCell::new(ThreadTermPool::new());
+    pub(crate) static THREAD_TERM_POOL: RefCell<ThreadTermPool> = RefCell::new(ThreadTermPool::new());
 }
 
 /// Per-thread term pool managing local protection sets.
 pub struct ThreadTermPool {
-    /// Counter for garbage collection tests
-    gc_counter: usize,
     ///
     protection_set: Arc<Mutex<SharedTermProtection>>,
-    int_symbol: Symbol,
-    empty_list_symbol: Symbol,
-    list_symbol: Symbol,
+
+    /// These default symbols should not call their drop, will be removed when the protection set goes out of scope
+    int_symbol: ManuallyDrop<Symbol>,
+    empty_list_symbol: ManuallyDrop<Symbol>,
+    list_symbol: ManuallyDrop<Symbol>,
     /// Thread local lock
     lock: BfSharedMutex<()>,
 }
 
 impl ThreadTermPool {
     /// Creates a new thread-local term pool.
-    pub fn new() -> Self {
+    fn new() -> Self {
         // Register protection sets with global pool
         let mut tp = GLOBAL_TERM_POOL.lock();
         let protection_set =
             tp.register_thread_term_pool();
 
         Self {
-            gc_counter: TEST_GC_INTERVAL,
             lock: BfSharedMutex::new(()),
-            int_symbol: tp.create_symbol("Int", 0, |index| {
+            int_symbol: ManuallyDrop::new(tp.create_symbol("Int", 0, |index| {
                 Symbol::new_internal(index,protection_set.lock().symbol_protection_set.protect(index))
-            }),
-            list_symbol: tp.create_symbol("Int", 0, |index| {
+            })),
+            list_symbol: ManuallyDrop::new(tp.create_symbol("List", 2, |index| {
                 Symbol::new_internal(index,protection_set.lock().symbol_protection_set.protect(index))
-            }),
-            empty_list_symbol: tp.create_symbol("Int", 0, |index| {
+            })),
+            empty_list_symbol: ManuallyDrop::new(tp.create_symbol("[]", 0, |index| {
                 Symbol::new_internal(index, protection_set.lock().symbol_protection_set.protect(index))
-            }),
+            })),
             protection_set,
         }
+    }
+
+    pub fn reuse() -> Self {
+
+        
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            let protection_set =  tp.protection_set.clone();
+    
+            Self {
+                lock: BfSharedMutex::new(()),
+                int_symbol: ManuallyDrop::new(tp.create_symbol("Int", 0)),
+                list_symbol: ManuallyDrop::new(tp.create_symbol("List", 2)),
+                empty_list_symbol: ManuallyDrop::new(tp.create_symbol("[]", 0)),
+                protection_set,
+            }
+        })
     }
 
     pub fn create_constant<'a>(&mut self, symbol: &SymbolRef<'_>) -> ATerm {
@@ -163,7 +175,7 @@ impl ThreadTermPool {
 
     /// 
     pub fn from_string(&mut self, term: &str) -> Result<ATerm, Box<dyn Error>> {
-        let mut result = TermParser::parse(Rule::Term, term)?;
+        let mut result = TermParser::parse(Rule::TermSpec, term)?;
         let root = result.next().unwrap();
 
         Ok(TermParser::Term(root).unwrap())
@@ -191,31 +203,22 @@ impl ThreadTermPool {
 
     /// Check if the symbol is the default "Int" symbol
     pub fn is_int(&self, symbol: &SymbolRef<'_>) -> bool {
-        *self.int_symbol == *symbol
+        **self.int_symbol == *symbol
     }
 
     /// Check if the symbol is the default "List" symbol
     pub fn is_list(&self, symbol: &SymbolRef<'_>) -> bool {
-        *self.list_symbol == *symbol
+        **self.list_symbol == *symbol
     }
 
     /// Check if the symbol is the default "[]" symbol
     pub fn is_empty_list(&self, symbol: &SymbolRef<'_>) -> bool {
-        *self.empty_list_symbol == *symbol
+        **self.empty_list_symbol == *symbol
     }
 
     /// Returns the index of the protection set.
     fn index(&self) -> usize {
         self.protection_set.lock().index
-    }
-}
-
-impl Drop for ThreadTermPool {
-    fn drop(&mut self) {
-        // Deregister the protection set from the global pool
-        std::mem::forget(std::mem::take(&mut self.empty_list_symbol));
-        std::mem::forget(std::mem::take(&mut self.list_symbol));
-        std::mem::forget(std::mem::take(&mut self.int_symbol));
     }
 }
 
@@ -226,23 +229,27 @@ mod tests {
 
     #[test]
     fn test_thread_local_protection() {
+        let _ = mcrl3_utilities::test_logger();
+
         thread::scope(|scope| {
             for _ in 0..3 {
                 scope.spawn(|| {
-                    THREAD_TERM_POOL.with(|pool| {
-                        let mut pool = pool.borrow_mut();
+                    // Create and protect some terms
+                    let symbol = Symbol::new("test", 0);
+                    let term = ATerm::constant(&symbol);
+                    let protected = term.protect();
 
-                        // Create and protect some terms
-                        let symbol = pool.create_symbol("test", 0);
-                        let term = pool.create_constant(&symbol);
-                        let protected = pool.protect(&term);
+                    // Verify protection
+                    THREAD_TERM_POOL.with_borrow(|tp| {
+                        assert!(tp.protection_set.lock().protection_set.contains(protected.root()));
+                    });
 
-                        // Verify protection
-                        assert!(pool.protection_set.lock().protection_set.contains(protected.root()));
+                    // Unprotect
+                    let root = protected.root();
+                    drop(protected);
 
-                        // Unprotect
-                        pool.drop(&protected);
-                        assert!(!pool.protection_set.lock().protection_set.contains(protected.root()));
+                    THREAD_TERM_POOL.with_borrow(|tp| {
+                        assert!(!tp.protection_set.lock().protection_set.contains(root));
                     });
                 });
             }

@@ -5,7 +5,6 @@ use mcrl3_aterm::Protected;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Yield;
-use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataFunctionSymbol;
@@ -73,7 +72,7 @@ fn substitute_rec(
             }
         }
 
-        let result = tp.create(&t.get_head_symbol(), &write_args);
+        let result = tp.create(t.get_head_symbol(), &write_args);
         drop(write_args);
 
         // TODO: When write is dropped we check whether all terms where inserted, but this clear violates that assumption.
@@ -85,38 +84,37 @@ fn substitute_rec(
 /// Converts an [ATerm] to an untyped data expression.
 pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> DataExpression {
     let mut builder = TermBuilder::<ATerm, ATerm>::new();
+    let mut tp = ThreadTermPool::reuse();
 
-    THREAD_TERM_POOL.with_borrow_mut(|tp| {
-        builder
-            .evaluate(
-                tp,
-                t.clone(),
-                |tp, args, t| {
-                    debug_assert!(!t.is_int(), "Term cannot be an aterm_int, although not sure why");
+    builder
+        .evaluate(
+            &mut tp,
+            t.clone(),
+            |tp, args, t| {
+                debug_assert!(!t.is_int(), "Term cannot be an aterm_int, although not sure why");
 
-                    if variables.contains(t.get_head_symbol().name()) {
-                        // Convert a constant variable, for example 'x', into an untyped variable.
-                        Ok(Yield::Term(DataVariable::new(t.get_head_symbol().name()).into()))
-                    } else if t.get_head_symbol().arity() == 0 {
-                        Ok(Yield::Term(
-                            DataFunctionSymbol::new(t.get_head_symbol().name()).into(),
-                        ))
-                    } else {
-                        // This is a function symbol applied to a number of arguments (higher order terms not allowed)
-                        let head = DataFunctionSymbol::new(t.get_head_symbol().name());
+                if variables.contains(t.get_head_symbol().name()) {
+                    // Convert a constant variable, for example 'x', into an untyped variable.
+                    Ok(Yield::Term(DataVariable::new(t.get_head_symbol().name()).into()))
+                } else if t.get_head_symbol().arity() == 0 {
+                    Ok(Yield::Term(
+                        DataFunctionSymbol::new(t.get_head_symbol().name()).into(),
+                    ))
+                } else {
+                    // This is a function symbol applied to a number of arguments (higher order terms not allowed)
+                    let head = DataFunctionSymbol::new(t.get_head_symbol().name());
 
-                        for arg in t.arguments() {
-                            args.push(arg.protect());
-                        }
-
-                        Ok(Yield::Construct(head.into()))
+                    for arg in t.arguments() {
+                        args.push(arg.protect());
                     }
-                },
-                |tp, input, args| Ok(DataApplication::new(&input, args).into()),
-            )
-            .unwrap()
-            .into()
-    })
+
+                    Ok(Yield::Construct(head.into()))
+                }
+            },
+            |_tp, input, args| Ok(DataApplication::new(&input, args).into()),
+        )
+        .unwrap()
+        .into()
 }
 
 #[cfg(test)]
@@ -132,9 +130,8 @@ mod tests {
         let t0 = ATerm::from_string("0").unwrap();
 
         // substitute the a for 0 in the term s(s(a))
-        let result = THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            substitute(tp, &t, t0.clone(), &vec![1, 1])
-        });
+        let mut tp = ThreadTermPool::reuse();
+        let result = substitute(&mut tp, &t, t0.clone(), &vec![1, 1]);
 
         // Check that indeed the new term as a 0 at position 1.1.
         assert_eq!(t0, result.get_position(&ExplicitPosition::new(&vec![1, 1])).protect());

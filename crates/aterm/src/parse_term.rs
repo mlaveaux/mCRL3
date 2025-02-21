@@ -20,10 +20,18 @@ impl TermParser {
 
     pub fn Term(term: ParseNode) -> Result<ATerm, Error<Rule>> {
         match_nodes!(term.into_children();
-            [Id(identifier), Term(args)..] => {
-                let symbol = Symbol::new(identifier, args.clone().count());
+            [Id(identifier), Args(args)] => {
+                let symbol = Symbol::new(identifier, args.len());
 
                 Ok(ATerm::with_iter(&symbol, args))
+            }
+        )
+    }
+
+    pub fn Args(args: ParseNode) -> Result<Vec<ATerm>, Error<Rule>> {
+        match_nodes!(args.into_children();
+            [Term(term)..] => {
+                Ok(term.collect())
             }
         )
     }

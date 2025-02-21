@@ -22,7 +22,7 @@ use crate::SortExpressionRef;
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
-    use crate::{get_data_function_symbol_index, DEFAULT_SYMBOLS};
+    use crate::{get_data_function_symbol_index, DATA_SYMBOLS};
 
     use super::*;
 
@@ -109,8 +109,8 @@ mod inner {
 
     impl DataFunctionSymbol {
         #[mcrl3_ignore]
-        pub fn new(name: &str) -> DataFunctionSymbol {
-            DEFAULT_SYMBOLS.with_borrow(|ds| {
+        pub fn new(name: impl Into<String>) -> DataFunctionSymbol {
+            DATA_SYMBOLS.with_borrow(|ds| {
                 DataFunctionSymbol {
                     term: ATerm::constant(&ds.data_function_symbol),
                 }
@@ -159,14 +159,14 @@ mod inner {
         /// Create a new untyped variable with the given name.
         #[mcrl3_ignore]
         pub fn new(name: &str) -> DataVariable {
-            DEFAULT_SYMBOLS.with_borrow(|ds| {
+            DATA_SYMBOLS.with_borrow(|ds| {
                 unimplemented!();
             })
         }
 
         /// Create a variable with the given sort and name.
         pub fn with_sort(name: &str, sort: &SortExpressionRef<'_>) -> DataVariable {
-            DEFAULT_SYMBOLS.with_borrow(|ds| {
+            DATA_SYMBOLS.with_borrow(|ds| {
                 unimplemented!();
             })
         }
@@ -197,14 +197,21 @@ mod inner {
     impl DataApplication {
         #[mcrl3_ignore]
         pub fn new<'a, 'b>(
-            head: &impl Borrow<ATermRef<'a>>,
-            arguments: &[impl Borrow<ATermRef<'b>>],
-        ) -> DataApplication {
-            DEFAULT_SYMBOLS.with_borrow(|ds| {
-                // DataApplication {
-                //     term: ATerm::with_args(ds.get_data_function_symbol_index(arguments.len()), head, arguments),
-                // }
-                unimplemented!();
+            head: &'a impl Borrow<ATermRef<'b>>,
+            arguments: &'a [impl Borrow<ATermRef<'b>>],
+        ) -> DataApplication 
+            where 'b: 'a 
+        {
+            DATA_SYMBOLS.with_borrow_mut(|ds| {
+                let mut args: Vec<ATermRef<'a>> = Vec::new();
+                args.push(head.borrow().copy());
+                for arg in arguments {
+                    args.push(arg.borrow().copy());
+                }
+
+                DataApplication {
+                    term: ATerm::with_args(ds.get_data_application_symbol(arguments.len()), &args),
+                }
             })
         }
 

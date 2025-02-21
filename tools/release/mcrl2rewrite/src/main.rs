@@ -1,20 +1,10 @@
-use std::cell::RefCell;
 use std::error::Error;
-use std::fs::File;
-use std::fs::{self};
-use std::io::Write;
 use std::process::ExitCode;
-use std::rc::Rc;
 
 use clap::Parser;
 
-use log::info;
-use log::warn;
 use mcrl2rewrite::rewrite_rec;
 use mcrl2rewrite::Rewriter;
-use mcrl3_sabre::RewriteSpecification;
-
-use crate::trs_format::TrsFormatter;
 
 mod trs_format;
 

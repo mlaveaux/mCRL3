@@ -54,7 +54,7 @@ impl Mcrl2Parser {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
             [Id(identifier), SortExpr(sort)] => {
-                Ok(IdDecl { identifier: "".into(), sort, span: span.into() })
+                Ok(IdDecl { identifier, sort, span: span.into() })
             },
         )
     }
@@ -67,8 +67,8 @@ impl Mcrl2Parser {
         Ok(parse_sortexpr(expr.children().as_pairs().clone()))
     }
 
-    pub fn Id(identifier: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Reference(identifier.as_str().to_string()))
+    pub fn Id(identifier: ParseNode) -> ParseResult<String> {
+        Ok(identifier.as_str().to_string())
     }
 
     // Simple sorts.

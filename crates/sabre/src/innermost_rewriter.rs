@@ -1,12 +1,7 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use log::info;
 use log::trace;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ThreadTermPool;
-use mcrl3_aterm::THREAD_TERM_POOL;
-use mcrl3_data::true_term;
 use mcrl3_data::BoolSort;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
@@ -35,16 +30,16 @@ impl RewriteEngine for InnermostRewriter {
 
         trace!("input: {}", t);
 
-        let result = THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            InnermostRewriter::rewrite_aux(
-                tp,
-                &mut self.stack,
-                &mut self.builder,
-                &mut stats,
-                &self.apma,
-                t,
-            )
-        });
+        let mut tp = ThreadTermPool::reuse();
+
+        let result = InnermostRewriter::rewrite_aux(
+            &mut tp,
+            &mut self.stack,
+            &mut self.builder,
+            &mut stats,
+            &self.apma,
+            t,
+        );
 
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
@@ -313,9 +308,6 @@ impl AnnouncementInnermost {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     use ahash::AHashSet;
     use rand::rngs::StdRng;
     use rand::Rng;

@@ -6,7 +6,6 @@ use std::ops::DerefMut;
 use mcrl3_sharedmutex::BfSharedMutexReadGuard;
 use mcrl3_sharedmutex::BfSharedMutexWriteGuard;
 
-use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::THREAD_TERM_POOL;
 
 /// Provides access to the mCRL2 busy forbidden protocol, where there
@@ -33,7 +32,7 @@ impl<'a, T: ?Sized> BfTermPool<T> {
         unsafe {
             THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolRead {
                 mutex: self,
-                guard: std::mem::transmute(tp.lock_shared()),
+                _guard: std::mem::transmute(tp.lock_shared()),
                 _marker: Default::default(),
             })
         }
@@ -44,7 +43,7 @@ impl<'a, T: ?Sized> BfTermPool<T> {
         unsafe {
             THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolWrite {
                 mutex: self,
-                guard: std::mem::transmute(tp.lock_exclusive()),
+                _guard: std::mem::transmute(tp.lock_exclusive()),
                 _marker: Default::default(),
             })
         }
@@ -77,7 +76,7 @@ impl<'a, T: ?Sized> BfTermPool<T> {
 
 pub struct BfTermPoolRead<'a, T: ?Sized> {
     mutex: &'a BfTermPool<T>,
-    guard: BfSharedMutexReadGuard<'a, ()>,
+    _guard: BfSharedMutexReadGuard<'a, ()>,
     _marker: PhantomData<&'a ()>,
 }
 
@@ -92,7 +91,7 @@ impl<T: ?Sized> Deref for BfTermPoolRead<'_, T> {
 
 pub struct BfTermPoolWrite<'a, T: ?Sized> {
     mutex: &'a BfTermPool<T>,
-    guard: BfSharedMutexWriteGuard<'a, ()>,
+    _guard: BfSharedMutexWriteGuard<'a, ()>,
     _marker: PhantomData<&'a ()>,
 }
 

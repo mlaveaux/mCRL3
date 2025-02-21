@@ -5,7 +5,6 @@ use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Protector;
-use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Marker;
 use mcrl3_data::is_data_expression;
 use mcrl3_data::is_data_machine_number;

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::Hash;
@@ -19,9 +20,9 @@ pub struct ProbabilisticFraction {
 }
 
 thread_local! {
-    static BUFFER1: BigNatural = BigNatural::new();
-    static BUFFER2: BigNatural = BigNatural::new();
-    static BUFFER3: BigNatural = BigNatural::new();
+    static BUFFER1: RefCell<BigNatural> = RefCell::new(BigNatural::new());
+    static BUFFER2: RefCell<BigNatural> = RefCell::new(BigNatural::new());
+    static BUFFER3: RefCell<BigNatural> = RefCell::new(BigNatural::new());
 }
 
 impl ProbabilisticFraction {
@@ -102,9 +103,9 @@ impl ProbabilisticFraction {
 
     // Add new helper methods for fraction reduction
     fn remove_common_factors(num: &mut BigNatural, den: &mut BigNatural) {
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     let gcd = Self::greatest_common_divisor(num.clone(), den.clone());
                     if !gcd.is_number(1) {
                         let mut quotient = b1.clone();
@@ -129,9 +130,9 @@ impl ProbabilisticFraction {
 
 impl PartialEq for ProbabilisticFraction {
     fn eq(&self, other: &Self) -> bool {
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     // self.num * other.den == other.num * self.den
                     let mut left = b1.clone();
                     let mut right = b2.clone();
@@ -156,9 +157,9 @@ impl PartialOrd for ProbabilisticFraction {
 
 impl Ord for ProbabilisticFraction {
     fn cmp(&self, other: &Self) -> Ordering {
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     // Compare self.num * other.den <=> other.num * self.den
                     let mut left = b1.clone();
                     let mut right = b2.clone();
@@ -180,9 +181,9 @@ impl Add for &ProbabilisticFraction {
         debug_assert!(self.is_normalized(), "Left operand must be normalized");
         debug_assert!(other.is_normalized(), "Right operand must be normalized");
 
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     let mut num = b1.clone();
                     let mut den = b2.clone();
 
@@ -215,9 +216,9 @@ impl Sub for &ProbabilisticFraction {
         // Assert result will be non-negative
         assert!(self >= other, "Subtraction would result in negative fraction");
 
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     let mut num = b1.clone();
                     let mut den = b2.clone();
 
@@ -247,9 +248,9 @@ impl Mul for &ProbabilisticFraction {
         debug_assert!(self.is_normalized(), "Left operand must be normalized");
         debug_assert!(other.is_normalized(), "Right operand must be normalized");
 
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     let mut num = b1.clone();
                     let mut den = b2.clone();
 
@@ -276,9 +277,9 @@ impl Div for &ProbabilisticFraction {
         debug_assert!(other.is_normalized(), "Right operand must be normalized");
         assert!(!other.numerator.is_zero(), "Division by zero");
 
-        BUFFER1.with(|b1| {
-            BUFFER2.with(|b2| {
-                BUFFER3.with(|b3| {
+        BUFFER1.with_borrow(|b1| {
+            BUFFER2.with_borrow(|b2| {
+                BUFFER3.with_borrow(|b3| {
                     let mut num = b1.clone();
                     let mut den = b2.clone();
 

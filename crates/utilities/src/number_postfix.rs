@@ -34,25 +34,25 @@ pub struct NumberPostfixGenerator {
     /// Maps prefixes to their highest used index
     index: HashMap<String, usize>,
     /// Default prefix for generated identifiers
-    hint: String,
+    default: String,
 }
 
 impl NumberPostfixGenerator {
     /// Creates a new generator with the specified default hint.
-    pub fn new(hint: impl Into<String>) -> Self {
+    pub fn new(default: impl Into<String>) -> Self {
         Self {
             index: HashMap::new(),
-            hint: hint.into(),
+            default: default.into(),
         }
     }
 
     /// Creates a new generator with context from an iterator of strings.
-    pub fn with_context<I, S>(iter: I, hint: impl Into<String>) -> Self
+    pub fn with_context<I, S>(iter: I, default: impl Into<String>) -> Self
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let mut generator = Self::new(hint);
+        let mut generator = Self::new(default);
         generator.add_identifiers(iter);
         generator
     }
@@ -62,7 +62,7 @@ impl NumberPostfixGenerator {
         let id = id.as_ref();
 
         // Find last non-digit character
-        let (name, new_index) = match id.chars().rev().position(|c| !c.is_ascii_digit()) {
+        let (name, new_index) = match id.rfind(|c: char| !c.is_ascii_digit()) {
             Some(i) if i + 1 < id.len() => {
                 let (name, num) = id.split_at(i + 1);
                 let index = num.parse().unwrap_or(0);
@@ -86,7 +86,7 @@ impl NumberPostfixGenerator {
         }
     }
 
-    /// Generates a fresh identifier using the given hint.
+    /// Generates a fresh identifier using the given hint without numbers as prefix.
     /// If add_to_context is true, the new identifier is added to the context.
     pub fn generate(&mut self, hint: impl AsRef<str>, add_to_context: bool) -> String {
         let mut hint = hint.as_ref().to_string();
@@ -94,12 +94,11 @@ impl NumberPostfixGenerator {
         // Remove trailing digits
         if let Some(last) = hint.chars().last() {
             if last.is_ascii_digit() {
-                if let Some(i) = hint.chars().rev().position(|c| !c.is_ascii_digit()) {
+                if let Some(i) = hint.rfind(|c: char| !c.is_ascii_digit()) {
                     hint.truncate(i + 1);
                 }
             }
         }
-        println!("{}", hint);
 
         match self.index.get_mut(&hint) {
             Some(index) => {
@@ -122,18 +121,18 @@ impl NumberPostfixGenerator {
 
     /// Generates a fresh identifier using the default hint.
     pub fn generate_default(&mut self) -> String {
-        let hint = self.hint.clone();
+        let hint = self.default.clone();
         self.generate(hint, true)
     }
 
     /// Returns the default hint.
     pub fn hint(&self) -> &str {
-        &self.hint
+        &self.default
     }
 
     /// Sets the default hint.
     pub fn set_hint(&mut self, hint: impl Into<String>) {
-        self.hint = hint.into();
+        self.default = hint.into();
     }
 
     /// Clears all context.
@@ -154,35 +153,82 @@ mod tests {
 
     #[test]
     fn test_basic_generation() {
-        let mut gen = NumberPostfixGenerator::default();
-        assert_eq!(gen.generate_default(), "FRESH_VAR");
-        assert_eq!(gen.generate_default(), "FRESH_VAR1");
-        assert_eq!(gen.generate_default(), "FRESH_VAR2");
+        let mut generator = NumberPostfixGenerator::default();
+        assert_eq!(generator.generate_default(), "FRESH_VAR");
+        assert_eq!(generator.generate_default(), "FRESH_VAR1");
+        assert_eq!(generator.generate_default(), "FRESH_VAR2");
     }
 
     #[test]
     fn test_with_context() {
-        let mut gen = NumberPostfixGenerator::with_context(["x1", "x2", "y", "z3"], "x");
-        assert_eq!(gen.generate("x", true), "x3");
-        assert_eq!(gen.generate("y", true), "y1");
-        assert_eq!(gen.generate("z", true), "z4");
+        let mut generator = NumberPostfixGenerator::with_context(["x1", "x2", "y", "z3"], "x");
+        assert_eq!(generator.generate("x", true), "x3");
+        assert_eq!(generator.generate("y", true), "y1");
+        assert_eq!(generator.generate("z", true), "z4");
     }
 
     #[test]
     fn test_without_adding_to_context() {
-        let mut gen = NumberPostfixGenerator::default();
-        assert_eq!(gen.generate("test", false), "test");
-        assert_eq!(gen.generate("test", false), "test");
+        let mut generator = NumberPostfixGenerator::default();
+        assert_eq!(generator.generate("test", false), "test");
+        assert_eq!(generator.generate("test", false), "test");
 
-        gen.add_identifier("test1");
-        assert_eq!(gen.generate("test", false), "test2");
+        generator.add_identifier("test1");
+        assert_eq!(generator.generate("test", false), "test2");
     }
 
     #[test]
     fn test_with_suffix() {
-        let mut gen = NumberPostfixGenerator::default();
-        assert_eq!(gen.generate("test1", true), "test1");
-        assert_eq!(gen.generate("test1", true), "test11");
-        assert_eq!(gen.generate("test1", true), "test12");
+        let mut generator = NumberPostfixGenerator::default();
+        assert_eq!(generator.generate("test1", true), "test");
+        assert_eq!(generator.generate("test1", true), "test1");
+        assert_eq!(generator.generate("test1", true), "test2");
+    }
+
+    #[test]
+    fn test_boost_case() {
+        let mut generator = NumberPostfixGenerator::default();
+        generator.add_identifier("c6");
+        let mut s;
+
+        s = generator.generate("c", true);
+        assert_eq!(s, "c7");
+
+        let v = vec!["a1", "c012"];
+        generator.add_identifiers(v);
+
+        s = generator.generate("c", true);
+        assert_eq!(s, "c13");
+
+        s = generator.generate("a", true);
+        assert_eq!(s, "a2");
+
+        s = generator.generate("a", true);
+        assert_eq!(s, "a3");
+
+        s = generator.generate("a2", true);
+        assert_eq!(s, "a4");
+
+        s = generator.generate_default();
+        assert_eq!(s, "FRESH_VAR");
+
+        s = generator.generate_default();
+        assert_eq!(s, "FRESH_VAR1");
+
+        s = generator.generate("b", false);
+        assert_eq!(s, "b");
+
+        s = generator.generate("b", false);
+        assert_eq!(s, "b");
+
+        s = generator.generate("b", true);
+        assert_eq!(s, "b");
+
+        s = generator.generate("b", false);
+        assert_eq!(s, "b1");
+
+        generator.add_identifier("a0");
+        s = generator.generate("a2", true);
+        assert_eq!(s, "a5");
     }
 }

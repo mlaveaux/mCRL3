@@ -6,8 +6,8 @@ use std::str::FromStr;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::TermBuilder;
+use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Yield;
-use mcrl3_aterm::THREAD_TERM_POOL;
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
@@ -209,37 +209,36 @@ fn parse_term(pair: Pair<Rule>) -> Result<ATerm, Box<dyn Error>> {
 
     let mut builder = TermBuilder::<Pair<'_, Rule>, Symbol>::new();
 
-    THREAD_TERM_POOL.with_borrow_mut(|tp| {
-        Ok(builder
-            .evaluate(
-                tp,
-                pair,
-                |tp, stack, pair| {
-                    match pair.as_rule() {
-                        Rule::term => {
-                            let mut inner = pair.into_inner();
-                            let head_symbol = inner.next().unwrap().as_str();
-    
-                            // Queue applications for all the arguments.
-                            let mut arity = 0;
-                            if let Some(args) = inner.next() {
-                                for arg in args.into_inner() {
-                                    stack.push(arg);
-                                    arity += 1;
-                                }
+    let mut tp = ThreadTermPool::reuse();
+    Ok(builder
+        .evaluate(
+            &mut tp,
+            pair,
+            |tp, stack, pair| {
+                match pair.as_rule() {
+                    Rule::term => {
+                        let mut inner = pair.into_inner();
+                        let head_symbol = inner.next().unwrap().as_str();
+
+                        // Queue applications for all the arguments.
+                        let mut arity = 0;
+                        if let Some(args) = inner.next() {
+                            for arg in args.into_inner() {
+                                stack.push(arg);
+                                arity += 1;
                             }
-    
-                            Ok(Yield::Construct(tp.create_symbol(head_symbol, arity)))
                         }
-                        _ => {
-                            panic!("Should be unreachable!")
-                        }
+
+                        Ok(Yield::Construct(tp.create_symbol(head_symbol, arity)))
                     }
-                },
-                |tp, symbol, args| Ok(tp.create(&symbol, args)),
-            )
-            .unwrap())        
-    })
+                    _ => {
+                        panic!("Should be unreachable!")
+                    }
+                }
+            },
+            |tp, symbol, args| Ok(tp.create(&symbol, args)),
+        )
+        .unwrap())
 }
 
 // /Extracts data from parsed rewrite rule

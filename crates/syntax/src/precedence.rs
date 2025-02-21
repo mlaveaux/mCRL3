@@ -50,7 +50,7 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
     SORT_PRATT_PARSER
         .map_primary(|primary| {
             match primary.as_rule() {
-                Rule::Id => Mcrl2Parser::Id(Node::new(primary)).unwrap(),
+                Rule::Id => SortExpression::Reference(Mcrl2Parser::Id(Node::new(primary)).unwrap()),
                 Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)).unwrap(),
                 Rule::SortExprAtom => Mcrl2Parser::SortExprAtom(Node::new(primary)).unwrap(),
 

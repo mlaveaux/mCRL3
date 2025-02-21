@@ -183,7 +183,7 @@ pub fn create_var_map(t: &ATerm) -> HashMap<DataVariable, ExplicitPosition> {
 mod tests {
     use super::*;
     use ahash::AHashSet;
-    use mcrl3_aterm::{apply, THREAD_TERM_POOL};
+    use mcrl3_aterm::apply;
 
     /// Converts a slice of static strings into a set of owned strings
     ///
@@ -195,15 +195,15 @@ mod tests {
 
     /// Convert terms in variables to a [DataVariable].
     pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            apply(tp, t, &|tp, arg| {
-                if variables.contains(arg.get_head_symbol().name()) {
-                    // Convert a constant variable, for example 'x', into an untyped variable.
-                    Some(DataVariable::new(&arg.get_head_symbol().name()).into())
-                } else {
-                    None
-                }
-            })
+        let mut tp = ThreadTermPool::reuse();
+        
+        apply(&mut tp, t, &|tp, arg| {
+            if variables.contains(arg.get_head_symbol().name()) {
+                // Convert a constant variable, for example 'x', into an untyped variable.
+                Some(DataVariable::new(&arg.get_head_symbol().name()).into())
+            } else {
+                None
+            }
         })
     }
 
@@ -283,9 +283,8 @@ mod tests {
         let sctt = SemiCompressedTermTree::from_term(&t_rhs, &map);
 
         let t_expected = ATerm::from_string("f(f(a,a),b)").unwrap();
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            assert_eq!(sctt.evaluate(&t_lhs, tp), t_expected);
-        });
+        let mut tp = ThreadTermPool::reuse();
+        assert_eq!(sctt.evaluate(&t_lhs, &mut tp), t_expected);
     }
 
     #[test]
