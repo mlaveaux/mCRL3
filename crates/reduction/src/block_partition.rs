@@ -52,7 +52,7 @@ impl BlockPartition {
         block_index: usize,
         builder: &mut BlockPartitionBuilder,
         mut partitioner: F,
-    ) -> impl Iterator<Item = usize>
+    ) -> impl Iterator<Item = usize> + use<F>
     where
         F: FnMut(usize, &BlockPartition) -> usize,
     {

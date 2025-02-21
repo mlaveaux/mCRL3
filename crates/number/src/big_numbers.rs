@@ -46,7 +46,7 @@ impl BigNatural {
     }
 
     /// Sets the number to zero.
-    pub fn clear(&mut self) {
+    pub fn zero(&mut self) {
         self.digits.clear();
     }
 
@@ -58,6 +58,7 @@ impl BigNatural {
     // Helper functions for arithmetic operations
     fn add_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
         debug_assert!(*carry <= 1);
+
         // Use wrapping operations to handle overflow correctly
         let result = n1.wrapping_add(n2).wrapping_add(*carry);
         // Set carry to 1 if we had an overflow, 0 otherwise
@@ -72,7 +73,155 @@ impl BigNatural {
         } else {
             1
         };
+
         result
+    }
+
+    /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
+    pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self) {
+        assert!(!other.is_zero(), "Division by zero");
+
+        // Initialize results
+        *quotient = Self::new();
+        *remainder = self.clone();
+
+        // If dividend is smaller than divisor, quotient is 0
+        if self.digits.len() < other.digits.len() {
+            return;
+        }
+
+        // Handle single-digit division as a special case for efficiency
+        if self.digits.len() == 1 && other.digits.len() == 1 {
+            let (q, r) = Self::divide_single_number(self.digits[0], other.digits[0], 0);
+            if q > 0 {
+                quotient.digits.push(q);
+            }
+            if r > 0 {
+                remainder.digits.push(r);
+            }
+            return;
+        }
+
+        // Long division algorithm
+        let mut shift = self.digits.len() - other.digits.len();
+        let mut divisor = other.clone();
+
+        // Align divisor with dividend by adding leading zeros
+        for _ in 0..shift {
+            divisor.digits.insert(0, 0);
+        }
+
+        // Initialize quotient with proper size
+        quotient.digits = vec![0; shift + 1];
+
+        // Perform division by repeated subtraction
+        while shift > 0 {
+            while *remainder >= divisor {
+                remainder.subtract(&divisor);
+                quotient.digits[shift] += 1;
+            }
+            // Remove one leading zero and continue with next digit
+            divisor.digits.remove(0);
+            shift -= 1;
+        }
+
+        // Handle the last digit (no shift)
+        while *remainder >= *other {
+            remainder.subtract(other);
+            quotient.digits[0] += 1;
+        }
+
+        // Remove leading zeros from results
+        quotient.normalize();
+        remainder.normalize();
+    }
+
+    /// Subtracts another number from this one.
+    /// Assumes this number is larger than the other.
+    pub fn subtract(&mut self, other: &Self) {
+        assert!(*self >= *other, "Subtraction would result in negative number");
+
+        let mut carry = 0;
+        for i in 0..self.digits.len() {
+            let n2 = other.digits.get(i).copied().unwrap_or(0);
+            self.digits[i] = Self::subtract_single_number(self.digits[i], n2, &mut carry);
+        }
+
+        assert!(carry == 0, "Subtraction overflow");
+        self.normalize();
+    }
+
+    /// Multiplies this number by another.
+    pub fn multiply(&mut self, other: &Self) {
+        if self.is_zero() || other.is_zero() {
+            self.zero();
+            return;
+        }
+
+        let mut result = vec![0; self.digits.len() + other.digits.len()];
+
+        for (i, &n1) in self.digits.iter().enumerate() {
+            let mut carry = 0;
+            for (j, &n2) in other.digits.iter().enumerate() {
+                let mut local_carry = 0;
+                let prod = Self::multiply_single_number(n1, n2, &mut carry);
+                result[i + j] = Self::add_single_number(result[i + j], prod, &mut local_carry);
+
+                let mut k = 1;
+                let mut c = local_carry;
+                while c > 0 {
+                    result[i + j + k] = Self::add_single_number(result[i + j + k], c, &mut local_carry);
+                    c = local_carry;
+                    k += 1;
+                }
+            }
+            if carry > 0 {
+                result[i + other.digits.len()] =
+                    Self::add_single_number(result[i + other.digits.len()], carry, &mut carry);
+            }
+        }
+
+        self.digits = result;
+        self.normalize();
+    }
+
+    /// Divide the current number by n. If there is a remainder return it.
+    pub fn divide_by(&mut self, n: usize) -> usize {
+        let mut remainder = 0;
+        for digit in self.digits.iter_mut().rev() {
+            let (quotient, new_remainder) = Self::divide_single_number(*digit, n, remainder);
+            *digit = quotient;
+            remainder = new_remainder;
+        }
+        self.normalize();
+        remainder
+    }
+
+    /// Adds another number to this one.
+    fn add_impl(&mut self, other: &Self) {
+        let mut carry = 0;
+        let max_len = self.digits.len().max(other.digits.len());
+
+        // Ensure we have enough space
+        self.digits.resize(max_len, 0);
+
+        // Add corresponding digits
+        for i in 0..max_len {
+            let n2 = other.digits.get(i).copied().unwrap_or(0);
+            self.digits[i] = Self::add_single_number(self.digits[i], n2, &mut carry);
+        }
+
+        if carry > 0 {
+            self.digits.push(carry);
+        }
+    }
+
+    /// Removes trailing zeros from the internal representation.
+    fn normalize(&mut self) {
+        while self.digits.last() == Some(&0) {
+            self.digits.pop();
+        }
+        debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
     }
 
     fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
@@ -156,163 +305,6 @@ impl BigNatural {
         ((result_high << bits) | result_low, remainder)
     }
 
-    /// Calculates the greatest common divisor of two numbers.
-    pub fn greatest_common_divisor(mut a: usize, mut b: usize) -> usize {
-        while b != 0 {
-            let t = b;
-            b = a % b;
-            a = t;
-        }
-
-        a
-    }
-
-    /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
-    pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self) {
-        assert!(!other.is_zero(), "Division by zero");
-
-        // Initialize results
-        *quotient = Self::new();
-        *remainder = self.clone();
-
-        // If dividend is smaller than divisor, quotient is 0
-        if self.digits.len() < other.digits.len() {
-            return;
-        }
-
-        // Handle single-digit division as a special case for efficiency
-        if self.digits.len() == 1 && other.digits.len() == 1 {
-            let (q, r) = Self::divide_single_number(self.digits[0], other.digits[0], 0);
-            if q > 0 {
-                quotient.digits.push(q);
-            }
-            if r > 0 {
-                remainder.digits.push(r);
-            }
-            return;
-        }
-
-        // Long division algorithm
-        let mut shift = self.digits.len() - other.digits.len();
-        let mut divisor = other.clone();
-
-        // Align divisor with dividend by adding leading zeros
-        for _ in 0..shift {
-            divisor.digits.insert(0, 0);
-        }
-
-        // Initialize quotient with proper size
-        quotient.digits = vec![0; shift + 1];
-
-        // Perform division by repeated subtraction
-        while shift > 0 {
-            while *remainder >= divisor {
-                remainder.subtract(&divisor);
-                quotient.digits[shift] += 1;
-            }
-            // Remove one leading zero and continue with next digit
-            divisor.digits.remove(0);
-            shift -= 1;
-        }
-
-        // Handle the last digit (no shift)
-        while *remainder >= *other {
-            remainder.subtract(other);
-            quotient.digits[0] += 1;
-        }
-
-        // Remove leading zeros from results
-        quotient.normalize();
-        remainder.normalize();
-    }
-
-    /// Subtracts another number from this one.
-    /// Assumes this number is larger than the other.
-    pub fn subtract(&mut self, other: &Self) {
-        assert!(*self >= *other, "Subtraction would result in negative number");
-
-        let mut carry = 0;
-        for i in 0..self.digits.len() {
-            let n2 = other.digits.get(i).copied().unwrap_or(0);
-            self.digits[i] = Self::subtract_single_number(self.digits[i], n2, &mut carry);
-        }
-
-        assert!(carry == 0, "Subtraction overflow");
-        self.normalize();
-    }
-
-    /// Multiplies this number by another.
-    pub fn multiply(&mut self, other: &Self) {
-        if self.is_zero() || other.is_zero() {
-            self.clear();
-            return;
-        }
-
-        let mut result = vec![0; self.digits.len() + other.digits.len()];
-
-        for (i, &n1) in self.digits.iter().enumerate() {
-            let mut carry = 0;
-            for (j, &n2) in other.digits.iter().enumerate() {
-                let mut local_carry = 0;
-                let prod = Self::multiply_single_number(n1, n2, &mut carry);
-                result[i + j] = Self::add_single_number(result[i + j], prod, &mut local_carry);
-
-                let mut k = 1;
-                let mut c = local_carry;
-                while c > 0 {
-                    result[i + j + k] = Self::add_single_number(result[i + j + k], c, &mut local_carry);
-                    c = local_carry;
-                    k += 1;
-                }
-            }
-            if carry > 0 {
-                result[i + other.digits.len()] =
-                    Self::add_single_number(result[i + other.digits.len()], carry, &mut carry);
-            }
-        }
-
-        self.digits = result;
-        self.normalize();
-    }
-
-    /// Adds another number to this one.
-    fn add_impl(&mut self, other: &Self) {
-        let mut carry = 0;
-        let max_len = self.digits.len().max(other.digits.len());
-
-        // Ensure we have enough space
-        self.digits.resize(max_len, 0);
-
-        // Add corresponding digits
-        for i in 0..max_len {
-            let n2 = other.digits.get(i).copied().unwrap_or(0);
-            self.digits[i] = Self::add_single_number(self.digits[i], n2, &mut carry);
-        }
-
-        if carry > 0 {
-            self.digits.push(carry);
-        }
-    }
-
-    /// Divide the current number by n. If there is a remainder return it.
-    pub fn divide_by(&mut self, n: usize) -> usize {
-        let mut remainder = 0;
-        for digit in self.digits.iter_mut().rev() {
-            let (quotient, new_remainder) = Self::divide_single_number(*digit, n, remainder);
-            *digit = quotient;
-            remainder = new_remainder;
-        }
-        self.normalize();
-        remainder
-    }
-
-    /// Removes trailing zeros from the internal representation.
-    pub fn normalize(&mut self) {
-        while self.digits.last() == Some(&0) {
-            self.digits.pop();
-        }
-        debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
-    }
 }
 
 // Standard trait implementations

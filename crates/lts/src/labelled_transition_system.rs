@@ -121,7 +121,7 @@ impl LabelledTransitionSystem {
     }
 
     /// Iterate over all state_index in the labelled transition system
-    pub fn iter_states(&self) -> impl Iterator<Item = StateIndex> {
+    pub fn iter_states(&self) -> impl Iterator<Item = StateIndex> + use<> {
         0..self.states.len()
     }
 
