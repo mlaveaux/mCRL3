@@ -79,7 +79,7 @@ impl BigNatural {
 
     /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
     pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self) {
-        assert!(!other.is_zero(), "Division by zero");
+        debug_assert!(!other.is_zero(), "Division by zero");
 
         // Initialize results
         *quotient = Self::new();

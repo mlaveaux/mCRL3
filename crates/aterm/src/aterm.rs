@@ -11,6 +11,7 @@ use std::ops::Deref;
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::SymbolRef;
+use crate::ThreadTermPool;
 use crate::THREAD_TERM_POOL;
 
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
@@ -240,9 +241,8 @@ impl ATerm {
 
     /// Constructs a term from the given string.
     pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            tp.from_string(s)
-        })
+        let mut tp = ThreadTermPool::local();
+        tp.from_string(s)
     }
 
     /// Returns the root of the term

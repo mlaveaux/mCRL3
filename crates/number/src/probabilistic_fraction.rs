@@ -130,18 +130,16 @@ impl ProbabilisticFraction {
 
 impl PartialEq for ProbabilisticFraction {
     fn eq(&self, other: &Self) -> bool {
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    // self.num * other.den == other.num * self.den
-                    let mut left = b1.clone();
-                    let mut right = b2.clone();
+        BUFFER1.with_borrow_mut(|b1| {
+            BUFFER2.with_borrow_mut(|b2| {
+                // self.num * other.den == other.num * self.den
+                let mut left = b1.clone();
+                let mut right = b2.clone();
 
-                    left = &self.numerator * &other.denominator;
-                    right = &other.numerator * &self.denominator;
+                left = &self.numerator * &other.denominator;
+                right = &other.numerator * &self.denominator;
 
-                    left == right
-                })
+                left == right
             })
         })
     }

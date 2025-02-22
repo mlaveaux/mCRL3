@@ -14,12 +14,21 @@ type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 
 #[pest_consume::parser]
 impl TermParser {
+    pub fn TermSpec(spec: ParseNode) -> ParseResult<ATerm> {
+        TermParser::Term(spec.children().next().unwrap())
+    }
+
     fn Id(input: ParseNode) -> Result<String, Error<Rule>> {
         Ok(input.as_str().to_string())
     }
 
-    pub fn Term(term: ParseNode) -> Result<ATerm, Error<Rule>> {
+    fn Term(term: ParseNode) -> Result<ATerm, Error<Rule>> {
         match_nodes!(term.into_children();
+            [Id(identifier)] => {
+                let symbol = Symbol::new(identifier, 0);
+
+                Ok(ATerm::constant(&symbol))
+            },
             [Id(identifier), Args(args)] => {
                 let symbol = Symbol::new(identifier, args.len());
 
@@ -28,17 +37,13 @@ impl TermParser {
         )
     }
 
-    pub fn Args(args: ParseNode) -> Result<Vec<ATerm>, Error<Rule>> {
+    fn Args(args: ParseNode) -> Result<Vec<ATerm>, Error<Rule>> {
         match_nodes!(args.into_children();
             [Term(term)..] => {
                 Ok(term.collect())
             }
         )
-    }
-
-
-
-    
+    }    
 }
 
 #[cfg(test)]

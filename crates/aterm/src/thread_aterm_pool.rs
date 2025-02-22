@@ -61,9 +61,8 @@ impl ThreadTermPool {
         }
     }
 
-    pub fn reuse() -> Self {
-
-        
+    /// This function can be used to get a ThreadTermPool from the thread local storage.
+    pub fn local() -> Self {        
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
             let protection_set =  tp.protection_set.clone();
     
@@ -77,6 +76,7 @@ impl ThreadTermPool {
         })
     }
 
+    /// Creates a term without arguments.
     pub fn create_constant<'a>(&mut self, symbol: &SymbolRef<'_>) -> ATerm {
         let t: [ATermRef<'a>; 0] = [];
         GLOBAL_TERM_POOL.lock().create_term(symbol, &t, |index| {
@@ -84,13 +84,14 @@ impl ThreadTermPool {
         })
     }
 
-    /// Create a term
-    pub fn create<'a>(&mut self, symbol: &SymbolRef<'_>, children: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
-        GLOBAL_TERM_POOL.lock().create_term(symbol, children, |index| {
+    /// Create a term with the given arguments
+    pub fn create<'a>(&mut self, symbol: &SymbolRef<'_>, arguments: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
+        GLOBAL_TERM_POOL.lock().create_term(symbol, arguments, |index| {
             self.protect(&ATermRef::new(index))
         })
     }
     
+    /// Create a term with the given arguments given by the iterator.
     pub fn create_term_iter<'a, I, T>(&mut self, symbol: &SymbolRef<'_>, iter: I) -> ATerm
     where
         I: IntoIterator<Item = T>,
@@ -161,24 +162,24 @@ impl ThreadTermPool {
     }
 
     /// Protects a container in this thread's container protection set.
-    pub fn protect_container(&mut self, container: Arc<dyn Markable + Send + Sync>) -> usize {
+    pub(crate) fn protect_container(&mut self, container: Arc<dyn Markable + Send + Sync>) -> usize {
         let root = self.protection_set.lock().container_protection_set.protect(container);
         trace!("Protected container index {}, protection set {}", root, self.index());
         root
     }
 
     /// Unprotects a container from this thread's container protection set.
-    pub fn drop_container(&mut self, root: usize) {
+    pub(crate) fn drop_container(&mut self, root: usize) {
         trace!("Unprotected container index {}, protection set {}", root, self.index());
         self.protection_set.lock().container_protection_set.unprotect(root);
     }
 
-    /// 
+    /// Parse the given string and returns the Term representation.
     pub fn from_string(&mut self, term: &str) -> Result<ATerm, Box<dyn Error>> {
         let mut result = TermParser::parse(Rule::TermSpec, term)?;
         let root = result.next().unwrap();
 
-        Ok(TermParser::Term(root).unwrap())
+        Ok(TermParser::TermSpec(root).unwrap())
     }
 
     /// Locks the thread local lock in shared mode.
@@ -241,7 +242,7 @@ mod tests {
 
                     // Verify protection
                     THREAD_TERM_POOL.with_borrow(|tp| {
-                        assert!(tp.protection_set.lock().protection_set.contains(protected.root()));
+                        assert!(tp.protection_set.lock().protection_set.contains_root(protected.root()));
                     });
 
                     // Unprotect
@@ -249,7 +250,7 @@ mod tests {
                     drop(protected);
 
                     THREAD_TERM_POOL.with_borrow(|tp| {
-                        assert!(!tp.protection_set.lock().protection_set.contains(root));
+                        assert!(!tp.protection_set.lock().protection_set.contains_root(root));
                     });
                 });
             }

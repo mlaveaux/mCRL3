@@ -68,8 +68,14 @@ pub(crate) struct GlobalTermPool {
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
+        let mut terms = IndexedSet::new();
+        terms.insert(SharedTerm {
+            symbol: SymbolRef::new(0),
+            arguments: Vec::new(),
+        });
+
         GlobalTermPool {
-            terms: IndexedSet::new(),
+            terms,
             symbol_pool: SymbolPool::new(),
             thread_pools: Vec::new(),
             lock: BfSharedMutex::new(()),

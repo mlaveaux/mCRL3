@@ -30,7 +30,7 @@ impl RewriteEngine for InnermostRewriter {
 
         trace!("input: {}", t);
 
-        let mut tp = ThreadTermPool::reuse();
+        let mut tp = ThreadTermPool::local();
 
         let result = InnermostRewriter::rewrite_aux(
             &mut tp,

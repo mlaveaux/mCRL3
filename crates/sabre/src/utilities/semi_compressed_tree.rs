@@ -195,7 +195,7 @@ mod tests {
 
     /// Convert terms in variables to a [DataVariable].
     pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
-        let mut tp = ThreadTermPool::reuse();
+        let mut tp = ThreadTermPool::local();
         
         apply(&mut tp, t, &|tp, arg| {
             if variables.contains(arg.get_head_symbol().name()) {
@@ -283,7 +283,7 @@ mod tests {
         let sctt = SemiCompressedTermTree::from_term(&t_rhs, &map);
 
         let t_expected = ATerm::from_string("f(f(a,a),b)").unwrap();
-        let mut tp = ThreadTermPool::reuse();
+        let mut tp = ThreadTermPool::local();
         assert_eq!(sctt.evaluate(&t_lhs, &mut tp), t_expected);
     }
 

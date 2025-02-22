@@ -250,21 +250,23 @@ impl<C: Markable> Drop for Protector<'_, C> {
 
 #[cfg(test)]
 mod tests {
+    use crate::ATerm;
+
     use super::*;
 
     #[test]
     fn test_aterm_container() {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
-            let t = tp.from_string("f(g(a),b)").unwrap();
-    
-            // First test the trait for a standard container.
-            let mut container = Protected::<Vec<ATermRef>>::new(vec![]);
-    
-            for _ in 0..1000 {
-                let mut write = container.write();
-                let u = write.protect(&t);
-                write.push(u);
-            }
-        });
+        let _ = mcrl3_utilities::test_logger();
+
+        let t = ATerm::from_string("f(g(a),b)").unwrap();
+
+        // First test the trait for a standard container.
+        let mut container = Protected::<Vec<ATermRef>>::new(vec![]);
+
+        for _ in 0..1000 {
+            let mut write = container.write();
+            let u = write.protect(&t);
+            write.push(u);
+        }
     }
 }

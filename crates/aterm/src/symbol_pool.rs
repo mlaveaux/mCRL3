@@ -14,8 +14,11 @@ pub struct SymbolPool {
 impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
+        let mut symbols = IndexedSet::new();
+        symbols.insert(SharedSymbol::new("<default>>", 0));
+
         Self {
-            symbols: IndexedSet::new(),
+            symbols,
         }
     }
 

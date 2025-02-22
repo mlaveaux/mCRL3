@@ -57,7 +57,7 @@ impl SabreRewriter {
     pub fn stack_based_normalise(&mut self, t: DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let mut tp = ThreadTermPool::reuse();
+        let mut tp = ThreadTermPool::local();
         let result = SabreRewriter::stack_based_normalise_aux(&mut tp, &self.automaton, t, &mut stats);
         
         info!(

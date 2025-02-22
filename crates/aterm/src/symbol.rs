@@ -111,7 +111,9 @@ impl Drop for Symbol {
     fn drop(&mut self) {
         if self.index != 0 {
             THREAD_TERM_POOL.with_borrow_mut(|tp| {
-                tp.drop_symbol(self);
+                if self.index != 0 {
+                    tp.drop_symbol(self);
+                }
             })
         }
     }

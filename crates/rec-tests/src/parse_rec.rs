@@ -209,7 +209,7 @@ fn parse_term(pair: Pair<Rule>) -> Result<ATerm, Box<dyn Error>> {
 
     let mut builder = TermBuilder::<Pair<'_, Rule>, Symbol>::new();
 
-    let mut tp = ThreadTermPool::reuse();
+    let mut tp = ThreadTermPool::local();
     Ok(builder
         .evaluate(
             &mut tp,

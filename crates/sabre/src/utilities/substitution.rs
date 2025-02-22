@@ -84,7 +84,7 @@ fn substitute_rec(
 /// Converts an [ATerm] to an untyped data expression.
 pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> DataExpression {
     let mut builder = TermBuilder::<ATerm, ATerm>::new();
-    let mut tp = ThreadTermPool::reuse();
+    let mut tp = ThreadTermPool::local();
 
     builder
         .evaluate(
@@ -130,7 +130,7 @@ mod tests {
         let t0 = ATerm::from_string("0").unwrap();
 
         // substitute the a for 0 in the term s(s(a))
-        let mut tp = ThreadTermPool::reuse();
+        let mut tp = ThreadTermPool::local();
         let result = substitute(&mut tp, &t, t0.clone(), &vec![1, 1]);
 
         // Check that indeed the new term as a 0 at position 1.1.
