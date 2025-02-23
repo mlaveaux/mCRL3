@@ -6,7 +6,6 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 
-use crate::GLOBAL_TERM_POOL;
 use crate::THREAD_TERM_POOL;
 
 /// A reference to a function symbol in the term pool.

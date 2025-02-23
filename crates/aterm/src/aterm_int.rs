@@ -1,4 +1,4 @@
-use crate::ATerm;
+use crate::{ATerm, THREAD_TERM_POOL};
 
 
 pub struct ATermInt {
@@ -6,9 +6,11 @@ pub struct ATermInt {
 }
 
 impl ATermInt {
-    pub fn new(value: i32) -> ATermInt {
-        ATermInt {
-            term: ATerm::default(),
-        }
+    pub fn new(value: usize) -> ATermInt {
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            ATermInt {
+                term: tp.create_int(value),
+            }
+        })
     }
 }

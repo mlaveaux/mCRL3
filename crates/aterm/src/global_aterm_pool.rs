@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -113,6 +112,16 @@ impl GlobalTermPool {
     /// Returns the number of terms in the pool.
     pub fn capacity(&self) -> usize {
         self.terms.len()
+    }
+
+    pub fn create_int(&mut self, value: usize, protect: impl FnOnce(usize) -> ATerm) -> ATerm {
+        let shared_term = SharedTerm {
+            symbol: SymbolRef::new(0),
+            arguments: vec![ATermRef::new(value)],
+        };
+
+        let index = self.terms.insert(shared_term);
+        protect(index)
     }
 
     /// Create a term from a head symbol and an iterator over its arguments

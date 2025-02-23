@@ -36,9 +36,37 @@ pub fn address_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Err
     arguments.extend(cargo_arguments);
 
     cmd("cargo", arguments)
-        .env("RUSTFLAGS", "-Zsanitizer=address")
-        .env("CFLAGS", "-fsanitize=address")
-        .env("CXXFLAGS", "-fsanitize=address")
+        .env("RUSTFLAGS", "-Zsanitizer=address,undefined,leak")
+        .env("CFLAGS", "-fsanitize=address,undefined,leak")
+        .env("CXXFLAGS", "-fsanitize=address,undefined,leak")
+        .run()?;
+    println!("ok.");
+
+    Ok(())
+}
+
+///
+/// Run the tests with the address sanitizer enabled to detect memory issues in unsafe and C++ code.
+///
+/// This only works under Linux and MacOS currently and requires the nightly toolchain.
+///
+pub fn memory_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+    let mut arguments: Vec<String> = vec![
+        "nextest".to_string(),
+        "run".to_string(),
+        "-Zbuild-std".to_string(),
+        "--no-fail-fast".to_string(),
+        "--features".to_string(),
+        "unstable".to_string(),
+    ];
+
+    add_target_flag(&mut arguments);
+    arguments.extend(cargo_arguments);
+
+    cmd("cargo", arguments)
+        .env("RUSTFLAGS", "-Zsanitizer=memory")
+        .env("CFLAGS", "-fsanitize=memory")
+        .env("CXXFLAGS", "-fsanitize=memory")
         .run()?;
     println!("ok.");
 

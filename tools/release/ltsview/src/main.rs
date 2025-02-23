@@ -68,7 +68,7 @@ async fn main() -> Result<ExitCode, Box<dyn Error>> {
     // executing copy_texture_to_buffer to copy texels from this texture into the buffer (it has to be non-mapped at this point)
     // requesting to map that buffer to CPU with map_read_async
     // callback is provided that gets you the slice of data
-    device.create_buffer(&wgpu::BufferDescriptor {
+    let _ = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 0 as u64,
         usage: wgpu::BufferUsages::STORAGE,

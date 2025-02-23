@@ -90,6 +90,13 @@ impl ThreadTermPool {
             self.protect(&ATermRef::new(index))
         })
     }
+
+    /// Create a term with the given index.
+    pub fn create_int(&mut self, value: usize) -> ATerm {
+        GLOBAL_TERM_POOL.lock().create_int(value, |index| {
+            self.protect(&ATermRef::new(index))
+        })
+    }
     
     /// Create a term with the given arguments given by the iterator.
     pub fn create_term_iter<'a, I, T>(&mut self, symbol: &SymbolRef<'_>, iter: I) -> ATerm
@@ -133,7 +140,7 @@ impl ThreadTermPool {
     /// Create a function symbol
     pub fn create_symbol(&mut self, name: impl Into<String>, arity: usize) -> Symbol {
         GLOBAL_TERM_POOL.lock().create_symbol(name, arity, |index| {
-            let root = self.protection_set.lock().protection_set.protect(index);
+            let root = self.protection_set.lock().symbol_protection_set.protect(index);
     
             // Return the protected term
             Symbol::new_internal(index, root)            

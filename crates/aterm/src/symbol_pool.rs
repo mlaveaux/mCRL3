@@ -1,5 +1,4 @@
 use mcrl3_utilities::IndexedSet;
-use mcrl3_utilities::ProtectionSet;
 
 use crate::Symbol;
 use crate::SymbolRef;

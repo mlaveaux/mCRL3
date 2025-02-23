@@ -32,6 +32,11 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
             let other_arguments: Vec<String> = args.collect();
             sanitizer::address_sanitizer(other_arguments)?
         }
+        Some("memory-sanitizer") => {
+            // Take the other parameters for cargo.
+            let other_arguments: Vec<String> = args.collect();
+            sanitizer::memory_sanitizer(other_arguments)?
+        }
         Some("thread-sanitizer") => {
             // Take the other parameters for cargo.
             let other_arguments: Vec<String> = args.collect();
