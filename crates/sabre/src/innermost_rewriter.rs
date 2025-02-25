@@ -2,6 +2,7 @@ use log::info;
 use log::trace;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ThreadTermPool;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_data::BoolSort;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
@@ -30,16 +31,15 @@ impl RewriteEngine for InnermostRewriter {
 
         trace!("input: {}", t);
 
-        let mut tp = ThreadTermPool::local();
-
-        let result = InnermostRewriter::rewrite_aux(
-            &mut tp,
-            &mut self.stack,
-            &mut self.builder,
-            &mut stats,
-            &self.apma,
-            t,
-        );
+        let result = THREAD_TERM_POOL.with_borrow(|tp| {
+            InnermostRewriter::rewrite_aux(
+                &tp,
+                &mut self.stack,
+                &mut self.builder,
+                &mut stats,
+                &self.apma,
+                t)
+        });
 
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
@@ -75,7 +75,7 @@ impl InnermostRewriter {
     ///     - Construct(arity, index, result):
     ///
     pub(crate) fn rewrite_aux(
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut SCCTBuilder,
         stats: &mut RewritingStatistics,
@@ -205,7 +205,7 @@ impl InnermostRewriter {
 
     /// Use the APMA to find a match for the given term.
     fn find_match<'a>(
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut SCCTBuilder,
         stats: &mut RewritingStatistics,
@@ -249,7 +249,7 @@ impl InnermostRewriter {
 
     /// Checks whether the condition holds for given match announcement.
     fn check_conditions(
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut SCCTBuilder,
         stats: &mut RewritingStatistics,

@@ -59,7 +59,7 @@ impl SemiCompressedTermTree {
     /// evaluate will encounter an ExplicitNode and make two recursive calls to get the subterms.
     /// Both these recursive calls will return the term '0'.
     /// The term pool will be used to construct the term minus(0, 0).
-    pub fn evaluate_with<'a>(&'a self, builder: &mut SCCTBuilder, t: &ATermRef<'_>, tp: &mut ThreadTermPool) -> ATerm {
+    pub fn evaluate_with<'a>(&'a self, builder: &mut SCCTBuilder, t: &ATermRef<'_>, tp: &ThreadTermPool) -> ATerm {
         // TODO: Figure out if this can be done properly. This is safe because evaluate will always leave the
         // underlying vectors empty.
         let builder: &mut TermBuilder<&'a SemiCompressedTermTree, &'a Symbol> = unsafe { std::mem::transmute(builder) };
@@ -88,7 +88,7 @@ impl SemiCompressedTermTree {
     }
 
     /// The same as [evaluate_with], but allocates a [SCCTBuilder] internally.
-    pub fn evaluate(&self, t: &ATermRef<'_>, tp: &mut ThreadTermPool) -> ATerm {
+    pub fn evaluate(&self, t: &ATermRef<'_>, tp: &ThreadTermPool) -> ATerm {
         let mut builder = TermBuilder::<&SemiCompressedTermTree, &Symbol>::new();
 
         self.evaluate_with(&mut builder, t, tp)
@@ -183,7 +183,7 @@ pub fn create_var_map(t: &ATerm) -> HashMap<DataVariable, ExplicitPosition> {
 mod tests {
     use super::*;
     use ahash::AHashSet;
-    use mcrl3_aterm::apply;
+    use mcrl3_aterm::{apply, THREAD_TERM_POOL};
 
     /// Converts a slice of static strings into a set of owned strings
     ///
@@ -195,15 +195,15 @@ mod tests {
 
     /// Convert terms in variables to a [DataVariable].
     pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
-        let mut tp = ThreadTermPool::local();
-        
-        apply(&mut tp, t, &|tp, arg| {
-            if variables.contains(arg.get_head_symbol().name()) {
-                // Convert a constant variable, for example 'x', into an untyped variable.
-                Some(DataVariable::new(&arg.get_head_symbol().name()).into())
-            } else {
-                None
-            }
+        THREAD_TERM_POOL.with_borrow(|tp| {
+            apply(tp, t, &|tp, arg| {
+                if variables.contains(arg.get_head_symbol().name()) {
+                    // Convert a constant variable, for example 'x', into an untyped variable.
+                    Some(DataVariable::new(&arg.get_head_symbol().name()).into())
+                } else {
+                    None
+                }
+            })
         })
     }
 
@@ -283,8 +283,9 @@ mod tests {
         let sctt = SemiCompressedTermTree::from_term(&t_rhs, &map);
 
         let t_expected = ATerm::from_string("f(f(a,a),b)").unwrap();
-        let mut tp = ThreadTermPool::local();
-        assert_eq!(sctt.evaluate(&t_lhs, &mut tp), t_expected);
+        THREAD_TERM_POOL.with_borrow(|tp| {
+            assert_eq!(sctt.evaluate(&t_lhs, tp), t_expected);
+        });
     }
 
     #[test]

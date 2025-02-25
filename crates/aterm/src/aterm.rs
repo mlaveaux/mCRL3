@@ -53,7 +53,7 @@ impl<'a> ATermRef<'a> {
         if self.is_default() {
             ATerm::default()
         } else {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            THREAD_TERM_POOL.with_borrow(|tp| {
                 tp.protect(&self.copy())
             })
         }
@@ -134,7 +134,7 @@ impl ATermRef<'_> {
     pub fn get_head_symbol(&self) -> &SymbolRef<'_> {
         self.require_valid();
 
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             unsafe {
                 std::mem::transmute(tp.get_head_symbol(self))
             }
@@ -143,21 +143,21 @@ impl ATermRef<'_> {
 
     /// Returns true iff this is an aterm_list
     pub fn is_list(&self) -> bool {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.is_list(self.get_head_symbol())
         })
     }
 
     /// Returns true iff this is the empty aterm_list
     pub fn is_empty_list(&self) -> bool {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.is_empty_list(self.get_head_symbol())
         })
     }
 
     /// Returns true iff this is a aterm_int
     pub fn is_int(&self) -> bool {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.is_int(self.get_head_symbol())
         })
     }
@@ -216,7 +216,7 @@ pub struct ATerm {
 impl ATerm {
     /// Creates a new term using the pool
     pub fn with_args<'a>(symbol: &SymbolRef<'_>, args: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.create(symbol, args)
         })
     }
@@ -227,22 +227,23 @@ impl ATerm {
         I: IntoIterator<Item = T>,
         T: Borrow<ATermRef<'a>>
     {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.create_term_iter(symbol, iter)
         })
     }
 
     /// Creates a new term using the pool
     pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.create_constant(symbol)
         })
     }
 
     /// Constructs a term from the given string.
     pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
-        let mut tp = ThreadTermPool::local();
-        tp.from_string(s)
+        THREAD_TERM_POOL.with_borrow(|tp| {
+            tp.from_string(s)
+        })
     }
 
     /// Returns the root of the term
@@ -264,7 +265,7 @@ impl ATerm {
 impl Drop for ATerm {
     fn drop(&mut self) {
         if !self.is_default() {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            THREAD_TERM_POOL.with_borrow(|tp| {
                 tp.drop(&self)
             })
         }

@@ -1,3 +1,7 @@
-pub mod bf_sharedmutex;
+//!
+//! 
+//! 
 
-pub use crate::bf_sharedmutex::*;
+mod bf_sharedmutex;
+
+pub use bf_sharedmutex::*;

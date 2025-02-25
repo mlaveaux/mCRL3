@@ -26,7 +26,7 @@ impl<'a> SymbolRef<'a> {
 
     /// Protect the symbol from garbage collection.
     pub fn protect(&self) -> Symbol {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.protect_symbol(self)
         })
     }
@@ -44,14 +44,14 @@ impl<'a> SymbolRef<'a> {
 impl SymbolRef<'_> {
     /// Obtain the symbol's name.
     pub fn name(&self) -> &str {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.symbol_name(self)
         })
     }
 
     /// Obtain the symbol's arity.
     pub fn arity(&self) -> usize {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.symbol_arity(self)
         })
     }
@@ -79,7 +79,7 @@ pub struct Symbol {
 impl Symbol {
     /// Create a new symbol with the given name and arity.
     pub fn new(name: impl Into<String>, arity: usize) -> Symbol {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.create_symbol(name, arity)
         })
     }
@@ -109,7 +109,7 @@ impl Symbol {
 impl Drop for Symbol {
     fn drop(&mut self) {
         if self.index != 0 {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            THREAD_TERM_POOL.with_borrow(|tp| {
                 if self.index != 0 {
                     tp.drop_symbol(self);
                 }

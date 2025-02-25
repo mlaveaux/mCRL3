@@ -22,9 +22,9 @@ pub struct TermBuilder<I, C> {
 ///     function(subterm) returns:
 ///         None   , in which case subterm is kept and it is recursed into its argments.
 ///         Some(x), in which case subterm is replaced by x.
-pub fn apply<F>(tp: &mut ThreadTermPool, t: &ATerm, function: &F) -> ATerm
+pub fn apply<F>(tp: &ThreadTermPool, t: &ATerm, function: &F) -> ATerm
 where
-    F: Fn(&mut ThreadTermPool, &ATerm) -> Option<ATerm>,
+    F: Fn(&ThreadTermPool, &ATerm) -> Option<ATerm>,
 {
     let mut builder = TermBuilder::<ATerm, Symbol>::new();
 
@@ -85,14 +85,14 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
     /// construct a term.
     pub fn evaluate<F, G>(
         &mut self,
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         input: I,
         transformer: F,
         construct: G,
     ) -> Result<ATerm, Box<dyn Error>>
     where
-        F: Fn(&mut ThreadTermPool, &mut ArgStack<I, C>, I) -> Result<Yield<C>, Box<dyn Error>>,
-        G: Fn(&mut ThreadTermPool, C, &[ATerm]) -> Result<ATerm, Box<dyn Error>>,
+        F: Fn(&ThreadTermPool, &mut ArgStack<I, C>, I) -> Result<Yield<C>, Box<dyn Error>>,
+        G: Fn(&ThreadTermPool, C, &[ATerm]) -> Result<ATerm, Box<dyn Error>>,
     {
         trace!("Transforming {:?}", input);
         self.terms.push(ATerm::default());
@@ -216,7 +216,7 @@ pub fn random_term(
 
     debug_assert!(!constants.is_empty(), "We need constants to be able to create a term");
 
-    let mut subterms = THREAD_TERM_POOL.with_borrow_mut(|tp| {
+    let mut subterms = THREAD_TERM_POOL.with_borrow(|tp| {
         AHashSet::<ATerm>::from_iter(constants.iter().map(|name| {
             let symbol = tp.create_symbol(name, 0);
             let a: &[ATerm] = &[];

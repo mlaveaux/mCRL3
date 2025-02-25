@@ -207,7 +207,7 @@ impl<'a> ConfigurationStack<'a> {
     /// of the matching rewrite rule was observed (at index 'depth').
     pub fn prune(
         &mut self,
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         depth: usize,
         new_subterm: DataExpression,
@@ -260,7 +260,7 @@ impl<'a> ConfigurationStack<'a> {
 
     /// Roll back the configuration stack to level 'depth'.
     /// This function is used exclusively when a subtree has been explored and no matches have been found.
-    pub fn jump_back(&mut self, depth: usize, tp: &mut ThreadTermPool) {
+    pub fn jump_back(&mut self, depth: usize, tp: &ThreadTermPool) {
         // Updated subterms may have to be propagated up the configuration tree
         self.integrate_updated_subterms(depth, tp, true);
         self.current_node = Some(depth);
@@ -273,7 +273,7 @@ impl<'a> ConfigurationStack<'a> {
     /// When going back up the configuration tree the subterms stored in the configuration tree must be updated
     /// This function ensures that the Configuration at depth 'end' is made up to date.
     /// If store_intermediate is true, all configurations below 'end' are also up to date.
-    pub fn integrate_updated_subterms(&mut self, end: usize, tp: &mut ThreadTermPool, store_intermediate: bool) {
+    pub fn integrate_updated_subterms(&mut self, end: usize, tp: &ThreadTermPool, store_intermediate: bool) {
         // Check if there is anything to do. Start updating from self.oldest_reliable_subterm
         let mut up_to_date = self.oldest_reliable_subterm;
         if up_to_date == 0 || end >= up_to_date {
@@ -314,7 +314,7 @@ impl<'a> ConfigurationStack<'a> {
     }
 
     /// Final term computed by integrating all subterms up to the root configuration
-    pub fn compute_final_term(&mut self, tp: &mut ThreadTermPool) -> DataExpression {
+    pub fn compute_final_term(&mut self, tp: &ThreadTermPool) -> DataExpression {
         self.jump_back(0, tp);
         self.terms.read()[0].protect()
     }

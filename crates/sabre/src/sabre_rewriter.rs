@@ -2,6 +2,7 @@ use log::info;
 use log::trace;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ThreadTermPool;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_data::BoolSort;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
@@ -57,8 +58,9 @@ impl SabreRewriter {
     pub fn stack_based_normalise(&mut self, t: DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let mut tp = ThreadTermPool::local();
-        let result = SabreRewriter::stack_based_normalise_aux(&mut tp, &self.automaton, t, &mut stats);
+        let result = THREAD_TERM_POOL.with_borrow(|tp| {
+            SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, t, &mut stats)
+        });
         
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
@@ -70,7 +72,7 @@ impl SabreRewriter {
     /// The _aux function splits the [TermPool] pool and the [SetAutomaton] to make borrow checker happy.
     /// We can now mutate the term pool and read the state and transition information at the same time
     fn stack_based_normalise_aux(
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         t: DataExpression,
         stats: &mut RewritingStatistics,
@@ -217,7 +219,7 @@ impl SabreRewriter {
 
     /// Apply a rewrite rule and prune back
     fn apply_rewrite_rule(
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
@@ -250,7 +252,7 @@ impl SabreRewriter {
 
     /// Checks conditions and subterm equality of non-linear patterns.
     fn conditions_hold(
-        tp: &mut ThreadTermPool,
+        tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,

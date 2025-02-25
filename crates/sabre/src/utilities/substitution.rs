@@ -5,6 +5,7 @@ use mcrl3_aterm::Protected;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Yield;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataFunctionSymbol;
@@ -26,14 +27,14 @@ pub type SubstitutionBuilder = Protected<Vec<ATermRef<'static>>>;
 /// Lets say we want to replace the a with the term 0. Then we traverse the term
 /// until we have arrived at a and replace it with 0. We then construct s(0)
 /// and then construct s(s(0)).
-pub fn substitute(tp: &mut ThreadTermPool, t: &ATermRef<'_>, new_subterm: ATerm, p: &[usize]) -> ATerm {
+pub fn substitute(tp: &ThreadTermPool, t: &ATermRef<'_>, new_subterm: ATerm, p: &[usize]) -> ATerm {
     let mut args = Protected::new(vec![]);
     substitute_rec(tp, t, new_subterm, p, &mut args, 0)
 }
 
 pub fn substitute_with(
     builder: &mut SubstitutionBuilder,
-    tp: &mut ThreadTermPool,
+    tp: &ThreadTermPool,
     t: &ATermRef<'_>,
     new_subterm: ATerm,
     p: &[usize],
@@ -46,7 +47,7 @@ pub fn substitute_with(
 /// 'depth'         -   Used to keep track of the depth in 't'. Function should be called with
 ///                     'depth' = 0.
 fn substitute_rec(
-    tp: &mut ThreadTermPool,
+    tp: &ThreadTermPool,
     t: &ATermRef<'_>,
     new_subterm: ATerm,
     p: &[usize],
@@ -84,11 +85,11 @@ fn substitute_rec(
 /// Converts an [ATerm] to an untyped data expression.
 pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> DataExpression {
     let mut builder = TermBuilder::<ATerm, ATerm>::new();
-    let mut tp = ThreadTermPool::local();
+    THREAD_TERM_POOL.with_borrow(|tp| {
 
-    builder
+        builder
         .evaluate(
-            &mut tp,
+            tp,
             t.clone(),
             |tp, args, t| {
                 debug_assert!(!t.is_int(), "Term cannot be an aterm_int, although not sure why");
@@ -115,6 +116,7 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> Da
         )
         .unwrap()
         .into()
+    })
 }
 
 #[cfg(test)]
@@ -130,8 +132,9 @@ mod tests {
         let t0 = ATerm::from_string("0").unwrap();
 
         // substitute the a for 0 in the term s(s(a))
-        let mut tp = ThreadTermPool::local();
-        let result = substitute(&mut tp, &t, t0.clone(), &vec![1, 1]);
+        let result = THREAD_TERM_POOL.with_borrow(|tp| {
+            substitute(tp, &t, t0.clone(), &vec![1, 1])
+        });
 
         // Check that indeed the new term as a 0 at position 1.1.
         assert_eq!(t0, result.get_position(&ExplicitPosition::new(&vec![1, 1])).protect());
