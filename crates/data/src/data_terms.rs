@@ -2,6 +2,8 @@ use std::{cell::RefCell, mem::ManuallyDrop};
 
 use mcrl3_aterm::{ATerm, ATermRef, Symbol, SymbolRef};
 
+use crate::SortExpression;
+
 thread_local! {
     pub static DATA_SYMBOLS: RefCell<DataSymbols> = RefCell::new(DataSymbols::new());
 }
@@ -13,12 +15,15 @@ pub struct DataSymbols {
     function_sort: ManuallyDrop<Symbol>,
 
     pub data_function_symbol: ManuallyDrop<Symbol>,
-    data_variable: ManuallyDrop<Symbol>,
+    pub data_variable: ManuallyDrop<Symbol>,
     data_machine_number: ManuallyDrop<Symbol>,
     data_where_clause: ManuallyDrop<Symbol>,
     data_abstraction: ManuallyDrop<Symbol>,
     data_untyped_identifier: ManuallyDrop<Symbol>,
     
+    pub untyped_sort: ManuallyDrop<SortExpression>,
+
+    /// The data application symbol for a given arity.
     data_appl: Vec<Symbol>,
 }
 
@@ -30,11 +35,13 @@ impl DataSymbols {
             function_sort: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
 
             data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 3)),
-            data_variable: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+            data_variable: ManuallyDrop::new(Symbol::new("Var", 2)),
             data_machine_number: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
             data_where_clause: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
             data_abstraction: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
             data_untyped_identifier: ManuallyDrop::new(Symbol::new("SortExpression", 2)),
+
+            untyped_sort: ManuallyDrop::new(SortExpression::()),
 
             data_appl: vec![],
         }

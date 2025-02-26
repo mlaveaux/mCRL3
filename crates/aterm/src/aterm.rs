@@ -112,7 +112,11 @@ impl ATermRef<'_> {
             self
         );
 
-        GLOBAL_TERM_POOL.lock().get_argument(self, index).upgrade(self)
+        let tp = GLOBAL_TERM_POOL.lock();
+        unsafe {
+            // SAFETY: self is the direct parent of its arguments.
+            (*tp).borrow().get_argument(self, index).upgrade_unchecked()
+        }
     }
 
     /// Returns the list of arguments as a collection

@@ -25,7 +25,7 @@ mod inner {
 
     impl ATermString {
         pub fn new(string: impl Into<String>) -> ATermString {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            THREAD_TERM_POOL.with_borrow(|tp| {
                 ATermString {
                     term: tp.create_constant(&Symbol::new(string, 0)),
                 }

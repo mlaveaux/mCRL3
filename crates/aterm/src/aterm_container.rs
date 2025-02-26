@@ -34,7 +34,7 @@ impl<C: Markable + Send + 'static> Protected<C> {
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(BfTermPool::new(container));
 
-        let root = THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        let root = THREAD_TERM_POOL.with_borrow(|tp| {
             tp.protect_container(shared.clone())
         });
 
@@ -109,7 +109,7 @@ impl<C: Ord + PartialEq + PartialOrd + Markable> Ord for Protected<C> {
 
 impl<C> Drop for Protected<C> {
     fn drop(&mut self) {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+        THREAD_TERM_POOL.with_borrow(|tp| {
             tp.drop_container(self.root);
         });
     }

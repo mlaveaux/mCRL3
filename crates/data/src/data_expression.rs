@@ -160,16 +160,20 @@ mod inner {
     impl DataVariable {
         /// Create a new untyped variable with the given name.
         #[mcrl3_ignore]
-        pub fn new(name: &str) -> DataVariable {
+        pub fn new(name: impl Into<ATermString>) -> DataVariable {
             DATA_SYMBOLS.with_borrow(|ds| {
-                unimplemented!();
+                DataVariable {
+                    term: ATerm::with_args(&ds.data_variable, &[name.into(), &ds.untyped_sort])
+                }
             })
         }
 
         /// Create a variable with the given sort and name.
-        pub fn with_sort(name: &str, sort: &SortExpressionRef<'_>) -> DataVariable {
+        pub fn with_sort(name: impl Into<ATermString>, sort: &SortExpressionRef<'_>) -> DataVariable {
             DATA_SYMBOLS.with_borrow(|ds| {
-                unimplemented!();
+                DataVariable {
+                    term: ATerm::with_args(&ds.data_variable, [name.into(), sort])
+                }
             })
         }
 

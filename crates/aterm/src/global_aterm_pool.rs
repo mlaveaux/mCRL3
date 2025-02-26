@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -8,6 +9,7 @@ use parking_lot::Mutex;
 
 use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
+use parking_lot::ReentrantMutex;
 
 use crate::ATerm;
 use crate::ATermRef;
@@ -17,8 +19,8 @@ use crate::SymbolPool;
 use crate::SymbolRef;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
-pub(crate) static GLOBAL_TERM_POOL: LazyLock<Mutex<GlobalTermPool>> =
-    LazyLock::new(|| Mutex::new(GlobalTermPool::new()));
+pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
+    LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
 
 pub(crate) struct SharedTermProtection {    
     /// Protection set for terms
@@ -48,7 +50,8 @@ impl Drop for SharedTermProtection {
             self.protection_set.is_empty(),
             "Protection set must be empty on drop"
         );
-        GLOBAL_TERM_POOL.lock().deregister_thread_pool(self.index);
+
+        GLOBAL_TERM_POOL.lock().borrow_mut().deregister_thread_pool(self.index);
     }
 }
 
