@@ -2988,6 +2988,7 @@ dependencies = [
  "ahash",
  "hashbrown 0.15.2",
  "log",
+ "mcrl3_macros",
  "mcrl3_sharedmutex",
  "mcrl3_utilities",
  "parking_lot",

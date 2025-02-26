@@ -110,7 +110,7 @@ pub struct BfSharedMutexWriteGuard<'a, T> {
 
 /// Allow dereferencing the underlying object.
 #[cfg(not(feature = "loom"))]
-impl<'a, T> Deref for BfSharedMutexWriteGuard<'a, T> {
+impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -120,7 +120,7 @@ impl<'a, T> Deref for BfSharedMutexWriteGuard<'a, T> {
 }
 
 #[cfg(not(feature = "loom"))]
-impl<'a, T> DerefMut for BfSharedMutexWriteGuard<'a, T> {
+impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
         unsafe { &mut *self.mutex.shared.object.get() }
@@ -143,7 +143,7 @@ impl<'a, T> DerefMut for BfSharedMutexWriteGuard<'a, T> {
     }
 }
 
-impl<'a, T> Drop for BfSharedMutexWriteGuard<'a, T> {
+impl<T> Drop for BfSharedMutexWriteGuard<'_, T> {
     fn drop(&mut self) {
         // Allow other threads to acquire access to the shared mutex.
         for control in self.guard.iter().flatten() {
@@ -163,7 +163,7 @@ pub struct BfSharedMutexReadGuard<'a, T> {
 
 /// Allow dereferences the underlying object.
 #[cfg(not(feature = "loom"))]
-impl<'a, T> Deref for BfSharedMutexReadGuard<'a, T> {
+impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -181,7 +181,7 @@ impl<'a, T> Deref for BfSharedMutexReadGuard<'a, T> {
     }
 }
 
-impl<'a, T> Drop for BfSharedMutexReadGuard<'a, T> {
+impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
     fn drop(&mut self) {
         debug_assert!(
             self.mutex.control.busy.load(Ordering::SeqCst),

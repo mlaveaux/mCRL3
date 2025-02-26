@@ -10,8 +10,10 @@ use std::ops::Deref;
 
 use mcrl3_utilities::PhantomUnsend;
 
+use crate::is_empty_list;
+use crate::is_int;
+use crate::is_list;
 use crate::SymbolRef;
-use crate::ThreadTermPool;
 use crate::THREAD_TERM_POOL;
 
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
@@ -143,23 +145,17 @@ impl ATermRef<'_> {
 
     /// Returns true iff this is an aterm_list
     pub fn is_list(&self) -> bool {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.is_list(self.get_head_symbol())
-        })
+        is_list(self.get_head_symbol())
     }
 
     /// Returns true iff this is the empty aterm_list
     pub fn is_empty_list(&self) -> bool {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.is_empty_list(self.get_head_symbol())
-        })
+        is_empty_list(self.get_head_symbol())
     }
 
     /// Returns true iff this is a aterm_int
     pub fn is_int(&self) -> bool {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.is_int(self.get_head_symbol())
-        })
+        is_int(self.get_head_symbol())
     }
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
@@ -266,7 +262,7 @@ impl Drop for ATerm {
     fn drop(&mut self) {
         if !self.is_default() {
             THREAD_TERM_POOL.with_borrow(|tp| {
-                tp.drop(&self)
+                tp.drop(self)
             })
         }
     }

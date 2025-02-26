@@ -1,10 +1,4 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::thread;
 
-use mcrl3_data::DataExpression;
-use mcrl3_sabre::InnermostRewriter;
-use mcrl3_sabre::RewriteEngine;
 
 #[test]
 fn test_parallelism() {

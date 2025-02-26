@@ -51,7 +51,7 @@ impl BigNatural {
     }
 
     /// Removes trailing zeros from the internal representation.
-    fn is_well_defined(&mut self) {
+    fn is_well_defined(&self) {
         debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
     }
 
@@ -78,62 +78,66 @@ impl BigNatural {
     }
 
     /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
-    pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self) {
-        debug_assert!(!other.is_zero(), "Division by zero");
+    pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self, calculation_buffer_divisor: &mut Self) {
+        self.is_well_defined();
+        other.is_well_defined();
+        assert!(!other.is_zero(), "Division by zero");
 
-        // Initialize results
-        *quotient = Self::new();
+        if self.digits.len() == 1 && other.digits.len() == 1 {
+            let n = self.digits[0] / other.digits[0]; // Calculate div.
+            if n == 0 {
+                quotient.zero();
+            } else {
+                quotient.digits.resize(1, 0);
+                quotient.digits[0] = n;
+            }
+            let n = self.digits[0] % other.digits[0]; // Calculate mod.
+            if n == 0 {
+                remainder.zero();
+            } else {
+                remainder.digits.resize(1, 0);
+                remainder.digits[0] = n;
+            }
+
+            quotient.is_well_defined();
+            remainder.is_well_defined();
+            return;
+        }
+
+        // The procedure below works bitwise, as no efficient division algorithm has yet been implemented.
+        quotient.zero();
         *remainder = self.clone();
 
-        // If dividend is smaller than divisor, quotient is 0
         if self.digits.len() < other.digits.len() {
+            quotient.is_well_defined();
+            remainder.is_well_defined();
             return;
         }
 
-        // Handle single-digit division as a special case for efficiency
-        if self.digits.len() == 1 && other.digits.len() == 1 {
-            let (q, r) = Self::divide_single_number(self.digits[0], other.digits[0], 0);
-            if q > 0 {
-                quotient.digits.push(q);
+        let no_of_bits_per_digit = usize::BITS as usize;
+        calculation_buffer_divisor.digits.resize(1 + self.digits.len() - other.digits.len(), 0);
+
+        // Place 0 digits at least significant position of the calculation_buffer_divisor to make it of comparable length as the remainder.
+        for &digit in &other.digits {
+            calculation_buffer_divisor.digits.push(digit);
+        }
+        calculation_buffer_divisor.normalize();
+
+        for _ in 0..=no_of_bits_per_digit * (self.digits.len() - other.digits.len() + 1) {
+            if remainder < calculation_buffer_divisor {
+                // We cannot subtract the calculation_buffer_divisor from the remainder.
+                quotient.multiply_by(2, 0); // quotient = quotient * 2
+            } else {
+                // We subtract the calculation_buffer_divisor from the remainder.
+                quotient.multiply_by(2, 1); // quotient = quotient * 2 + 1
+                remainder.subtract(&calculation_buffer_divisor);
             }
-            if r > 0 {
-                remainder.digits.push(r);
-            }
-            return;
+            calculation_buffer_divisor.divide_by(2); // Shift the calculation_buffer_divisor one bit to the left.
         }
 
-        // Long division algorithm
-        let mut shift = self.digits.len() - other.digits.len();
-        let mut divisor = other.clone();
-
-        // Align divisor with dividend by adding leading zeros
-        for _ in 0..shift {
-            divisor.digits.insert(0, 0);
-        }
-
-        // Initialize quotient with proper size
-        quotient.digits = vec![0; shift + 1];
-
-        // Perform division by repeated subtraction
-        while shift > 0 {
-            while *remainder >= divisor {
-                remainder.subtract(&divisor);
-                quotient.digits[shift] += 1;
-            }
-            // Remove one leading zero and continue with next digit
-            divisor.digits.remove(0);
-            shift -= 1;
-        }
-
-        // Handle the last digit (no shift)
-        while *remainder >= *other {
-            remainder.subtract(other);
-            quotient.digits[0] += 1;
-        }
-
-        // Remove leading zeros from results
         quotient.normalize();
-        remainder.normalize();
+        quotient.is_well_defined();
+        remainder.is_well_defined();
     }
 
     /// Subtracts another number from this one.
@@ -305,6 +309,19 @@ impl BigNatural {
         ((result_high << bits) | result_low, remainder)
     }
 
+    /// Multiplies the current number by `n` and adds the carry.
+    pub fn multiply_by(&mut self, n: usize, mut carry: usize) {
+        for digit in &mut self.digits {
+            *digit = Self::multiply_single_number(*digit, n, &mut carry);
+        }
+        if carry > 0 {
+            // Add an extra digit with the carry.
+            self.digits.push(carry);
+        }
+        self.normalize();
+        self.is_well_defined();
+    }
+
 }
 
 // Standard trait implementations
@@ -346,10 +363,16 @@ impl fmt::Display for BigNatural {
             write!(f, "0")
         } else {
             let mut temp = self.clone();
+            let mut digits = Vec::new();
             while !temp.is_zero() {
                 let digit = temp.divide_by(10);
+                digits.push(digit);
+            }
+
+            for digit in digits.iter().rev() {
                 write!(f, "{}", digit)?;
             }
+
             Ok(())
         }
     }
@@ -361,7 +384,8 @@ impl Div for &BigNatural {
     fn div(self, other: &BigNatural) -> BigNatural {
         let mut quotient = BigNatural::new();
         let mut remainder = BigNatural::new();
-        self.div_mod(other, &mut quotient, &mut remainder);
+        let mut buffer = BigNatural::new();
+        self.div_mod(other, &mut quotient, &mut remainder, &mut buffer);
         quotient
     }
 }
@@ -372,7 +396,8 @@ impl Rem for &BigNatural {
     fn rem(self, other: &BigNatural) -> BigNatural {
         let mut quotient = BigNatural::new();
         let mut remainder = BigNatural::new();
-        self.div_mod(other, &mut quotient, &mut remainder);
+        let mut buffer = BigNatural::new();
+        self.div_mod(other, &mut quotient, &mut remainder, &mut buffer);
         remainder
     }
 }

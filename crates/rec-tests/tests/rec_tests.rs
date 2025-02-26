@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use mcrl3_aterm::ATerm;
 use test_case::test_case;
 
@@ -69,14 +67,14 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
         let result = inner.rewrite(term.clone());
         assert_eq!(
             result,
-            expected_result.clone().into(),
+            expected_result.clone(),
             "The inner rewrite result doesn't match the expected result",
         );
 
         let result = sa.rewrite(term.clone());
         assert_eq!(
             result,
-            expected_result.into(),
+            expected_result,
             "The sabre rewrite result doesn't match the expected result"
         );
     }

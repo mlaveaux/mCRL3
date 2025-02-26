@@ -1,20 +1,12 @@
-use std::cell::RefCell;
 use std::fmt::Debug;
-use std::fs::File;
-use std::fs::{self};
-use std::io::BufRead;
-use std::io::BufReader;
-use std::rc::Rc;
 use std::time::Instant;
 
 use ahash::AHashSet;
-use anyhow::bail;
 use clap::ValueEnum;
 use mcrl3_rec_tests::load_REC_from_file;
 use mcrl3_sabre::utilities::to_untyped_data_expression;
 use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::RewriteEngine;
-use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SabreRewriter;
 
 #[derive(ValueEnum, Debug, Clone)]

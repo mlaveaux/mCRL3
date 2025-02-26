@@ -102,22 +102,17 @@ impl ProbabilisticFraction {
     }
 
     // Add new helper methods for fraction reduction
-    fn remove_common_factors(num: &mut BigNatural, den: &mut BigNatural) {
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    let gcd = Self::greatest_common_divisor(num.clone(), den.clone());
-                    if !gcd.is_number(1) {
-                        let mut quotient = b1.clone();
-                        let mut remainder = b2.clone();
+    fn remove_common_factors(numerator: &mut BigNatural, denominator: &mut BigNatural) {
+        BUFFER1.with_borrow_mut(|remainder| {
+            BUFFER2.with_borrow_mut(|buffer| {
+                let gcd = Self::greatest_common_divisor(numerator.clone(), denominator.clone());
+                if !gcd.is_number(1) {
+                    let numerator_copy = numerator.clone();
+                    let denominator_copy = denominator.clone();
 
-                        num.div_mod(&gcd, &mut quotient, &mut remainder);
-                        *num = quotient.clone();
-
-                        den.div_mod(&gcd, &mut quotient, &mut remainder);
-                        *den = quotient;
-                    }
-                })
+                    numerator_copy.div_mod(&gcd, numerator, remainder, buffer);
+                    denominator_copy.div_mod(&gcd, denominator, remainder, buffer);
+                }
             })
         })
     }

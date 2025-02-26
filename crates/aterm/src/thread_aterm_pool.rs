@@ -1,7 +1,4 @@
 use log::trace;
-use mcrl3_sharedmutex::BfSharedMutex;
-use mcrl3_sharedmutex::BfSharedMutexReadGuard;
-use mcrl3_sharedmutex::BfSharedMutexWriteGuard;
 use parking_lot::Mutex;
 use pest_consume::Parser;
 use std::borrow::Borrow;
@@ -29,13 +26,6 @@ thread_local! {
 pub struct ThreadTermPool {
     ///
     protection_set: Arc<Mutex<SharedTermProtection>>,
-
-    /// These default symbols should not call their drop, will be removed when the protection set goes out of scope
-    int_symbol: ManuallyDrop<Symbol>,
-    empty_list_symbol: ManuallyDrop<Symbol>,
-    list_symbol: ManuallyDrop<Symbol>,
-    /// Thread local lock
-    lock: BfSharedMutex<()>,
 }
 
 impl ThreadTermPool {
@@ -47,23 +37,13 @@ impl ThreadTermPool {
             tp.register_thread_term_pool();
 
         Self {
-            lock: BfSharedMutex::new(()),
-            int_symbol: ManuallyDrop::new(tp.create_symbol("Int", 0, |index| {
-                Symbol::new_internal(index,protection_set.lock().symbol_protection_set.protect(index))
-            })),
-            list_symbol: ManuallyDrop::new(tp.create_symbol("List", 2, |index| {
-                Symbol::new_internal(index,protection_set.lock().symbol_protection_set.protect(index))
-            })),
-            empty_list_symbol: ManuallyDrop::new(tp.create_symbol("[]", 0, |index| {
-                Symbol::new_internal(index, protection_set.lock().symbol_protection_set.protect(index))
-            })),
             protection_set,
         }
     }
 
     /// Creates a term without arguments.
-    pub fn create_constant<'a>(&self, symbol: &SymbolRef<'_>) -> ATerm {
-        let t: [ATermRef<'a>; 0] = [];
+    pub fn create_constant(&self, symbol: &SymbolRef<'_>) -> ATerm {
+        let t: [ATermRef<'_>; 0] = [];
         GLOBAL_TERM_POOL.lock().create_term(symbol, &t, |index| {
             self.protect(&ATermRef::new(index))
         })
@@ -174,16 +154,6 @@ impl ThreadTermPool {
         Ok(TermParser::TermSpec(root).unwrap())
     }
 
-    /// Locks the thread local lock in shared mode.
-    pub fn lock_shared(&self) -> BfSharedMutexReadGuard<()> {
-        self.lock.read().unwrap()
-    }
-
-    /// Locks the thread local lock in exclusive mode.
-    pub fn lock_exclusive(&self) -> BfSharedMutexWriteGuard<()> {
-        self.lock.write().unwrap()
-    }
-    
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
         Symbol::new_internal(symbol.index(), self.protection_set.lock().symbol_protection_set.protect(symbol.index()))
@@ -192,21 +162,6 @@ impl ThreadTermPool {
     /// Unprotects a symbol, allowing it to be garbage collected.
     pub fn drop_symbol(&self, symbol: &mut Symbol) {
         self.protection_set.lock().symbol_protection_set.unprotect(symbol.root());
-    }
-
-    /// Check if the symbol is the default "Int" symbol
-    pub fn is_int(&self, symbol: &SymbolRef<'_>) -> bool {
-        **self.int_symbol == *symbol
-    }
-
-    /// Check if the symbol is the default "List" symbol
-    pub fn is_list(&self, symbol: &SymbolRef<'_>) -> bool {
-        **self.list_symbol == *symbol
-    }
-
-    /// Check if the symbol is the default "[]" symbol
-    pub fn is_empty_list(&self, symbol: &SymbolRef<'_>) -> bool {
-        **self.empty_list_symbol == *symbol
     }
 
     /// Returns the index of the protection set.
@@ -253,6 +208,6 @@ mod tests {
     fn test_parsing() {
         let _ = mcrl3_utilities::test_logger();
 
-        let t = ATerm::from_string("f(g(a),b)").unwrap();
+        let _t = ATerm::from_string("f(g(a),b)").unwrap();
     }
 }

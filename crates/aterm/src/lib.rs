@@ -17,7 +17,8 @@ mod symbol_pool;
 mod thread_aterm_pool;
 mod parse_term;
 mod aterm_int;
-
+mod aterm_string;
+mod default_symbols;
 
 pub use aterm::*;
 pub use aterm_builder::*;
@@ -30,3 +31,5 @@ pub use symbol_pool::*;
 pub use thread_aterm_pool::*;
 pub use parse_term::*;
 pub use aterm_int::*;
+pub use aterm_string::*;
+pub use default_symbols::*;

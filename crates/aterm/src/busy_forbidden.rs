@@ -29,24 +29,12 @@ impl<T> BfTermPool<T> {
 impl<'a, T: ?Sized> BfTermPool<T> {
     /// Provides read access to the underlying object.
     pub fn read(&'a self) -> BfTermPoolRead<'a, T> {
-        unsafe {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolRead {
-                mutex: self,
-                _guard: std::mem::transmute(tp.lock_shared()),
-                _marker: Default::default(),
-            })
-        }
+        unimplemented!();
     }
 
     /// Provides write access to the underlying object.
     pub fn write(&'a self) -> BfTermPoolWrite<'a, T> {
-        unsafe {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| BfTermPoolWrite {
-                mutex: self,
-                _guard: std::mem::transmute(tp.lock_exclusive()),
-                _marker: Default::default(),
-            })
-        }
+        unimplemented!();
     }
 
     /// Provides read access to the underlying object.

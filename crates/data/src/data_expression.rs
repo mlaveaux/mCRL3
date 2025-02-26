@@ -22,6 +22,8 @@ use crate::SortExpressionRef;
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
+    use mcrl3_aterm::ATermString;
+
     use crate::{get_data_function_symbol_index, DATA_SYMBOLS};
 
     use super::*;
@@ -112,7 +114,7 @@ mod inner {
         pub fn new(name: impl Into<String>) -> DataFunctionSymbol {
             DATA_SYMBOLS.with_borrow(|ds| {
                 DataFunctionSymbol {
-                    term: ATerm::constant(&ds.data_function_symbol),
+                    term: ATerm::with_args(&ds.data_function_symbol, &[ATermString::new(name)]),
                 }
             })
         }

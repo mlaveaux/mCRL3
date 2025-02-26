@@ -36,6 +36,7 @@ pub struct Marker<'a> {
 }
 
 impl Marker<'_> {
+    // Marks the given term as being reachable.
     pub fn mark(&mut self, term: &ATermRef<'_>) {
         self.marked[term.index()] = true;
     }
@@ -61,8 +62,6 @@ pub(crate) struct GlobalTermPool {
     thread_pools: Vec<Option<Arc<Mutex<SharedTermProtection>>>>,
 
     marked: Vec<bool>,
-
-    lock: BfSharedMutex<()>,
 }
 
 impl GlobalTermPool {
@@ -77,7 +76,6 @@ impl GlobalTermPool {
             terms,
             symbol_pool: SymbolPool::new(),
             thread_pools: Vec::new(),
-            lock: BfSharedMutex::new(()),
             marked: Vec::new(),
         }
     }
@@ -151,7 +149,7 @@ impl GlobalTermPool {
     {
         let shared_term = SharedTerm {
             symbol: SymbolRef::new(symbol.index()),
-            arguments: args.into_iter().map(|t| {               
+            arguments: args.iter().map(|t| {               
                 unsafe {
                     t.borrow().upgrade_unchecked()
                 }
@@ -197,12 +195,12 @@ impl GlobalTermPool {
 
     /// Collects garbage terms.
     fn collect_garbage(&mut self) {
-        // Implement garbage collection logic here
-        for pool in self.thread_pools.iter() {
-            let mut marker = Marker {
-                marked: &mut self.marked,
-            };
+        let mut marker = Marker {
+            marked: &mut self.marked,
+        };
 
+        // Loop through all protection sets and mark the terms.
+        for pool in self.thread_pools.iter() {
             if let Some(pool) = pool {
                 let pool = pool.lock();
                 
@@ -218,7 +216,7 @@ impl GlobalTermPool {
         }
 
         // Delete all terms that are not marked
-        //self.terms.retain_mut(|term| term.is_marked());
+        self.terms.retain_mut(|index, _term| self.marked[index]);
     }
 }
 

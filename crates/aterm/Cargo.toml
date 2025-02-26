@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 mcrl3_utilities.workspace = true
 mcrl3_sharedmutex.workspace = true
+mcrl3_macros.workspace = true
 
 ahash.workspace = true
 hashbrown.workspace = true

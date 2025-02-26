@@ -6,7 +6,6 @@ use std::str::FromStr;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::TermBuilder;
-use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Yield;
 use mcrl3_aterm::THREAD_TERM_POOL;
 use pest::iterators::Pair;

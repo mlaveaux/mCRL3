@@ -68,7 +68,7 @@ mod tests {
 
         let value = 234678;
         write_u64_variablelength(&mut writer, value).unwrap();
-        writer.write(32, 0 as u64).unwrap();
+        writer.write(32, 0_u64).unwrap();
 
         let mut reader = BitReader::new(&stream[0..]);
         let result = read_u64_variablelength(&mut reader).unwrap();
