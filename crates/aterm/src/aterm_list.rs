@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use crate::ATerm;
 use crate::ATermRef;
+use crate::Term;
 
 pub struct ATermList<T> {
     term: ATerm,
