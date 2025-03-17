@@ -6,6 +6,7 @@ use log::trace;
 
 use crate::ATerm;
 use crate::Symbol;
+use crate::Term;
 use crate::ThreadTermPool;
 use crate::THREAD_TERM_POOL;
 

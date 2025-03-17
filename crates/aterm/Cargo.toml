@@ -10,6 +10,7 @@ mcrl3_sharedmutex.workspace = true
 mcrl3_macros.workspace = true
 
 ahash.workspace = true
+delegate.workspace = true
 hashbrown.workspace = true
 log.workspace = true
 parking_lot.workspace = true

@@ -10,6 +10,7 @@ use mcrl3_utilities::PhantomUnsend;
 use crate::aterm::ATermRef;
 use crate::BfTermPool;
 use crate::Marker;
+use crate::Term;
 use crate::THREAD_TERM_POOL;
 
 use super::BfTermPoolThreadWrite;
@@ -132,22 +133,6 @@ pub trait Markable {
     }
 }
 
-impl Markable for ATermRef<'_> {
-    fn mark(&self, marker: &mut Marker) {
-        if !self.is_default() {
-            marker.mark(self);
-        }
-    }
-
-    fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        term == self
-    }
-
-    fn len(&self) -> usize {
-        1
-    }
-}
-
 impl<T: Markable> Markable for Vec<T> {
     fn mark(&self, marker: &mut Marker) {
         for value in self {
@@ -206,7 +191,10 @@ impl<'a, C: Markable> Protector<'a, C> {
         return Protector { reference };
     }
 
-    pub fn protect(&self, term: &ATermRef<'_>) -> ATermRef<'static> {
+    /// Yields a term to insert into the container.
+    /// 
+    /// The invariant to uphold is that the resulting term MUST be inserted into the container.
+    pub fn protect(&self, term: &impl Term<'a>) -> ATermRef<'static> {
         unsafe {
             // Store terms that are marked as protected to check if they are
             // actually in the container when the protection is dropped.
@@ -219,6 +207,10 @@ impl<'a, C: Markable> Protector<'a, C> {
         }
     }
 }
+
+/// TODO: Add trait to convert ATermRef<'static> to ATerm<'a>
+
+
 
 impl<C: Markable> Deref for Protector<'_, C> {
     type Target = C;
