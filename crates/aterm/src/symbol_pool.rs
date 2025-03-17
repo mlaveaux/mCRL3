@@ -1,3 +1,5 @@
+use std::mem::transmute;
+
 use mcrl3_utilities::IndexedSet;
 
 use crate::Symbol;
@@ -36,8 +38,11 @@ impl SymbolPool {
     }
     
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&'a self, symbol: &'a SymbolRef<'_>) -> &'a str {
-        self.symbols.get(symbol.index()).unwrap().name()
+    pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> &'a str {
+        unsafe {
+            // SAFETY: Symbol pool will never remove symbols that are pointed to by str.
+            transmute::<&str, &'a str>(self.symbols.get(symbol.index()).unwrap().name())
+        }
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef

@@ -6,7 +6,25 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 
+use delegate::delegate;
+
 use crate::THREAD_TERM_POOL;
+
+/// The public interface for a function symbol, can be used to write generic
+/// functions that accept both `Symbol` and `SymbolRef`.
+pub trait Symb<'a> {
+    /// Obtain the symbol's name.
+    fn name(&self) -> &'a str;
+
+    /// Obtain the symbol's arity.
+    fn arity(&self) -> usize;
+
+    /// Create a copy of the symbol reference.
+    fn copy(&self) -> SymbolRef<'a>;
+
+    /// Returns the internal index of the symbol.
+    fn index(&self) -> usize;
+}
 
 /// A reference to a function symbol in the term pool.
 #[derive(Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -17,13 +35,6 @@ pub struct SymbolRef<'a> {
 
 /// A Symbol references to an aterm function symbol, which has a name and an arity.
 impl<'a> SymbolRef<'a> {
-    pub(crate) fn new(symbol: usize) -> SymbolRef<'a> {
-        SymbolRef {
-            index: symbol,
-            marker: PhantomData,
-        }
-    }
-
     /// Protect the symbol from garbage collection.
     pub fn protect(&self) -> Symbol {
         THREAD_TERM_POOL.with_borrow(|tp| {
@@ -31,29 +42,46 @@ impl<'a> SymbolRef<'a> {
         })
     }
 
-    /// Create a copy of the symbol reference.
-    pub fn copy(&self) -> SymbolRef<'_> {
-        SymbolRef::new(self.index)
-    }
-
     pub(crate) fn index(&self) -> usize {
         self.index
+    }
+
+    pub(crate) fn from_index(index: usize) -> SymbolRef<'a> {
+        SymbolRef {
+            index,
+            marker: PhantomData,
+        }
     }
 }
 
 impl SymbolRef<'_> {
-    /// Obtain the symbol's name.
-    pub fn name(&self) -> &str {
+    pub(crate) fn from_symbol<'a>(symbol: &impl Symb<'a>) -> SymbolRef<'a> {
+        SymbolRef {
+            index: symbol.index(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> Symb<'a> for SymbolRef<'a> {
+    fn name(&self) -> &'a str {
         THREAD_TERM_POOL.with_borrow(|tp| {
             tp.symbol_name(self)
         })
     }
 
-    /// Obtain the symbol's arity.
-    pub fn arity(&self) -> usize {
+    fn arity(&self) -> usize {
         THREAD_TERM_POOL.with_borrow(|tp| {
             tp.symbol_arity(self)
         })
+    }
+
+    fn copy(&self) -> SymbolRef<'a> {
+        SymbolRef::from_index(self.index)
+    }
+
+    fn index(&self) -> usize {
+        self.index
     }
 }
 
@@ -83,26 +111,34 @@ impl Symbol {
             tp.create_symbol(name, arity)
         })
     }
+}
 
+impl Symbol {
     pub(crate) fn new_internal(index: usize, root: usize) -> Symbol {
         Self {
-            symbol: SymbolRef::new(index),
+            symbol: SymbolRef::from_index(index),
             root,
         }
     }
 
-    /// Get the name of the symbol.
-    pub fn name(&self) -> &str {
-        self.symbol.name()
-    }
-
-    /// Get the arity of the symbol.
-    pub fn arity(&self) -> usize {
-        self.symbol.arity()
-    }
-
     pub(crate) fn root(&self) -> usize {
         self.root
+    }
+
+    /// Create a copy of the symbol reference.
+    pub fn copy(&self) -> SymbolRef<'_> {
+        self.symbol.copy()
+    }
+}
+
+impl<'a> Symb<'a> for Symbol {
+    delegate! {
+        to self.symbol {
+            fn name(&self) -> &'a str;
+            fn arity(&self) -> usize;
+            fn copy(&self) -> SymbolRef<'a>;
+            fn index(&self) -> usize;
+        }
     }
 }
 
@@ -115,13 +151,6 @@ impl Drop for Symbol {
                 }
             })
         }
-    }
-}
-
-impl Symbol {
-    /// Create a copy of the symbol reference.
-    pub fn copy(&self) -> SymbolRef<'_> {
-        self.symbol.copy()
     }
 }
 
