@@ -10,11 +10,32 @@ use delegate::delegate;
 
 use crate::THREAD_TERM_POOL;
 
+/// Returns a reference to the term pool
+pub struct StrRef<'a> {
+    name: &'a str,
+}
+
+impl<'a> StrRef<'a> {
+    pub fn new(name: &str) -> StrRef {
+        StrRef {
+            name,
+        }
+    }
+}
+
+impl Deref for StrRef<'_> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.name
+    }
+}
+
 /// The public interface for a function symbol, can be used to write generic
 /// functions that accept both `Symbol` and `SymbolRef`.
 pub trait Symb<'a> {
     /// Obtain the symbol's name.
-    fn name(&self) -> &'a str;
+    fn name(&self) -> StrRef<'a>;
 
     /// Obtain the symbol's arity.
     fn arity(&self) -> usize;
@@ -64,7 +85,7 @@ impl SymbolRef<'_> {
 }
 
 impl<'a> Symb<'a> for SymbolRef<'a> {
-    fn name(&self) -> &'a str {
+    fn name(&self) -> StrRef<'a> {
         THREAD_TERM_POOL.with_borrow(|tp| {
             tp.symbol_name(self)
         })
@@ -134,7 +155,7 @@ impl Symbol {
 impl<'a> Symb<'a> for Symbol {
     delegate! {
         to self.symbol {
-            fn name(&self) -> &'a str;
+            fn name(&self) -> StrRef<'a>;
             fn arity(&self) -> usize;
             fn copy(&self) -> SymbolRef<'a>;
             fn index(&self) -> usize;

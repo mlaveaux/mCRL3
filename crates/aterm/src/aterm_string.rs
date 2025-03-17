@@ -1,6 +1,7 @@
-use crate::{ATerm, THREAD_TERM_POOL};
+use crate::{ATerm, Symb, Term, THREAD_TERM_POOL};
 use crate::Symbol;
 use mcrl3_macros::mcrl3_derive_terms;
+use mcrl3_macros::mcrl3_term;
 use std::ops::Deref;
 
 use std::borrow::Borrow;
@@ -8,13 +9,16 @@ use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
 
-fn is_string_term(_: &ATermRef<'_>) -> bool {
-    true
+fn is_string_term<'a>(t: &impl Term<'a>) -> bool {
+    t.get_head_symbol().arity() == 0
 }
 
 #[mcrl3_derive_terms]
 mod inner {
-    use mcrl3_macros::mcrl3_term;
+
+    use mcrl3_macros::mcrl3_ignore;
+
+    use crate::{StrRef, Term};
 
     use super::*;
 
@@ -32,8 +36,18 @@ mod inner {
             })
         }
 
-        pub fn to_string(&self) -> String {
-            self.term.to_string()
+        /// Get the value of the string
+        pub fn value(&self) -> StrRef<'_> {
+            let arg = self.term.arg(0);
+            
+            arg.get_head_symbol().name()
+        }
+    }
+
+    #[mcrl3_ignore]
+    impl From<&str> for ATermString {
+        fn from(s: &str) -> Self {
+            ATermString::new(s)
         }
     }
 }
