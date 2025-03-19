@@ -9,13 +9,10 @@ use log::log_enabled;
 use log::trace;
 use log::warn;
 use mcrl3_aterm::ATermRef;
-use mcrl3_data::is_data_abstraction;
 use mcrl3_data::is_data_application;
 use mcrl3_data::is_data_function_symbol;
 use mcrl3_data::is_data_machine_number;
-use mcrl3_data::is_data_untyped_identifier;
 use mcrl3_data::is_data_variable;
-use mcrl3_data::is_data_where_clause;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbol;
@@ -530,12 +527,6 @@ fn is_supported_term(t: &DataExpression) -> bool {
     for subterm in t.iter() {
         if is_data_application(&subterm) && !is_data_function_symbol(&subterm.arg(0)) {
             warn!("{} is higher order", &subterm);
-            return false;
-        } else if is_data_abstraction(&subterm)
-            || is_data_where_clause(&subterm)
-            || is_data_untyped_identifier(&subterm)
-        {
-            warn!("{} contains unsupported construct", subterm);
             return false;
         }
     }

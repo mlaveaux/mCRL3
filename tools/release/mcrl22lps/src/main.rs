@@ -87,7 +87,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
     let args = Args::parse();
 
     // Read input specification
-    let spec = if let Some(path) = args.input {
+    let _spec = if let Some(path) = args.input {
         let mut file = File::open(path)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;

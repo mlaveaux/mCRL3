@@ -3,7 +3,6 @@ use log::trace;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::THREAD_TERM_POOL;
-use mcrl3_data::BoolSort;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
@@ -268,13 +267,8 @@ impl SabreRewriter {
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {
                 let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, rhs, stats);
-                let lhs_normal = if lhs == BoolSort::true_term() {
-                    // TODO: Store the conditions in a better way. REC now uses a list of equalities while mCRL2 specifications have a simple condition.
-                    lhs
-                } else {
-                    SabreRewriter::stack_based_normalise_aux(tp, automaton, lhs, stats)
-                };
-
+                let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, lhs, stats);
+                
                 // If lhs != rhs && !equality OR equality && lhs == rhs.
                 if (!c.equality && lhs_normal == rhs_normal) || (c.equality && lhs_normal != rhs_normal) {
                     return false;

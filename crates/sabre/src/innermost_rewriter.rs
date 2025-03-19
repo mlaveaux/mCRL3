@@ -3,7 +3,6 @@ use log::trace;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::THREAD_TERM_POOL;
-use mcrl3_data::BoolSort;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
@@ -262,13 +261,8 @@ impl InnermostRewriter {
             let lhs: DataExpression = c.semi_compressed_lhs.evaluate_with(builder, t, tp).into();
 
             let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, rhs);
-            let lhs_normal = if lhs == BoolSort::true_term() {
-                // TODO: Store the conditions in a better way. REC now uses a list of equalities while mCRL2 specifications have a simple condition.
-                lhs
-            } else {
-                InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, lhs)
-            };
-
+            let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, lhs);
+            
             if lhs_normal != rhs_normal && c.equality || lhs_normal == rhs_normal && !c.equality {
                 return false;
             }

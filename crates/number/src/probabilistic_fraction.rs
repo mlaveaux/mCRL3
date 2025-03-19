@@ -57,19 +57,19 @@ impl ProbabilisticFraction {
     }
 
     /// Returns the constant zero (0/1).
-    pub fn zero() -> Self {
+    pub fn zero() -> &'static Self {
         static ZERO: once_cell::sync::Lazy<ProbabilisticFraction> = once_cell::sync::Lazy::new(|| {
             ProbabilisticFraction::new(BigNatural::from_usize(0), BigNatural::from_usize(1))
         });
-        ZERO.clone()
+        &ZERO
     }
 
     /// Returns the constant one (1/1).
-    pub fn one() -> Self {
+    pub fn one() -> &'static Self {
         static ONE: once_cell::sync::Lazy<ProbabilisticFraction> = once_cell::sync::Lazy::new(|| {
             ProbabilisticFraction::new(BigNatural::from_usize(1), BigNatural::from_usize(1))
         });
-        ONE.clone()
+        &ONE
     }
 
     /// Returns the numerator of the fraction.
@@ -125,14 +125,11 @@ impl ProbabilisticFraction {
 
 impl PartialEq for ProbabilisticFraction {
     fn eq(&self, other: &Self) -> bool {
-        BUFFER1.with_borrow_mut(|b1| {
-            BUFFER2.with_borrow_mut(|b2| {
+        BUFFER1.with_borrow_mut(|left| {
+            BUFFER2.with_borrow_mut(|right| {
                 // self.num * other.den == other.num * self.den
-                let mut left = b1.clone();
-                let mut right = b2.clone();
-
-                left = &self.numerator * &other.denominator;
-                right = &other.numerator * &self.denominator;
+                *left = &self.numerator * &other.denominator;
+                *right = &other.numerator * &self.denominator;
 
                 left == right
             })
@@ -241,24 +238,15 @@ impl Mul for &ProbabilisticFraction {
         debug_assert!(self.is_normalized(), "Left operand must be normalized");
         debug_assert!(other.is_normalized(), "Right operand must be normalized");
 
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    let mut num = b1.clone();
-                    let mut den = b2.clone();
+        // num = self.num * other.num
+        // den = self.den * other.den
+        let num = &self.numerator * &other.numerator;
+        let den = &self.denominator * &other.denominator;
 
-                    // num = self.num * other.num
-                    // den = self.den * other.den
-                    num = &self.numerator * &other.numerator;
-                    den = &self.denominator * &other.denominator;
-
-                    let mut result = ProbabilisticFraction::new(num, den);
-                    result.reduce();
-                    debug_assert!(result.is_normalized(), "Result must be normalized");
-                    result
-                })
-            })
-        })
+        let mut result = ProbabilisticFraction::new(num, den);
+        result.reduce();
+        debug_assert!(result.is_normalized(), "Result must be normalized");
+        result
     }
 }
 
@@ -270,24 +258,15 @@ impl Div for &ProbabilisticFraction {
         debug_assert!(other.is_normalized(), "Right operand must be normalized");
         assert!(!other.numerator.is_zero(), "Division by zero");
 
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    let mut num = b1.clone();
-                    let mut den = b2.clone();
+        // num = self.num * other.den
+        // den = self.den * other.num
+        let num = &self.numerator * &other.denominator;
+        let den = &self.denominator * &other.numerator;
 
-                    // num = self.num * other.den
-                    // den = self.den * other.num
-                    num = &self.numerator * &other.denominator;
-                    den = &self.denominator * &other.numerator;
-
-                    let mut result = ProbabilisticFraction::new(num, den);
-                    result.reduce();
-                    debug_assert!(result.is_normalized(), "Result must be normalized");
-                    result
-                })
-            })
-        })
+        let mut result = ProbabilisticFraction::new(num, den);
+        result.reduce();
+        debug_assert!(result.is_normalized(), "Result must be normalized");
+        result
     }
 }
 
