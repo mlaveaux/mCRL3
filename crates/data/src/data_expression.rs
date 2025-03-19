@@ -10,7 +10,9 @@ use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_aterm::Markable;
 use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
+use mcrl3_aterm::{ATermInt, ATermString, StrRef, Symb, Term};
 
+use crate::{get_data_function_symbol_index, DATA_SYMBOLS};
 use crate::is_data_application;
 use crate::is_data_expression;
 use crate::is_data_function_symbol;
@@ -22,10 +24,6 @@ use crate::SortExpressionRef;
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
-    use mcrl3_aterm::ATermString;
-
-    use crate::{get_data_function_symbol_index, DATA_SYMBOLS};
-
     use super::*;
 
     /// A data expression can be any of:
@@ -51,7 +49,7 @@ mod inner {
         ///     - application       f(t_0, ..., t_n) -> f
         pub fn data_function_symbol(&self) -> DataFunctionSymbolRef<'_> {
             if is_data_application(&self.term) {
-                self.term.arg(0).upgrade(&self.term).into()
+                self.term.arg(0).into()
             } else if is_data_function_symbol(&self.term) {
                 self.term.copy().into()
             } else {
@@ -114,7 +112,7 @@ mod inner {
         pub fn new(name: impl Into<String>) -> DataFunctionSymbol {
             DATA_SYMBOLS.with_borrow(|ds| {
                 DataFunctionSymbol {
-                    term: ATerm::with_args(&ds.data_function_symbol, &[ATermString::new(name)]),
+                    term: ATerm::with_args(ds.data_function_symbol.deref(), &[ATermString::new(name)]),
                 }
             })
         }
@@ -125,9 +123,9 @@ mod inner {
         }
 
         /// Returns the name of the function symbol
-        pub fn name(&self) -> &str {
-            // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
+        pub fn name(&self) -> StrRef<'_> {
+            unimplemented!("name not implemented for {}", self);
+            //ATermStringRef::from(self.term.arg(0)).value()
         }
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
@@ -160,27 +158,35 @@ mod inner {
     impl DataVariable {
         /// Create a new untyped variable with the given name.
         #[mcrl3_ignore]
-        pub fn new(name: impl Into<ATermString>) -> DataVariable {
+        pub fn new(name: impl Into<ATermString>) -> DataVariable {            
             DATA_SYMBOLS.with_borrow(|ds| {
+                // TODO: Storing terms temporarily is not optimal.
+                let t = name.into();
+                let args: &[ATerm] = &[t.into(), ATermInt::new(0).into()];
+
                 DataVariable {
-                    term: ATerm::with_args(&ds.data_variable, &[name.into(), &ds.untyped_sort])
+                    term: ATerm::with_args(ds.data_variable.deref(), args)
                 }
             })
         }
 
         /// Create a variable with the given sort and name.
-        pub fn with_sort(name: impl Into<ATermString>, sort: &SortExpressionRef<'_>) -> DataVariable {
+        pub fn with_sort(name: impl Into<ATermString>, sort: usize) -> DataVariable {
             DATA_SYMBOLS.with_borrow(|ds| {
+                // TODO: Storing terms temporarily is not optimal.
+                let t = name.into();
+                let args: &[ATerm] = &[t.into(), ATermInt::new(sort).into()];
+
                 DataVariable {
-                    term: ATerm::with_args(&ds.data_variable, [name.into(), sort])
+                    term: ATerm::with_args(ds.data_variable.deref(), args)
                 }
             })
         }
 
         /// Returns the name of the variable.
-        pub fn name(&self) -> &str {
+        pub fn name(&self) -> StrRef<'_> {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
+            self.term.arg(0).get_head_symbol().name()
         }
 
         /// Returns the sort of the variable.
@@ -202,28 +208,22 @@ mod inner {
 
     impl DataApplication {
         #[mcrl3_ignore]
-        pub fn new<'a, 'b>(
-            head: &'a impl Borrow<ATermRef<'b>>,
-            arguments: &'a [impl Borrow<ATermRef<'b>>],
-        ) -> DataApplication 
-            where 'b: 'a 
+        pub fn new<'a>(
+            head: &impl Term<'a>,
+            arguments: &[impl Term<'a>],
+        ) -> DataApplication
         {
-            DATA_SYMBOLS.with_borrow_mut(|ds| {
-                let mut args: Vec<ATermRef<'a>> = Vec::new();
-                args.push(head.borrow().copy());
-                for arg in arguments {
-                    args.push(arg.borrow().copy());
-                }
-
-                DataApplication {
-                    term: ATerm::with_args(ds.get_data_application_symbol(arguments.len()), &args),
-                }
-            })
+            unimplemented!();
+            // DATA_SYMBOLS.with_borrow_mut(|ds| {
+            //     DataApplication {
+            //         term: ATerm::with_iter(ds.get_data_application_symbol(arguments.len()), head.iter().chain(arguments.iter())),
+            //     }
+            // })
         }
 
         /// Returns the head symbol a data application
         pub fn data_function_symbol(&self) -> DataFunctionSymbolRef<'_> {
-            self.term.arg(0).upgrade(&self.term).into()
+            self.term.arg(0).into()
         }
 
         /// Returns the arguments of a data application

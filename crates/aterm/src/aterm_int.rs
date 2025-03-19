@@ -5,9 +5,12 @@ use mcrl3_macros::mcrl3_term;
 use std::ops::Deref;
 
 use std::borrow::Borrow;
+use crate::ATermArgs;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
+use crate::SymbolRef;
+use crate::TermIterator;
 
 pub fn is_int_term<'a>(t: &impl Term<'a>) -> bool {
     t.is_int()
