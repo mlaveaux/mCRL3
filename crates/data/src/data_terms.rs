@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 
-use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::SymbolRef;

@@ -1,6 +1,8 @@
 use std::ops::Deref;
 use std::borrow::Borrow;
 
+use delegate::delegate;
+
 use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_term;
 use mcrl3_macros::mcrl3_ignore;

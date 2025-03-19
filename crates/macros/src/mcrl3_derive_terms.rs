@@ -59,8 +59,6 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         // the conversion from and to an ATerm.
                         let name_ref = format_ident!("{}Ref", object.ident);
                         let generated: TokenStream = quote!(
-                            use delegate::delegate;
-
                             impl #name {
                                 pub fn copy<'a>(&'a self) -> #name_ref<'a> {
                                     self.term.copy().into()
