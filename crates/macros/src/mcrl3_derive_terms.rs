@@ -59,6 +59,8 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         // the conversion from and to an ATerm.
                         let name_ref = format_ident!("{}Ref", object.ident);
                         let generated: TokenStream = quote!(
+                            use delegate::delegate;
+
                             impl #name {
                                 pub fn copy<'a>(&'a self) -> #name_ref<'a> {
                                     self.term.copy().into()
@@ -107,6 +109,24 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                     1
                                 }
                             }
+                            
+                            impl<'a> Term<'a> for #name {
+                                delegate! {
+                                    to self.term {
+                                        fn protect(&self) -> ATerm;
+                                        fn arg(&self, index: usize) -> ATermRef<'a>;
+                                        fn arguments(&self) -> ATermArgs<'a>;
+                                        fn copy(&self) -> ATermRef<'a>;
+                                        fn is_default(&self) -> bool;
+                                        fn get_head_symbol(&self) -> SymbolRef<'a>;
+                                        fn is_list(&self) -> bool;
+                                        fn is_empty_list(&self) -> bool;
+                                        fn is_int(&self) -> bool;
+                                        fn iter(&self) -> TermIterator<'_>;
+                                        fn index(&self) -> usize;
+                                    }
+                                }
+                            }
 
                             #[derive(Default, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref<'a> {
@@ -138,11 +158,21 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a> Deref for #name_ref<'a> {
-                                type Target = ATermRef<'a>;
-
-                                fn deref(&self) -> &Self::Target {
-                                    &self.term
+                            impl<'a> Term<'a> for #name_ref<'a> {
+                                delegate! {
+                                    to self.term {
+                                        fn protect(&self) -> ATerm;
+                                        fn arg(&self, index: usize) -> ATermRef<'a>;
+                                        fn arguments(&self) -> ATermArgs<'a>;
+                                        fn copy(&self) -> ATermRef<'a>;
+                                        fn is_default(&self) -> bool;
+                                        fn get_head_symbol(&self) -> SymbolRef<'a>;
+                                        fn is_list(&self) -> bool;
+                                        fn is_empty_list(&self) -> bool;
+                                        fn is_int(&self) -> bool;
+                                        fn iter(&self) -> TermIterator<'_>;
+                                        fn index(&self) -> usize;
+                                    }
                                 }
                             }
 
