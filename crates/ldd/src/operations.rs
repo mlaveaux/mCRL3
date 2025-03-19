@@ -1,8 +1,3 @@
-use crate::cache_binary_op;
-use crate::cache_comm_binary_op;
-use crate::cache_terniary_op;
-use crate::cache_unary_function;
-use crate::iterators::*;
 use crate::BinaryOperator;
 use crate::Data;
 use crate::DataRef;
@@ -12,6 +7,11 @@ use crate::Storage;
 use crate::TernaryOperator;
 use crate::UnaryFunction;
 use crate::Value;
+use crate::cache_binary_op;
+use crate::cache_comm_binary_op;
+use crate::cache_terniary_op;
+use crate::cache_unary_function;
+use crate::iterators::*;
 
 use std::cmp::Ordering;
 use std::cmp::{self};

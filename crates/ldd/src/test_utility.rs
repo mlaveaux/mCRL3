@@ -1,10 +1,10 @@
 //! Functions in this module are only relevant for testing purposes.
 
-use crate::iterators::*;
-use crate::operations::*;
 use crate::Ldd;
 use crate::Storage;
 use crate::Value;
+use crate::iterators::*;
+use crate::operations::*;
 
 use rand::Rng;
 use std::collections::HashSet;

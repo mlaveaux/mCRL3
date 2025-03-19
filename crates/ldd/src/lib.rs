@@ -29,8 +29,8 @@
 //! for decision diagrams. International Journal on Software Tools for
 //! Technology Transfer. 19(6):675-696, 2017.
 //!
-extern crate static_assertions;
-
+//! 
+#[forbid(unsafe_code)]
 mod format;
 pub mod iterators;
 mod operations;

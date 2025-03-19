@@ -27,7 +27,8 @@ pub struct Node {
     marked: bool,
 }
 
-static_assertions::assert_eq_size!(Node, (usize, usize, usize));
+/// Check that the node size has the expected size.
+const _:() = assert!(std::mem::size_of::<Node>() == std::mem::size_of::<(usize, usize, usize)>());
 
 impl Node {
     fn new(value: Value, down: usize, right: usize) -> Node {

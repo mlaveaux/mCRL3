@@ -179,11 +179,7 @@ impl<K: Default + Eq + Hash, V, S: BuildHasher> Cache<K, V, S> {
         let index = self.hash_builder.hash_one(key) % (self.table.len() as u64);
 
         let entry = &self.table[index as usize];
-        if entry.0 == *key {
-            Some(&entry.1)
-        } else {
-            None
-        }
+        if entry.0 == *key { Some(&entry.1) } else { None }
     }
 
     /// Inserts the given key value pair into the cache. Might evict other pairs in the cache.
