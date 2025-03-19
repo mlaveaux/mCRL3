@@ -1,13 +1,20 @@
-use crate::{ATerm, Symb, Term, THREAD_TERM_POOL};
-use crate::Symbol;
+use std::ops::Deref;
+use std::borrow::Borrow;
+
 use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_term;
-use std::ops::Deref;
+use mcrl3_macros::mcrl3_ignore;
 
-use std::borrow::Borrow;
+use crate::{ATerm, Symb, Term, THREAD_TERM_POOL};
+use crate::Symbol;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
+
+use crate::ATermArgs;
+use crate::TermIterator;
+use crate::SymbolRef;
+use crate::StrRef;
 
 fn is_string_term<'a>(t: &impl Term<'a>) -> bool {
     t.get_head_symbol().arity() == 0
@@ -15,11 +22,6 @@ fn is_string_term<'a>(t: &impl Term<'a>) -> bool {
 
 #[mcrl3_derive_terms]
 mod inner {
-
-    use mcrl3_macros::mcrl3_ignore;
-
-    use crate::{StrRef, Term};
-
     use super::*;
 
     #[mcrl3_term(is_string_term)]

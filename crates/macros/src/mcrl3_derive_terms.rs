@@ -94,12 +94,6 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl Borrow<ATermRef<'static>> for #name {
-                                fn borrow(&self) -> &ATermRef<'static> {
-                                    &self.term
-                                }
-                            }
-
                             impl Markable for #name {
                                 fn mark(&self, marker: &mut Marker) {
                                     self.term.mark(marker);

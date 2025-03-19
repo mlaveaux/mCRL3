@@ -11,8 +11,15 @@ use delegate::delegate;
 use crate::THREAD_TERM_POOL;
 
 /// Returns a reference to the term pool
+#[derive(Debug)]
 pub struct StrRef<'a> {
     name: &'a str,
+}
+
+impl fmt::Display for StrRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }
 
 impl<'a> StrRef<'a> {

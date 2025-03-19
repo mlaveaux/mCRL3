@@ -1,10 +1,8 @@
 use log::trace;
 use parking_lot::Mutex;
 use pest_consume::Parser;
-use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::error::Error;
-use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
 use crate::aterm::ATerm;
@@ -13,8 +11,11 @@ use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::Markable;
 use crate::Rule;
 use crate::SharedTermProtection;
+use crate::StrRef;
+use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
+use crate::Term;
 use crate::TermParser;
 
 thread_local! {
@@ -46,15 +47,15 @@ impl ThreadTermPool {
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
         tp.borrow_mut().create_term(symbol, &empty_args, |index| {
-            self.protect(&ATermRef::new(index))
+            self.protect(&ATermRef::from_index(index))
         })
     }
 
     /// Create a term with the given arguments
-    pub fn create<'a>(&self, symbol: &SymbolRef<'_>, arguments: &[impl Borrow<ATermRef<'a>>]) -> ATerm {
+    pub fn create<'a, 'b>(&self, symbol: &impl Symb<'a>, arguments: &[impl Term<'b>]) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp).borrow_mut().create_term(symbol, arguments, |index| {
-            self.protect(&ATermRef::new(index))
+            self.protect(&ATermRef::from_index(index))
         })
     }
 
@@ -62,52 +63,43 @@ impl ThreadTermPool {
     pub fn create_int(&self, value: usize) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp).borrow_mut().create_int(value, |index| {
-            self.protect(&ATermRef::new(index))
+            self.protect(&ATermRef::from_index(index))
         })
     }
     
     /// Create a term with the given arguments given by the iterator.
-    pub fn create_term_iter<'a, I, T>(&self, symbol: &SymbolRef<'_>, iter: I) -> ATerm
+    pub fn create_term_iter<'a, I, T>(&self, symbol: &impl Symb<'a>, iter: I) -> ATerm
     where
         I: IntoIterator<Item = T>,
-        T: Borrow<ATermRef<'a>>,
+        T: Term<'a>,
     {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp).borrow_mut().create_term_iter(symbol, iter, |index| {
-            self.protect(&ATermRef::new(index))
+            self.protect(&ATermRef::from_index(index))
         })
     }
     
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn get_head_symbol<'a, 'b>(&'a self, term: &'a ATermRef<'b>) -> &'a SymbolRef<'b> 
-        where 'a: 'b
-    {
+    pub fn get_head_symbol<'a>(&self, term: &ATermRef<'a>) -> SymbolRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
-        unsafe {
-            std::mem::transmute((*tp).borrow().get_head_symbol(term))
-        }
+        (*tp).borrow().get_head_symbol(term)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn get_argument<'a>(&'a self, term: &'a ATermRef<'a>, i: usize) -> &'a ATermRef<'a> { 
+    pub fn get_argument<'a, 'b: 'a>(&'b self, term: &ATermRef<'a>, i: usize) -> ATermRef<'a> { 
         let tp = GLOBAL_TERM_POOL.lock();       
-        unsafe {
-            std::mem::transmute((*tp).borrow().get_argument(term, i))
-        }
+        (*tp).borrow().get_argument(term, i)
     }
     
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'_>) -> &'a str {
+    pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
-        unsafe {
-            std::mem::transmute((*tp).borrow().symbol_name(symbol))
-        }
+        (*tp).borrow().symbol_name(symbol)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
     pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
         let tp = GLOBAL_TERM_POOL.lock();
-
         (*tp).borrow().symbol_arity(symbol)
     }
 
@@ -183,6 +175,8 @@ impl ThreadTermPool {
 
 #[cfg(test)]
 mod tests {
+    use crate::Term;
+
     use super::*;
     use std::thread;
 

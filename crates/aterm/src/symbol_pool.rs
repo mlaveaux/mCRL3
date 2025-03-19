@@ -38,8 +38,10 @@ impl SymbolPool {
     
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
-        // SAFETY: Symbol pool will never remove symbols that are pointed to by str.
-        StrRef::new(self.symbols.get(symbol.index()).unwrap().name())
+        // TODO: Get a guard that ensures that the StrRef lives long enough
+        unsafe {
+            std::mem::transmute(StrRef::new(self.symbols.get(symbol.index()).unwrap().name()))
+        }
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
