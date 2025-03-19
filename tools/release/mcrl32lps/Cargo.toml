@@ -1,7 +1,7 @@
 [package]
-name = "mcrl22lps"
-version = "0.1.0"
-edition = "2021"
+name = "mcrl32lps"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 mcrl3_syntax.workspace = true

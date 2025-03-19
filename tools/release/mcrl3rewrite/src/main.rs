@@ -2,9 +2,11 @@ use std::error::Error;
 use std::process::ExitCode;
 
 use clap::Parser;
+#[cfg(feature = "measure-allocs")]
+use log::info;
 
-use mcrl2rewrite::Rewriter;
-use mcrl2rewrite::rewrite_rec;
+use mcrl3rewrite::Rewriter;
+use mcrl3rewrite::rewrite_rec;
 
 mod trs_format;
 

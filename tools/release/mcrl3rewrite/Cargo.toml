@@ -1,5 +1,5 @@
 [package]
-name = "mcrl2rewrite"
+name = "mcrl3rewrite"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
