@@ -1,9 +1,9 @@
-
 use pest_consume::Error;
 use pest_consume::match_nodes;
 use pest_derive::Parser;
 
-use crate::{ATerm, Symbol};
+use crate::ATerm;
+use crate::Symbol;
 
 #[derive(Parser)]
 #[grammar = "term_grammar.pest"]
@@ -32,7 +32,7 @@ impl TermParser {
             [Id(identifier), Args(args)] => {
                 let symbol = Symbol::new(identifier, args.len());
 
-                Ok(ATerm::with_iter(&symbol, args))
+                Ok(ATerm::with_iter(&symbol, args.iter().map(|t| &t)))
             }
         )
     }
@@ -43,7 +43,7 @@ impl TermParser {
                 Ok(term.collect())
             }
         )
-    }    
+    }
 }
 
 #[cfg(test)]

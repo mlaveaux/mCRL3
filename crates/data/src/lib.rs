@@ -3,7 +3,6 @@
 //! This crate provides data expressions and related functionality.
 
 #[forbid(unsafe_code)]
-
 mod data_expression;
 mod data_terms;
 mod sort_terms;

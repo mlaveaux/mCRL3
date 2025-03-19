@@ -33,7 +33,7 @@ mod inner {
     impl SortExpression {
         /// Returns the name of the sort.
         pub fn name(&self) -> StrRef {
-           self.term.arg(0).get_head_symbol().name()
+            self.term.arg(0).get_head_symbol().name()
         }
     }
 

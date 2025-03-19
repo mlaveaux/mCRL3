@@ -12,7 +12,6 @@ use crate::BfTermPool;
 use crate::Marker;
 use crate::Term;
 use crate::THREAD_TERM_POOL;
-
 use super::BfTermPoolThreadWrite;
 
 #[cfg(debug_assertions)]
@@ -35,9 +34,7 @@ impl<C: Markable + Send + 'static> Protected<C> {
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(BfTermPool::new(container));
 
-        let root = THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.protect_container(shared.clone())
-        });
+        let root = THREAD_TERM_POOL.with_borrow(|tp| tp.protect_container(shared.clone()));
 
         Protected {
             container: shared,
@@ -192,7 +189,7 @@ impl<'a, C: Markable> Protector<'a, C> {
     }
 
     /// Yields a term to insert into the container.
-    /// 
+    ///
     /// The invariant to uphold is that the resulting term MUST be inserted into the container.
     pub fn protect(&self, term: &impl Term<'a>) -> ATermRef<'static> {
         unsafe {
@@ -209,8 +206,6 @@ impl<'a, C: Markable> Protector<'a, C> {
 }
 
 /// TODO: Add trait to convert ATermRef<'static> to ATerm<'a>
-
-
 
 impl<C: Markable> Deref for Protector<'_, C> {
     type Target = C;

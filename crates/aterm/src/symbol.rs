@@ -1,42 +1,15 @@
 use std::borrow::Borrow;
-use std::marker::PhantomData;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 use delegate::delegate;
 
+use crate::StrRef;
 use crate::THREAD_TERM_POOL;
-
-/// Returns a reference to the term pool
-#[derive(Debug)]
-pub struct StrRef<'a> {
-    name: &'a str,
-}
-
-impl fmt::Display for StrRef<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-impl<'a> StrRef<'a> {
-    pub fn new(name: &str) -> StrRef {
-        StrRef {
-            name,
-        }
-    }
-}
-
-impl Deref for StrRef<'_> {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.name
-    }
-}
 
 /// The public interface for a function symbol, can be used to write generic
 /// functions that accept both `Symbol` and `SymbolRef`.
@@ -65,9 +38,7 @@ pub struct SymbolRef<'a> {
 impl<'a> SymbolRef<'a> {
     /// Protect the symbol from garbage collection.
     pub fn protect(&self) -> Symbol {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.protect_symbol(self)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
     }
 
     pub(crate) fn index(&self) -> usize {
@@ -93,15 +64,11 @@ impl SymbolRef<'_> {
 
 impl<'a> Symb<'a> for SymbolRef<'a> {
     fn name(&self) -> StrRef<'a> {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.symbol_name(self)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_name(self))
     }
 
     fn arity(&self) -> usize {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.symbol_arity(self)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_arity(self))
     }
 
     fn copy(&self) -> SymbolRef<'a> {
@@ -135,9 +102,7 @@ pub struct Symbol {
 impl Symbol {
     /// Create a new symbol with the given name and arity.
     pub fn new(name: impl Into<String>, arity: usize) -> Symbol {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.create_symbol(name, arity)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create_symbol(name, arity))
     }
 }
 

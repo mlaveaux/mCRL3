@@ -86,7 +86,9 @@ impl GlobalTermPool {
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'t>(&self, term: &ATermRef<'t>) -> SymbolRef<'t> {
         unsafe {
-            std::mem::transmute::<SymbolRef<'_>, SymbolRef<'t>>(SymbolRef::from_symbol(self.terms.get(term.index()).unwrap().symbol()))
+            std::mem::transmute::<SymbolRef<'_>, SymbolRef<'t>>(SymbolRef::from_symbol(
+                self.terms.get(term.index()).unwrap().symbol(),
+            ))
         }
     }
 
@@ -98,8 +100,8 @@ impl GlobalTermPool {
                 .unwrap()
                 .arguments()
                 .get(i)
-                .expect("Argument index out of bounds")
-            )
+                .expect("Argument index out of bounds"),
+        )
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
@@ -135,8 +137,8 @@ impl GlobalTermPool {
     /// Create a term from a head symbol and an iterator over its arguments
     pub fn create_term_iter<'a, I, T, P>(&mut self, symbol: &impl Symb<'a>, args: I, protect: P) -> ATerm
     where
-        I: IntoIterator<Item = T>,
-        T: Term<'a>,
+        I: IntoIterator<Item = &'a T>,
+        T: Term<'a> + 'a,
         P: FnOnce(usize) -> ATerm,
     {
         let shared_term = unsafe {
@@ -154,12 +156,7 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term<'a, 'b, P>(
-        &mut self,
-        symbol: &impl Symb<'a>,
-        args: &[impl Term<'b>],
-        protect: P,
-    ) -> ATerm
+    pub fn create_term<'a, 'b, P>(&mut self, symbol: &impl Symb<'a>, args: &[impl Term<'b>], protect: P) -> ATerm
     where
         P: FnOnce(usize) -> ATerm,
     {
@@ -167,7 +164,10 @@ impl GlobalTermPool {
         let shared_term = unsafe {
             SharedTerm {
                 symbol: std::mem::transmute::<SymbolRef<'_>, SymbolRef<'static>>(SymbolRef::from_symbol(symbol)),
-                arguments: args.iter().map(|t|  std::mem::transmute::<ATermRef<'_>, ATermRef<'static>>(t.copy()) ).collect(),
+                arguments: args
+                    .iter()
+                    .map(|t| std::mem::transmute::<ATermRef<'_>, ATermRef<'static>>(t.copy()))
+                    .collect(),
             }
         };
 

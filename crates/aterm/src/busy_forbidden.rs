@@ -134,7 +134,6 @@ impl<T: ?Sized> DerefMut for BfTermPoolThreadWrite<'_, T> {
 
 impl<T: ?Sized> Drop for BfTermPoolThreadWrite<'_, T> {
     fn drop(&mut self) {
-        if self.locked {
-        }
+        if self.locked {}
     }
 }

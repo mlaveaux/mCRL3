@@ -17,15 +17,13 @@ impl SymbolPool {
         let mut symbols = IndexedSet::new();
         symbols.insert(SharedSymbol::new("<default>>", 0));
 
-        Self {
-            symbols,
-        }
+        Self { symbols }
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create<P>(&mut self, name: impl Into<String>, arity: usize, protect: P) -> Symbol 
+    pub fn create<P>(&mut self, name: impl Into<String>, arity: usize, protect: P) -> Symbol
     where
-        P: FnOnce(usize) -> Symbol
+        P: FnOnce(usize) -> Symbol,
     {
         let name = name.into();
 
@@ -35,13 +33,11 @@ impl SymbolPool {
         // Return cloned symbol
         protect(index)
     }
-    
+
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
         // TODO: Get a guard that ensures that the StrRef lives long enough
-        unsafe {
-            std::mem::transmute(StrRef::new(self.symbols.get(symbol.index()).unwrap().name()))
-        }
+        unsafe { std::mem::transmute(StrRef::new(self.symbols.get(symbol.index()).unwrap().name())) }
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
@@ -56,9 +52,7 @@ impl SymbolPool {
 
     /// Returns borrow of the shared symbol from a SymbolRef
     pub fn get<'a>(&self, symbol: &'a SymbolRef<'_>) -> &'a SharedSymbol {
-        unsafe { 
-            std::mem::transmute(self.symbols.get(symbol.index()).unwrap())
-        }
+        unsafe { std::mem::transmute(self.symbols.get(symbol.index()).unwrap()) }
     }
 }
 
@@ -96,7 +90,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_symbol_sharing() {        
+    fn test_symbol_sharing() {
         let _ = mcrl3_utilities::test_logger();
 
         let f1 = Symbol::new("f", 2);

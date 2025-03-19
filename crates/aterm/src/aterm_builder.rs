@@ -6,9 +6,9 @@ use log::trace;
 
 use crate::ATerm;
 use crate::Symbol;
+use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::ThreadTermPool;
-use crate::THREAD_TERM_POOL;
 
 /// This can be used to construct a term from a given input of (inductive) type I,
 /// without using the system stack, i.e. recursion. See evaluate.

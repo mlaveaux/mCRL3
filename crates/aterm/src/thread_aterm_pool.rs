@@ -5,9 +5,6 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::aterm::ATerm;
-use crate::aterm::ATermRef;
-use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::Markable;
 use crate::Rule;
 use crate::SharedTermProtection;
@@ -17,6 +14,9 @@ use crate::Symbol;
 use crate::SymbolRef;
 use crate::Term;
 use crate::TermParser;
+use crate::aterm::ATerm;
+use crate::aterm::ATermRef;
+use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
@@ -34,51 +34,47 @@ impl ThreadTermPool {
     fn new() -> Self {
         // Register protection sets with global pool
         let tp = GLOBAL_TERM_POOL.lock();
-        let protection_set =
-            (*tp).borrow_mut().register_thread_term_pool();
+        let protection_set = (*tp).borrow_mut().register_thread_term_pool();
 
-        Self {
-            protection_set,
-        }
+        Self { protection_set }
     }
 
     /// Creates a term without arguments.
     pub fn create_constant(&self, symbol: &SymbolRef<'_>) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
-        tp.borrow_mut().create_term(symbol, &empty_args, |index| {
-            self.protect(&ATermRef::from_index(index))
-        })
+        tp.borrow_mut()
+            .create_term(symbol, &empty_args, |index| self.protect(&ATermRef::from_index(index)))
     }
 
     /// Create a term with the given arguments
     pub fn create<'a, 'b>(&self, symbol: &impl Symb<'a>, arguments: &[impl Term<'b>]) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow_mut().create_term(symbol, arguments, |index| {
-            self.protect(&ATermRef::from_index(index))
-        })
+        (*tp)
+            .borrow_mut()
+            .create_term(symbol, arguments, |index| self.protect(&ATermRef::from_index(index)))
     }
 
     /// Create a term with the given index.
     pub fn create_int(&self, value: usize) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow_mut().create_int(value, |index| {
-            self.protect(&ATermRef::from_index(index))
-        })
+        (*tp)
+            .borrow_mut()
+            .create_int(value, |index| self.protect(&ATermRef::from_index(index)))
     }
-    
+
     /// Create a term with the given arguments given by the iterator.
     pub fn create_term_iter<'a, I, T>(&self, symbol: &impl Symb<'a>, iter: I) -> ATerm
     where
-        I: IntoIterator<Item = T>,
-        T: Term<'a>,
+        I: IntoIterator<Item = &'a T>,
+        T: Term<'a> + 'a,
     {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow_mut().create_term_iter(symbol, iter, |index| {
-            self.protect(&ATermRef::from_index(index))
-        })
+        (*tp)
+            .borrow_mut()
+            .create_term_iter(symbol, iter, |index| self.protect(&ATermRef::from_index(index)))
     }
-    
+
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'a>(&self, term: &ATermRef<'a>) -> SymbolRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
@@ -86,11 +82,11 @@ impl ThreadTermPool {
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn get_argument<'a, 'b: 'a>(&'b self, term: &ATermRef<'a>, i: usize) -> ATermRef<'a> { 
-        let tp = GLOBAL_TERM_POOL.lock();       
+    pub fn get_argument<'a, 'b: 'a>(&'b self, term: &ATermRef<'a>, i: usize) -> ATermRef<'a> {
+        let tp = GLOBAL_TERM_POOL.lock();
         (*tp).borrow().get_argument(term, i)
     }
-    
+
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
@@ -109,9 +105,9 @@ impl ThreadTermPool {
 
         (*tp).borrow_mut().create_symbol(name, arity, |index| {
             let root = self.protection_set.lock().symbol_protection_set.protect(index);
-    
+
             // Return the protected term
-            Symbol::new_internal(index, root)            
+            Symbol::new_internal(index, root)
         })
     }
 
@@ -125,7 +121,7 @@ impl ThreadTermPool {
     }
 
     /// Unprotects a term from this thread's protection set.
-    pub fn drop(&self, term: &ATerm) {        
+    pub fn drop(&self, term: &ATerm) {
         trace!(
             "Unprotected term {:?}, index {}, protection set {}",
             term,
@@ -159,12 +155,18 @@ impl ThreadTermPool {
 
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
-        Symbol::new_internal(symbol.index(), self.protection_set.lock().symbol_protection_set.protect(symbol.index()))
+        Symbol::new_internal(
+            symbol.index(),
+            self.protection_set.lock().symbol_protection_set.protect(symbol.index()),
+        )
     }
 
     /// Unprotects a symbol, allowing it to be garbage collected.
     pub fn drop_symbol(&self, symbol: &mut Symbol) {
-        self.protection_set.lock().symbol_protection_set.unprotect(symbol.root());
+        self.protection_set
+            .lock()
+            .symbol_protection_set
+            .unprotect(symbol.root());
     }
 
     /// Returns the index of the protection set.

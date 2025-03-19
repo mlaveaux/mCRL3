@@ -23,7 +23,6 @@ use crate::THREAD_TERM_POOL;
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
 
 pub trait Term<'a> {
-    
     /// Protects the term from garbage collection
     fn protect(&self) -> ATerm;
 
@@ -37,8 +36,8 @@ pub trait Term<'a> {
     fn copy(&self) -> ATermRef<'a>;
 
     /// Returns whether the term is the default term (not initialised)
-    fn is_default(&self) -> bool; 
-    
+    fn is_default(&self) -> bool;
+
     /// Returns the function of an ATermRef
     fn get_head_symbol(&self) -> SymbolRef<'a>;
 
@@ -52,7 +51,7 @@ pub trait Term<'a> {
     fn is_int(&self) -> bool;
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
-    fn iter(&self) -> TermIterator<'_>;
+    fn iter(&self) -> TermIterator<'a>;
 
     /// Returns the index of the term in the term pool
     fn index(&self) -> usize;
@@ -80,7 +79,6 @@ impl Default for ATermRef<'_> {
 }
 
 impl<'a> ATermRef<'a> {
-
     /// This allows us to extend our borrowed lifetime from 'a to 'b based on
     /// existing parent term which has lifetime 'b.
     ///
@@ -145,9 +143,7 @@ impl<'a> Term<'a> for ATermRef<'a> {
         if self.is_default() {
             ATerm::default()
         } else {
-            THREAD_TERM_POOL.with_borrow(|tp| {
-                tp.protect(&self.copy())
-            })
+            THREAD_TERM_POOL.with_borrow(|tp| tp.protect(&self.copy()))
         }
     }
 
@@ -160,10 +156,10 @@ impl<'a> Term<'a> for ATermRef<'a> {
         );
 
         let tp = GLOBAL_TERM_POOL.lock();
-        
+
         unsafe {
             // Safe because the term pool is global, and never deletes reachable terms.
-            std::mem::transmute::<ATermRef<'_> , ATermRef<'a>>((*tp).borrow().get_argument(self, index))
+            std::mem::transmute::<ATermRef<'_>, ATermRef<'a>>((*tp).borrow().get_argument(self, index))
         }
     }
 
@@ -180,13 +176,11 @@ impl<'a> Term<'a> for ATermRef<'a> {
     fn is_default(&self) -> bool {
         self.index == 0
     }
-    
+
     fn get_head_symbol(&self) -> SymbolRef<'a> {
         self.require_valid();
 
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.get_head_symbol(self)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.get_head_symbol(self))
     }
 
     fn is_list(&self) -> bool {
@@ -201,7 +195,7 @@ impl<'a> Term<'a> for ATermRef<'a> {
         is_int(&self.get_head_symbol())
     }
 
-    fn iter(&self) -> TermIterator<'_> {
+    fn iter(&self) -> TermIterator<'a> {
         TermIterator::new(self.copy())
     }
 
@@ -238,7 +232,7 @@ impl fmt::Debug for ATermRef<'_> {
         if self.is_default() {
             write!(f, "<default>")?;
         } else {
-            // TODO: This is recursive and will overflow the stack for large terms!            
+            // TODO: This is recursive and will overflow the stack for large terms!
             write!(f, "{}(", self.get_head_symbol())?;
 
             for arg in self.arguments() {
@@ -266,41 +260,33 @@ pub struct ATerm {
 impl ATerm {
     /// Creates a new term using the pool
     pub fn with_args<'a, 'b>(symbol: &impl Symb<'a>, args: &[impl Term<'b>]) -> ATerm {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.create(symbol, args)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create(symbol, args))
     }
 
     /// Creates a new term using the pool
-    pub fn with_iter<'a, I, T>(symbol: &impl Symb<'a>, iter: I) -> ATerm 
+    pub fn with_iter<'a, I, T>(symbol: &impl Symb<'a>, iter: I) -> ATerm
     where
-        I: IntoIterator<Item = T>,
-        T: Term<'a>
+        I: IntoIterator<Item = &'a T>,
+        T: Term<'a> + 'a,
     {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.create_term_iter(symbol, iter)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter(symbol, iter))
     }
 
     /// Creates a new term using the pool
     pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.create_constant(symbol)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create_constant(symbol))
     }
 
     /// Constructs a term from the given string.
     pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.from_string(s)
-        })
+        THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(s))
     }
 
     /// Returns the root of the term
     pub(crate) fn root(&self) -> usize {
         self.root
     }
-    
+
     /// Creates a new term from the given reference and protection set root
     /// entry.
     pub(crate) fn new_internal(term: usize, root: usize) -> ATerm {
@@ -311,7 +297,7 @@ impl ATerm {
         }
     }
 }
-    
+
 impl<'a> Term<'a> for ATerm {
     delegate! {
         to self.term {
@@ -324,7 +310,7 @@ impl<'a> Term<'a> for ATerm {
             fn is_list(&self) -> bool;
             fn is_empty_list(&self) -> bool;
             fn is_int(&self) -> bool;
-            fn iter(&self) -> TermIterator<'_>;
+            fn iter(&self) -> TermIterator<'a>;
             fn index(&self) -> usize;
         }
     }
@@ -349,9 +335,7 @@ impl Markable for ATerm {
 impl Drop for ATerm {
     fn drop(&mut self) {
         if !self.is_default() {
-            THREAD_TERM_POOL.with_borrow(|tp| {
-                tp.drop(self)
-            })
+            THREAD_TERM_POOL.with_borrow(|tp| tp.drop(self))
         }
     }
 }

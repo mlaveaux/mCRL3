@@ -1,22 +1,25 @@
-use std::ops::Deref;
 use std::borrow::Borrow;
+use std::ops::Deref;
 
 use delegate::delegate;
 
 use mcrl3_macros::mcrl3_derive_terms;
-use mcrl3_macros::mcrl3_term;
 use mcrl3_macros::mcrl3_ignore;
+use mcrl3_macros::mcrl3_term;
 
-use crate::{ATerm, Symb, Term, THREAD_TERM_POOL};
-use crate::Symbol;
+use crate::ATerm;
+
+use crate::ATermArgs;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
-
-use crate::ATermArgs;
-use crate::TermIterator;
-use crate::SymbolRef;
 use crate::StrRef;
+use crate::Symb;
+use crate::Symbol;
+use crate::SymbolRef;
+use crate::Term;
+use crate::TermIterator;
+use crate::THREAD_TERM_POOL;
 
 fn is_string_term<'a>(t: &impl Term<'a>) -> bool {
     t.get_head_symbol().arity() == 0
@@ -33,17 +36,15 @@ mod inner {
 
     impl ATermString {
         pub fn new(string: impl Into<String>) -> ATermString {
-            THREAD_TERM_POOL.with_borrow(|tp| {
-                ATermString {
-                    term: tp.create_constant(&Symbol::new(string, 0)),
-                }
+            THREAD_TERM_POOL.with_borrow(|tp| ATermString {
+                term: tp.create_constant(&Symbol::new(string, 0)),
             })
         }
 
         /// Get the value of the string
         pub fn value(&self) -> StrRef<'_> {
             let arg = self.term.arg(0);
-            
+
             arg.get_head_symbol().name()
         }
     }

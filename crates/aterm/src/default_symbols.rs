@@ -1,6 +1,7 @@
 use std::mem::ManuallyDrop;
 
-use crate::{Symbol, SymbolRef, THREAD_TERM_POOL};
+use crate::Symbol;
+use crate::SymbolRef;
 
 thread_local! {
     static DEFAULT_SYMBOLS: DefaultSymbol = DefaultSymbol::new();
@@ -26,21 +27,15 @@ impl DefaultSymbol {
 
 /// Check if the symbol is the default "Int" symbol
 pub fn is_int(symbol: &SymbolRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with(|ds| {
-        **ds.int_symbol == *symbol
-    })
+    DEFAULT_SYMBOLS.with(|ds| **ds.int_symbol == *symbol)
 }
 
 /// Check if the symbol is the default "List" symbol
 pub fn is_list(symbol: &SymbolRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with(|ds| {
-        **ds.list_symbol == *symbol
-    })
+    DEFAULT_SYMBOLS.with(|ds| **ds.list_symbol == *symbol)
 }
 
 /// Check if the symbol is the default "[]" symbol
 pub fn is_empty_list(symbol: &SymbolRef<'_>) -> bool {
-    DEFAULT_SYMBOLS.with(|ds| {
-        **ds.empty_list_symbol == *symbol
-    })
+    DEFAULT_SYMBOLS.with(|ds| **ds.empty_list_symbol == *symbol)
 }
