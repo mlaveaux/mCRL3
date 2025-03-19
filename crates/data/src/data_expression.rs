@@ -4,22 +4,27 @@ use std::ops::Deref;
 
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermArgs;
+use mcrl3_aterm::ATermInt;
 use mcrl3_aterm::ATermRef;
-use mcrl3_aterm::Marker;
-use mcrl3_macros::mcrl3_derive_terms;
+use mcrl3_aterm::ATermString;
 use mcrl3_aterm::Markable;
+use mcrl3_aterm::Marker;
+use mcrl3_aterm::StrRef;
+use mcrl3_aterm::Symb;
+use mcrl3_aterm::Term;
+use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
-use mcrl3_aterm::{ATermInt, ATermString, StrRef, Symb, Term};
 
-use crate::{get_data_function_symbol_index, DATA_SYMBOLS};
+use crate::DATA_SYMBOLS;
+use crate::SortExpression;
+use crate::SortExpressionRef;
+use crate::get_data_function_symbol_index;
 use crate::is_data_application;
 use crate::is_data_expression;
 use crate::is_data_function_symbol;
 use crate::is_data_machine_number;
 use crate::is_data_variable;
-use crate::SortExpression;
-use crate::SortExpressionRef;
 
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
@@ -110,10 +115,8 @@ mod inner {
     impl DataFunctionSymbol {
         #[mcrl3_ignore]
         pub fn new(name: impl Into<String>) -> DataFunctionSymbol {
-            DATA_SYMBOLS.with_borrow(|ds| {
-                DataFunctionSymbol {
-                    term: ATerm::with_args(ds.data_function_symbol.deref(), &[ATermString::new(name)]),
-                }
+            DATA_SYMBOLS.with_borrow(|ds| DataFunctionSymbol {
+                term: ATerm::with_args(ds.data_function_symbol.deref(), &[ATermString::new(name)]),
             })
         }
 
@@ -158,14 +161,14 @@ mod inner {
     impl DataVariable {
         /// Create a new untyped variable with the given name.
         #[mcrl3_ignore]
-        pub fn new(name: impl Into<ATermString>) -> DataVariable {            
+        pub fn new(name: impl Into<ATermString>) -> DataVariable {
             DATA_SYMBOLS.with_borrow(|ds| {
                 // TODO: Storing terms temporarily is not optimal.
                 let t = name.into();
                 let args: &[ATerm] = &[t.into(), ATermInt::new(0).into()];
 
                 DataVariable {
-                    term: ATerm::with_args(ds.data_variable.deref(), args)
+                    term: ATerm::with_args(ds.data_variable.deref(), args),
                 }
             })
         }
@@ -178,7 +181,7 @@ mod inner {
                 let args: &[ATerm] = &[t.into(), ATermInt::new(sort).into()];
 
                 DataVariable {
-                    term: ATerm::with_args(ds.data_variable.deref(), args)
+                    term: ATerm::with_args(ds.data_variable.deref(), args),
                 }
             })
         }
@@ -208,11 +211,7 @@ mod inner {
 
     impl DataApplication {
         #[mcrl3_ignore]
-        pub fn new<'a>(
-            head: &impl Term<'a>,
-            arguments: &[impl Term<'a>],
-        ) -> DataApplication
-        {
+        pub fn new<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
             unimplemented!();
             // DATA_SYMBOLS.with_borrow_mut(|ds| {
             //     DataApplication {
@@ -310,9 +309,9 @@ pub use inner::*;
 mod tests {
     use mcrl3_aterm::ATerm;
 
-    use crate::is_data_application;
     use crate::DataApplication;
     use crate::DataFunctionSymbol;
+    use crate::is_data_application;
 
     #[test]
     fn test_print() {

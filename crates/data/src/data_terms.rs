@@ -1,6 +1,11 @@
-use std::{cell::RefCell, mem::ManuallyDrop};
+use std::cell::RefCell;
+use std::mem::ManuallyDrop;
 
-use mcrl3_aterm::{ATermRef, Symb, Symbol, SymbolRef, Term};
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::Symb;
+use mcrl3_aterm::Symbol;
+use mcrl3_aterm::SymbolRef;
+use mcrl3_aterm::Term;
 
 thread_local! {
     pub static DATA_SYMBOLS: RefCell<DataSymbols> = RefCell::new(DataSymbols::new());
@@ -30,7 +35,7 @@ impl DataSymbols {
             data_appl: vec![],
         }
     }
-    
+
     pub fn is_sort_expression<'a>(&self, term: &impl Term<'a>) -> bool {
         term.get_head_symbol() == **self.sort_expression_symbol
     }
@@ -76,10 +81,7 @@ impl DataSymbols {
     pub fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
         // It can be that data_applications are created without create_data_application in the mcrl2 ffi.
         while self.data_appl.len() <= arity {
-            let symbol = Symbol::new(
-                "DataAppl",
-                self.data_appl.len(),
-            );
+            let symbol = Symbol::new("DataAppl", self.data_appl.len());
 
             self.data_appl.push(symbol);
         }

@@ -1,5 +1,5 @@
 //! Data terms implementation for the mCRL3 toolset.
-//! 
+//!
 //! This crate provides data expressions and related functionality.
 
 mod data_expression;
