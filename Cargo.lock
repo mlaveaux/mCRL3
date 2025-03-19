@@ -3015,6 +3015,7 @@ dependencies = [
 name = "mcrl3_data"
 version = "0.1.0"
 dependencies = [
+ "delegate",
  "mcrl3_aterm",
  "mcrl3_macros",
  "thiserror 2.0.11",
@@ -3060,6 +3061,7 @@ dependencies = [
 name = "mcrl3_macros"
 version = "0.1.0"
 dependencies = [
+ "delegate",
  "proc-macro2",
  "quote",
  "syn 2.0.98",
