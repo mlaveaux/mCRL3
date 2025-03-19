@@ -28,6 +28,11 @@ jobs:
     - name: Install nextest
       uses: taiki-e/install-action@nextest
       
+    - name: Install nightly rust
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rust-src, miri
+      
     - name: Checkout the repository
       uses: actions/checkout@v4
       with:
