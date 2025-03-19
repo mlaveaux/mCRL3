@@ -1,6 +1,6 @@
 //!
-//! 
-//! 
+//! Implements the busy-forbidden protocol.
+//!
 
 mod bf_sharedmutex;
 

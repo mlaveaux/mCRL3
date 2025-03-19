@@ -19,15 +19,19 @@ impl AllocCounter {
 }
 
 unsafe impl GlobalAlloc for AllocCounter {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { unsafe {
-        let ret = System.alloc(layout);
-        if !ret.is_null() {
-            NUMBER_OF_ALLOCATIONS.fetch_add(1, Relaxed);
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe {
+            let ret = System.alloc(layout);
+            if !ret.is_null() {
+                NUMBER_OF_ALLOCATIONS.fetch_add(1, Relaxed);
+            }
+            ret
         }
-        ret
-    }}
+    }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) { unsafe {
-        System.dealloc(ptr, layout);
-    }}
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe {
+            System.dealloc(ptr, layout);
+        }
+    }
 }

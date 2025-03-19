@@ -1,8 +1,7 @@
 use pest::Parser;
-use pest_consume::match_nodes;
 use pest_consume::Error;
+use pest_consume::match_nodes;
 
-use crate::parse_sortexpr;
 use crate::ComplexSort;
 use crate::IdDecl;
 use crate::Mcrl2Parser;
@@ -10,6 +9,7 @@ use crate::Rule;
 use crate::Sort;
 use crate::SortExpression;
 use crate::UntypedProcessSpecification;
+use crate::parse_sortexpr;
 
 /// Parses the given mCRL2 specification into an AST.
 impl UntypedProcessSpecification {

@@ -40,11 +40,7 @@ impl<T: Read> StreamingIterator for LineIterator<T> {
     }
 
     fn get(&self) -> Option<&Self::Item> {
-        if self.end {
-            None
-        } else {
-            Some(&self.buffer)
-        }
+        if self.end { None } else { Some(&self.buffer) }
     }
 }
 

@@ -3,8 +3,8 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use mcrl2rewrite::rewrite_rec;
 use mcrl2rewrite::Rewriter;
+use mcrl2rewrite::rewrite_rec;
 
 mod trs_format;
 

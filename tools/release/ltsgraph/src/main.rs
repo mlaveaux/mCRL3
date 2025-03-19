@@ -19,10 +19,10 @@ use clap::Parser;
 
 use log::debug;
 use log::info;
-use slint::invoke_from_event_loop;
 use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
+use slint::invoke_from_event_loop;
 
 use ltsgraph_lib::GraphLayout;
 use ltsgraph_lib::Viewer;

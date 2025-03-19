@@ -5,8 +5,8 @@ use log::debug;
 use rand::Rng;
 
 use mcrl3_lts::LabelledTransitionSystem;
-use mcrl3_unsafety::index_edge;
 use mcrl3_unsafety::Edge;
+use mcrl3_unsafety::index_edge;
 
 pub struct GraphLayout {
     // Store the underlying LTS to get the edges.

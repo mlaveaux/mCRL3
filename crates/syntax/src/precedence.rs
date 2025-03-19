@@ -7,9 +7,9 @@ use pest::pratt_parser::Op;
 use pest::pratt_parser::PrattParser;
 use pest_consume::Node;
 
-use crate::ast::SortExpression;
 use crate::Mcrl2Parser;
 use crate::Rule;
+use crate::ast::SortExpression;
 
 static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest

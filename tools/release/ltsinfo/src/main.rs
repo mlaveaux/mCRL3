@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fs::File;
-use std::io::stdout;
 use std::io::BufWriter;
+use std::io::stdout;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -15,12 +15,12 @@ use log::info;
 
 use mcrl3_lts::read_aut;
 use mcrl3_lts::write_aut;
+use mcrl3_reduction::IndexedPartition;
 use mcrl3_reduction::branching_bisim_sigref;
 use mcrl3_reduction::branching_bisim_sigref_naive;
 use mcrl3_reduction::quotient_lts;
 use mcrl3_reduction::strong_bisim_sigref;
 use mcrl3_reduction::strong_bisim_sigref_naive;
-use mcrl3_reduction::IndexedPartition;
 
 use mcrl3_utilities::Timing;
 
