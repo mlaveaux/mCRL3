@@ -1,11 +1,12 @@
 use log::info;
 use log::trace;
 use mcrl3_aterm::ATermRef;
-use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::THREAD_TERM_POOL;
+use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
+use crate::RewriteSpecification;
 use crate::matching::nonlinear::check_equivalence_classes;
 use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
@@ -14,7 +15,6 @@ use crate::utilities::ConfigurationStack;
 use crate::utilities::PositionIndexed;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
-use crate::RewriteSpecification;
 
 /// A shared trait for all the rewriters
 pub trait RewriteEngine {
@@ -48,19 +48,16 @@ impl SabreRewriter {
     pub fn new(spec: &RewriteSpecification) -> Self {
         let automaton = SetAutomaton::new(spec, AnnouncementSabre::new, false);
 
-        SabreRewriter {
-            automaton,
-        }
+        SabreRewriter { automaton }
     }
 
     /// Function to rewrite a term. See the module documentation.
     pub fn stack_based_normalise(&mut self, t: DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let result = THREAD_TERM_POOL.with_borrow(|tp| {
-            SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, t, &mut stats)
-        });
-        
+        let result = THREAD_TERM_POOL
+            .with_borrow(|tp| SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, t, &mut stats));
+
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
@@ -181,8 +178,7 @@ impl SabreRewriter {
                                 }
                                 SideInfoType::EquivalenceAndConditionCheck(announcement, annotation) => {
                                     // Apply the delayed rewrite rule if the conditions hold
-                                    let t: &ATermRef<'_> = leaf_term;
-                                    if check_equivalence_classes(t, &annotation.equivalence_classes)
+                                    if check_equivalence_classes(leaf_term, &annotation.equivalence_classes)
                                         && SabreRewriter::conditions_hold(
                                             tp,
                                             automaton,
@@ -239,9 +235,7 @@ impl SabreRewriter {
 
         trace!(
             "rewrote {} to {} using rule {}",
-            &leaf_subterm,
-            &new_subterm,
-            announcement.rule
+            &leaf_subterm, &new_subterm, announcement.rule
         );
 
         // The match announcement tells us how far we need to prune back.
@@ -268,7 +262,7 @@ impl SabreRewriter {
             if !c.equality || lhs != rhs {
                 let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, rhs, stats);
                 let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, lhs, stats);
-                
+
                 // If lhs != rhs && !equality OR equality && lhs == rhs.
                 if (!c.equality && lhs_normal == rhs_normal) || (c.equality && lhs_normal != rhs_normal) {
                     return false;

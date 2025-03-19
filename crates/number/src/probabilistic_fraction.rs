@@ -147,20 +147,11 @@ impl PartialOrd for ProbabilisticFraction {
 
 impl Ord for ProbabilisticFraction {
     fn cmp(&self, other: &Self) -> Ordering {
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    // Compare self.num * other.den <=> other.num * self.den
-                    let mut left = b1.clone();
-                    let mut right = b2.clone();
+        // Compare self.num * other.den <=> other.num * self.den
+        let left = &self.numerator * &other.denominator;
+        let right = &other.numerator * &self.denominator;
 
-                    left = &self.numerator * &other.denominator;
-                    right = &other.numerator * &self.denominator;
-
-                    left.cmp(&right)
-                })
-            })
-        })
+        left.cmp(&right)
     }
 }
 

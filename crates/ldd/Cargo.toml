@@ -11,6 +11,5 @@ mcrl3_utilities.workspace = true
 
 rustc-hash.workspace = true
 ahash.workspace = true
-static_assertions.workspace = true
 log.workspace = true
 rand.workspace = true

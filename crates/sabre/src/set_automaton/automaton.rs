@@ -9,15 +9,16 @@ use log::log_enabled;
 use log::trace;
 use log::warn;
 use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::Term;
+use mcrl3_data::DataExpression;
+use mcrl3_data::DataExpressionRef;
+use mcrl3_data::DataFunctionSymbol;
 use mcrl3_data::is_data_application;
 use mcrl3_data::is_data_function_symbol;
 use mcrl3_data::is_data_machine_number;
 use mcrl3_data::is_data_variable;
-use mcrl3_data::DataExpression;
-use mcrl3_data::DataExpressionRef;
-use mcrl3_data::DataFunctionSymbol;
-use smallvec::smallvec;
 use smallvec::SmallVec;
+use smallvec::smallvec;
 
 use crate::rewrite_specification::RewriteSpecification;
 use crate::rewrite_specification::Rule;
@@ -445,8 +446,7 @@ impl State {
 
         trace!(
             "=== compute_derivative(symbol = {}, label = {}) ===",
-            symbol,
-            self.label
+            symbol, self.label
         );
         trace!("Match goals: {{");
         for mg in &self.match_goals {
@@ -553,7 +553,6 @@ pub fn is_supported_rule(rule: &Rule) -> bool {
 /// Finds all data symbols in the term and adds them to the symbol index.
 fn find_symbols(t: &DataExpressionRef<'_>, symbols: &mut HashMap<DataFunctionSymbol, usize>) {
     if is_data_function_symbol(t) {
-        let t: &ATermRef<'_> = t;
         add_symbol(t.protect().into(), 0, symbols);
     } else if is_data_application(t) {
         // REC specifications should never contain this so it can be a debug error.

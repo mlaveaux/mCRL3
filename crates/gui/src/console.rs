@@ -14,13 +14,13 @@ use std::result::Result;
 use winapi::um::consoleapi::AllocConsole;
 
 #[cfg(windows)]
+use winapi::um::wincon::ATTACH_PARENT_PROCESS;
+#[cfg(windows)]
 use winapi::um::wincon::AttachConsole;
 #[cfg(windows)]
 use winapi::um::wincon::FreeConsole;
 #[cfg(windows)]
 use winapi::um::wincon::GetConsoleWindow;
-#[cfg(windows)]
-use winapi::um::wincon::ATTACH_PARENT_PROCESS;
 
 pub struct Console {
     #[cfg(windows)]
@@ -31,6 +31,7 @@ pub struct Console {
 pub fn init() -> Result<Console, Box<dyn Error>> {
     #[cfg(windows)]
     unsafe {
+        // SAFETY: Only unsafe because we use the winapi crate to call Windows API functions.
         // Check if we're attached to an existing Windows console
         if GetConsoleWindow().is_null() {
             // Try to attach to an existing Windows console.

@@ -1,11 +1,11 @@
 use proc_macro2::TokenStream;
 
+use quote::ToTokens;
 use quote::format_ident;
 use quote::quote;
-use quote::ToTokens;
-use syn::parse_quote;
 use syn::Item;
 use syn::ItemMod;
+use syn::parse_quote;
 
 pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
@@ -107,7 +107,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                     1
                                 }
                             }
-                            
+
                             impl<'a> Term<'a> for #name {
                                 delegate! {
                                     to self.term {
@@ -120,7 +120,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn is_list(&self) -> bool;
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
-                                        fn iter(&self) -> TermIterator<'_>;
+                                        fn iter(&self) -> TermIterator<'a>;
                                         fn index(&self) -> usize;
                                     }
                                 }
@@ -168,7 +168,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn is_list(&self) -> bool;
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
-                                        fn iter(&self) -> TermIterator<'_>;
+                                        fn iter(&self) -> TermIterator<'a>;
                                         fn index(&self) -> usize;
                                     }
                                 }

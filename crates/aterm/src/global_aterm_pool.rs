@@ -137,8 +137,8 @@ impl GlobalTermPool {
     /// Create a term from a head symbol and an iterator over its arguments
     pub fn create_term_iter<'a, I, T, P>(&mut self, symbol: &impl Symb<'a>, args: I, protect: P) -> ATerm
     where
-        I: IntoIterator<Item = &'a T>,
-        T: Term<'a> + 'a,
+        I: IntoIterator<Item = T>,
+        T: Term<'a>,
         P: FnOnce(usize) -> ATerm,
     {
         let shared_term = unsafe {

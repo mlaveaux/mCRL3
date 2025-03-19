@@ -328,10 +328,12 @@ impl BlockPartition {
 
             // Check that it belongs to the block indicated by element_to_block
             for (current_element, block_index) in self.element_to_block.iter().enumerate() {
-                debug_assert!(self.blocks[*block_index]
-                    .iter(&self.elements)
-                    .any(|element| element == current_element),
-                    "Partition {self:?}, element {current_element} does not belong to block {block_index} as indicated by element_to_block");
+                debug_assert!(
+                    self.blocks[*block_index]
+                        .iter(&self.elements)
+                        .any(|element| element == current_element),
+                    "Partition {self:?}, element {current_element} does not belong to block {block_index} as indicated by element_to_block"
+                );
 
                 let index = self.element_offset[current_element];
                 debug_assert_eq!(

@@ -2,16 +2,18 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Display;
 
 use crate::utilities::ExplicitPosition;
-use mcrl3_aterm::ThreadTermPool;
-use mcrl3_data::is_data_variable;
-use mcrl3_data::DataVariable;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Symbol;
+use mcrl3_aterm::Term;
 use mcrl3_aterm::TermBuilder;
+use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Yield;
+use mcrl3_data::DataVariable;
+use mcrl3_data::is_data_variable;
 
 /// A SemiCompressedTermTree (SCTT) is a mix between a [ATerm] and a syntax tree and is used
 /// to represent the rhs of rewrite rules and the lhs and rhs of conditions.
@@ -59,7 +61,7 @@ impl SemiCompressedTermTree {
     /// evaluate will encounter an ExplicitNode and make two recursive calls to get the subterms.
     /// Both these recursive calls will return the term '0'.
     /// The term pool will be used to construct the term minus(0, 0).
-    pub fn evaluate_with<'a>(&'a self, builder: &mut SCCTBuilder, t: &ATermRef<'_>, tp: &ThreadTermPool) -> ATerm {
+    pub fn evaluate_with<'a, 't>(&'a self, builder: &mut SCCTBuilder, t: &impl Term<'t>, tp: &ThreadTermPool) -> ATerm {
         // TODO: Figure out if this can be done properly. This is safe because evaluate will always leave the
         // underlying vectors empty.
         let builder: &mut TermBuilder<&'a SemiCompressedTermTree, &'a Symbol> = unsafe { std::mem::transmute(builder) };
@@ -88,7 +90,7 @@ impl SemiCompressedTermTree {
     }
 
     /// The same as [evaluate_with], but allocates a [SCCTBuilder] internally.
-    pub fn evaluate(&self, t: &ATermRef<'_>, tp: &ThreadTermPool) -> ATerm {
+    pub fn evaluate<'a>(&self, t: &impl Term<'a>, tp: &ThreadTermPool) -> ATerm {
         let mut builder = TermBuilder::<&SemiCompressedTermTree, &Symbol>::new();
 
         self.evaluate_with(&mut builder, t, tp)
@@ -96,10 +98,10 @@ impl SemiCompressedTermTree {
 
     /// Creates a SCTT from a term. The var_map parameter should specify where the variable can be
     /// found in the lhs of the rewrite rule.
-    pub(crate) fn from_term(
-        t: &ATermRef<'_>,
-        var_map: &HashMap<DataVariable, ExplicitPosition>,
-    ) -> SemiCompressedTermTree {
+    pub(crate) fn from_term<'a, T>(t: &T, var_map: &HashMap<DataVariable, ExplicitPosition>) -> SemiCompressedTermTree
+    where
+        T: Term<'a> + Display,
+    {
         if is_data_variable(t) {
             Variable(
                 var_map
@@ -181,9 +183,14 @@ pub fn create_var_map(t: &ATerm) -> HashMap<DataVariable, ExplicitPosition> {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use super::*;
     use ahash::AHashSet;
-    use mcrl3_aterm::{apply, THREAD_TERM_POOL};
+    use mcrl3_aterm::Symb;
+    use mcrl3_aterm::THREAD_TERM_POOL;
+    use mcrl3_aterm::Term;
+    use mcrl3_aterm::apply;
 
     /// Converts a slice of static strings into a set of owned strings
     ///
@@ -197,9 +204,9 @@ mod tests {
     pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| {
             apply(tp, t, &|_tp, arg| {
-                if variables.contains(arg.get_head_symbol().name()) {
+                if variables.contains(arg.get_head_symbol().name().deref()) {
                     // Convert a constant variable, for example 'x', into an untyped variable.
-                    Some(DataVariable::new(arg.get_head_symbol().name()).into())
+                    Some(DataVariable::new(arg.get_head_symbol().name().deref()).into())
                 } else {
                     None
                 }

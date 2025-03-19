@@ -1,7 +1,7 @@
-use crate::iterators::*;
 use crate::Data;
 use crate::Ldd;
 use crate::Storage;
+use crate::iterators::*;
 
 use std::collections::HashSet;
 use std::fmt;

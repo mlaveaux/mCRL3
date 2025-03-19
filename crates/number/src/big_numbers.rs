@@ -24,11 +24,7 @@ impl BigNatural {
 
     /// Creates a new BigNatural from a machine-sized number.
     pub fn from_usize(n: usize) -> Self {
-        if n == 0 {
-            Self::new()
-        } else {
-            Self { digits: vec![n] }
-        }
+        if n == 0 { Self::new() } else { Self { digits: vec![n] } }
     }
 
     /// Returns true if this number equals zero.
@@ -63,11 +59,7 @@ impl BigNatural {
         let result = n1.wrapping_add(n2).wrapping_add(*carry);
         // Set carry to 1 if we had an overflow, 0 otherwise
         *carry = if *carry == 0 {
-            if result < n1 {
-                1
-            } else {
-                0
-            } // Overflow if result wrapped around
+            if result < n1 { 1 } else { 0 } // Overflow if result wrapped around
         } else if result > n1 {
             0
         } else {
@@ -78,7 +70,13 @@ impl BigNatural {
     }
 
     /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
-    pub fn div_mod(&self, other: &Self, quotient: &mut Self, remainder: &mut Self, calculation_buffer_divisor: &mut Self) {
+    pub fn div_mod(
+        &self,
+        other: &Self,
+        quotient: &mut Self,
+        remainder: &mut Self,
+        calculation_buffer_divisor: &mut Self,
+    ) {
         self.is_well_defined();
         other.is_well_defined();
         assert!(!other.is_zero(), "Division by zero");
@@ -115,7 +113,9 @@ impl BigNatural {
         }
 
         let no_of_bits_per_digit = usize::BITS as usize;
-        calculation_buffer_divisor.digits.resize(1 + self.digits.len() - other.digits.len(), 0);
+        calculation_buffer_divisor
+            .digits
+            .resize(1 + self.digits.len() - other.digits.len(), 0);
 
         // Place 0 digits at least significant position of the calculation_buffer_divisor to make it of comparable length as the remainder.
         for &digit in &other.digits {
@@ -130,7 +130,7 @@ impl BigNatural {
             } else {
                 // We subtract the calculation_buffer_divisor from the remainder.
                 quotient.multiply_by(2, 1); // quotient = quotient * 2 + 1
-                remainder.subtract(&calculation_buffer_divisor);
+                remainder.subtract(calculation_buffer_divisor);
             }
             calculation_buffer_divisor.divide_by(2); // Shift the calculation_buffer_divisor one bit to the left.
         }
@@ -232,11 +232,7 @@ impl BigNatural {
         debug_assert!(*carry <= 1);
         let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
         *carry = if *carry == 0 {
-            if result > n1 {
-                1
-            } else {
-                0
-            }
+            if result > n1 { 1 } else { 0 }
         } else if result < n1 {
             0
         } else {
@@ -321,7 +317,6 @@ impl BigNatural {
         self.normalize();
         self.is_well_defined();
     }
-
 }
 
 // Standard trait implementations

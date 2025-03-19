@@ -1,25 +1,27 @@
 use std::fmt;
 
 use itertools::Itertools;
+
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Markable;
+use mcrl3_aterm::Marker;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Protector;
-use mcrl3_aterm::Marker;
-use mcrl3_data::is_data_expression;
-use mcrl3_data::is_data_machine_number;
-use mcrl3_data::is_data_variable;
+use mcrl3_aterm::Term;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
+use mcrl3_data::is_data_expression;
+use mcrl3_data::is_data_machine_number;
+use mcrl3_data::is_data_variable;
 
-use crate::utilities::PositionIndexed;
 use crate::Rule;
+use crate::utilities::PositionIndexed;
 
-use super::create_var_map;
 use super::ExplicitPosition;
 use super::PositionIterator;
+use super::create_var_map;
 
 use log::trace;
 
@@ -103,7 +105,7 @@ impl InnermostStack {
         arity: usize,
         index: usize,
     ) {
-        let symbol = write_configs.protect(&symbol.into());
+        let symbol = write_configs.protect(&symbol);
         write_configs.push(Config::Construct(symbol.into(), arity, index));
     }
 
@@ -147,11 +149,7 @@ impl Markable for Config {
     }
 
     fn len(&self) -> usize {
-        if let Config::Construct(_, _, _) = self {
-            1
-        } else {
-            0
-        }
+        if let Config::Construct(_, _, _) = self { 1 } else { 0 }
     }
 }
 
@@ -227,7 +225,7 @@ impl RHSStack {
                 let t: DataExpressionRef = term.into();
                 let arity = t.data_arguments().len();
                 let mut write = innermost_stack.write();
-                let symbol = write.protect(&t.data_function_symbol().into());
+                let symbol = write.protect(&t.data_function_symbol());
                 write.push(Config::Construct(symbol.into(), arity, stack_size));
                 stack_size += 1;
             } else {
@@ -264,7 +262,7 @@ impl RHSStack {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::new(&symbol.copy(), arguments).into()
+                            DataApplication::with_iter(&symbol.copy(), arguments).into()
                         };
 
                         // Add the term on the stack.
@@ -308,7 +306,7 @@ impl Clone for RHSStack {
             match t {
                 Config::Rewrite(x) => write.push(Config::Rewrite(*x)),
                 Config::Construct(f, x, y) => {
-                    let f = write.protect(&f.copy().into());
+                    let f = write.protect(f);
                     write.push(Config::Construct(f.into(), *x, *y));
                 }
                 Config::Return() => write.push(Config::Return()),
@@ -338,18 +336,17 @@ mod tests {
 
     #[test]
     fn test_rhs_stack() {
-        let rhs_stack =
-            RHSStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
+        let rhs_stack = RHSStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
         let mut expected = Protected::new(vec![]);
 
         let mut write = expected.write();
-        let t = write.protect(&DataFunctionSymbol::new("times").copy().into());
+        let t = write.protect(&DataFunctionSymbol::new("times"));
         write.push(Config::Construct(t.into(), 2, 0));
 
-        let t = write.protect(&DataFunctionSymbol::new("s").copy().into());
+        let t = write.protect(&DataFunctionSymbol::new("s"));
         write.push(Config::Construct(t.into(), 1, 1));
 
-        let t = write.protect(&DataFunctionSymbol::new("fact").copy().into());
+        let t = write.protect(&DataFunctionSymbol::new("fact"));
         write.push(Config::Construct(t.into(), 1, 2));
         drop(write);
 

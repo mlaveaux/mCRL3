@@ -64,6 +64,9 @@ pub struct ATermRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+/// Check that the ATermRef is the same size as a usize.
+const _:() = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
+
 /// These are safe because terms are never modified. Garbage collection is
 /// always performed with exclusive access.
 unsafe impl Send for ATermRef<'_> {}
@@ -266,8 +269,8 @@ impl ATerm {
     /// Creates a new term using the pool
     pub fn with_iter<'a, I, T>(symbol: &impl Symb<'a>, iter: I) -> ATerm
     where
-        I: IntoIterator<Item = &'a T>,
-        T: Term<'a> + 'a,
+        I: IntoIterator<Item = T>,
+        T: Term<'a>,
     {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter(symbol, iter))
     }

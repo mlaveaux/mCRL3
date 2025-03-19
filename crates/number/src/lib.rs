@@ -1,5 +1,7 @@
 //! Number-related utilities including mathematical functions and arbitrary precision numbers.
 
+#![forbid(unsafe_code)]
+
 mod big_numbers;
 mod math;
 mod power_of_two;

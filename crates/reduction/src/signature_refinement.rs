@@ -10,18 +10,18 @@ use rustc_hash::FxHashSet;
 
 use mcrl3_utilities::Timing;
 
-use crate::branching_bisim_signature;
-use crate::branching_bisim_signature_inductive;
-use crate::branching_bisim_signature_sorted;
-use crate::combine_partition;
-use crate::preprocess_branching;
-use crate::strong_bisim_signature;
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
 use crate::IndexedPartition;
 use crate::Partition;
 use crate::Signature;
 use crate::SignatureBuilder;
+use crate::branching_bisim_signature;
+use crate::branching_bisim_signature_inductive;
+use crate::branching_bisim_signature_sorted;
+use crate::combine_partition;
+use crate::preprocess_branching;
+use crate::strong_bisim_signature;
 
 /// Computes a strong bisimulation partitioning using signature refinement
 pub fn strong_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
@@ -426,7 +426,9 @@ where
 
         if let Some(block_signature) = &block_to_signature[block] {
             if signature != *block_signature {
-                trace!("State {state_index} has a different signature {signature:?} then the block {block} which has signature {block_signature:?}");
+                trace!(
+                    "State {state_index} has a different signature {signature:?} then the block {block} which has signature {block_signature:?}"
+                );
                 return false;
             }
         } else {

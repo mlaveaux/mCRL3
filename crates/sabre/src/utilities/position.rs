@@ -4,8 +4,9 @@ use std::collections::VecDeque;
 
 use mcrl3_aterm::ATermRef;
 
-use smallvec::smallvec;
+use mcrl3_aterm::Term;
 use smallvec::SmallVec;
+use smallvec::smallvec;
 
 /// An ExplicitPosition stores a list of position indices. The index starts at 1.
 /// The subterm of term s(s(0)) at position 1.1 is 0.
@@ -38,7 +39,7 @@ impl ExplicitPosition {
     }
 }
 
-impl PositionIndexed for ATermRef<'_> {
+impl<'b, T: Term<'b>> PositionIndexed for T {
     type Target<'a>
         = ATermRef<'a>
     where
@@ -48,10 +49,13 @@ impl PositionIndexed for ATermRef<'_> {
         let mut result = self.copy();
 
         for index in &position.indices {
-            result = result.arg(index - 1).upgrade(self); // Note that positions are 1 indexed.
+            result = result.arg(index - 1); // Note that positions are 1 indexed.
         }
 
-        result
+        unsafe {
+            // Yeet
+            std::mem::transmute(result)
+        }
     }
 }
 

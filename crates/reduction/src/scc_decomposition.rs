@@ -4,10 +4,10 @@ use log::debug;
 use log::trace;
 use mcrl3_lts::LabelledTransitionSystem;
 
-use crate::quotient_lts;
-use crate::sort_topological;
 use crate::IndexedPartition;
 use crate::Partition;
+use crate::quotient_lts;
+use crate::sort_topological;
 
 /// Computes the strongly connected tau component partitioning of the given LTS.
 pub fn tau_scc_decomposition(lts: &LabelledTransitionSystem) -> IndexedPartition {
@@ -173,8 +173,8 @@ mod tests {
     use mcrl3_lts::random_lts;
     use test_log::test;
 
-    use crate::quotient_lts;
     use crate::Partition;
+    use crate::quotient_lts;
 
     use super::*;
 

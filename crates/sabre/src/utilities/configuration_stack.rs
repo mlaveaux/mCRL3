@@ -2,24 +2,25 @@ use std::fmt;
 use std::ops::Deref;
 
 use mcrl3_aterm::Protected;
+use mcrl3_aterm::Term;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
-use crate::matching::conditions::extend_conditions;
+use crate::Rule;
 use crate::matching::conditions::EMACondition;
-use crate::matching::nonlinear::derive_equivalence_classes;
+use crate::matching::conditions::extend_conditions;
 use crate::matching::nonlinear::EquivalenceClass;
+use crate::matching::nonlinear::derive_equivalence_classes;
 use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::ExplicitPosition;
-use crate::Rule;
 
-use super::create_var_map;
-use super::substitute_with;
 use super::PositionIndexed;
 use super::SemiCompressedTermTree;
 use super::SubstitutionBuilder;
+use super::create_var_map;
+use super::substitute_with;
 
 /// This is the announcement for Sabre, which stores additional information about the rewrite rules.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -43,7 +44,7 @@ impl AnnouncementSabre {
         // rhs of the rewrite rule and for lhs and rhs of each condition.
         // Also see the documentation of SemiCompressedTermTree
         let var_map = create_var_map(&rule.lhs.clone().into());
-        let sctt_rhs = SemiCompressedTermTree::from_term(&rule.rhs.copy().into(), &var_map);
+        let sctt_rhs = SemiCompressedTermTree::from_term(&rule.rhs, &var_map);
 
         let is_duplicating = sctt_rhs.contains_duplicate_var_references();
 
@@ -157,7 +158,7 @@ impl<'a> ConfigurationStack<'a> {
         conf_list.stack.push(Configuration { state, position: None });
 
         let mut write_conf_list = conf_list.terms.write();
-        let term = write_conf_list.protect(&term.copy().into());
+        let term = write_conf_list.protect(&term);
         write_conf_list.push(term.into());
         drop(write_conf_list);
 
@@ -224,16 +225,13 @@ impl<'a> ConfigurationStack<'a> {
         // Update the subterm stored at the prune point.
         // Note that the subterm stored earlier may not have been up to date. We replace it with a term that is up to date
         let mut write_terms = self.terms.write();
-        let subterm = write_terms.protect(
-            substitute_with(
-                &mut self.substitution_builder,
-                tp,
-                write_terms[depth].deref(),
-                new_subterm.into(),
-                &automaton.states[self.stack[depth].state].label.indices,
-            )
-            .deref(),
-        );
+        let subterm = write_terms.protect(&substitute_with(
+            &mut self.substitution_builder,
+            tp,
+            &write_terms[depth],
+            new_subterm.into(),
+            &automaton.states[self.stack[depth].state].label.indices,
+        ));
         write_terms[depth] = subterm.into();
 
         self.oldest_reliable_subterm = depth;
@@ -292,7 +290,7 @@ impl<'a> ConfigurationStack<'a> {
                     let t = substitute_with(
                         &mut self.substitution_builder,
                         tp,
-                        write_terms[up_to_date - 1].deref(),
+                        &write_terms[up_to_date - 1],
                         subterm.protect(),
                         &p.indices,
                     );

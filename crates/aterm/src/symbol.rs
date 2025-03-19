@@ -34,6 +34,9 @@ pub struct SymbolRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+/// Check that the SymbolRef is the same size as a usize.
+const _:() = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<usize>());
+
 /// A Symbol references to an aterm function symbol, which has a name and an arity.
 impl<'a> SymbolRef<'a> {
     /// Protect the symbol from garbage collection.

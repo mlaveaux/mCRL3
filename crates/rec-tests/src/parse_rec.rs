@@ -5,11 +5,11 @@ use std::str::FromStr;
 
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::Symbol;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::Yield;
-use mcrl3_aterm::THREAD_TERM_POOL;
-use pest::iterators::Pair;
 use pest::Parser;
+use pest::iterators::Pair;
 use pest_derive::Parser;
 
 use crate::syntax::ConditionSyntax;
@@ -86,18 +86,14 @@ fn parse_REC(
 
 /// Load a REC specification from a specified file.
 #[allow(non_snake_case)]
-pub fn load_REC_from_file(
-    file: PathBuf,
-) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
+pub fn load_REC_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
     let contents = fs::read_to_string(file.clone()).unwrap();
     parse_REC(&contents, Some(file))
 }
 
 /// Load and join multiple REC specifications
 #[allow(non_snake_case)]
-pub fn load_REC_from_strings(
-    specs: &[&str],
-) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
+pub fn load_REC_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
 
@@ -219,7 +215,7 @@ fn parse_term(pair: Pair<Rule>) -> Result<ATerm, Box<dyn Error>> {
                         Rule::term => {
                             let mut inner = pair.into_inner();
                             let head_symbol = inner.next().unwrap().as_str();
-    
+
                             // Queue applications for all the arguments.
                             let mut arity = 0;
                             if let Some(args) = inner.next() {
@@ -228,7 +224,7 @@ fn parse_term(pair: Pair<Rule>) -> Result<ATerm, Box<dyn Error>> {
                                     arity += 1;
                                 }
                             }
-    
+
                             Ok(Yield::Construct(tp.create_symbol(head_symbol, arity)))
                         }
                         _ => {
@@ -337,18 +333,17 @@ mod tests {
 
     #[test]
     fn test_parsing_rec() {
-        assert!(RecParser::parse(
-            Rule::rec_spec,
-            include_str!("../../../examples/REC/rec/missionaries.rec")
-        )
-        .is_ok());
+        assert!(
+            RecParser::parse(
+                Rule::rec_spec,
+                include_str!("../../../examples/REC/rec/missionaries.rec")
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn loading_rec() {
-        let _ = parse_REC(
-            include_str!("../../../examples/REC/rec/missionaries.rec"),
-            None,
-        );
+        let _ = parse_REC(include_str!("../../../examples/REC/rec/missionaries.rec"), None);
     }
 }

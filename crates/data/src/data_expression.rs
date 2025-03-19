@@ -1,5 +1,6 @@
 use core::fmt;
 use std::borrow::Borrow;
+use std::iter;
 use std::ops::Deref;
 
 use delegate::delegate;
@@ -33,6 +34,7 @@ use crate::is_data_variable;
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
+
     use super::*;
 
     /// A data expression can be any of:
@@ -214,12 +216,18 @@ mod inner {
     }
 
     impl DataApplication {
+        
         #[mcrl3_ignore]
-        pub fn new<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
+        pub fn with_iter<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
             unimplemented!();
             // DATA_SYMBOLS.with_borrow_mut(|ds| {
+            //     let term = ATerm::with_iter(
+            //         ds.get_data_application_symbol(arguments.len()),
+            //         iter::empty::<&ATerm>(),
+            //     );
+
             //     DataApplication {
-            //         term: ATerm::with_iter(ds.get_data_application_symbol(arguments.len()), head.iter().chain(arguments.iter())),
+            //         term,
             //     }
             // })
         }
@@ -239,7 +247,7 @@ mod inner {
         /// Returns the sort of a data application.
         pub fn sort(&self) -> SortExpressionRef<'_> {
             // We only change the lifetime, but that is fine since it is derived from the current term.
-           SortExpressionRef::from(self.term.arg(0))
+            SortExpressionRef::from(self.term.arg(0))
         }
     }
 
@@ -305,6 +313,13 @@ mod inner {
             value.term.into()
         }
     }
+
+    #[mcrl3_ignore]
+    impl From<DataExpression> for DataFunctionSymbol {
+        fn from(value: DataExpression) -> Self {
+            value.term.into()
+        }
+    }
 }
 
 pub use inner::*;
@@ -324,8 +339,7 @@ mod tests {
 
         // Check printing of data applications.
         let f = DataFunctionSymbol::new("f");
-        let a_term: ATerm = a.clone().into();
-        let appl = DataApplication::new(&f, &[a_term]);
+        let appl = DataApplication::with_iter(&f, &[a]);
         assert_eq!("f(a)", format!("{}", appl));
     }
 
@@ -333,8 +347,7 @@ mod tests {
     fn test_recognizers() {
         let a = DataFunctionSymbol::new("a");
         let f = DataFunctionSymbol::new("f");
-        let a_term: ATerm = a.clone().into();
-        let appl = DataApplication::new(&f, &[a_term]);
+        let appl = DataApplication::with_iter(&f, &[a]);
 
         let term: ATerm = appl.into();
         assert!(is_data_application(&term));

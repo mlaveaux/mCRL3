@@ -242,9 +242,11 @@ mod tests {
             for &(label, to) in lts.outgoing_transitions(from) {
                 let new_from = order[from];
                 let new_to = order[to];
-                assert!(new_lts
-                    .outgoing_transitions(new_from)
-                    .any(|trans| *trans == (label, new_to)));
+                assert!(
+                    new_lts
+                        .outgoing_transitions(new_from)
+                        .any(|trans| *trans == (label, new_to))
+                );
             }
         }
     }

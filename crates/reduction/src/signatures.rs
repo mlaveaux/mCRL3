@@ -7,13 +7,13 @@ use rustc_hash::FxHashSet;
 
 use crate::Partition;
 
+use super::BlockPartition;
+use super::IndexedPartition;
 use super::quotient_lts;
 use super::reorder_partition;
 use super::reorder_states;
 use super::sort_topological;
 use super::tau_scc_decomposition;
-use super::BlockPartition;
-use super::IndexedPartition;
 
 /// The builder used to construct the signature.
 pub type SignatureBuilder = Vec<(usize, usize)>;

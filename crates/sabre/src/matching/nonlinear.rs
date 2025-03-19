@@ -1,14 +1,14 @@
 use std::fmt;
 
 use itertools::Itertools;
-use mcrl3_data::is_data_variable;
 use mcrl3_data::DataVariable;
 use mcrl3_data::DataVariableRef;
+use mcrl3_data::is_data_variable;
 
+use crate::Rule;
 use crate::utilities::ExplicitPosition;
 use crate::utilities::PositionIndexed;
 use crate::utilities::PositionIterator;
-use crate::Rule;
 
 /// An equivalence class is a variable with (multiple) positions. This is
 /// necessary for non-linear patterns.
@@ -89,7 +89,8 @@ impl fmt::Display for EquivalenceClass {
 #[cfg(test)]
 mod tests {
     use ahash::AHashSet;
-    use mcrl3_aterm::{ATerm, ATermRef};
+    use mcrl3_aterm::ATerm;
+    use mcrl3_aterm::ATermRef;
     use mcrl3_data::DataVariable;
 
     use crate::test_utility::create_rewrite_rule;
@@ -115,9 +116,8 @@ mod tests {
         let term = ATerm::from_string("f(a(b), h(a(b)))").unwrap();
         let expression = to_untyped_data_expression(&term, &AHashSet::new());
 
-        let t: &ATermRef<'_> = &expression;
         assert!(
-            check_equivalence_classes(t, &eq),
+            check_equivalence_classes(&expression, &eq),
             "The equivalence classes are not checked correctly, equivalences: {:?} and term {}",
             &eq,
             &expression

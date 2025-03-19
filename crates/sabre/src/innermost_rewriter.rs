@@ -1,17 +1,23 @@
 use log::info;
 use log::trace;
+
 use mcrl3_aterm::ATermRef;
-use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::THREAD_TERM_POOL;
+use mcrl3_aterm::Term;
+use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
-use crate::matching::conditions::extend_conditions;
+use crate::RewriteEngine;
+use crate::RewriteSpecification;
+use crate::RewritingStatistics;
+use crate::Rule;
 use crate::matching::conditions::EMACondition;
+use crate::matching::conditions::extend_conditions;
+use crate::matching::nonlinear::EquivalenceClass;
 use crate::matching::nonlinear::check_equivalence_classes;
 use crate::matching::nonlinear::derive_equivalence_classes;
-use crate::matching::nonlinear::EquivalenceClass;
 use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::Config;
@@ -19,10 +25,6 @@ use crate::utilities::InnermostStack;
 use crate::utilities::PositionIndexed;
 use crate::utilities::RHSStack;
 use crate::utilities::SCCTBuilder;
-use crate::RewriteEngine;
-use crate::RewriteSpecification;
-use crate::RewritingStatistics;
-use crate::Rule;
 
 impl RewriteEngine for InnermostRewriter {
     fn rewrite(&mut self, t: DataExpression) -> DataExpression {
@@ -31,13 +33,7 @@ impl RewriteEngine for InnermostRewriter {
         trace!("input: {}", t);
 
         let result = THREAD_TERM_POOL.with_borrow(|tp| {
-            InnermostRewriter::rewrite_aux(
-                &tp,
-                &mut self.stack,
-                &mut self.builder,
-                &mut stats,
-                &self.apma,
-                t)
+            InnermostRewriter::rewrite_aux(&tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t)
         });
 
         info!(
@@ -114,7 +110,7 @@ impl InnermostRewriter {
                             write_terms.push(Default::default());
                         }
 
-                        let symbol = write_configs.protect(&symbol.into());
+                        let symbol = write_configs.protect(&symbol);
                         InnermostStack::add_result(&mut write_configs, symbol.into(), arguments.len(), result);
                         for (offset, arg) in arguments.into_iter().enumerate() {
                             InnermostStack::add_rewrite(
@@ -136,7 +132,7 @@ impl InnermostRewriter {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::new(&symbol, arguments).into()
+                            DataApplication::with_iter(&symbol, arguments).into()
                         };
 
                         // Remove the arguments from the stack.
@@ -144,7 +140,7 @@ impl InnermostRewriter {
                         drop(write_terms);
                         drop(write_configs);
 
-                        match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term) {
+                        match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term.copy().into()) {
                             Some((announcement, annotation)) => {
                                 trace!(
                                     "rewrite {} => {} using rule {}",
@@ -262,7 +258,7 @@ impl InnermostRewriter {
 
             let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, rhs);
             let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, lhs);
-            
+
             if lhs_normal != rhs_normal && c.equality || lhs_normal == rhs_normal && !c.equality {
                 return false;
             }
@@ -303,17 +299,17 @@ impl AnnouncementInnermost {
 #[cfg(test)]
 mod tests {
     use ahash::AHashSet;
-    use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
     use test_log::test;
 
     use mcrl3_aterm::random_term;
 
-    use crate::utilities::to_untyped_data_expression;
     use crate::InnermostRewriter;
     use crate::RewriteEngine;
     use crate::RewriteSpecification;
+    use crate::utilities::to_untyped_data_expression;
 
     #[test]
     fn test_innermost_simple() {

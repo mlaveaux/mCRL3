@@ -66,8 +66,8 @@ impl ThreadTermPool {
     /// Create a term with the given arguments given by the iterator.
     pub fn create_term_iter<'a, I, T>(&self, symbol: &impl Symb<'a>, iter: I) -> ATerm
     where
-        I: IntoIterator<Item = &'a T>,
-        T: Term<'a> + 'a,
+        I: IntoIterator<Item = T>,
+        T: Term<'a>,
     {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)

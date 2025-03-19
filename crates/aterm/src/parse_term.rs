@@ -32,7 +32,7 @@ impl TermParser {
             [Id(identifier), Args(args)] => {
                 let symbol = Symbol::new(identifier, args.len());
 
-                Ok(ATerm::with_iter(&symbol, args.iter().map(|t| &t)))
+                Ok(ATerm::with_iter(&symbol, args))
             }
         )
     }

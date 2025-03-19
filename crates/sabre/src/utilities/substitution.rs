@@ -1,11 +1,16 @@
+use std::ops::Deref;
+
 use ahash::AHashSet;
+
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Protected;
+use mcrl3_aterm::Symb;
+use mcrl3_aterm::THREAD_TERM_POOL;
+use mcrl3_aterm::Term;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_aterm::Yield;
-use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataFunctionSymbol;
@@ -27,15 +32,15 @@ pub type SubstitutionBuilder = Protected<Vec<ATermRef<'static>>>;
 /// Lets say we want to replace the a with the term 0. Then we traverse the term
 /// until we have arrived at a and replace it with 0. We then construct s(0)
 /// and then construct s(s(0)).
-pub fn substitute(tp: &ThreadTermPool, t: &ATermRef<'_>, new_subterm: ATerm, p: &[usize]) -> ATerm {
+pub fn substitute<'a>(tp: &ThreadTermPool, t: &impl Term<'a>, new_subterm: ATerm, p: &[usize]) -> ATerm {
     let mut args = Protected::new(vec![]);
     substitute_rec(tp, t, new_subterm, p, &mut args, 0)
 }
 
-pub fn substitute_with(
+pub fn substitute_with<'a>(
     builder: &mut SubstitutionBuilder,
     tp: &ThreadTermPool,
-    t: &ATermRef<'_>,
+    t: &impl Term<'a>,
     new_subterm: ATerm,
     p: &[usize],
 ) -> ATerm {
@@ -46,9 +51,9 @@ pub fn substitute_with(
 ///
 /// 'depth'         -   Used to keep track of the depth in 't'. Function should be called with
 ///                     'depth' = 0.
-fn substitute_rec(
+fn substitute_rec<'a>(
     tp: &ThreadTermPool,
-    t: &ATermRef<'_>,
+    t: &impl Term<'a>,
     new_subterm: ATerm,
     p: &[usize],
     args: &mut Protected<Vec<ATermRef<'static>>>,
@@ -73,7 +78,7 @@ fn substitute_rec(
             }
         }
 
-        let result = tp.create(t.get_head_symbol(), &write_args);
+        let result = tp.create(&t.get_head_symbol(), &write_args);
         drop(write_args);
 
         // TODO: When write is dropped we check whether all terms where inserted, but this clear violates that assumption.
@@ -86,36 +91,37 @@ fn substitute_rec(
 pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> DataExpression {
     let mut builder = TermBuilder::<ATerm, ATerm>::new();
     THREAD_TERM_POOL.with_borrow(|tp| {
-
         builder
-        .evaluate(
-            tp,
-            t.clone(),
-            |tp, args, t| {
-                debug_assert!(!t.is_int(), "Term cannot be an aterm_int, although not sure why");
+            .evaluate(
+                tp,
+                t.clone(),
+                |_tp, args, t| {
+                    debug_assert!(!t.is_int(), "Term cannot be an aterm_int, although not sure why");
 
-                if variables.contains(t.get_head_symbol().name()) {
-                    // Convert a constant variable, for example 'x', into an untyped variable.
-                    Ok(Yield::Term(DataVariable::new(t.get_head_symbol().name()).into()))
-                } else if t.get_head_symbol().arity() == 0 {
-                    Ok(Yield::Term(
-                        DataFunctionSymbol::new(t.get_head_symbol().name()).into(),
-                    ))
-                } else {
-                    // This is a function symbol applied to a number of arguments (higher order terms not allowed)
-                    let head = DataFunctionSymbol::new(t.get_head_symbol().name());
+                    if variables.contains(t.get_head_symbol().name().deref()) {
+                        // Convert a constant variable, for example 'x', into an untyped variable.
+                        Ok(Yield::Term(
+                            DataVariable::new(t.get_head_symbol().name().deref()).into(),
+                        ))
+                    } else if t.get_head_symbol().arity() == 0 {
+                        Ok(Yield::Term(
+                            DataFunctionSymbol::new(t.get_head_symbol().name().deref()).into(),
+                        ))
+                    } else {
+                        // This is a function symbol applied to a number of arguments (higher order terms not allowed)
+                        let head = DataFunctionSymbol::new(t.get_head_symbol().name().deref());
 
-                    for arg in t.arguments() {
-                        args.push(arg.protect());
+                        for arg in t.arguments() {
+                            args.push(arg.protect());
+                        }
+
+                        Ok(Yield::Construct(head.into()))
                     }
-
-                    Ok(Yield::Construct(head.into()))
-                }
-            },
-            |_tp, input, args| Ok(DataApplication::new(&input, args).into()),
-        )
-        .unwrap()
-        .into()
+                },
+                |_tp, input, args| Ok(DataApplication::with_iter(&input, args).into()),
+            )
+            .unwrap()
+            .into()
     })
 }
 
@@ -132,9 +138,7 @@ mod tests {
         let t0 = ATerm::from_string("0").unwrap();
 
         // substitute the a for 0 in the term s(s(a))
-        let result = THREAD_TERM_POOL.with_borrow(|tp| {
-            substitute(tp, &t, t0.clone(), &vec![1, 1])
-        });
+        let result = THREAD_TERM_POOL.with_borrow(|tp| substitute(tp, &t, t0.clone(), &vec![1, 1]));
 
         // Check that indeed the new term as a 0 at position 1.1.
         assert_eq!(t0, result.get_position(&ExplicitPosition::new(&vec![1, 1])).protect());

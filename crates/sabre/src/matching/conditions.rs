@@ -1,6 +1,6 @@
-use crate::utilities::create_var_map;
-use crate::utilities::SemiCompressedTermTree;
 use crate::Rule;
+use crate::utilities::SemiCompressedTermTree;
+use crate::utilities::create_var_map;
 
 /// This is a [Rule] condition stored as semi compressed trees such that they can be
 /// subsituted efficiently.
@@ -21,8 +21,8 @@ pub fn extend_conditions(rule: &Rule) -> Vec<EMACondition> {
 
     for c in &rule.conditions {
         let ema_condition = EMACondition {
-            semi_compressed_lhs: SemiCompressedTermTree::from_term(&c.lhs.copy().into(), &var_map),
-            semi_compressed_rhs: SemiCompressedTermTree::from_term(&c.rhs.copy().into(), &var_map),
+            semi_compressed_lhs: SemiCompressedTermTree::from_term(&c.lhs, &var_map),
+            semi_compressed_rhs: SemiCompressedTermTree::from_term(&c.rhs, &var_map),
             equality: c.equality,
         };
         conditions.push(ema_condition);
