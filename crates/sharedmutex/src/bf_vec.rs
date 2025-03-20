@@ -1,11 +1,13 @@
+use std::alloc;
+use std::alloc::Layout;
 use std::cmp::max;
 use std::ops::Index;
+use std::ptr;
 use std::ptr::NonNull;
-use std::{alloc::Layout, ptr, sync::atomic::AtomicUsize};
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use bf_sharedmutex::BfSharedMutex;
-use std::alloc;
+use crate::BfSharedMutex;
 
 pub struct BfVecShared<T> {
     buffer: Option<NonNull<T>>,
@@ -22,8 +24,7 @@ pub struct BfVec<T> {
 
 impl<T> BfVec<T> {
     /// Create a new vector with zero capacity.
-    pub fn new() -> BfVec<T> { 
-
+    pub fn new() -> BfVec<T> {
         BfVec {
             shared: BfSharedMutex::new(BfVecShared::<T> {
                 buffer: None,
@@ -35,11 +36,11 @@ impl<T> BfVec<T> {
 
     pub fn push(&self, value: T) {
         let mut read = self.shared.read().unwrap();
-        
+
         // Reserve an index for the new element.
         let mut last_index = read.len.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        while last_index + 1 >= read.capacity  {
+        while last_index + 1 >= read.capacity {
             // Vector needs to be resized.
             let new_capacity = max(read.capacity * 2, 8);
 
@@ -59,14 +60,12 @@ impl<T> BfVec<T> {
             let end = read.buffer.unwrap().as_ptr().add(last_index);
             ptr::write(end, value);
         }
-
-      
     }
 
     /// Obtain another view on the vector to share among threads.
     pub fn share(&self) -> BfVec<T> {
         BfVec {
-            shared: self.shared.clone()
+            shared: self.shared.clone(),
         }
     }
 
@@ -98,20 +97,21 @@ impl<T> BfVec<T> {
         let layout = Layout::array::<T>(capacity).unwrap();
 
         unsafe {
-            let new_buffer = alloc::alloc(layout) as *mut T;            
+            let new_buffer = alloc::alloc(layout) as *mut T;
             if new_buffer.is_null() {
-                alloc::handle_alloc_error(layout); 
+                alloc::handle_alloc_error(layout);
             }
 
             if let Some(old_buffer) = write.buffer {
-                debug_assert!(write.len.load(Ordering::Relaxed) <= write.capacity, "Length {} should be less than capacity {}", write.len.load(Ordering::Relaxed), write.capacity);
-
-                ptr::copy_nonoverlapping(
-                    old_buffer.as_ptr(),
-                    new_buffer,
+                debug_assert!(
+                    write.len.load(Ordering::Relaxed) <= write.capacity,
+                    "Length {} should be less than capacity {}",
                     write.len.load(Ordering::Relaxed),
-                );            
-    
+                    write.capacity
+                );
+
+                ptr::copy_nonoverlapping(old_buffer.as_ptr(), new_buffer, write.len.load(Ordering::Relaxed));
+
                 // Clean up the old buffer.
                 alloc::dealloc(old_buffer.as_ptr() as *mut u8, old_layout);
             }
@@ -139,15 +139,11 @@ impl<T> Index<usize> for BfVec<T> {
     fn index(&self, index: usize) -> &Self::Output {
         debug_assert!(index < self.len());
 
-        unsafe {
-           &*self.data().add(index)
-        }
+        unsafe { &*self.data().add(index) }
     }
-
 }
 
 impl<T> BfVecShared<T> {
-     
     pub fn clear(&mut self) {
         // Only drop items within the 0..len range since the other values are not initialised.
         for i in 0..self.len.load(Ordering::Relaxed) {

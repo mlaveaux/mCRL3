@@ -4,12 +4,12 @@ use std::sync::RwLock;
 
 use criterion::Criterion;
 
-use bf_sharedmutex::BfSharedMutex;
+use mcrl3_sharedmutex::BfSharedMutex;
 
-use benchmarks::NUM_ITERATIONS;
-use benchmarks::READ_RATIOS;
-use benchmarks::THREADS;
-use benchmarks::benchmark;
+use benchmarks_sharedmutex::NUM_ITERATIONS;
+use benchmarks_sharedmutex::READ_RATIOS;
+use benchmarks_sharedmutex::THREADS;
+use benchmarks_sharedmutex::benchmark;
 
 /// Benchmark the bfsharedmutex implementation
 pub fn benchmark_bfsharedmutex(c: &mut Criterion) {

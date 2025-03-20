@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
-use bf_vec::BfVec;
 use criterion::Criterion;
+use mcrl3_sharedmutex::BfVec;
 
-use benchmarks::NUM_ITERATIONS;
-use benchmarks::READ_RATIOS;
-use benchmarks::THREADS;
-use benchmarks::benchmark;
+use benchmarks_sharedmutex::NUM_ITERATIONS;
+use benchmarks_sharedmutex::READ_RATIOS;
+use benchmarks_sharedmutex::THREADS;
+use benchmarks_sharedmutex::benchmark;
 
 pub fn benchmark_vector(c: &mut Criterion) {
     for num_threads in THREADS {
