@@ -1,4 +1,4 @@
-name: Test Thread Sanitizer
+name: Test Memory Sanitizer
 
 on:
   push:
