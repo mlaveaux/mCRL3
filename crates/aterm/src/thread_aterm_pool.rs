@@ -27,6 +27,9 @@ thread_local! {
 pub struct ThreadTermPool {
     /// A reference to the protection set of this thread pool.
     protection_set: Arc<Mutex<SharedTermProtection>>,
+
+    /// The number of times termms have been created before garbage collection is triggered.
+    garbage_collection_counter: usize,
 }
 
 impl ThreadTermPool {
@@ -36,7 +39,7 @@ impl ThreadTermPool {
         let tp = GLOBAL_TERM_POOL.lock();
         let protection_set = (*tp).borrow_mut().register_thread_term_pool();
 
-        Self { protection_set }
+        Self { protection_set, garbage_collection_counter: 0 }
     }
 
     /// Creates a term without arguments.
@@ -101,7 +104,7 @@ impl ThreadTermPool {
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow().symbol_name(symbol)
+        StrRef::new(symbol, tp)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
@@ -220,6 +223,28 @@ mod tests {
     fn test_parsing() {
         let _ = mcrl3_utilities::test_logger();
 
-        let _t = ATerm::from_string("f(g(a),b)").unwrap();
+        let t = ATerm::from_string("f(g(a),b)").unwrap();
+
+        assert!(t.get_head_symbol().name() == "f");
+        assert!(t.arg(0).get_head_symbol().name() == "g");
+        assert!(t.arg(1).get_head_symbol().name() == "b");
+    }
+
+    #[test]
+    fn test_create_term() {
+        let _ = mcrl3_utilities::test_logger();
+
+        let f = Symbol::new("f", 2);
+        let g = Symbol::new("g", 1);
+
+        let t = THREAD_TERM_POOL.with_borrow(|tp| {
+            tp.create_term(&f, 
+                &[tp.create_term(&g, &[tp.create_constant(&Symbol::new("a", 0))])                
+                , tp.create_constant(&Symbol::new("b", 0))])
+        });
+
+        assert!(t.get_head_symbol().name() == "f");
+        assert!(t.arg(0).get_head_symbol().name() == "g");
+        assert!(t.arg(1).get_head_symbol().name() == "b");
     }
 }

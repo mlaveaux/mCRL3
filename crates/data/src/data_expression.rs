@@ -34,6 +34,8 @@ use crate::is_data_variable;
 #[mcrl3_derive_terms]
 mod inner {
 
+    use std::iter;
+
     use mcrl3_aterm::ATermStringRef;
 
     use super::*;
@@ -223,18 +225,17 @@ mod inner {
 
     impl DataApplication {
         #[mcrl3_ignore]
-        pub fn with_iter<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
-            unimplemented!();
-            // DATA_SYMBOLS.with_borrow_mut(|ds| {
-            //     let term = ATerm::with_iter(
-            //         ds.get_data_application_symbol(arguments.len()),
-            //         iter::empty::<&ATerm>(),
-            //     );
+        pub fn with_iter<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {            
+            DATA_SYMBOLS.with_borrow_mut(|ds| {
+                // TODO: Perhaps not the must optimal.
+                let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
+                let term = ATerm::with_iter(
+                    ds.get_data_application_symbol(arguments.len() + 1),
+                    args,
+                );
 
-            //     DataApplication {
-            //         term,
-            //     }
-            // })
+                DataApplication { term }
+            })
         }
 
         /// Returns the head symbol a data application
