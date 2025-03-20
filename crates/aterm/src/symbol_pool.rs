@@ -1,12 +1,13 @@
 use mcrl3_utilities::IndexedSet;
 
-use crate::StrRef;
 use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
 
-/// Pool for maximal sharing of function symbols.
-/// Ensures that function symbols with the same name and arity are the same object.
+/// Pool for maximal sharing of function symbols. Ensures that function symbols
+/// with the same name and arity point to the same `SharedSymbol` object.
+/// Returns `Symbol` that can be used to refer to the shared symbol, avoiding
+/// garbage collection of the underlying shared symbol.
 pub struct SymbolPool {
     /// Unique table of all function symbols
     symbols: IndexedSet<SharedSymbol>,
@@ -36,12 +37,11 @@ impl SymbolPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
-        // TODO: Get a guard that ensures that the StrRef lives long enough
-        unsafe { std::mem::transmute(StrRef::new(self.symbols.get(symbol.index()).unwrap().name())) }
+    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> &'a str {
+        self.symbols.get(symbol.index()).unwrap().name()
     }
 
-    /// Return the i-th argument of the SharedTerm for the given ATermRef
+    /// Returns the arity of the function symbol
     pub fn symbol_arity<'a>(&self, symbol: &impl Symb<'a>) -> usize {
         self.symbols.get(symbol.index()).unwrap().arity()
     }
@@ -49,11 +49,6 @@ impl SymbolPool {
     /// Returns the number of symbols in the pool.
     pub fn size(&self) -> usize {
         self.symbols.len()
-    }
-
-    /// Returns borrow of the shared symbol from a SymbolRef
-    pub fn get<'a>(&self, symbol: &'a SymbolRef<'_>) -> &'a SharedSymbol {
-        unsafe { std::mem::transmute(self.symbols.get(symbol.index()).unwrap()) }
     }
 }
 

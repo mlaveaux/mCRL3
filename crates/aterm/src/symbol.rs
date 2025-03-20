@@ -37,27 +37,29 @@ pub struct SymbolRef<'a> {
 /// Check that the SymbolRef is the same size as a usize.
 const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<usize>());
 
-/// A Symbol references to an aterm function symbol, which has a name and an arity.
+/// A reference to a function symbol with a known lifetime.
 impl<'a> SymbolRef<'a> {
-    /// Protect the symbol from garbage collection.
-    pub fn protect(&self) -> Symbol {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
-    }
-
-    pub(crate) fn index(&self) -> usize {
-        self.index
-    }
-
     pub(crate) fn from_index(index: usize) -> SymbolRef<'a> {
         SymbolRef {
             index,
             marker: PhantomData,
         }
     }
+
+    /// Protects the symbol from garbage collection, yielding a `Symbol`.
+    pub fn protect(&self) -> Symbol {
+        THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
+    }
+
+    /// Internal function to obtain the internal index of the symbol.
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
 }
 
 impl SymbolRef<'_> {
-    pub(crate) fn from_symbol<'a>(symbol: &impl Symb<'a>) -> SymbolRef<'a> {
+    /// Internal constructo to convert any `Symb` to a `SymbolRef`.
+    pub(crate) fn from_symbol<'a>(symbol: &impl Symb<'a>) -> Self {
         SymbolRef {
             index: symbol.index(),
             marker: PhantomData,
@@ -95,7 +97,7 @@ impl fmt::Debug for SymbolRef<'_> {
     }
 }
 
-/// A struct representing a function symbol with a name and arity.
+/// A protected function symbol.
 #[derive(Default)]
 pub struct Symbol {
     symbol: SymbolRef<'static>,
@@ -110,6 +112,7 @@ impl Symbol {
 }
 
 impl Symbol {
+    /// Internal constructor to create a symbol from an index and a root.
     pub(crate) fn from_index(index: usize, root: usize) -> Symbol {
         Self {
             symbol: SymbolRef::from_index(index),
@@ -117,6 +120,7 @@ impl Symbol {
         }
     }
 
+    /// Returns the root index, i.e., the index in the protection set. See `SharedTermProtection`.
     pub(crate) fn root(&self) -> usize {
         self.root
     }

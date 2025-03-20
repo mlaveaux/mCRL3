@@ -6,7 +6,6 @@ use std::ops::DerefMut;
 use mcrl3_sharedmutex::BfSharedMutexReadGuard;
 use mcrl3_sharedmutex::BfSharedMutexWriteGuard;
 
-
 /// Provides access to the mCRL2 busy forbidden protocol, where there
 /// are thread-local busy flags and one central storage for the forbidden
 /// flags.

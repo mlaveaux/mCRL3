@@ -1,4 +1,3 @@
-
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -13,7 +12,6 @@ use parking_lot::ReentrantMutex;
 use crate::ATerm;
 use crate::ATermRef;
 use crate::Markable;
-use crate::StrRef;
 use crate::Symb;
 use crate::Symbol;
 use crate::SymbolPool;
@@ -24,36 +22,6 @@ use crate::Term;
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
     LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
 
-pub(crate) struct SharedTermProtection {
-    /// Protection set for terms
-    pub(crate) protection_set: ProtectionSet<usize>,
-    pub(crate) symbol_protection_set: ProtectionSet<usize>,
-    /// Protection set to prevent garbage collection of symbols
-    /// Protection set for containers
-    pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
-    /// Index in global pool's thread pools list
-    pub(crate) index: usize,
-}
-
-pub struct Marker<'a> {
-    marked: &'a mut Vec<bool>,
-}
-
-impl Marker<'_> {
-    // Marks the given term as being reachable.
-    pub fn mark(&mut self, term: &ATermRef<'_>) {
-        self.marked[term.index()] = true;
-    }
-}
-
-impl Drop for SharedTermProtection {
-    fn drop(&mut self) {
-        assert!(self.protection_set.is_empty(), "Protection set must be empty on drop");
-
-        GLOBAL_TERM_POOL.lock().borrow_mut().deregister_thread_pool(self.index);
-    }
-}
-
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
     /// Unique table of all terms
@@ -63,6 +31,8 @@ pub(crate) struct GlobalTermPool {
     /// The thread-specific protection sets.
     thread_pools: Vec<Option<Arc<Mutex<SharedTermProtection>>>>,
 
+    /// Used to avoid reallocations for the markings of all terms. Not stored in
+    /// the term because of padding.
     marked: Vec<bool>,
 }
 
@@ -85,11 +55,9 @@ impl GlobalTermPool {
 
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'t>(&self, term: &ATermRef<'t>) -> SymbolRef<'t> {
-        unsafe {
-            std::mem::transmute::<SymbolRef<'_>, SymbolRef<'t>>(SymbolRef::from_symbol(
-                self.terms.get(term.index()).unwrap().symbol(),
-            ))
-        }
+        SymbolRef::from_symbol(
+            self.terms.get(term.index()).unwrap().symbol(),
+        )
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
@@ -105,7 +73,7 @@ impl GlobalTermPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
+    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> &'a str {
         self.symbol_pool.symbol_name(symbol)
     }
 
@@ -119,7 +87,7 @@ impl GlobalTermPool {
         self.terms.len()
     }
 
-    /// Returns the number of terms in the pool.
+    /// Returns the capacity of terms in the pool.
     pub fn capacity(&self) -> usize {
         self.terms.len()
     }
@@ -150,6 +118,12 @@ impl GlobalTermPool {
                     .collect(),
             }
         };
+        
+        debug_assert_eq!(
+            self.symbol_arity(symbol),
+            shared_term.arguments.len(),
+            "The number of arguments does not match the arity of the symbol"
+        );
 
         let index = self.terms.insert(shared_term);
         protect(index)
@@ -171,8 +145,9 @@ impl GlobalTermPool {
             }
         };
 
-        debug_assert!(
-            self.symbol_arity(symbol) == shared_term.arguments.len(),
+        debug_assert_eq!(
+            self.symbol_arity(symbol),
+            shared_term.arguments.len(),
             "The number of arguments does not match the arity of the symbol"
         );
 
@@ -233,6 +208,36 @@ impl GlobalTermPool {
 
         // Delete all terms that are not marked
         self.terms.retain_mut(|index, _term| self.marked[index]);
+    }
+}
+
+pub(crate) struct SharedTermProtection {
+    /// Protection set for terms
+    pub(crate) protection_set: ProtectionSet<usize>,
+    pub(crate) symbol_protection_set: ProtectionSet<usize>,
+    /// Protection set to prevent garbage collection of symbols
+    /// Protection set for containers
+    pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
+    /// Index in global pool's thread pools list
+    pub(crate) index: usize,
+}
+
+pub struct Marker<'a> {
+    marked: &'a mut Vec<bool>,
+}
+
+impl Marker<'_> {
+    // Marks the given term as being reachable.
+    pub fn mark(&mut self, term: &ATermRef<'_>) {
+        self.marked[term.index()] = true;
+    }
+}
+
+impl Drop for SharedTermProtection {
+    fn drop(&mut self) {
+        assert!(self.protection_set.is_empty(), "Protection set must be empty on drop");
+
+        GLOBAL_TERM_POOL.lock().borrow_mut().deregister_thread_pool(self.index);
     }
 }
 
