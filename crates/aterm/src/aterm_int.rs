@@ -31,7 +31,7 @@ mod inner {
 
     impl ATermInt {
         pub fn new(value: usize) -> ATermInt {
-            THREAD_TERM_POOL.with_borrow_mut(|tp| ATermInt {
+            THREAD_TERM_POOL.with_borrow(|tp| ATermInt {
                 term: tp.create_int(value),
             })
         }
