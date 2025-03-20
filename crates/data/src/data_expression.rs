@@ -1,6 +1,5 @@
 use core::fmt;
 use std::borrow::Borrow;
-use std::iter;
 use std::ops::Deref;
 
 use delegate::delegate;

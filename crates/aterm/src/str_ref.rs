@@ -15,7 +15,7 @@ impl fmt::Display for StrRef<'_> {
     }
 }
 
-impl<'a> StrRef<'a> {
+impl StrRef<'_> {
     pub fn new(name: &str) -> StrRef {
         StrRef { name }
     }

@@ -25,8 +25,8 @@ pub fn benchmark<T, R, W>(
     read_ratio: u32,
 ) where
     T: Clone + Send + 'static,
-    R: FnOnce(&T) -> () + Send + Copy + 'static,
-    W: FnOnce(&T) -> () + Send + Copy + 'static,
+    R: FnOnce(&T) + Send + Copy + 'static,
+    W: FnOnce(&T) + Send + Copy + 'static,
 {
     // Share threads to avoid overhead.
     let mut threads = vec![];
@@ -64,9 +64,11 @@ pub fn benchmark<T, R, W>(
                 // We execute it a fixed number of times.
                 for _ in 0..num_iterations {
                     if info.dist.sample(&mut rng) {
-                        black_box(write(&info.shared));
+                        write(&info.shared);
+                        black_box(());
                     } else {
-                        black_box(read(&info.shared));
+                        read(&info.shared);
+                        black_box(());
                     }
                 }
 

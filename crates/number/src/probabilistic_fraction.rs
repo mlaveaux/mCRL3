@@ -342,7 +342,7 @@ mod tests {
     fn test_division_by_zero() {
         let a = ProbabilisticFraction::from_str_pair("1", "2").unwrap();
         let zero = ProbabilisticFraction::zero();
-        let _ = &a / &zero;
+        let _ = &a / zero;
     }
 
     #[test]

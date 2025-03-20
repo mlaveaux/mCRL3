@@ -12,11 +12,9 @@ use mcrl3_aterm::Marker;
 use mcrl3_aterm::StrRef;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
-use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::TermIterator;
 use mcrl3_macros::mcrl3_derive_terms;
-use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
 
 use crate::is_sort_expression;

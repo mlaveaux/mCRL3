@@ -234,19 +234,17 @@ impl fmt::Debug for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_default() {
             write!(f, "<default>")?;
+        } else if self.arguments().is_empty() {
+            write!(f, "{}", self.get_head_symbol().name())?;
         } else {
-            if self.arguments().is_empty() {
-                write!(f, "{}", self.get_head_symbol().name())?;
-            } else {
-                // TODO: This is recursive and will overflow the stack for large terms!
-                write!(f, "{}(", self.get_head_symbol())?;
+            // TODO: This is recursive and will overflow the stack for large terms!
+            write!(f, "{}(", self.get_head_symbol())?;
 
-                for arg in self.arguments() {
-                    write!(f, "{}, ", arg)?;
-                }
-
-                write!(f, ")")?;
+            for arg in self.arguments() {
+                write!(f, "{}, ", arg)?;
             }
+
+            write!(f, ")")?;
         }
 
         Ok(())

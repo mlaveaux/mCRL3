@@ -159,7 +159,7 @@ impl ThreadTermPool {
 
         trace!(
             "Protected symbol {}, root {}, protection set {}",
-            self.symbol_name(&symbol),
+            self.symbol_name(symbol),
             result.root(),
             lock.index
         );
