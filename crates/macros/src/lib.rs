@@ -1,5 +1,5 @@
 //!
-//! This crate defines several macros to make ATerm data types work.
+//! This crate defines several macros to generate code for ATerm data types.
 //!
 //! This crate does not use unsafe code.
 
@@ -10,16 +10,25 @@ mod mcrl3_derive_terms;
 use mcrl3_derive_terms::mcrl3_derive_terms_impl;
 
 /// This proc macro can be used to generate implementations for the types stored
-/// in an ATerm, for example data_expressions, applications, variables. This is
-/// achieved by adding the proc macro to a module that contains both the
+/// in an ATerm, for example DataExpression, DataApplication, DataVariable. This
+/// is achieved by adding the proc macro to a module that contains both the
 /// declaration and implementation of such a type.
 ///
 /// For every struct containing an ATerm we generate another version for the
-/// ATermRef implementation, as well as `protect` and `borrow` functions to
+/// ATermRef implementation, as well as `protect` and `copy` functions to
 /// convert between both types. Furthermore, all of these can be converted to
 /// and from ATerms.
 ///
 /// # Example
+///
+/// ```
+/// #[mcrl3_derive_terms]
+/// mod inner {
+///
+/// }
+///
+/// use inner::*;
+/// ```
 #[proc_macro_attribute]
 pub fn mcrl3_derive_terms(
     _attributes: proc_macro::TokenStream,

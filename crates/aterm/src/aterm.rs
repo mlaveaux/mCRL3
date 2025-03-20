@@ -11,14 +11,14 @@ use delegate::delegate;
 
 use mcrl3_utilities::PhantomUnsend;
 
-use crate::is_empty_list;
-use crate::is_int;
-use crate::is_list;
 use crate::Markable;
 use crate::Marker;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
+use crate::is_empty_list;
+use crate::is_int;
+use crate::is_list;
 
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
 
@@ -65,7 +65,7 @@ pub struct ATermRef<'a> {
 }
 
 /// Check that the ATermRef is the same size as a usize.
-const _:() = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
+const _: () = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
 
 /// These are safe because terms are never modified. Garbage collection is
 /// always performed with exclusive access.
@@ -235,14 +235,18 @@ impl fmt::Debug for ATermRef<'_> {
         if self.is_default() {
             write!(f, "<default>")?;
         } else {
-            // TODO: This is recursive and will overflow the stack for large terms!
-            write!(f, "{}(", self.get_head_symbol())?;
+            if self.arguments().is_empty() {
+                write!(f, "{}", self.get_head_symbol().name())?;
+            } else {
+                // TODO: This is recursive and will overflow the stack for large terms!
+                write!(f, "{}(", self.get_head_symbol())?;
 
-            for arg in self.arguments() {
-                write!(f, "{}, ", arg)?;
+                for arg in self.arguments() {
+                    write!(f, "{}, ", arg)?;
+                }
+
+                write!(f, ")")?;
             }
-
-            write!(f, ")")?;
         }
 
         Ok(())
@@ -263,7 +267,7 @@ pub struct ATerm {
 impl ATerm {
     /// Creates a new term using the pool
     pub fn with_args<'a, 'b>(symbol: &impl Symb<'a>, args: &[impl Term<'b>]) -> ATerm {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.create(symbol, args))
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create_term(symbol, args))
     }
 
     /// Creates a new term using the pool

@@ -29,7 +29,7 @@
 //! for decision diagrams. International Journal on Software Tools for
 //! Technology Transfer. 19(6):675-696, 2017.
 //!
-//! 
+//!
 #[forbid(unsafe_code)]
 mod format;
 pub mod iterators;

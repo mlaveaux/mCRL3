@@ -12,9 +12,9 @@ use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
 use crate::SymbolRef;
+use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::TermIterator;
-use crate::THREAD_TERM_POOL;
 
 pub fn is_int_term<'a>(t: &impl Term<'a>) -> bool {
     t.is_int()

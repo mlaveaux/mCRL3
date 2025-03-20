@@ -35,6 +35,8 @@ use crate::is_data_variable;
 #[mcrl3_derive_terms]
 mod inner {
 
+    use mcrl3_aterm::ATermStringRef;
+
     use super::*;
 
     /// A data expression can be any of:
@@ -122,19 +124,24 @@ mod inner {
         #[mcrl3_ignore]
         pub fn new(name: impl Into<String>) -> DataFunctionSymbol {
             DATA_SYMBOLS.with_borrow(|ds| DataFunctionSymbol {
-                term: ATerm::with_args(ds.data_function_symbol.deref(), &[ATermString::new(name)]),
+                term: ATerm::with_args(
+                    ds.data_function_symbol.deref(),
+                    &[
+                        Into::<ATerm>::into(ATermString::new(name)),
+                        SortExpression::default().into(),
+                    ],
+                ),
             })
+        }
+
+        /// Returns the name of the function symbol
+        pub fn name(&self) -> ATermStringRef<'_> {
+            ATermStringRef::from(self.term.arg(0))
         }
 
         /// Returns the sort of the function symbol.
         pub fn sort(&self) -> SortExpressionRef<'_> {
             self.term.arg(1).into()
-        }
-
-        /// Returns the name of the function symbol
-        pub fn name(&self) -> StrRef<'_> {
-            unimplemented!("name not implemented for {}", self);
-            //ATermStringRef::from(self.term.arg(0)).value()
         }
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
@@ -216,7 +223,6 @@ mod inner {
     }
 
     impl DataApplication {
-        
         #[mcrl3_ignore]
         pub fn with_iter<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
             unimplemented!();
@@ -334,6 +340,8 @@ mod tests {
 
     #[test]
     fn test_print() {
+        let _ = mcrl3_utilities::test_logger();
+
         let a = DataFunctionSymbol::new("a");
         assert_eq!("a", format!("{}", a));
 

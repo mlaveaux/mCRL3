@@ -1,10 +1,15 @@
-//! Implementation of the ATerm (Annotated Term) data structure.
+//! Implementation of the `ATerm` data structure.
 //!
-//! ATerms are used to represent tree-like data structures with annotations.
-//! This implementation provides:
-//! - Maximal sharing of terms
-//! - Garbage collection
-//! - Binary storage format
+//! An aterm is a first-order term of the following form:
+//!
+//! T := a | f_n(T1, ..., Tn) | u64
+//!
+//! where f_n is a function symbol with arity n and a unique name.
+//!
+//! Terms are stored maximally shared in the global aterm pool, meaning that T1,
+//! Tn are shared between all terms and the term is immutable. This global aterm
+//! pool performs garbage collection to remove terms that are no longer
+//! reachable. This is kept track of by the thread-local aterm pool.
 
 mod aterm;
 mod aterm_builder;

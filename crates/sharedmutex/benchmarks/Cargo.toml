@@ -1,5 +1,5 @@
 [package]
-name = "mcrl3_sharedmutex-benchmarks"
+name = "benchmarks_sharedmutex"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,8 +7,11 @@ rust-version.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcrl3-sharedmutex.workspace = true
+mcrl3_sharedmutex.workspace = true
+
+criterion.workspace = true
+rand.workspace = true
 
 [[bench]]
-name = "benchmarks"
+name = "benchmarks_sharedmutex"
 harness = false

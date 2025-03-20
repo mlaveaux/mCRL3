@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use mcrl3_utilities::PhantomUnsend;
 
-use crate::aterm::ATermRef;
+use super::BfTermPoolThreadWrite;
 use crate::BfTermPool;
 use crate::Marker;
-use crate::Term;
 use crate::THREAD_TERM_POOL;
-use super::BfTermPoolThreadWrite;
+use crate::Term;
+use crate::aterm::ATermRef;
 
 #[cfg(debug_assertions)]
 use std::cell::RefCell;

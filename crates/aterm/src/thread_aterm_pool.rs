@@ -25,7 +25,7 @@ thread_local! {
 
 /// Per-thread term pool managing local protection sets.
 pub struct ThreadTermPool {
-    ///
+    /// A reference to the protection set of this thread pool.
     protection_set: Arc<Mutex<SharedTermProtection>>,
 }
 
@@ -41,6 +41,8 @@ impl ThreadTermPool {
 
     /// Creates a term without arguments.
     pub fn create_constant(&self, symbol: &SymbolRef<'_>) -> ATerm {
+        assert!(self.symbol_arity(symbol) == 0, "A constant should not have arity > 0");
+
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
         tp.borrow_mut()
@@ -48,7 +50,7 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments
-    pub fn create<'a, 'b>(&self, symbol: &impl Symb<'a>, arguments: &[impl Term<'b>]) -> ATerm {
+    pub fn create_term<'a, 'b>(&self, symbol: &impl Symb<'a>, arguments: &[impl Term<'b>]) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
@@ -75,6 +77,15 @@ impl ThreadTermPool {
             .create_term_iter(symbol, iter, |index| self.protect(&ATermRef::from_index(index)))
     }
 
+    /// Create a function symbol
+    pub fn create_symbol(&self, name: impl Into<String>, arity: usize) -> Symbol {
+        let tp = GLOBAL_TERM_POOL.lock();
+
+        (*tp)
+            .borrow_mut()
+            .create_symbol(name, arity, |index| self.protect_symbol(&SymbolRef::from_index(index)))
+    }
+
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'a>(&self, term: &ATermRef<'a>) -> SymbolRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
@@ -99,18 +110,6 @@ impl ThreadTermPool {
         (*tp).borrow().symbol_arity(symbol)
     }
 
-    /// Create a function symbol
-    pub fn create_symbol(&self, name: impl Into<String>, arity: usize) -> Symbol {
-        let tp = GLOBAL_TERM_POOL.lock();
-
-        (*tp).borrow_mut().create_symbol(name, arity, |index| {
-            let root = self.protection_set.lock().symbol_protection_set.protect(index);
-
-            // Return the protected term
-            Symbol::new_internal(index, root)
-        })
-    }
-
     /// Protect the term by adding its index to the protection set
     pub fn protect(&self, term: &ATermRef<'_>) -> ATerm {
         // Protect the term by adding its index to the protection set
@@ -122,14 +121,14 @@ impl ThreadTermPool {
 
     /// Unprotects a term from this thread's protection set.
     pub fn drop(&self, term: &ATerm) {
+        self.protection_set.lock().protection_set.unprotect(term.root());
+
         trace!(
-            "Unprotected term {:?}, index {}, protection set {}",
+            "Unprotected term {:?}, root {}, protection set {}",
             term,
             term.root(),
             self.index()
         );
-
-        self.protection_set.lock().protection_set.unprotect(term.root());
     }
 
     /// Protects a container in this thread's container protection set.
@@ -141,8 +140,8 @@ impl ThreadTermPool {
 
     /// Unprotects a container from this thread's container protection set.
     pub(crate) fn drop_container(&self, root: usize) {
-        trace!("Unprotected container index {}, protection set {}", root, self.index());
         self.protection_set.lock().container_protection_set.unprotect(root);
+        trace!("Unprotected container index {}, protection set {}", root, self.index());
     }
 
     /// Parse the given string and returns the Term representation.
@@ -155,10 +154,16 @@ impl ThreadTermPool {
 
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
-        Symbol::new_internal(
-            symbol.index(),
-            self.protection_set.lock().symbol_protection_set.protect(symbol.index()),
-        )
+        let mut lock = self.protection_set.lock();
+        let result = Symbol::from_index(symbol.index(), lock.symbol_protection_set.protect(symbol.index()));
+
+        trace!(
+            "Protected symbol {}, root {}, protection set {}",
+            self.symbol_name(&symbol),
+            result.root(),
+            lock.index
+        );
+        result
     }
 
     /// Unprotects a symbol, allowing it to be garbage collected.

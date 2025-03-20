@@ -1,8 +1,9 @@
 use std::time::Duration;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 
-mod async_benchmarks;
 mod mutex_benchmarks;
 mod vec_benchmarks;
 

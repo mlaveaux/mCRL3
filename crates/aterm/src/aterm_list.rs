@@ -1,3 +1,7 @@
+//!
+//! A list of terms, where T is the type of the elements in the list.
+//!
+
 use std::marker::PhantomData;
 
 use crate::ATerm;

@@ -1,5 +1,5 @@
 [package]
-name = "benchmarks-sabre"
+name = "benchmarks_sabre"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
@@ -7,12 +7,14 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+mcrl3_aterm.workspace = true
+mcrl3_data.workspace = true
+mcrl3_rec-tests.workspace = true
+mcrl3_sabre.workspace = true
+mcrl3_utilities.workspace = true
+
 criterion.workspace = true
 env_logger.workspace = true
-mcrl2.workspace = true
-rec-tests.workspace = true
-sabre.workspace = true
-utilities.workspace = true
 ahash.workspace = true
 
 [[bench]]

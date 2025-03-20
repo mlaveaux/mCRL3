@@ -27,8 +27,8 @@ pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPo
 pub(crate) struct SharedTermProtection {
     /// Protection set for terms
     pub(crate) protection_set: ProtectionSet<usize>,
-    /// Protection set to prevent garbage collection of symbols
     pub(crate) symbol_protection_set: ProtectionSet<usize>,
+    /// Protection set to prevent garbage collection of symbols
     /// Protection set for containers
     pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
     /// Index in global pool's thread pools list
@@ -110,7 +110,7 @@ impl GlobalTermPool {
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
+    pub fn symbol_arity<'a>(&self, symbol: &impl Symb<'a>) -> usize {
         self.symbol_pool.symbol_arity(symbol)
     }
 
@@ -170,6 +170,11 @@ impl GlobalTermPool {
                     .collect(),
             }
         };
+
+        debug_assert!(
+            self.symbol_arity(symbol) == shared_term.arguments.len(),
+            "The number of arguments does not match the arity of the symbol"
+        );
 
         let index = self.terms.insert(shared_term);
         protect(index)

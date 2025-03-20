@@ -232,7 +232,7 @@ fn parse_term(pair: Pair<Rule>) -> Result<ATerm, Box<dyn Error>> {
                         }
                     }
                 },
-                |tp, symbol, args| Ok(tp.create(&symbol, args)),
+                |tp, symbol, args| Ok(tp.create_term(&symbol, args)),
             )
             .unwrap())
     })

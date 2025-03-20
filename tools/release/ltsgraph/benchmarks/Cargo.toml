@@ -1,5 +1,5 @@
 [package]
-name = "benchmarks-ltsgraph"
+name = "benchmarks_ltsgraph"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
@@ -7,11 +7,12 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+mcrl3_lts.workspace = true
+mcrl3_ltsgraph-lib = { path = "../library" }
+
 criterion.workspace = true
 tiny-skia.workspace = true
-ltsgraph-lib = { path = "../library" }
 rand.workspace = true
-io.workspace = true
 
 [[bench]]
 name = "benchmark_ltsgraph"

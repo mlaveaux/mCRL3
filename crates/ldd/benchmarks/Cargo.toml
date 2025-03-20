@@ -1,5 +1,5 @@
 [package]
-name = "benchmarks"
+name = "benchmarks_ldd"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
@@ -7,10 +7,11 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+mcrl3_ldd.workspace = true
+
 criterion.workspace = true
 rand.workspace = true
-ldd.workspace = true
 
 [[bench]]
-name = "operations"
+name = "benchmarks_ldd"
 harness = false

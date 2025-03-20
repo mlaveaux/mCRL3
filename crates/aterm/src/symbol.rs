@@ -35,7 +35,7 @@ pub struct SymbolRef<'a> {
 }
 
 /// Check that the SymbolRef is the same size as a usize.
-const _:() = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<usize>());
+const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<usize>());
 
 /// A Symbol references to an aterm function symbol, which has a name and an arity.
 impl<'a> SymbolRef<'a> {
@@ -110,7 +110,7 @@ impl Symbol {
 }
 
 impl Symbol {
-    pub(crate) fn new_internal(index: usize, root: usize) -> Symbol {
+    pub(crate) fn from_index(index: usize, root: usize) -> Symbol {
         Self {
             symbol: SymbolRef::from_index(index),
             root,

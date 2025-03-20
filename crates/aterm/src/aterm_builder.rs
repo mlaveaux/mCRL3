@@ -43,7 +43,7 @@ where
                     Ok(Yield::Construct(t.get_head_symbol().protect()))
                 }
             },
-            |tp, symbol, args| Ok(tp.create(&symbol, args)),
+            |tp, symbol, args| Ok(tp.create_term(&symbol, args)),
         )
         .unwrap()
 }
@@ -221,7 +221,7 @@ pub fn random_term(
         AHashSet::<ATerm>::from_iter(constants.iter().map(|name| {
             let symbol = tp.create_symbol(name, 0);
             let a: &[ATerm] = &[];
-            tp.create(&symbol, a)
+            tp.create_term(&symbol, a)
         }))
     });
 

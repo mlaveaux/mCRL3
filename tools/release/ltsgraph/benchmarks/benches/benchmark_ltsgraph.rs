@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
+use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
-use io::io_aut::read_aut;
-use ltsgraph_lib::GraphLayout;
-use ltsgraph_lib::Viewer;
+use mcrl3_lts::read_aut;
+use mcrl3_ltsgraph_lib::GraphLayout;
+use mcrl3_ltsgraph_lib::Viewer;
 use tiny_skia::Pixmap;
 use tiny_skia::PixmapMut;
 
 /// Render the alternating bit protocol with some settings.
 pub fn criterion_benchmark_viewer(c: &mut Criterion) {
-    let file = include_str!("../../../../examples/lts/abp.aut");
+    let file = include_str!("../../../../../examples/lts/abp.aut");
     let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
 
     let mut viewer = Viewer::new(&lts);
@@ -53,7 +53,7 @@ pub fn criterion_benchmark_viewer(c: &mut Criterion) {
 
 /// Perform layouting the alternating bit protocol with some settings.
 pub fn criterion_benchmark_layout(c: &mut Criterion) {
-    let file = include_str!("../../../../examples/lts/abp.aut");
+    let file = include_str!("../../../../../examples/lts/abp.aut");
     let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
 
     let mut layout = GraphLayout::new(&lts);

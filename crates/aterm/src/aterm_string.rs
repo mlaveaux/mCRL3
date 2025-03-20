@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt;
 use std::ops::Deref;
 
 use delegate::delegate;
@@ -17,9 +18,9 @@ use crate::StrRef;
 use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
+use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::TermIterator;
-use crate::THREAD_TERM_POOL;
 
 fn is_string_term<'a>(t: &impl Term<'a>) -> bool {
     t.get_head_symbol().arity() == 0
@@ -53,6 +54,12 @@ mod inner {
     impl From<&str> for ATermString {
         fn from(s: &str) -> Self {
             ATermString::new(s)
+        }
+    }
+
+    impl fmt::Display for ATermString {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "\"{}\"", self.value())
         }
     }
 }

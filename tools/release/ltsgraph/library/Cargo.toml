@@ -1,5 +1,5 @@
 [package]
-name = "ltsgraph-lib"
+name = "mcrl3_ltsgraph-lib"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true

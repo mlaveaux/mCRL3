@@ -24,8 +24,8 @@ use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
 use slint::invoke_from_event_loop;
 
-use ltsgraph_lib::GraphLayout;
-use ltsgraph_lib::Viewer;
+use mcrl3_ltsgraph_lib::GraphLayout;
+use mcrl3_ltsgraph_lib::Viewer;
 use mcrl3_gui::console;
 use mcrl3_lts::read_aut;
 use pauseable_thread::PauseableThread;

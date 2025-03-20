@@ -84,7 +84,7 @@ impl SemiCompressedTermTree {
                         Variable(p) => Ok(Yield::Term(t.get_position(p).protect())),
                     }
                 },
-                |tp, symbol, args| Ok(tp.create(symbol, args)),
+                |tp, symbol, args| Ok(tp.create_term(symbol, args)),
             )
             .unwrap()
     }

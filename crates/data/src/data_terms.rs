@@ -13,6 +13,7 @@ thread_local! {
 /// Defines default symbols and terms for data elements.
 pub struct DataSymbols {
     pub sort_expression_symbol: ManuallyDrop<Symbol>,
+    /// OpId(name, sort)
     pub data_function_symbol: ManuallyDrop<Symbol>,
     pub data_variable: ManuallyDrop<Symbol>,
     pub data_where_clause: ManuallyDrop<Symbol>,
@@ -26,7 +27,7 @@ impl DataSymbols {
     fn new() -> Self {
         Self {
             sort_expression_symbol: ManuallyDrop::new(Symbol::new("SortId", 1)),
-            data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 3)),
+            data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 2)),
             data_variable: ManuallyDrop::new(Symbol::new("Var", 2)),
 
             data_where_clause: ManuallyDrop::new(Symbol::new("Where", 2)),

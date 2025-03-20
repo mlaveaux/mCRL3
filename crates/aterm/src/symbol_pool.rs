@@ -1,6 +1,7 @@
 use mcrl3_utilities::IndexedSet;
 
 use crate::StrRef;
+use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
 
@@ -41,7 +42,7 @@ impl SymbolPool {
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
+    pub fn symbol_arity<'a>(&self, symbol: &impl Symb<'a>) -> usize {
         self.symbols.get(symbol.index()).unwrap().arity()
     }
 

@@ -12,9 +12,11 @@ use mcrl3_aterm::Marker;
 use mcrl3_aterm::StrRef;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::TermIterator;
 use mcrl3_macros::mcrl3_derive_terms;
+use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
 
 use crate::is_sort_expression;
@@ -22,7 +24,6 @@ use crate::is_sort_expression;
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
-
     use super::*;
 
     #[mcrl3_term(is_sort_expression)]

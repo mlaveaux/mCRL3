@@ -7,5 +7,7 @@ rust-version.workspace = true
 [dependencies]
 mcrl3_aterm.workspace = true
 mcrl3_macros.workspace = true
+mcrl3_utilities.workspace = true
+
 delegate.workspace = true
 thiserror.workspace = true

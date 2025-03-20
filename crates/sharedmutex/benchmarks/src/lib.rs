@@ -1,12 +1,12 @@
-use std::{
-    hint::black_box,
-    sync::{atomic::AtomicBool, Arc, Barrier},
-    thread::{self},
-};
+use std::hint::black_box;
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::sync::atomic::AtomicBool;
+use std::thread::{self};
 
 use criterion::Criterion;
-
-use rand::{prelude::*, distributions::Bernoulli};
+use rand::distr::Bernoulli;
+use rand::distr::Distribution;
 
 // Settings for the benchmarks.
 pub const NUM_ITERATIONS: usize = 100000;
@@ -51,7 +51,7 @@ pub fn benchmark<T, R, W>(
     for _ in 0..num_threads {
         let info = info.clone();
         threads.push(thread::spawn(move || {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
 
             loop {
                 info.begin_barrier.wait();
@@ -76,11 +76,7 @@ pub fn benchmark<T, R, W>(
     }
 
     c.bench_function(
-        format!(
-            "{} {} {} {}",
-            name, num_threads, num_iterations, read_ratio
-        )
-        .as_str(),
+        format!("{} {} {} {}", name, num_threads, num_iterations, read_ratio).as_str(),
         |bencher| {
             bencher.iter(|| {
                 info.begin_barrier.wait();

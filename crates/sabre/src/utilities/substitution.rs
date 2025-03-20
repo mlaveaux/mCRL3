@@ -78,7 +78,7 @@ fn substitute_rec<'a>(
             }
         }
 
-        let result = tp.create(&t.get_head_symbol(), &write_args);
+        let result = tp.create_term(&t.get_head_symbol(), &write_args);
         drop(write_args);
 
         // TODO: When write is dropped we check whether all terms where inserted, but this clear violates that assumption.

@@ -1,16 +1,20 @@
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::RwLock;
 
 use criterion::Criterion;
 
 use bf_sharedmutex::BfSharedMutex;
 
-use benchmarks::{benchmark, NUM_ITERATIONS, READ_RATIOS, THREADS};
+use benchmarks::NUM_ITERATIONS;
+use benchmarks::READ_RATIOS;
+use benchmarks::THREADS;
+use benchmarks::benchmark;
 
 /// Benchmark the bfsharedmutex implementation
 pub fn benchmark_bfsharedmutex(c: &mut Criterion) {
     for num_threads in THREADS {
         for read_ratio in READ_RATIOS {
-
             // Benchmark various configurations.
             benchmark(
                 c,
