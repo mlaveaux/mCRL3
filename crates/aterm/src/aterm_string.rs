@@ -44,9 +44,7 @@ mod inner {
 
         /// Get the value of the string
         pub fn value(&self) -> StrRef<'_> {
-            let arg = self.term.arg(0);
-
-            arg.get_head_symbol().name()
+            self.term.get_head_symbol().name()
         }
     }
 
@@ -59,7 +57,7 @@ mod inner {
 
     impl fmt::Display for ATermString {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "\"{}\"", self.value())
+            write!(f, "{}", self.value())
         }
     }
 }
