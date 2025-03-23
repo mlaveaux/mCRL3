@@ -114,6 +114,7 @@ impl SabreRewriter {
                                             });
                                         } else {
                                             // For a rewrite rule that is not duplicating or has a condition we just apply it straight away
+                                            drop(read_terms);
                                             SabreRewriter::apply_rewrite_rule(
                                                 tp,
                                                 automaton,
@@ -135,6 +136,7 @@ impl SabreRewriter {
                                     }
                                 }
 
+                                drop(read_terms);
                                 if tr.destinations.is_empty() {
                                     // If there is no destination we are done matching and go back to the previous
                                     // configuration on the stack with information on the side stack.
@@ -154,6 +156,7 @@ impl SabreRewriter {
                                 let prev = cs.get_prev_with_side_info();
                                 cs.current_node = prev;
                                 if let Some(n) = prev {
+                                    drop(read_terms);
                                     cs.jump_back(n, tp);
                                 }
                             }
@@ -162,9 +165,11 @@ impl SabreRewriter {
                             match sit {
                                 SideInfoType::SideBranch(sb) => {
                                     // If there is a SideBranch pick the next child configuration
+                                    drop(read_terms);
                                     cs.grow(leaf_index, sb);
                                 }
                                 SideInfoType::DelayedRewriteRule(announcement, annotation) => {
+                                    drop(read_terms);
                                     // apply the delayed rewrite rule
                                     SabreRewriter::apply_rewrite_rule(
                                         tp,
@@ -188,6 +193,7 @@ impl SabreRewriter {
                                             stats,
                                         )
                                     {
+                                        drop(read_terms);
                                         SabreRewriter::apply_rewrite_rule(
                                             tp,
                                             automaton,
@@ -240,6 +246,7 @@ impl SabreRewriter {
 
         // The match announcement tells us how far we need to prune back.
         let prune_point = leaf_index - announcement.symbols_seen;
+        drop(read_terms);
         cs.prune(tp, automaton, prune_point, new_subterm);
     }
 

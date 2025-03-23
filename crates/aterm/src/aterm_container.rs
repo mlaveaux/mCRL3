@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use mcrl3_utilities::PhantomUnsend;
 
-use super::BfTermPoolThreadWrite;
-use crate::BfTermPool;
+use crate::gc_mutex::GcMutex;
+use crate::gc_mutex::GcMutexGuard;
 use crate::Marker;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
@@ -21,7 +21,7 @@ use std::cell::RefCell;
 /// that are of trait Markable. These store ATermRef<'static> that are protected
 /// during garbage collection by being in the container itself.
 pub struct Protected<C> {
-    container: Arc<BfTermPool<C>>,
+    container: Arc<GcMutex<C>>,
     root: usize,
 
     // Protected is not Send because it uses thread-local state for its protection
@@ -32,7 +32,7 @@ pub struct Protected<C> {
 impl<C: Markable + Send + 'static> Protected<C> {
     /// Creates a new Protected container from a given container.
     pub fn new(container: C) -> Protected<C> {
-        let shared = Arc::new(BfTermPool::new(container));
+        let shared = Arc::new(GcMutex::new(container));
 
         let root = THREAD_TERM_POOL.with_borrow(|tp| tp.protect_container(shared.clone()));
 
@@ -49,13 +49,13 @@ impl<C: Markable + Send + 'static> Protected<C> {
     /// outlive the guard, see [Protector].
     pub fn write(&mut self) -> Protector<'_, C> {
         // The lifetime of ATermRef can be derived from self since it is protected by self, so transmute 'static into 'a.
-        unsafe { Protector::new(self.container.write_exclusive()) }
+        Protector::new(self.container.write())
     }
 
     /// Provides immutable access to the underlying container.
-    pub fn read(&self) -> &C {
+    pub fn read(&self) -> GcMutexGuard<'_, C> {
         // The lifetime of ATermRef can be derived from self since it is protected by self, so transmute 'static into 'a.
-        unsafe { self.container.get() }
+        self.container.read()
     }
 }
 
@@ -146,11 +146,9 @@ impl<T: Markable> Markable for Vec<T> {
     }
 }
 
-impl<T: Markable + ?Sized> Markable for BfTermPool<T> {
+impl<T: Markable> Markable for GcMutex<T> {
     fn mark(&self, marker: &mut Marker) {
-        unsafe {
-            self.get().mark(marker);
-        }
+        self.write().mark(marker);
     }
 
     fn contains_term(&self, term: &ATermRef<'_>) -> bool {
@@ -170,14 +168,14 @@ impl<T: Markable + ?Sized> Markable for BfTermPool<T> {
 /// that their lifetime is extended by being in the container. This is enforced
 /// by runtime checks during debug for containers that implement IntoIterator.
 pub struct Protector<'a, C: Markable> {
-    reference: BfTermPoolThreadWrite<'a, C>,
+    reference: GcMutexGuard<'a, C>,
 
     #[cfg(debug_assertions)]
     protected: RefCell<Vec<ATermRef<'static>>>,
 }
 
 impl<'a, C: Markable> Protector<'a, C> {
-    fn new(reference: BfTermPoolThreadWrite<'a, C>) -> Protector<'a, C> {
+    fn new(reference: GcMutexGuard<'a, C>) -> Protector<'a, C> {
         #[cfg(debug_assertions)]
         return Protector {
             reference,
@@ -217,7 +215,7 @@ impl<C: Markable> Deref for Protector<'_, C> {
 
 impl<C: Markable> DerefMut for Protector<'_, C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.reference
+        self.reference.deref_mut()
     }
 }
 
