@@ -96,8 +96,6 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> Da
                 tp,
                 t.clone(),
                 |_tp, args, t| {
-                    debug_assert!(!t.is_int(), "Term cannot be an aterm_int, although not sure why");
-
                     if variables.contains(t.get_head_symbol().name().deref()) {
                         // Convert a constant variable, for example 'x', into an untyped variable.
                         Ok(Yield::Term(
@@ -108,7 +106,7 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> Da
                             DataFunctionSymbol::new(t.get_head_symbol().name().deref()).into(),
                         ))
                     } else {
-                        // This is a function symbol applied to a number of arguments (higher order terms not allowed)
+                        // This is a function symbol applied to a number of arguments
                         let head = DataFunctionSymbol::new(t.get_head_symbol().name().deref());
 
                         for arg in t.arguments() {
