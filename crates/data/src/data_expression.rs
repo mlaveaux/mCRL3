@@ -23,7 +23,6 @@ use mcrl3_macros::mcrl3_term;
 use crate::DATA_SYMBOLS;
 use crate::SortExpression;
 use crate::SortExpressionRef;
-use crate::get_data_function_symbol_index;
 use crate::is_data_application;
 use crate::is_data_expression;
 use crate::is_data_function_symbol;
@@ -129,7 +128,7 @@ mod inner {
                     ds.data_function_symbol.deref(),
                     &[
                         Into::<ATerm>::into(ATermString::new(name)),
-                        SortExpression::default().into(),
+                        SortExpression::unknown_sort().into(),
                     ],
                 ),
             })
@@ -147,13 +146,7 @@ mod inner {
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
         pub fn operation_id(&self) -> usize {
-            debug_assert!(
-                is_data_function_symbol(&self.term),
-                "term {} is not a data function symbol",
-                self.term
-            );
-
-            get_data_function_symbol_index(&self.term)
+            self.term.index()
         }
     }
 
@@ -299,6 +292,7 @@ mod inner {
         }
     }
 
+    /// Conversions to `DataExpression`
     #[mcrl3_ignore]
     impl From<DataFunctionSymbol> for DataExpression {
         fn from(value: DataFunctionSymbol) -> Self {

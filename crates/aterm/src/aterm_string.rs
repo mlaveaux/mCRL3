@@ -55,6 +55,13 @@ mod inner {
         }
     }
 
+    #[mcrl3_ignore]
+    impl From<StrRef<'_>> for ATermString {
+        fn from(s: StrRef<'_>) -> Self {
+            ATermString::new(s.deref())
+        }
+    }
+
     impl fmt::Display for ATermString {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{}", self.value())

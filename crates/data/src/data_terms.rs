@@ -12,7 +12,7 @@ thread_local! {
 
 /// Defines default symbols and terms for data elements.
 pub struct DataSymbols {
-    pub sort_expression_symbol: ManuallyDrop<Symbol>,
+    pub sort_id_symbol: ManuallyDrop<Symbol>,
     /// OpId(name, sort)
     pub data_function_symbol: ManuallyDrop<Symbol>,
     pub data_variable: ManuallyDrop<Symbol>,
@@ -26,7 +26,7 @@ pub struct DataSymbols {
 impl DataSymbols {
     fn new() -> Self {
         Self {
-            sort_expression_symbol: ManuallyDrop::new(Symbol::new("SortId", 1)),
+            sort_id_symbol: ManuallyDrop::new(Symbol::new("SortId", 1)),
             data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 2)),
             data_variable: ManuallyDrop::new(Symbol::new("Var", 2)),
 
@@ -37,7 +37,7 @@ impl DataSymbols {
     }
 
     pub fn is_sort_expression<'a>(&self, term: &impl Term<'a>) -> bool {
-        term.get_head_symbol() == **self.sort_expression_symbol
+        term.get_head_symbol() == **self.sort_id_symbol
     }
 
     pub fn is_bool_sort<'a>(&self, _term: &impl Term<'a>) -> bool {
@@ -124,8 +124,4 @@ pub fn is_data_abstraction<'a>(term: &impl Term<'a>) -> bool {
 
 pub fn is_data_application<'a>(term: &impl Term<'a>) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
-}
-
-pub fn get_data_function_symbol_index<'a>(_term: &impl Term<'a>) -> usize {
-    unimplemented!()
 }

@@ -35,6 +35,10 @@ mod inner {
                 term: tp.create_int(value),
             })
         }
+
+        pub fn value(&self) -> usize {
+            self.term.index()
+        }
     }
 }
 

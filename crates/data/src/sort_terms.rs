@@ -18,10 +18,13 @@ use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_term;
 
 use crate::is_sort_expression;
+use crate::DATA_SYMBOLS;
 
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
 mod inner {
+    use mcrl3_aterm::ATermString;
+
     use super::*;
 
     #[mcrl3_term(is_sort_expression)]
@@ -33,6 +36,15 @@ mod inner {
         /// Returns the name of the sort.
         pub fn name(&self) -> StrRef {
             self.term.arg(0).get_head_symbol().name()
+        }
+
+        /// Creates a sort expression with the unknown value.
+        pub fn unknown_sort() -> SortExpression {
+            DATA_SYMBOLS.with_borrow(|ds| 
+                SortExpression {
+                    term: ATerm::with_args(ds.sort_id_symbol.deref(), &[ATermString::new("@no_value@")])
+                }
+            )
         }
     }
 

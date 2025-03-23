@@ -90,7 +90,6 @@ impl fmt::Display for EquivalenceClass {
 mod tests {
     use ahash::AHashSet;
     use mcrl3_aterm::ATerm;
-    use mcrl3_aterm::ATermRef;
     use mcrl3_data::DataVariable;
 
     use crate::test_utility::create_rewrite_rule;

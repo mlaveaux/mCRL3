@@ -81,35 +81,6 @@ impl Default for ATermRef<'_> {
     }
 }
 
-impl<'a> ATermRef<'a> {
-    /// This allows us to extend our borrowed lifetime from 'a to 'b based on
-    /// existing parent term which has lifetime 'b.
-    ///
-    /// The main usecase is to establish transitive lifetimes. For example given
-    /// a term t from which we borrow `u = t.arg(0)` then we cannot have
-    /// u.arg(0) live as long as t since the intermediate temporary u is
-    /// dropped. However, since we know that u.arg(0) is a subterm of `t` we can
-    /// upgrade its lifetime to the lifetime of `t` using this function.
-    ///
-    /// # Safety
-    ///
-    /// This function might only be used if witness is a parent term of the
-    /// current term.
-    pub fn upgrade<'b: 'a>(&'a self, parent: &ATermRef<'b>) -> ATermRef<'b> {
-        debug_assert!(
-            parent.iter().any(|t| t.copy() == *self),
-            "Upgrade has been used on a witness that is not a parent term"
-        );
-
-        ATermRef::from_index(self.index)
-    }
-
-    /// A private unchecked version of [`ATermRef::upgrade`] to use in iterators.
-    pub(crate) unsafe fn upgrade_unchecked<'b: 'a>(&'a self) -> ATermRef<'b> {
-        ATermRef::from_index(self.index)
-    }
-}
-
 impl ATermRef<'_> {
     /// Creates a new term reference from the given index.
     pub(crate) fn from_index(index: usize) -> Self {
@@ -235,13 +206,13 @@ impl fmt::Debug for ATermRef<'_> {
         if self.is_default() {
             write!(f, "<default>")?;
         } else if self.arguments().is_empty() {
-            write!(f, "{}", self.get_head_symbol().name())?;
+            write!(f, "{:?}", self.get_head_symbol().name())?;
         } else {
             // TODO: This is recursive and will overflow the stack for large terms!
-            write!(f, "{}(", self.get_head_symbol())?;
+            write!(f, "{:?}(", self.get_head_symbol())?;
 
             for arg in self.arguments() {
-                write!(f, "{}, ", arg)?;
+                write!(f, "{:?}, ", arg)?;
             }
 
             write!(f, ")")?;
@@ -419,7 +390,7 @@ impl<'a> Iterator for ATermArgs<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
-            let res = unsafe { Some(self.term.arg(self.index).upgrade_unchecked()) };
+            let res = Some(self.term.arg(self.index));
 
             self.index += 1;
             res
@@ -432,7 +403,7 @@ impl<'a> Iterator for ATermArgs<'a> {
 impl DoubleEndedIterator for ATermArgs<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
-            let res = unsafe { Some(self.term.arg(self.arity - 1).upgrade_unchecked()) };
+            let res = Some(self.term.arg(self.arity - 1));
 
             self.arity -= 1;
             res
@@ -470,9 +441,7 @@ impl<'a> Iterator for TermIterator<'a> {
             Some(term) => {
                 // Put subterms in the queue
                 for argument in term.arguments().rev() {
-                    unsafe {
-                        self.queue.push_back(argument.upgrade_unchecked());
-                    }
+                    self.queue.push_back(argument);
                 }
 
                 Some(term)
