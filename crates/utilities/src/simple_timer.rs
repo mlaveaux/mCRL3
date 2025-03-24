@@ -14,21 +14,22 @@ pub struct SimpleTimer {
 }
 
 impl SimpleTimer {
-    /// Creates a new stopped timer with zero accumulated time.
+    /// Creates a new running timer with zero accumulated time.
     pub fn new() -> Self {
         Self {
             start: Instant::now(),
             accumulated: Duration::from_secs(0),
-            running: false,
+            running: true,
         }
     }
 
     /// Starts the timer if it's not already running.
-    ///
-    /// # Postconditions
-    /// - Timer is running
-    /// - Start time is set to current instant
     pub fn start(&mut self) {
+        debug_assert!(
+            !self.running,
+            "Starting a timer that is already running. Call stop() first."
+        );
+
         if !self.running {
             self.start = Instant::now();
             self.running = true;
@@ -36,23 +37,17 @@ impl SimpleTimer {
     }
 
     /// Stops the timer if it's running and accumulates elapsed time.
-    ///
-    /// # Postconditions
-    /// - Timer is stopped
-    /// - Elapsed time since last start is added to accumulated time
     pub fn stop(&mut self) {
+        debug_assert!(self.running, "Stopping a timer that is not running.");
+
         if self.running {
             self.accumulated += self.start.elapsed();
             self.running = false;
         }
     }
 
-    /// Resets the accumulated time to zero.
-    /// If the timer is running, also resets the start time.
-    ///
-    /// # Postconditions
-    /// - Accumulated time is zero
-    /// - If running, start time is reset to current instant
+    /// Resets the accumulated time to zero. If the timer is running, also
+    /// resets the start time.
     pub fn reset(&mut self) {
         self.accumulated = Duration::from_secs(0);
         if self.running {
@@ -60,8 +55,8 @@ impl SimpleTimer {
         }
     }
 
-    /// Returns the total elapsed time.
-    /// If running, includes time since last start.
+    /// Returns the total elapsed time. If running, includes time since last
+    /// start.
     pub fn elapsed(&self) -> Duration {
         if self.running {
             self.accumulated + self.start.elapsed()

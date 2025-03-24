@@ -1,38 +1,26 @@
-use std::cell::RefCell;
+use std::io;
+use std::{cell::RefCell, io::Write};
 use std::rc::Rc;
 use std::time::Instant;
 
-use log::debug;
+use log::{debug, warn};
 
+/// A timing object to measure the time of different parts of the program. This
+/// is useful for debugging and profiling.
 #[derive(Default)]
 pub struct Timing {
     results: Rc<RefCell<Vec<(String, f32)>>>,
 }
 
+/// A timer object that measures the time between its creation and the call to
+/// `finish()`. Finish should be called explicitly before the timer is dropped,
+/// otherwise we get zero values since the timer object is unused and can be
+/// immediately dropped.
 pub struct Timer {
     name: String,
     start: Instant,
     results: Rc<RefCell<Vec<(String, f32)>>>,
     registered: bool,
-}
-
-impl Timer {
-    pub fn finish(&mut self) {
-        let time = self.start.elapsed().as_secs_f64();
-        debug!("Time {}: {:.3}s", self.name, time);
-
-        // Register the result.
-        self.results.borrow_mut().push((self.name.clone(), time as f32));
-        self.registered = true
-    }
-}
-
-impl Drop for Timer {
-    fn drop(&mut self) {
-        if !self.registered {
-            debug!("Timer {} was dropped before 'finish()'", self.name);
-        }
-    }
 }
 
 impl Timing {
@@ -57,6 +45,37 @@ impl Timing {
     pub fn print(&self) {
         for (name, time) in self.results.borrow().iter() {
             eprintln!("Time {}: {:.3}s", name, time);
+        }
+    }
+    
+    /// Writes a YAML report of the finished timers to the given writer.
+    fn write_report(&self, tool_name: &str, writer: &mut impl Write) -> io::Result<()> {
+        writeln!(writer, "- tool: {}", tool_name)?;
+        writeln!(writer, "  timing:")?;
+
+        for (name, time) in self.results.borrow().iter() {
+            writeln!(writer, "    {}: {:.3}s", name, time)?;
+        }
+        Ok(())
+    }
+}
+
+impl Timer {
+    /// Finishes the timer and registers the result.
+    pub fn finish(&mut self) {
+        let time = self.start.elapsed().as_secs_f64();
+        debug!("Time {}: {:.3}s", self.name, time);
+
+        // Register the result.
+        self.results.borrow_mut().push((self.name.clone(), time as f32));
+        self.registered = true
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        if !self.registered {
+            warn!("Timer {} was dropped before 'finish()'", self.name);
         }
     }
 }
