@@ -1,0 +1,11 @@
+[package]
+name = "mcrl3_sabre-ffi"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[features]
+import = []
+
+[dependencies]
+mcrl3_aterm.workspace = true

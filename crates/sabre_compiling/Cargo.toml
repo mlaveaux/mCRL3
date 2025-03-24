@@ -1,0 +1,24 @@
+[package]
+name = "mcrl3_sabre-compiling"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mcrl3_aterm.workspace = true
+mcrl3_data.workspace = true
+mcrl3_sabre.workspace = true
+
+duct.workspace = true
+indoc.workspace = true
+libloading.workspace = true
+temp-dir.workspace = true
+toml.workspace = true
+env_logger.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+test-log.workspace = true
+
+[build-dependencies]
+toml.workspace = true

@@ -62,7 +62,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
                 rewrite_rec(args.rewriter, &args.specification, args.output)?;
             }
         }
-        Cli::Convert(args) => {
+        Cli::Convert(_args) => {
             // Read the data specification
             // let data_spec_text = fs::read_to_string(args.specification)?;
             // let data_spec = DataSpecification::new(&data_spec_text)?;

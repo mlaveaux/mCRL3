@@ -3625,6 +3625,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcrl3_sabre-compiling"
+version = "0.1.0"
+dependencies = [
+ "duct",
+ "env_logger",
+ "indoc",
+ "libloading",
+ "log",
+ "mcrl3_aterm",
+ "mcrl3_data",
+ "mcrl3_sabre",
+ "temp-dir",
+ "test-log",
+ "toml",
+]
+
+[[package]]
+name = "mcrl3_sabre-ffi"
+version = "0.1.0"
+dependencies = [
+ "mcrl3_aterm",
+]
+
+[[package]]
 name = "mcrl3_sharedmutex"
 version = "0.1.0"
 dependencies = [
@@ -5768,6 +5792,12 @@ name = "target-lexicon"
 version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
+
+[[package]]
+name = "temp-dir"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc1ee6eef34f12f765cb94725905c6312b6610ab2b0940889cfe58dae7bc3c72"
 
 [[package]]
 name = "tempfile"

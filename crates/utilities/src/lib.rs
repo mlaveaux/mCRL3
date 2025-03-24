@@ -4,7 +4,6 @@
 #![forbid(unsafe_code)]
 
 mod bitstream;
-mod execution_timer;
 mod fixed_cache_policy;
 mod fixed_size_cache;
 mod helper;
@@ -16,11 +15,10 @@ mod progress;
 mod progress_meter;
 mod protection_set;
 mod text_utility;
-mod timer;
+mod simple_timer;
 mod timing;
 
 pub use bitstream::*;
-pub use execution_timer::ExecutionTimer;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
 pub use helper::*;
@@ -32,7 +30,7 @@ pub use progress::*;
 pub use progress_meter::*;
 pub use protection_set::*;
 pub use text_utility::*;
-pub use timer::*;
+pub use simple_timer::*;
 pub use timing::*;
 
 pub fn test_logger() -> Result<(), log::SetLoggerError> {
