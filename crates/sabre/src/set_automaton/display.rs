@@ -58,7 +58,7 @@ impl<M> fmt::Display for SetAutomaton<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "States: {{")?;
 
-        for (state_index, s) in self.states.iter().enumerate() {
+        for (state_index, s) in self.states().iter().enumerate() {
             writeln!(f, "State {} {{\n{}", state_index, s)?;
 
             writeln!(f, "Transitions: {{")?;
@@ -89,7 +89,7 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
             writeln!(f, "  final[label=\"💩\"];")?;
         }
 
-        for (i, s) in self.automaton.states.iter().enumerate() {
+        for (i, s) in self.automaton.states().iter().enumerate() {
             let match_goals = s.match_goals.iter().format_with("\\n", |goal, f| {
                 f(&format_args!("{}", html_escape::encode_safe(&format!("{}", goal))))
             });

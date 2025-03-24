@@ -93,7 +93,7 @@ impl SabreRewriter {
                         None => {
                             // Observe a symbol according to the state label of the set automaton.
                             let pos: DataExpressionRef =
-                                leaf_term.get_position(&automaton.states[leaf.state].label).into();
+                                leaf_term.get_position(&automaton.states()[leaf.state].label).into();
 
                             let function_symbol = pos.data_function_symbol();
                             stats.symbol_comparisons += 1;
@@ -235,7 +235,7 @@ impl SabreRewriter {
         // Computes the new subterm of the configuration
         let new_subterm = annotation
             .semi_compressed_rhs
-            .evaluate(&leaf_subterm.get_position(&announcement.position), tp)
+            .evaluate(&leaf_subterm.get_position(&announcement.position))
             .into();
 
         trace!(
@@ -261,8 +261,8 @@ impl SabreRewriter {
         for c in &annotation.conditions {
             let subterm = subterm.get_position(&announcement.position);
 
-            let rhs: DataExpression = c.semi_compressed_rhs.evaluate(&subterm, tp).into();
-            let lhs: DataExpression = c.semi_compressed_lhs.evaluate(&subterm, tp).into();
+            let rhs: DataExpression = c.semi_compressed_rhs.evaluate(&subterm).into();
+            let lhs: DataExpression = c.semi_compressed_lhs.evaluate(&subterm).into();
 
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {

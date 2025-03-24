@@ -8,20 +8,14 @@ use mcrl3_aterm::Marker;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Protector;
 use mcrl3_aterm::Term;
-use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
-use mcrl3_data::is_data_expression;
-use mcrl3_data::is_data_machine_number;
-use mcrl3_data::is_data_variable;
 
-use crate::Rule;
 use crate::utilities::PositionIndexed;
 
-use super::ExplicitPosition;
-use super::PositionIterator;
-use super::create_var_map;
+use super::Config;
+use super::TermStack;
 
 use log::trace;
 
@@ -39,8 +33,8 @@ impl InnermostStack {
     pub fn integrate(
         write_configs: &mut Protector<Vec<Config>>,
         write_terms: &mut Protector<Vec<DataExpressionRef<'static>>>,
-        rhs_stack: &RHSStack,
-        term: &DataExpression,
+        rhs_stack: &TermStack,
+        term: &DataExpressionRef<'_>,
         result_index: usize,
     ) {
         // TODO: This ignores the first element of the stack, but that is kind of difficult to deal with.
@@ -61,6 +55,10 @@ impl InnermostStack {
                         // Otherwise, we put it on the end of the stack.
                         InnermostStack::add_result(write_configs, symbol.copy(), *arity, top_of_stack + offset - 1);
                     }
+                }
+                Config::Term(term, index) => {                    
+                    let term = write_configs.protect(term);
+                    write_configs.push(Config::Term(term.into(), *index));
                 }
                 Config::Rewrite(_) => {
                     unreachable!("This case should not happen");
@@ -122,37 +120,6 @@ impl InnermostStack {
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub enum Config {
-    /// Rewrite the top of the stack and put result at the given index.
-    Rewrite(usize),
-    /// Constructs function symbol with given arity at the given index.
-    Construct(DataFunctionSymbolRef<'static>, usize, usize),
-    /// Yields the given index as returned term.
-    Return(),
-}
-
-impl Markable for Config {
-    fn mark(&self, marker: &mut Marker) {
-        if let Config::Construct(t, _, _) = self {
-            let t: ATermRef<'_> = t.copy().into();
-            t.mark(marker);
-        }
-    }
-
-    fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        if let Config::Construct(t, _, _) = self {
-            term == &<DataFunctionSymbolRef as Into<ATermRef>>::into(t.copy())
-        } else {
-            false
-        }
-    }
-
-    fn len(&self) -> usize {
-        if let Config::Construct(_, _, _) = self { 1 } else { 0 }
-    }
-}
-
 impl fmt::Display for InnermostStack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Terms: [")?;
@@ -170,218 +137,5 @@ impl fmt::Display for InnermostStack {
             writeln!(f, "\t{}", config)?;
         }
         write!(f, "]")
-    }
-}
-
-impl fmt::Display for Config {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Config::Rewrite(result) => write!(f, "Rewrite({})", result),
-            Config::Construct(symbol, arity, result) => {
-                write!(f, "Construct({}, {}, {})", symbol, arity, result)
-            }
-            Config::Return() => write!(f, "Return()"),
-        }
-    }
-}
-
-/// A stack for the right-hand side.
-pub struct RHSStack {
-    /// The innermost rewrite stack for the right hand side and the positions that must be added to the stack.
-    innermost_stack: Protected<Vec<Config>>,
-    variables: Vec<(ExplicitPosition, usize)>,
-    stack_size: usize,
-}
-
-impl RHSStack {
-    /// Construct a new right-hand stack for a given equation/rewrite rule.
-    pub fn new(rule: &Rule) -> RHSStack {
-        let var_map = create_var_map(&rule.lhs.clone().into());
-
-        // Compute the extra information for the InnermostRewriter.
-        let mut innermost_stack: Protected<Vec<Config>> = Protected::new(vec![]);
-        let mut variables = vec![];
-        let mut stack_size = 0;
-
-        for (term, position) in PositionIterator::new(rule.rhs.copy().into()) {
-            if let Some(index) = position.indices.last() {
-                if *index == 1 {
-                    continue; // Skip the function symbol.
-                }
-            }
-
-            if is_data_variable(&term) {
-                variables.push((
-                    var_map
-                        .get(&term.protect())
-                        .expect("All variables in the right hand side must occur in the left hand side")
-                        .clone(),
-                    stack_size,
-                ));
-                stack_size += 1;
-            } else if is_data_machine_number(&term) {
-                // Skip SortId(@NoValue) and OpId
-            } else if is_data_expression(&term) {
-                let t: DataExpressionRef = term.into();
-                let arity = t.data_arguments().len();
-                let mut write = innermost_stack.write();
-                let symbol = write.protect(&t.data_function_symbol());
-                write.push(Config::Construct(symbol.into(), arity, stack_size));
-                stack_size += 1;
-            } else {
-                // Skip intermediate terms such as UntypeSortUnknown.
-            }
-        }
-
-        RHSStack {
-            innermost_stack,
-            stack_size,
-            variables,
-        }
-    }
-
-    /// Evaluate the rhs stack for the given term and returns the result.
-    pub fn evaluate(&self, term: &DataExpression) -> DataExpression {
-        let mut stack = InnermostStack::default();
-        stack.terms.write().push(DataExpressionRef::default());
-
-        InnermostStack::integrate(&mut stack.configs.write(), &mut stack.terms.write(), self, term, 0);
-        loop {
-            trace!("{}", stack);
-
-            let mut write_configs = stack.configs.write();
-            if let Some(config) = write_configs.pop() {
-                match config {
-                    Config::Construct(symbol, arity, index) => {
-                        // Take the last arity arguments.
-                        let mut write_terms = stack.terms.write();
-                        let length = write_terms.len();
-
-                        let arguments = &write_terms[length - arity..];
-
-                        let term: DataExpression = if arguments.is_empty() {
-                            symbol.protect().into()
-                        } else {
-                            DataApplication::with_iter(&symbol.copy(), arguments).into()
-                        };
-
-                        // Add the term on the stack.
-                        write_terms.drain(length - arity..);
-                        let t = write_terms.protect(&term);
-                        write_terms[index] = t.into();
-                    }
-                    Config::Rewrite(_) => {
-                        unreachable!("This case should not happen");
-                    }
-                    Config::Return() => {
-                        unreachable!("This case should not happen");
-                    }
-                }
-            } else {
-                break;
-            }
-        }
-
-        debug_assert!(
-            stack.terms.read().len() == 1,
-            "Expect exactly one term on the result stack"
-        );
-
-        let mut write_terms = stack.terms.write();
-
-        write_terms
-            .pop()
-            .expect("The result should be the last element on the stack")
-            .protect()
-    }
-}
-
-impl Clone for RHSStack {
-    fn clone(&self) -> Self {
-        // TODO: It would make sense if Protected could implement Clone.
-        let mut innermost_stack: Protected<Vec<Config>> = Protected::new(vec![]);
-
-        let mut write = innermost_stack.write();
-        for t in self.innermost_stack.read().iter() {
-            match t {
-                Config::Rewrite(x) => write.push(Config::Rewrite(*x)),
-                Config::Construct(f, x, y) => {
-                    let f = write.protect(f);
-                    write.push(Config::Construct(f.into(), *x, *y));
-                }
-                Config::Return() => write.push(Config::Return()),
-            }
-        }
-        drop(write);
-
-        Self {
-            variables: self.variables.clone(),
-            stack_size: self.stack_size,
-            innermost_stack,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ahash::AHashSet;
-    use mcrl3_aterm::ATerm;
-    use mcrl3_data::DataFunctionSymbol;
-
-    use crate::test_utility::create_rewrite_rule;
-    use crate::utilities::to_untyped_data_expression;
-
-    use test_log::test;
-
-    #[test]
-    fn test_rhs_stack() {
-        let rhs_stack = RHSStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
-        let mut expected = Protected::new(vec![]);
-
-        let mut write = expected.write();
-        let t = write.protect(&DataFunctionSymbol::new("times"));
-        write.push(Config::Construct(t.into(), 2, 0));
-
-        let t = write.protect(&DataFunctionSymbol::new("s"));
-        write.push(Config::Construct(t.into(), 1, 1));
-
-        let t = write.protect(&DataFunctionSymbol::new("fact"));
-        write.push(Config::Construct(t.into(), 1, 2));
-        drop(write);
-
-        // Check if the resulting construction succeeded.
-        assert_eq!(
-            rhs_stack.innermost_stack, expected,
-            "The resulting config stack is not as expected"
-        );
-
-        assert_eq!(rhs_stack.stack_size, 5, "The stack size does not match");
-
-        // Test the evaluation
-        let lhs = ATerm::from_string("fact(s(a))").unwrap();
-        let lhs_expression = to_untyped_data_expression(&lhs, &AHashSet::new());
-
-        let rhs = ATerm::from_string("times(s(a), fact(a))").unwrap();
-        let rhs_expression = to_untyped_data_expression(&rhs, &AHashSet::new());
-
-        assert_eq!(
-            rhs_stack.evaluate(&lhs_expression),
-            rhs_expression,
-            "The rhs stack does not evaluate to the expected term"
-        );
-    }
-
-    #[test]
-    fn test_rhs_stack_variable() {
-        let rhs = RHSStack::new(&create_rewrite_rule("f(x)", "x", &["x"]).unwrap());
-
-        // Check if the resulting construction succeeded.
-        assert!(
-            rhs.innermost_stack.read().is_empty(),
-            "The resulting config stack is not as expected"
-        );
-
-        assert_eq!(rhs.stack_size, 1, "The stack size does not match");
     }
 }

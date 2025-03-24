@@ -35,7 +35,7 @@ use super::MatchGoal;
 // of Computing – ICTAC 2021. ICTAC 2021. Lecture Notes in Computer Science(),
 // vol 12819. Springer, Cham. https://doi.org/10.1007/978-3-030-85315-0_5
 pub struct SetAutomaton<T> {
-    pub(crate) states: Vec<State>,
+    states: Vec<State>,
     pub(crate) transitions: HashMap<(usize, usize), Transition<T>>,
 }
 
@@ -237,6 +237,11 @@ impl<M> SetAutomaton<M> {
     /// Returns the number of transitions
     pub fn num_of_transitions(&self) -> usize {
         self.transitions.len()
+    }
+
+    /// Returns the states of the automaton
+    pub fn states(&self) -> &Vec<State> {
+        &self.states
     }
 
     /// Provides a formatter for the .dot file format

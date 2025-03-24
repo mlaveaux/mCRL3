@@ -16,10 +16,10 @@ use crate::set_automaton::SetAutomaton;
 use crate::utilities::ExplicitPosition;
 
 use super::PositionIndexed;
-use super::SemiCompressedTermTree;
 use super::SubstitutionBuilder;
 use super::create_var_map;
 use super::substitute_with;
+use super::TermStack;
 
 /// This is the announcement for Sabre, which stores additional information about the rewrite rules.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -30,8 +30,9 @@ pub struct AnnouncementSabre {
     /// Conditions for applying the rule.
     pub conditions: Vec<EMACondition>,
 
-    /// Right hand side is stored in the term pool as much as possible with a SemiCompressedTermTree
-    pub semi_compressed_rhs: SemiCompressedTermTree,
+    /// The right hand side stored such that it can be substituted easily.
+    pub semi_compressed_rhs: TermStack,
+
     /// Whether the rewrite rule duplicates subterms, e.g. times(s(x), y) = plus(y, times(x, y))
     pub is_duplicating: bool,
 }
@@ -42,8 +43,8 @@ impl AnnouncementSabre {
         // Create a mapping of where the variables are and derive SemiCompressedTermTrees for the
         // rhs of the rewrite rule and for lhs and rhs of each condition.
         // Also see the documentation of SemiCompressedTermTree
-        let var_map = create_var_map(&rule.lhs.clone().into());
-        let sctt_rhs = SemiCompressedTermTree::from_term(&rule.rhs, &var_map);
+        let var_map = create_var_map(&rule.lhs);
+        let sctt_rhs = TermStack::from_term(&rule.rhs.copy(), &var_map);
 
         let is_duplicating = sctt_rhs.contains_duplicate_var_references();
 
@@ -229,7 +230,7 @@ impl<'a> ConfigurationStack<'a> {
             tp,
             &write_terms[depth],
             new_subterm.into(),
-            &automaton.states[self.stack[depth].state].label.indices,
+            &automaton.states()[self.stack[depth].state].label.indices,
         ));
         write_terms[depth] = subterm.into();
 
