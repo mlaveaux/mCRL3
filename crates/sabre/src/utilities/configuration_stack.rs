@@ -1,5 +1,4 @@
 use std::fmt;
-use std::ops::Deref;
 
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Term;

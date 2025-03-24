@@ -1,10 +1,7 @@
-use std::cell::RefCell;
 use std::fmt;
 use std::ops::Deref;
 
-use parking_lot::ReentrantMutexGuard;
-
-use crate::GlobalTermPool;
+use crate::GlobalTermPoolGuard;
 use crate::Symb;
 use crate::SymbolRef;
 
@@ -12,16 +9,16 @@ use crate::SymbolRef;
 /// Locks the global term pool so should be kept shortlived.
 pub struct StrRef<'a> {
     symbol: SymbolRef<'a>,
-    guard: ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>,
+    guard: GlobalTermPoolGuard<'a>,
 }
 
 impl<'a> StrRef<'a> {
     /// Creates a new protected reference to a string.
-    pub(crate) fn new(value: &SymbolRef<'a>, guard: ReentrantMutexGuard<'_, RefCell<GlobalTermPool>>) -> StrRef<'a> {
+    pub(crate) fn new(value: &SymbolRef<'a>, guard: GlobalTermPoolGuard<'_>) -> StrRef<'a> {
         unsafe {
             StrRef {
                 symbol: value.copy(),
-                guard: std::mem::transmute(guard),
+                guard: std::mem::transmute::<GlobalTermPoolGuard<'_>, GlobalTermPoolGuard<'a>>(guard),
             }
         }
     }

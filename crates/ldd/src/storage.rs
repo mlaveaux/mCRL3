@@ -95,8 +95,8 @@ impl Storage {
         let shared = Rc::new(RefCell::new(ProtectionSet::new()));
         // Add two nodes representing 'false' and 'true' respectively; these cannot be created using insert.
         let mut nodes = IndexedSet::new();
-        let empty_set = nodes.insert(Node::new(0, 0, 0));
-        let empty_vector = nodes.insert(Node::new(1, 0, 0));
+        let empty_set = nodes.insert(Node::new(0, 0, 0)).0;
+        let empty_vector = nodes.insert(Node::new(1, 0, 0)).0;
 
         Self {
             protection_set: shared.clone(),
@@ -142,7 +142,7 @@ impl Storage {
             self.count_until_collection = self.nodes.len() as u64;
         }
 
-        let index = self.nodes.insert(Node::new(value, down.index(), right.index()));
+        let (index, _inserted) = self.nodes.insert(Node::new(value, down.index(), right.index()));
 
         Ldd::new(&self.protection_set, index)
     }

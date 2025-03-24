@@ -1,6 +1,5 @@
 use log::info;
 use log::trace;
-use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataExpression;

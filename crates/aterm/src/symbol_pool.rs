@@ -30,7 +30,7 @@ impl SymbolPool {
         let name = name.into();
 
         // Get or create symbol index
-        let index = self.symbols.insert(SharedSymbol::new(name, arity));
+        let (index, _inserted) = self.symbols.insert(SharedSymbol::new(name, arity));
 
         // Return cloned symbol
         protect(index)

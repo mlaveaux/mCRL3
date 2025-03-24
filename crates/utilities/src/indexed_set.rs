@@ -84,34 +84,40 @@ impl<T> IndexedSet<T> {
 }
 
 impl<T: Eq + Hash + Clone> IndexedSet<T> {
-    /// Inserts the given element into the set, and returns the corresponding index.
-    pub fn insert(&mut self, value: T) -> usize {
-        *self.index.entry(value.clone()).or_insert_with(|| {
-            match self.free {
-                Some(first) => {
-                    let next = match self.table[first] {
-                        Entry::Empty(x) => x,
-                        Entry::Filled(_) => panic!("The free list contains a filled element"),
-                    };
+    /// Inserts the given element into the set
+    /// Teturns the corresponding index and a boolean indicating if the element was inserted.
+    pub fn insert(&mut self, value: T) -> (usize, bool) {
+        match self.index.entry(value.clone()) {
+            std::collections::hash_map::Entry::Occupied(entry) => (*entry.get(), false),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let index = match self.free {
+                    Some(first) => {
+                        let next = match self.table[first] {
+                            Entry::Empty(x) => x,
+                            Entry::Filled(_) => panic!("The free list contains a filled element"),
+                        };
 
-                    if first == next {
-                        // The list is now empty as its first element points to itself.
-                        self.free = None;
-                    } else {
-                        // Update free to be the next element in the list.
-                        self.free = Some(next);
+                        if first == next {
+                            // The list is now empty as its first element points to itself.
+                            self.free = None;
+                        } else {
+                            // Update free to be the next element in the list.
+                            self.free = Some(next);
+                        }
+
+                        self.table[first] = Entry::Filled(value);
+                        first
                     }
-
-                    self.table[first] = Entry::Filled(value);
-                    first
-                }
-                None => {
-                    // No free positions so insert new.
-                    self.table.push(Entry::Filled(value));
-                    self.table.len() - 1
-                }
+                    None => {
+                        // No free positions so insert new.
+                        self.table.push(Entry::Filled(value));
+                        self.table.len() - 1
+                    }
+                };
+                entry.insert(index);
+                (index, true)
             }
-        })
+        }
     }
 
     /// Erases all elements for which f(index, element) returns false. Allows
@@ -236,7 +242,7 @@ mod tests {
         // Insert several elements and keep track of the resulting indices.
         let mut set: IndexedSet<usize> = IndexedSet::default();
         for element in &input {
-            let index = set.insert(*element);
+            let index = set.insert(*element).0;
 
             assert!(
                 indices.get(&index).is_none() || indices.get(&index).unwrap() == element,

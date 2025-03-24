@@ -3,11 +3,14 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use log::info;
+use mcrl3_utilities::SimpleTimer;
 use parking_lot::Mutex;
 
 use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
 use parking_lot::ReentrantMutex;
+use parking_lot::ReentrantMutexGuard;
 
 use crate::ATerm;
 use crate::ATermRef;
@@ -21,6 +24,9 @@ use crate::Term;
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
     LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
+
+/// A type alias for the global term pool guard
+pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
@@ -92,14 +98,16 @@ impl GlobalTermPool {
         self.terms.len()
     }
 
-    pub fn create_int(&mut self, value: usize, protect: impl FnOnce(usize) -> ATerm) -> ATerm {
+    pub fn create_int<P>(&mut self, value: usize, protect: P) -> ATerm 
+        where P: FnOnce(&mut GlobalTermPool, usize, bool) -> ATerm
+    {
         let shared_term = SharedTerm {
             symbol: SymbolRef::from_index(0),
             arguments: vec![ATermRef::from_index(value)],
         };
 
-        let index = self.terms.insert(shared_term);
-        protect(index)
+        let (index, inserted) = self.terms.insert(shared_term);
+        protect(self, index, inserted)
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
@@ -107,7 +115,7 @@ impl GlobalTermPool {
     where
         I: IntoIterator<Item = T>,
         T: Term<'a>,
-        P: FnOnce(usize) -> ATerm,
+        P: FnOnce(&mut GlobalTermPool, usize, bool) -> ATerm,
     {
         let shared_term = unsafe {
             SharedTerm {
@@ -125,14 +133,14 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let index = self.terms.insert(shared_term);
-        protect(index)
+        let (index, inserted) = self.terms.insert(shared_term);
+        protect(self, index, inserted)
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
     pub fn create_term<'a, 'b, P>(&mut self, symbol: &impl Symb<'a>, args: &[impl Term<'b>], protect: P) -> ATerm
     where
-        P: FnOnce(usize) -> ATerm,
+        P: FnOnce(&mut GlobalTermPool, usize, bool) -> ATerm,
     {
         // This is safe because we are responsible for garbage collection of shared terms.
         let shared_term = unsafe {
@@ -151,8 +159,8 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let index = self.terms.insert(shared_term);
-        protect(index)
+        let (index, inserted) = self.terms.insert(shared_term);
+        protect(self, index, inserted)
     }
 
     /// Create a function symbol
@@ -164,7 +172,7 @@ impl GlobalTermPool {
     }
 
     /// Registers a new thread term pool.
-    pub fn register_thread_term_pool(&mut self) -> Arc<Mutex<SharedTermProtection>> {
+    pub(crate) fn register_thread_term_pool(&mut self) -> Arc<Mutex<SharedTermProtection>> {
         let protection = Arc::new(Mutex::new(SharedTermProtection {
             protection_set: ProtectionSet::new(),
             symbol_protection_set: ProtectionSet::new(),
@@ -178,17 +186,30 @@ impl GlobalTermPool {
     }
 
     /// Deregisters a thread pool.
-    pub fn deregister_thread_pool(&mut self, index: usize) {
+    pub(crate) fn deregister_thread_pool(&mut self, index: usize) {
         if let Some(entry) = self.thread_pools.get_mut(index) {
             *entry = None;
         }
     }
 
+    /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
+    pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
+        self.collect_garbage();
+
+        info!("Delay garbage collection by {}", self.capacity() - self.len());
+        self.capacity() - self.len()
+    }
+
     /// Collects garbage terms.
     fn collect_garbage(&mut self) {
+        // Resize to fit all terms
+        self.marked.resize(self.capacity(), false);
+
         let mut marker = Marker {
             marked: &mut self.marked,
-        };
+        };        
+
+        let mut mark_time = SimpleTimer::new();
 
         // Loop through all protection sets and mark the terms.
         for pool in self.thread_pools.iter() {
@@ -206,8 +227,18 @@ impl GlobalTermPool {
             }
         }
 
+        mark_time.stop();
+        let collect_time = SimpleTimer::new();
+
+        let num_of_terms = self.len();
+
         // Delete all terms that are not marked
         self.terms.retain_mut(|index, _term| self.marked[index]);
+
+        info!("Garbage collection: marking took {}ms, collection took {}ms, {} terms removed", 
+            mark_time.elapsed().as_millis(), 
+            collect_time.elapsed().as_millis(),
+            num_of_terms - self.len());
     }
 }
 

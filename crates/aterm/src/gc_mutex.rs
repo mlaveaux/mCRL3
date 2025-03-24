@@ -2,7 +2,7 @@ use std::{cell::{RefCell, UnsafeCell}, ops::{Deref, DerefMut}};
 
 use parking_lot::ReentrantMutexGuard;
 
-use crate::{GlobalTermPool, GLOBAL_TERM_POOL};
+use crate::{GlobalTermPool, GlobalTermPoolGuard, GLOBAL_TERM_POOL};
 
 /// Global mutex that prevents garbage collection.
 pub struct GcMutex<T> {
@@ -23,7 +23,7 @@ impl<T> GcMutex<T> {
     pub fn write(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: &self,
-            guard: GLOBAL_TERM_POOL.lock(),
+            _guard: GLOBAL_TERM_POOL.lock(),
         }
     }
 
@@ -31,14 +31,16 @@ impl<T> GcMutex<T> {
     pub fn read(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: &self,
-            guard: GLOBAL_TERM_POOL.lock(),
+            _guard: GLOBAL_TERM_POOL.lock(),
         }
     }
 }
 
 pub struct GcMutexGuard<'a, T> {
     mutex: &'a GcMutex<T>,
-    guard: ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>,
+
+    /// Only used to avoid garbage collection, will be released on drop.
+    _guard: GlobalTermPoolGuard<'a>,
 }
 
 impl<'a, T> Deref for GcMutexGuard<'a, T> {

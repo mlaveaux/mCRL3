@@ -8,7 +8,6 @@ use log::info;
 use log::log_enabled;
 use log::trace;
 use log::warn;
-use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Term;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
