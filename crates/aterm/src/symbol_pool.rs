@@ -50,6 +50,19 @@ impl SymbolPool {
     pub fn size(&self) -> usize {
         self.symbols.len()
     }
+
+    /// Returns the capacity of the pool.
+    pub fn capacity(&self) -> usize {
+        self.symbols.capacity()
+    }
+
+    /// Retain only symbols satisfying the given predicate.
+    pub fn retain_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(usize) -> bool,
+    {
+        self.symbols.retain_mut(|index, _| f(index));
+    }
 }
 
 /// Represents a function symbol with a name and arity.

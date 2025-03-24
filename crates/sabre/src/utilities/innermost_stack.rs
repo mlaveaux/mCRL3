@@ -3,12 +3,9 @@ use std::fmt;
 use itertools::Itertools;
 
 use mcrl3_aterm::ATermRef;
-use mcrl3_aterm::Markable;
-use mcrl3_aterm::Marker;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Protector;
 use mcrl3_aterm::Term;
-use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 

@@ -36,27 +36,33 @@ use super::MatchGoal;
 // vol 12819. Springer, Cham. https://doi.org/10.1007/978-3-030-85315-0_5
 pub struct SetAutomaton<T> {
     states: Vec<State>,
-    pub(crate) transitions: HashMap<(usize, usize), Transition<T>>,
+    transitions: HashMap<(usize, usize), Transition<T>>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct MatchAnnouncement {
-    pub rule: Rule,
-    pub position: ExplicitPosition,
-    pub symbols_seen: usize,
+pub struct MatchAnnouncement {
+    pub(crate) rule: Rule,
+    pub(crate) position: ExplicitPosition,
+    pub(crate) symbols_seen: usize,
 }
 
 #[derive(Clone)]
 pub struct Transition<T> {
     pub(crate) symbol: DataFunctionSymbol,
-    pub(crate) announcements: SmallVec<[(MatchAnnouncement, T); 1]>,
+    announcements: SmallVec<[(MatchAnnouncement, T); 1]>,
     pub(crate) destinations: SmallVec<[(ExplicitPosition, usize); 1]>,
+}
+
+impl<T> Transition<T> {
+    pub fn announcements(&self) -> &SmallVec<[(MatchAnnouncement, T); 1]> {
+        &self.announcements
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct MatchObligation {
-    pub pattern: DataExpression,
-    pub position: ExplicitPosition,
+    pub(crate) pattern: DataExpression,
+    pub(crate) position: ExplicitPosition,
 }
 
 #[derive(Debug)]
@@ -244,6 +250,11 @@ impl<M> SetAutomaton<M> {
         &self.states
     }
 
+    /// Returns the transitions of the automaton
+    pub fn transitions(&self) -> &HashMap<(usize, usize), Transition<M>> {
+        &self.transitions
+    }
+
     /// Provides a formatter for the .dot file format
     pub fn to_dot_graph(&self, show_backtransitions: bool, show_final: bool) -> DotFormatter<M> {
         DotFormatter {
@@ -262,9 +273,9 @@ pub struct Derivative {
 }
 
 #[derive(Debug)]
-pub(crate) struct State {
-    pub(crate) label: ExplicitPosition,
-    pub(crate) match_goals: Vec<MatchGoal>,
+pub struct State {
+    label: ExplicitPosition,
+    match_goals: Vec<MatchGoal>,
 }
 
 impl State {
@@ -510,6 +521,16 @@ impl State {
             match_goals: goals,
         }
     }
+
+    /// Returns the label of the state
+    pub fn label(&self) -> &ExplicitPosition {
+        &self.label
+    }
+
+    /// Returns the match goals of the state
+    pub fn match_goals(&self) -> &Vec<MatchGoal> {
+        &self.match_goals
+    } 
 }
 
 /// Adds the given function symbol to the indexed symbols. Errors when a

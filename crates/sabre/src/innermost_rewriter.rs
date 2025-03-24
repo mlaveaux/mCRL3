@@ -218,12 +218,12 @@ impl InnermostRewriter {
 
             // Get the symbol at the position state.label
             stats.symbol_comparisons += 1;
-            let pos: DataExpressionRef<'_> = t.get_position(&state.label).into();
+            let pos: DataExpressionRef<'_> = t.get_position(&state.label()).into();
             let symbol = pos.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match
-            if let Some(transition) = automaton.transitions.get(&(state_index, symbol.operation_id())) {
-                for (announcement, annotation) in &transition.announcements {
+            if let Some(transition) = automaton.transitions().get(&(state_index, symbol.operation_id())) {
+                for (announcement, annotation) in transition.announcements() {
                     if check_equivalence_classes(t, &annotation.equivalence_classes)
                         && InnermostRewriter::check_conditions(tp, stack, builder, stats, automaton, annotation, t)
                     {

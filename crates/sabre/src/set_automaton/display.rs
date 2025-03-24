@@ -21,7 +21,7 @@ impl<M> fmt::Display for Transition<M> {
             f,
             "Transition {{ {}, announce: [{}], dest: [{}] }}",
             self.symbol,
-            self.announcements.iter().map(|(x, _)| { x }).format(", "),
+            self.announcements().iter().map(|(x, _)| { x }).format(", "),
             self.destinations.iter().format_with(", ", |element, f| {
                 f(&format_args!("{} -> {}", element.0, element.1))
             })
@@ -45,9 +45,9 @@ impl fmt::Display for MatchObligation {
 /// Implement display for a state with a term pool
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Label: {}, ", self.label)?;
+        writeln!(f, "Label: {}, ", self.label())?;
         writeln!(f, "Match goals: [")?;
-        for m in &self.match_goals {
+        for m in self.match_goals() {
             writeln!(f, "\t {}", m)?;
         }
         write!(f, "]")
@@ -62,7 +62,7 @@ impl<M> fmt::Display for SetAutomaton<M> {
             writeln!(f, "State {} {{\n{}", state_index, s)?;
 
             writeln!(f, "Transitions: {{")?;
-            for ((from, _), tr) in self.transitions.iter() {
+            for ((from, _), tr) in self.transitions() {
                 if state_index == *from {
                     writeln!(f, "\t {}", tr)?;
                 }
@@ -90,19 +90,19 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
         }
 
         for (i, s) in self.automaton.states().iter().enumerate() {
-            let match_goals = s.match_goals.iter().format_with("\\n", |goal, f| {
+            let match_goals = s.match_goals().iter().format_with("\\n", |goal, f| {
                 f(&format_args!("{}", html_escape::encode_safe(&format!("{}", goal))))
             });
 
             writeln!(
                 f,
                 "  s{}[shape=record label=\"{{{{s{} | {}}} | {}}}\"]",
-                i, i, s.label, match_goals
+                i, i, s.label(), match_goals
             )?;
         }
 
-        for ((i, _), tr) in &self.automaton.transitions {
-            let announcements = tr.announcements.iter().format_with(", ", |(announcement, _), f| {
+        for ((i, _), tr) in self.automaton.transitions() {
+            let announcements = tr.announcements().iter().format_with(", ", |(announcement, _), f| {
                 f(&format_args!("{}@{}", announcement.rule.rhs, announcement.position))
             });
 

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 
 use log::info;
+use log::trace;
 use mcrl3_utilities::SimpleTimer;
 use parking_lot::Mutex;
 
@@ -39,7 +40,11 @@ pub(crate) struct GlobalTermPool {
 
     /// Used to avoid reallocations for the markings of all terms. Not stored in
     /// the term because of padding.
-    marked: Vec<bool>,
+    marked_terms: Vec<bool>,
+    marked_symbols: Vec<bool>,
+
+    stack: Vec<usize>,
+
 }
 
 impl GlobalTermPool {
@@ -55,7 +60,9 @@ impl GlobalTermPool {
             terms,
             symbol_pool: SymbolPool::new(),
             thread_pools: Vec::new(),
-            marked: Vec::new(),
+            marked_terms: Vec::new(),
+            marked_symbols: Vec::new(),
+            stack: Vec::new(),
         }
     }
 
@@ -195,19 +202,21 @@ impl GlobalTermPool {
     /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
     pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
         self.collect_garbage();
-
-        info!("Delay garbage collection by {}", self.capacity() - self.len());
-        self.capacity() - self.len()
+        self.len()
     }
 
     /// Collects garbage terms.
     fn collect_garbage(&mut self) {
         // Resize to fit all terms
-        self.marked.resize(self.capacity(), false);
+        self.marked_terms.resize(self.capacity(), false);  
+        self.marked_symbols.resize(self.symbol_pool.capacity(), false);  
 
         let mut marker = Marker {
-            marked: &mut self.marked,
-        };        
+            marked_terms: &mut self.marked_terms,
+            marked_symbols: &mut self.marked_symbols,
+            stack: &mut self.stack,
+            terms: &self.terms,
+        };     
 
         let mut mark_time = SimpleTimer::new();
 
@@ -221,7 +230,7 @@ impl GlobalTermPool {
                     ATermRef::from_index(*term).mark(&mut marker);
                 }
 
-                for (container, _) in pool.container_protection_set.iter() {
+                for (container, _) in pool.container_protection_set.iter() {    
                     container.mark(&mut marker);
                 }
             }
@@ -233,7 +242,15 @@ impl GlobalTermPool {
         let num_of_terms = self.len();
 
         // Delete all terms that are not marked
-        self.terms.retain_mut(|index, _term| self.marked[index]);
+        self.terms.retain_mut(|index, _term| {
+            trace!("Removing term {}", index);
+            self.marked_terms[index]
+        });
+
+        self.symbol_pool.retain_mut(|index| {
+            trace!("Removing symbol {}", index);
+            self.marked_terms[index]
+        });
 
         info!("Garbage collection: marking took {}ms, collection took {}ms, {} terms removed", 
             mark_time.elapsed().as_millis(), 
@@ -254,13 +271,34 @@ pub(crate) struct SharedTermProtection {
 }
 
 pub struct Marker<'a> {
-    marked: &'a mut Vec<bool>,
+    marked_terms: &'a mut Vec<bool>,
+    marked_symbols: &'a mut Vec<bool>,
+    terms: &'a IndexedSet<SharedTerm>,
+    stack: &'a mut Vec<usize>,
 }
 
 impl Marker<'_> {
     // Marks the given term as being reachable.
     pub fn mark(&mut self, term: &ATermRef<'_>) {
-        self.marked[term.index()] = true;
+
+        if !self.marked_terms[term.index()] {
+            self.stack.push(term.index());
+
+            while let Some(index) = self.stack.pop() {
+                // Each term should be marked.
+                self.marked_terms[index] = true;
+
+                let term = self.terms.get(index).unwrap();
+                self.marked_symbols[term.symbol().index()] = true;
+
+                for arg in term.arguments() {
+                    if !self.marked_terms[arg.index()] {
+                        self.marked_terms[arg.index()] = true;
+                        self.stack.push(arg.index());
+                    }
+                }
+            }
+        }
     }
 }
 

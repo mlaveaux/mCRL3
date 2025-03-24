@@ -93,15 +93,15 @@ impl SabreRewriter {
                         None => {
                             // Observe a symbol according to the state label of the set automaton.
                             let pos: DataExpressionRef =
-                                leaf_term.get_position(&automaton.states()[leaf.state].label).into();
+                                leaf_term.get_position(&automaton.states()[leaf.state].label()).into();
 
                             let function_symbol = pos.data_function_symbol();
                             stats.symbol_comparisons += 1;
 
                             // Get the transition belonging to the observed symbol
-                            if let Some(tr) = automaton.transitions.get(&(leaf.state, function_symbol.operation_id())) {
+                            if let Some(tr) = automaton.transitions().get(&(leaf.state, function_symbol.operation_id())) {
                                 // Loop over the match announcements of the transition
-                                for (announcement, annotation) in &tr.announcements {
+                                for (announcement, annotation) in tr.announcements() {
                                     if annotation.conditions.is_empty() && annotation.equivalence_classes.is_empty() {
                                         if annotation.is_duplicating {
                                             trace!("Delaying duplicating rule {}", announcement.rule);

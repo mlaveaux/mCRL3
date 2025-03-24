@@ -13,7 +13,7 @@ use super::MatchObligation;
 /// A match goal contains a number of obligations (positions that must still be
 /// matched) and the corresponding rule that can be announced as being a match.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct MatchGoal {
+pub struct MatchGoal {
     pub obligations: Vec<MatchObligation>,
     pub announcement: MatchAnnouncement,
 }

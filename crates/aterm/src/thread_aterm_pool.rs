@@ -41,7 +41,8 @@ impl ThreadTermPool {
         let tp = GLOBAL_TERM_POOL.lock();
         let protection_set = (*tp).borrow_mut().register_thread_term_pool();
 
-        Self { protection_set, garbage_collection_counter: Cell::new(1) }
+        // Arbitrary value to trigger garbage collection
+        Self { protection_set, garbage_collection_counter: Cell::new(1000) }
     }
 
     /// Creates a term without arguments.
@@ -186,7 +187,7 @@ impl ThreadTermPool {
 
         trace!(
             "Protected symbol {}, root {}, protection set {}",
-            self.symbol_name(symbol),
+            symbol.index(),
             result.root(),
             lock.index
         );

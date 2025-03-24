@@ -1,8 +1,5 @@
-use std::{cell::{RefCell, UnsafeCell}, ops::{Deref, DerefMut}};
-
-use parking_lot::ReentrantMutexGuard;
-
-use crate::{GlobalTermPool, GlobalTermPoolGuard, GLOBAL_TERM_POOL};
+use std::{cell::{UnsafeCell}, ops::{Deref, DerefMut}};
+use crate::{GlobalTermPoolGuard, GLOBAL_TERM_POOL};
 
 /// Global mutex that prevents garbage collection.
 pub struct GcMutex<T> {
