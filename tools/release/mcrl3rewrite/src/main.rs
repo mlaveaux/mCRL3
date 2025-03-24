@@ -12,7 +12,7 @@ mod trs_format;
 
 #[cfg(feature = "measure-allocs")]
 #[global_allocator]
-static MEASURE_ALLOC: unsafety::AllocCounter = unsafety::AllocCounter;
+static MEASURE_ALLOC: mcrl3_unsafety::AllocCounter = mcrl3_unsafety::AllocCounter;
 
 #[cfg(not(target_env = "msvc"))]
 #[cfg(not(feature = "measure-allocs"))]
