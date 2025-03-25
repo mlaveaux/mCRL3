@@ -1,9 +1,9 @@
 use std::cell::RefCell;
+use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::hash::Hash;
-use std::hash::Hasher;
 
 use hashbrown::Equivalent;
 use log::info;
@@ -273,6 +273,23 @@ impl GlobalTermPool {
             mark_time.elapsed().as_millis(), 
             collect_time.elapsed().as_millis(),
             num_of_terms - self.len());
+
+        info!("{:?}", self);
+
+        for pool in self.thread_pools.iter() {
+            if let Some(pool) = pool {
+                let pool = pool.lock();
+
+                // Remove all terms that are not protected
+                info!("{:?}", pool);
+            }
+        }
+    }
+}
+
+impl fmt::Debug for GlobalTermPool {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "There are {} terms, and {} symbols", self.terms.len(), self.symbol_pool.size())
     }
 }
 
@@ -285,6 +302,33 @@ pub(crate) struct SharedTermProtection {
     pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
     /// Index in global pool's thread pools list
     pub(crate) index: usize,
+}
+
+impl fmt::Debug for SharedTermProtection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        writeln!(f, 
+            "Protection set {} has {} roots, max {} and {} insertions",
+            self.index,
+            self.protection_set.len(),
+            self.protection_set.maximum_size(),
+            self.protection_set.number_of_insertions()
+        )?;
+
+        writeln!(f, 
+            "Containers: {} roots, max {} and {} insertions",
+            self.container_protection_set.len(),
+            self.container_protection_set.maximum_size(),
+            self.container_protection_set.number_of_insertions(),
+        )?;
+
+        write!(f, 
+            "Symbols: {} roots, max {} and {} insertions",
+            self.symbol_protection_set.len(),
+            self.symbol_protection_set.maximum_size(),
+            self.symbol_protection_set.number_of_insertions(),
+        )
+    }
 }
 
 /// Helper struct to pass private data required to mark term recursively.
@@ -323,8 +367,6 @@ impl Marker<'_> {
 impl Drop for SharedTermProtection {
     fn drop(&mut self) {
         assert!(self.protection_set.is_empty(), "Protection set must be empty on drop");
-
-        GLOBAL_TERM_POOL.lock().borrow_mut().deregister_thread_pool(self.index);
     }
 }
 

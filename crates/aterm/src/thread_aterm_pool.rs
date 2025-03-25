@@ -208,36 +208,10 @@ impl ThreadTermPool {
     fn index(&self) -> usize {
         self.protection_set.lock().index
     }
-
-    fn print_performance_metrics(&self) {
-        let shared = self.protection_set.lock();
-
-        info!(
-            "Protection set {} has {} roots, max {} and {} insertions",
-            self.index(),
-            shared.protection_set.len(),
-            shared.protection_set.maximum_size(),
-            shared.protection_set.number_of_insertions());
-
-        info!(
-            "Containers: {} roots, max {} and {} insertions",
-            shared.container_protection_set.len(),
-            shared.container_protection_set.maximum_size(),
-            shared.container_protection_set.number_of_insertions(),
-        );
-
-        info!(
-            "Symbols: {} roots, max {} and {} insertions",
-            shared.symbol_protection_set.len(),
-            shared.symbol_protection_set.maximum_size(),
-            shared.symbol_protection_set.number_of_insertions(),
-        );
-    }
 }
 
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
-        self.print_performance_metrics();
         info!("Dropping thread term pool with index {}", self.index());
         GLOBAL_TERM_POOL.lock().borrow_mut().deregister_thread_pool(self.index());
     }
