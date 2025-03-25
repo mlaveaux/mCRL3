@@ -3,15 +3,27 @@ use std::hash::Hash;
 use std::ops::Index;
 use std::ops::IndexMut;
 
-use rustc_hash::FxHashMap;
+use hashbrown::hash_map::Entry;
+use hashbrown::hash_map::EntryRef;
+use hashbrown::Equivalent;
+use hashbrown::HashMap;
 
+use rustc_hash::FxBuildHasher;
+
+type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
+
+/// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
+/// 
+/// TODO: Remove the need for duplicating the key in the hash map.
 pub struct IndexedSet<T> {
-    table: Vec<Entry<T>>,
+    table: Vec<IndexSetEntry<T>>,
     index: FxHashMap<T, usize>,
-    free: Option<usize>, // A list of free nodes.
+    /// A list of free nodes, where the value is the first free node.
+    free: Option<usize>,
 }
 
-enum Entry<T> {
+/// An entry in the indexed set, which can either be filled or empty.
+enum IndexSetEntry<T> {
     Filled(T),
     Empty(usize),
 }
@@ -49,8 +61,8 @@ impl<T> IndexedSet<T> {
     pub fn get(&self, index: usize) -> Option<&T> {
         if let Some(entry) = self.table.get(index) {
             match entry {
-                Entry::Filled(element) => Some(element),
-                Entry::Empty(_) => None,
+                IndexSetEntry::Filled(element) => Some(element),
+                IndexSetEntry::Empty(_) => None,
             }
         } else {
             None
@@ -75,26 +87,30 @@ impl<T> IndexedSet<T> {
         let iter = self
             .table
             .iter_mut()
-            .filter(|element| matches!(element, Entry::Filled(_)))
-            .map(|element| cast!(element, Entry::Filled))
+            .filter(|element| matches!(element, IndexSetEntry::Filled(_)))
+            .map(|element| cast!(element, IndexSetEntry::Filled))
             .enumerate();
 
         IterMut { iter: Box::new(iter) }
     }
 }
 
-impl<T: Eq + Hash + Clone> IndexedSet<T> {
+impl<T: Hash + Eq> IndexedSet<T> {
     /// Inserts the given element into the set
-    /// Teturns the corresponding index and a boolean indicating if the element was inserted.
-    pub fn insert(&mut self, value: T) -> (usize, bool) {
-        match self.index.entry(value.clone()) {
-            std::collections::hash_map::Entry::Occupied(entry) => (*entry.get(), false),
-            std::collections::hash_map::Entry::Vacant(entry) => {
+    /// 
+    /// Returns the corresponding index and a boolean indicating if the element was inserted.
+    pub fn insert_equiv<'a, Q>(&mut self, value: &'a Q) -> (usize, bool)
+        where Q: Hash + Equivalent<T>,
+              T: From<&'a Q>,
+    {
+        match self.index.entry_ref(value) {
+            EntryRef::Occupied(entry) => (*entry.get(), false),
+            EntryRef::Vacant(entry) => {
                 let index = match self.free {
                     Some(first) => {
                         let next = match self.table[first] {
-                            Entry::Empty(x) => x,
-                            Entry::Filled(_) => panic!("The free list contains a filled element"),
+                            IndexSetEntry::Empty(x) => x,
+                            IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
                         };
 
                         if first == next {
@@ -105,21 +121,65 @@ impl<T: Eq + Hash + Clone> IndexedSet<T> {
                             self.free = Some(next);
                         }
 
-                        self.table[first] = Entry::Filled(value);
+                        self.table[first] = IndexSetEntry::Filled(value.into());
                         first
                     }
                     None => {
                         // No free positions so insert new.
-                        self.table.push(Entry::Filled(value));
+                        self.table.push(IndexSetEntry::Filled(value.into()));
                         self.table.len() - 1
                     }
                 };
+
                 entry.insert(index);
                 (index, true)
             }
         }
     }
 
+    
+    /// Inserts the given element into the set
+    /// 
+    /// Returns the corresponding index and a boolean indicating if the element was inserted.
+    pub fn insert(&mut self, value: T) -> (usize, bool)
+        where T: Clone
+    {
+        match self.index.entry(value.clone()) {
+            Entry::Occupied(entry) => (*entry.get(), false),
+            Entry::Vacant(entry) => {
+                let index = match self.free {
+                    Some(first) => {
+                        let next = match self.table[first] {
+                            IndexSetEntry::Empty(x) => x,
+                            IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
+                        };
+
+                        if first == next {
+                            // The list is now empty as its first element points to itself.
+                            self.free = None;
+                        } else {
+                            // Update free to be the next element in the list.
+                            self.free = Some(next);
+                        }
+
+                        self.table[first] = IndexSetEntry::Filled(value);
+                        first
+                    }
+                    None => {
+                        // No free positions so insert new.
+                        self.table.push(IndexSetEntry::Filled(value));
+                        self.table.len() - 1
+                    }
+                };
+
+                entry.insert(index);
+                (index, true)
+            }
+        }
+    }
+}
+
+impl<T: Eq + Hash> IndexedSet<T> {
     /// Erases all elements for which f(index, element) returns false. Allows
     /// modifying the given element (as long as the hash/equality does not change).
     pub fn retain_mut<F>(&mut self, mut f: F)
@@ -127,16 +187,16 @@ impl<T: Eq + Hash + Clone> IndexedSet<T> {
         F: FnMut(usize, &mut T) -> bool,
     {
         for (index, element) in self.table.iter_mut().enumerate() {
-            if let Entry::Filled(value) = element {
+            if let IndexSetEntry::Filled(value) = element {
                 if !f(index, value) {
                     self.index.remove(value);
 
                     match self.free {
                         Some(next) => {
-                            *element = Entry::Empty(next);
+                            *element = IndexSetEntry::Empty(next);
                         }
                         None => {
-                            *element = Entry::Empty(index);
+                            *element = IndexSetEntry::Empty(index);
                         }
                     };
                     self.free = Some(index);
@@ -153,7 +213,7 @@ impl<T: Eq + Hash + Clone> IndexedSet<T> {
                 None => index,
             };
 
-            self.table[index] = Entry::Empty(next);
+            self.table[index] = IndexSetEntry::Empty(next);
             self.free = Some(index);
         }
     }
@@ -169,13 +229,13 @@ impl<T> Index<usize> for IndexedSet<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-        cast!(&self.table[index], Entry::Filled)
+        cast!(&self.table[index], IndexSetEntry::Filled)
     }
 }
 
 impl<T> IndexMut<usize> for IndexedSet<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        cast!(&mut self.table[index], Entry::Filled)
+        cast!(&mut self.table[index], IndexSetEntry::Filled)
     }
 }
 
@@ -189,7 +249,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.reference.table.len() {
-            if let Entry::Filled(element) = &self.reference.table[self.index] {
+            if let IndexSetEntry::Filled(element) = &self.reference.table[self.index] {
                 self.index += 1;
                 return Some((self.index - 1, element));
             }
@@ -223,10 +283,9 @@ impl<'a, T> IntoIterator for &'a IndexedSet<T> {
 
 #[cfg(test)]
 mod tests {
-    use ahash::HashMap;
-    use rand::Rng;
+    use super::*;
 
-    use super::IndexedSet;
+    use rand::Rng;
 
     #[test]
     fn test_construction() {

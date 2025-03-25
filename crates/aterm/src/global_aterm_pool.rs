@@ -2,7 +2,10 @@ use std::cell::RefCell;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::hash::Hash;
+use std::hash::Hasher;
 
+use hashbrown::Equivalent;
 use log::info;
 use log::trace;
 use mcrl3_utilities::SimpleTimer;
@@ -38,11 +41,15 @@ pub(crate) struct GlobalTermPool {
     /// The thread-specific protection sets.
     thread_pools: Vec<Option<Arc<Mutex<SharedTermProtection>>>>,
 
-    /// Used to avoid reallocations for the markings of all terms. Not stored in
-    /// the term because of padding.
-    marked_terms: Vec<bool>,
-    marked_symbols: Vec<bool>,
+    /// A vector of terms that are used to store the arguments of a term for loopup.
+    term_arguments: Vec<ATermRef<'static>>,
 
+    // Data structures used for garbage collection
+    /// Used to avoid reallocations for the markings of all terms
+    marked_terms: Vec<bool>,
+    /// Used to avoid reallocations for the markings of all symbols
+    marked_symbols: Vec<bool>,
+    /// A stack used to mark terms recursively.
     stack: Vec<usize>,
 
 }
@@ -60,6 +67,7 @@ impl GlobalTermPool {
             terms,
             symbol_pool: SymbolPool::new(),
             thread_pools: Vec::new(),
+            term_arguments: Vec::new(),
             marked_terms: Vec::new(),
             marked_symbols: Vec::new(),
             stack: Vec::new(),
@@ -105,15 +113,18 @@ impl GlobalTermPool {
         self.terms.len()
     }
 
+    /// Creates a term storing a single integer value.
     pub fn create_int<P>(&mut self, value: usize, protect: P) -> ATerm 
         where P: FnOnce(&mut GlobalTermPool, usize, bool) -> ATerm
     {
-        let shared_term = SharedTerm {
+        // Fill the arguments in the existing 
+        self.term_arguments.push(ATermRef::from_index(value));
+        let shared_term = SharedTermLookup {
             symbol: SymbolRef::from_index(0),
-            arguments: vec![ATermRef::from_index(value)],
+            arguments: &self.term_arguments,
         };
 
-        let (index, inserted) = self.terms.insert(shared_term);
+        let (index, inserted) = self.terms.insert_equiv(&shared_term);
         protect(self, index, inserted)
     }
 
@@ -125,12 +136,14 @@ impl GlobalTermPool {
         P: FnOnce(&mut GlobalTermPool, usize, bool) -> ATerm,
     {
         let shared_term = unsafe {
-            SharedTerm {
+            self.term_arguments = args
+                .into_iter()
+                .map(|t| std::mem::transmute::<ATermRef<'_>, ATermRef<'static>>(t.copy()))
+                .collect();
+
+            SharedTermLookup {
                 symbol: std::mem::transmute::<SymbolRef<'_>, SymbolRef<'static>>(SymbolRef::from_symbol(symbol)),
-                arguments: args
-                    .into_iter()
-                    .map(|t| std::mem::transmute::<ATermRef<'_>, ATermRef<'static>>(t.copy()))
-                    .collect(),
+                arguments: &self.term_arguments,
             }
         };
         
@@ -140,7 +153,7 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) = self.terms.insert(shared_term);
+        let (index, inserted) = self.terms.insert_equiv(&shared_term);
         protect(self, index, inserted)
     }
 
@@ -151,12 +164,14 @@ impl GlobalTermPool {
     {
         // This is safe because we are responsible for garbage collection of shared terms.
         let shared_term = unsafe {
-            SharedTerm {
+            self.term_arguments =  args
+                .iter()
+                .map(|t| std::mem::transmute::<ATermRef<'_>, ATermRef<'static>>(t.copy()))
+                .collect();
+
+            SharedTermLookup {
                 symbol: std::mem::transmute::<SymbolRef<'_>, SymbolRef<'static>>(SymbolRef::from_symbol(symbol)),
-                arguments: args
-                    .iter()
-                    .map(|t| std::mem::transmute::<ATermRef<'_>, ATermRef<'static>>(t.copy()))
-                    .collect(),
+                arguments: &self.term_arguments,
             }
         };
 
@@ -166,12 +181,12 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) = self.terms.insert(shared_term);
+        let (index, inserted) = self.terms.insert_equiv(&shared_term);
         protect(self, index, inserted)
     }
 
     /// Create a function symbol
-    pub fn create_symbol<P>(&mut self, name: impl Into<String>, arity: usize, protect: P) -> Symbol
+    pub fn create_symbol<P>(&mut self, name: impl Into<String> + AsRef<str>, arity: usize, protect: P) -> Symbol
     where
         P: FnOnce(usize) -> Symbol,
     {
@@ -187,6 +202,7 @@ impl GlobalTermPool {
             index: self.thread_pools.len(),
         }));
 
+        info!("Registered thread pool {}", self.thread_pools.len());
         self.thread_pools.push(Some(protection.clone()));
 
         protection
@@ -194,6 +210,7 @@ impl GlobalTermPool {
 
     /// Deregisters a thread pool.
     pub(crate) fn deregister_thread_pool(&mut self, index: usize) {
+        info!("Removed thread pool {}", index);
         if let Some(entry) = self.thread_pools.get_mut(index) {
             *entry = None;
         }
@@ -262,14 +279,15 @@ impl GlobalTermPool {
 pub(crate) struct SharedTermProtection {
     /// Protection set for terms
     pub(crate) protection_set: ProtectionSet<usize>,
-    pub(crate) symbol_protection_set: ProtectionSet<usize>,
     /// Protection set to prevent garbage collection of symbols
+    pub(crate) symbol_protection_set: ProtectionSet<usize>,
     /// Protection set for containers
     pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
     /// Index in global pool's thread pools list
     pub(crate) index: usize,
 }
 
+/// Helper struct to pass private data required to mark term recursively.
 pub struct Marker<'a> {
     marked_terms: &'a mut Vec<bool>,
     marked_symbols: &'a mut Vec<bool>,
@@ -310,7 +328,8 @@ impl Drop for SharedTermProtection {
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+/// The underlying type of terms that are actually shared.
+#[derive(Debug, Eq, PartialEq)]
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
     arguments: Vec<ATermRef<'static>>,
@@ -332,5 +351,41 @@ impl SharedTerm {
 
     pub fn arguments(&self) -> &[ATermRef<'static>] {
         &self.arguments
+    }
+}
+
+/// A cheap reference to the elements of a shared term that can be used for
+/// lookup of terms without allocating.
+struct SharedTermLookup<'a> {
+    symbol: SymbolRef<'a>,
+    arguments: &'a [ATermRef<'a>],
+}
+
+impl From<&SharedTermLookup<'_>> for SharedTerm {
+    fn from(lookup: &SharedTermLookup<'_>) -> Self {
+        SharedTerm {
+            symbol: SymbolRef::from_index(lookup.symbol.index()),
+            arguments: lookup.arguments.iter().map(|x| ATermRef::from_index(x.index())).collect(),
+        }
+    }
+}
+
+impl Equivalent<SharedTerm> for SharedTermLookup<'_> {
+    fn equivalent(&self, other: &SharedTerm) -> bool {
+        self.symbol == other.symbol && self.arguments == other.arguments
+    }
+}
+
+impl Hash for SharedTermLookup<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.symbol.hash(state);
+        self.arguments.hash(state);
+    }
+}
+
+impl Hash for SharedTerm {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.symbol.hash(state);
+        self.arguments.hash(state);
     }
 }

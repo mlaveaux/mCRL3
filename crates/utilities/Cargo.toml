@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 ahash.workspace = true
 bitstream-io.workspace = true
+bitvec.workspace = true
 env_logger.workspace = true
 hashbrown.workspace = true
 log.workspace = true
@@ -13,5 +14,6 @@ once_cell.workspace = true
 rand.workspace = true
 regex.workspace = true
 rustc-hash.workspace = true
+sharded-slab.workspace = true
 streaming-iterator.workspace = true
 thiserror.workspace = true

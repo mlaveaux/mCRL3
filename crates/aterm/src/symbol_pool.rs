@@ -1,3 +1,8 @@
+use std::hash::Hash;
+use std::hash::Hasher;
+
+use hashbrown::Equivalent;
+
 use mcrl3_utilities::IndexedSet;
 
 use crate::Symb;
@@ -23,14 +28,16 @@ impl SymbolPool {
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create<P>(&mut self, name: impl Into<String>, arity: usize, protect: P) -> Symbol
+    pub fn create<'a, N, P>(&mut self, name: N, arity: usize, protect: P) -> Symbol
     where
+        N: Into<String> + AsRef<str>,
         P: FnOnce(usize) -> Symbol,
     {
-        let name = name.into();
-
         // Get or create symbol index
-        let (index, _inserted) = self.symbols.insert(SharedSymbol::new(name, arity));
+        let (index, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { 
+            name, 
+            arity 
+        });
 
         // Return cloned symbol
         protect(index)
@@ -66,7 +73,7 @@ impl SymbolPool {
 }
 
 /// Represents a function symbol with a name and arity.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SharedSymbol {
     /// Name of the function
     name: String,
@@ -91,6 +98,41 @@ impl SharedSymbol {
     /// Returns the arity of the function symbol
     pub fn arity(&self) -> usize {
         self.arity
+    }
+}
+
+/// A cheap way to look up SharedSymbol
+struct SharedSymbolLookup<T: Into<String> + AsRef<str>> {
+    name: T,
+    arity: usize,
+}
+
+impl<'a, T: Into<String> + AsRef<str>> From<&SharedSymbolLookup<T>> for SharedSymbol {
+    fn from(lookup: &SharedSymbolLookup<T>) -> Self {
+        // TODO: Not optimal
+        let string = lookup.name.as_ref().to_string();
+        Self::new(string, lookup.arity)
+    }
+}
+
+impl<T: Into<String> + AsRef<str>> Equivalent<SharedSymbol> for SharedSymbolLookup<T> {
+    fn equivalent(&self, other: &SharedSymbol) -> bool {
+        self.name.as_ref() == other.name && self.arity == other.arity
+    }
+}
+
+/// These hash implementations should be the same as `SharedSymbol`.
+impl<T: Into<String> + AsRef<str>> Hash for SharedSymbolLookup<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.as_ref().hash(state);
+        self.arity.hash(state);
+    }
+}
+
+impl Hash for SharedSymbol {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (&self.name).hash(state);
+        self.arity.hash(state);
     }
 }
 

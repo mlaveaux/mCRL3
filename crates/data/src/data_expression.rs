@@ -122,7 +122,7 @@ mod inner {
 
     impl DataFunctionSymbol {
         #[mcrl3_ignore]
-        pub fn new(name: impl Into<String>) -> DataFunctionSymbol {
+        pub fn new(name: impl Into<String> + AsRef<str>) -> DataFunctionSymbol {
             DATA_SYMBOLS.with_borrow(|ds| DataFunctionSymbol {
                 term: ATerm::with_args(
                     ds.data_function_symbol.deref(),

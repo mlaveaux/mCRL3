@@ -106,7 +106,7 @@ pub struct Symbol {
 
 impl Symbol {
     /// Create a new symbol with the given name and arity.
-    pub fn new(name: impl Into<String>, arity: usize) -> Symbol {
+    pub fn new(name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_symbol(name, arity))
     }
 }
