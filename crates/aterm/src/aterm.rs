@@ -75,7 +75,7 @@ unsafe impl Sync for ATermRef<'_> {}
 
 impl ATermRef<'_> {
     /// Creates a new term reference from the given index.
-    pub(crate) unsafe fn from_index(index: NonZero<usize>) -> Self {
+    pub unsafe fn from_index(index: NonZero<usize>) -> Self {
         ATermRef {
             index,
             marker: PhantomData,

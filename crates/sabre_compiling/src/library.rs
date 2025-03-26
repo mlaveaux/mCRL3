@@ -50,7 +50,7 @@ impl RuntimeLibrary {
 
         // Create the directory structure for a Cargo project
         if !temp_dir.exists() {
-            fs::create_dir(&temp_dir)?;
+            fs::create_dir(temp_dir)?;
         }
 
         if !source_dir.exists() {

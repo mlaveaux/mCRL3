@@ -31,7 +31,7 @@ pub struct AnnouncementSabre {
     pub conditions: Vec<EMACondition>,
 
     /// The right hand side stored such that it can be substituted easily.
-    pub semi_compressed_rhs: TermStack,
+    pub rhs_term_stack: TermStack,
 
     /// Whether the rewrite rule duplicates subterms, e.g. times(s(x), y) = plus(y, times(x, y))
     pub is_duplicating: bool,
@@ -51,7 +51,7 @@ impl AnnouncementSabre {
         AnnouncementSabre {
             conditions: extend_conditions(rule),
             equivalence_classes: derive_equivalence_classes(rule),
-            semi_compressed_rhs: sctt_rhs,
+            rhs_term_stack: sctt_rhs,
             is_duplicating,
         }
     }

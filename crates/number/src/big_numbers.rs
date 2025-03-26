@@ -6,6 +6,7 @@ use std::ops::Mul;
 use std::ops::Rem;
 use std::ops::Sub;
 use std::str::FromStr;
+use std::hash::Hash;
 
 use crate::add_single_number;
 use crate::divide_single_number;
@@ -13,7 +14,7 @@ use crate::multiply_single_number;
 
 /// A big natural number implementation that stores numbers as a vector of machine-sized words.
 /// Numbers are stored with the least significant word first, and there are no trailing zeros.
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct BigNatural {
     /// Numbers are stored as words, with the most significant number last.
     /// The representation is unique: no trailing zeros are allowed.
@@ -140,9 +141,7 @@ impl BigNatural {
         other.is_well_defined();
         result.is_well_defined();
 
-        let mut offset = 0;
-
-        for &digit in &other.digits {
+        for (offset, &digit) in other.digits.iter().enumerate() {
             // Clear the calculation buffer and prepare it for the current offset.
             calculation_buffer.zero();
             calculation_buffer.digits.resize(offset, 0);
@@ -155,8 +154,6 @@ impl BigNatural {
 
             // Add the calculation buffer to the result.
             result.add_impl(calculation_buffer);
-
-            offset += 1;
         }
 
         result.is_well_defined();
@@ -299,6 +296,12 @@ impl PartialEq for BigNatural {
             return false;
         }
         self.digits == other.digits
+    }
+}
+
+impl Hash for BigNatural {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.digits.hash(state);
     }
 }
 

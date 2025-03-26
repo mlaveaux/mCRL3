@@ -32,7 +32,7 @@ impl RewriteEngine for InnermostRewriter {
         trace!("input: {}", t);
 
         let result = THREAD_TERM_POOL.with_borrow(|tp| {
-            InnermostRewriter::rewrite_aux(&tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t)
+            InnermostRewriter::rewrite_aux(tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t)
         });
 
         info!(
@@ -217,7 +217,7 @@ impl InnermostRewriter {
 
             // Get the symbol at the position state.label
             stats.symbol_comparisons += 1;
-            let pos: DataExpressionRef<'_> = t.get_position(&state.label()).into();
+            let pos: DataExpressionRef<'_> = t.get_position(state.label()).into();
             let symbol = pos.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match
@@ -256,8 +256,8 @@ impl InnermostRewriter {
         t: &ATermRef<'_>,
     ) -> bool {
         for c in &announcement.conditions {
-            let rhs: DataExpression = c.semi_compressed_rhs.evaluate_with(t, builder).into();
-            let lhs: DataExpression = c.semi_compressed_lhs.evaluate_with(t, builder).into();
+            let rhs: DataExpression = c.rhs_term_stack.evaluate_with(t, builder);
+            let lhs: DataExpression = c.lhs_term_stack.evaluate_with(t, builder);
 
             let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, rhs);
             let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, lhs);

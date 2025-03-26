@@ -14,4 +14,4 @@ pub use math::*;
 pub use power_of_two::*;
 pub use probabilistic_fraction::*;
 pub use u64_variablelength::*;
-pub use usize::*;
+pub(crate) use usize::*;

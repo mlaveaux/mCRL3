@@ -269,6 +269,12 @@ impl TermStackBuilder {
     }
 }
 
+impl Default for TermStackBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Create a mapping of variables to their position in the given term
 pub fn create_var_map<'a>(t: &impl Term<'a>) -> HashMap<DataVariable, ExplicitPosition> {
     let mut result = HashMap::new();

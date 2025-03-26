@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::Hash;
