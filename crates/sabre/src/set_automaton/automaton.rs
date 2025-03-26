@@ -528,7 +528,7 @@ impl State {
     }
 
     /// Returns the match goals of the state
-    pub fn match_goals(&self) -> &Vec<MatchGoal> {
+    pub(crate) fn match_goals(&self) -> &Vec<MatchGoal> {
         &self.match_goals
     } 
 }

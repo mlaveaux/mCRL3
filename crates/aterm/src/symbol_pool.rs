@@ -7,7 +7,6 @@ use hashbrown::Equivalent;
 use mcrl3_utilities::IndexedSet;
 
 use crate::Symb;
-use crate::Symbol;
 use crate::SymbolRef;
 
 /// Pool for maximal sharing of function symbols. Ensures that function symbols
@@ -29,10 +28,10 @@ impl SymbolPool {
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create<'a, N, P>(&mut self, name: N, arity: usize, protect: P) -> Symbol
+    pub fn create<'a, N, P, R>(&mut self, name: N, arity: usize, protect: P) -> R
     where
         N: Into<String> + AsRef<str>,
-        P: FnOnce(NonZero<usize>) -> Symbol,
+        P: FnOnce(NonZero<usize>) -> R,
     {
         // Get or create symbol index
         let (index, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { 
@@ -140,6 +139,8 @@ impl Hash for SharedSymbol {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::Symbol;
 
     #[test]
     fn test_symbol_sharing() {

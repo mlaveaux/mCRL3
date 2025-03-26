@@ -25,7 +25,6 @@ use crate::Symbol;
 use crate::SymbolPool;
 use crate::SymbolRef;
 use crate::Term;
-use crate::DEFAULT_SYMBOLS;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
@@ -33,6 +32,21 @@ pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPo
 
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
+
+/// Check if the symbol is the default "Int" symbol
+pub fn is_int<'a>(symbol: &impl Symb<'a>) -> bool {
+    GLOBAL_TERM_POOL.lock().borrow().int_symbol == symbol.copy()
+}
+
+/// Check if the symbol is the default "List" symbol
+pub fn is_list<'a>(symbol: &impl Symb<'a>) -> bool {
+    GLOBAL_TERM_POOL.lock().borrow().list_symbol == symbol.copy()
+}
+
+/// Check if the symbol is the default "[]" symbol
+pub fn is_empty_list<'a>(symbol: &impl Symb<'a>) -> bool {
+    GLOBAL_TERM_POOL.lock().borrow().empty_list_symbol == symbol.copy()
+}
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
@@ -54,6 +68,10 @@ pub(crate) struct GlobalTermPool {
     /// A stack used to mark terms recursively.
     stack: Vec<usize>,
 
+    /// Default terms
+    int_symbol: SymbolRef<'static>,
+    empty_list_symbol: SymbolRef<'static>,
+    list_symbol: SymbolRef<'static>,
 }
 
 impl GlobalTermPool {
@@ -65,21 +83,29 @@ impl GlobalTermPool {
             arguments: Vec::new(),
         });
 
+        let mut symbol_pool = SymbolPool::new();
+        let int_symbol = symbol_pool.create("Int", 0, |index| SymbolRef::from_index(index));
+        let list_symbol = symbol_pool.create("List", 2, |index| SymbolRef::from_index(index));
+        let empty_list_symbol = symbol_pool.create("[]", 0, |index| SymbolRef::from_index(index));
+
         GlobalTermPool {
             terms,
-            symbol_pool: SymbolPool::new(),
+            symbol_pool,
             thread_pools: Vec::new(),
             tmp_arguments: Vec::new(),
             marked_terms: Vec::new(),
             marked_symbols: Vec::new(),
             stack: Vec::new(),
+            int_symbol,
+            list_symbol,
+            empty_list_symbol,
         }
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'t>(&self, term: &ATermRef<'t>) -> SymbolRef<'t> {
         SymbolRef::from_symbol(
-            self.terms.get(term.index().into()).unwrap().symbol(),
+            self.terms.get(term.index().get()).unwrap().symbol(),
         )
     }
 
@@ -87,7 +113,7 @@ impl GlobalTermPool {
     pub fn get_argument<'t>(&self, term: &ATermRef<'t>, i: usize) -> ATermRef<'t> {
         ATermRef::from_term(
             self.terms
-                .get(term.index().into())
+                .get(term.index().get())
                 .unwrap()
                 .arguments()
                 .get(i)
@@ -125,12 +151,10 @@ impl GlobalTermPool {
             self.tmp_arguments.push(ATermRef::from_index(NonZero::new(value + 1).unwrap()));
         }
 
-        let shared_term = DEFAULT_SYMBOLS.with(|ds| {
-            SharedTermLookup {
-                symbol: SymbolRef::from_index(ds.int_symbol.index()),
+        let shared_term = SharedTermLookup {
+                symbol: SymbolRef::from_index(self.int_symbol.index()),
                 arguments: &self.tmp_arguments,
-            }
-        });
+        };
 
         let (index, inserted) = self.terms.insert_equiv(&shared_term);
         protect(self, NonZero::new(index).unwrap(), inserted)
@@ -209,7 +233,7 @@ impl GlobalTermPool {
             index: self.thread_pools.len(),
         }));
 
-        info!("Registered thread pool {}", self.thread_pools.len());
+        info!("Registered thread_local protection set(s) {}", self.thread_pools.len());
         self.thread_pools.push(Some(protection.clone()));
 
         protection
@@ -217,7 +241,7 @@ impl GlobalTermPool {
 
     /// Deregisters a thread pool.
     pub(crate) fn deregister_thread_pool(&mut self, index: usize) {
-        info!("Removed thread pool {}", index);
+        info!("Removed thread_local protection set(s) {}", index);
         if let Some(entry) = self.thread_pools.get_mut(index) {
             *entry = None;
         }
@@ -233,7 +257,15 @@ impl GlobalTermPool {
     fn collect_garbage(&mut self) {
         // Resize to fit all terms
         self.marked_terms.resize(self.capacity(), false);  
-        self.marked_symbols.resize(self.symbol_pool.capacity(), false);  
+        self.marked_symbols.resize(self.symbol_pool.capacity(), false); 
+
+        // Mark the default symbols
+        self.marked_symbols[self.int_symbol.index().get()] = true;
+        self.marked_symbols[self.list_symbol.index().get()] = true;
+        self.marked_symbols[self.empty_list_symbol.index().get()] = true;
+
+        self.marked_terms[0] = true; // The bogus term
+        self.marked_symbols[0] = true; // The bogus symbol
 
         let mut marker = Marker {
             marked_terms: &mut self.marked_terms,
@@ -352,7 +384,7 @@ impl Marker<'_> {
     // Marks the given term as being reachable.
     pub fn mark(&mut self, term: &ATermRef<'_>) {
 
-        let term_index: usize = term.index().into();
+        let term_index: usize = term.index().get();
         if !self.marked_terms[term_index] {
             self.stack.push(term_index);
 
@@ -361,10 +393,13 @@ impl Marker<'_> {
                 self.marked_terms[index] = true;
 
                 let term = self.terms.get(index).unwrap();
-                self.marked_symbols[term_index] = true;
+
+                // Mark the function symbol.
+                self.marked_symbols[term.symbol().index().get()] = true;
 
                 for arg in term.arguments() {
-                    let arg_index: usize = arg.index().into();
+                    let arg_index: usize = arg.index().get();
+                    // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
                     if !self.marked_terms[arg_index] {
                         self.marked_terms[arg_index] = true;
                         self.stack.push(arg_index);

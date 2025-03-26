@@ -23,6 +23,8 @@ pub fn is_int_term<'a>(t: &impl Term<'a>) -> bool {
 
 #[mcrl3_derive_terms]
 mod inner {
+    use mcrl3_macros::mcrl3_ignore;
+
     use super::*;
 
     #[mcrl3_term(is_int_term)]
@@ -31,15 +33,16 @@ mod inner {
     }
 
     impl ATermInt {
+        #[mcrl3_ignore]
         pub fn new(value: usize) -> ATermInt {
             THREAD_TERM_POOL.with_borrow(|tp| ATermInt {
                 term: tp.create_int(value),
             })
         }
 
+        /// Returns the value of the integer term.
         pub fn value(&self) -> usize {
-            let tmp: usize = self.term.index().into();
-            tmp - 1
+            self.term.index().get() - 1
         }
     }
 }

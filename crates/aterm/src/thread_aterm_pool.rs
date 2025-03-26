@@ -220,7 +220,6 @@ impl ThreadTermPool {
 
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
-        info!("Dropping thread term pool with index {}", self.index());
         GLOBAL_TERM_POOL
             .lock()
             .borrow_mut()

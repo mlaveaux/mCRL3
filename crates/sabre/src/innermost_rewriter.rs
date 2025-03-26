@@ -3,7 +3,6 @@ use log::trace;
 
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::THREAD_TERM_POOL;
-use mcrl3_aterm::Term;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
@@ -181,7 +180,7 @@ impl InnermostRewriter {
                 }
 
                 let read_configs = stack.configs.read();
-                for (index, term) in stack.terms.read().iter().flatten().enumerate() {
+                for (index, _term) in stack.terms.read().iter().flatten().enumerate() {
                     debug_assert!(
                         read_configs.iter().any(|x| {
                             match x {
