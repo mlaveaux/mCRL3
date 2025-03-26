@@ -51,7 +51,7 @@ impl InnermostStack {
                         InnermostStack::add_result(write_configs, symbol.copy(), *arity, top_of_stack + offset - 1);
                     }
                 }
-                Config::Term(term, index) => {                    
+                Config::Term(term, index) => {
                     let term = write_configs.protect(term);
                     write_configs.push(Config::Term(term.into(), *index));
                 }
@@ -80,7 +80,11 @@ impl InnermostStack {
         if rhs_stack.stack_size == 1 && rhs_stack.variables.len() == 1 {
             // This is a special case where we place the result on the correct position immediately.
             // The right hand side is only a variable
-            write_terms[result_index] = Some(write_terms.protect(&term.get_position(&rhs_stack.variables[0].0)).into());
+            write_terms[result_index] = Some(
+                write_terms
+                    .protect(&term.get_position(&rhs_stack.variables[0].0))
+                    .into(),
+            );
         } else {
             for (position, index) in &rhs_stack.variables {
                 // Add the positions to the stack.

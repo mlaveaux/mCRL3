@@ -97,7 +97,10 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
             writeln!(
                 f,
                 "  s{}[shape=record label=\"{{{{s{} | {}}} | {}}}\"]",
-                i, i, s.label(), match_goals
+                i,
+                i,
+                s.label(),
+                match_goals
             )?;
         }
 

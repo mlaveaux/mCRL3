@@ -14,8 +14,8 @@ mod parse_numbers;
 mod progress;
 mod progress_meter;
 mod protection_set;
-mod text_utility;
 mod simple_timer;
+mod text_utility;
 mod timing;
 
 pub use bitstream::*;
@@ -29,8 +29,8 @@ pub use parse_numbers::*;
 pub use progress::*;
 pub use progress_meter::*;
 pub use protection_set::*;
-pub use text_utility::*;
 pub use simple_timer::*;
+pub use text_utility::*;
 pub use timing::*;
 
 pub fn test_logger() -> Result<(), log::SetLoggerError> {

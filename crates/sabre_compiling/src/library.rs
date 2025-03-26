@@ -6,12 +6,12 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use libloading::Library;
-use toml::map::Map;
 use toml::Table;
 use toml::Value;
+use toml::map::Map;
 
-use duct::cmd;
 use duct::Expression;
+use duct::cmd;
 use indoc::indoc;
 use log::info;
 
@@ -25,11 +25,7 @@ fn apply_env(
     let env = compilation_toml.get("env").ok_or("Missing [env] table")?;
 
     for var in variables {
-        let value = env
-            .get(*var)
-            .ok_or("Missing var")?
-            .as_str()
-            .ok_or("Not a string")?;
+        let value = env.get(*var).ok_or("Missing var")?.as_str().ok_or("Not a string")?;
 
         info!("Setting environment variable {} = {}", var, value);
         result = result.env(var, value);
@@ -48,14 +44,8 @@ pub struct RuntimeLibrary {
 impl RuntimeLibrary {
     /// Creates a new library that can be compiled at runtime.
     /// - depe
-    pub fn new(
-        temp_dir: &Path,
-        dependencies: Vec<String>,
-    ) -> Result<RuntimeLibrary, Box<dyn Error>> {
-        info!(
-            "Creating library in directory {}",
-            temp_dir.to_string_lossy()
-        );
+    pub fn new(temp_dir: &Path, dependencies: Vec<String>) -> Result<RuntimeLibrary, Box<dyn Error>> {
+        info!("Creating library in directory {}", temp_dir.to_string_lossy());
         let source_dir = PathBuf::from(temp_dir).join("src");
 
         // Create the directory structure for a Cargo project
@@ -122,30 +112,17 @@ impl RuntimeLibrary {
         // Compile the dynamic object.
         info!("Compiling...");
         let mut expr = cmd("cargo", &["build", "--lib"]).dir(self.temp_dir.as_path());
-        expr = apply_env(
-            expr,
-            &compilation_toml,
-            &["RUSTFLAGS", "CFLAGS", "CXXFLAGS"],
-        )?;
+        expr = apply_env(expr, &compilation_toml, &["RUSTFLAGS", "CFLAGS", "CXXFLAGS"])?;
         expr.run()?;
 
         info!("finished.");
 
         // Figure out the path to the library (it is based on platform: linux, windows and then macos)
-        let mut path = self
-            .temp_dir
-            .clone()
-            .join("./target/debug/libsabre_generated.so");
+        let mut path = self.temp_dir.clone().join("./target/debug/libsabre_generated.so");
         if !path.exists() {
-            path = self
-                .temp_dir
-                .clone()
-                .join("./target/debug/sabre_generated.dll");
+            path = self.temp_dir.clone().join("./target/debug/sabre_generated.dll");
             if !path.exists() {
-                path = self
-                    .temp_dir
-                    .clone()
-                    .join("./target/debug/libsabre_generated.dylib");
+                path = self.temp_dir.clone().join("./target/debug/libsabre_generated.dylib");
                 if !path.exists() {
                     return Err("Could not find the compiled library!".into());
                 }

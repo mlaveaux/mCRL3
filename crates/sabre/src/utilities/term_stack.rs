@@ -1,16 +1,27 @@
 use std::fmt;
 
-use ahash::{HashMap, HashMapExt};
+use ahash::HashMap;
+use ahash::HashMapExt;
 use log::trace;
-use mcrl3_aterm::{ATermRef, Markable, Marker, Protected, Term};
-use mcrl3_data::{
-        is_data_expression, is_data_machine_number, is_data_variable, DataApplication, DataExpression,
-        DataExpressionRef, DataFunctionSymbolRef, DataVariable,
-    };
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::Markable;
+use mcrl3_aterm::Marker;
+use mcrl3_aterm::Protected;
+use mcrl3_aterm::Term;
+use mcrl3_data::DataApplication;
+use mcrl3_data::DataExpression;
+use mcrl3_data::DataExpressionRef;
+use mcrl3_data::DataFunctionSymbolRef;
+use mcrl3_data::DataVariable;
+use mcrl3_data::is_data_expression;
+use mcrl3_data::is_data_machine_number;
+use mcrl3_data::is_data_variable;
 
-use crate::{utilities::InnermostStack, Rule};
+use crate::Rule;
+use crate::utilities::InnermostStack;
 
-use super::{ExplicitPosition, PositionIterator};
+use super::ExplicitPosition;
+use super::PositionIterator;
 
 /// A stack used to represent a term with free variables that can be constructed
 /// efficiently.
@@ -59,11 +70,7 @@ impl Markable for Config {
     }
 
     fn len(&self) -> usize {
-        if let Config::Construct(_, _, _) = self {
-            1
-        } else {
-            0
-        }
+        if let Config::Construct(_, _, _) = self { 1 } else { 0 }
     }
 }
 
@@ -279,10 +286,13 @@ pub fn create_var_map<'a>(t: &impl Term<'a>) -> HashMap<DataVariable, ExplicitPo
 mod tests {
     use super::*;
 
-    use std::ops::Deref;
     use ahash::AHashSet;
-    use mcrl3_aterm::{apply, ATerm, Symb, THREAD_TERM_POOL};
+    use mcrl3_aterm::ATerm;
+    use mcrl3_aterm::Symb;
+    use mcrl3_aterm::THREAD_TERM_POOL;
+    use mcrl3_aterm::apply;
     use mcrl3_data::DataFunctionSymbol;
+    use std::ops::Deref;
 
     use crate::test_utility::create_rewrite_rule;
     use crate::utilities::to_untyped_data_expression;
@@ -305,8 +315,7 @@ mod tests {
 
     #[test]
     fn test_rhs_stack() {
-        let rhs_stack =
-            TermStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
+        let rhs_stack = TermStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
         let mut expected = Protected::new(vec![]);
 
         let mut write = expected.write();

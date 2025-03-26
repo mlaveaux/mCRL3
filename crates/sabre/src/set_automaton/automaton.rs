@@ -530,7 +530,7 @@ impl State {
     /// Returns the match goals of the state
     pub(crate) fn match_goals(&self) -> &Vec<MatchGoal> {
         &self.match_goals
-    } 
+    }
 }
 
 /// Adds the given function symbol to the indexed symbols. Errors when a

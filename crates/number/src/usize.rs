@@ -1,4 +1,3 @@
-
 // Helper functions for arithmetic operations
 pub(crate) fn add_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
     debug_assert!(*carry <= 1);
@@ -81,45 +80,4 @@ pub(crate) fn divide_single_number(p: usize, q: usize, mut remainder: usize) -> 
 
     // Combine results and return with new remainder
     ((result_high << bits) | result_low, remainder)
-}
-
-
-/// Calculate <carry,result>:=n1-n2-carry. The carry can be either 0 or 1, both
-/// at the input and the output. If the carry is 1, this indicated that 1 must be subtracted.
-fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
-    debug_assert!(*carry <= 1);
-    let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
-    *carry = if *carry == 0 {
-        if result > n1 { 1 } else { 0 }
-    } else if result < n1 {
-        0
-    } else {
-        1
-    };
-    result
-}
-
-/// Calculates the greatest common divisor of two numbers.
-pub(crate) fn greatest_common_divisor(mut a: usize, mut b: usize) -> usize {
-    if a < b {
-        std::mem::swap(&mut a, &mut b);
-    }
-
-    // b is the largest number now
-    while b > 0 {
-        let t = b;
-        b = &a % &b;
-        a = t;
-    }
-
-    a
-}
-
-/// Removes common factors from two numbers.
-pub(crate) fn remove_common_factors(a: &mut usize, b: &mut usize) {
-    let gcd = greatest_common_divisor(*a, *b);
-    if gcd > 1 {
-        *a / gcd;
-        *b / gcd;
-    }
 }

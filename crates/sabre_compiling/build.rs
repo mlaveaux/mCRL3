@@ -23,11 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Write the development location.
     writeln!(file, "[sabrec]")?;
-    writeln!(
-        file,
-        "path = '{}'",
-        fs::canonicalize(".")?.to_string_lossy()
-    )?;
+    writeln!(file, "path = '{}'", fs::canonicalize(".")?.to_string_lossy())?;
 
     // Write compilation related environment variables to the configuration file.
     writeln!(file, "[env]")?;

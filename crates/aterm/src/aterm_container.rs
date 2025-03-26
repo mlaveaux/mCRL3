@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use mcrl3_utilities::PhantomUnsend;
 
-use crate::gc_mutex::GcMutex;
-use crate::gc_mutex::GcMutexGuard;
 use crate::Marker;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::aterm::ATermRef;
+use crate::gc_mutex::GcMutex;
+use crate::gc_mutex::GcMutexGuard;
 
 #[cfg(debug_assertions)]
 use std::cell::RefCell;
@@ -176,11 +176,7 @@ impl<T: Markable> Markable for Option<T> {
     }
 
     fn len(&self) -> usize {
-        if let Some(value) = self {
-            value.len()
-        } else {
-            0
-        }
+        if let Some(value) = self { value.len() } else { 0 }
     }
 }
 
@@ -258,8 +254,6 @@ impl<C: Markable> Drop for Protector<'_, C> {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

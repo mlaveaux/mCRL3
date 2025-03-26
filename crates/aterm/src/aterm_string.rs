@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::fmt;
-use std::ops::Deref;
 use std::num::NonZero;
+use std::ops::Deref;
 
 use delegate::delegate;
 

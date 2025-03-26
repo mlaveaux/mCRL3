@@ -1,13 +1,16 @@
-use std::{cell::{UnsafeCell}, ops::{Deref, DerefMut}};
-use crate::{GlobalTermPoolGuard, GLOBAL_TERM_POOL};
+use crate::GLOBAL_TERM_POOL;
+use crate::GlobalTermPoolGuard;
+use std::cell::UnsafeCell;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 /// Global mutex that prevents garbage collection.
 pub struct GcMutex<T> {
     inner: UnsafeCell<T>,
 }
 
-unsafe impl<T> Send for GcMutex<T> {}
-unsafe impl<T> Sync for GcMutex<T> {}
+unsafe impl<T: Send> Send for GcMutex<T> {}
+unsafe impl<T: Send> Sync for GcMutex<T> {}
 
 impl<T> GcMutex<T> {
     pub fn new(value: T) -> GcMutex<T> {

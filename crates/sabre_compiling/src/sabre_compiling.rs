@@ -39,7 +39,7 @@ impl SabreCompilingRewriter {
     ///
     /// - use_local_workspace: Use the development version of the toolset instead of referring to the github one.
     /// - use_local_tmp: Use a relative 'tmp' directory instead of using the system directory. Mostly used for debugging purposes.
-    /// 
+    ///
     /// - [`RewriteEngine`]
     pub fn new(
         spec: &RewriteSpecification,
@@ -56,8 +56,7 @@ impl SabreCompilingRewriter {
         let mut dependencies = vec![];
 
         if use_local_workspace {
-            let compilation_toml =
-                include_str!("../../../target/Compilation.toml").parse::<Table>()?;
+            let compilation_toml = include_str!("../../../target/Compilation.toml").parse::<Table>()?;
             let path = compilation_toml
                 .get("sabrec")
                 .ok_or("Missing [sabre] section)")?
@@ -73,13 +72,10 @@ impl SabreCompilingRewriter {
             ));
         } else {
             info!("Using git dependency https://github.com/mlaveaux/mCRL3.git");
-            dependencies.push(
-                "sabre-ffi = { git = 'https://github.com/mlaveaux/mCRL3.git' }".to_string(),
-            );
+            dependencies.push("sabre-ffi = { git = 'https://github.com/mlaveaux/mCRL3.git' }".to_string());
         }
 
         let mut compilation_crate = RuntimeLibrary::new(temp_dir, dependencies)?;
-
 
         // Write the output source file(s).
         generate(spec, compilation_crate.source_dir())?;

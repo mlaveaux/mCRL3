@@ -1,6 +1,8 @@
-use mcrl3_aterm::{ATermRef, THREAD_TERM_POOL};
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::THREAD_TERM_POOL;
 
-use crate::{ATermFFI, ATermRefFFI};
+use crate::ATermFFI;
+use crate::ATermRefFFI;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn make_term() -> ATermFFI {

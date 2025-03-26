@@ -99,7 +99,10 @@ impl SabreRewriter {
                             stats.symbol_comparisons += 1;
 
                             // Get the transition belonging to the observed symbol
-                            if let Some(tr) = automaton.transitions().get(&(leaf.state, function_symbol.operation_id())) {
+                            if let Some(tr) = automaton
+                                .transitions()
+                                .get(&(leaf.state, function_symbol.operation_id()))
+                            {
                                 // Loop over the match announcements of the transition
                                 for (announcement, annotation) in tr.announcements() {
                                     if annotation.conditions.is_empty() && annotation.equivalence_classes.is_empty() {

@@ -33,7 +33,8 @@ use crate::is_data_variable;
 #[mcrl3_derive_terms]
 mod inner {
 
-    use std::{iter, num::NonZero};
+    use std::iter;
+    use std::num::NonZero;
 
     use mcrl3_aterm::ATermStringRef;
 
@@ -213,40 +214,32 @@ mod inner {
     }
 
     impl DataApplication {
-
         /// Create a new data application with the given head and arguments.
         #[mcrl3_ignore]
-        pub fn with_args<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication 
-        {            
+        pub fn with_args<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 // TODO: Perhaps not the must optimal.
                 let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
-                let term = ATerm::with_iter(
-                    ds.get_data_application_symbol(arguments.len() + 1),
-                    args,
-                );
+                let term = ATerm::with_iter(ds.get_data_application_symbol(arguments.len() + 1), args);
 
                 DataApplication { term }
             })
         }
 
         /// Create a new data application with the given head and arguments.
-        /// 
+        ///
         /// arity must be equal to the number of arguments + 1.
         #[mcrl3_ignore]
-        pub fn with_iter<'a, T, I>(head: &impl Term<'a>, arguments: I) -> DataApplication 
-            where
-                I: Iterator<Item = T> + Clone,
-                T: Term<'a>,
-        {      
+        pub fn with_iter<'a, T, I>(head: &impl Term<'a>, arguments: I) -> DataApplication
+        where
+            I: Iterator<Item = T> + Clone,
+            T: Term<'a>,
+        {
             let arity = arguments.clone().count() + 1;
 
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 let args = iter::once(head.copy()).chain(arguments.map(|t| t.copy()));
-                let term = ATerm::with_iter(
-                    ds.get_data_application_symbol(arity),
-                    args,
-                );
+                let term = ATerm::with_iter(ds.get_data_application_symbol(arity), args);
 
                 DataApplication { term }
             })

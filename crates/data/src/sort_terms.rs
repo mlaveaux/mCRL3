@@ -1,7 +1,7 @@
 use core::fmt;
 use std::borrow::Borrow;
-use std::ops::Deref;
 use std::num::NonZero;
+use std::ops::Deref;
 
 use delegate::delegate;
 
@@ -18,8 +18,8 @@ use mcrl3_aterm::TermIterator;
 use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_term;
 
-use crate::is_sort_expression;
 use crate::DATA_SYMBOLS;
+use crate::is_sort_expression;
 
 // This module is only used internally to run the proc macro.
 #[mcrl3_derive_terms]
@@ -41,11 +41,9 @@ mod inner {
 
         /// Creates a sort expression with the unknown value.
         pub fn unknown_sort() -> SortExpression {
-            DATA_SYMBOLS.with_borrow(|ds| 
-                SortExpression {
-                    term: ATerm::with_args(ds.sort_id_symbol.deref(), &[ATermString::new("@no_value@")])
-                }
-            )
+            DATA_SYMBOLS.with_borrow(|ds| SortExpression {
+                term: ATerm::with_args(ds.sort_id_symbol.deref(), &[ATermString::new("@no_value@")]),
+            })
         }
     }
 

@@ -1,9 +1,11 @@
+use std::cell::RefCell;
 use std::io;
-use std::{cell::RefCell, io::Write};
+use std::io::Write;
 use std::rc::Rc;
 use std::time::Instant;
 
-use log::{debug, warn};
+use log::debug;
+use log::warn;
 
 /// A timing object to measure the time of different parts of the program. This
 /// is useful for debugging and profiling.
@@ -47,7 +49,7 @@ impl Timing {
             eprintln!("Time {}: {:.3}s", name, time);
         }
     }
-    
+
     /// Writes a YAML report of the finished timers to the given writer.
     fn write_report(&self, tool_name: &str, writer: &mut impl Write) -> io::Result<()> {
         writeln!(writer, "- tool: {}", tool_name)?;

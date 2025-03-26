@@ -7,7 +7,7 @@ struct ATermFFI {
 
 struct ATermRefFFI<'a> {
     index: usize,
-    _marker: PhantomData<&'a ()>
+    _marker: PhantomData<&'a ()>,
 }
 
 // impl ATermFFI {

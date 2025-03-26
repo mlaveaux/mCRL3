@@ -34,10 +34,7 @@ impl SymbolPool {
         P: FnOnce(NonZero<usize>) -> R,
     {
         // Get or create symbol index
-        let (index, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { 
-            name, 
-            arity 
-        });
+        let (index, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { name, arity });
 
         // Return cloned symbol
         protect(NonZero::new(index).unwrap())

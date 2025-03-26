@@ -26,7 +26,7 @@ impl ProbabilisticFraction {
         assert!(!denominator.is_zero(), "Denominator must not be zero");
         assert!(numerator <= denominator, "Numerator must not exceed denominator");
 
-        // Remove common factors        
+        // Remove common factors
         let mut result = Self { numerator, denominator };
         result.reduce();
         debug_assert!(result.is_normalized(), "Fraction must be normalized");
@@ -126,9 +126,6 @@ impl Add for &ProbabilisticFraction {
     type Output = ProbabilisticFraction;
 
     fn add(self, other: &ProbabilisticFraction) -> ProbabilisticFraction {
-        debug_assert!(self.is_normalized(), "Left operand must be normalized");
-        debug_assert!(other.is_normalized(), "Right operand must be normalized");
-
         // num = self.num * other.den + other.num * self.den
         // den = self.den * other.den
         let num = &self.numerator * &other.denominator;
@@ -145,9 +142,6 @@ impl Sub for &ProbabilisticFraction {
     type Output = ProbabilisticFraction;
 
     fn sub(self, other: &ProbabilisticFraction) -> ProbabilisticFraction {
-        debug_assert!(self.is_normalized(), "Left operand must be normalized");
-        debug_assert!(other.is_normalized(), "Right operand must be normalized");
-
         // Assert result will be non-negative
         assert!(self >= other, "Subtraction would result in negative fraction");
 
@@ -167,9 +161,6 @@ impl Mul for &ProbabilisticFraction {
     type Output = ProbabilisticFraction;
 
     fn mul(self, other: &ProbabilisticFraction) -> ProbabilisticFraction {
-        debug_assert!(self.is_normalized(), "Left operand must be normalized");
-        debug_assert!(other.is_normalized(), "Right operand must be normalized");
-
         // num = self.num * other.num
         // den = self.den * other.den
         let num = &self.numerator * &other.numerator;
@@ -183,8 +174,6 @@ impl Div for &ProbabilisticFraction {
     type Output = ProbabilisticFraction;
 
     fn div(self, other: &ProbabilisticFraction) -> ProbabilisticFraction {
-        debug_assert!(self.is_normalized(), "Left operand must be normalized");
-        debug_assert!(other.is_normalized(), "Right operand must be normalized");
         assert!(!other.numerator.is_zero(), "Division by zero");
 
         // num = self.num * other.den

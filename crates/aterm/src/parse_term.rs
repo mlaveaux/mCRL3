@@ -1,4 +1,3 @@
-
 use pest_consume::Error;
 use pest_consume::match_nodes;
 use pest_derive::Parser;
@@ -14,11 +13,11 @@ type ParseResult<T> = std::result::Result<T, Error<Rule>>;
 type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 
 /// Parse a term from a string.
-/// 
+///
 /// Grammar:  f(t_1, ..., t_n) | c
 #[pest_consume::parser]
 impl TermParser {
-    pub fn TermSpec(spec: ParseNode) -> ParseResult<ATerm> {        
+    pub fn TermSpec(spec: ParseNode) -> ParseResult<ATerm> {
         TermParser::Term(spec.children().next().unwrap())
     }
 

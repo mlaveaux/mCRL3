@@ -8,8 +8,6 @@ use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
-use crate::utilities::TermStack;
-use crate::utilities::TermStackBuilder;
 use crate::RewriteEngine;
 use crate::RewriteSpecification;
 use crate::RewritingStatistics;
@@ -24,6 +22,8 @@ use crate::set_automaton::SetAutomaton;
 use crate::utilities::Config;
 use crate::utilities::InnermostStack;
 use crate::utilities::PositionIndexed;
+use crate::utilities::TermStack;
+use crate::utilities::TermStackBuilder;
 
 impl RewriteEngine for InnermostRewriter {
     fn rewrite(&mut self, t: DataExpression) -> DataExpression {
@@ -164,10 +164,10 @@ impl InnermostRewriter {
                                 write_terms[index] = Some(write_terms.protect(&term).into());
                             }
                         }
-                    },
+                    }
                     Config::Term(_, _) => {
                         unreachable!("This case should not happen");
-                    },
+                    }
                     Config::Return() => {
                         let mut write_terms = stack.terms.write();
 
@@ -179,19 +179,23 @@ impl InnermostRewriter {
                     }
                 }
 
-                let read_configs = stack.configs.read();
-                for (index, _term) in stack.terms.read().iter().flatten().enumerate() {
-                    debug_assert!(
-                        read_configs.iter().any(|x| {
-                            match x {
-                                Config::Construct(_, _, result) => index == *result,
-                                Config::Rewrite(result) => index == *result,
-                                Config::Term(_, result) => index == *result,
-                                Config::Return() => true,
-                            }
-                        }),
-                        "The default term at index {index} is not a result of any operation."
-                    );
+                if cfg!(debug_assertions) {
+                    let read_configs = stack.configs.read();
+                    for (index, term) in stack.terms.read().iter().enumerate() {
+                        if term.is_none() {
+                            debug_assert!(
+                                read_configs.iter().any(|x| {
+                                    match x {
+                                        Config::Construct(_, _, result) => index == *result,
+                                        Config::Rewrite(result) => index == *result,
+                                        Config::Term(_, result) => index == *result,
+                                        Config::Return() => true,
+                                    }
+                                }),
+                                "The default term at index {index} is not a result of any operation."
+                            );
+                        }
+                    }
                 }
             }
         }

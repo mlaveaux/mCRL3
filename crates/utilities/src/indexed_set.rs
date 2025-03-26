@@ -3,17 +3,17 @@ use std::hash::Hash;
 use std::ops::Index;
 use std::ops::IndexMut;
 
-use hashbrown::hash_map::Entry;
-use hashbrown::hash_map::EntryRef;
 use hashbrown::Equivalent;
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
+use hashbrown::hash_map::EntryRef;
 
 use rustc_hash::FxBuildHasher;
 
 type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
 
 /// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
-/// 
+///
 /// TODO: Remove the need for duplicating the key in the hash map.
 pub struct IndexedSet<T> {
     table: Vec<IndexSetEntry<T>>,
@@ -97,11 +97,12 @@ impl<T> IndexedSet<T> {
 
 impl<T: Hash + Eq> IndexedSet<T> {
     /// Inserts the given element into the set
-    /// 
+    ///
     /// Returns the corresponding index and a boolean indicating if the element was inserted.
     pub fn insert_equiv<'a, Q>(&mut self, value: &'a Q) -> (usize, bool)
-        where Q: Hash + Equivalent<T>,
-              T: From<&'a Q>,
+    where
+        Q: Hash + Equivalent<T>,
+        T: From<&'a Q>,
     {
         match self.index.entry_ref(value) {
             EntryRef::Occupied(entry) => (*entry.get(), false),
@@ -137,12 +138,12 @@ impl<T: Hash + Eq> IndexedSet<T> {
         }
     }
 
-    
     /// Inserts the given element into the set
-    /// 
+    ///
     /// Returns the corresponding index and a boolean indicating if the element was inserted.
     pub fn insert(&mut self, value: T) -> (usize, bool)
-        where T: Clone
+    where
+        T: Clone,
     {
         match self.index.entry(value.clone()) {
             Entry::Occupied(entry) => (*entry.get(), false),

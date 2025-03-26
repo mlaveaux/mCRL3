@@ -17,9 +17,9 @@ use crate::utilities::ExplicitPosition;
 
 use super::PositionIndexed;
 use super::SubstitutionBuilder;
+use super::TermStack;
 use super::create_var_map;
 use super::substitute_with;
-use super::TermStack;
 
 /// This is the announcement for Sabre, which stores additional information about the rewrite rules.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]

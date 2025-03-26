@@ -1,5 +1,5 @@
-use crate::utilities::TermStack;
 use crate::Rule;
+use crate::utilities::TermStack;
 use crate::utilities::create_var_map;
 
 /// This is a [Rule] condition stored as semi compressed trees such that they can be

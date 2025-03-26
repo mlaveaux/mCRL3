@@ -7,9 +7,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use indoc::indoc;
+use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::set_automaton::SetAutomaton;
 use mcrl3_sabre::utilities::ExplicitPosition;
-use mcrl3_sabre::RewriteSpecification;
 
 pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Box<dyn Error>> {
     let mut file = File::create(PathBuf::from(source_dir).join("lib.rs"))?;
@@ -33,9 +33,16 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Bo
     let mut positions: HashSet<ExplicitPosition> = HashSet::new();
 
     for (index, state) in apma.states().iter().enumerate() {
-
-        writeln!(&mut file, "fn rewrite_{}(t: &DataExpressionRef<'_>) -> DataExpression {{", index)?;
-        writeln!(&mut file, "\t let arg = get_position_{}(t);", UnderscoreFormatter(state.label()))?;
+        writeln!(
+            &mut file,
+            "fn rewrite_{}(t: &DataExpressionRef<'_>) -> DataExpression {{",
+            index
+        )?;
+        writeln!(
+            &mut file,
+            "\t let arg = get_position_{}(t);",
+            UnderscoreFormatter(state.label())
+        )?;
         writeln!(&mut file, "\t let symbol = arg.data_function_symbol();")?;
 
         positions.insert(state.label().clone());
@@ -48,9 +55,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Bo
                 writeln!(&mut file, "\t\t{symbol} => {{")?;
 
                 // Continue on the outgoing transition.
-                for (_announcement, _annotation) in transition.announcements() {
-
-                }                    
+                for (_announcement, _annotation) in transition.announcements() {}
 
                 writeln!(&mut file, "\t\t\tt.protect()")?;
                 writeln!(&mut file, "\t\t}}")?;
@@ -58,10 +63,13 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Bo
         }
 
         // No match
-        writeln!(&mut file, indoc! {
-        "\t\t_ => {{
+        writeln!(
+            &mut file,
+            indoc! {
+            "\t\t_ => {{
             \t\t   t.protect()
-            \t\t}}"})?;
+            \t\t}}"}
+        )?;
 
         writeln!(&mut file, "\t }}")?;
         writeln!(&mut file, "}}")?;
@@ -69,7 +77,11 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Bo
 
     // Introduce getters for all the positions that must be read from terms.
     for position in &positions {
-        writeln!(&mut file, "fn get_position_{}<'a>(t: &'a DataExpressionRef<'_>) -> DataExpressionRef<'a> {{", UnderscoreFormatter(position))?;
+        writeln!(
+            &mut file,
+            "fn get_position_{}<'a>(t: &'a DataExpressionRef<'_>) -> DataExpressionRef<'a> {{",
+            UnderscoreFormatter(position)
+        )?;
         write!(&mut file, "\t t.copy()")?;
 
         for index in &position.indices {
@@ -87,7 +99,6 @@ struct UnderscoreFormatter<'a>(&'a ExplicitPosition);
 
 impl fmt::Display for UnderscoreFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         if self.0.indices.is_empty() {
             write!(f, "epsilon")?;
         } else {
