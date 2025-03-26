@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
+use std::num::NonZero;
 
 use delegate::delegate;
 

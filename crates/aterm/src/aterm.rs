@@ -6,6 +6,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
+use std::num::NonZero;
 
 use delegate::delegate;
 
@@ -35,9 +36,6 @@ pub trait Term<'a> {
     /// Makes a copy of the term with the same lifetime as itself.
     fn copy(&self) -> ATermRef<'a>;
 
-    /// Returns whether the term is the default term (not initialised)
-    fn is_default(&self) -> bool;
-
     /// Returns the function of an ATermRef
     fn get_head_symbol(&self) -> SymbolRef<'a>;
 
@@ -54,36 +52,30 @@ pub trait Term<'a> {
     fn iter(&self) -> TermIterator<'a>;
 
     /// Returns the index of the term in the term pool
-    fn index(&self) -> usize;
+    fn index(&self) -> NonZero<usize>;
 }
 
 /// This represents a lifetime bound reference to an existing ATerm.
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ATermRef<'a> {
-    index: usize,
+    index: NonZero<usize>,
     marker: PhantomData<&'a ()>,
 }
 
 /// Check that the ATermRef is the same size as a usize.
 const _: () = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
 
+/// Since we have NonZero we can use a niche value optimisation for option.
+const _: () = assert!(std::mem::size_of::<Option<ATermRef>>() == std::mem::size_of::<usize>());
+
 /// These are safe because terms are never modified. Garbage collection is
 /// always performed with exclusive access.
 unsafe impl Send for ATermRef<'_> {}
 unsafe impl Sync for ATermRef<'_> {}
 
-impl Default for ATermRef<'_> {
-    fn default() -> Self {
-        ATermRef {
-            index: 0,
-            marker: PhantomData,
-        }
-    }
-}
-
 impl ATermRef<'_> {
     /// Creates a new term reference from the given index.
-    pub(crate) fn from_index(index: usize) -> Self {
+    pub(crate) fn from_index(index: NonZero<usize>) -> Self {
         ATermRef {
             index,
             marker: PhantomData,
@@ -97,32 +89,14 @@ impl ATermRef<'_> {
             marker: PhantomData,
         }
     }
-
-    /// Returns the index of the term.
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    /// Panics if the term is default
-    fn require_valid(&self) {
-        debug_assert!(
-            !self.is_default(),
-            "This function can only be called on valid terms, i.e., not default terms"
-        );
-    }
 }
 
 impl<'a> Term<'a> for ATermRef<'a> {
     fn protect(&self) -> ATerm {
-        if self.is_default() {
-            ATerm::default()
-        } else {
-            THREAD_TERM_POOL.with_borrow(|tp| tp.protect(&self.copy()))
-        }
+        THREAD_TERM_POOL.with_borrow(|tp| tp.protect(&self.copy()))
     }
 
     fn arg(&self, index: usize) -> ATermRef<'a> {
-        self.require_valid();
         debug_assert!(
             index < self.get_head_symbol().arity(),
             "arg({index}) is not defined for term {:?}",
@@ -130,30 +104,18 @@ impl<'a> Term<'a> for ATermRef<'a> {
         );
 
         let tp = GLOBAL_TERM_POOL.lock();
-
-        unsafe {
-            // Safe because the term pool is global, and never deletes reachable terms.
-            std::mem::transmute::<ATermRef<'_>, ATermRef<'a>>((*tp).borrow().get_argument(self, index))
-        }
+        (*tp).borrow().get_argument(self, index)
     }
 
     fn arguments(&self) -> ATermArgs<'a> {
-        self.require_valid();
-
         ATermArgs::new(self.copy())
     }
 
     fn copy(&self) -> ATermRef<'a> {
-        ATermRef::from_index(self.index)
-    }
-
-    fn is_default(&self) -> bool {
-        self.index == 0
+        ATermRef::from_index(self.index.into())
     }
 
     fn get_head_symbol(&self) -> SymbolRef<'a> {
-        self.require_valid();
-
         THREAD_TERM_POOL.with_borrow(|tp| tp.get_head_symbol(self))
     }
 
@@ -173,16 +135,14 @@ impl<'a> Term<'a> for ATermRef<'a> {
         TermIterator::new(self.copy())
     }
 
-    fn index(&self) -> usize {
+    fn index(&self) -> NonZero<usize> {
         self.index
     }
 }
 
 impl Markable for ATermRef<'_> {
     fn mark(&self, marker: &mut Marker) {
-        if !self.is_default() {
-            marker.mark(self);
-        }
+        marker.mark(self);
     }
 
     fn contains_term(&self, term: &ATermRef<'_>) -> bool {
@@ -196,17 +156,14 @@ impl Markable for ATermRef<'_> {
 
 impl fmt::Display for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.require_valid();
         write!(f, "{:?}", self)
     }
 }
 
 impl fmt::Debug for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_default() {
-            write!(f, "<default>")?;
-        } else if self.arguments().is_empty() {
-            write!(f, "{:?}", self.get_head_symbol().name())?;
+        if self.arguments().is_empty() {
+            write!(f, "{}", self.get_head_symbol().name())?;
         } else {
             // TODO: This is recursive and will overflow the stack for large terms!
             write!(f, "{:?}(", self.get_head_symbol())?;
@@ -223,9 +180,10 @@ impl fmt::Debug for ATermRef<'_> {
 }
 
 /// The protected version of [ATermRef], mostly derived from it.
-#[derive(Default)]
 pub struct ATerm {
     term: ATermRef<'static>,
+
+    /// The root of the term in the protection set
     root: usize,
 
     // ATerm is not Send because it uses thread-local state for its protection
@@ -265,7 +223,7 @@ impl ATerm {
 
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn new_internal(term: usize, root: usize) -> ATerm {
+    pub(crate) fn new_internal(term: NonZero<usize>, root: usize) -> ATerm {
         ATerm {
             term: ATermRef::from_index(term),
             root,
@@ -281,22 +239,19 @@ impl<'a> Term<'a> for ATerm {
             fn arg(&self, index: usize) -> ATermRef<'a>;
             fn arguments(&self) -> ATermArgs<'a>;
             fn copy(&self) -> ATermRef<'a>;
-            fn is_default(&self) -> bool;
             fn get_head_symbol(&self) -> SymbolRef<'a>;
             fn is_list(&self) -> bool;
             fn is_empty_list(&self) -> bool;
             fn is_int(&self) -> bool;
             fn iter(&self) -> TermIterator<'a>;
-            fn index(&self) -> usize;
+            fn index(&self) -> NonZero<usize>;
         }
     }
 }
 
 impl Markable for ATerm {
     fn mark(&self, marker: &mut Marker) {
-        if !self.is_default() {
-            marker.mark(&self.term);
-        }
+        marker.mark(&self.term);
     }
 
     fn contains_term(&self, term: &ATermRef<'_>) -> bool {
@@ -310,9 +265,7 @@ impl Markable for ATerm {
 
 impl Drop for ATerm {
     fn drop(&mut self) {
-        if !self.is_default() {
-            THREAD_TERM_POOL.with_borrow(|tp| tp.drop(self))
-        }
+        THREAD_TERM_POOL.with_borrow(|tp| tp.drop(self))
     }
 }
 
@@ -367,7 +320,6 @@ impl Ord for ATerm {
 impl Eq for ATerm {}
 
 /// An iterator over the arguments of a term.
-#[derive(Default)]
 pub struct ATermArgs<'a> {
     term: ATermRef<'a>,
     arity: usize,
@@ -375,6 +327,14 @@ pub struct ATermArgs<'a> {
 }
 
 impl<'a> ATermArgs<'a> {
+    pub fn empty() -> ATermArgs<'static> {
+        ATermArgs {
+            term: ATermRef::from_index(unsafe { NonZero::new_unchecked(0) }),
+            arity: 0,
+            index: 0,
+        }
+    }
+
     fn new(term: ATermRef<'a>) -> ATermArgs<'a> {
         let arity = term.get_head_symbol().arity();
         ATermArgs { term, arity, index: 0 }
@@ -448,5 +408,48 @@ impl<'a> Iterator for TermIterator<'a> {
             }
             None => None,
         }
+    }
+}
+
+/// Blanket implementation allowing passing borrowed terms as references.
+impl<'a, T: Term<'a>> Term<'a> for &T {
+    fn protect(&self) -> ATerm {
+        (*self).protect()
+    }
+
+    fn arg(&self, index: usize) -> ATermRef<'a> {
+        (*self).arg(index)
+    }
+
+    fn arguments(&self) -> ATermArgs<'a> {
+        (*self).arguments()
+    }
+
+    fn copy(&self) -> ATermRef<'a> {
+        (*self).copy()
+    }
+
+    fn get_head_symbol(&self) -> SymbolRef<'a> {
+        (*self).get_head_symbol()
+    }
+
+    fn is_list(&self) -> bool {
+        (*self).is_list()
+    }
+
+    fn is_empty_list(&self) -> bool {
+        (*self).is_empty_list()
+    }
+
+    fn is_int(&self) -> bool {
+        (*self).is_int()
+    }
+
+    fn iter(&self) -> TermIterator<'a> {
+        (*self).iter()
+    }
+
+    fn index(&self) -> NonZero<usize> {
+        (*self).index()
     }
 }

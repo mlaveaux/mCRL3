@@ -272,9 +272,13 @@ mod tests {
         let g = Symbol::new("g", 1);
 
         let t = THREAD_TERM_POOL.with_borrow(|tp| {
-            tp.create_term(&f, 
-                &[tp.create_term(&g, &[tp.create_constant(&Symbol::new("a", 0))])                
-                , tp.create_constant(&Symbol::new("b", 0))])
+            tp.create_term(
+                &f,
+                &[
+                    tp.create_term(&g, &[tp.create_constant(&Symbol::new("a", 0))]),
+                    tp.create_constant(&Symbol::new("b", 0)),
+                ],
+            )
         });
 
         assert!(t.get_head_symbol().name() == "f");

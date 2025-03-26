@@ -4,6 +4,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
+use std::num::NonZero;
 use std::ops::Deref;
 
 use delegate::delegate;
@@ -24,13 +25,13 @@ pub trait Symb<'a> {
     fn copy(&self) -> SymbolRef<'a>;
 
     /// Returns the internal index of the symbol.
-    fn index(&self) -> usize;
+    fn index(&self) -> NonZero<usize>;
 }
 
 /// A reference to a function symbol in the term pool.
-#[derive(Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
-    index: usize,
+    index: NonZero<usize>,
     marker: PhantomData<&'a ()>,
 }
 
@@ -39,7 +40,7 @@ const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<us
 
 /// A reference to a function symbol with a known lifetime.
 impl<'a> SymbolRef<'a> {
-    pub(crate) fn from_index(index: usize) -> SymbolRef<'a> {
+    pub(crate) fn from_index(index: NonZero<usize>) -> SymbolRef<'a> {
         SymbolRef {
             index,
             marker: PhantomData,
@@ -49,11 +50,6 @@ impl<'a> SymbolRef<'a> {
     /// Protects the symbol from garbage collection, yielding a `Symbol`.
     pub fn protect(&self) -> Symbol {
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
-    }
-
-    /// Internal function to obtain the internal index of the symbol.
-    pub(crate) fn index(&self) -> usize {
-        self.index
     }
 }
 
@@ -80,7 +76,7 @@ impl<'a> Symb<'a> for SymbolRef<'a> {
         SymbolRef::from_index(self.index)
     }
 
-    fn index(&self) -> usize {
+    fn index(&self) -> NonZero<usize> {
         self.index
     }
 }
@@ -98,7 +94,6 @@ impl fmt::Debug for SymbolRef<'_> {
 }
 
 /// A protected function symbol.
-#[derive(Default)]
 pub struct Symbol {
     symbol: SymbolRef<'static>,
     root: usize,
@@ -113,7 +108,7 @@ impl Symbol {
 
 impl Symbol {
     /// Internal constructor to create a symbol from an index and a root.
-    pub(crate) fn from_index(index: usize, root: usize) -> Symbol {
+    pub(crate) fn from_index(index: NonZero<usize>, root: usize) -> Symbol {
         Self {
             symbol: SymbolRef::from_index(index),
             root,
@@ -137,20 +132,16 @@ impl<'a> Symb<'a> for Symbol {
             fn name(&self) -> StrRef<'a>;
             fn arity(&self) -> usize;
             fn copy(&self) -> SymbolRef<'a>;
-            fn index(&self) -> usize;
+            fn index(&self) -> NonZero<usize>;
         }
     }
 }
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        if self.index != 0 {
-            THREAD_TERM_POOL.with_borrow(|tp| {
-                if self.index != 0 {
-                    tp.drop_symbol(self);
-                }
-            })
-        }
+        THREAD_TERM_POOL.with_borrow(|tp| {
+            tp.drop_symbol(self);
+        })
     }
 }
 

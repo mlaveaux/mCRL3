@@ -4,15 +4,14 @@ use crate::Symbol;
 use crate::SymbolRef;
 
 thread_local! {
-    static DEFAULT_SYMBOLS: DefaultSymbol = DefaultSymbol::new();
-
+    pub(crate) static DEFAULT_SYMBOLS: DefaultSymbol = DefaultSymbol::new();
 }
 
-struct DefaultSymbol {
+pub(crate) struct DefaultSymbol {
     /// These default symbols should not call their drop, will be removed when the protection set goes out of scope
-    int_symbol: ManuallyDrop<Symbol>,
-    empty_list_symbol: ManuallyDrop<Symbol>,
-    list_symbol: ManuallyDrop<Symbol>,
+    pub(crate) int_symbol: ManuallyDrop<Symbol>,
+    pub(crate) empty_list_symbol: ManuallyDrop<Symbol>,
+    pub(crate) list_symbol: ManuallyDrop<Symbol>,
 }
 
 impl DefaultSymbol {

@@ -15,7 +15,7 @@ use crate::ThreadTermPool;
 #[derive(Default)]
 pub struct TermBuilder<I, C> {
     // The stack of terms
-    terms: Vec<ATerm>,
+    terms: Vec<Option<ATerm>>,
     configs: Vec<Config<I, C>>,
 }
 
@@ -43,7 +43,7 @@ where
                     Ok(Yield::Construct(t.get_head_symbol().protect()))
                 }
             },
-            |tp, symbol, args| Ok(tp.create_term(&symbol, args)),
+            |tp, symbol, args| Ok(tp.create_term_iter(&symbol, args)),
         )
         .unwrap()
 }
@@ -84,7 +84,7 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
     ///
     /// However, it can also be that I is some syntax tree from which we want to
     /// construct a term.
-    pub fn evaluate<F, G>(
+    pub fn evaluate<'a, F, G>(
         &mut self,
         tp: &ThreadTermPool,
         input: I,
@@ -93,10 +93,11 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
     ) -> Result<ATerm, Box<dyn Error>>
     where
         F: Fn(&ThreadTermPool, &mut ArgStack<I, C>, I) -> Result<Yield<C>, Box<dyn Error>>,
-        G: Fn(&ThreadTermPool, C, &[ATerm]) -> Result<ATerm, Box<dyn Error>>,
+        // We need impl<Iterator<Item=&ATerm>> here, but that is not possible.
+        G: Fn(&ThreadTermPool, C, std::iter::Flatten<std::slice::Iter<Option<ATerm>>>) -> Result<ATerm, Box<dyn Error>>,
     {
         trace!("Transforming {:?}", input);
-        self.terms.push(ATerm::default());
+        self.terms.push(None);
         self.configs.push(Config::Apply(input, 0));
 
         while let Some(config) = self.configs.pop() {
@@ -115,14 +116,14 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
                                 .insert(top_of_stack, Config::Construct(input, arity, result));
                         }
                         Yield::Term(term) => {
-                            self.terms[result] = term;
+                            self.terms[result] = Some(term);
                         }
                     }
                 }
                 Config::Construct(input, arity, result) => {
-                    let arguments = &self.terms[self.terms.len() - arity..];
+                    let arguments = self.terms[self.terms.len() - arity..].iter().flatten();
 
-                    self.terms[result] = construct(tp, input, arguments)?;
+                    self.terms[result] = Some(construct(tp, input, arguments)?);
 
                     // Remove elements from the stack.
                     self.terms.drain(self.terms.len() - arity..);
@@ -134,7 +135,11 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
 
         debug_assert!(self.terms.len() == 1, "Expect exactly one term on the result stack");
 
-        Ok(self.terms.pop().expect("There should be at last one result"))
+        Ok(self
+            .terms
+            .pop()
+            .expect("There should be at last one result")
+            .expect("The result should be Some"))
     }
 }
 
@@ -150,13 +155,13 @@ pub enum Yield<C> {
 
 /// This struct defines a local argument stack on the global stack.
 pub struct ArgStack<'a, I, C> {
-    terms: &'a mut Vec<ATerm>,
+    terms: &'a mut Vec<Option<ATerm>>,
     configs: &'a mut Vec<Config<I, C>>,
     top_of_stack: usize,
 }
 
 impl<'a, I, C> ArgStack<'a, I, C> {
-    fn new(terms: &'a mut Vec<ATerm>, configs: &'a mut Vec<Config<I, C>>) -> ArgStack<'a, I, C> {
+    fn new(terms: &'a mut Vec<Option<ATerm>>, configs: &'a mut Vec<Config<I, C>>) -> ArgStack<'a, I, C> {
         let top_of_stack = terms.len();
         ArgStack {
             terms,
@@ -173,7 +178,7 @@ impl<'a, I, C> ArgStack<'a, I, C> {
     /// Adds the term to the argument stack, will construct construct(C, args...) with the transformer applied to arguments.
     pub fn push(&mut self, input: I) {
         self.configs.push(Config::Apply(input, self.terms.len()));
-        self.terms.push(ATerm::default());
+        self.terms.push(None);
     }
 }
 
@@ -225,7 +230,7 @@ pub fn random_term(
         }))
     });
 
-    let mut result = ATerm::default();
+    let mut result = None;
     for _ in 0..iterations {
         let (symbol, arity) = symbols.iter().choose(rng).unwrap();
 
@@ -235,11 +240,13 @@ pub fn random_term(
         }
 
         let symbol = Symbol::new(symbol, *arity);
-        result = ATerm::with_args(&symbol, &arguments);
+        let term = ATerm::with_args(&symbol, &arguments);
 
         // Make this term available as another subterm that can be used.
-        subterms.insert(result.clone());
+        subterms.insert(term.clone());
+
+        result = Some(term);
     }
 
-    result
+    result.expect("At least one iteration was performed")
 }

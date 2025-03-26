@@ -143,7 +143,7 @@ impl TermStack {
         {
             let mut write = stack.terms.write();
             write.clear();
-            write.push(DataExpressionRef::default());
+            write.push(None);
         }
 
         InnermostStack::integrate(
@@ -169,18 +169,16 @@ impl TermStack {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::with_iter(&symbol.copy(), arguments).into()
+                            DataApplication::with_iter(&symbol.copy(), arguments.iter().flatten()).into()
                         };
 
                         // Add the term on the stack.
                         write_terms.drain(length - arity..);
-                        let t = write_terms.protect(&term);
-                        write_terms[index] = t.into();
+                        write_terms[index] = Some(write_terms.protect(&term).into());
                     }
                     Config::Term(term, index) => {
                         let mut write_terms = stack.terms.write();
-                        let t = write_terms.protect(&term);
-                        write_terms[index] = t.into();
+                        write_terms[index] = Some(write_terms.protect(&term).into());
                     }
                     Config::Rewrite(_) => {
                         unreachable!("This case should not happen");
@@ -204,6 +202,7 @@ impl TermStack {
         write_terms
             .pop()
             .expect("The result should be the last element on the stack")
+            .expect("The result should be Some")
             .protect()
     }
 

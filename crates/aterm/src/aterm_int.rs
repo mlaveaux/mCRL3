@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::ops::Deref;
+use std::num::NonZero;
 
 use delegate::delegate;
 
@@ -36,7 +37,7 @@ mod inner {
             })
         }
 
-        pub fn value(&self) -> usize {
+        pub fn value(&self) -> NonZero<usize> {
             self.term.index()
         }
     }

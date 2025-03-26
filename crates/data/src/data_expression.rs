@@ -33,7 +33,7 @@ use crate::is_data_variable;
 #[mcrl3_derive_terms]
 mod inner {
 
-    use std::iter;
+    use std::{iter, num::NonZero};
 
     use mcrl3_aterm::ATermStringRef;
 
@@ -79,7 +79,7 @@ mod inner {
                 result.next();
                 result
             } else if is_data_function_symbol(&self.term) {
-                Default::default()
+                ATermArgs::empty()
             } else {
                 panic!("data_arguments not implemented for {}", self);
             }
@@ -146,17 +146,13 @@ mod inner {
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
         pub fn operation_id(&self) -> usize {
-            self.term.index()
+            self.term.index().into()
         }
     }
 
     impl fmt::Display for DataFunctionSymbol {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            if !self.is_default() {
-                write!(f, "{}", self.name())
-            } else {
-                write!(f, "<default>")
-            }
+            write!(f, "{}", self.name())
         }
     }
 
@@ -217,13 +213,35 @@ mod inner {
     }
 
     impl DataApplication {
+
+        /// Create a new data application with the given head and arguments.
         #[mcrl3_ignore]
-        pub fn with_iter<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {            
+        pub fn with_args<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication 
+        {            
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 // TODO: Perhaps not the must optimal.
                 let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
                 let term = ATerm::with_iter(
                     ds.get_data_application_symbol(arguments.len() + 1),
+                    args,
+                );
+
+                DataApplication { term }
+            })
+        }
+
+        /// Create a new data application with the given head and arguments.
+        #[mcrl3_ignore]
+        pub fn with_iter<'a, T, I>(head: &impl Term<'a>, arguments: I) -> DataApplication 
+            where
+                I: Iterator<Item = T>,
+                T: Term<'a>,
+        {            
+            DATA_SYMBOLS.with_borrow_mut(|ds| {
+                // TODO: Perhaps not the must optimal.
+                let args = iter::once(head.copy()).chain(arguments.map(|t| t.copy()));
+                let term = ATerm::with_iter(
+                    ds.get_data_application_symbol(1),
                     args,
                 );
 
@@ -341,7 +359,7 @@ mod tests {
 
         // Check printing of data applications.
         let f = DataFunctionSymbol::new("f");
-        let appl = DataApplication::with_iter(&f, &[a]);
+        let appl = DataApplication::with_args(&f, &[a]);
         assert_eq!("f(a)", format!("{}", appl));
     }
 
@@ -349,7 +367,7 @@ mod tests {
     fn test_recognizers() {
         let a = DataFunctionSymbol::new("a");
         let f = DataFunctionSymbol::new("f");
-        let appl = DataApplication::with_iter(&f, &[a]);
+        let appl = DataApplication::with_args(&f, &[a]);
 
         let term: ATerm = appl.into();
         assert!(is_data_application(&term));

@@ -2,10 +2,8 @@ use std::fmt;
 
 use itertools::Itertools;
 
-use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Protector;
-use mcrl3_aterm::Term;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 
@@ -22,14 +20,14 @@ use log::trace;
 #[derive(Default)]
 pub struct InnermostStack {
     pub configs: Protected<Vec<Config>>,
-    pub terms: Protected<Vec<DataExpressionRef<'static>>>,
+    pub terms: Protected<Vec<Option<DataExpressionRef<'static>>>>,
 }
 
 impl InnermostStack {
     /// Updates the InnermostStack to integrate the rhs_stack instructions.
     pub fn integrate(
         write_configs: &mut Protector<Vec<Config>>,
-        write_terms: &mut Protector<Vec<DataExpressionRef<'static>>>,
+        write_terms: &mut Protector<Vec<Option<DataExpressionRef<'static>>>>,
         rhs_stack: &TermStack,
         term: &DataExpressionRef<'_>,
         result_index: usize,
@@ -38,7 +36,7 @@ impl InnermostStack {
         let top_of_stack = write_terms.len();
         write_terms.reserve(rhs_stack.stack_size - 1); // We already reserved space for the result.
         for _ in 0..rhs_stack.stack_size - 1 {
-            write_terms.push(Default::default());
+            write_terms.push(None);
         }
 
         let mut first = true;
@@ -82,13 +80,11 @@ impl InnermostStack {
         if rhs_stack.stack_size == 1 && rhs_stack.variables.len() == 1 {
             // This is a special case where we place the result on the correct position immediately.
             // The right hand side is only a variable
-            let t: ATermRef<'_> = write_terms.protect(&term.get_position(&rhs_stack.variables[0].0));
-            write_terms[result_index] = t.into();
+            write_terms[result_index] = Some(write_terms.protect(&term.get_position(&rhs_stack.variables[0].0)).into());
         } else {
             for (position, index) in &rhs_stack.variables {
                 // Add the positions to the stack.
-                let t = write_terms.protect(&term.get_position(position));
-                write_terms[top_of_stack + index - 1] = t.into();
+                write_terms[top_of_stack + index - 1] = Some(write_terms.protect(&term.get_position(position)).into());
             }
         }
     }
@@ -107,24 +103,23 @@ impl InnermostStack {
     /// Indicate that the term must be rewritten and its result must be placed at the given index.
     pub fn add_rewrite(
         write_configs: &mut Protector<Vec<Config>>,
-        write_terms: &mut Protector<Vec<DataExpressionRef<'static>>>,
+        write_terms: &mut Protector<Vec<Option<DataExpressionRef<'static>>>>,
         term: DataExpressionRef<'_>,
         index: usize,
     ) {
         let term = write_terms.protect(&term);
         write_configs.push(Config::Rewrite(index));
-        write_terms.push(term.into());
+        write_terms.push(Some(term.into()));
     }
 }
 
 impl fmt::Display for InnermostStack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Terms: [")?;
-        for (i, term) in self.terms.read().iter().enumerate() {
-            if !term.is_default() {
-                writeln!(f, "{}\t{}", i, term)?;
-            } else {
-                writeln!(f, "{}\t<default>", i)?;
+        for (i, entry) in self.terms.read().iter().enumerate() {
+            match entry {
+                Some(term) => writeln!(f, "{}\t{}", i, term)?,
+                None => writeln!(f, "{}\t<default>", i)?,
             }
         }
         writeln!(f, "]")?;

@@ -77,8 +77,6 @@ impl InnermostRewriter {
         automaton: &SetAutomaton<AnnouncementInnermost>,
         input_term: DataExpression,
     ) -> DataExpression {
-        debug_assert!(!input_term.is_default(), "Cannot rewrite the default term");
-
         stats.recursions += 1;
         {
             let mut write_terms = stack.terms.write();
@@ -87,7 +85,7 @@ impl InnermostRewriter {
             // Push the result term to the stack.
             let top_of_stack = write_terms.len();
             write_configs.push(Config::Return());
-            write_terms.push(DataExpressionRef::default());
+            write_terms.push(None);
             InnermostStack::add_rewrite(&mut write_configs, &mut write_terms, input_term.copy(), top_of_stack);
         }
 
@@ -99,7 +97,7 @@ impl InnermostRewriter {
                 match config {
                     Config::Rewrite(result) => {
                         let mut write_terms = stack.terms.write();
-                        let term = write_terms.pop().unwrap();
+                        let term = write_terms.pop().unwrap().unwrap();
 
                         let symbol = term.data_function_symbol();
                         let arguments = term.data_arguments();
@@ -132,7 +130,7 @@ impl InnermostRewriter {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::with_iter(&symbol, arguments).into()
+                            DataApplication::with_iter(&symbol, arguments.iter().flatten()).into()
                         };
 
                         // Remove the arguments from the stack.
@@ -164,8 +162,7 @@ impl InnermostRewriter {
                             None => {
                                 // Add the term on the stack.
                                 let mut write_terms = stack.terms.write();
-                                let t = write_terms.protect(&term);
-                                write_terms[index] = t.into();
+                                write_terms[index] = Some(write_terms.protect(&term).into());
                             }
                         }
                     },
@@ -178,25 +175,24 @@ impl InnermostRewriter {
                         return write_terms
                             .pop()
                             .expect("The result should be the last element on the stack")
+                            .expect("The result should be Some")
                             .protect();
                     }
                 }
 
                 let read_configs = stack.configs.read();
-                for (index, term) in stack.terms.read().iter().enumerate() {
-                    if term.is_default() {
-                        debug_assert!(
-                            read_configs.iter().any(|x| {
-                                match x {
-                                    Config::Construct(_, _, result) => index == *result,
-                                    Config::Rewrite(result) => index == *result,
-                                    Config::Term(_, result) => index == *result,
-                                    Config::Return() => true,
-                                }
-                            }),
-                            "The default term at index {index} is not a result of any operation."
-                        );
-                    }
+                for (index, term) in stack.terms.read().iter().flatten().enumerate() {
+                    debug_assert!(
+                        read_configs.iter().any(|x| {
+                            match x {
+                                Config::Construct(_, _, result) => index == *result,
+                                Config::Rewrite(result) => index == *result,
+                                Config::Term(_, result) => index == *result,
+                                Config::Return() => true,
+                            }
+                        }),
+                        "The default term at index {index} is not a result of any operation."
+                    );
                 }
             }
         }

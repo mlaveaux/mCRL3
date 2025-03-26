@@ -227,7 +227,9 @@ impl BigNatural {
         }
         debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
     }
-
+    
+    /// Calculate <carry,result>:=n1-n2-carry. The carry can be either 0 or 1, both
+    /// at the input and the output. If the carry is 1, this indicated that 1 must be subtracted.
     fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
         debug_assert!(*carry <= 1);
         let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
@@ -240,7 +242,9 @@ impl BigNatural {
         };
         result
     }
-
+  
+    /// Calculate <carry,result>:=n1*n2+carry, where the lower bits of the calculation
+    // are stored in the result, and the higher bits are stored in carry.
     fn multiply_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
         // Split numbers into high and low parts to avoid overflow
         let bits = usize::BITS as usize / 2;

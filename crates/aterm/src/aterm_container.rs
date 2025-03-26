@@ -160,6 +160,32 @@ impl<T: Markable> Markable for GcMutex<T> {
     }
 }
 
+impl<T: Markable> Markable for Option<T> {
+    fn mark(&self, marker: &mut Marker) {
+        if let Some(value) = self {
+            value.mark(marker);
+        }
+    }
+
+    fn contains_term(&self, term: &ATermRef<'_>) -> bool {
+        if let Some(value) = self {
+            value.contains_term(term)
+        } else {
+            false
+        }
+    }
+
+    fn len(&self) -> usize {
+        if let Some(value) = self {
+            value.len()
+        } else {
+            0
+        }
+    }
+}
+
+// Vec<T> -> Vec<U>
+
 /// This is a helper struct used by TermContainer to protected terms that are
 /// inserted into the container before the guard is dropped.
 ///
@@ -232,6 +258,8 @@ impl<C: Markable> Drop for Protector<'_, C> {
         }
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {

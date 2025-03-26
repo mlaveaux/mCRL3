@@ -36,7 +36,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         // Add the expected derive macros to the input struct.
                         object
                             .attrs
-                            .push(parse_quote!(#[derive(Clone, Default, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]));
+                            .push(parse_quote!(#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]));
 
                         // ALL structs in this module must contain the term.
                         assert!(
@@ -115,18 +115,17 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn arg(&self, index: usize) -> ATermRef<'a>;
                                         fn arguments(&self) -> ATermArgs<'a>;
                                         fn copy(&self) -> ATermRef<'a>;
-                                        fn is_default(&self) -> bool;
                                         fn get_head_symbol(&self) -> SymbolRef<'a>;
                                         fn is_list(&self) -> bool;
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
                                         fn iter(&self) -> TermIterator<'a>;
-                                        fn index(&self) -> usize;
+                                        fn index(&self) -> NonZero<usize>;
                                     }
                                 }
                             }
 
-                            #[derive(Default, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+                            #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref<'a> {
                                 pub(crate) term: ATermRef<'a>
                             }
@@ -163,13 +162,12 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn arg(&self, index: usize) -> ATermRef<'a>;
                                         fn arguments(&self) -> ATermArgs<'a>;
                                         fn copy(&self) -> ATermRef<'a>;
-                                        fn is_default(&self) -> bool;
                                         fn get_head_symbol(&self) -> SymbolRef<'a>;
                                         fn is_list(&self) -> bool;
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
                                         fn iter(&self) -> TermIterator<'a>;
-                                        fn index(&self) -> usize;
+                                        fn index(&self) -> NonZero<usize>;
                                     }
                                 }
                             }

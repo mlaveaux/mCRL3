@@ -1,5 +1,6 @@
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::num::NonZero;
 
 use hashbrown::Equivalent;
 
@@ -22,7 +23,7 @@ impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
         let mut symbols = IndexedSet::new();
-        symbols.insert(SharedSymbol::new("<default>>", 0));
+        symbols.insert(SharedSymbol::new("<default>", 0));
 
         Self { symbols }
     }
@@ -31,7 +32,7 @@ impl SymbolPool {
     pub fn create<'a, N, P>(&mut self, name: N, arity: usize, protect: P) -> Symbol
     where
         N: Into<String> + AsRef<str>,
-        P: FnOnce(usize) -> Symbol,
+        P: FnOnce(NonZero<usize>) -> Symbol,
     {
         // Get or create symbol index
         let (index, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { 
@@ -40,17 +41,17 @@ impl SymbolPool {
         });
 
         // Return cloned symbol
-        protect(index)
+        protect(NonZero::new(index).unwrap())
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> &'a str {
-        self.symbols.get(symbol.index()).unwrap().name()
+        self.symbols.get(symbol.index().into()).unwrap().name()
     }
 
     /// Returns the arity of the function symbol
     pub fn symbol_arity<'a>(&self, symbol: &impl Symb<'a>) -> usize {
-        self.symbols.get(symbol.index()).unwrap().arity()
+        self.symbols.get(symbol.index().into()).unwrap().arity()
     }
 
     /// Returns the number of symbols in the pool.
