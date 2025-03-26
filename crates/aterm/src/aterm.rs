@@ -75,7 +75,7 @@ unsafe impl Sync for ATermRef<'_> {}
 
 impl ATermRef<'_> {
     /// Creates a new term reference from the given index.
-    pub(crate) fn from_index(index: NonZero<usize>) -> Self {
+    pub(crate) unsafe fn from_index(index: NonZero<usize>) -> Self {
         ATermRef {
             index,
             marker: PhantomData,
@@ -112,7 +112,7 @@ impl<'a> Term<'a> for ATermRef<'a> {
     }
 
     fn copy(&self) -> ATermRef<'a> {
-        ATermRef::from_index(self.index.into())
+        unsafe { ATermRef::from_index(self.index.into()) }
     }
 
     fn get_head_symbol(&self) -> SymbolRef<'a> {
@@ -223,11 +223,13 @@ impl ATerm {
 
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn new_internal(term: NonZero<usize>, root: usize) -> ATerm {
-        ATerm {
-            term: ATermRef::from_index(term),
-            root,
-            _marker: PhantomData,
+    pub(crate) fn from_index(term: NonZero<usize>, root: usize) -> ATerm {
+        unsafe {
+            ATerm {
+                term: ATermRef::from_index(term),
+                root,
+                _marker: PhantomData,
+            }
         }
     }
 }
@@ -321,7 +323,7 @@ impl Eq for ATerm {}
 
 /// An iterator over the arguments of a term.
 pub struct ATermArgs<'a> {
-    term: ATermRef<'a>,
+    term: Option<ATermRef<'a>>,
     arity: usize,
     index: usize,
 }
@@ -329,7 +331,7 @@ pub struct ATermArgs<'a> {
 impl<'a> ATermArgs<'a> {
     pub fn empty() -> ATermArgs<'static> {
         ATermArgs {
-            term: ATermRef::from_index(unsafe { NonZero::new_unchecked(0) }),
+            term: None,
             arity: 0,
             index: 0,
         }
@@ -337,7 +339,11 @@ impl<'a> ATermArgs<'a> {
 
     fn new(term: ATermRef<'a>) -> ATermArgs<'a> {
         let arity = term.get_head_symbol().arity();
-        ATermArgs { term, arity, index: 0 }
+        ATermArgs {
+            term: Some(term),
+            arity,
+            index: 0,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -350,7 +356,7 @@ impl<'a> Iterator for ATermArgs<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
-            let res = Some(self.term.arg(self.index));
+            let res = Some(self.term.as_ref().unwrap().arg(self.index));
 
             self.index += 1;
             res
@@ -363,7 +369,7 @@ impl<'a> Iterator for ATermArgs<'a> {
 impl DoubleEndedIterator for ATermArgs<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
-            let res = Some(self.term.arg(self.arity - 1));
+            let res = Some(self.term.as_ref().unwrap().arg(self.arity - 1));
 
             self.arity -= 1;
             res

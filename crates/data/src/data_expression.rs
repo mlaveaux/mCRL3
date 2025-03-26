@@ -231,17 +231,20 @@ mod inner {
         }
 
         /// Create a new data application with the given head and arguments.
+        /// 
+        /// arity must be equal to the number of arguments + 1.
         #[mcrl3_ignore]
         pub fn with_iter<'a, T, I>(head: &impl Term<'a>, arguments: I) -> DataApplication 
             where
-                I: Iterator<Item = T>,
+                I: Iterator<Item = T> + Clone,
                 T: Term<'a>,
-        {            
+        {      
+            let arity = arguments.clone().count() + 1;
+
             DATA_SYMBOLS.with_borrow_mut(|ds| {
-                // TODO: Perhaps not the must optimal.
                 let args = iter::once(head.copy()).chain(arguments.map(|t| t.copy()));
                 let term = ATerm::with_iter(
-                    ds.get_data_application_symbol(1),
+                    ds.get_data_application_symbol(arity),
                     args,
                 );
 

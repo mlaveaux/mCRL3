@@ -37,8 +37,9 @@ mod inner {
             })
         }
 
-        pub fn value(&self) -> NonZero<usize> {
-            self.term.index()
+        pub fn value(&self) -> usize {
+            let tmp: usize = self.term.index().into();
+            tmp - 1
         }
     }
 }

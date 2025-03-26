@@ -121,7 +121,9 @@ impl GlobalTermPool {
     {
         // Fill the arguments in the existing 
         self.tmp_arguments.clear();
-        self.tmp_arguments.push(ATermRef::from_index(NonZero::new(value).unwrap()));
+        unsafe {
+            self.tmp_arguments.push(ATermRef::from_index(NonZero::new(value + 1).unwrap()));
+        }
 
         let shared_term = DEFAULT_SYMBOLS.with(|ds| {
             SharedTermLookup {
@@ -143,7 +145,9 @@ impl GlobalTermPool {
     {
         self.tmp_arguments.clear();
         for arg in args {
-            self.tmp_arguments.push(ATermRef::from_index(arg.index()));
+            unsafe {
+                self.tmp_arguments.push(ATermRef::from_index(arg.index()));
+            }
         }
 
         let shared_term = SharedTermLookup {
@@ -168,7 +172,9 @@ impl GlobalTermPool {
     {
         self.tmp_arguments.clear();
         for arg in args {
-            self.tmp_arguments.push(ATermRef::from_index(arg.index()));
+            unsafe {
+                self.tmp_arguments.push(ATermRef::from_index(arg.index()));
+            }
         }
 
         let shared_term = SharedTermLookup {
@@ -245,7 +251,9 @@ impl GlobalTermPool {
 
                 for (term, _) in pool.protection_set.iter() {
                     // Remove all terms that are not protected
-                    ATermRef::from_index(*term).mark(&mut marker);
+                    unsafe {
+                        ATermRef::from_index(*term).mark(&mut marker);
+                    }
                 }
 
                 for (container, _) in pool.container_protection_set.iter() {    
@@ -384,7 +392,7 @@ impl Clone for SharedTerm {
     fn clone(&self) -> Self {
         SharedTerm {
             symbol: SymbolRef::from_index(self.symbol.index()),
-            arguments: self.arguments.iter().map(|x| ATermRef::from_index(x.index())).collect(),
+            arguments: self.arguments.iter().map(|x| unsafe { ATermRef::from_index(x.index()) }).collect(),
         }
     }
 }
@@ -410,7 +418,7 @@ impl From<&SharedTermLookup<'_>> for SharedTerm {
     fn from(lookup: &SharedTermLookup<'_>) -> Self {
         SharedTerm {
             symbol: SymbolRef::from_index(lookup.symbol.index()),
-            arguments: lookup.arguments.iter().map(|x| ATermRef::from_index(x.index())).collect(),
+            arguments: lookup.arguments.iter().map(|x| unsafe { ATermRef::from_index(x.index()) }).collect(),
         }
     }
 }

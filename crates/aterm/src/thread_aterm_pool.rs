@@ -43,7 +43,10 @@ impl ThreadTermPool {
         let protection_set = (*tp).borrow_mut().register_thread_term_pool();
 
         // Arbitrary value to trigger garbage collection
-        Self { protection_set, garbage_collection_counter: Cell::new(1000) }
+        Self {
+            protection_set,
+            garbage_collection_counter: Cell::new(1000),
+        }
     }
 
     /// Creates a term without arguments.
@@ -52,8 +55,9 @@ impl ThreadTermPool {
 
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
-        tp.borrow_mut()
-            .create_term(symbol, &empty_args, |tp, index, inserted| self.protect_inserted(tp, &ATermRef::from_index(index), inserted))
+        tp.borrow_mut().create_term(symbol, &empty_args, |tp, index, inserted| {
+            self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
+        })
     }
 
     /// Create a term with the given arguments
@@ -61,15 +65,17 @@ impl ThreadTermPool {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
-            .create_term(symbol, arguments, |tp, index, inserted| self.protect_inserted(tp, &ATermRef::from_index(index), inserted))
+            .create_term(symbol, arguments, |tp, index, inserted| {
+                self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
+            })
     }
 
     /// Create a term with the given index.
     pub fn create_int(&self, value: usize) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp)
-            .borrow_mut()
-            .create_int(value, |tp, index, inserted| self.protect_inserted(tp, &ATermRef::from_index(index), inserted))
+        (*tp).borrow_mut().create_int(value, |tp, index, inserted| {
+            self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
+        })
     }
 
     /// Create a term with the given arguments given by the iterator.
@@ -81,7 +87,9 @@ impl ThreadTermPool {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
-            .create_term_iter(symbol, iter, |tp, index, inserted| self.protect_inserted(tp, &ATermRef::from_index(index), inserted))
+            .create_term_iter(symbol, iter, |tp, index, inserted| {
+                self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
+            })
     }
 
     /// Create a function symbol
@@ -123,7 +131,7 @@ impl ThreadTermPool {
         let root = self.protection_set.lock().protection_set.protect(term.index());
 
         // Return the protected term
-        ATerm::new_internal(term.index(), root)
+        ATerm::from_index(term.index(), root)
     }
 
     /// Protects a term from garbage collection after it was potentially inserted
@@ -144,8 +152,8 @@ impl ThreadTermPool {
             self.garbage_collection_counter.set(value);
         }
 
-        // Return the protected term
-        ATerm::new_internal(term.index(), root)
+        // Return the protected terms
+        ATerm::from_index(term.index(), root)
     }
 
     /// Unprotects a term from this thread's protection set.
@@ -213,7 +221,10 @@ impl ThreadTermPool {
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
         info!("Dropping thread term pool with index {}", self.index());
-        GLOBAL_TERM_POOL.lock().borrow_mut().deregister_thread_pool(self.index());
+        GLOBAL_TERM_POOL
+            .lock()
+            .borrow_mut()
+            .deregister_thread_pool(self.index());
     }
 }
 
