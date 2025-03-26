@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+# The `mcrl3_miri` feature is used to run miri tests.
+mcrl3_miri = []
+# The `mcrl3_strict` feature is used to enable the strict mode.
+mcrl3_strict = ["parking_lot/deadlock_detection"]
+
 [dependencies]
 mcrl3_utilities.workspace = true
 mcrl3_sharedmutex.workspace = true
