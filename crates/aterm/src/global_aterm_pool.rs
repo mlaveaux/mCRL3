@@ -432,12 +432,6 @@ impl Marker<'_> {
     }
 }
 
-impl Drop for SharedTermProtection {
-    fn drop(&mut self) {
-        assert!(self.protection_set.is_empty(), "Protection set must be empty on drop");
-    }
-}
-
 /// The underlying type of terms that are actually shared.
 #[derive(Debug, Eq, PartialEq)]
 pub struct SharedTerm {

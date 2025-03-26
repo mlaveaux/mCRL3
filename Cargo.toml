@@ -10,9 +10,6 @@ version = "0.1.0"
 [profile.bench]
 debug = "line-tables-only"
 
-# Abort on panic, in general unwinding is not that useful for us.
-panic = "abort"
-
 [workspace]
 resolver = "2"
 members = [
