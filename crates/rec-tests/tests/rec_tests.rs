@@ -11,6 +11,7 @@ use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SabreRewriter;
 use mcrl3_sabre::utilities::to_untyped_data_expression;
 
+#[cfg_attr(miri, ignore)]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr10.txt") ; "benchexpr10")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchsym10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchsym10.txt") ; "benchsym10")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort10.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort10.txt") ; "bubblesort10")]
@@ -79,6 +80,8 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
     }
 }
 
+// These tests are too slow without optimisations.
+#[cfg_attr(miri, ignore)]
 #[cfg(not(debug_assertions))]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr20.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr20.txt") ; "benchexpr20")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchsym20.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchsym20.txt") ; "benchsym20")]
@@ -95,6 +98,7 @@ fn rec_test_release(rec_files: Vec<&str>, expected_result: &str) {
 }
 
 // These tests use more stack memory than is available on Windows.
+#[cfg_attr(miri, ignore)]
 #[cfg(all(unix, not(debug_assertions)))]
 #[ignore]
 #[test_case(vec![include_str!("../../../examples/REC/rec/sieve1000.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve1000.txt") ; "sieve1000")]

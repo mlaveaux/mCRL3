@@ -11,18 +11,20 @@
 //! pool performs garbage collection to remove terms that are no longer
 //! reachable. This is kept track of by the thread-local aterm pool.
 
+#![cfg_attr(feature = "mcrl3_miri", feature(reentrant_lock))]
+
+mod aterm;
 mod aterm_builder;
 mod aterm_container;
 mod aterm_int;
 mod aterm_list;
 mod aterm_string;
-mod aterm;
 mod gc_mutex;
 mod global_aterm_pool;
 mod parse_term;
 mod str_ref;
-mod symbol_pool;
 mod symbol;
+mod symbol_pool;
 mod thread_aterm_pool;
 
 pub use aterm::*;
