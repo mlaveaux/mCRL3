@@ -7,6 +7,10 @@ use std::ops::Rem;
 use std::ops::Sub;
 use std::str::FromStr;
 
+use crate::add_single_number;
+use crate::divide_single_number;
+use crate::multiply_single_number;
+
 /// A big natural number implementation that stores numbers as a vector of machine-sized words.
 /// Numbers are stored with the least significant word first, and there are no trailing zeros.
 #[derive(Debug, Clone, Eq, Hash)]
@@ -32,15 +36,6 @@ impl BigNatural {
         self.digits.is_empty()
     }
 
-    /// Returns true if this number equals the given machine-sized number.
-    pub fn is_number(&self, n: usize) -> bool {
-        if n == 0 {
-            self.digits.is_empty()
-        } else {
-            self.digits.len() == 1 && self.digits[0] == n
-        }
-    }
-
     /// Sets the number to zero.
     pub fn zero(&mut self) {
         self.digits.clear();
@@ -49,24 +44,6 @@ impl BigNatural {
     /// Removes trailing zeros from the internal representation.
     fn is_well_defined(&self) {
         debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
-    }
-
-    // Helper functions for arithmetic operations
-    fn add_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
-        debug_assert!(*carry <= 1);
-
-        // Use wrapping operations to handle overflow correctly
-        let result = n1.wrapping_add(n2).wrapping_add(*carry);
-        // Set carry to 1 if we had an overflow, 0 otherwise
-        *carry = if *carry == 0 {
-            if result < n1 { 1 } else { 0 } // Overflow if result wrapped around
-        } else if result > n1 {
-            0
-        } else {
-            1
-        };
-
-        result
     }
 
     /// Divides this number by another, storing the result in `quotient` and remainder in `remainder`.
@@ -148,52 +125,48 @@ impl BigNatural {
         let mut carry = 0;
         for i in 0..self.digits.len() {
             let n2 = other.digits.get(i).copied().unwrap_or(0);
-            self.digits[i] = Self::subtract_single_number(self.digits[i], n2, &mut carry);
+            self.digits[i] = multiply_single_number(self.digits[i], n2, &mut carry);
         }
 
         assert!(carry == 0, "Subtraction overflow");
         self.normalize();
     }
 
-    /// Multiplies this number by another.
-    pub fn multiply(&mut self, other: &Self) {
-        if self.is_zero() || other.is_zero() {
-            self.zero();
-            return;
+    /// Multiplies this number by another, storing the result in `result` and using a calculation buffer.
+    /// Initially, `result` must be zero. At the end, `result` equals `self * other + result`.
+    /// The `calculation_buffer` does not need to be initialized.
+    pub fn multiply(&self, other: &Self, result: &mut Self, calculation_buffer: &mut Self) {
+        self.is_well_defined();
+        other.is_well_defined();
+        result.is_well_defined();
+
+        let mut offset = 0;
+
+        for &digit in &other.digits {
+            // Clear the calculation buffer and prepare it for the current offset.
+            calculation_buffer.zero();
+            calculation_buffer.digits.resize(offset, 0);
+
+            // Copy the digits of `self` into the calculation buffer.
+            calculation_buffer.digits.extend_from_slice(&self.digits);
+
+            // Multiply the calculation buffer by the current digit.
+            calculation_buffer.multiply_by(digit, 0);
+
+            // Add the calculation buffer to the result.
+            result.add_impl(calculation_buffer);
+
+            offset += 1;
         }
 
-        let mut result = vec![0; self.digits.len() + other.digits.len()];
-
-        for (i, &n1) in self.digits.iter().enumerate() {
-            let mut carry = 0;
-            for (j, &n2) in other.digits.iter().enumerate() {
-                let mut local_carry = 0;
-                let prod = Self::multiply_single_number(n1, n2, &mut carry);
-                result[i + j] = Self::add_single_number(result[i + j], prod, &mut local_carry);
-
-                let mut k = 1;
-                let mut c = local_carry;
-                while c > 0 {
-                    result[i + j + k] = Self::add_single_number(result[i + j + k], c, &mut local_carry);
-                    c = local_carry;
-                    k += 1;
-                }
-            }
-            if carry > 0 {
-                result[i + other.digits.len()] =
-                    Self::add_single_number(result[i + other.digits.len()], carry, &mut carry);
-            }
-        }
-
-        self.digits = result;
-        self.normalize();
+        result.is_well_defined();
     }
 
     /// Divide the current number by n. If there is a remainder return it.
     pub fn divide_by(&mut self, n: usize) -> usize {
         let mut remainder = 0;
         for digit in self.digits.iter_mut().rev() {
-            let (quotient, new_remainder) = Self::divide_single_number(*digit, n, remainder);
+            let (quotient, new_remainder) = divide_single_number(*digit, n, remainder);
             *digit = quotient;
             remainder = new_remainder;
         }
@@ -212,7 +185,7 @@ impl BigNatural {
         // Add corresponding digits
         for i in 0..max_len {
             let n2 = other.digits.get(i).copied().unwrap_or(0);
-            self.digits[i] = Self::add_single_number(self.digits[i], n2, &mut carry);
+            self.digits[i] = add_single_number(self.digits[i], n2, &mut carry);
         }
 
         if carry > 0 {
@@ -227,92 +200,11 @@ impl BigNatural {
         }
         debug_assert!(self.digits.is_empty() || *self.digits.last().unwrap() != 0);
     }
-    
-    /// Calculate <carry,result>:=n1-n2-carry. The carry can be either 0 or 1, both
-    /// at the input and the output. If the carry is 1, this indicated that 1 must be subtracted.
-    fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
-        debug_assert!(*carry <= 1);
-        let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
-        *carry = if *carry == 0 {
-            if result > n1 { 1 } else { 0 }
-        } else if result < n1 {
-            0
-        } else {
-            1
-        };
-        result
-    }
-  
-    /// Calculate <carry,result>:=n1*n2+carry, where the lower bits of the calculation
-    // are stored in the result, and the higher bits are stored in carry.
-    fn multiply_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
-        // Split numbers into high and low parts to avoid overflow
-        let bits = usize::BITS as usize / 2;
-        let mask = (1 << bits) - 1;
-
-        // Extract high and low parts of both numbers
-        let n1_low = n1 & mask;
-        let n1_high = n1 >> bits;
-        let n2_low = n2 & mask;
-        let n2_high = n2 >> bits;
-
-        // Multiply parts and accumulate carries
-        let mut local_carry = 0;
-        // First multiply low parts
-        let mut result = Self::add_single_number(n1_low * n2_low, *carry, &mut local_carry);
-        let mut cumulative_carry = local_carry;
-
-        // Add product of n1_high * n2_low shifted left
-        local_carry = 0;
-        result = Self::add_single_number(result, (n1_high * n2_low) << bits, &mut local_carry);
-        cumulative_carry += local_carry;
-
-        // Add product of n1_low * n2_high shifted left
-        local_carry = 0;
-        result = Self::add_single_number(result, (n1_low * n2_high) << bits, &mut local_carry);
-        cumulative_carry += local_carry;
-
-        // Calculate final carry including high parts
-        *carry = cumulative_carry;
-        *carry += (n1_high * n2_low) >> bits; // Add overflow from cross products
-        *carry += (n1_low * n2_high) >> bits;
-        *carry += n1_high * n2_high; // Add product of high parts
-
-        result
-    }
-
-    /// Divides a single number with remainder, handling the carry.
-    /// Returns (quotient, remainder).
-    fn divide_single_number(p: usize, q: usize, mut remainder: usize) -> (usize, usize) {
-        debug_assert!(q > remainder);
-        let bits = usize::BITS as usize / 2;
-
-        // Split dividend into high and low parts
-        let p_high = p >> bits;
-        let p_low = p & ((1 << bits) - 1);
-
-        // First handle the high part combined with previous remainder
-        let high_part = p_high + (remainder << bits);
-        let result_high = high_part / q;
-        let remainder_high = high_part % q;
-
-        // Then handle the low part with remainder from high part
-        let low_part = p_low + (remainder_high << bits);
-        let result_low = low_part / q;
-        remainder = low_part % q;
-
-        // Ensure our bit splitting worked correctly
-        debug_assert!(result_high < (1 << bits));
-        debug_assert!(result_low < (1 << bits));
-
-        // Combine results and return with new remainder
-        ((result_high << bits) | result_low, remainder)
-    }
 
     /// Multiplies the current number by `n` and adds the carry.
     pub fn multiply_by(&mut self, n: usize, mut carry: usize) {
         for digit in &mut self.digits {
-            *digit = Self::multiply_single_number(*digit, n, &mut carry);
+            *digit = multiply_single_number(*digit, n, &mut carry);
         }
         if carry > 0 {
             // Add an extra digit with the carry.
@@ -343,7 +235,7 @@ impl FromStr for BigNatural {
             let mut carry = (c as usize) - ('0' as usize);
             let mut temp = result.digits.clone();
             for digit in &mut temp {
-                let product = BigNatural::multiply_single_number(*digit, 10, &mut carry);
+                let product = multiply_single_number(*digit, 10, &mut carry);
                 *digit = product;
             }
             if carry > 0 {
@@ -410,6 +302,17 @@ impl PartialEq for BigNatural {
     }
 }
 
+/// Returns true if this number equals the given machine-sized number.
+impl PartialEq<usize> for BigNatural {
+    fn eq(&self, n: &usize) -> bool {
+        if *n == 0 {
+            self.digits.is_empty()
+        } else {
+            self.digits.len() == 1 && self.digits[0] == *n
+        }
+    }
+}
+
 impl PartialOrd for BigNatural {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -457,8 +360,9 @@ impl Mul for &BigNatural {
     type Output = BigNatural;
 
     fn mul(self, other: &BigNatural) -> BigNatural {
-        let mut result = self.clone();
-        result.multiply(other);
+        let mut calculation_buffer = BigNatural::new();
+        let mut result = BigNatural::new();
+        self.multiply(other, &mut result, &mut calculation_buffer);
         result
     }
 }
@@ -473,7 +377,7 @@ mod tests {
         let one = BigNatural::from_usize(1);
 
         assert!(zero.is_zero());
-        assert!(one.is_number(1));
+        assert!(one == 1);
         assert_eq!(zero.to_string(), "0");
         assert_eq!(one.to_string(), "1");
     }

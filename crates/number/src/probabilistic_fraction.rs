@@ -19,29 +19,16 @@ pub struct ProbabilisticFraction {
     denominator: BigNatural,
 }
 
-thread_local! {
-    static BUFFER1: RefCell<BigNatural> = RefCell::new(BigNatural::new());
-    static BUFFER2: RefCell<BigNatural> = RefCell::new(BigNatural::new());
-    static BUFFER3: RefCell<BigNatural> = RefCell::new(BigNatural::new());
-}
-
 impl ProbabilisticFraction {
-    /// Creates a new fraction from numerator and denominator.
-    ///
-    /// # Preconditions
-    /// * denominator must not be zero
-    /// * numerator must not exceed denominator
-    ///
-    /// # Postconditions
-    /// * fraction is normalized (no common factors)
-    pub fn new(mut numerator: BigNatural, mut denominator: BigNatural) -> Self {
+    /// Creates a new fraction from numerator and denominator. denominator must
+    /// not be zero numerator must not exceed denominator
+    pub fn new(numerator: BigNatural, denominator: BigNatural) -> Self {
         assert!(!denominator.is_zero(), "Denominator must not be zero");
         assert!(numerator <= denominator, "Numerator must not exceed denominator");
 
-        // Remove common factors
-        Self::remove_common_factors(&mut numerator, &mut denominator);
-
-        let result = Self { numerator, denominator };
+        // Remove common factors        
+        let mut result = Self { numerator, denominator };
+        result.reduce();
         debug_assert!(result.is_normalized(), "Fraction must be normalized");
         result
     }
@@ -53,7 +40,8 @@ impl ProbabilisticFraction {
         if numerator > denominator {
             return Err("Numerator must not exceed denominator".into());
         }
-        Ok(Self { numerator, denominator })
+
+        Ok(Self::new(numerator, denominator))
     }
 
     /// Returns the constant zero (0/1).
@@ -85,7 +73,7 @@ impl ProbabilisticFraction {
     /// Removes common factors from numerator and denominator.
     fn reduce(&mut self) {
         let gcd = Self::greatest_common_divisor(self.numerator.clone(), self.denominator.clone());
-        if !gcd.is_number(1) {
+        if gcd != 1 {
             self.numerator = &self.numerator / &gcd;
             self.denominator = &self.denominator / &gcd;
         }
@@ -101,39 +89,18 @@ impl ProbabilisticFraction {
         a
     }
 
-    // Add new helper methods for fraction reduction
-    fn remove_common_factors(numerator: &mut BigNatural, denominator: &mut BigNatural) {
-        BUFFER1.with_borrow_mut(|remainder| {
-            BUFFER2.with_borrow_mut(|buffer| {
-                let gcd = Self::greatest_common_divisor(numerator.clone(), denominator.clone());
-                if !gcd.is_number(1) {
-                    let numerator_copy = numerator.clone();
-                    let denominator_copy = denominator.clone();
-
-                    numerator_copy.div_mod(&gcd, numerator, remainder, buffer);
-                    denominator_copy.div_mod(&gcd, denominator, remainder, buffer);
-                }
-            })
-        })
-    }
-
     /// Checks if the fraction is properly normalized (no common factors).
     fn is_normalized(&self) -> bool {
-        Self::greatest_common_divisor(self.numerator.clone(), self.denominator.clone()).is_number(1)
+        Self::greatest_common_divisor(self.numerator.clone(), self.denominator.clone()) == 1
     }
 }
 
 impl PartialEq for ProbabilisticFraction {
     fn eq(&self, other: &Self) -> bool {
-        BUFFER1.with_borrow_mut(|left| {
-            BUFFER2.with_borrow_mut(|right| {
-                // self.num * other.den == other.num * self.den
-                *left = &self.numerator * &other.denominator;
-                *right = &other.numerator * &self.denominator;
-
-                left == right
-            })
-        })
+        // self.num * other.den == other.num * self.den
+        let left = &self.numerator * &other.denominator;
+        let right = &other.numerator * &self.denominator;
+        left == right
     }
 }
 
@@ -162,28 +129,15 @@ impl Add for &ProbabilisticFraction {
         debug_assert!(self.is_normalized(), "Left operand must be normalized");
         debug_assert!(other.is_normalized(), "Right operand must be normalized");
 
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    let mut num = b1.clone();
-                    let mut den = b2.clone();
+        // num = self.num * other.den + other.num * self.den
+        // den = self.den * other.den
+        let num = &self.numerator * &other.denominator;
+        let temp = &other.numerator * &self.denominator;
+        let num = num.add(&temp);
 
-                    // num = self.num * other.den + other.num * self.den
-                    // den = self.den * other.den
-                    num = &self.numerator * &other.denominator;
-                    let mut temp = b3.clone();
-                    temp = &other.numerator * &self.denominator;
-                    num.add(&temp);
+        let den = &self.denominator * &other.denominator;
 
-                    den = &self.denominator * &other.denominator;
-
-                    let mut result = ProbabilisticFraction::new(num, den);
-                    result.reduce();
-                    debug_assert!(result.is_normalized(), "Result must be normalized");
-                    result
-                })
-            })
-        })
+        ProbabilisticFraction::new(num, den)
     }
 }
 
@@ -197,28 +151,15 @@ impl Sub for &ProbabilisticFraction {
         // Assert result will be non-negative
         assert!(self >= other, "Subtraction would result in negative fraction");
 
-        BUFFER1.with_borrow(|b1| {
-            BUFFER2.with_borrow(|b2| {
-                BUFFER3.with_borrow(|b3| {
-                    let mut num = b1.clone();
-                    let mut den = b2.clone();
+        // num = self.num * other.den - other.num * self.den
+        // den = self.den * other.den
+        let mut num = &self.numerator * &other.denominator;
+        let temp = &other.numerator * &self.denominator;
+        num.subtract(&temp);
 
-                    // num = self.num * other.den - other.num * self.den
-                    // den = self.den * other.den
-                    num = &self.numerator * &other.denominator;
-                    let mut temp = b3.clone();
-                    temp = &other.numerator * &self.denominator;
-                    num.subtract(&temp);
+        let den = &self.denominator * &other.denominator;
 
-                    den = &self.denominator * &other.denominator;
-
-                    let mut result = ProbabilisticFraction::new(num, den);
-                    result.reduce();
-                    debug_assert!(result.is_normalized(), "Result must be normalized");
-                    result
-                })
-            })
-        })
+        ProbabilisticFraction::new(num, den)
     }
 }
 
@@ -234,10 +175,7 @@ impl Mul for &ProbabilisticFraction {
         let num = &self.numerator * &other.numerator;
         let den = &self.denominator * &other.denominator;
 
-        let mut result = ProbabilisticFraction::new(num, den);
-        result.reduce();
-        debug_assert!(result.is_normalized(), "Result must be normalized");
-        result
+        ProbabilisticFraction::new(num, den)
     }
 }
 
@@ -254,10 +192,7 @@ impl Div for &ProbabilisticFraction {
         let num = &self.numerator * &other.denominator;
         let den = &self.denominator * &other.numerator;
 
-        let mut result = ProbabilisticFraction::new(num, den);
-        result.reduce();
-        debug_assert!(result.is_normalized(), "Result must be normalized");
-        result
+        ProbabilisticFraction::new(num, den)
     }
 }
 
