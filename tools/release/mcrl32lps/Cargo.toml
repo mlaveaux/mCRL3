@@ -1,9 +1,0 @@
-[package]
-name = "mcrl32lps"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-mcrl3_syntax.workspace = true
-
-clap.workspace = true
