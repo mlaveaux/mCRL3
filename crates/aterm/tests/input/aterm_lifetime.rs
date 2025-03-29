@@ -7,4 +7,7 @@ fn main() {
         let t = ATerm::constant(&Symbol::new("a", 0));
         t.arg(0)
     };
+
+    // Have some side effect
+    println!("Term: {:?}", term);
 }
