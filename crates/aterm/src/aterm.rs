@@ -243,14 +243,14 @@ impl<'a, 'b> Term<'a, 'b> for ATerm where 'b: 'a {
     delegate! {
         to self.term {
             fn protect(&self) -> ATerm;
-            fn arg(&'b self, index: usize) -> ATermRef<'a>;
-            fn arguments(&'b self) -> ATermArgs<'a>;
-            fn copy(&'b self) -> ATermRef<'a>;
-            fn get_head_symbol(&'b self) -> SymbolRef<'a>;
+            fn arg(&self, index: usize) -> ATermRef<'a>;
+            fn arguments(&self) -> ATermArgs<'a>;
+            fn copy(&self) -> ATermRef<'a>;
+            fn get_head_symbol(&self) -> SymbolRef<'a>;
             fn is_list(&self) -> bool;
             fn is_empty_list(&self) -> bool;
             fn is_int(&self) -> bool;
-            fn iter(&'b self) -> TermIterator<'a>;
+            fn iter(&self) -> TermIterator<'a>;
             fn index(&self) -> NonZero<usize>;
         }
     }

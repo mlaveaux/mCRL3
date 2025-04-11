@@ -56,7 +56,6 @@ pub enum Config {
 impl Markable for Config {
     fn mark(&self, marker: &mut Marker<'_>) {
         if let Config::Construct(t, _, _) = self {
-            let t: ATermRef<'_> = t.copy().into();
             t.mark(marker);
         }
     }
