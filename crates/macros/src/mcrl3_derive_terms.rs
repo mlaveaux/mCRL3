@@ -108,18 +108,18 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a> Term<'a> for #name {
+                            impl<'a, 'b> Term<'a, 'b> for #name where 'b: 'a {
                                 delegate! {
                                     to self.term {
                                         fn protect(&self) -> ATerm;
-                                        fn arg(&self, index: usize) -> ATermRef<'a>;
-                                        fn arguments(&self) -> ATermArgs<'a>;
-                                        fn copy(&self) -> ATermRef<'a>;
-                                        fn get_head_symbol(&self) -> SymbolRef<'a>;
+                                        fn arg(&'b self, index: usize) -> ATermRef<'a>;
+                                        fn arguments(&'b self) -> ATermArgs<'a>;
+                                        fn copy(&'b self) -> ATermRef<'a>;
+                                        fn get_head_symbol(&'b self) -> SymbolRef<'a>;
                                         fn is_list(&self) -> bool;
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
-                                        fn iter(&self) -> TermIterator<'a>;
+                                        fn iter(&'b self) -> TermIterator<'a>;
                                         fn index(&self) -> NonZero<usize>;
                                     }
                                 }
@@ -155,7 +155,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a> Term<'a> for #name_ref<'a> {
+                            impl<'a> Term<'a, '_> for #name_ref<'a> {
                                 delegate! {
                                     to self.term {
                                         fn protect(&self) -> ATerm;

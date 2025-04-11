@@ -44,7 +44,7 @@ pub fn derive_equivalence_classes(rule: &Rule) -> Vec<EquivalenceClass> {
 /// Checks if the equivalence classes hold for the given term.
 pub fn check_equivalence_classes<'a, T, P>(term: &'a P, eqs: &[EquivalenceClass]) -> bool
 where
-    P: PositionIndexed<Target<'a> = T> + 'a,
+    P: PositionIndexed<'a, Target<'a> = T> + 'a,
     T: PartialEq,
 {
     eqs.iter().all(|ec| {

@@ -139,13 +139,13 @@ impl TermStack {
         }
     }
 
-    pub fn evaluate<'a>(&self, term: &impl Term<'a>) -> DataExpression {
+    pub fn evaluate<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> DataExpression {
         let mut builder = TermStackBuilder::new();
         self.evaluate_with(term, &mut builder)
     }
 
     /// Evaluate the rhs stack for the given term and returns the result.
-    pub fn evaluate_with<'a>(&self, term: &impl Term<'a>, builder: &mut TermStackBuilder) -> DataExpression {
+    pub fn evaluate_with<'a, 'b>(&self, term: &'b impl Term<'a, 'b>, builder: &mut TermStackBuilder) -> DataExpression {
         let stack = &mut builder.stack;
         {
             let mut write = stack.terms.write();
@@ -276,7 +276,7 @@ impl Default for TermStackBuilder {
 }
 
 /// Create a mapping of variables to their position in the given term
-pub fn create_var_map<'a>(t: &impl Term<'a>) -> HashMap<DataVariable, ExplicitPosition> {
+pub fn create_var_map<'a, 'b>(t: &'b impl Term<'a, 'b>) -> HashMap<DataVariable, ExplicitPosition> {
     let mut result = HashMap::new();
 
     for (term, position) in PositionIterator::new(t.copy()) {

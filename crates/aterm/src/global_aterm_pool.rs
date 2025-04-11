@@ -48,17 +48,17 @@ pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPo
 pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
 
 /// Check if the symbol is the default "Int" symbol
-pub fn is_int<'a>(symbol: &impl Symb<'a>) -> bool {
+pub fn is_int<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
     GLOBAL_TERM_POOL.lock().borrow().int_symbol == symbol.copy()
 }
 
 /// Check if the symbol is the default "List" symbol
-pub fn is_list<'a>(symbol: &impl Symb<'a>) -> bool {
+pub fn is_list<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
     GLOBAL_TERM_POOL.lock().borrow().list_symbol == symbol.copy()
 }
 
 /// Check if the symbol is the default "[]" symbol
-pub fn is_empty_list<'a>(symbol: &impl Symb<'a>) -> bool {
+pub fn is_empty_list<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
     GLOBAL_TERM_POOL.lock().borrow().empty_list_symbol == symbol.copy()
 }
 
@@ -139,7 +139,7 @@ impl GlobalTermPool {
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn symbol_arity<'a>(&self, symbol: &impl Symb<'a>) -> usize {
+    pub fn symbol_arity<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> usize {
         self.symbol_pool.symbol_arity(symbol)
     }
 
@@ -175,10 +175,10 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term_iter<'a, I, T, P>(&mut self, symbol: &impl Symb<'a>, args: I, protect: P) -> ATerm
+    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T, P>(&mut self, symbol: &'b impl Symb<'a, 'b>, args: I, protect: P) -> ATerm
     where
         I: IntoIterator<Item = T>,
-        T: Term<'a>,
+        T: Term<'c, 'd>,
         P: FnOnce(&mut GlobalTermPool, NonZero<usize>, bool) -> ATerm,
     {
         self.tmp_arguments.clear();
@@ -204,7 +204,7 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term<'a, 'b, P>(&mut self, symbol: &impl Symb<'a>, args: &[impl Term<'b>], protect: P) -> ATerm
+    pub fn create_term<'a, 'b, P>(&mut self, symbol: &'b impl Symb<'a, 'b>, args: &'b [impl Term<'a, 'b>], protect: P) -> ATerm
     where
         P: FnOnce(&mut GlobalTermPool, NonZero<usize>, bool) -> ATerm,
     {

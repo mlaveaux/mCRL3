@@ -216,7 +216,7 @@ mod inner {
     impl DataApplication {
         /// Create a new data application with the given head and arguments.
         #[mcrl3_ignore]
-        pub fn with_args<'a>(head: &impl Term<'a>, arguments: &[impl Term<'a>]) -> DataApplication {
+        pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 // TODO: Perhaps not the must optimal.
                 let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
@@ -230,15 +230,15 @@ mod inner {
         ///
         /// arity must be equal to the number of arguments + 1.
         #[mcrl3_ignore]
-        pub fn with_iter<'a, T, I>(head: &impl Term<'a>, arguments: I) -> DataApplication
+        pub fn with_iter<'a, 'b, 'c, 'd, T, I>(head: &'b impl Term<'a, 'b>, arguments: I) -> DataApplication
         where
             I: Iterator<Item = T> + Clone,
-            T: Term<'a>,
+            T: Term<'c, 'd> + 'd,
         {
             let arity = arguments.clone().count() + 1;
 
             DATA_SYMBOLS.with_borrow_mut(|ds| {
-                let args = iter::once(head.copy()).chain(arguments.map(|t| t.copy()));
+                let args = iter::once(head.protect()).chain(arguments.map(|t| t.protect()));
                 let term = ATerm::with_iter(ds.get_data_application_symbol(arity), args);
 
                 DataApplication { term }

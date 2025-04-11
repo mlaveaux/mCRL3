@@ -36,19 +36,19 @@ impl DataSymbols {
         }
     }
 
-    pub fn is_sort_expression<'a>(&self, term: &impl Term<'a>) -> bool {
+    pub fn is_sort_expression<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.sort_id_symbol
     }
 
-    pub fn is_bool_sort<'a>(&self, _term: &impl Term<'a>) -> bool {
+    pub fn is_bool_sort<'a, 'b>(&self, _term: &'b impl Term<'a, 'b>) -> bool {
         true
     }
 
-    pub fn is_data_variable<'a>(&self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_variable<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.data_variable
     }
 
-    pub fn is_data_expression<'a>(&mut self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_expression<'a, 'b>(&mut self, term: &'b impl Term<'a, 'b>) -> bool {
         self.is_data_variable(term)
             || self.is_data_function_symbol(term)
             || self.is_data_machine_number(term)
@@ -57,24 +57,24 @@ impl DataSymbols {
             || self.is_data_where_clause(term)
     }
 
-    pub fn is_data_function_symbol<'a>(&self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_function_symbol<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.data_function_symbol
     }
 
-    pub fn is_data_machine_number<'a>(&self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_machine_number<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.is_int()
     }
 
-    pub fn is_data_where_clause<'a>(&self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_where_clause<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.data_where_clause
     }
 
-    pub fn is_data_abstraction<'a>(&self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_abstraction<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.data_abstraction
     }
 
     /// Returns true iff the given term is a data application.
-    pub fn is_data_application<'a>(&mut self, term: &impl Term<'a>) -> bool {
+    pub fn is_data_application<'a, 'b>(&mut self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == *self.get_data_application_symbol(term.get_head_symbol().arity())
     }
 
@@ -90,38 +90,38 @@ impl DataSymbols {
     }
 }
 
-pub fn is_sort_expression<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_sort_expression<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_sort_expression(term))
 }
 
-pub fn is_bool_sort<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_bool_sort<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_bool_sort(term))
 }
 
-pub fn is_data_variable<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_variable<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_variable(term))
 }
 
-pub fn is_data_expression<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_expression<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_expression(term))
 }
 
-pub fn is_data_function_symbol<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_function_symbol<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_function_symbol(term))
 }
 
-pub fn is_data_machine_number<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_machine_number<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_machine_number(term))
 }
 
-pub fn is_data_where_clause<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_where_clause<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_where_clause(term))
 }
 
-pub fn is_data_abstraction<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_abstraction<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_abstraction(term))
 }
 
-pub fn is_data_application<'a>(term: &impl Term<'a>) -> bool {
+pub fn is_data_application<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
 }

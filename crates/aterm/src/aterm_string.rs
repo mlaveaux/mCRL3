@@ -23,7 +23,7 @@ use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::TermIterator;
 
-fn is_string_term<'a>(t: &impl Term<'a>) -> bool {
+fn is_string_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     t.get_head_symbol().arity() == 0
 }
 

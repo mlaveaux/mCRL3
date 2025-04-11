@@ -32,15 +32,15 @@ pub type SubstitutionBuilder = Protected<Vec<ATermRef<'static>>>;
 /// Lets say we want to replace the a with the term 0. Then we traverse the term
 /// until we have arrived at a and replace it with 0. We then construct s(0)
 /// and then construct s(s(0)).
-pub fn substitute<'a>(tp: &ThreadTermPool, t: &impl Term<'a>, new_subterm: ATerm, p: &[usize]) -> ATerm {
+pub fn substitute<'a, 'b>(tp: &ThreadTermPool, t: &'b impl Term<'a, 'b>, new_subterm: ATerm, p: &[usize]) -> ATerm {
     let mut args = Protected::new(vec![]);
     substitute_rec(tp, t, new_subterm, p, &mut args, 0)
 }
 
-pub fn substitute_with<'a>(
+pub fn substitute_with<'a, 'b>(
     builder: &mut SubstitutionBuilder,
     tp: &ThreadTermPool,
-    t: &impl Term<'a>,
+    t: &'b impl Term<'a, 'b>,
     new_subterm: ATerm,
     p: &[usize],
 ) -> ATerm {
@@ -51,9 +51,9 @@ pub fn substitute_with<'a>(
 ///
 /// 'depth'         -   Used to keep track of the depth in 't'. Function should be called with
 ///                     'depth' = 0.
-fn substitute_rec<'a>(
+fn substitute_rec<'a, 'b>(
     tp: &ThreadTermPool,
-    t: &impl Term<'a>,
+    t: &'b impl Term<'a, 'b>,
     new_subterm: ATerm,
     p: &[usize],
     args: &mut Protected<Vec<ATermRef<'static>>>,

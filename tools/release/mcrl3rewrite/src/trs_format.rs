@@ -27,7 +27,7 @@ pub struct SimpleTermFormatter<'a> {
 }
 
 impl SimpleTermFormatter<'_> {
-    pub fn new<'b>(term: &impl Term<'b>) -> SimpleTermFormatter<'b> {
+    pub fn new<'a, 'b>(term: &'b impl Term<'a, 'b>) -> SimpleTermFormatter<'a> {
         SimpleTermFormatter { term: term.copy() }
     }
 }

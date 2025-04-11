@@ -23,21 +23,21 @@ use crate::is_list;
 
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
 
-pub trait Term<'a> {
+pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection
     fn protect(&self) -> ATerm;
 
     /// Returns the indexed argument of the term
-    fn arg(&self, index: usize) -> ATermRef<'a>;
+    fn arg(&'b self, index: usize) -> ATermRef<'a>;
 
     /// Returns the list of arguments as a collection
-    fn arguments(&self) -> ATermArgs<'a>;
+    fn arguments(&'b self) -> ATermArgs<'a>;
 
     /// Makes a copy of the term with the same lifetime as itself.
-    fn copy(&self) -> ATermRef<'a>;
+    fn copy(&'b self) -> ATermRef<'a>;
 
     /// Returns the function of an ATermRef
-    fn get_head_symbol(&self) -> SymbolRef<'a>;
+    fn get_head_symbol(&'b self) -> SymbolRef<'a>;
 
     /// Returns true iff this is an aterm_list
     fn is_list(&self) -> bool;
@@ -49,7 +49,7 @@ pub trait Term<'a> {
     fn is_int(&self) -> bool;
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
-    fn iter(&self) -> TermIterator<'a>;
+    fn iter(&'b self) -> TermIterator<'a>;
 
     /// Returns the index of the term in the term pool
     fn index(&self) -> NonZero<usize>;
@@ -83,7 +83,7 @@ impl ATermRef<'_> {
     }
 
     /// Creates a term reference from a given term.
-    pub(crate) fn from_term<'a>(term: &impl Term<'a>) -> Self {
+    pub(crate) fn from_term<'a, 'b>(term: &'b impl Term<'a, 'b>) -> Self {
         ATermRef {
             index: term.index(),
             marker: PhantomData,
@@ -91,7 +91,7 @@ impl ATermRef<'_> {
     }
 }
 
-impl<'a> Term<'a> for ATermRef<'a> {
+impl<'a> Term<'a, '_> for ATermRef<'a> {
     fn protect(&self) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect(&self.copy()))
     }
@@ -193,15 +193,15 @@ pub struct ATerm {
 
 impl ATerm {
     /// Creates a new term using the pool
-    pub fn with_args<'a, 'b>(symbol: &impl Symb<'a>, args: &[impl Term<'b>]) -> ATerm {
+    pub fn with_args<'a, 'b>(symbol: &'b impl Symb<'a, 'b>, args: &'b [impl Term<'a, 'b>]) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term(symbol, args))
     }
 
     /// Creates a new term using the pool
-    pub fn with_iter<'a, I, T>(symbol: &impl Symb<'a>, iter: I) -> ATerm
+    pub fn with_iter<'a, 'b, I, T>(symbol: &'b impl Symb<'a, 'b>, iter: I) -> ATerm
     where
         I: IntoIterator<Item = T>,
-        T: Term<'a>,
+        T: Term<'a, 'b>,
     {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter(symbol, iter))
     }
@@ -214,6 +214,11 @@ impl ATerm {
     /// Constructs a term from the given string.
     pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
         THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(s))
+    }
+
+    /// Returns a borrow from the term
+    pub fn get(&self) -> ATermRef<'_> {
+        self.term.copy()
     }
 
     /// Returns the root of the term
@@ -234,18 +239,18 @@ impl ATerm {
     }
 }
 
-impl<'a> Term<'a> for ATerm {
+impl<'a, 'b> Term<'a, 'b> for ATerm where 'b: 'a {
     delegate! {
         to self.term {
             fn protect(&self) -> ATerm;
-            fn arg(&self, index: usize) -> ATermRef<'a>;
-            fn arguments(&self) -> ATermArgs<'a>;
-            fn copy(&self) -> ATermRef<'a>;
-            fn get_head_symbol(&self) -> SymbolRef<'a>;
+            fn arg(&'b self, index: usize) -> ATermRef<'a>;
+            fn arguments(&'b self) -> ATermArgs<'a>;
+            fn copy(&'b self) -> ATermRef<'a>;
+            fn get_head_symbol(&'b self) -> SymbolRef<'a>;
             fn is_list(&self) -> bool;
             fn is_empty_list(&self) -> bool;
             fn is_int(&self) -> bool;
-            fn iter(&self) -> TermIterator<'a>;
+            fn iter(&'b self) -> TermIterator<'a>;
             fn index(&self) -> NonZero<usize>;
         }
     }
@@ -418,7 +423,8 @@ impl<'a> Iterator for TermIterator<'a> {
 }
 
 /// Blanket implementation allowing passing borrowed terms as references.
-impl<'a, T: Term<'a>> Term<'a> for &T {
+/// TODO: Why is this necessary.
+impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b T {
     fn protect(&self) -> ATerm {
         (*self).protect()
     }

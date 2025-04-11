@@ -39,33 +39,34 @@ impl ExplicitPosition {
     }
 }
 
-impl<'b, T: Term<'b>> PositionIndexed for T {
-    type Target<'a>
-        = ATermRef<'a>
+impl<'a, 'b, T: Term<'a, 'b>> PositionIndexed<'b> for T
+    where 'a: 'b
+{
+    type Target<'c>
+        = ATermRef<'c>
     where
-        Self: 'a;
+        Self: 'c,
+        Self: 'b;
 
-    fn get_position<'a>(&'a self, position: &ExplicitPosition) -> Self::Target<'a> {
+    fn get_position(&'b self, position: &ExplicitPosition) -> Self::Target<'b> {
         let mut result = self.copy();
 
         for index in &position.indices {
             result = result.arg(index - 1); // Note that positions are 1 indexed.
         }
 
-        unsafe {
-            // Yeet
-            std::mem::transmute(result)
-        }
+        result
     }
 }
 
-pub trait PositionIndexed {
+pub trait PositionIndexed<'b> {
     type Target<'a>
     where
-        Self: 'a;
+        Self: 'a,
+        Self: 'b;
 
     /// Returns the Target at the given position.
-    fn get_position<'a>(&'a self, position: &ExplicitPosition) -> Self::Target<'a>;
+    fn get_position(&'b self, position: &ExplicitPosition) -> Self::Target<'b>;
 }
 
 impl fmt::Display for ExplicitPosition {

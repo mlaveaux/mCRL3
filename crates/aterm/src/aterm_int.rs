@@ -17,7 +17,7 @@ use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::TermIterator;
 
-pub fn is_int_term<'a>(t: &impl Term<'a>) -> bool {
+pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     t.is_int()
 }
 

@@ -46,7 +46,7 @@ impl SymbolPool {
     }
 
     /// Returns the arity of the function symbol
-    pub fn symbol_arity<'a>(&self, symbol: &impl Symb<'a>) -> usize {
+    pub fn symbol_arity<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> usize {
         self.symbols.get(symbol.index().into()).unwrap().arity()
     }
 

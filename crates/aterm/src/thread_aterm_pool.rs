@@ -60,7 +60,7 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments
-    pub fn create_term<'a, 'b>(&self, symbol: &impl Symb<'a>, arguments: &[impl Term<'b>]) -> ATerm {
+    pub fn create_term<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>, arguments: &'b[impl Term<'a, 'b>]) -> ATerm {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
@@ -78,10 +78,10 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
-    pub fn create_term_iter<'a, I, T>(&self, symbol: &impl Symb<'a>, iter: I) -> ATerm
+    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T>(&self, symbol: &'b impl Symb<'a, 'b>, iter: I) -> ATerm
     where
         I: IntoIterator<Item = T>,
-        T: Term<'a>,
+        T: Term<'c, 'd>,
     {
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)

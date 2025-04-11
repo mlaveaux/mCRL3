@@ -211,7 +211,7 @@ impl<'a, C: Markable> Protector<'a, C> {
     /// Yields a term to insert into the container.
     ///
     /// The invariant to uphold is that the resulting term MUST be inserted into the container.
-    pub fn protect(&self, term: &impl Term<'a>) -> ATermRef<'static> {
+    pub fn protect<'b>(&self, term: &'b impl Term<'a, 'b>) -> ATermRef<'static> {
         unsafe {
             // Store terms that are marked as protected to check if they are
             // actually in the container when the protection is dropped.

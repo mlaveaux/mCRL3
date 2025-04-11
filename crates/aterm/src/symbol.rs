@@ -14,18 +14,18 @@ use crate::THREAD_TERM_POOL;
 
 /// The public interface for a function symbol, can be used to write generic
 /// functions that accept both `Symbol` and `SymbolRef`.
-pub trait Symb<'a> {
+pub trait Symb<'a, 'b> {
     /// Obtain the symbol's name.
-    fn name(&self) -> StrRef<'a>;
+    fn name(&'b self) -> StrRef<'a>;
 
     /// Obtain the symbol's arity.
-    fn arity(&self) -> usize;
+    fn arity(&'b self) -> usize;
 
     /// Create a copy of the symbol reference.
-    fn copy(&self) -> SymbolRef<'a>;
+    fn copy(&'b self) -> SymbolRef<'a>;
 
     /// Returns the internal index of the symbol.
-    fn index(&self) -> NonZero<usize>;
+    fn index(&'b self) -> NonZero<usize>;
 }
 
 /// A reference to a function symbol in the term pool.
@@ -55,7 +55,7 @@ impl<'a> SymbolRef<'a> {
 
 impl SymbolRef<'_> {
     /// Internal constructo to convert any `Symb` to a `SymbolRef`.
-    pub(crate) fn from_symbol<'a>(symbol: &impl Symb<'a>) -> Self {
+    pub(crate) fn from_symbol<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> Self {
         SymbolRef {
             index: symbol.index(),
             marker: PhantomData,
@@ -63,7 +63,7 @@ impl SymbolRef<'_> {
     }
 }
 
-impl<'a> Symb<'a> for SymbolRef<'a> {
+impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     fn name(&self) -> StrRef<'a> {
         THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_name(self))
     }
@@ -126,7 +126,18 @@ impl Symbol {
     }
 }
 
-impl<'a> Symb<'a> for Symbol {
+impl<'a, 'b> Symb<'a, 'b> for &'a Symbol {
+    delegate! {
+        to self.symbol {
+            fn name(&self) -> StrRef<'a>;
+            fn arity(&self) -> usize;
+            fn copy(&self) -> SymbolRef<'a>;
+            fn index(&self) -> NonZero<usize>;
+        }
+    }
+}
+
+impl<'a, 'b> Symb<'a, 'b> for Symbol where 'b: 'a {
     delegate! {
         to self.symbol {
             fn name(&self) -> StrRef<'a>;

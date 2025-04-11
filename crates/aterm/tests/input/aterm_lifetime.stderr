@@ -1,0 +1,11 @@
+error[E0597]: `t` does not live long enough
+ --> tests/input/aterm_lifetime.rs:8:9
+  |
+6 |     let term = {
+  |         ---- borrow later stored here
+7 |         let t = ATerm::constant(&Symbol::new("a", 0));
+  |             - binding `t` declared here
+8 |         t.arg(0)
+  |         ^ borrowed value does not live long enough
+9 |     };
+  |     - `t` dropped here while still borrowed
