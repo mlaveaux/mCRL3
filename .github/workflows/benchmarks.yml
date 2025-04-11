@@ -31,6 +31,6 @@ jobs:
         submodules: true
 
     - name: Run Benchmarks
-      run: cargo bench -p benchmarks-sabre && cargo bench -p benchmarks-ltsgraph && cargo bench -p mcrl3_sharedmutex-benchmarks
+      run: cargo bench -p benchmarks_sabre && cargo bench -p benchmarks_ltsgraph && cargo bench -p benchmarks_sharedmutex
       env:
         RUSTC_WRAPPER: sccache

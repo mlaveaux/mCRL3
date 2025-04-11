@@ -126,7 +126,7 @@ impl Symbol {
     }
 }
 
-impl<'a, 'b> Symb<'a, 'b> for &'a Symbol {
+impl<'a> Symb<'a, '_> for &'a Symbol {
     delegate! {
         to self.symbol {
             fn name(&self) -> StrRef<'a>;
@@ -137,7 +137,10 @@ impl<'a, 'b> Symb<'a, 'b> for &'a Symbol {
     }
 }
 
-impl<'a, 'b> Symb<'a, 'b> for Symbol where 'b: 'a {
+impl<'a, 'b> Symb<'a, 'b> for Symbol
+where
+    'b: 'a,
+{
     delegate! {
         to self.symbol {
             fn name(&self) -> StrRef<'a>;

@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
-struct ATermFFI {
+#[repr(C)]
+pub(crate) struct ATermFFI {
     index: usize,
     root: usize,
 }

@@ -28,7 +28,7 @@ impl SymbolPool {
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create<'a, N, P, R>(&mut self, name: N, arity: usize, protect: P) -> R
+    pub fn create<N, P, R>(&mut self, name: N, arity: usize, protect: P) -> R
     where
         N: Into<String> + AsRef<str>,
         P: FnOnce(NonZero<usize>) -> R,
@@ -104,7 +104,7 @@ struct SharedSymbolLookup<T: Into<String> + AsRef<str>> {
     arity: usize,
 }
 
-impl<'a, T: Into<String> + AsRef<str>> From<&SharedSymbolLookup<T>> for SharedSymbol {
+impl<T: Into<String> + AsRef<str>> From<&SharedSymbolLookup<T>> for SharedSymbol {
     fn from(lookup: &SharedSymbolLookup<T>) -> Self {
         // TODO: Not optimal
         let string = lookup.name.as_ref().to_string();
@@ -128,15 +128,13 @@ impl<T: Into<String> + AsRef<str>> Hash for SharedSymbolLookup<T> {
 
 impl Hash for SharedSymbol {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        (&self.name).hash(state);
+        self.name.hash(state);
         self.arity.hash(state);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::Symbol;
 
     #[test]

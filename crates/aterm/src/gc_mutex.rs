@@ -22,7 +22,7 @@ impl<T> GcMutex<T> {
     /// Provides mutable access to the underlying value.
     pub fn write(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
-            mutex: &self,
+            mutex: self,
             _guard: GLOBAL_TERM_POOL.lock(),
         }
     }
@@ -30,7 +30,7 @@ impl<T> GcMutex<T> {
     /// Provides immutable access to the underlying value.
     pub fn read(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
-            mutex: &self,
+            mutex: self,
             _guard: GLOBAL_TERM_POOL.lock(),
         }
     }
@@ -43,7 +43,7 @@ pub struct GcMutexGuard<'a, T> {
     _guard: GlobalTermPoolGuard<'a>,
 }
 
-impl<'a, T> Deref for GcMutexGuard<'a, T> {
+impl<T> Deref for GcMutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -51,7 +51,7 @@ impl<'a, T> Deref for GcMutexGuard<'a, T> {
     }
 }
 
-impl<'a, T> DerefMut for GcMutexGuard<'a, T> {
+impl<T> DerefMut for GcMutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
         unsafe { &mut *self.mutex.inner.get() }

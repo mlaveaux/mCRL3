@@ -225,8 +225,6 @@ impl<'a, C: Markable> Protector<'a, C> {
     }
 }
 
-/// TODO: Add trait to convert ATermRef<'static> to ATerm<'a>
-
 impl<C: Markable> Deref for Protector<'_, C> {
     type Target = C;
 

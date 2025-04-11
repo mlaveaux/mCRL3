@@ -218,9 +218,8 @@ mod inner {
         #[mcrl3_ignore]
         pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {
             // TODO: Avoid this protect, but otherwise ds is borrowed again in the copy.
-            let symbol = DATA_SYMBOLS.with_borrow_mut(|ds| {
-                ds.get_data_application_symbol(arguments.len() + 1).protect()
-            });
+            let symbol =
+                DATA_SYMBOLS.with_borrow_mut(|ds| ds.get_data_application_symbol(arguments.len() + 1).protect());
 
             let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
             let term = ATerm::with_iter(&symbol, args);

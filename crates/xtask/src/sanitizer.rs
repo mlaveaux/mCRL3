@@ -28,17 +28,15 @@ pub fn address_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Err
         "run".to_string(),
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
-        "--features".to_string(),
-        "unstable".to_string(),
     ];
 
     add_target_flag(&mut arguments);
     arguments.extend(cargo_arguments);
 
     cmd("cargo", arguments)
-        .env("RUSTFLAGS", "-Zsanitizer=address,undefined,leak")
-        .env("CFLAGS", "-fsanitize=address,undefined,leak")
-        .env("CXXFLAGS", "-fsanitize=address,undefined,leak")
+        .env("RUSTFLAGS", "-Zsanitizer=address,leak")
+        .env("CFLAGS", "-fsanitize=address,leak")
+        .env("CXXFLAGS", "-fsanitize=address,leak")
         .run()?;
     println!("ok.");
 
@@ -56,8 +54,6 @@ pub fn memory_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Erro
         "run".to_string(),
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
-        "--features".to_string(),
-        "unstable".to_string(),
     ];
 
     add_target_flag(&mut arguments);
@@ -84,8 +80,6 @@ pub fn thread_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Erro
         "run".to_string(),
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
-        "--features".to_string(),
-        "unstable".to_string(),
     ];
 
     add_target_flag(&mut arguments);

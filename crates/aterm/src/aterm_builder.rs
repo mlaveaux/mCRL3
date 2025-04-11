@@ -84,7 +84,7 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
     ///
     /// However, it can also be that I is some syntax tree from which we want to
     /// construct a term.
-    pub fn evaluate<'a, F, G>(
+    pub fn evaluate<F, G>(
         &mut self,
         tp: &ThreadTermPool,
         input: I,

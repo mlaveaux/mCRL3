@@ -75,6 +75,10 @@ unsafe impl Sync for ATermRef<'_> {}
 
 impl ATermRef<'_> {
     /// Creates a new term reference from the given index.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it does not check if the index is valid for the given lifetime.
     pub unsafe fn from_index(index: NonZero<usize>) -> Self {
         ATermRef {
             index,
@@ -112,7 +116,7 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
     }
 
     fn copy(&self) -> ATermRef<'a> {
-        unsafe { ATermRef::from_index(self.index.into()) }
+        unsafe { ATermRef::from_index(self.index) }
     }
 
     fn get_head_symbol(&self) -> SymbolRef<'a> {
@@ -239,7 +243,10 @@ impl ATerm {
     }
 }
 
-impl<'a, 'b> Term<'a, 'b> for ATerm where 'b: 'a {
+impl<'a, 'b> Term<'a, 'b> for ATerm
+where
+    'b: 'a,
+{
     delegate! {
         to self.term {
             fn protect(&self) -> ATerm;

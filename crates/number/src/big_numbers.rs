@@ -1,12 +1,12 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::Hash;
 use std::ops::Add;
 use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Rem;
 use std::ops::Sub;
 use std::str::FromStr;
-use std::hash::Hash;
 
 use crate::add_single_number;
 use crate::divide_single_number;

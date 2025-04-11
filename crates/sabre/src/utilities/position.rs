@@ -40,7 +40,8 @@ impl ExplicitPosition {
 }
 
 impl<'a, 'b, T: Term<'a, 'b>> PositionIndexed<'b> for T
-    where 'a: 'b
+where
+    'a: 'b,
 {
     type Target<'c>
         = ATermRef<'c>

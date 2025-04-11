@@ -57,6 +57,11 @@ impl<T> IndexedSet<T> {
         self.table.len()
     }
 
+    /// Returns true if the set is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns a reference to the element at the given index, if it exists.
     pub fn get(&self, index: usize) -> Option<&T> {
         if let Some(entry) = self.table.get(index) {

@@ -51,7 +51,7 @@ impl Timing {
     }
 
     /// Writes a YAML report of the finished timers to the given writer.
-    fn write_report(&self, tool_name: &str, writer: &mut impl Write) -> io::Result<()> {
+    fn write_yml(&self, tool_name: &str, writer: &mut impl Write) -> io::Result<()> {
         writeln!(writer, "- tool: {}", tool_name)?;
         writeln!(writer, "  timing:")?;
 
