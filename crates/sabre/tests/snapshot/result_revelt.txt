@@ -1,1 +1,0 @@
-l(e,l(d,l(c,l(b,l(a,l(e,l(d,l(c,l(b,l(a,nil))))))))))

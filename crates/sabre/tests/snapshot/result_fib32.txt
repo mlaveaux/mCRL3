@@ -1,1 +1,0 @@
-cNat(cDub(T,cDub(F,cDub(F,cDub(T,cDub(T,cDub(F,cDub(T,cDub(T,cDub(T,cDub(F,cDub(T,cDub(F,cDub(T,cDub(T,cDub(T,cDub(F,cDub(F,cDub(F,cDub(F,cDub(F,cDub(T,d1))))))))))))))))))))))
