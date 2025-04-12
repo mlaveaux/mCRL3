@@ -23,7 +23,6 @@ members = [
 
 [workspace.dependencies]
 ahash = "0.8"
-anyhow = "1.0"
 bitstream-io = "2.6"
 bitvec = "1.0"
 bumpalo = "3.17"

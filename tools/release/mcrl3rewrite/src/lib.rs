@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -16,8 +17,8 @@ pub enum Rewriter {
 }
 
 /// Rewrites the given REC specification.
-pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: bool) -> anyhow::Result<()> {
-    let (syntax_spec, syntax_terms) = load_REC_from_file(filename_specification.into()).unwrap();
+pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: bool) -> Result<(), Box<dyn Error>> {
+    let (syntax_spec, syntax_terms) = load_REC_from_file(filename_specification.into())?;
 
     let spec = syntax_spec.to_rewrite_spec();
 

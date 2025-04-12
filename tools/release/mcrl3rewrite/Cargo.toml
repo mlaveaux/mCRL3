@@ -15,7 +15,6 @@ mcrl3_unsafety.workspace = true
 mcrl3_rec-tests.workspace = true
 
 ahash.workspace = true
-anyhow.workspace = true
 clap.workspace = true
 env_logger.workspace = true
 log.workspace = true

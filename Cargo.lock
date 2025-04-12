@@ -3396,7 +3396,6 @@ checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
 name = "ltsgraph"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "clap",
  "env_logger",
  "log",
@@ -3498,8 +3497,10 @@ name = "mcrl3_aterm"
 version = "0.1.0"
 dependencies = [
  "ahash",
+ "crossbeam",
  "delegate",
  "hashbrown 0.15.2",
+ "itertools 0.14.0",
  "log",
  "mcrl3_macros",
  "mcrl3_sharedmutex",
@@ -3717,7 +3718,6 @@ name = "mcrl3rewrite"
 version = "0.1.0"
 dependencies = [
  "ahash",
- "anyhow",
  "clap",
  "env_logger",
  "log",
