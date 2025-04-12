@@ -1,0 +1,10 @@
+FlexRay startup specification
+=============================
+
+This specification describes the FlexRay startup protocol. The case study is
+described in the following paper:
+
+  S. Cranen. Model checking the FlexRay startup phase. In M. Stoelinga & 
+    R. Pinger (eds.), Formal Methods for Industrial Critical Systems – 17th 
+    International Workshop, FMICS, Paris, France, August 27–28, 2012. 
+    Proceedings. LNCS, Vol. 7437, pp. 131–145. Berlin: Springer.

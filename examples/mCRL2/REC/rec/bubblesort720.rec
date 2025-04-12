@@ -1,0 +1,10 @@
+REC-SPEC BubbleSort720 : Bubblesort
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   rev(fact(s(s(s(s(s(s(d0)))))))) # fact(6) = 720
+
+END-SPEC

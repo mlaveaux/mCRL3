@@ -1,0 +1,36 @@
+REC-SPEC Bool
+
+# Booleans - H. Garavel 2016, 2019
+
+SORTS
+   Bool
+
+CONS
+   false : -> Bool
+   true : -> Bool
+
+OPNS
+   notBool : Bool -> Bool
+   andBool : Bool Bool -> Bool
+   orBool : Bool Bool -> Bool
+   xorBool : Bool Bool -> Bool
+
+VARS
+   L : Bool
+
+RULES
+   notBool (false) -> true
+   notBool (true) -> false
+
+   andBool (false, L) -> false
+   andBool (true, L) -> L
+
+   orBool (false, L) -> L
+   orBool (true, L) -> true
+
+   xorBool (false, L) -> L
+   xorBool (true, L) -> notBool (L)
+
+EVAL
+
+END-SPEC

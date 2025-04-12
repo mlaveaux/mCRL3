@@ -1,0 +1,55 @@
+REC-SPEC HalfSum # imports Bool Bit Octet OctetSum Half
+
+# sum of Half words (16 bits) - H. Garavel 2016, 2019
+
+SORTS
+   HalfSum # (1 carry bit + 16 bits)
+
+CONS
+   buildHalfSum : Bit Half -> HalfSum
+
+OPNS
+   eqHalfSum : HalfSum HalfSum -> Bool
+
+   # operations implementing a 16-bit adder
+
+   addHalfSum : Half Half -> HalfSum
+
+   addHalf2 : Octet Octet Octet Octet -> HalfSum
+   addHalf1 : Octet Octet OctetSum -> HalfSum
+   addHalf0 : OctetSum Octet -> HalfSum
+
+   dropCarryHalfSum : HalfSum -> Half
+
+   addHalf : Half Half -> Half
+
+   addHalfOctet : Octet Half -> Half
+   addHalfOctets : Octet Octet -> Half
+
+VARS
+   B B' : Bit
+   O O' O1 O2 O'1 O'2 O"1 O"2 : Octet
+   H H' : Half
+
+RULES
+   eqHalfSum (buildHalfSum (B, H), buildHalfSum (B', H')) -> andBool (eqBit (B, B'), eqHalf (H, H'))
+
+   addHalfSum (buildHalf (O1, O2), buildHalf (O'1, O'2)) -> addHalf2 (O1, O'1, O2, O'2)
+
+   addHalf2 (O1, O'1, O2, O'2) -> addHalf1 (O1, O'1, addOctetSum (O2, O'2, x0))
+
+   addHalf1 (O1, O'1, buildOctetSum (B, O"2)) -> addHalf0 (addOctetSum (O1, O'1, B), O"2)
+
+   addHalf0 (buildOctetSum (B, O"1), O"2) -> buildHalfSum (B, buildHalf (O"1, O"2))
+
+   dropCarryHalfSum (buildHalfSum (B, H)) -> H
+
+   addHalf (H, H') -> dropCarryHalfSum (addHalfSum (H, H'))
+
+   addHalfOctet (O, H) -> addHalf (buildHalf (x00, O), H)
+
+   addHalfOctets (O, O') -> addHalf (buildHalf (x00, O), buildHalf (x00, O'))
+
+EVAL
+
+END-SPEC

@@ -1,0 +1,159 @@
+REC-SPEC Nat # imports Bool
+
+# definition of natural numbers - Hubert Garavel 2016, 2019
+
+SORTS
+   Nat
+
+CONS
+   n0 : -> Nat
+   succNat : Nat -> Nat
+
+OPNS
+   n1 : -> Nat
+   n2 : -> Nat
+   n3 : -> Nat
+   n4 : -> Nat
+   n5 : -> Nat
+   n6 : -> Nat
+   n7 : -> Nat
+   n8 : -> Nat
+   n9 : -> Nat
+   n10 : -> Nat
+   n11 : -> Nat
+   n12 : -> Nat
+   n13 : -> Nat
+   n14 : -> Nat
+   n15 : -> Nat
+   n16 : -> Nat
+   n17 : -> Nat
+   n18 : -> Nat
+   n19 : -> Nat
+   n20 : -> Nat
+   n21 : -> Nat
+   n22 : -> Nat
+
+   eqNat : Nat Nat -> Bool            # "="
+   ltNat : Nat Nat -> Bool            # "<"
+   gtNat : Nat Nat -> Bool            # ">"
+
+   evenNat : Nat -> Bool
+   oddNat : Nat -> Bool
+
+   predNat : Nat -> Nat               # (partially-defined function)
+
+   maxNat : Nat Nat -> Nat
+   minNat : Nat Nat -> Nat
+
+   addNat : Nat Nat -> Nat            # "+"
+   subNat : Nat Nat -> Nat            # "-" (partially-defined function)
+   mulNat : Nat Nat -> Nat            # "*"
+   powNat : Nat Nat -> Nat            # "^"
+
+   divNat : Nat Nat -> Nat            # (partially-defined function)
+   adivNat : Nat Nat Nat Nat -> Nat   # auxiliary function used to define "divNat"
+   cdivNat : Nat Nat -> Nat           # concise definition of "div" using cond. rules
+
+   modNat : Nat Nat -> Nat            # (partially-defined function)
+   amodNat : Nat Nat Nat Nat -> Nat   # auxiliary function used to define "modNat"
+   cmodNat : Nat Nat -> Nat           # concise definition of "mod" using cond. rules
+
+VARS
+   N N' Np Nq : Nat
+
+RULES
+   n1 -> succNat (n0)
+   n2 -> succNat (n1)
+   n3 -> succNat (n2)
+   n4 -> succNat (n3)
+   n5 -> succNat (n4)
+   n6 -> succNat (n5)
+   n7 -> succNat (n6)
+   n8 -> succNat (n7)
+   n9 -> succNat (n8)
+   n10 -> succNat (n9)
+   n11 -> succNat (n10)
+   n12 -> succNat (n11)
+   n13 -> succNat (n12)
+   n14 -> succNat (n13)
+   n15 -> succNat (n14)
+   n16 -> succNat (n15)
+   n17 -> succNat (n16)
+   n18 -> succNat (n17)
+   n19 -> succNat (n18)
+   n20 -> succNat (n19)
+   n21 -> succNat (n20)
+   n22 -> succNat (n21)
+
+   eqNat (n0, n0) -> true
+   eqNat (n0, succNat (N')) -> false
+   eqNat (succNat (N), n0) -> false
+   eqNat (succNat (N), succNat (N')) -> eqNat (N, N')
+
+   ltNat (n0, n0) -> false
+   ltNat (n0, succNat (N')) -> true
+   ltNat (succNat (N), n0) -> false
+   ltNat (succNat (N), succNat (N')) -> ltNat (N, N')
+
+   gtNat (n0, n0) -> false
+   gtNat (n0, succNat (N')) -> false
+   gtNat (succNat (N), n0) -> true
+   gtNat (succNat (N), succNat (N')) -> gtNat (N, N')
+
+   evenNat (n0) -> true
+   evenNat (succNat (N)) -> oddNat (N)
+
+   oddNat (n0) -> false
+   oddNat (succNat (N)) -> evenNat (N)
+
+   # note: predNat (N) is undefined if eqNat (N, n0)
+   predNat (succNat (N)) -> N
+
+   maxNat (N, N') -> N if gtNat (N, N') = true
+   maxNat (N, N') -> N' if notBool (gtNat (N, N')) = true
+
+   minNat (N, N') -> N if ltNat (N, N') = true
+   minNat (N, N') -> N' if notBool (ltNat (N, N')) = true
+
+   addNat (N, n0) -> N
+   addNat (N, succNat (N')) -> addNat (succNat (N), N')
+
+   # note: suNatb (N, N') is undefined if ltNat (N, N')
+   subNat (N, n0) -> N
+   subNat (succNat (N), succNat (N')) -> subNat (N, N')
+
+   mulNat (N, n0) -> n0
+   mulNat (N, succNat (N')) -> addNat (N, mulNat (N, N'))
+
+   powNat (N, n0) -> n1
+   powNat (n0, succNat (N)) -> n0
+   powNat (N, succNat (N')) -> mulNat (powNat (N, N'), N)
+
+   # note: divNat (N, N') is undefined if eqNat (N', n0)
+   divNat (N, succNat (N')) -> adivNat (N, succNat (N'), n0, succNat (N'))
+
+   adivNat (n0, n0, Nq, N') -> succNat (Nq)
+   adivNat (n0, succNat (Np), Nq, N') -> Nq
+   adivNat (succNat (N), n0, Nq, N') -> adivNat (succNat (N), N', succNat (Nq), N')
+   adivNat (succNat (N), succNat (Np), Nq, N') -> adivNat (N, Np, Nq, N')
+
+   # note: cdivNat (N, N') is undefined if eqNat (N', n0)
+   cdivNat (N, N') -> n0 if andBool (notBool (eqNat (N', n0)), ltNat (N, N')) = true
+   cdivNat (N, N') -> succNat (cdivNat (subNat (N, N'), N')) if andBool (notBool (eqNat (N', n0)), notBool (ltNat (N, N'))) = true
+
+   # note: modNat (N, N') is undefined if eqNat (N', n0)
+   modNat (N, succNat (N')) -> amodNat (N, succNat (N'), n0, succNat (N'))
+
+   amodNat (n0, n0, Nq, N') -> n0
+   amodNat (n0, succNat (Np), Nq, N') -> subNat (N', succNat (Np))
+   amodNat (succNat (N), n0, Nq, N') -> amodNat (succNat (N), N', succNat (Nq), N')
+   amodNat (succNat (N), succNat (Np), Nq, N') -> amodNat (N, Np, Nq, N')
+
+   # note: cmodNat (N, N') is undefined if eqNat (N', n0)
+   cmodNat (N, N') -> N if andBool (notBool (eqNat (N', n0)), ltNat (N, N')) = true
+   cmodNat (N, N') -> cmodNat (subNat (N, N'), N') if andBool (notBool (eqNat (N', n0)), notBool (ltNat (N, N'))) = true
+
+EVAL
+
+END-SPEC
+

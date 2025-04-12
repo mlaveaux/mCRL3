@@ -1,0 +1,10 @@
+REC-SPEC BenchTree10 : Asfsdfbenchmark
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+  benchevaltree17(ten)
+
+END-SPEC

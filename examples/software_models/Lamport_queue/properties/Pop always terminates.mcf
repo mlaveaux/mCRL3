@@ -1,3 +1,0 @@
-% Property does not assume fairness, and therefore
-% does not hold.
-[true*.call_pop]( mu X.[!exists v: Value. ret_pop(v)]X && <true>true )

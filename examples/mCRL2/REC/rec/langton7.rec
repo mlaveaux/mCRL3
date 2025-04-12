@@ -1,0 +1,10 @@
+REC-SPEC Langton7 : Langton
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   next(d7,d7,d7,d7,d7)
+END-SPEC
+

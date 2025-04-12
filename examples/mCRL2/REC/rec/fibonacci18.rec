@@ -1,0 +1,11 @@
+REC-SPEC Fibonacci18 : Fibonacci
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   fibb(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))))))))
+   # fibb(18) should return 2584
+END-SPEC
+

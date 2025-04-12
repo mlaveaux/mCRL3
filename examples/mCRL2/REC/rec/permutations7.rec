@@ -1,0 +1,9 @@
+REC-SPEC Permutations7 : Permutations
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+   perm(s(s(s(s(s(s(s(d0)))))))) # perm(7)
+END-SPEC

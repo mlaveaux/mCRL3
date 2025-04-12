@@ -1,1 +1,0 @@
-[true*] forall i :Nat. [set_tail(i)] val(i<N)

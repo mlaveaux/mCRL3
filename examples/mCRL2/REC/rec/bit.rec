@@ -1,0 +1,43 @@
+REC-SPEC Bit # imports Bool
+
+# Bits - H. Garavel 2016, 2019
+
+SORTS
+   Bit
+
+CONS
+   x0 : -> Bit
+   x1 : -> Bit
+
+OPNS
+   notBit : Bit -> Bit
+   andBit : Bit Bit -> Bit
+   orBit : Bit Bit -> Bit
+   xorBit : Bit Bit -> Bit
+
+   eqBit : Bit Bit -> Bool
+
+VARS
+   B : Bit
+
+RULES
+   notBit (x0) -> x1
+   notBit (x1) -> x0
+
+   andBit (B, x0) -> x0
+   andBit (B, x1) -> B
+
+   orBit (B, x0) -> B
+   orBit (B, x1) -> x1
+
+   xorBit (B, x0) -> B
+   xorBit (B, x1) -> notBit (B)
+
+   eqBit (x0, x0) -> true
+   eqBit (x0, x1) -> false
+   eqBit (x1, x0) -> false
+   eqBit (x1, x1) -> true
+
+EVAL
+
+END-SPEC

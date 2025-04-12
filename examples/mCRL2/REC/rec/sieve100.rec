@@ -1,0 +1,10 @@
+REC-SPEC Sieve100 : Sieve
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+    sieve(intsBetween(s(s(z)), mult(ten, ten)))
+
+END-SPEC

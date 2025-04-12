@@ -1,0 +1,60 @@
+REC-SPEC BlockSum # imports Bool Bit Octet OctetSum Half HalfSum Block
+
+# sum of Block words (32-bit adder) - H. Garavel 2016, 2019
+
+SORTS
+   BlockSum # (1 carry bit + 32 bits)
+
+CONS
+   buildBlockSum : Bit Block -> BlockSum
+
+OPNS
+   eqBlockSum : BlockSum BlockSum -> Bool
+
+   addBlockSum : Block Block -> BlockSum
+
+   addBlock4 : Octet Octet Octet Octet Octet Octet Octet Octet -> BlockSum
+   addBlock3 : Octet Octet Octet Octet Octet Octet OctetSum -> BlockSum
+   addBlock2 : Octet Octet Octet Octet OctetSum Octet -> BlockSum
+   addBlock1 : Octet Octet OctetSum Octet Octet -> BlockSum
+   addBlock0 : OctetSum Octet Octet Octet -> BlockSum
+
+   dropCarryBlockSum : BlockSum -> Block
+
+   addBlock : Block Block -> Block
+
+   addBlockHalf : Half Block -> Block
+
+   addBlockHalves : Half Half -> Block
+
+VARS
+   B B' Bcarry : Bit
+   O1 O2 O3 O4 O'1 O'2 O'3 O'4 O"1 O"2 O"3 O"4 : Octet
+   W W' : Block
+
+RULES
+   eqBlockSum (buildBlockSum (B, W), buildBlockSum (B', W')) -> andBool (eqBit (B, B'), eqBlock (W, W'))
+
+   addBlockSum (buildBlock (O1, O2, O3, O4), buildBlock (O'1, O'2, O'3, O'4)) -> addBlock4 (O1, O'1, O2, O'2, O3, O'3, O4, O'4)
+
+   addBlock4 (O1, O'1, O2, O'2, O3, O'3, O4, O'4) -> addBlock3 (O1, O'1, O2, O'2, O3, O'3, addOctetSum (O4, O'4, x0))
+
+   addBlock3 (O1, O'1, O2, O'2, O3, O'3, buildOctetSum (Bcarry, O"4)) -> addBlock2 (O1, O'1, O2, O'2, addOctetSum (O3, O'3, Bcarry), O"4)
+
+   addBlock2 (O1, O'1, O2, O'2, buildOctetSum (Bcarry, O"3), O"4) -> addBlock1 (O1, O'1, addOctetSum (O2, O'2, Bcarry), O"3, O"4)
+
+   addBlock1 (O1, O'1, buildOctetSum (Bcarry, O"2), O"3, O"4) -> addBlock0 (addOctetSum (O1, O'1, Bcarry), O"2, O"3, O"4)
+
+   addBlock0 (buildOctetSum (Bcarry, O"1), O"2, O"3, O"4) -> buildBlockSum (Bcarry, buildBlock (O"1, O"2, O"3, O"4))
+
+   dropCarryBlockSum (buildBlockSum (Bcarry, W)) -> W
+
+   addBlock (W, W') -> dropCarryBlockSum (addBlockSum (W, W'))
+
+   addBlockHalf (buildHalf (O1, O2), W) -> addBlock (buildBlock (x00, x00, O1, O2), W)
+
+   addBlockHalves (buildHalf (O1, O2), buildHalf (O'1, O'2)) -> addBlock (buildBlock (x00, x00, O1, O2), buildBlock (x00, x00, O'1, O'2))
+
+EVAL
+
+END-SPEC

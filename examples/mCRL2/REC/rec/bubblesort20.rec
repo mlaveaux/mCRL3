@@ -1,0 +1,21 @@
+REC-SPEC BubbleSort20 : Bubblesort
+SORTS
+CONS
+OPNS
+VARS
+RULES
+EVAL
+
+   rev(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))))))))))
+
+# result:
+#   cons(d0,cons(s(d0),cons(s(s(d0)),cons(s(s(s(d0))),cons(s(s(s(s(d0)))),cons(s(s(s(s(s(d0))))),cons(s(s(s(s(s(s(d0)))))),cons(s(s(
+#    s(s(s(s(s(d0))))))),cons(s(s(s(s(s(s(s(s(d0)))))))),cons(s(s(s(s(s(s(s(s(s(d0))))))))),cons(s(s(s(s(s(s(s(s(s(s(
+#    d0)))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(d0))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))),cons(s(s(s(s(s(s(s(s(
+#    s(s(s(s(s(d0))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(
+#    d0))))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(
+#    d0))))))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(
+#    s(s(s(d0))))))))))))))))))),cons(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(s(d0)))))))))))))))))))),
+#    nil)))))))))))))))))))))
+
+END-SPEC
