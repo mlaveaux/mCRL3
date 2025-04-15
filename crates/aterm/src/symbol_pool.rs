@@ -1,6 +1,7 @@
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::num::NonZero;
+use std::sync::Arc;
 
 use hashbrown::Equivalent;
 
@@ -45,6 +46,11 @@ impl SymbolPool {
         self.symbols.get(symbol.index().into()).unwrap().name()
     }
 
+    /// Return the symbol of the SharedTerm for the given ATermRef
+    pub fn symbol_name_owned<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> Arc<String> {
+        self.symbols.get(symbol.index().into()).unwrap().name.clone()
+    }
+
     /// Returns the arity of the function symbol
     pub fn symbol_arity<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> usize {
         self.symbols.get(symbol.index().into()).unwrap().arity()
@@ -73,7 +79,7 @@ impl SymbolPool {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SharedSymbol {
     /// Name of the function
-    name: String,
+    name: Arc<String>,
     /// Number of arguments
     arity: usize,
 }
@@ -82,7 +88,7 @@ impl SharedSymbol {
     /// Creates a new function symbol.
     pub fn new(name: impl Into<String>, arity: usize) -> Self {
         Self {
-            name: name.into(),
+            name: Arc::new(name.into()),
             arity,
         }
     }
@@ -114,7 +120,7 @@ impl<T: Into<String> + AsRef<str>> From<&SharedSymbolLookup<T>> for SharedSymbol
 
 impl<T: Into<String> + AsRef<str>> Equivalent<SharedSymbol> for SharedSymbolLookup<T> {
     fn equivalent(&self, other: &SharedSymbol) -> bool {
-        self.name.as_ref() == other.name && self.arity == other.arity
+        self.name.as_ref() == *other.name && self.arity == other.arity
     }
 }
 

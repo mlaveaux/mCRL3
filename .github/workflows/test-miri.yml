@@ -36,7 +36,7 @@ jobs:
         submodules: true
 
     - name: Run tests
-      run: cargo +nightly miri test --no-fail-fast --features mcrl3_miri
+      run: cargo +nightly miri test --no-fail-fast --features mcrl3_miri -p mcrl3_aterm
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug

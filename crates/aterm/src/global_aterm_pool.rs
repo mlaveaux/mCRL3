@@ -134,8 +134,8 @@ impl GlobalTermPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> &'a str {
-        self.symbol_pool.symbol_name(symbol)
+    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> Arc<String>  {
+        self.symbol_pool.symbol_name_owned(symbol)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef

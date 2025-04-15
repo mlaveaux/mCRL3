@@ -3497,7 +3497,6 @@ name = "mcrl3_aterm"
 version = "0.1.0"
 dependencies = [
  "ahash",
- "crossbeam",
  "delegate",
  "hashbrown 0.15.2",
  "itertools 0.14.0",
@@ -3680,14 +3679,6 @@ dependencies = [
  "pest_consume",
  "pest_derive",
  "test-case",
-]
-
-[[package]]
-name = "mcrl3_typecheck"
-version = "0.1.0"
-dependencies = [
- "mcrl3_syntax",
- "thiserror 2.0.12",
 ]
 
 [[package]]

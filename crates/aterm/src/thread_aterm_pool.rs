@@ -115,7 +115,7 @@ impl ThreadTermPool {
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
-        StrRef::new(symbol, tp)
+        StrRef::new(tp.borrow().symbol_name(symbol))
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef

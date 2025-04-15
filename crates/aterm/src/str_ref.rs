@@ -1,25 +1,21 @@
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::Deref;
-
-use crate::GlobalTermPoolGuard;
-use crate::Symb;
-use crate::SymbolRef;
+use std::sync::Arc;
 
 /// A reference to the name of a function symbol that is never invalidated.
 /// Locks the global term pool so should be kept shortlived.
 pub struct StrRef<'a> {
-    symbol: SymbolRef<'a>,
-    guard: GlobalTermPoolGuard<'a>,
+    symbol: Arc<String>,
+    marker: PhantomData<&'a ()>,
 }
 
 impl<'a> StrRef<'a> {
     /// Creates a new protected reference to a string.
-    pub(crate) fn new(value: &SymbolRef<'a>, guard: GlobalTermPoolGuard<'_>) -> StrRef<'a> {
-        unsafe {
-            StrRef {
-                symbol: value.copy(),
-                guard: std::mem::transmute::<GlobalTermPoolGuard<'_>, GlobalTermPoolGuard<'a>>(guard),
-            }
+    pub(crate) fn new(symbol: Arc<String>) -> Self {
+        StrRef {
+            symbol,
+            marker: PhantomData,
         }
     }
 }
@@ -40,7 +36,7 @@ impl Deref for StrRef<'_> {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        unsafe { std::mem::transmute(self.guard.borrow().symbol_name(&self.symbol)) }
+        self.symbol.as_str()
     }
 }
 
