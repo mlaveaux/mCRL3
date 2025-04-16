@@ -321,7 +321,7 @@ impl GlobalTermPool {
 
         self.symbol_pool.retain_mut(|index| {
             trace!("Removing symbol {}", index);
-            self.marked_terms[index]
+            self.marked_symbols[index]
         });
 
         info!(
