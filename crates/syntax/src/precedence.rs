@@ -20,32 +20,6 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into a `SortExpression` using a Pratt parser for operator precedence.
-///
-/// # Arguments
-///
-/// * `pairs` - A sequence of `Rule` pairs to be parsed.
-///
-/// # Returns
-///
-/// A `SortExpression` representing the parsed input.
-///
-/// # Panics
-///
-/// This function will panic if it encounters an unexpected rule during parsing.
-///
-/// # Example
-///
-/// ```
-/// use pest::Parser;
-/// use crate::Mcrl2Parser;
-/// use crate::Rule;
-/// use crate::parse_sortexpr;
-///
-/// let term = "List(Data)";
-/// let result = Mcrl2Parser::parse(Rule::SortExpr, term).unwrap();
-/// let sort_expr = parse_sortexpr(result);
-/// println!("{}", sort_expr);
-/// ```
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
     SORT_PRATT_PARSER
         .map_primary(|primary| {
@@ -66,8 +40,14 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
                 Rule::SortExprFSet => Mcrl2Parser::SortExprFSet(Node::new(primary)).unwrap(),
                 Rule::SortExprFBag => Mcrl2Parser::SortExprFBag(Node::new(primary)).unwrap(),
 
+                Rule::SortExprParens => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary.into_inner().next().unwrap();
+                    parse_sortexpr(inner.into_inner())
+                }
+
                 //Rule::SortExprStruct => unimplemented!(),
-                _ => unreachable!(),
+                _ => unimplemented!("Unexpected rule in parse_sortexpr: {:?}", primary.as_rule()),
             }
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
