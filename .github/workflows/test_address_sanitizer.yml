@@ -18,10 +18,9 @@ jobs:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
-    steps:    
-
+    steps:
     - name: Setup sccache
-      uses: mozilla-actions/sccache-action@v0.0.4
+      uses: mozilla-actions/sccache-action@v0.0.9
       
     - name: Install nextest
       uses: taiki-e/install-action@nextest
