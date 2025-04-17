@@ -2,18 +2,10 @@ use std::fmt;
 use std::hash::Hash;
 
 /// An mCRL2 specification containing declarations.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedProcessSpecification {
     /// Sort declarations
-    pub sort_decls: Vec<SortDecl>,
-    /// Constructor declarations
-    pub cons_decls: Vec<ConsDecl>,
-    /// Map declarations
-    pub map_decls: Vec<MapDecl>,
-    /// Variable declarations
-    pub var_decls: Vec<VarDecl>,
-    /// Equation declarations
-    pub eqn_decls: Vec<EqnDecl>,
+    pub data_specification: UntypedDataSpecification,
     /// Global variables
     pub glob_vars: Vec<GlobVarDecl>,
     /// Action declarations
@@ -22,6 +14,20 @@ pub struct UntypedProcessSpecification {
     pub proc_decls: Vec<ProcDecl>,
     /// Initial process
     pub init: Option<ProcessExpr>,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Hash)]
+pub struct UntypedDataSpecification {    
+    /// Sort declarations
+    pub sort_decls: Vec<SortDecl>,
+    /// Constructor declarations
+    pub cons_decls: Vec<ConsDecl>,
+    /// Map declarations
+    pub map_decls: Vec<IdDecl>,
+    /// Variable declarations
+    pub var_decls: Vec<VarDecl>,
+    /// Equation declarations
+    pub eqn_decls: Vec<EqnDecl>,
 }
 
 /// A declaration of an identifier with its sort.
@@ -283,7 +289,26 @@ impl fmt::Display for ComplexSort {
 
 impl fmt::Display for UntypedProcessSpecification {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{:?}", self.data_specification)?;
+        Ok(())
+    }
+}
+
+impl fmt::Display for UntypedDataSpecification {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for decl in &self.sort_decls {
+            writeln!(f, "{:?}", decl)?;
+        }
+        for decl in &self.cons_decls {
+            writeln!(f, "{:?}", decl)?;
+        }
         for decl in &self.map_decls {
+            writeln!(f, "{:?}", decl)?;
+        }
+        for decl in &self.var_decls {
+            writeln!(f, "{:?}", decl)?;
+        }
+        for decl in &self.eqn_decls {
             writeln!(f, "{:?}", decl)?;
         }
         Ok(())

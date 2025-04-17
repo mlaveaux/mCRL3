@@ -8,6 +8,7 @@ use crate::Mcrl2Parser;
 use crate::Rule;
 use crate::Sort;
 use crate::SortExpression;
+use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
 use crate::parse_sortexpr;
 
@@ -37,24 +38,36 @@ impl Mcrl2Parser {
             }
         }
 
-        unimplemented!();
+        let data_specification = UntypedDataSpecification {
+            map_decls: map,
+            ..Default::default()
+        };
+
+        Ok(UntypedProcessSpecification {
+            data_specification,
+            ..Default::default()
+        })
     }
 
     fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let mut ids = Vec::new();
 
         for decl in spec.into_children() {
-            ids.push(Mcrl2Parser::IdsDecl(decl)?);
+            ids.append(&mut Mcrl2Parser::IdsDecl(decl)?);
         }
 
         Ok(ids)
     }
 
-    fn IdsDecl(decl: ParseNode) -> ParseResult<IdDecl> {
+    fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [Id(identifier), SortExpr(sort)] => {
-                Ok(IdDecl { identifier, sort, span: span.into() })
+            [IdList(identifiers), SortExpr(sort)] => {
+                let id_decls = identifiers.into_iter().map(|identifier| {
+                    IdDecl { identifier, sort: sort.clone(), span: span.into() }
+                }).collect();
+
+                Ok(id_decls)
             },
         )
     }
@@ -69,6 +82,18 @@ impl Mcrl2Parser {
 
     pub fn Id(identifier: ParseNode) -> ParseResult<String> {
         Ok(identifier.as_str().to_string())
+    }
+
+    pub fn IdList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
+        let mut ids = Vec::new();
+
+        for id in identifiers.into_children() {
+            if id.as_rule() == Rule::Id {
+                ids.push(Mcrl2Parser::Id(id)?);
+            }
+        }
+
+        Ok(ids)
     }
 
     // Simple sorts.
