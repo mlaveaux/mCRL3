@@ -87,9 +87,6 @@ mod tests {
     #[test]
     fn test_timer_basic() {
         let mut timer = SimpleTimer::new();
-        assert!(!timer.running());
-
-        timer.start();
         assert!(timer.running());
 
         sleep(Duration::from_millis(10));
@@ -103,7 +100,6 @@ mod tests {
     #[test]
     fn test_timer_reset() {
         let mut timer = SimpleTimer::new();
-        timer.start();
         sleep(Duration::from_millis(10));
         timer.stop();
 
