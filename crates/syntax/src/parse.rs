@@ -3,6 +3,7 @@ use pest_consume::Error;
 use pest_consume::match_nodes;
 
 use crate::ComplexSort;
+use crate::ConstructorDecl;
 use crate::IdDecl;
 use crate::Mcrl2Parser;
 use crate::Rule;
@@ -85,15 +86,11 @@ impl Mcrl2Parser {
     }
 
     pub fn IdList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
-        let mut ids = Vec::new();
-
-        for id in identifiers.into_children() {
-            if id.as_rule() == Rule::Id {
-                ids.push(Mcrl2Parser::Id(id)?);
-            }
-        }
-
-        Ok(ids)
+        match_nodes!(identifiers.into_children();
+            [Id(ids)..] => {
+                return Ok(ids.collect());
+            },
+        );
     }
 
     // Simple sorts.
@@ -151,6 +148,55 @@ impl Mcrl2Parser {
             ComplexSort::FBag,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
         ))
+    }
+
+    pub fn SortExprStruct(inner: ParseNode) -> ParseResult<SortExpression> {
+        match_nodes!(inner.into_children();
+            [ConstrDeclList(inner)] => {
+                return Ok(SortExpression::Struct { inner });
+            },
+        );
+    }
+
+    pub fn ConstrDeclList(input: ParseNode) -> ParseResult<Vec<ConstructorDecl>> {
+        match_nodes!(input.into_children();
+            [ConstrDecl(decl)..] => {
+                return Ok(decl.collect());
+            },
+        );
+    }
+
+    pub fn ProjDeclList(input: ParseNode) -> ParseResult<Vec<(Option<String>, SortExpression)>> {
+        match_nodes!(input.into_children();
+            [ProjDecl(decl)..] => {
+                return Ok(decl.collect());
+            },
+        );
+    }
+
+    pub fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
+        match_nodes!(input.into_children();
+            [Id(name)] => {
+                Ok(ConstructorDecl { name, args: Vec::new(), projection: None })
+            },
+            [Id(name), ProjDeclList(args)] => {
+                Ok(ConstructorDecl { name, args, projection: None })
+            },
+            [Id(name), ProjDeclList(args), SortExpr(projection)] => {
+                Ok(ConstructorDecl { name, args, projection: Some(projection) })
+            },
+        )
+    }
+
+    pub fn ProjDecl(input: ParseNode) -> ParseResult<(Option<String>, SortExpression)> {
+        match_nodes!(input.into_children();
+            [SortExpr(sort)] => {
+                Ok((None, sort))
+            },
+            [Id(name), SortExpr(sort)] => {
+                Ok((Some(name), sort))
+            },
+        )
     }
 
     fn EOI(_input: ParseNode) -> ParseResult<()> {

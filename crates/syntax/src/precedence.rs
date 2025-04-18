@@ -46,8 +46,11 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
                     parse_sortexpr(inner.into_inner())
                 }
 
-                //Rule::SortExprStruct => unimplemented!(),
-                _ => unimplemented!("Unexpected rule in parse_sortexpr: {:?}", primary.as_rule()),
+                Rule::SortExprStruct => {
+                    Mcrl2Parser::SortExprStruct(Node::new(primary)).unwrap()
+                }
+
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {

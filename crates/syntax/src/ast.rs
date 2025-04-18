@@ -21,7 +21,7 @@ pub struct UntypedDataSpecification {
     /// Sort declarations
     pub sort_decls: Vec<SortDecl>,
     /// Constructor declarations
-    pub cons_decls: Vec<ConsDecl>,
+    pub cons_decls: Vec<IdDecl>,
     /// Map declarations
     pub map_decls: Vec<IdDecl>,
     /// Variable declarations
@@ -72,12 +72,23 @@ pub enum SortExpression {
         domain: Box<SortExpression>,
         range: Box<SortExpression>,
     },
+    Struct {
+        inner: Vec<ConstructorDecl>,
+    },
     /// Reference to a named sort
     Reference(String),
     /// Built-in simple sort
     Simple(Sort),
     /// Parameterized complex sort
     Complex(ComplexSort, Box<SortExpression>),
+}
+
+/// Constructor declaration
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ConstructorDecl {
+    pub name: String,
+    pub args: Vec<(Option<String>, SortExpression)>,
+    pub projection: Option<SortExpression>,
 }
 
 /// Built-in simple sorts.
@@ -113,24 +124,6 @@ pub struct SortDecl {
     pub params: Vec<String>,
     /// Sort expression (if structured)
     pub expr: Option<SortExpression>,
-    pub span: Span,
-}
-
-/// Constructor declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct ConsDecl {
-    pub name: String,
-    pub args: Vec<SortExpression>,
-    pub result: SortExpression,
-    pub span: Span,
-}
-
-/// Map declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct MapDecl {
-    pub name: String,
-    pub args: Vec<SortExpression>,
-    pub result: SortExpression,
     pub span: Span,
 }
 
@@ -329,6 +322,38 @@ impl fmt::Display for SortExpression {
             SortExpression::Reference(ident) => write!(f, "\"{}\"", ident),
             SortExpression::Simple(sort) => write!(f, "{}", sort),
             SortExpression::Complex(complex, inner) => write!(f, "{}({})", complex, inner),
+            SortExpression::Struct { inner } => {
+                write!(f, "{{")?;
+                for (i, decl) in inner.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", decl)?;
+                }
+                write!(f, "}}")
+            }
         }
+    }
+}
+
+impl fmt::Display for ConstructorDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}(", self.name)?;
+        for (i, (name, sort)) in self.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            match name {
+                Some(name) => write!(f, "{} : {}", name, sort)?,
+                None => write!(f, "{}", sort)?,
+            }
+        }
+        write!(f, ")")?;
+
+        if let Some(projection) = &self.projection {
+            write!(f, "?{}", projection)?;
+        }
+
+        Ok(())
     }
 }
