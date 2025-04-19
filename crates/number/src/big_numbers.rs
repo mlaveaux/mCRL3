@@ -11,6 +11,7 @@ use std::str::FromStr;
 use crate::add_single_number;
 use crate::divide_single_number;
 use crate::multiply_single_number;
+use crate::subtract_single_number;
 
 /// A big natural number implementation that stores numbers as a vector of machine-sized words.
 /// Numbers are stored with the least significant word first, and there are no trailing zeros.
@@ -126,7 +127,7 @@ impl BigNatural {
         let mut carry = 0;
         for i in 0..self.digits.len() {
             let n2 = other.digits.get(i).copied().unwrap_or(0);
-            self.digits[i] = multiply_single_number(self.digits[i], n2, &mut carry);
+            self.digits[i] = subtract_single_number(self.digits[i], n2, &mut carry);
         }
 
         assert!(carry == 0, "Subtraction overflow");
@@ -430,13 +431,12 @@ mod tests {
         assert_eq!((&a + &b).to_string(), "579");
     }
 
-    // TODO: Fix implementation
-    // #[test]
-    // fn test_subtract() {
-    //     let a = BigNatural::from_str("456").unwrap();
-    //     let b = BigNatural::from_str("123").unwrap();
-    //     assert_eq!((&a - &b).to_string(), "333");
-    // }
+    #[test]
+    fn test_subtract() {
+        let a = BigNatural::from_str("456").unwrap();
+        let b = BigNatural::from_str("123").unwrap();
+        assert_eq!((&a - &b).to_string(), "333");
+    }
 
     #[test]
     fn test_multiply() {

@@ -16,6 +16,54 @@ pub(crate) fn add_single_number(n1: usize, n2: usize, carry: &mut usize) -> usiz
     result
 }
 
+/// Subtracts n2 and carry from n1, returning the result and updating the carry value.
+/// The carry (borrow) can be either 0 or 1 at input and output.
+/// When the carry is 1, it indicates that 1 must be subtracted.
+pub(crate) fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
+    debug_assert!(*carry <= 1, "Carry must be 0 or 1");
+
+    // Use wrapping operations to correctly handle underflow
+    let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
+    
+    // Update the carry/borrow flag based on underflow conditions
+    *carry = if *carry == 0 {
+        // When we had no initial borrow, check if n2 > n1 (wrapped around)
+        if result > n1 { 1 } else { 0 }
+    } else {
+        // When we had an initial borrow, check if n1 > n2+1 (no wrap)
+        if result < n1 { 0 } else { 1 }
+    };
+
+    debug_assert!(*carry <= 1, "Carry must be 0 or 1 after operation");
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_subtract_single_number() {
+        // Test cases without initial carry
+        let mut carry = 0;
+        assert_eq!(subtract_single_number(10, 5, &mut carry), 5);
+        assert_eq!(carry, 0);
+
+        carry = 0;
+        assert_eq!(subtract_single_number(5, 10, &mut carry), usize::MAX - 4);
+        assert_eq!(carry, 1);
+
+        // Test cases with initial carry
+        carry = 1;
+        assert_eq!(subtract_single_number(10, 5, &mut carry), 4);
+        assert_eq!(carry, 0);
+
+        carry = 1;
+        assert_eq!(subtract_single_number(5, 5, &mut carry), usize::MAX);
+        assert_eq!(carry, 1);
+    }
+}
+
 /// Calculate <carry,result>:=n1*n2+carry, where the lower bits of the calculation
 // are stored in the result, and the higher bits are stored in carry.
 pub(crate) fn multiply_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
