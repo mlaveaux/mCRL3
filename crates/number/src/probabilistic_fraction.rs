@@ -20,7 +20,7 @@ pub struct ProbabilisticFraction {
 
 impl ProbabilisticFraction {
     /// Creates a new fraction from numerator and denominator. denominator must
-    /// not be zero numerator must not exceed denominator
+    /// not be zero.
     pub fn new(numerator: BigNatural, denominator: BigNatural) -> Self {
         assert!(!denominator.is_zero(), "Denominator must not be zero");
 

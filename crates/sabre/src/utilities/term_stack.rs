@@ -171,6 +171,7 @@ impl TermStack {
             &DataExpressionRef::from(term.copy()),
             0,
         );
+
         loop {
             trace!("{}", stack);
 
@@ -192,11 +193,13 @@ impl TermStack {
 
                         // Add the term on the stack.
                         write_terms.drain(length - arity..);
-                        write_terms[index] = Some(term.copy());
+                        let t = write_terms.protect(&term);
+                        write_terms[index] = Some(t.into());
                     }
                     Config::Term(term, index) => {
                         let mut write_terms = stack.terms.write();
-                        write_terms[index] = Some(term.copy());
+                        let t = write_terms.protect(&term);
+                        write_terms[index] = Some(t.into());
                     }
                     Config::Rewrite(_) => {
                         unreachable!("This case should not happen");
