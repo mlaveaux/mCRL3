@@ -46,7 +46,6 @@ quote = "1.0"
 rand = "0.9"
 regex = "1.0"
 rustc-hash = "2.1"
-sharded-slab = "0.1"
 smallvec = "1.15"
 streaming-iterator = "0.1"
 syn = { version = "2.0", features = ["full"] }
@@ -62,9 +61,7 @@ rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "t
 slint = "1.11"
 slint-build = "1.11"
 tiny-skia = "0.11"
-tobj = "4.0"
 tokio = { version = "1.44", features = ["rt", "macros"] }
-wgpu = "25.0"
 winapi = { version = "0.3", features = ["consoleapi"] }
 
 # Only used for xtask
@@ -78,9 +75,6 @@ test-case  = "3.3"
 test-log = "0.2"
 env_logger = "0.11"
 trybuild = "1.0"
-
-# Experimental testing
-loom = { version = "0.7", features = ["checkpoint"] }
 
 # The workspace libraries.
 mcrl3_aterm = { path = "crates/aterm" }
