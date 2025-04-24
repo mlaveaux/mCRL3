@@ -191,6 +191,18 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                     1
                                 }
                             }
+                            
+                            impl Transmutable for #name_ref<'static> {
+                                type Target<'a> = #name_ref<'a>;
+
+                                fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
+                                    unsafe { transmute::<&Self, &'a #name_ref<'a>>(self) }
+                                }
+
+                                fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
+                                    unsafe { transmute::<&mut Self, &'a mut #name_ref<'a>>(self) }
+                                }
+                            }
                         );
 
                         added.push(Item::Verbatim(generated));

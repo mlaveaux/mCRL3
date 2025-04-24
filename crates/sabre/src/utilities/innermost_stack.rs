@@ -3,7 +3,7 @@ use std::fmt;
 use itertools::Itertools;
 
 use mcrl3_aterm::Protected;
-use mcrl3_aterm::Protector;
+use mcrl3_aterm::ProtectedWriteGuard;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 
@@ -19,15 +19,15 @@ use log::trace;
 /// side.
 #[derive(Default)]
 pub struct InnermostStack {
-    pub configs: Protected<Vec<Config>>,
+    pub configs: Protected<Vec<Config<'static>>>,
     pub terms: Protected<Vec<Option<DataExpressionRef<'static>>>>,
 }
 
 impl InnermostStack {
     /// Updates the InnermostStack to integrate the rhs_stack instructions.
     pub fn integrate(
-        write_configs: &mut Protector<Vec<Config>>,
-        write_terms: &mut Protector<Vec<Option<DataExpressionRef<'static>>>>,
+        write_configs: &mut ProtectedWriteGuard<Vec<Config>>,
+        write_terms: &mut ProtectedWriteGuard<Vec<Option<DataExpressionRef<'static>>>>,
         rhs_stack: &TermStack,
         term: &DataExpressionRef<'_>,
         result_index: usize,
@@ -95,7 +95,7 @@ impl InnermostStack {
 
     /// Indicate that the given symbol with arity can be constructed at the given index.
     pub fn add_result(
-        write_configs: &mut Protector<Vec<Config>>,
+        write_configs: &mut ProtectedWriteGuard<Vec<Config>>,
         symbol: DataFunctionSymbolRef<'_>,
         arity: usize,
         index: usize,
@@ -106,8 +106,8 @@ impl InnermostStack {
 
     /// Indicate that the term must be rewritten and its result must be placed at the given index.
     pub fn add_rewrite(
-        write_configs: &mut Protector<Vec<Config>>,
-        write_terms: &mut Protector<Vec<Option<DataExpressionRef<'static>>>>,
+        write_configs: &mut ProtectedWriteGuard<Vec<Config>>,
+        write_terms: &mut ProtectedWriteGuard<Vec<Option<DataExpressionRef<'static>>>>,
         term: DataExpressionRef<'_>,
         index: usize,
     ) {

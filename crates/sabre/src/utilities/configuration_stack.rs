@@ -158,8 +158,7 @@ impl<'a> ConfigurationStack<'a> {
         conf_list.stack.push(Configuration { state, position: None });
 
         let mut write_conf_list = conf_list.terms.write();
-        let term = write_conf_list.protect(&term);
-        write_conf_list.push(term.into());
+        write_conf_list.push(term.copy());
         drop(write_conf_list);
 
         conf_list

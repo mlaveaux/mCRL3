@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::num::NonZero;
 use std::ops::Deref;
+use std::mem::transmute;
 
 use delegate::delegate;
 
@@ -16,6 +17,7 @@ use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::TermIterator;
+use crate::Transmutable;
 
 pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     t.is_int()

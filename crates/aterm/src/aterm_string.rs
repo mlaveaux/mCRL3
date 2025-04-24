@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::num::NonZero;
 use std::ops::Deref;
+use std::mem::transmute;
 
 use delegate::delegate;
 
@@ -22,6 +23,7 @@ use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::TermIterator;
+use crate::Transmutable;
 
 fn is_string_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     t.get_head_symbol().arity() == 0

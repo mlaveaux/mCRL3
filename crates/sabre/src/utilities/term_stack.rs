@@ -8,6 +8,7 @@ use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Term;
+use mcrl3_aterm::Transmutable;
 use mcrl3_data::DataApplication;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
@@ -34,7 +35,7 @@ use super::PositionIterator;
 #[derive(Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TermStack {
     /// The innermost rewrite stack for the right hand side and the positions that must be added to the stack.
-    pub(crate) innermost_stack: Protected<Vec<Config>>,
+    pub(crate) innermost_stack: Protected<Vec<Config<'static>>>,
     /// The variables of the left-hand side that must be placed at certain places in the stack.
     pub(crate) variables: Vec<(ExplicitPosition, usize)>,
     /// The number of elements that must be reserved on the innermost stack.
@@ -42,18 +43,18 @@ pub struct TermStack {
 }
 
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub enum Config {
+pub enum Config<'a> {
     /// Rewrite the top of the stack and put result at the given index.
     Rewrite(usize),
     /// Constructs function symbol with given arity at the given index.
-    Construct(DataFunctionSymbolRef<'static>, usize, usize),
+    Construct(DataFunctionSymbolRef<'a>, usize, usize),
     /// A concrete term to be placed at the current position in the stack.
-    Term(DataExpressionRef<'static>, usize),
+    Term(DataExpressionRef<'a>, usize),
     /// Yields the given index as returned term.
     Return(),
 }
 
-impl Markable for Config {
+impl Markable for Config<'_> {
     fn mark(&self, marker: &mut Marker<'_>) {
         if let Config::Construct(t, _, _) = self {
             t.mark(marker);
@@ -73,7 +74,19 @@ impl Markable for Config {
     }
 }
 
-impl fmt::Display for Config {
+impl Transmutable for Config<'static> {
+    type Target<'a> = Config<'a>;
+
+    fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a> {
+        unsafe { std::mem::transmute::<&Self, &'a Config>(self) }
+    }
+
+    fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a> {
+        unsafe { std::mem::transmute::<&mut Self, &'a mut Config>(self) }
+    }
+}
+
+impl fmt::Display for Config<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Config::Rewrite(result) => write!(f, "Rewrite({})", result),
@@ -123,8 +136,7 @@ impl TermStack {
                 let t: DataExpressionRef = term.into();
                 let arity = t.data_arguments().len();
                 let mut write = innermost_stack.write();
-                let symbol = write.protect(&t.data_function_symbol());
-                write.push(Config::Construct(symbol.into(), arity, stack_size));
+                write.push(Config::Construct(t.data_function_symbol(), arity, stack_size));
                 stack_size += 1;
             } else {
                 // Skip intermediate terms such as UntypeSortUnknown.
@@ -180,11 +192,11 @@ impl TermStack {
 
                         // Add the term on the stack.
                         write_terms.drain(length - arity..);
-                        write_terms[index] = Some(write_terms.protect(&term).into());
+                        write_terms[index] = Some(term.copy());
                     }
                     Config::Term(term, index) => {
                         let mut write_terms = stack.terms.write();
-                        write_terms[index] = Some(write_terms.protect(&term).into());
+                        write_terms[index] = Some(term.copy());
                     }
                     Config::Rewrite(_) => {
                         unreachable!("This case should not happen");
@@ -231,17 +243,16 @@ impl Clone for TermStack {
         // TODO: It would make sense if Protected could implement Clone.
         let mut innermost_stack: Protected<Vec<Config>> = Protected::new(vec![]);
 
+        let read = self.innermost_stack.read();
         let mut write = innermost_stack.write();
-        for t in self.innermost_stack.read().iter() {
+        for t in read.iter() {
             match t {
                 Config::Rewrite(x) => write.push(Config::Rewrite(*x)),
                 Config::Construct(f, x, y) => {
-                    let f = write.protect(f);
-                    write.push(Config::Construct(f.into(), *x, *y));
+                    write.push(Config::Construct(f.copy(), *x, *y));
                 }
                 Config::Term(t, y) => {
-                    let f = write.protect(t);
-                    write.push(Config::Term(f.into(), *y));
+                    write.push(Config::Term(t.copy(), *y));
                 }
                 Config::Return() => write.push(Config::Return()),
             }
@@ -323,15 +334,14 @@ mod tests {
         let rhs_stack = TermStack::new(&create_rewrite_rule("fact(s(N))", "times(s(N), fact(N))", &["N"]).unwrap());
         let mut expected = Protected::new(vec![]);
 
+        let t1 = DataFunctionSymbol::new("times");
+        let t2 = DataFunctionSymbol::new("s");
+        let t3 = DataFunctionSymbol::new("fact");
+
         let mut write = expected.write();
-        let t = write.protect(&DataFunctionSymbol::new("times"));
-        write.push(Config::Construct(t.into(), 2, 0));
-
-        let t = write.protect(&DataFunctionSymbol::new("s"));
-        write.push(Config::Construct(t.into(), 1, 1));
-
-        let t = write.protect(&DataFunctionSymbol::new("fact"));
-        write.push(Config::Construct(t.into(), 1, 2));
+        write.push(Config::Construct(t1.copy(), 2, 0));
+        write.push(Config::Construct(t2.copy(), 1, 1));
+        write.push(Config::Construct(t3.copy(), 1, 2));
         drop(write);
 
         // Check if the resulting construction succeeded.

@@ -1,3 +1,5 @@
+#[cfg(debug_assertions)]
+use std::cell::RefCell;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem::transmute;
@@ -8,14 +10,11 @@ use std::sync::Arc;
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::Marker;
-use crate::THREAD_TERM_POOL;
 use crate::Term;
+use crate::THREAD_TERM_POOL;
 use crate::aterm::ATermRef;
 use crate::gc_mutex::GcMutex;
 use crate::gc_mutex::GcMutexGuard;
-
-#[cfg(debug_assertions)]
-use std::cell::RefCell;
 
 /// A container of objects, typically either terms or objects containing terms,
 /// that are of trait Markable. These store ATermRef<'static> that are protected
@@ -29,7 +28,8 @@ pub struct Protected<C> {
     _unsend: PhantomUnsend,
 }
 
-impl<C: Markable + Send + 'static> Protected<C> {
+impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
+
     /// Creates a new Protected container from a given container.
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(GcMutex::new(container));
@@ -43,29 +43,25 @@ impl<C: Markable + Send + 'static> Protected<C> {
         }
     }
 
-    /// Provides mutable access to the underlying container. Use [Protector::protect] of
-    /// the resulting guard to be able to insert terms into the container.
-    /// Otherwise the borrow checker will note that the [ATermRef] do not
-    /// outlive the guard, see [Protector].
-    pub fn write(&mut self) -> Protector<'_, C> {
+    /// Provides mutable access to the underlying container.
+    pub fn write(&mut self) -> ProtectedWriteGuard<'_, C> {
         // The lifetime of ATermRef can be derived from self since it is protected by self, so transmute 'static into 'a.
-        Protector::new(self.container.write())
+        ProtectedWriteGuard::new(self.container.write())
     }
 
     /// Provides immutable access to the underlying container.
-    pub fn read(&self) -> GcMutexGuard<'_, C> {
-        // The lifetime of ATermRef can be derived from self since it is protected by self, so transmute 'static into 'a.
-        self.container.read()
+    pub fn read<'a>(&'a self) -> ProtectedReadGuard<'a, C> {
+        ProtectedReadGuard::new(self.container.read())
     }
 }
 
-impl<C: Default + Markable + Send + 'static> Default for Protected<C> {
+impl<C: Default + Markable + Send + Transmutable + 'static> Default for Protected<C> {
     fn default() -> Self {
         Protected::new(Default::default())
     }
 }
 
-impl<C: Clone + Markable + Send + 'static> Clone for Protected<C> {
+impl<C: Clone + Markable + Send + Transmutable + 'static> Clone for Protected<C> {
     fn clone(&self) -> Self {
         Protected::new(self.container.read().clone())
     }
@@ -180,26 +176,69 @@ impl<T: Markable> Markable for Option<T> {
     }
 }
 
-// Vec<T> -> Vec<U>
+pub trait Transmutable {
+    type Target<'a>
+    where
+        Self: 'a;
 
-/// This is a helper struct used by TermContainer to protected terms that are
-/// inserted into the container before the guard is dropped.
-///
-/// The reason is that the ATermRef derive their lifetime from the
-/// TermContainer. However, when inserting terms with shorter lifetimes we know
-/// that their lifetime is extended by being in the container. This is enforced
-/// by runtime checks during debug for containers that implement IntoIterator.
-pub struct Protector<'a, C: Markable> {
+    /// Transmute the lifetime of the object to 'a, which is shorter than the given lifetime.
+    fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a>;
+
+    /// Transmute the lifetime of the object to 'a, which is shorter than the given lifetime.
+    fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a>;
+}
+
+impl Transmutable for ATermRef<'static> {
+    type Target<'a> = ATermRef<'a>;
+
+    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
+        unsafe { transmute::<&Self, &'a ATermRef<'a>>(self) }
+    }
+
+    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
+        unsafe { transmute::<&mut Self, &'a mut ATermRef<'a>>(self) }
+    }
+}
+
+impl<T: Transmutable> Transmutable for Option<T> {
+    type Target<'a> = Option<T>
+        where T: 'a;
+
+    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
+        unsafe { transmute::<&Self, &'a Option<T>>(self) }
+    }
+
+    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
+        unsafe { transmute::<&mut Self, &'a mut Option<T>>(self) }
+    }
+}
+
+impl<T> Transmutable for Vec<T>
+    where T: Transmutable 
+{
+    type Target<'a> = Vec<T::Target<'a>>
+        where T: 'a;
+
+    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
+        unsafe { transmute::<&Self, &'a Vec<T::Target<'a>>>(self) }
+    }
+    
+    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
+        unsafe { transmute::<&mut Self, &'a mut Vec<T::Target<'a>>>(self) }
+    }
+}
+
+pub struct ProtectedWriteGuard<'a, C> {
     reference: GcMutexGuard<'a, C>,
 
     #[cfg(debug_assertions)]
     protected: RefCell<Vec<ATermRef<'static>>>,
 }
 
-impl<'a, C: Markable> Protector<'a, C> {
-    fn new(reference: GcMutexGuard<'a, C>) -> Protector<'a, C> {
+impl<'a, C> ProtectedWriteGuard<'a, C> {
+    fn new(reference: GcMutexGuard<'a, C>) -> Self {
         #[cfg(debug_assertions)]
-        return Protector {
+        return ProtectedWriteGuard {
             reference,
             protected: RefCell::new(vec![]),
         };
@@ -207,6 +246,7 @@ impl<'a, C: Markable> Protector<'a, C> {
         #[cfg(not(debug_assertions))]
         return Protector { reference };
     }
+    
 
     /// Yields a term to insert into the container.
     ///
@@ -225,31 +265,35 @@ impl<'a, C: Markable> Protector<'a, C> {
     }
 }
 
-impl<C: Markable> Deref for Protector<'_, C> {
-    type Target = C;
+impl<'a, C: Transmutable + 'a> Deref for ProtectedWriteGuard<'a, C> {
+    type Target = C::Target<'a>;
 
     fn deref(&self) -> &Self::Target {
-        &self.reference
+        &self.reference.transmute_lifetime()
     }
 }
 
-impl<C: Markable> DerefMut for Protector<'_, C> {
+impl<'a, C: Transmutable> DerefMut for ProtectedWriteGuard<'a, C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.reference.deref_mut()
+        self.reference.deref_mut().transmute_lifetime_mut()
     }
 }
 
-impl<C: Markable> Drop for Protector<'_, C> {
-    fn drop(&mut self) {
-        #[cfg(debug_assertions)]
-        {
-            for term in self.protected.borrow().iter() {
-                debug_assert!(
-                    self.reference.contains_term(term),
-                    "Term was protected but not actually inserted"
-                );
-            }
-        }
+pub struct ProtectedReadGuard<'a, C> {
+    reference: GcMutexGuard<'a, C>,
+}
+
+impl<'a, C> ProtectedReadGuard<'a, C> {
+    fn new(reference: GcMutexGuard<'a, C>) -> Self {
+        Self { reference }
+    }
+}
+
+impl<'a, C: Transmutable> Deref for ProtectedReadGuard<'a, C> {
+    type Target = C::Target<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.reference.transmute_lifetime()
     }
 }
 
@@ -266,12 +310,11 @@ mod tests {
         let t = ATerm::from_string("f(g(a),b)").unwrap();
 
         // First test the trait for a standard container.
-        let mut container = Protected::<Vec<ATermRef>>::new(vec![]);
+        let mut container = Protected::<Vec<ATermRef<'static>>>::new(vec![]);
 
         for _ in 0..1000 {
             let mut write = container.write();
-            let u = write.protect(&t);
-            write.push(u);
+            write.push(t.get());
         }
     }
 }
