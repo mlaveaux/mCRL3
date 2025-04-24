@@ -244,7 +244,7 @@ impl<'a, C> ProtectedWriteGuard<'a, C> {
         };
 
         #[cfg(not(debug_assertions))]
-        return Protector { reference };
+        return ProtectedWriteGuard { reference };
     }
     
 
