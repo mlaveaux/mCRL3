@@ -1,5 +1,4 @@
 use log::trace;
-use parking_lot::Mutex;
 use pest_consume::Parser;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -19,6 +18,8 @@ use crate::TermParser;
 use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
+use crate::global_aterm_pool::Mutex;
+use crate::global_aterm_pool::mutex_unwrap;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
@@ -127,7 +128,7 @@ impl ThreadTermPool {
     /// Protect the term by adding its index to the protection set
     pub fn protect(&self, term: &ATermRef<'_>) -> ATerm {
         // Protect the term by adding its index to the protection set
-        let root = self.protection_set.lock().protection_set.protect(term.index());
+        let root = mutex_unwrap(self.protection_set.lock()).protection_set.protect(term.index());
 
         // Return the protected term
         ATerm::from_index(term.index(), root)
@@ -136,7 +137,7 @@ impl ThreadTermPool {
     /// Protects a term from garbage collection after it was potentially inserted
     fn protect_inserted(&self, tp: &mut GlobalTermPool, term: &ATermRef<'_>, inserted: bool) -> ATerm {
         // Protect the term by adding its index to the protection set
-        let root = self.protection_set.lock().protection_set.protect(term.index());
+        let root = mutex_unwrap(self.protection_set.lock()).protection_set.protect(term.index());
 
         // If the term was newly inserted, decrease the garbage collection counter and trigger garbage collection if necessary
         if inserted {
@@ -157,7 +158,7 @@ impl ThreadTermPool {
 
     /// Unprotects a term from this thread's protection set.
     pub fn drop(&self, term: &ATerm) {
-        self.protection_set.lock().protection_set.unprotect(term.root());
+        mutex_unwrap(self.protection_set.lock()).protection_set.unprotect(term.root());
 
         trace!(
             "Unprotected term {:?}, root {}, protection set {}",
@@ -169,14 +170,14 @@ impl ThreadTermPool {
 
     /// Protects a container in this thread's container protection set.
     pub(crate) fn protect_container(&self, container: Arc<dyn Markable + Send + Sync>) -> usize {
-        let root = self.protection_set.lock().container_protection_set.protect(container);
+        let root = mutex_unwrap(self.protection_set.lock()).container_protection_set.protect(container);
         trace!("Protected container index {}, protection set {}", root, self.index());
         root
     }
 
     /// Unprotects a container from this thread's container protection set.
     pub(crate) fn drop_container(&self, root: usize) {
-        self.protection_set.lock().container_protection_set.unprotect(root);
+        mutex_unwrap(self.protection_set.lock()).container_protection_set.unprotect(root);
         trace!("Unprotected container index {}, protection set {}", root, self.index());
     }
 
@@ -190,7 +191,7 @@ impl ThreadTermPool {
 
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
-        let mut lock = self.protection_set.lock();
+        let mut lock = mutex_unwrap(self.protection_set.lock());
         let result = Symbol::from_index(symbol.index(), lock.symbol_protection_set.protect(symbol.index()));
 
         trace!(
@@ -205,15 +206,15 @@ impl ThreadTermPool {
 
     /// Unprotects a symbol, allowing it to be garbage collected.
     pub fn drop_symbol(&self, symbol: &mut Symbol) {
-        self.protection_set
-            .lock()
+        mutex_unwrap(self.protection_set
+            .lock())
             .symbol_protection_set
             .unprotect(symbol.root());
     }
 
     /// Returns the index of the protection set.
     fn index(&self) -> usize {
-        self.protection_set.lock().index
+        mutex_unwrap(self.protection_set.lock()).index
     }
 }
 
@@ -247,7 +248,7 @@ mod tests {
 
                     // Verify protection
                     THREAD_TERM_POOL.with_borrow(|tp| {
-                        assert!(tp.protection_set.lock().protection_set.contains_root(protected.root()));
+                        assert!(mutex_unwrap(tp.protection_set.lock()).protection_set.contains_root(protected.root()));
                     });
 
                     // Unprotect
@@ -255,7 +256,7 @@ mod tests {
                     drop(protected);
 
                     THREAD_TERM_POOL.with_borrow(|tp| {
-                        assert!(!tp.protection_set.lock().protection_set.contains_root(root));
+                        assert!(!mutex_unwrap(tp.protection_set.lock()).protection_set.contains_root(root));
                     });
                 });
             }

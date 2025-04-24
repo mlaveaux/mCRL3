@@ -14,19 +14,30 @@ use mcrl3_utilities::SimpleTimer;
 #[cfg(not(feature = "mcrl3_miri"))]
 mod mutex {
     pub use parking_lot::Mutex;
+    pub use parking_lot::MutexGuard;
     pub use parking_lot::ReentrantMutex;
     pub use parking_lot::ReentrantMutexGuard;
+
+    /// Helper function used to unwrap the mutex guard
+    pub fn mutex_unwrap<'a, T>(guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+        guard
+    }
 }
 
 #[cfg(feature = "mcrl3_miri")]
 mod mutex {
     pub use std::sync::Mutex;
+    pub use std::sync::MutexGuard;
     pub use std::sync::ReentrantLock as ReentrantMutex;
     pub use std::sync::ReentrantLockGuard as ReentrantMutexGuard;
+
+    pub fn mutex_unwrap<'a, T, E: std::fmt::Debug>(guard: Result<MutexGuard<'a, T>, E>) -> MutexGuard<'a, T> {
+        guard.expect("Mutex lock has been poisoned")
+    }
 }
 
 // Depends on the selection of the feature, the mutex type is either a parking_lot or std mutex.
-use mutex::*;
+pub use mutex::*;
 
 use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
@@ -293,7 +304,7 @@ impl GlobalTermPool {
         // Loop through all protection sets and mark the terms.
         for pool in self.thread_pools.iter() {
             if let Some(pool) = pool {
-                let pool = pool.lock();
+                let pool = mutex_unwrap(pool.lock());
 
                 for (term, _) in pool.protection_set.iter() {
                     // Remove all terms that are not protected

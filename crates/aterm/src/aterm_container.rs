@@ -228,14 +228,14 @@ impl<T> Transmutable for Vec<T>
     }
 }
 
-pub struct ProtectedWriteGuard<'a, C> {
+pub struct ProtectedWriteGuard<'a, C: Markable> {
     reference: GcMutexGuard<'a, C>,
 
     #[cfg(debug_assertions)]
     protected: RefCell<Vec<ATermRef<'static>>>,
 }
 
-impl<'a, C> ProtectedWriteGuard<'a, C> {
+impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
     fn new(reference: GcMutexGuard<'a, C>) -> Self {
         #[cfg(debug_assertions)]
         return ProtectedWriteGuard {
@@ -263,9 +263,24 @@ impl<'a, C> ProtectedWriteGuard<'a, C> {
             transmute(term.copy())
         }
     }
+
 }
 
-impl<'a, C: Transmutable + 'a> Deref for ProtectedWriteGuard<'a, C> {
+#[cfg(debug_assertions)]
+impl<C: Markable> Drop for ProtectedWriteGuard<'_, C> {
+    fn drop(&mut self) {
+        {
+            for term in self.protected.borrow().iter() {
+                debug_assert!(
+                    self.reference.contains_term(term),
+                    "Term was protected but not actually inserted"
+                );
+            }
+        }
+    }
+}
+
+impl<'a, C: Markable + Transmutable + 'a> Deref for ProtectedWriteGuard<'a, C> {
     type Target = C::Target<'a>;
 
     fn deref(&self) -> &Self::Target {
@@ -273,7 +288,7 @@ impl<'a, C: Transmutable + 'a> Deref for ProtectedWriteGuard<'a, C> {
     }
 }
 
-impl<'a, C: Transmutable> DerefMut for ProtectedWriteGuard<'a, C> {
+impl<'a, C: Markable + Transmutable> DerefMut for ProtectedWriteGuard<'a, C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.reference.deref_mut().transmute_lifetime_mut()
     }
