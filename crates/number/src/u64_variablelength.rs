@@ -28,13 +28,13 @@ pub fn write_u64_variablelength<W: Write>(
     // While more than 7 bits of data are left, occupy the last output byte
     // and set the next byte flag.
     while value > 0b01111111 {
-        stream.write(8, (value as u8 & 0b01111111) | 0b10000000)?;
+        stream.write::<8, u8>((value as u8 & 0b01111111) | 0b10000000)?;
 
         // Remove the seven bits we just wrote from value.
         value >>= 7;
     }
 
-    stream.write(8, value as u8)?;
+    stream.write::<8, u8>(value as u8)?;
     Ok(())
 }
 
@@ -43,7 +43,7 @@ pub fn write_u64_variablelength<W: Write>(
 pub fn read_u64_variablelength<R: Read>(stream: &mut BitReader<R, LittleEndian>) -> Result<u64, Box<dyn Error>> {
     let mut value: u64 = 0;
     for i in 0..encoding_size::<u64>() {
-        let byte = stream.read::<u8>(8)?;
+        let byte = stream.read::<8, u8>()?;
 
         // Take 7 bits (mask 0x01111111) from byte and shift it before the bits already written to value.
         value |= ((byte & 0b01111111) as u64) << (7 * i);
@@ -68,7 +68,7 @@ mod tests {
 
         let value = 234678;
         write_u64_variablelength(&mut writer, value).unwrap();
-        writer.write(32, 0_u64).unwrap();
+        writer.write::<32, u64>(0).unwrap();
 
         let mut reader = BitReader::new(&stream[0..]);
         let result = read_u64_variablelength(&mut reader).unwrap();

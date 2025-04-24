@@ -23,7 +23,7 @@ members = [
 
 [workspace.dependencies]
 ahash = "0.8"
-bitstream-io = "2.6"
+bitstream-io = "3.3"
 bitvec = "1.0"
 bumpalo = "3.17"
 clap = { version = "4.5", features = ["derive"] }
@@ -47,7 +47,7 @@ rand = "0.9"
 regex = "1.0"
 rustc-hash = "2.1"
 sharded-slab = "0.1"
-smallvec = "1.14"
+smallvec = "1.15"
 streaming-iterator = "0.1"
 syn = { version = "2.0", features = ["full"] }
 temp-dir = "0.1"
@@ -56,15 +56,15 @@ tikv-jemallocator = "0.6"
 toml = "0.8"
 
 # Used for GUI tools
-cosmic-text = "0.13"
+cosmic-text = "0.14"
 glam = "0.30"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
-slint = "1.10"
-slint-build = "1.10"
+slint = "1.11"
+slint-build = "1.11"
 tiny-skia = "0.11"
 tobj = "4.0"
 tokio = { version = "1.44", features = ["rt", "macros"] }
-wgpu = "24.0"
+wgpu = "25.0"
 winapi = { version = "0.3", features = ["consoleapi"] }
 
 # Only used for xtask

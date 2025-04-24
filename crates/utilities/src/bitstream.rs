@@ -28,14 +28,14 @@ impl<W: Write> BitStreamWriter<W> {
     /// - number_of_bits must be <= 64
     pub fn write_bits(&mut self, value: u64, number_of_bits: u8) -> io::Result<()> {
         assert!(number_of_bits <= 64);
-        self.writer.write(number_of_bits as u32, value)
+        self.writer.write_var(number_of_bits as u32, value)
     }
 
     /// Writes a string prefixed with its length as a variable-width integer.
     pub fn write_string(&mut self, s: &str) -> io::Result<()> {
         self.write_integer(s.len())?;
         for byte in s.as_bytes() {
-            self.writer.write(8, *byte as u64)?;
+            self.writer.write::<8, u64>(*byte as u64)?;
         }
         Ok(())
     }
@@ -44,7 +44,7 @@ impl<W: Write> BitStreamWriter<W> {
     pub fn write_integer(&mut self, value: usize) -> io::Result<()> {
         let nr_bytes = encode_variablesize_int(value, &mut self.integer_buffer);
         for i in 0..nr_bytes {
-            self.writer.write(8, self.integer_buffer[i] as u64)?;
+            self.writer.write::<8, u64>(self.integer_buffer[i] as u64)?;
         }
         Ok(())
     }
@@ -75,9 +75,9 @@ impl<R: Read> BitStreamReader<R> {
     ///
     /// # Preconditions
     /// - number_of_bits must be <= 64
-    pub fn read_bits(&mut self, number_of_bits: u8) -> io::Result<u64> {
+    pub fn read_bits(&mut self, number_of_bits: u8) -> io::Result<u32> {
         assert!(number_of_bits <= 64);
-        self.reader.read(number_of_bits as u32)
+        self.reader.read_var(number_of_bits as u32)
     }
 
     /// Reads a length-prefixed string.
@@ -87,7 +87,7 @@ impl<R: Read> BitStreamReader<R> {
         self.text_buffer.reserve(length + 1);
 
         for _ in 0..length {
-            let byte = self.reader.read::<u64>(8)? as u8;
+            let byte = self.reader.read::<8, u64>()? as u8;
             self.text_buffer.push(byte);
         }
 
@@ -131,7 +131,7 @@ fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Resu
     let max_bytes = (std::mem::size_of::<usize>() * 8 + 6) / 7;
 
     for i in 0..max_bytes {
-        let byte = reader.read_bits(8)? as u8;
+        let byte = reader.read_bits(8)?;
         value |= ((byte & 127) as usize) << (7 * i);
 
         if byte & 128 == 0 {
