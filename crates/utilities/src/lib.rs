@@ -12,10 +12,11 @@ mod indexed_set;
 mod line_iterator;
 mod number_postfix;
 mod parse_numbers;
-mod progress;
 mod progress_meter;
+mod progress;
 mod protection_set;
 mod simple_timer;
+mod test_utility;
 mod text_utility;
 mod timing;
 
@@ -28,14 +29,10 @@ pub use indexed_set::*;
 pub use line_iterator::*;
 pub use number_postfix::NumberPostfixGenerator;
 pub use parse_numbers::*;
-pub use progress::*;
 pub use progress_meter::*;
+pub use progress::*;
 pub use protection_set::*;
 pub use simple_timer::*;
+pub use test_utility::*;
 pub use text_utility::*;
 pub use timing::*;
-
-/// Constructs a logger for inside tests.
-pub fn test_logger() -> Result<(), log::SetLoggerError> {
-    env_logger::builder().is_test(true).try_init()
-}

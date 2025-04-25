@@ -289,13 +289,16 @@ impl<'a, T> IntoIterator for &'a IndexedSet<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{test_logger, test_rng};
+
     use super::*;
 
     use rand::Rng;
 
     #[test]
     fn test_construction() {
-        let mut rand = rand::rng();
+        let _ = test_logger();
+        let mut rand = test_rng();
 
         let mut input = vec![];
         for _ in 0..100 {

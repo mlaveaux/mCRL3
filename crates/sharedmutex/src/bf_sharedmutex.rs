@@ -246,6 +246,8 @@ mod tests {
     use rand::prelude::*;
     use std::hint::black_box;
     use std::thread;
+    
+    use mcrl3_utilities::test_rng;
 
     use crate::bf_sharedmutex::BfSharedMutex;
 
@@ -277,6 +279,8 @@ mod tests {
 
     #[test]
     fn test_shared() {
+        let mut rng = test_rng();
+
         let shared_vector = BfSharedMutex::new(vec![]);
 
         let mut threads = vec![];
@@ -286,7 +290,6 @@ mod tests {
         for _ in 1..num_threads {
             let shared_vector = shared_vector.clone();
             threads.push(thread::spawn(move || {
-                let mut rng = rand::rng();
 
                 for _ in 0..num_iterations {
                     if rng.random_bool(0.95) {

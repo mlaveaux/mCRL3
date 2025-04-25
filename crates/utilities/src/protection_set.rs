@@ -162,22 +162,22 @@ impl<'a, T> IntoIterator for &'a ProtectionSet<T> {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
-
     use super::*;
+
+    use rand::Rng;
+
+    use crate::{test_logger, test_rng};
+
 
     #[test]
     fn test_protection_set() {
+        let _ = test_logger();
         let mut protection_set = ProtectionSet::<usize>::new();
 
         // Protect a number of indices and record their roots.
         let mut indices: Vec<usize> = Vec::new();
 
-        let seed: u64 = rand::rng().random();
-        println!("seed: {}", seed);
-        let mut rng = StdRng::seed_from_u64(seed);
+        let mut rng = test_rng();
 
         for _ in 0..5000 {
             indices.push(protection_set.protect(rng.random_range(0..1000)));

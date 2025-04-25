@@ -302,12 +302,10 @@ impl AnnouncementInnermost {
 #[cfg(test)]
 mod tests {
     use ahash::AHashSet;
-    use rand::Rng;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
     use test_log::test;
 
     use mcrl3_aterm::random_term;
+    use mcrl3_utilities::test_rng;
 
     use crate::InnermostRewriter;
     use crate::RewriteEngine;
@@ -319,9 +317,7 @@ mod tests {
         let spec = RewriteSpecification { rewrite_rules: vec![] };
         let mut inner = InnermostRewriter::new(&spec);
 
-        let seed: u64 = rand::rng().random();
-        println!("seed: {}", seed);
-        let mut rng = StdRng::seed_from_u64(seed);
+        let mut rng = test_rng();
 
         let term = random_term(
             &mut rng,
