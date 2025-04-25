@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -8,6 +7,7 @@ use mcrl3_aterm::Symbol;
 use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::Yield;
+use mcrl3_utilities::MCRL3Error;
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;
@@ -30,7 +30,7 @@ pub struct RecParser;
 fn parse_REC(
     contents: &str,
     path: Option<PathBuf>,
-) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
+) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
     // Initialise return result
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
@@ -86,14 +86,14 @@ fn parse_REC(
 
 /// Load a REC specification from a specified file.
 #[allow(non_snake_case)]
-pub fn load_REC_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
+pub fn load_REC_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
     let contents = fs::read_to_string(file.clone())?;
     parse_REC(&contents, Some(file))
 }
 
 /// Load and join multiple REC specifications
 #[allow(non_snake_case)]
-pub fn load_REC_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), Box<dyn Error>> {
+pub fn load_REC_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
 
@@ -194,13 +194,13 @@ fn parse_eval(pair: Pair<Rule>) -> Vec<ATerm> {
 }
 
 /// Constructs a ATerm from a string.
-pub fn from_string(str: &str) -> Result<ATerm, Box<dyn Error>> {
+pub fn from_string(str: &str) -> Result<ATerm, MCRL3Error> {
     let mut pairs = RecParser::parse(Rule::term, str)?;
     parse_term(pairs.next().unwrap())
 }
 
 /// Extracts data from parsed term.
-fn parse_term(pair: Pair<Rule>) -> Result<ATerm, Box<dyn Error>> {
+fn parse_term(pair: Pair<Rule>) -> Result<ATerm, MCRL3Error> {
     debug_assert_eq!(pair.as_rule(), Rule::term);
 
     let mut builder = TermBuilder::<Pair<'_, Rule>, Symbol>::new();

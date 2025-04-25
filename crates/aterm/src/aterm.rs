@@ -10,6 +10,7 @@ use std::num::NonZero;
 
 use delegate::delegate;
 
+use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::Markable;
@@ -216,7 +217,7 @@ impl ATerm {
     }
 
     /// Constructs a term from the given string.
-    pub fn from_string(s: &str) -> Result<ATerm, Box<dyn Error>> {
+    pub fn from_string(s: &str) -> Result<ATerm, MCRL3Error> {
         THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(s))
     }
 

@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::stdout;
@@ -22,6 +21,7 @@ use mcrl3_reduction::quotient_lts;
 use mcrl3_reduction::strong_bisim_sigref;
 use mcrl3_reduction::strong_bisim_sigref_naive;
 
+use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::Timing;
 
 #[cfg(not(target_env = "msvc"))]
@@ -53,7 +53,7 @@ struct Cli {
     time: bool,
 }
 
-fn main() -> Result<ExitCode, Box<dyn Error>> {
+fn main() -> Result<ExitCode, MCRL3Error> {
     env_logger::init();
 
     let cli = Cli::parse();

@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs::File;
 use std::fs::{self};
 use std::io::Write;
@@ -6,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use libloading::Library;
+use mcrl3_utilities::MCRL3Error;
 use toml::Table;
 use toml::Value;
 use toml::map::Map;
@@ -16,11 +16,11 @@ use indoc::indoc;
 use log::info;
 
 /// Apply the value from compilation_toml for every given variable as an environment variable.
-fn apply_env(
+fn apply_env<'a>(
     builder: Expression,
     compilation_toml: &Map<String, Value>,
-    variables: &[&'static str],
-) -> Result<Expression, Box<dyn Error>> {
+    variables: &[&'a str],
+) -> Result<Expression, MCRL3Error> {
     let mut result = builder;
     let env = compilation_toml.get("env").ok_or("Missing [env] table")?;
 
@@ -44,7 +44,7 @@ pub struct RuntimeLibrary {
 impl RuntimeLibrary {
     /// Creates a new library that can be compiled at runtime.
     /// - depe
-    pub fn new(temp_dir: &Path, dependencies: Vec<String>) -> Result<RuntimeLibrary, Box<dyn Error>> {
+    pub fn new(temp_dir: &Path, dependencies: Vec<String>) -> Result<RuntimeLibrary, MCRL3Error> {
         info!("Creating library in directory {}", temp_dir.to_string_lossy());
         let source_dir = PathBuf::from(temp_dir).join("src");
 
@@ -66,7 +66,7 @@ impl RuntimeLibrary {
                 [package]
                 name = \"sabre-generated\"
                 edition = \"2024\"
-                rust-version = \"1.81.0\"
+                rust-version = \"1.85.0\"
                 version = \"1.0.0\"
                 [workspace]
                 
@@ -106,7 +106,7 @@ impl RuntimeLibrary {
     }
 
     /// Compiles the library into
-    pub fn compile(&mut self) -> Result<Library, Box<dyn Error>> {
+    pub fn compile(&mut self) -> Result<Library, MCRL3Error> {
         let compilation_toml = include_str!("../../../target/Compilation.toml").parse::<Table>()?;
 
         // Compile the dynamic object.

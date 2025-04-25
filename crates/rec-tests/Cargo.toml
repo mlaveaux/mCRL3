@@ -10,6 +10,7 @@ edition.workspace = true
 mcrl3_aterm.workspace = true
 mcrl3_data.workspace = true
 mcrl3_sabre.workspace = true
+mcrl3_utilities.workspace = true
 
 pest.workspace = true
 pest_derive.workspace = true

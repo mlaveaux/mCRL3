@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::io::Read;
 use std::io::Write;
 use std::time::Instant;
 
 use log::debug;
 use log::trace;
+use mcrl3_utilities::MCRL3Error;
 use regex::Regex;
 use streaming_iterator::StreamingIterator;
 use thiserror::Error;
@@ -27,7 +27,7 @@ pub enum IOError {
 
 ///     `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///     `(<from>: Nat, <label>: Str, <to>: Nat)`
-fn read_transition(input: &str) -> Result<(&str, &str, &str), Box<dyn Error>> {
+fn read_transition(input: &str) -> Result<(&str, &str, &str), MCRL3Error> {
     let start_paren = input.find('(').ok_or(IOError::InvalidTransition())?;
     let start_comma = input.find(',').ok_or(IOError::InvalidTransition())?;
 
@@ -54,7 +54,7 @@ fn read_transition(input: &str) -> Result<(&str, &str, &str), Box<dyn Error>> {
 /// And one line for every transition:
 ///     `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///     `(<from>: Nat, <label>: Str, <to>: Nat)`
-pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem, Box<dyn Error>> {
+pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem, MCRL3Error> {
     let start = Instant::now();
     debug!("Reading LTS in .aut format...");
 
@@ -132,7 +132,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
 }
 
 /// Write a labelled transition system in plain text in Aldebaran format to the given writer.
-pub fn write_aut(writer: &mut impl Write, lts: &LabelledTransitionSystem) -> Result<(), Box<dyn Error>> {
+pub fn write_aut(writer: &mut impl Write, lts: &LabelledTransitionSystem) -> Result<(), MCRL3Error> {
     writeln!(
         writer,
         "des ({}, {}, {})",

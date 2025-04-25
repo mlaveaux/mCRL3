@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -9,6 +8,7 @@ use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::SabreRewriter;
 use mcrl3_sabre::utilities::to_untyped_data_expression;
+use mcrl3_utilities::MCRL3Error;
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum Rewriter {
@@ -17,7 +17,7 @@ pub enum Rewriter {
 }
 
 /// Rewrites the given REC specification.
-pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: bool) -> Result<(), Box<dyn Error>> {
+pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: bool) -> Result<(), MCRL3Error> {
     let (syntax_spec, syntax_terms) = load_REC_from_file(filename_specification.into())?;
 
     let spec = syntax_spec.to_rewrite_spec();

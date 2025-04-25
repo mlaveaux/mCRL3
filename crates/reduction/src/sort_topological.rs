@@ -1,8 +1,7 @@
-use std::error::Error;
-
 use log::debug;
 use log::trace;
 use mcrl3_lts::LabelledTransitionSystem;
+use mcrl3_utilities::MCRL3Error;
 
 /// Returns a topological ordering of the states of the given LTS.
 ///
@@ -12,7 +11,7 @@ pub fn sort_topological<F>(
     lts: &LabelledTransitionSystem,
     filter: F,
     reverse: bool,
-) -> Result<Vec<usize>, Box<dyn Error>>
+) -> Result<Vec<usize>, MCRL3Error>
 where
     F: Fn(usize, usize) -> bool,
 {

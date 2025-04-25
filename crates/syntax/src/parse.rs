@@ -2,6 +2,8 @@ use pest::Parser;
 use pest_consume::Error;
 use pest_consume::match_nodes;
 
+use mcrl3_utilities::MCRL3Error;
+
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::IdDecl;
@@ -15,7 +17,7 @@ use crate::parse_sortexpr;
 
 /// Parses the given mCRL2 specification into an AST.
 impl UntypedProcessSpecification {
-    pub fn parse(spec: &str) -> std::result::Result<UntypedProcessSpecification, Box<dyn std::error::Error>> {
+    pub fn parse(spec: &str) -> std::result::Result<UntypedProcessSpecification, MCRL3Error> {
         pest::set_error_detail(true);
 
         let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec)?;

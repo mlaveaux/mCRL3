@@ -7,6 +7,7 @@ edition.workspace = true
 [dependencies]
 mcrl3_aterm.workspace = true
 mcrl3_data.workspace = true
+mcrl3_utilities.workspace = true
 
 rustc-hash.workspace = true
 smallvec.workspace = true

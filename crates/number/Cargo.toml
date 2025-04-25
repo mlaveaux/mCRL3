@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+mcrl3_utilities.workspace = true
+
 bitstream-io.workspace = true
 num.workspace = true
 once_cell.workspace = true

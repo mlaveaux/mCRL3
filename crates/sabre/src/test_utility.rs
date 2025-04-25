@@ -1,13 +1,12 @@
-use std::error::Error;
-
 use ahash::AHashSet;
 use mcrl3_aterm::ATerm;
+use mcrl3_utilities::MCRL3Error;
 
 use crate::Rule;
 use crate::utilities::to_untyped_data_expression;
 
 /// Create a rewrite rule lhs -> rhs with the given names being variables.
-pub(crate) fn create_rewrite_rule(lhs: &str, rhs: &str, variables: &[&str]) -> Result<Rule, Box<dyn Error>> {
+pub(crate) fn create_rewrite_rule(lhs: &str, rhs: &str, variables: &[&str]) -> Result<Rule, MCRL3Error> {
     let lhs = ATerm::from_string(lhs)?;
     let rhs = ATerm::from_string(rhs)?;
     let mut vars = AHashSet::new();

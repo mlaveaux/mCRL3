@@ -7,9 +7,9 @@
 //! These functions enable that, primarily for the purposes of displaying Rust
 //! panics.
 
-use std::error::Error;
 use std::result::Result;
 
+use mcrl3_utilities::MCRL3Error;
 #[cfg(windows)]
 use winapi::um::consoleapi::AllocConsole;
 
@@ -28,7 +28,7 @@ pub struct Console {
 }
 
 /// Initialises the console. On Windows this either attaches to the
-pub fn init() -> Result<Console, Box<dyn Error>> {
+pub fn init() -> Result<Console, MCRL3Error> {
     #[cfg(windows)]
     unsafe {
         // SAFETY: Only unsafe because we use the winapi crate to call Windows API functions.

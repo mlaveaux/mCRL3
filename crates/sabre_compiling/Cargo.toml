@@ -7,8 +7,11 @@ edition.workspace = true
 [dependencies]
 mcrl3_aterm.workspace = true
 mcrl3_data.workspace = true
+mcrl3_rec-tests.workspace = true
 mcrl3_sabre.workspace = true
+mcrl3_utilities.workspace = true
 
+ahash.workspace = true
 duct.workspace = true
 indoc.workspace = true
 libloading.workspace = true

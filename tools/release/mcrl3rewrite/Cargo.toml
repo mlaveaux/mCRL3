@@ -10,9 +10,10 @@ measure-allocs = []
 [dependencies]
 mcrl3_aterm.workspace = true
 mcrl3_data.workspace = true
+mcrl3_rec-tests.workspace = true
 mcrl3_sabre.workspace = true
 mcrl3_unsafety.workspace = true
-mcrl3_rec-tests.workspace = true
+mcrl3_utilities.workspace = true
 
 ahash.workspace = true
 clap.workspace = true

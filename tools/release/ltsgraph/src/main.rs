@@ -3,7 +3,6 @@
 
 slint::include_modules!();
 
-use std::error::Error;
 use std::fs::File;
 use std::ops::Deref;
 use std::path::Path;
@@ -28,6 +27,7 @@ use mcrl3_gui::console;
 use mcrl3_lts::read_aut;
 use mcrl3_ltsgraph_lib::GraphLayout;
 use mcrl3_ltsgraph_lib::Viewer;
+use mcrl3_utilities::MCRL3Error;
 use pauseable_thread::PauseableThread;
 
 mod error_dialog;
@@ -80,7 +80,7 @@ impl GuiSettings {
 
 // Initialize a tokio runtime for async calls
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<ExitCode, Box<dyn Error>> {
+async fn main() -> Result<ExitCode, MCRL3Error> {
     // Attach the standard output to the command line.
     let _console = console::init()?;
 

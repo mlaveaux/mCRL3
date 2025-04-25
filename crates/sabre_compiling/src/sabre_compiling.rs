@@ -1,10 +1,10 @@
-use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
 use libloading::Library;
 use libloading::Symbol;
 use log::info;
+use mcrl3_utilities::MCRL3Error;
 use temp_dir::TempDir;
 use toml::Table;
 
@@ -45,7 +45,7 @@ impl SabreCompilingRewriter {
         spec: &RewriteSpecification,
         use_local_workspace: bool,
         use_local_tmp: bool,
-    ) -> Result<SabreCompilingRewriter, Box<dyn Error>> {
+    ) -> Result<SabreCompilingRewriter, MCRL3Error> {
         let system_tmp_dir = TempDir::new()?;
         let temp_dir = if use_local_tmp {
             &Path::new("./tmp")
@@ -67,8 +67,8 @@ impl SabreCompilingRewriter {
 
             info!("Using local dependency {}", path);
             dependencies.push(format!(
-                "mcrl2 = {{ path = '{}' }}",
-                PathBuf::from(path).join("../mcrl2").to_string_lossy()
+                "sabre-ffi = {{ path = '{}' }}",
+                PathBuf::from(path).join("../../").to_string_lossy()
             ));
         } else {
             info!("Using git dependency https://github.com/mlaveaux/mCRL3.git");
@@ -85,28 +85,28 @@ impl SabreCompilingRewriter {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     use mcrl3_data::DataSpecification;
-//     use test_log::test;
+    use ahash::AHashSet;
+    use mcrl3_rec_tests::load_REC_from_strings;
+    use mcrl3_sabre::utilities::to_untyped_data_expression;
+    use test_log::test;
 
-//     #[test]
-//     fn test_compilation() {
+    #[test]
+    fn test_compilation() {
 
-//         let spec = DataSpecification::new("
-//             map f: Bool # Bool -> Bool;
-//             eqn f(true, false) = false;
-//         ").unwrap();
+        let (spec, terms) = load_REC_from_strings(&[include_str!("../../../examples/REC/rec/factorial6.rec")]).unwrap();
 
-//         let t = spec.parse("f(true, false)").unwrap();
+        let spec = spec.to_rewrite_spec();
 
-//         let spec = RewriteSpecification::from(spec);
-//         let tp = Rc::new(RefCell::new(TermPool::new()));
+        let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
 
-//         let mut rewriter = SabreCompilingRewriter::new(tp, &spec, true, true).unwrap();
+        for t in terms {
+            let data_term = to_untyped_data_expression(&t, &AHashSet::new());
+            assert_eq!(rewriter.rewrite(data_term.clone()), data_term, "The rewritten result does not match the expected result");
+        }
 
-//         assert_eq!(rewriter.rewrite(t.clone()), t, "The rewritten result does not match the expected result");
-//     }
-// }
+    }
+}

@@ -3404,6 +3404,7 @@ dependencies = [
  "mcrl3_gui",
  "mcrl3_lts",
  "mcrl3_ltsgraph-lib",
+ "mcrl3_utilities",
  "rfd",
  "slint",
  "slint-build",
@@ -3516,6 +3517,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcrl3_aterm-fuzz"
+version = "0.1.0"
+dependencies = [
+ "libfuzzer-sys",
+ "mcrl3_aterm",
+]
+
+[[package]]
 name = "mcrl3_data"
 version = "0.1.0"
 dependencies = [
@@ -3531,6 +3540,7 @@ name = "mcrl3_gui"
 version = "0.1.0"
 dependencies = [
  "log",
+ "mcrl3_utilities",
  "streaming-iterator",
  "winapi",
 ]
@@ -3589,6 +3599,7 @@ name = "mcrl3_number"
 version = "0.1.0"
 dependencies = [
  "bitstream-io 3.3.0",
+ "mcrl3_utilities",
  "num",
  "once_cell",
 ]
@@ -3602,6 +3613,7 @@ dependencies = [
  "mcrl3_aterm",
  "mcrl3_data",
  "mcrl3_sabre",
+ "mcrl3_utilities",
  "pest",
  "pest_derive",
  "test-case",
@@ -3631,6 +3643,7 @@ dependencies = [
  "log",
  "mcrl3_aterm",
  "mcrl3_data",
+ "mcrl3_utilities",
  "rand 0.9.1",
  "rustc-hash 2.1.1",
  "smallvec",
@@ -3642,6 +3655,7 @@ dependencies = [
 name = "mcrl3_sabre-compiling"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "duct",
  "env_logger",
  "indoc",
@@ -3649,7 +3663,9 @@ dependencies = [
  "log",
  "mcrl3_aterm",
  "mcrl3_data",
+ "mcrl3_rec-tests",
  "mcrl3_sabre",
+ "mcrl3_utilities",
  "temp-dir",
  "test-log",
  "toml",
@@ -3667,6 +3683,7 @@ name = "mcrl3_sharedmutex"
 version = "0.1.0"
 dependencies = [
  "crossbeam",
+ "mcrl3_utilities",
  "rand 0.9.1",
 ]
 
@@ -3676,6 +3693,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "indoc",
+ "mcrl3_utilities",
  "pest",
  "pest_consume",
  "pest_derive",
@@ -3691,6 +3709,7 @@ name = "mcrl3_utilities"
 version = "0.1.0"
 dependencies = [
  "ahash",
+ "backtrace",
  "bitstream-io 3.3.0",
  "bitvec",
  "env_logger",
@@ -3717,6 +3736,7 @@ dependencies = [
  "mcrl3_rec-tests",
  "mcrl3_sabre",
  "mcrl3_unsafety",
+ "mcrl3_utilities",
  "tikv-jemallocator",
 ]
 

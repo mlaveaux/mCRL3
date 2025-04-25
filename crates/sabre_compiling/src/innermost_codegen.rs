@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::error::Error;
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
@@ -10,8 +9,9 @@ use indoc::indoc;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::set_automaton::SetAutomaton;
 use mcrl3_sabre::utilities::ExplicitPosition;
+use mcrl3_utilities::MCRL3Error;
 
-pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Box<dyn Error>> {
+pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MCRL3Error> {
     let mut file = File::create(PathBuf::from(source_dir).join("lib.rs"))?;
 
     // Generate the automata used for matching

@@ -1,10 +1,11 @@
-use std::error::Error;
 use std::process::ExitCode;
 
 use clap::Parser;
 #[cfg(feature = "measure-allocs")]
 use log::info;
 
+use mcrl3_rec_tests::load_REC_from_file;
+use mcrl3_utilities::MCRL3Error;
 use mcrl3rewrite::Rewriter;
 use mcrl3rewrite::rewrite_rec;
 
@@ -50,7 +51,7 @@ struct ConvertArgs {
     output: String,
 }
 
-fn main() -> Result<ExitCode, Box<dyn Error>> {
+fn main() -> Result<ExitCode, MCRL3Error> {
     env_logger::init();
 
     let cli = Cli::parse();
@@ -62,22 +63,15 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
                 rewrite_rec(args.rewriter, &args.specification, args.output)?;
             }
         }
-        Cli::Convert(_args) => {
-            // Read the data specification
-            // let data_spec_text = fs::read_to_string(args.specification)?;
-            // let data_spec = DataSpecification::new(&data_spec_text)?;
+        Cli::Convert(args) => {
+            if args.specification.ends_with(".rec") {
+                // Read the data specification
+                let (spec_text,  _) = load_REC_from_file(args.specification.into())?;
+                let spec = spec_text.to_rewrite_spec();
 
-            // let spec: RewriteSpecification = data_spec.into();
-
-            // // Check if the lhs only contain constructor sorts.
-            // for rule in &spec.rewrite_rules {
-            //     for _t in rule.lhs.iter() {
-            //         //let cons = data_spec.constructors(DataExpressionRef::from(t).sort());
-            //     }
-            // }
-
-            // let mut output = File::create(args.output)?;
-            // write!(output, "{}", TrsFormatter::new(&spec))?;
+                let mut output = File::create(args.output)?;
+                //write!(output, "{}", TrsFormatter::new(&spec))?;
+            }
         }
     }
 

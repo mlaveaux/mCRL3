@@ -25,6 +25,7 @@ members = [
 ahash = "0.8"
 bitstream-io = "3.3"
 bitvec = "1.0"
+backtrace = "0.3"
 bumpalo = "3.17"
 clap = { version = "4.5", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -75,6 +76,10 @@ test-case  = "3.3"
 test-log = "0.2"
 env_logger = "0.11"
 trybuild = "1.0"
+
+# Used for fuzzing
+arbitrary = "1.4"
+libfuzzer-sys = "0.4"
 
 # The workspace libraries.
 mcrl3_aterm = { path = "crates/aterm" }

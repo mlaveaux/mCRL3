@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 mod bitstream;
+mod error;
 mod fixed_cache_policy;
 mod fixed_size_cache;
 mod helper;
@@ -19,6 +20,7 @@ mod text_utility;
 mod timing;
 
 pub use bitstream::*;
+pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
 pub use helper::*;
@@ -33,6 +35,7 @@ pub use simple_timer::*;
 pub use text_utility::*;
 pub use timing::*;
 
+/// Constructs a logger for inside tests.
 pub fn test_logger() -> Result<(), log::SetLoggerError> {
     env_logger::builder().is_test(true).try_init()
 }

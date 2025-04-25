@@ -3,6 +3,7 @@ use std::fmt;
 
 use ahash::AHashSet;
 use log::trace;
+use mcrl3_utilities::MCRL3Error;
 
 use crate::ATerm;
 use crate::Symbol;
@@ -90,11 +91,11 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
         input: I,
         transformer: F,
         construct: G,
-    ) -> Result<ATerm, Box<dyn Error>>
+    ) -> Result<ATerm, MCRL3Error>
     where
-        F: Fn(&ThreadTermPool, &mut ArgStack<I, C>, I) -> Result<Yield<C>, Box<dyn Error>>,
+        F: Fn(&ThreadTermPool, &mut ArgStack<I, C>, I) -> Result<Yield<C>, MCRL3Error>,
         // We need impl<Iterator<Item=&ATerm>> here, but that is not possible.
-        G: Fn(&ThreadTermPool, C, std::iter::Flatten<std::slice::Iter<Option<ATerm>>>) -> Result<ATerm, Box<dyn Error>>,
+        G: Fn(&ThreadTermPool, C, std::iter::Flatten<std::slice::Iter<Option<ATerm>>>) -> Result<ATerm, MCRL3Error>,
     {
         trace!("Transforming {:?}", input);
         self.terms.push(None);

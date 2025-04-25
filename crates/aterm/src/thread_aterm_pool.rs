@@ -1,8 +1,8 @@
 use log::trace;
+use mcrl3_utilities::MCRL3Error;
 use pest_consume::Parser;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::error::Error;
 use std::sync::Arc;
 
 use crate::GlobalTermPool;
@@ -182,7 +182,7 @@ impl ThreadTermPool {
     }
 
     /// Parse the given string and returns the Term representation.
-    pub fn from_string(&self, term: &str) -> Result<ATerm, Box<dyn Error>> {
+    pub fn from_string(&self, term: &str) -> Result<ATerm, MCRL3Error> {
         let mut result = TermParser::parse(Rule::TermSpec, term)?;
         let root = result.next().unwrap();
 
