@@ -19,7 +19,7 @@ All `xtask` targets use `cargo nextest run`, so that must be installed prior.
 
 # Additional checks
 
-To check for additional undefined behaviour at runtime we can also employ the `cargo careful` [project](https://github.com/RalfJung/cargo-careful). It compiles the standard library in nightly with many additional checks for undefined behaviour. It can also be installed with `cargo install cargo-careful` and requires the nightly toolchain. Then it can be executed with `cargo +nightly careful nextest run --target=x86_64-unknown-linux-gnu` (or `test` when `nextest` has not been installed). Furthermore, we test with `cargo miri` for extensive unsafe code violations.
+To check for additional undefined behaviour at runtime we can also employ the `cargo careful` [project](https://github.com/RalfJung/cargo-careful). It compiles the standard library in nightly with many additional checks for undefined behaviour. It can also be installed with `cargo install cargo-careful` and requires the nightly toolchain. Then it can be executed with `cargo +nightly careful nextest run --target=x86_64-unknown-linux-gnu` (or `test` when `nextest` has not been installed). There is also a feature `mcrl3_strict` that enables additional runtime checks. Furthermore, we test with `cargo miri` for unsafe code violations, this requires the `mcrl3_miri` feature to be enabled using `--features=mcrl3_miri`.
 
 ## Benchmarks
 
