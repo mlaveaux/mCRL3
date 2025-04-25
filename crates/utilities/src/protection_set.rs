@@ -166,8 +166,8 @@ mod tests {
 
     use rand::Rng;
 
-    use crate::{test_logger, test_rng};
-
+    use crate::test_logger;
+    use crate::test_rng;
 
     #[test]
     fn test_protection_set() {

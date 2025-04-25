@@ -1,7 +1,7 @@
 use core::fmt;
 use std::borrow::Borrow;
-use std::ops::Deref;
 use std::mem::transmute;
+use std::ops::Deref;
 
 use delegate::delegate;
 
@@ -17,10 +17,10 @@ use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::TermIterator;
+use mcrl3_aterm::Transmutable;
 use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
-use mcrl3_aterm::Transmutable;
 
 use crate::DATA_SYMBOLS;
 use crate::SortExpression;

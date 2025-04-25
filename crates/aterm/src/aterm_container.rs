@@ -10,8 +10,8 @@ use std::sync::Arc;
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::Marker;
-use crate::Term;
 use crate::THREAD_TERM_POOL;
+use crate::Term;
 use crate::aterm::ATermRef;
 use crate::gc_mutex::GcMutex;
 use crate::gc_mutex::GcMutexGuard;
@@ -29,7 +29,6 @@ pub struct Protected<C> {
 }
 
 impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
-
     /// Creates a new Protected container from a given container.
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(GcMutex::new(container));
@@ -201,8 +200,10 @@ impl Transmutable for ATermRef<'static> {
 }
 
 impl<T: Transmutable> Transmutable for Option<T> {
-    type Target<'a> = Option<T>
-        where T: 'a;
+    type Target<'a>
+        = Option<T>
+    where
+        T: 'a;
 
     fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
         unsafe { transmute::<&Self, &'a Option<T>>(self) }
@@ -214,15 +215,18 @@ impl<T: Transmutable> Transmutable for Option<T> {
 }
 
 impl<T> Transmutable for Vec<T>
-    where T: Transmutable 
+where
+    T: Transmutable,
 {
-    type Target<'a> = Vec<T::Target<'a>>
-        where T: 'a;
+    type Target<'a>
+        = Vec<T::Target<'a>>
+    where
+        T: 'a;
 
     fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
         unsafe { transmute::<&Self, &'a Vec<T::Target<'a>>>(self) }
     }
-    
+
     fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
         unsafe { transmute::<&mut Self, &'a mut Vec<T::Target<'a>>>(self) }
     }
@@ -246,7 +250,6 @@ impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
         #[cfg(not(debug_assertions))]
         return ProtectedWriteGuard { reference };
     }
-    
 
     /// Yields a term to insert into the container.
     ///
@@ -263,7 +266,6 @@ impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
             transmute(term.copy())
         }
     }
-
 }
 
 #[cfg(debug_assertions)]

@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
+use std::mem::transmute;
 use std::num::NonZero;
 use std::ops::Deref;
-use std::mem::transmute;
 
 use delegate::delegate;
 

@@ -27,10 +27,7 @@ pub struct RecParser;
 /// `contents` - A REC specification as string
 /// `path` - An optional path to a folder in which other importable REC files can be found.
 #[allow(non_snake_case)]
-fn parse_REC(
-    contents: &str,
-    path: Option<PathBuf>,
-) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
+fn parse_REC(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
     // Initialise return result
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];

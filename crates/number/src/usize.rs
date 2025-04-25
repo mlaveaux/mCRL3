@@ -24,7 +24,7 @@ pub(crate) fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) ->
 
     // Use wrapping operations to correctly handle underflow
     let result = n1.wrapping_sub(n2).wrapping_sub(*carry);
-    
+
     // Update the carry/borrow flag based on underflow conditions
     *carry = if *carry == 0 {
         // When we had no initial borrow, check if n2 > n1 (wrapped around)

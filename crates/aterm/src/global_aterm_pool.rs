@@ -145,7 +145,7 @@ impl GlobalTermPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> Arc<String>  {
+    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> Arc<String> {
         self.symbol_pool.symbol_name_owned(symbol)
     }
 
@@ -186,7 +186,12 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T, P>(&mut self, symbol: &'b impl Symb<'a, 'b>, args: I, protect: P) -> ATerm
+    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T, P>(
+        &mut self,
+        symbol: &'b impl Symb<'a, 'b>,
+        args: I,
+        protect: P,
+    ) -> ATerm
     where
         I: IntoIterator<Item = T>,
         T: Term<'c, 'd>,
@@ -215,7 +220,12 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term<'a, 'b, P>(&mut self, symbol: &'b impl Symb<'a, 'b>, args: &'b [impl Term<'a, 'b>], protect: P) -> ATerm
+    pub fn create_term<'a, 'b, P>(
+        &mut self,
+        symbol: &'b impl Symb<'a, 'b>,
+        args: &'b [impl Term<'a, 'b>],
+        protect: P,
+    ) -> ATerm
     where
         P: FnOnce(&mut GlobalTermPool, NonZero<usize>, bool) -> ATerm,
     {

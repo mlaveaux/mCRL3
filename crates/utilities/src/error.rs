@@ -1,7 +1,6 @@
-use core::{
-    error::Error,
-    fmt::{Debug, Display},
-};
+use core::error::Error;
+use core::fmt::Debug;
+use core::fmt::Display;
 
 /// The MCRL3 error type. This has a blanket [`From`] impl for any type that implements Rust's [`Error`],
 /// meaning it can be used as a "catch all" error. Captures a backtrace that can be printed from this object.

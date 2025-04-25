@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
 use std::fmt;
+use std::mem::transmute;
 use std::num::NonZero;
 use std::ops::Deref;
-use std::mem::transmute;
 
 use delegate::delegate;
 

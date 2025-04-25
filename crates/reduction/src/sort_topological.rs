@@ -7,11 +7,7 @@ use mcrl3_utilities::MCRL3Error;
 ///
 /// An error is returned if the LTS contains a cycle.
 ///     - reverse: If true, the topological ordering is reversed, i.e. successors before the incoming state.
-pub fn sort_topological<F>(
-    lts: &LabelledTransitionSystem,
-    filter: F,
-    reverse: bool,
-) -> Result<Vec<usize>, MCRL3Error>
+pub fn sort_topological<F>(lts: &LabelledTransitionSystem, filter: F, reverse: bool) -> Result<Vec<usize>, MCRL3Error>
 where
     F: Fn(usize, usize) -> bool,
 {

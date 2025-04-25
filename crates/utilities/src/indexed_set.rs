@@ -289,7 +289,8 @@ impl<'a, T> IntoIterator for &'a IndexedSet<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{test_logger, test_rng};
+    use crate::test_logger;
+    use crate::test_rng;
 
     use super::*;
 

@@ -1,4 +1,6 @@
-use mcrl3_syntax::{Mcrl2Parser, Rule, UntypedProcessSpecification};
+use mcrl3_syntax::Mcrl2Parser;
+use mcrl3_syntax::Rule;
+use mcrl3_syntax::UntypedProcessSpecification;
 use pest::Parser;
 use test_case::test_case;
 

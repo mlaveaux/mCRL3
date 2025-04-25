@@ -1,13 +1,13 @@
+use std::cell::UnsafeCell;
 use std::error::Error;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::cell::UnsafeCell;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use crossbeam::utils::CachePadded;
 
@@ -246,7 +246,7 @@ mod tests {
     use rand::prelude::*;
     use std::hint::black_box;
     use std::thread;
-    
+
     use mcrl3_utilities::test_rng;
 
     use crate::bf_sharedmutex::BfSharedMutex;
@@ -279,8 +279,6 @@ mod tests {
 
     #[test]
     fn test_shared() {
-        let mut rng = test_rng();
-
         let shared_vector = BfSharedMutex::new(vec![]);
 
         let mut threads = vec![];
@@ -290,6 +288,7 @@ mod tests {
         for _ in 1..num_threads {
             let shared_vector = shared_vector.clone();
             threads.push(thread::spawn(move || {
+                let mut rng = test_rng();
 
                 for _ in 0..num_iterations {
                     if rng.random_bool(0.95) {

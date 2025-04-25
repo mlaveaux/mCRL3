@@ -17,7 +17,7 @@ pub struct UntypedProcessSpecification {
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
-pub struct UntypedDataSpecification {    
+pub struct UntypedDataSpecification {
     /// Sort declarations
     pub sort_decls: Vec<SortDecl>,
     /// Constructor declarations

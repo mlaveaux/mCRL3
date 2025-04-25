@@ -191,7 +191,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                     1
                                 }
                             }
-                            
+
                             impl Transmutable for #name_ref<'static> {
                                 type Target<'a> = #name_ref<'a>;
 
