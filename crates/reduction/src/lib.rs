@@ -6,7 +6,6 @@
 //!
 //!
 
-//mod strong_bisim_partition;
 mod block_partition;
 mod indexed_partition;
 mod quotient;
@@ -15,7 +14,6 @@ mod signature_refinement;
 mod signatures;
 mod sort_topological;
 
-//pub use strong_bisim_partition::*;
 pub use block_partition::*;
 pub use indexed_partition::*;
 pub use quotient::*;

@@ -309,7 +309,8 @@ fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<usize>, root: usize) 
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_utilities::{test_logger, test_rng};
+    use mcrl3_utilities::test_logger;
+    use mcrl3_utilities::test_rng;
 
     use super::*;
     use crate::operations::singleton;

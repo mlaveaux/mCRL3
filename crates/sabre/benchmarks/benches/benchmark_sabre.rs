@@ -8,7 +8,7 @@ use mcrl3_rec_tests::load_REC_from_strings;
 use mcrl3_sabre::set_automaton::SetAutomaton;
 
 pub fn criterion_benchmark_set_automaton(c: &mut Criterion) {
-    for (name, rec_files) in [("hanoi8", [include_str!("../../../../examples/REC/rec/fibfree.rec")])] {
+    for (name, rec_files) in [("fibfree", [include_str!("../../../../examples/REC/rec/fibfree.rec")])] {
         let (syntax_spec, _) = load_REC_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
 

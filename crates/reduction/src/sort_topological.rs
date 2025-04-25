@@ -198,7 +198,8 @@ where
 mod tests {
 
     use mcrl3_lts::random_lts;
-    use mcrl3_utilities::{test_logger, test_rng};
+    use mcrl3_utilities::test_logger;
+    use mcrl3_utilities::test_rng;
     use rand::seq::SliceRandom;
     use test_log::test;
 
@@ -220,7 +221,7 @@ mod tests {
     fn test_random_reorder_states() {
         let _ = test_logger();
         let mut rng = test_rng();
-        
+
         let lts = random_lts(&mut rng, 10, 3, 2);
 
         // Generate a random permutation.

@@ -5,7 +5,12 @@ use crate::LabelledTransitionSystem;
 
 /// Generates a monolithic LTS with the desired number of states, labels, out
 /// degree and in degree for all the states.
-pub fn random_lts(rng: &mut impl Rng, num_of_states: usize, num_of_labels: u32, outdegree: usize) -> LabelledTransitionSystem {
+pub fn random_lts(
+    rng: &mut impl Rng,
+    num_of_states: usize,
+    num_of_labels: u32,
+    outdegree: usize,
+) -> LabelledTransitionSystem {
     // Introduce lower case letters for the labels.
     let tau_label = "tau".to_string();
 
@@ -38,7 +43,8 @@ pub fn random_lts(rng: &mut impl Rng, num_of_states: usize, num_of_labels: u32, 
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_utilities::{test_logger, test_rng};
+    use mcrl3_utilities::test_logger;
+    use mcrl3_utilities::test_rng;
     use test_log::test;
 
     use super::*;

@@ -3,7 +3,7 @@ use std::fmt;
 use itertools::Itertools;
 use mcrl3_data::DataExpression;
 
-/// A rewrite specification contains the bare info we need for rewriting (can be untyped).
+/// A rewrite specification contains the rewrite rules.
 #[derive(Debug, Default, Clone)]
 pub struct RewriteSpecification {
     pub rewrite_rules: Vec<Rule>,
