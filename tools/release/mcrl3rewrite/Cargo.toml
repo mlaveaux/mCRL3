@@ -5,7 +5,7 @@ rust-version.workspace = true
 edition.workspace = true
 
 [features]
-measure-allocs = []
+mcrl3_measure-allocs = []
 
 [dependencies]
 mcrl3_aterm.workspace = true

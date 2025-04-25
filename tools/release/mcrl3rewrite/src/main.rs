@@ -1,22 +1,25 @@
+use std::fs::File;
+use std::io::Write;
 use std::process::ExitCode;
 
 use clap::Parser;
-#[cfg(feature = "measure-allocs")]
-use log::info;
 
 use mcrl3_rec_tests::load_REC_from_file;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3rewrite::Rewriter;
 use mcrl3rewrite::rewrite_rec;
+use trs_format::TrsFormatter;
 
 mod trs_format;
 
-#[cfg(feature = "measure-allocs")]
+#[cfg(feature = "mcrl3_measure-allocs")]
 #[global_allocator]
 static MEASURE_ALLOC: mcrl3_unsafety::AllocCounter = mcrl3_unsafety::AllocCounter;
+#[cfg(feature = "mcrl3_measure-allocs")]
+use log::info;
 
 #[cfg(not(target_env = "msvc"))]
-#[cfg(not(feature = "measure-allocs"))]
+#[cfg(not(feature = "mcrl3_measure-allocs"))]
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
@@ -70,12 +73,12 @@ fn main() -> Result<ExitCode, MCRL3Error> {
                 let spec = spec_text.to_rewrite_spec();
 
                 let mut output = File::create(args.output)?;
-                //write!(output, "{}", TrsFormatter::new(&spec))?;
+                write!(output, "{}", TrsFormatter::new(&spec))?;
             }
         }
     }
 
-    #[cfg(feature = "measure-allocs")]
+    #[cfg(feature = "mcrl3_measure-allocs")]
     info!("Allocations: {}", MEASURE_ALLOC.number_of_allocations());
 
     Ok(ExitCode::SUCCESS)

@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;

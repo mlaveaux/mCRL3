@@ -3517,14 +3517,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcrl3_aterm-fuzz"
-version = "0.1.0"
-dependencies = [
- "libfuzzer-sys",
- "mcrl3_aterm",
-]
-
-[[package]]
 name = "mcrl3_data"
 version = "0.1.0"
 dependencies = [
