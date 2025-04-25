@@ -428,18 +428,22 @@ mod tests {
     use crate::fmt_node;
     use crate::test_utility::*;
 
+    use mcrl3_utilities::test_logger;
+    use mcrl3_utilities::test_rng;
     use rand::Rng;
     use std::collections::HashSet;
     use std::ops::Sub;
 
     // Compare the LDD element_of implementation for random inputs.
     #[test]
-    fn random_element_of() {
+    fn test_random_element_of() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
-        let mut rng = rand::rng();
 
         let length = 10;
-        let set = random_vector_set(32, length, 10);
+        let set = random_vector_set(&mut rng, 32, length, 10);
         let ldd = from_iter(&mut storage, set.iter());
 
         // All elements in the set should be contained in the ldd.
@@ -452,7 +456,8 @@ mod tests {
 
         // No shorter vectors should be contained in the ldd (try several times).
         for _ in 0..10 {
-            let short_vector = random_vector(rng.random_range(0..length), 10);
+            let len = rng.random_range(0..length);
+            let short_vector = random_vector(&mut rng, len, 10);
             assert!(
                 !element_of(&storage, &short_vector, &ldd),
                 "Found shorter vector in ldd."
@@ -461,13 +466,14 @@ mod tests {
 
         // No longer vectors should be contained in the ldd.
         for _ in 0..10 {
-            let short_vector = random_vector(rng.random_range(length + 1..20), 10);
+            let len = rng.random_range(length + 1..20);
+            let short_vector = random_vector(&mut rng, len, 10);
             assert!(!element_of(&storage, &short_vector, &ldd), "Found longer vector in ldd");
         }
 
         // Try vectors of correct size with both the set and ldd.
         for _ in 0..10 {
-            let vector = random_vector(length, 10);
+            let vector = random_vector(&mut rng, length, 10);
             assert_eq!(
                 set.contains(&vector),
                 element_of(&storage, &vector, &ldd),
@@ -478,11 +484,14 @@ mod tests {
 
     // Compare the HashSet implementation of union with the LDD union implementation for random inputs.
     #[test]
-    fn random_union() {
+    fn test_random_union() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set_a = random_vector_set(32, 10, 10);
-        let set_b = random_vector_set(32, 10, 10);
+        let set_a = random_vector_set(&mut rng, 32, 10, 10);
+        let set_b = random_vector_set(&mut rng, 32, 10, 10);
         let expected = from_iter(&mut storage, set_a.union(&set_b));
 
         let a = from_iter(&mut storage, set_a.iter());
@@ -493,11 +502,14 @@ mod tests {
     }
 
     #[test]
-    fn random_merge() {
+    fn test_random_merge() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set_a = random_vector_set(32, 10, 10);
-        let set_b = random_vector_set(32, 10, 10);
+        let set_a = random_vector_set(&mut rng, 32, 10, 10);
+        let set_b = random_vector_set(&mut rng, 32, 10, 10);
 
         // Compute the interleave explicitly.
         fn interleave(a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
@@ -530,9 +542,12 @@ mod tests {
 
     // Compare the singleton implementation with a random vector used as input.
     #[test]
-    fn random_singleton() {
+    fn test_random_singleton() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
-        let vector = random_vector(10, 10);
+        let vector = random_vector(&mut rng, 10, 10);
 
         let ldd = singleton(&mut storage, &vector[..]);
 
@@ -545,10 +560,13 @@ mod tests {
 
     // Test the len function with random inputs.
     #[test]
-    fn random_len() {
+    fn test_random_len() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set = random_vector_set(32, 10, 10);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
         let ldd = from_iter(&mut storage, set.iter());
 
         assert_eq!(set.len(), len(&mut storage, &ldd), "Length did not match expected set");
@@ -556,12 +574,15 @@ mod tests {
 
     // Test the minus function with random inputs.
     #[test]
-    fn random_minus() {
+    fn test_random_minus() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set_a = random_vector_set(32, 10, 10);
+        let set_a = random_vector_set(&mut rng, 32, 10, 10);
         let set_b = {
-            let mut result = random_vector_set(32, 10, 10);
+            let mut result = random_vector_set(&mut rng, 32, 10, 10);
 
             // To ensure some overlap (which is unlikely) we insert some elements of a into b.
             let mut it = set_a.iter();
@@ -584,13 +605,16 @@ mod tests {
 
     // Test the relational product function with read-only inputs.
     #[test]
-    fn random_readonly_relational_product() {
+    fn test_random_readonly_relational_product() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
-        let set = random_vector_set(32, 10, 10);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
 
         let ldd = from_iter(&mut storage, set.iter());
 
-        let read_proj = random_sorted_vector(4, 9);
+        let read_proj = random_sorted_vector(&mut rng, 4, 9);
         let meta = compute_meta(&mut storage, &read_proj, &[]);
 
         let proj_ldd = compute_proj(&mut storage, &read_proj);
@@ -605,13 +629,16 @@ mod tests {
 
     // Test the relational product function with write-only inputs.
     #[test]
-    fn random_writeonly_relational_product() {
+    fn test_random_writeonly_relational_product() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
-        let set = random_vector_set(32, 10, 10);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
 
         let ldd = from_iter(&mut storage, set.iter());
 
-        let write_proj = random_sorted_vector(4, 9);
+        let write_proj = random_sorted_vector(&mut rng, 4, 9);
         let meta = compute_meta(&mut storage, &[], &write_proj);
 
         let proj_ldd = compute_proj(&mut storage, &write_proj);
@@ -625,15 +652,18 @@ mod tests {
     }
 
     #[test]
-    fn random_relational_product() {
+    fn test_random_relational_product() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set = random_vector_set(32, 10, 10);
-        let relation = random_vector_set(32, 4, 10);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
+        let relation = random_vector_set(&mut rng, 32, 4, 10);
 
         // Pick arbitrary read and write parameters in order.
-        let read_proj = random_sorted_vector(2, 9);
-        let write_proj = random_sorted_vector(2, 9);
+        let read_proj = random_sorted_vector(&mut rng, 2, 9);
+        let write_proj = random_sorted_vector(&mut rng, 2, 9);
 
         // The indices of the input vectors do not match the indices in the relation. The input vector is defined for all values, but the relation only
         // for relevant positions.
@@ -725,11 +755,14 @@ mod tests {
 
     // Test the project function with random inputs.
     #[test]
-    fn random_project() {
+    fn test_random_project() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set = random_vector_set(32, 10, 10);
-        let proj = random_sorted_vector(4, 9);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
+        let proj = random_sorted_vector(&mut rng, 4, 9);
 
         let ldd = from_iter(&mut storage, set.iter());
         let proj_ldd = compute_proj(&mut storage, &proj);
@@ -746,10 +779,13 @@ mod tests {
 
     // Test the append function with random inputs.
     #[test]
-    fn random_append() {
+    fn test_random_append() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
-        let set = random_vector_set(32, 10, 10);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
         let ldd = from_iter(&mut storage, set.iter());
         let result = append(&mut storage, &ldd, 0);
 

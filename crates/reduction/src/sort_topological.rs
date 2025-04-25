@@ -198,14 +198,18 @@ where
 mod tests {
 
     use mcrl3_lts::random_lts;
+    use mcrl3_utilities::{test_logger, test_rng};
     use rand::seq::SliceRandom;
     use test_log::test;
 
     use super::*;
 
     #[test]
-    fn test_sort_topological_with_cycles() {
-        let lts = random_lts(10, 3, 2);
+    fn test_random_sort_topological_with_cycles() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
+        let lts = random_lts(&mut rng, 10, 3, 2);
         match sort_topological(&lts, |_, _| true, false) {
             Ok(order) => assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false)),
             Err(_) => {}
@@ -213,8 +217,11 @@ mod tests {
     }
 
     #[test]
-    fn test_reorder_states() {
-        let lts = random_lts(10, 3, 2);
+    fn test_random_reorder_states() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+        
+        let lts = random_lts(&mut rng, 10, 3, 2);
 
         // Generate a random permutation.
         let mut rng = rand::rng();
@@ -247,8 +254,11 @@ mod tests {
     }
 
     #[test]
-    fn test_is_valid_permutation() {
-        let lts = random_lts(10, 15, 2);
+    fn test_random_is_valid_permutation() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
+        let lts = random_lts(&mut rng, 10, 15, 2);
 
         // Generate a valid permutation.
         let mut rng = rand::rng();

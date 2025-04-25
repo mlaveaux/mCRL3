@@ -460,14 +460,17 @@ where
 #[cfg(test)]
 mod tests {
     use mcrl3_lts::random_lts;
-    use mcrl3_utilities::Timing;
+    use mcrl3_utilities::{test_logger, test_rng, Timing};
     use test_log::test;
 
     use super::*;
 
     #[test]
     fn test_random_strong_bisim_sigref() {
-        let lts = random_lts(10, 3, 3);
+        let _ = test_logger();
+        let mut rng = test_rng();
+        
+        let lts = random_lts(&mut rng, 10, 3, 3);
         let mut timing = Timing::new();
 
         strong_bisim_sigref(&lts, &mut timing);
@@ -495,7 +498,10 @@ mod tests {
 
     #[test]
     fn test_random_branching_bisim_sigref() {
-        let lts = random_lts(10, 3, 3);
+        let _ = test_logger();
+        let mut rng = test_rng();
+
+        let lts = random_lts(&mut rng, 10, 3, 3);
         let mut timing = Timing::new();
 
         let strong_partition = strong_bisim_sigref(&lts, &mut timing);
@@ -505,7 +511,10 @@ mod tests {
 
     #[test]
     fn test_random_branching_bisim_sigref_naive() {
-        let lts = random_lts(10, 3, 3);
+        let _ = test_logger();
+        let mut rng = test_rng();
+
+        let lts = random_lts(&mut rng, 10, 3, 3);
         let mut timing = Timing::new();
 
         let strong_partition = strong_bisim_sigref_naive(&lts, &mut timing);

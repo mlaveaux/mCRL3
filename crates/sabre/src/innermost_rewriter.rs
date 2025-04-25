@@ -313,7 +313,7 @@ mod tests {
     use crate::utilities::to_untyped_data_expression;
 
     #[test]
-    fn test_innermost_simple() {
+    fn random_innermost_simple() {
         let spec = RewriteSpecification { rewrite_rules: vec![] };
         let mut inner = InnermostRewriter::new(&spec);
 

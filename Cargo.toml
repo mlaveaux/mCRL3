@@ -78,7 +78,7 @@ env_logger = "0.11"
 trybuild = "1.0"
 
 # Used for fuzzing
-arbitrary = "1.4"
+arbitrary = { version = "1.4", features = ["derive"] }
 libfuzzer-sys = "0.4"
 
 # The workspace libraries.

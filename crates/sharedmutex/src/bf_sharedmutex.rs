@@ -253,7 +253,7 @@ mod tests {
 
     // These are just simple tests.
     #[test]
-    fn test_exclusive() {
+    fn test_random_shared_mutex_exclusive() {
         let mut threads = vec![];
 
         let shared_number = BfSharedMutex::new(5);
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn test_shared() {
+    fn test_random_shared() {
         let shared_vector = BfSharedMutex::new(vec![]);
 
         let mut threads = vec![];

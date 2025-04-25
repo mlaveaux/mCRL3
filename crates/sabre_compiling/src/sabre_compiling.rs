@@ -48,7 +48,7 @@ impl SabreCompilingRewriter {
     ) -> Result<SabreCompilingRewriter, MCRL3Error> {
         let system_tmp_dir = TempDir::new()?;
         let temp_dir = if use_local_tmp {
-            &Path::new("./tmp")
+            Path::new("./tmp")
         } else {
             system_tmp_dir.path()
         };
@@ -67,12 +67,12 @@ impl SabreCompilingRewriter {
 
             info!("Using local dependency {}", path);
             dependencies.push(format!(
-                "sabre-ffi = {{ path = '{}' }}",
-                PathBuf::from(path).join("../../").to_string_lossy()
+                "mcrl3_sabre-ffi = {{ path = '{}' }}",
+                PathBuf::from(path).join("../../crates/sabre_compiling/sabre_ffi").to_string_lossy()
             ));
         } else {
             info!("Using git dependency https://github.com/mlaveaux/mCRL3.git");
-            dependencies.push("sabre-ffi = { git = 'https://github.com/mlaveaux/mCRL3.git' }".to_string());
+            dependencies.push("mcrl3_sabre-ffi = { git = 'https://github.com/mlaveaux/mCRL3.git' }".to_string());
         }
 
         let mut compilation_crate = RuntimeLibrary::new(temp_dir, dependencies)?;

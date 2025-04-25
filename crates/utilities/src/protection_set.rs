@@ -170,15 +170,15 @@ mod tests {
     use crate::test_rng;
 
     #[test]
-    fn test_protection_set() {
+    fn test_random_protection_set() {
         let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut protection_set = ProtectionSet::<usize>::new();
 
         // Protect a number of indices and record their roots.
         let mut indices: Vec<usize> = Vec::new();
-
-        let mut rng = test_rng();
-
+        
         for _ in 0..5000 {
             indices.push(protection_set.protect(rng.random_range(0..1000)));
         }

@@ -171,6 +171,8 @@ pub fn has_tau_loop(lts: &LabelledTransitionSystem) -> bool {
 #[cfg(test)]
 mod tests {
     use mcrl3_lts::random_lts;
+    use mcrl3_utilities::test_logger;
+    use mcrl3_utilities::test_rng;
     use test_log::test;
 
     use crate::Partition;
@@ -207,7 +209,10 @@ mod tests {
 
     #[test]
     fn test_random_tau_scc_decomposition() {
-        let lts = random_lts(10, 3, 3);
+        let _ = test_logger();
+        let mut rng = test_rng();
+
+        let lts = random_lts(&mut rng, 10, 3, 3);
         let partitioning = tau_scc_decomposition(&lts);
         let reduction = quotient_lts(&lts, &partitioning, true);
 

@@ -309,18 +309,23 @@ fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<usize>, root: usize) 
 
 #[cfg(test)]
 mod tests {
+    use mcrl3_utilities::{test_logger, test_rng};
+
     use super::*;
     use crate::operations::singleton;
     use crate::test_utility::*;
 
     #[test]
-    fn test_garbage_collection_small() {
+    fn test_random_garbage_collection_small() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
         let _child: Ldd;
         {
             // Make sure that this set goes out of scope, but keep a reference to some child ldd.
-            let vector = random_vector(10, 10);
+            let vector = random_vector(&mut rng, 10, 10);
             let ldd = singleton(&mut storage, &vector);
 
             _child = storage.get(&ldd).1;
@@ -331,13 +336,16 @@ mod tests {
     }
 
     #[test]
-    fn test_garbage_collection() {
+    fn test_random_garbage_collection() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+
         let mut storage = Storage::new();
 
         let _child: Ldd;
         {
             // Make sure that this set goes out of scope, but keep a reference to some child ldd.
-            let vector = random_vector_set(2000, 10, 2);
+            let vector = random_vector_set(&mut rng, 2000, 10, 2);
             let ldd = from_iter(&mut storage, vector.iter());
 
             _child = storage.get(&storage.get(&ldd).1).1;

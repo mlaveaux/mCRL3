@@ -90,15 +90,20 @@ impl Iterator for Iter<'_> {
 
 #[cfg(test)]
 mod tests {
+    use mcrl3_utilities::{test_logger, test_rng};
+
     use super::*;
     use crate::test_utility::*;
 
     // Test the iterator implementation.
     #[test]
-    fn random_iter() {
+    fn test_random_iter() {
+        let _ = test_logger();
+        let mut rng = test_rng();
+        
         let mut storage = Storage::new();
 
-        let set = random_vector_set(32, 10, 10);
+        let set = random_vector_set(&mut rng, 32, 10, 10);
         let ldd = from_iter(&mut storage, set.iter());
 
         assert!(

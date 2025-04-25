@@ -1,7 +1,3 @@
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
-
 use criterion::Criterion;
 
 use mcrl3_sharedmutex::BfSharedMutex;

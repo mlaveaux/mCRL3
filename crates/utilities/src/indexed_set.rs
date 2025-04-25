@@ -297,7 +297,7 @@ mod tests {
     use rand::Rng;
 
     #[test]
-    fn test_construction() {
+    fn test_random_indexed_set_construction() {
         let _ = test_logger();
         let mut rand = test_rng();
 

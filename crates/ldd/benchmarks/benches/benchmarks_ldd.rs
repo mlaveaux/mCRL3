@@ -15,8 +15,7 @@ use rand::prelude::IteratorRandom;
 use std::collections::HashSet;
 
 /// Returns a vector of the given length with random u64 values (from 0..max_value).
-pub fn random_vector(length: usize, max_value: Value) -> Vec<Value> {
-    let mut rng = rand::rng();
+pub fn random_vector(rng: &mut impl Rng, length: usize, max_value: Value) -> Vec<Value> {
     let mut vector: Vec<Value> = Vec::new();
     for _ in 0..length {
         vector.push(rng.random_range(0..max_value));
@@ -26,20 +25,19 @@ pub fn random_vector(length: usize, max_value: Value) -> Vec<Value> {
 }
 
 /// Returns a sorted vector of the given length with unique u64 values (from 0..max_value).
-pub fn random_sorted_vector(length: usize, max_value: Value) -> Vec<Value> {
-    let mut rng = rand::rng();
-    let mut result = (0..max_value).choose_multiple(&mut rng, length);
+pub fn random_sorted_vector(rng: &mut impl Rng, length: usize, max_value: Value) -> Vec<Value> {
+    let mut result = (0..max_value).choose_multiple(rng, length);
     result.sort();
     result
 }
 
 /// Returns a set of 'amount' vectors where every vector has the given length.
-pub fn random_vector_set(amount: usize, length: usize, max_value: Value) -> HashSet<Vec<Value>> {
+pub fn random_vector_set(rng: &mut impl Rng, amount: usize, length: usize, max_value: Value) -> HashSet<Vec<Value>> {
     let mut result: HashSet<Vec<Value>> = HashSet::new();
 
     // Insert 'amount' number of vectors into the result.
     for _ in 0..amount {
-        result.insert(random_vector(length, max_value));
+        result.insert(random_vector(rng, length, max_value));
     }
 
     result
@@ -61,12 +59,14 @@ where
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
+    let mut rng = rand::rng();
+
     c.bench_function("union 1000", |bencher| {
         let mut storage = Storage::new();
 
         bencher.iter(|| {
-            let set_a = random_vector_set(1000, 10, 10);
-            let set_b = random_vector_set(1000, 10, 10);
+            let set_a = random_vector_set(&mut rng, 1000, 10, 10);
+            let set_b = random_vector_set(&mut rng, 1000, 10, 10);
 
             let a = from_iter(&mut storage, set_a.iter());
             let b = from_iter(&mut storage, set_b.iter());
@@ -79,8 +79,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let mut storage = Storage::new();
 
         bencher.iter(|| {
-            let set_a = random_vector_set(1000, 10, 10);
-            let set_b = random_vector_set(1000, 10, 10);
+            let set_a = random_vector_set(&mut rng, 1000, 10, 10);
+            let set_b = random_vector_set(&mut rng, 1000, 10, 10);
 
             let a = from_iter(&mut storage, set_a.iter());
             let b = from_iter(&mut storage, set_b.iter());
@@ -93,12 +93,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let mut storage = Storage::new();
 
         bencher.iter(|| {
-            let set = random_vector_set(1000, 10, 10);
-            let relation = random_vector_set(32, 4, 10);
+            let set = random_vector_set(&mut rng, 1000, 10, 10);
+            let relation = random_vector_set(&mut rng, 32, 4, 10);
 
             // Pick arbitrary read and write parameters in order.
-            let read_proj = random_sorted_vector(2, 9);
-            let write_proj = random_sorted_vector(2, 9);
+            let read_proj = random_sorted_vector(&mut rng, 2, 9);
+            let write_proj = random_sorted_vector(&mut rng, 2, 9);
 
             // Compute LDD result.
             let ldd = from_iter(&mut storage, set.iter());

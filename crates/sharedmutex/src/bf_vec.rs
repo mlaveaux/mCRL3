@@ -174,7 +174,6 @@ impl<T> Drop for BfVecShared<T> {
 unsafe impl<T> Send for BfVec<T> {}
 
 #[cfg(test)]
-#[cfg(not(feature = "loom"))]
 mod tests {
     use std::thread;
 

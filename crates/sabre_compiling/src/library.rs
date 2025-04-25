@@ -16,10 +16,10 @@ use indoc::indoc;
 use log::info;
 
 /// Apply the value from compilation_toml for every given variable as an environment variable.
-fn apply_env<'a>(
+fn apply_env(
     builder: Expression,
     compilation_toml: &Map<String, Value>,
-    variables: &[&'a str],
+    variables: &[&'_ str],
 ) -> Result<Expression, MCRL3Error> {
     let mut result = builder;
     let env = compilation_toml.get("env").ok_or("Missing [env] table")?;
