@@ -1,5 +1,6 @@
 use core::panic;
 use std::hash::Hash;
+use std::hash::BuildHasher;
 use std::ops::Index;
 use std::ops::IndexMut;
 
@@ -10,14 +11,12 @@ use hashbrown::hash_map::EntryRef;
 
 use rustc_hash::FxBuildHasher;
 
-type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
-
 /// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
 ///
 /// TODO: Remove the need for duplicating the key in the hash map.
-pub struct IndexedSet<T> {
+pub struct IndexedSet<T, S = FxBuildHasher> {
     table: Vec<IndexSetEntry<T>>,
-    index: FxHashMap<T, usize>,
+    index: HashMap<T, usize, S>,
     /// A list of free nodes, where the value is the first free node.
     free: Option<usize>,
 }
@@ -42,12 +41,21 @@ macro_rules! cast {
     }};
 }
 
-impl<T> IndexedSet<T> {
-    /// Creates a new empty IndexedSet.
-    pub fn new() -> IndexedSet<T> {
+impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
+    /// Creates a new empty IndexedSet with the default hasher.
+    pub fn new() -> IndexedSet<T, S> {
         IndexedSet {
             table: Vec::default(),
-            index: FxHashMap::default(),
+            index: HashMap::default(),
+            free: None,
+        }
+    }
+
+    /// Creates a new empty IndexedSet with the specified hasher.
+    pub fn with_hasher(hash_builder: S) -> IndexedSet<T, S> {
+        IndexedSet {
+            table: Vec::default(),
+            index: HashMap::with_hasher(hash_builder),
             free: None,
         }
     }
@@ -80,7 +88,7 @@ impl<T> IndexedSet<T> {
     }
 
     /// Returns an iterator over the elements in the set.
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<T, S> {
         Iter {
             reference: self,
             index: 0,
@@ -100,7 +108,7 @@ impl<T> IndexedSet<T> {
     }
 }
 
-impl<T: Hash + Eq> IndexedSet<T> {
+impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     /// Inserts the given element into the set
     ///
     /// Returns the corresponding index and a boolean indicating if the element was inserted.
@@ -185,7 +193,7 @@ impl<T: Hash + Eq> IndexedSet<T> {
     }
 }
 
-impl<T: Eq + Hash> IndexedSet<T> {
+impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
     /// Erases all elements for which f(index, element) returns false. Allows
     /// modifying the given element (as long as the hash/equality does not change).
     pub fn retain_mut<F>(&mut self, mut f: F)
@@ -225,13 +233,13 @@ impl<T: Eq + Hash> IndexedSet<T> {
     }
 }
 
-impl<T> Default for IndexedSet<T> {
-    fn default() -> IndexedSet<T> {
+impl<T, S: BuildHasher + Default> Default for IndexedSet<T, S> {
+    fn default() -> IndexedSet<T, S> {
         IndexedSet::new()
     }
 }
 
-impl<T> Index<usize> for IndexedSet<T> {
+impl<T, S: BuildHasher> Index<usize> for IndexedSet<T, S> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -239,18 +247,18 @@ impl<T> Index<usize> for IndexedSet<T> {
     }
 }
 
-impl<T> IndexMut<usize> for IndexedSet<T> {
+impl<T, S: BuildHasher> IndexMut<usize> for IndexedSet<T, S> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         cast!(&mut self.table[index], IndexSetEntry::Filled)
     }
 }
 
-pub struct Iter<'a, T> {
-    reference: &'a IndexedSet<T>,
+pub struct Iter<'a, T, S> {
+    reference: &'a IndexedSet<T, S>,
     index: usize,
 }
 
-impl<'a, T> Iterator for Iter<'a, T> {
+impl<'a, T, S> Iterator for Iter<'a, T, S> {
     type Item = (usize, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -278,9 +286,9 @@ impl<'a, T> Iterator for IterMut<'a, T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a IndexedSet<T> {
+impl<'a, T, S: BuildHasher + Default> IntoIterator for &'a IndexedSet<T, S> {
     type Item = (usize, &'a T);
-    type IntoIter = Iter<'a, T>;
+    type IntoIter = Iter<'a, T, S>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -295,6 +303,8 @@ mod tests {
     use super::*;
 
     use rand::Rng;
+    use std::collections::HashMap;
+    use ahash::RandomState;
 
     #[test]
     fn test_random_indexed_set_construction() {
@@ -338,6 +348,48 @@ mod tests {
                 set.get(*index) == Some(value),
                 "Index {index} should still match element {value}"
             );
+        }
+    }
+
+    #[test]
+    fn test_custom_hasher() {
+        let _ = test_logger();
+        let mut rand = test_rng();
+
+        // Create a set with a custom hasher (AHasher)
+        let mut set: IndexedSet<usize, RandomState> = IndexedSet::with_hasher(RandomState::new());
+        
+        let mut indices = HashMap::new();
+        
+        // Insert some elements
+        for _ in 0..50 {
+            let value = rand.random::<u64>() as usize;
+            let (index, _) = set.insert(value);
+            indices.insert(value, index);
+        }
+        
+        // Verify all elements are accessible
+        for (value, index) in &indices {
+            assert_eq!(set.get(*index), Some(value));
+        }
+        
+        // Remove some elements
+        let mut to_remove = indices.keys().cloned().collect::<Vec<_>>();
+        to_remove.truncate(10);
+        
+        for value in to_remove {
+            set.remove(&value);
+            indices.remove(&value);
+        }
+        
+        // Check consistency after removal
+        for (value, index) in &indices {
+            assert_eq!(set.get(*index), Some(value));
+        }
+        
+        // Verify iteration works correctly
+        for (index, value) in &set {
+            assert_eq!(indices[value], index);
         }
     }
 }
