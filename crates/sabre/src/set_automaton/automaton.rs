@@ -46,6 +46,24 @@ pub struct MatchAnnouncement {
     pub(crate) symbols_seen: usize,
 }
 
+impl MatchAnnouncement {
+    /// Returns the rule of the match announcement
+    pub fn rule(&self) -> &Rule {
+        &self.rule
+    }
+
+    /// Returns the position of the match announcement
+    pub fn position(&self) -> &ExplicitPosition {
+        &self.position
+    }
+
+    /// Returns the number of symbols seen in the match announcement
+    pub fn symbols_seen(&self) -> usize {
+        self.symbols_seen
+    }
+}
+
+
 #[derive(Clone)]
 pub struct Transition<T> {
     pub(crate) symbol: DataFunctionSymbol,

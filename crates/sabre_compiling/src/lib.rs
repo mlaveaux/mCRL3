@@ -4,6 +4,7 @@
 mod innermost_codegen;
 mod library;
 mod sabre_compiling;
+mod indenter;
 
 pub use innermost_codegen::*;
 pub use sabre_compiling::*;

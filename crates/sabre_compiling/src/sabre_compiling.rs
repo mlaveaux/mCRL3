@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use libloading::Library;
 use libloading::Symbol;
 use log::info;
+use mcrl3_aterm::ATerm;
+use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::Term;
 use mcrl3_utilities::MCRL3Error;
 use temp_dir::TempDir;
 use toml::Table;
@@ -11,6 +14,8 @@ use toml::Table;
 use mcrl3_data::DataExpression;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
+use mcrl3_sabre_ffi::DataExpression as DataExpressionFFI;
+use mcrl3_sabre_ffi::DataExpressionRef as DataExpressionRefFFI;
 
 use crate::generate;
 use crate::library::RuntimeLibrary;
@@ -21,15 +26,13 @@ pub struct SabreCompilingRewriter {
 }
 
 impl RewriteEngine for SabreCompilingRewriter {
-    fn rewrite(&mut self, term: DataExpression) -> DataExpression {
+    fn rewrite(&mut self, term: &DataExpression) -> DataExpression {
         // TODO: This ought to be stored somewhere for repeated calls.
         unsafe {
-            let func: Symbol<extern "C" fn(&DataExpression) -> DataExpression> = self.library.get(b"rewrite").unwrap();
+            let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> = self.library.get(b"rewrite").unwrap();
 
-            let result = func(&term);
-            std::mem::forget(result);
-
-            term
+            let result = func(&DataExpressionRefFFI::from_index(term.index()));
+            ATermRef::from_index(result.index()).protect().into()
         }
     }
 }
@@ -68,7 +71,9 @@ impl SabreCompilingRewriter {
             info!("Using local dependency {}", path);
             dependencies.push(format!(
                 "mcrl3_sabre-ffi = {{ path = '{}' }}",
-                PathBuf::from(path).join("../../crates/sabre_compiling/sabre_ffi").to_string_lossy()
+                PathBuf::from(path)
+                    .join("../../crates/sabre_compiling/sabre_ffi")
+                    .to_string_lossy()
             ));
         } else {
             info!("Using git dependency https://github.com/mlaveaux/mCRL3.git");
@@ -96,7 +101,8 @@ mod tests {
 
     #[test]
     fn test_compilation() {
-        let (spec, terms) = load_REC_from_strings(&[include_str!("../../../examples/REC/rec/factorial6.rec")]).unwrap();
+        let (spec, terms) = load_REC_from_strings(&[include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial.rec")]).unwrap();
 
         let spec = spec.to_rewrite_spec();
 
@@ -105,7 +111,7 @@ mod tests {
         for t in terms {
             let data_term = to_untyped_data_expression(&t, &AHashSet::new());
             assert_eq!(
-                rewriter.rewrite(data_term.clone()),
+                rewriter.rewrite(&data_term),
                 data_term,
                 "The rewritten result does not match the expected result"
             );

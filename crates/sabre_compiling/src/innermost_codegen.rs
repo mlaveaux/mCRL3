@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use indoc::indoc;
 use mcrl3_sabre::RewriteSpecification;
-use mcrl3_sabre::set_automaton::SetAutomaton;
+use mcrl3_sabre::SetAutomaton;
 use mcrl3_sabre::utilities::ExplicitPosition;
 use mcrl3_utilities::MCRL3Error;
 
@@ -19,11 +19,12 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
     writeln!(
         &mut file,
-        indoc! {"use mcrl2::data::DataExpression;
-        use mcrl2::data::DataExpressionRef;
+        indoc! {"use mcrl3_sabre_ffi::DataExpression;
+        use mcrl3_sabre_ffi::DataExpressionRef;
+
         /// Generic rewrite function
-        #[no_mangle]
-        pub unsafe extern \"C\" fn rewrite(term: &DataExpression) -> DataExpression {{
+        #[unsafe(no_mangle)]
+        pub unsafe extern \"C\" fn rewrite(term: &DataExpressionRef<'_>) -> DataExpression {{
             rewrite_0(&term.copy())
         }}
         "}
@@ -40,24 +41,39 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
         )?;
         writeln!(
             &mut file,
-            "\t let arg = get_position_{}(t);",
+            "\tlet arg = get_position_{}(t);",
             UnderscoreFormatter(state.label())
         )?;
-        writeln!(&mut file, "\t let symbol = arg.data_function_symbol();")?;
+        writeln!(&mut file, "\tlet symbol = arg.data_function_symbol();")?;
 
         positions.insert(state.label().clone());
 
-        writeln!(&mut file, "\t match symbol.operation_id() {{")?;
+        writeln!(&mut file, "\tmatch symbol.operation_id() {{")?;
 
         for ((from, symbol), transition) in apma.transitions() {
-            // TODO: Only take outgoing directly.
             if *from == index {
+                // Outgoing transition
                 writeln!(&mut file, "\t\t{symbol} => {{")?;
 
                 // Continue on the outgoing transition.
-                for (_announcement, _annotation) in transition.announcements() {}
+                for (announcement, _annotation) in transition.announcements() {
+                    // Check for conditions and non linear patterns.
+                    writeln!(
+                        &mut file,
+                        "\t\t\tt.protect()"
+                    )?;
+                }
 
-                writeln!(&mut file, "\t\t\tt.protect()")?;
+                for (position, to) in transition.destinations() {
+                    positions.insert(position.clone());
+
+                    writeln!(
+                        &mut file,
+                        "\t\t\trewrite_{to}(&get_position_{}(t))",
+                        UnderscoreFormatter(position)
+                    )?;
+                }
+
                 writeln!(&mut file, "\t\t}}")?;
             }
         }
@@ -71,25 +87,33 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
             \t\t}}"}
         )?;
 
-        writeln!(&mut file, "\t }}")?;
+        writeln!(&mut file, "\t}}")?;
         writeln!(&mut file, "}}")?;
+        writeln!(&mut file)?;
     }
 
     // Introduce getters for all the positions that must be read from terms.
     for position in &positions {
         writeln!(
             &mut file,
-            "fn get_position_{}<'a>(t: &'a DataExpressionRef<'_>) -> DataExpressionRef<'a> {{",
+            "fn get_position_{}<'a>(t: &DataExpressionRef<'a>) -> DataExpressionRef<'a> {{",
             UnderscoreFormatter(position)
         )?;
-        write!(&mut file, "\t t.copy()")?;
 
-        for index in &position.indices {
-            write!(&mut file, ".arg({index})")?;
+        if position.is_empty() {
+            writeln!(&mut file, "\tt.copy()")?;
+        }
+        else
+        {
+            writeln!(&mut file, "\tt")?;
+
+            for index in &position.indices {
+                write!(&mut file, "\t.arg({index})")?;
+            }
         }
 
-        writeln!(&mut file, ".upgrade(t).into()")?;
         writeln!(&mut file, "}}")?;
+        writeln!(&mut file)?;
     }
 
     Ok(())

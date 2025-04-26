@@ -10,6 +10,7 @@ mcrl3_data.workspace = true
 mcrl3_rec-tests.workspace = true
 mcrl3_sabre.workspace = true
 mcrl3_utilities.workspace = true
+mcrl3_sabre-ffi.workspace = true
 
 ahash.workspace = true
 duct.workspace = true
