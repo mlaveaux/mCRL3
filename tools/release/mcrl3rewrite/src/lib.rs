@@ -29,7 +29,7 @@ pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: boo
             let now = Instant::now();
             for term in &syntax_terms {
                 let term = to_untyped_data_expression(term, &AHashSet::new());
-                let result = inner.rewrite(term);
+                let result = inner.rewrite(&term);
                 if output {
                     println!("{}", result)
                 }
@@ -42,7 +42,7 @@ pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: boo
             let now = Instant::now();
             for term in &syntax_terms {
                 let term = to_untyped_data_expression(term, &AHashSet::new());
-                let result = sa.rewrite(term);
+                let result = sa.rewrite(&term);
                 if output {
                     println!("{}", result)
                 }

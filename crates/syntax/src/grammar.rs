@@ -9,13 +9,15 @@ mod tests {
     use indoc::indoc;
     use pest::Parser;
 
+    use crate::UntypedProcessSpecification;
+
     use super::*;
 
     #[test]
     fn test_parse_ifthen() {
         let expr = "init a -> b -> c <> delta;";
 
-        let result = Mcrl2Parser::parse(Rule::MCRL2Spec, expr).unwrap();
+        let result = UntypedProcessSpecification::parse(expr).unwrap();
         print!("{}", result);
     }
 
@@ -23,7 +25,7 @@ mod tests {
     fn test_parse_keywords() {
         let expr = "map or : Boolean # Boolean -> Boolean ;";
 
-        let result = Mcrl2Parser::parse(Rule::MCRL2Spec, expr).unwrap();
+        let result = UntypedProcessSpecification::parse(expr).unwrap();
         print!("{}", result);
     }
 
@@ -38,7 +40,7 @@ mod tests {
             Error = struct e;
         "};
 
-        let result = Mcrl2Parser::parse(Rule::MCRL2Spec, sort_spec).unwrap();
+        let result = UntypedProcessSpecification::parse(sort_spec).unwrap();
         print!("{}", result);
     }
 
@@ -94,7 +96,7 @@ mod tests {
             );
         "};
 
-        match Mcrl2Parser::parse(Rule::MCRL2Spec, abp_spec) {
+        match UntypedProcessSpecification::parse(abp_spec) {
             Ok(x) => {
                 print!("{}", x);
             }

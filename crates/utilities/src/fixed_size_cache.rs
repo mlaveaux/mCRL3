@@ -120,11 +120,12 @@ where
     }
 
     /// Retrieves or computes the value for the given key.
-    pub fn get(&mut self, key: &K) -> &V {
+    pub fn apply(&mut self, key: &K) -> &V {
         if !self.cache.contains_key(key) {
             let value = (self.function)(key);
             self.cache.insert(key.clone(), value);
         }
+        
         self.cache.get(key).unwrap()
     }
 
@@ -160,15 +161,15 @@ mod tests {
         let f = |x: &i32| x * x;
         let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
 
-        assert_eq!(*cache.get(&2), 4);
-        assert_eq!(*cache.get(&3), 9);
-        assert_eq!(*cache.get(&2), 4); // Should be cached
+        assert_eq!(*cache.apply(&2), 4);
+        assert_eq!(*cache.apply(&3), 9);
+        assert_eq!(*cache.apply(&2), 4); // Should be cached
 
         // Should evict first entry (2)
-        assert_eq!(*cache.get(&4), 16);
+        assert_eq!(*cache.apply(&4), 16);
 
         // Should recompute
-        assert_eq!(*cache.get(&2), 4);
+        assert_eq!(*cache.apply(&2), 4);
     }
 
     #[test]
@@ -176,14 +177,14 @@ mod tests {
         let f = |x: &i32| x * x;
         let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
 
-        assert_eq!(*cache.get(&1), 1);
-        assert_eq!(*cache.get(&2), 4);
+        assert_eq!(*cache.apply(&1), 1);
+        assert_eq!(*cache.apply(&2), 4);
 
         // Should evict the first entry (1)
-        assert_eq!(*cache.get(&3), 9);
+        assert_eq!(*cache.apply(&3), 9);
         assert!(cache.cache.get(&1).is_none());
-        assert_eq!(*cache.get(&2), 4);
-        assert_eq!(*cache.get(&3), 9);
+        assert_eq!(*cache.apply(&2), 4);
+        assert_eq!(*cache.apply(&3), 9);
     }
 
     #[test]
@@ -191,8 +192,8 @@ mod tests {
         let f = |x: &i32| x * x;
         let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
 
-        assert_eq!(*cache.get(&1), 1);
-        assert_eq!(*cache.get(&2), 4);
+        assert_eq!(*cache.apply(&1), 1);
+        assert_eq!(*cache.apply(&2), 4);
 
         cache.clear();
 
@@ -205,7 +206,7 @@ mod tests {
         let f = |x: &i32| x * x;
         let mut cache = FunctionCache::new(f, 2, FifoPolicy::new());
 
-        assert_eq!(*cache.get(&1), 1);
+        assert_eq!(*cache.apply(&1), 1);
         assert!(cache.cache.contains_key(&1));
         assert!(!cache.cache.contains_key(&2));
     }

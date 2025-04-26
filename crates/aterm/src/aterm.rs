@@ -226,7 +226,7 @@ impl ATerm {
     }
 
     /// Returns the root of the term
-    pub(crate) fn root(&self) -> usize {
+    pub fn root(&self) -> usize {
         self.root
     }
 

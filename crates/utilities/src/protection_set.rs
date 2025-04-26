@@ -178,7 +178,7 @@ mod tests {
 
         // Protect a number of indices and record their roots.
         let mut indices: Vec<usize> = Vec::new();
-        
+
         for _ in 0..5000 {
             indices.push(protection_set.protect(rng.random_range(0..1000)));
         }

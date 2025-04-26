@@ -11,7 +11,7 @@ use mcrl3_data::is_data_application;
 use mcrl3_data::is_data_function_symbol;
 use mcrl3_data::is_data_variable;
 use mcrl3_sabre::RewriteSpecification;
-use mcrl3_sabre::set_automaton::is_supported_rule;
+use mcrl3_sabre::is_supported_rule;
 
 /// Finds all data symbols in the term and adds them to the symbol index.
 fn find_variables(t: &DataExpressionRef<'_>, variables: &mut HashSet<String>) {

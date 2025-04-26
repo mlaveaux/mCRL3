@@ -2,9 +2,9 @@ use core::fmt;
 
 use ahash::AHashSet;
 use mcrl3_aterm::ATerm;
-use mcrl3_sabre::rewrite_specification::Condition;
-use mcrl3_sabre::rewrite_specification::RewriteSpecification;
-use mcrl3_sabre::rewrite_specification::Rule;
+use mcrl3_sabre::Condition;
+use mcrl3_sabre::RewriteSpecification;
+use mcrl3_sabre::Rule;
 use mcrl3_sabre::utilities::to_untyped_data_expression;
 
 /// A rewrite specification contains all the bare info we need for rewriting (in particular no type information) as a syntax tree.

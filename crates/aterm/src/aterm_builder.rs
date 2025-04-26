@@ -1,12 +1,11 @@
 use std::fmt;
 
-use ahash::AHashSet;
 use log::trace;
+
 use mcrl3_utilities::MCRL3Error;
 
 use crate::ATerm;
 use crate::Symbol;
-use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::ThreadTermPool;
 
