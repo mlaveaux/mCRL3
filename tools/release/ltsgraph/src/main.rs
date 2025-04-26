@@ -18,6 +18,7 @@ use clap::Parser;
 
 use log::debug;
 use log::info;
+use slint::quit_event_loop;
 use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
@@ -165,6 +166,13 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                     (Instant::now() - start).as_millis()
                 );
                 *canvas.lock().unwrap() = pixel_buffer.clone();
+            } else {                 
+                // Resize the canvas when necessary
+                let settings_clone = settings.lock().unwrap().clone();
+                let mut canvas = canvas.lock().unwrap();
+                if canvas.width() != settings_clone.width || canvas.height() != settings_clone.height {
+                    *canvas = SharedPixelBuffer::<Rgba8Pixel>::new(settings_clone.width, settings_clone.height);
+                }
             }
 
             // Request the to be updated.
@@ -358,6 +366,11 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
             }
         });
     }
+
+    app.on_quit(move || {
+        // Stop the layout and quit.
+        let _ = quit_event_loop();
+    });
 
     // Loads the LTS given on the command line.
     if let Some(path) = &cli.labelled_transition_system {
