@@ -26,7 +26,7 @@ use crate::utilities::TermStack;
 use crate::utilities::TermStackBuilder;
 
 impl RewriteEngine for InnermostRewriter {
-    fn rewrite(&mut self, t: DataExpression) -> DataExpression {
+    fn rewrite(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
         trace!("input: {}", t);
@@ -74,7 +74,7 @@ impl InnermostRewriter {
         builder: &mut TermStackBuilder,
         stats: &mut RewritingStatistics,
         automaton: &SetAutomaton<AnnouncementInnermost>,
-        input_term: DataExpression,
+        input_term: &DataExpression,
     ) -> DataExpression {
         stats.recursions += 1;
         {
@@ -259,8 +259,8 @@ impl InnermostRewriter {
             let rhs: DataExpression = c.rhs_term_stack.evaluate_with(t, builder);
             let lhs: DataExpression = c.lhs_term_stack.evaluate_with(t, builder);
 
-            let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, rhs);
-            let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, lhs);
+            let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &rhs);
+            let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &lhs);
 
             if lhs_normal != rhs_normal && c.equality || lhs_normal == rhs_normal && !c.equality {
                 return false;
@@ -328,7 +328,7 @@ mod tests {
         let term = to_untyped_data_expression(&term, &AHashSet::new());
 
         assert_eq!(
-            inner.rewrite(term.clone().into()),
+            inner.rewrite(&term),
             term.into(),
             "Should be in normal form for no rewrite rules"
         );

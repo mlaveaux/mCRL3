@@ -146,7 +146,7 @@ pub(crate) struct ConfigurationStack<'a> {
 
 impl<'a> ConfigurationStack<'a> {
     /// Initialise the stack with one Configuration containing 'term' and the initial state of the set automaton
-    pub fn new(state: usize, term: DataExpression) -> ConfigurationStack<'a> {
+    pub fn new(state: usize, term: &DataExpression) -> ConfigurationStack<'a> {
         let mut conf_list = ConfigurationStack {
             stack: Vec::with_capacity(8),
             side_branch_stack: vec![],

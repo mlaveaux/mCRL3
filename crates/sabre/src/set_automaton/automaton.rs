@@ -54,8 +54,14 @@ pub struct Transition<T> {
 }
 
 impl<T> Transition<T> {
+    /// Returns the match announcements of the transition
     pub fn announcements(&self) -> &SmallVec<[(MatchAnnouncement, T); 1]> {
         &self.announcements
+    }
+
+    /// Returns the symbol of the transition
+    pub fn destinations(&self) -> &SmallVec<[(ExplicitPosition, usize); 1]> {
+        &self.destinations
     }
 }
 

@@ -5,7 +5,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 
 use mcrl3_rec_tests::load_REC_from_strings;
-use mcrl3_sabre::set_automaton::SetAutomaton;
+use mcrl3_sabre::SetAutomaton;
 
 pub fn criterion_benchmark_set_automaton(c: &mut Criterion) {
     for (name, rec_files) in [("fibfree", [include_str!("../../../../examples/REC/rec/fibfree.rec")])] {

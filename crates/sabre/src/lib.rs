@@ -6,12 +6,13 @@
 
 //#![forbid(unsafe_code)]
 
-pub mod innermost_rewriter;
-pub mod matching;
-pub mod rewrite_specification;
-pub mod sabre_rewriter;
-pub mod set_automaton;
+mod innermost_rewriter;
+mod matching;
+mod rewrite_specification;
+mod sabre_rewriter;
+mod set_automaton;
 pub mod utilities;
+//mod cached_rewriter;
 
 #[cfg(test)]
 pub mod test_utility;
@@ -19,3 +20,5 @@ pub mod test_utility;
 pub use innermost_rewriter::*;
 pub use rewrite_specification::*;
 pub use sabre_rewriter::*;
+pub use set_automaton::*;
+//pub use cached_rewriter::*;

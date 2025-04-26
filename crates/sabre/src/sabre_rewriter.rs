@@ -18,7 +18,7 @@ use crate::utilities::SideInfoType;
 /// A shared trait for all the rewriters
 pub trait RewriteEngine {
     /// Rewrites the given term into normal form.
-    fn rewrite(&mut self, term: DataExpression) -> DataExpression;
+    fn rewrite(&mut self, term: &DataExpression) -> DataExpression;
 }
 
 #[derive(Default)]
@@ -38,7 +38,7 @@ pub struct SabreRewriter {
 }
 
 impl RewriteEngine for SabreRewriter {
-    fn rewrite(&mut self, term: DataExpression) -> DataExpression {
+    fn rewrite(&mut self, term: &DataExpression) -> DataExpression {
         self.stack_based_normalise(term)
     }
 }
@@ -51,7 +51,7 @@ impl SabreRewriter {
     }
 
     /// Function to rewrite a term. See the module documentation.
-    pub fn stack_based_normalise(&mut self, t: DataExpression) -> DataExpression {
+    pub fn stack_based_normalise(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
         let result = THREAD_TERM_POOL
@@ -61,6 +61,7 @@ impl SabreRewriter {
             "{} rewrites, {} single steps and {} symbol comparisons",
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
         );
+
         result
     }
 
@@ -69,7 +70,7 @@ impl SabreRewriter {
     fn stack_based_normalise_aux(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
-        t: DataExpression,
+        t: &DataExpression,
         stats: &mut RewritingStatistics,
     ) -> DataExpression {
         stats.recursions += 1;
@@ -268,8 +269,8 @@ impl SabreRewriter {
 
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {
-                let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, rhs, stats);
-                let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, lhs, stats);
+                let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, &rhs, stats);
+                let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, &lhs, stats);
 
                 // If lhs != rhs && !equality OR equality && lhs == rhs.
                 if (!c.equality && lhs_normal == rhs_normal) || (c.equality && lhs_normal != rhs_normal) {

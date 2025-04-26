@@ -21,19 +21,19 @@ pub type SignatureBuilder = Vec<(usize, usize)>;
 /// The type of a signature. We use sorted vectors to avoid the overhead of hash
 /// sets that might have unused values.
 #[derive(Eq)]
-pub struct Signature(*const [(usize, usize)]);
+pub struct Signature<'a>(&'a [(usize, usize)]);
 
-impl Signature {
-    pub fn new(slice: &[(usize, usize)]) -> Signature {
+impl<'a> Signature<'a> {
+    pub fn new(slice: &'a [(usize, usize)]) -> Self {
         Signature(slice)
-    }
-
-    pub fn as_slice(&self) -> &[(usize, usize)] {
-        unsafe { &*self.0 }
     }
 }
 
-impl Signature {
+impl Signature<'_> {
+    pub fn as_slice(&self) -> &[(usize, usize)] {
+        &*self.0
+    }
+
     // Check if target is a subset of self, excluding a specific element
     pub fn is_subset_of(&self, other: &[(usize, usize)], exclude: (usize, usize)) -> bool {
         let mut self_iter = self.as_slice().iter();
@@ -64,13 +64,13 @@ impl Signature {
     }
 }
 
-impl Default for Signature {
+impl Default for Signature<'_> {
     fn default() -> Self {
         Signature(&[])
     }
 }
 
-impl PartialEq for Signature {
+impl PartialEq for Signature<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.as_slice() == other.as_slice()
     }
