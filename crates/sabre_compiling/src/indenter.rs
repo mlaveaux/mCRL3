@@ -1,3 +1,7 @@
+use std::fmt::Write;
+
+use indenter::indented;
+
 /// An indentation manager that maintains the current indentation level and provides
 /// methods for formatting text with proper indentation.
 ///
@@ -22,18 +26,15 @@ pub struct Indent<'a> {
 impl Indenter {
     /// Creates a new Indenter with zero indentation.
     ///
-    /// The default tab is four spaces.
+    /// The default tab is two spaces.
     pub fn new() -> Self {
         Self {
             level: 0,
-            tab: "    ".to_string(),
+            tab: "  ".to_string(),
         }
     }
 
     /// Creates a new Indenter with zero indentation and a custom tab string.
-    ///
-    /// # Arguments
-    /// * `tab` - The string to use for each level of indentation
     pub fn with_tab(tab: impl Into<String>) -> Self {
         Self {
             level: 0,
@@ -43,50 +44,79 @@ impl Indenter {
 
     /// Increases the indentation level and returns a guard that will
     /// decrease it when dropped.
-    ///
-    /// # Returns
-    /// An `Indent` guard that will decrease the indentation when dropped
     pub fn indent(&mut self) -> Indent {
         self.level += 1;
         Indent { indenter: self }
     }
 
-    /// Returns the current indentation as a string.
-    ///
-    /// # Returns
-    /// A string containing the appropriate number of tabs for the current level
-    pub fn get_indent(&self) -> String {
-        self.tab.repeat(self.level)
-    }
-
-    /// Formats text with the current indentation level.
-    ///
-    /// # Arguments
-    /// * `text` - The text to format with indentation
-    ///
-    /// # Returns
-    /// The indented text
-    pub fn format(&self, text: impl AsRef<str>) -> String {
-        format!("{}{}", self.get_indent(), text.as_ref())
-    }
-
-    /// Formats text with the current indentation level and appends a newline.
-    ///
-    /// # Arguments
-    /// * `text` - The text to format with indentation
-    ///
-    /// # Returns
-    /// The indented text with a trailing newline
-    pub fn format_line(&self, text: impl AsRef<str>) -> String {
-        format!("{}{}\n", self.get_indent(), text.as_ref())
-    }
-
     /// Returns the current indentation level.
-    ///
-    /// # Returns
-    /// The current indentation level
     pub fn level(&self) -> usize {
         self.level
+    }
+
+    /// Returns a new `Indenter` that writes everything with the chosen indentation level.
+    fn writer(&self, writer: &mut impl Write) -> impl Write {
+        indented(writer).ind(self.level())
+    }
+}
+
+/// Formats text with the current indentation level.
+///
+/// Takes an indenter and format arguments, returns a formatted String.
+#[macro_export]
+macro_rules! format_indent {
+    ($indenter:expr, $($arg:tt)*) => {{
+        let mut result = String::new();
+        let _ = write_indent!($indenter, &mut result, $($arg)*);
+        result
+    }};
+}
+
+/// Writes formatted text with the current indentation level to the specified writer.
+///
+/// Returns the result of the underlying `write!` operation.
+#[macro_export]
+macro_rules! write_indent {
+    ($indenter:expr, $writer:expr, $($arg:tt)*) => {{
+        write!($indenter.writer($writer), $($arg)*)
+    }};
+}
+
+/// Writes formatted text with the current indentation level to the specified writer,
+/// followed by a newline.
+///
+/// Returns the result of the underlying `writeln!` operation.
+#[macro_export]
+macro_rules! writeln_indent {
+    ($indenter:expr, $writer:expr, $($arg:tt)*) => {{
+        writeln!($indenter.writer($writer), $($arg)*)
+    }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_indent() {
+        let mut indenter = Indenter::new();
+        assert_eq!(format_indent!(indenter, "Hello"), "Hello");
+        
+        {
+            let _guard = indenter.indent();
+            assert_eq!(format_indent!(indenter, "World"), "  World");
+            
+            {
+                let _guard = indenter.indent();
+                assert_eq!(format_indent!(indenter, "Nested"), "    Nested");
+            }
+            
+            // Verify indentation decreases when guard is dropped
+            assert_eq!(format_indent!(indenter, "Still indented"), "  Still indented");
+        }
+        
+        // Verify indentation returns to zero when all guards are dropped
+        assert_eq!(format_indent!(indenter, "Back to zero"), "Back to zero");
     }
 }
 
@@ -95,62 +125,5 @@ impl<'a> Drop for Indent<'a> {
     fn drop(&mut self) {
         debug_assert!(self.indenter.level > 0, "Indentation level cannot go below zero");
         self.indenter.level -= 1;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_indenter_basic() {
-        let mut indenter = Indenter::new();
-        
-        // Initial indentation level should be zero
-        assert_eq!(indenter.level(), 0);
-        assert_eq!(indenter.get_indent(), "");
-        assert_eq!(indenter.format("Hello"), "Hello");
-        
-        // Adding indentation
-        {
-            let _indent = indenter.indent();
-            assert_eq!(indenter.level(), 1);
-            assert_eq!(indenter.get_indent(), "    ");
-            assert_eq!(indenter.format("World"), "    World");
-            
-            // Nested indentation
-            {
-                let _indent2 = indenter.indent();
-                assert_eq!(indenter.level(), 2);
-                assert_eq!(indenter.get_indent(), "        ");
-                assert_eq!(indenter.format("Nested"), "        Nested");
-            }
-            
-            // After inner scope, indentation should return to previous level
-            assert_eq!(indenter.level(), 1);
-        }
-        
-        // After outer scope, indentation should return to initial level
-        assert_eq!(indenter.level(), 0);
-    }
-
-    #[test]
-    fn test_custom_tab() {
-        let mut indenter = Indenter::with_tab("\t");
-        
-        assert_eq!(indenter.format("Test"), "Test");
-        
-        let _indent = indenter.indent();
-        assert_eq!(indenter.format("Tabbed"), "\tTabbed");
-    }
-
-    #[test]
-    fn test_format_line() {
-        let mut indenter = Indenter::new();
-        
-        assert_eq!(indenter.format_line("Line 1"), "Line 1\n");
-        
-        let _indent = indenter.indent();
-        assert_eq!(indenter.format_line("Line 2"), "    Line 2\n");
     }
 }
