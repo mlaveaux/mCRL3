@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use hashbrown::Equivalent;
 
+use mcrl3_unsafety::StablePointerSet;
 use mcrl3_utilities::IndexedSet;
 
 use crate::Symb;
+use crate::SymbolIndex;
 use crate::SymbolRef;
 
 /// Pool for maximal sharing of function symbols. Ensures that function symbols
@@ -16,13 +18,13 @@ use crate::SymbolRef;
 /// garbage collection of the underlying shared symbol.
 pub struct SymbolPool {
     /// Unique table of all function symbols
-    symbols: IndexedSet<SharedSymbol>,
+    symbols: StablePointerSet<SharedSymbol>,
 }
 
 impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
-        let mut symbols = IndexedSet::new();
+        let mut symbols = StablePointerSet::new();
         symbols.insert(SharedSymbol::new("<default>", 0));
 
         Self { symbols }
@@ -32,28 +34,23 @@ impl SymbolPool {
     pub fn create<N, P, R>(&mut self, name: N, arity: usize, protect: P) -> R
     where
         N: Into<String> + AsRef<str>,
-        P: FnOnce(NonZero<usize>) -> R,
+        P: FnOnce(SymbolIndex) -> R,
     {
         // Get or create symbol index
-        let (index, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { name, arity });
+        let (shared_symbol, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { name, arity });
 
         // Return cloned symbol
-        protect(NonZero::new(index).unwrap())
+        protect(shared_symbol)
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> &'a str {
-        self.symbols.get(symbol.index().into()).unwrap().name()
-    }
-
-    /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name_owned<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> Arc<String> {
-        self.symbols.get(symbol.index().into()).unwrap().name.clone()
+    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
+        symbol.shared().name()
     }
 
     /// Returns the arity of the function symbol
     pub fn symbol_arity<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> usize {
-        self.symbols.get(symbol.index().into()).unwrap().arity()
+        symbol.shared().arity()
     }
 
     /// Returns the number of symbols in the pool.
@@ -67,11 +64,13 @@ impl SymbolPool {
     }
 
     /// Retain only symbols satisfying the given predicate.
-    pub fn retain_mut<F>(&mut self, mut f: F)
+    pub unsafe fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(usize) -> bool,
+        F: FnMut(&SymbolIndex) -> bool,
     {
-        self.symbols.retain_mut(|index, _| f(index));
+        unsafe {
+            self.symbols.retain(|element| f(element));
+        }
     }
 }
 

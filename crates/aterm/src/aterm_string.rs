@@ -16,7 +16,6 @@ use crate::ATermArgs;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
-use crate::StrRef;
 use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
@@ -46,7 +45,7 @@ mod inner {
         }
 
         /// Get the value of the string
-        pub fn value(&self) -> StrRef<'_> {
+        pub fn value(&self) -> &str {
             self.term.get_head_symbol().name()
         }
     }
@@ -54,13 +53,6 @@ mod inner {
     #[mcrl3_ignore]
     impl From<&str> for ATermString {
         fn from(s: &str) -> Self {
-            ATermString::new(s)
-        }
-    }
-
-    #[mcrl3_ignore]
-    impl From<StrRef<'_>> for ATermString {
-        fn from(s: StrRef<'_>) -> Self {
             ATermString::new(s.deref())
         }
     }

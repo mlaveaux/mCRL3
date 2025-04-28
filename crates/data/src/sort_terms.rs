@@ -11,7 +11,6 @@ use mcrl3_aterm::ATermArgs;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
-use mcrl3_aterm::StrRef;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
 use mcrl3_aterm::Term;
@@ -37,7 +36,7 @@ mod inner {
 
     impl SortExpression {
         /// Returns the name of the sort.
-        pub fn name(&self) -> StrRef {
+        pub fn name(&self) -> &str {
             self.term.arg(0).get_head_symbol().name()
         }
 

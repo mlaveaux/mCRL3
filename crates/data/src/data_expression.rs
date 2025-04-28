@@ -12,7 +12,6 @@ use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ATermString;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
-use mcrl3_aterm::StrRef;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
 use mcrl3_aterm::Term;
@@ -193,7 +192,7 @@ mod inner {
         }
 
         /// Returns the name of the variable.
-        pub fn name(&self) -> StrRef<'_> {
+        pub fn name(&self) -> &str {
             // We only change the lifetime, but that is fine since it is derived from the current term.
             self.term.arg(0).get_head_symbol().name()
         }

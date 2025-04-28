@@ -8,30 +8,37 @@ use std::num::NonZero;
 use std::ops::Deref;
 
 use delegate::delegate;
+use mcrl3_unsafety::StablePointer;
 
-use crate::StrRef;
+use crate::SharedSymbol;
 use crate::THREAD_TERM_POOL;
 
 /// The public interface for a function symbol, can be used to write generic
 /// functions that accept both `Symbol` and `SymbolRef`.
 pub trait Symb<'a, 'b> {
     /// Obtain the symbol's name.
-    fn name(&'b self) -> StrRef<'a>;
+    fn name(&'b self) -> &'a str;
 
     /// Obtain the symbol's arity.
-    fn arity(&'b self) -> usize;
+    fn arity(&self) -> usize;
 
     /// Create a copy of the symbol reference.
     fn copy(&'b self) -> SymbolRef<'a>;
 
-    /// Returns the internal index of the symbol.
-    fn index(&'b self) -> NonZero<usize>;
+    /// Returns a unique index for the symbol.
+    fn index(&self) -> usize;
+
+    /// TODO: How to actually hide this implementation?
+    fn shared(&self) -> &SymbolIndex;
 }
+
+/// An alias for the type that is used to reference into the symbol set.
+pub type SymbolIndex = StablePointer<SharedSymbol>;
 
 /// A reference to a function symbol in the term pool.
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
-    index: NonZero<usize>,
+    shared: SymbolIndex,
     marker: PhantomData<&'a ()>,
 }
 
@@ -40,9 +47,9 @@ const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<us
 
 /// A reference to a function symbol with a known lifetime.
 impl<'a> SymbolRef<'a> {
-    pub(crate) fn from_index(index: NonZero<usize>) -> SymbolRef<'a> {
+    pub(crate) fn from_index(index: SymbolIndex) -> SymbolRef<'a> {
         SymbolRef {
-            index,
+            shared: index,
             marker: PhantomData,
         }
     }
@@ -57,15 +64,18 @@ impl SymbolRef<'_> {
     /// Internal constructo to convert any `Symb` to a `SymbolRef`.
     pub(crate) fn from_symbol<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> Self {
         SymbolRef {
-            index: symbol.index(),
+            shared: unsafe { symbol.shared().copy() },
             marker: PhantomData,
         }
     }
 }
 
 impl<'a> Symb<'a, '_> for SymbolRef<'a> {
-    fn name(&self) -> StrRef<'a> {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_name(self))
+    fn name(&self) -> &'a str {
+        unsafe {
+            // SAFETY: The symbol is guaranteed to be valid as long as the thread term pool is alive.
+            std::mem::transmute(THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_name(self)))
+        }
     }
 
     fn arity(&self) -> usize {
@@ -73,11 +83,15 @@ impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     }
 
     fn copy(&self) -> SymbolRef<'a> {
-        SymbolRef::from_index(self.index)
+        SymbolRef::from_index(unsafe { self.shared.copy() })
     }
 
-    fn index(&self) -> NonZero<usize> {
-        self.index
+    fn index(&self) -> usize {
+        self.shared.address()
+    }
+
+    fn shared(&self) -> &SymbolIndex {
+        &self.shared
     }
 }
 
@@ -108,7 +122,7 @@ impl Symbol {
 
 impl Symbol {
     /// Internal constructor to create a symbol from an index and a root.
-    pub(crate) fn from_index(index: NonZero<usize>, root: usize) -> Symbol {
+    pub(crate) fn from_index(index: SymbolIndex, root: usize) -> Symbol {
         Self {
             symbol: SymbolRef::from_index(index),
             root,
@@ -129,10 +143,11 @@ impl Symbol {
 impl<'a> Symb<'a, '_> for &'a Symbol {
     delegate! {
         to self.symbol {
-            fn name(&self) -> StrRef<'a>;
+            fn name(&self) -> &'a str;
             fn arity(&self) -> usize;
             fn copy(&self) -> SymbolRef<'a>;
-            fn index(&self) -> NonZero<usize>;
+            fn index(&self) -> usize;
+            fn shared(&self) -> &SymbolIndex;
         }
     }
 }
@@ -143,10 +158,11 @@ where
 {
     delegate! {
         to self.symbol {
-            fn name(&self) -> StrRef<'a>;
+            fn name(&self) -> &'a str;
             fn arity(&self) -> usize;
             fn copy(&self) -> SymbolRef<'a>;
-            fn index(&self) -> NonZero<usize>;
+            fn index(&self) -> usize;
+            fn shared(&self) -> &SymbolIndex;
         }
     }
 }

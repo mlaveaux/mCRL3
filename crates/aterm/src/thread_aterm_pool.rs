@@ -9,7 +9,6 @@ use crate::GlobalTermPool;
 use crate::Markable;
 use crate::Rule;
 use crate::SharedTermProtection;
-use crate::StrRef;
 use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
@@ -96,7 +95,7 @@ impl ThreadTermPool {
     pub fn create_symbol(&self, name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
         let tp = GLOBAL_TERM_POOL.lock();
 
-        (*tp)
+        tp
             .borrow_mut()
             .create_symbol(name, arity, |index| self.protect_symbol(&SymbolRef::from_index(index)))
     }
@@ -104,19 +103,19 @@ impl ThreadTermPool {
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn get_head_symbol<'a>(&self, term: &ATermRef<'a>) -> SymbolRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow().get_head_symbol(term)
+        tp.borrow().get_head_symbol(term)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
     pub fn get_argument<'a, 'b: 'a>(&'b self, term: &ATermRef<'a>, i: usize) -> ATermRef<'a> {
         let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow().get_argument(term, i)
+        tp.borrow().get_argument(term, i)
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &SymbolRef<'a>) -> StrRef<'a> {
+    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
         let tp = GLOBAL_TERM_POOL.lock();
-        StrRef::new(tp.borrow().symbol_name(symbol))
+        tp.borrow().symbol_name(symbol)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
@@ -202,7 +201,9 @@ impl ThreadTermPool {
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
         let mut lock = mutex_unwrap(self.protection_set.lock());
-        let result = Symbol::from_index(symbol.index(), lock.symbol_protection_set.protect(symbol.index()));
+        let result = unsafe {
+            Symbol::from_index(symbol.shared().copy(), lock.symbol_protection_set.protect(symbol.shared().copy()))
+        };
 
         trace!(
             "Protected symbol {}, root {}, protection set {}",

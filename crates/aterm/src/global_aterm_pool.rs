@@ -1,8 +1,10 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZero;
+use std::ptr::NonNull;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
@@ -47,6 +49,7 @@ use crate::ATermRef;
 use crate::Markable;
 use crate::Symb;
 use crate::Symbol;
+use crate::SymbolIndex;
 use crate::SymbolPool;
 use crate::SymbolRef;
 use crate::Term;
@@ -89,7 +92,7 @@ pub(crate) struct GlobalTermPool {
     /// Used to avoid reallocations for the markings of all terms
     marked_terms: Vec<bool>,
     /// Used to avoid reallocations for the markings of all symbols
-    marked_symbols: Vec<bool>,
+    marked_symbols: HashSet<SymbolIndex>,
     /// A stack used to mark terms recursively.
     stack: Vec<usize>,
 
@@ -104,7 +107,7 @@ impl GlobalTermPool {
         // We should have no term with index zero, so insert bogus value.
         let mut terms = IndexedSet::new();
         terms.insert(SharedTerm {
-            symbol: SymbolRef::from_index(NonZero::<usize>::MAX),
+            symbol: SymbolRef::from_index(SymbolIndex::dangling()),
             arguments: Vec::new(),
         });
 
@@ -119,7 +122,7 @@ impl GlobalTermPool {
             thread_pools: Vec::new(),
             tmp_arguments: Vec::new(),
             marked_terms: Vec::new(),
-            marked_symbols: Vec::new(),
+            marked_symbols: HashSet::new(),
             stack: Vec::new(),
             int_symbol,
             list_symbol,
@@ -145,8 +148,8 @@ impl GlobalTermPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a, 'b: 'a>(&'b self, symbol: &SymbolRef<'a>) -> Arc<String> {
-        self.symbol_pool.symbol_name_owned(symbol)
+    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
+        self.symbol_pool.symbol_name(symbol)
     }
 
     /// Return the i-th argument of the SharedTerm for the given ATermRef
@@ -177,7 +180,7 @@ impl GlobalTermPool {
         }
 
         let shared_term = SharedTermLookup {
-            symbol: SymbolRef::from_index(self.int_symbol.index()),
+            symbol: SymbolRef::from_index(unsafe { self.int_symbol.shared().copy() }),
             arguments: &self.tmp_arguments,
         };
 
@@ -254,7 +257,7 @@ impl GlobalTermPool {
     /// Create a function symbol
     pub fn create_symbol<P>(&mut self, name: impl Into<String> + AsRef<str>, arity: usize, protect: P) -> Symbol
     where
-        P: FnOnce(NonZero<usize>) -> Symbol,
+        P: FnOnce(SymbolIndex) -> Symbol,
     {
         self.symbol_pool.create(name, arity, protect)
     }
@@ -292,15 +295,15 @@ impl GlobalTermPool {
     fn collect_garbage(&mut self) {
         // Resize to fit all terms
         self.marked_terms.resize(self.capacity(), false);
-        self.marked_symbols.resize(self.symbol_pool.capacity(), false);
 
         // Mark the default symbols
-        self.marked_symbols[self.int_symbol.index().get()] = true;
-        self.marked_symbols[self.list_symbol.index().get()] = true;
-        self.marked_symbols[self.empty_list_symbol.index().get()] = true;
+        unsafe {
+            self.marked_symbols.insert(self.int_symbol.shared().copy());
+            self.marked_symbols.insert(self.list_symbol.shared().copy());
+            self.marked_symbols.insert(self.empty_list_symbol.shared().copy());
+        }
 
         self.marked_terms[0] = true; // The bogus term
-        self.marked_symbols[0] = true; // The bogus symbol
 
         let mut marker = Marker {
             marked_terms: &mut self.marked_terms,
@@ -340,10 +343,12 @@ impl GlobalTermPool {
             self.marked_terms[index]
         });
 
-        self.symbol_pool.retain_mut(|index| {
-            trace!("Removing symbol {}", index);
-            self.marked_symbols[index]
-        });
+        unsafe {
+            // We ensure that every removed symbol is not used anymore.
+            self.symbol_pool.retain(|shared| {
+                self.marked_symbols.contains(shared)
+            });
+        }
 
         info!(
             "Garbage collection: marking took {}ms, collection took {}ms, {} terms removed",
@@ -380,7 +385,7 @@ pub(crate) struct SharedTermProtection {
     /// Protection set for terms
     pub(crate) protection_set: ProtectionSet<NonZero<usize>>,
     /// Protection set to prevent garbage collection of symbols
-    pub(crate) symbol_protection_set: ProtectionSet<NonZero<usize>>,
+    pub(crate) symbol_protection_set: ProtectionSet<SymbolIndex>,
     /// Protection set for containers
     pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
     /// Index in global pool's thread pools list
@@ -419,7 +424,7 @@ impl fmt::Debug for SharedTermProtection {
 /// Helper struct to pass private data required to mark term recursively.
 pub struct Marker<'a> {
     marked_terms: &'a mut Vec<bool>,
-    marked_symbols: &'a mut Vec<bool>,
+    marked_symbols: &'a mut HashSet<SymbolIndex>,
     terms: &'a IndexedSet<SharedTerm>,
     stack: &'a mut Vec<usize>,
 }
@@ -438,7 +443,7 @@ impl Marker<'_> {
                 let term = self.terms.get(index).unwrap();
 
                 // Mark the function symbol.
-                self.marked_symbols[term.symbol().index().get()] = true;
+                self.marked_symbols.insert(unsafe { term.symbol().shared().copy() });
 
                 for arg in term.arguments() {
                     let arg_index: usize = arg.index().get();
@@ -463,7 +468,7 @@ pub struct SharedTerm {
 impl Clone for SharedTerm {
     fn clone(&self) -> Self {
         SharedTerm {
-            symbol: SymbolRef::from_index(self.symbol.index()),
+            symbol: SymbolRef::from_index(unsafe { self.symbol.shared().copy() }),
             arguments: self
                 .arguments
                 .iter()
@@ -493,7 +498,7 @@ struct SharedTermLookup<'a> {
 impl From<&SharedTermLookup<'_>> for SharedTerm {
     fn from(lookup: &SharedTermLookup<'_>) -> Self {
         SharedTerm {
-            symbol: SymbolRef::from_index(lookup.symbol.index()),
+            symbol: SymbolRef::from_index(unsafe { lookup.symbol.shared().copy() }),
             arguments: lookup
                 .arguments
                 .iter()
