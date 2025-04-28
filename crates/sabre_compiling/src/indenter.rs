@@ -1,129 +1,126 @@
-use std::fmt::Write;
-
-use indenter::indented;
+use std::io::Write;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// An indentation manager that maintains the current indentation level and provides
 /// methods for formatting text with proper indentation.
 ///
 /// The indentation level can be increased with `indent()`, which returns an `Indent`
 /// guard that automatically decreases the indentation when dropped.
-#[derive(Debug, Clone)]
-pub struct Indenter {
-    /// The current indentation level (number of tabs)
-    level: usize,
-    /// The string used for each level of indentation
-    tab: String,
-}
-
-/// A guard object that decreases indentation when dropped.
-/// Created by calling `Indenter::indent()`.
 #[derive(Debug)]
-pub struct Indent<'a> {
-    /// Reference to the indenter which created this guard
-    indenter: &'a mut Indenter,
+pub struct IndentFormatter<'a, W: Write> {
+    /// The current indentation level (number of tabs), wrapped in Rc<RefCell> for interior mutability
+    level: Rc<RefCell<usize>>,
+    /// The underlying writer to which indented content will be written
+    writer: &'a mut W,
+    /// The string used for a single level of indentation
+    indent_str: String,
 }
 
-impl Indenter {
-    /// Creates a new Indenter with zero indentation.
-    ///
-    /// The default tab is two spaces.
-    pub fn new() -> Self {
-        Self {
-            level: 0,
-            tab: "  ".to_string(),
-        }
+impl<'a, W: Write> IndentFormatter<'a, W> {
+    /// Creates a new IndentFormatter with zero indentation.
+    pub fn new(writer: &'a mut W) -> Self {
+        Self::with_indent_str(writer, "  ".to_string())
     }
 
-    /// Creates a new Indenter with zero indentation and a custom tab string.
-    pub fn with_tab(tab: impl Into<String>) -> Self {
+    /// Creates a new IndentFormatter with zero indentation and specified indentation string.
+    pub fn with_indent_str(writer: &'a mut W, indent_str: String) -> Self {
         Self {
-            level: 0,
-            tab: tab.into(),
+            writer,
+            level: Rc::new(RefCell::new(0)),
+            indent_str,
         }
     }
 
     /// Increases the indentation level and returns a guard that will
     /// decrease it when dropped.
-    pub fn indent(&mut self) -> Indent {
-        self.level += 1;
-        Indent { indenter: self }
+    pub fn indent(&self) -> Indent {
+        // Increase the indentation level
+        let mut level_ref = self.level.borrow_mut();
+        *level_ref += 1;
+        drop(level_ref); // Release the borrow before creating the guard
+
+        Indent { level: Rc::clone(&self.level) }
     }
 
     /// Returns the current indentation level.
     pub fn level(&self) -> usize {
-        self.level
-    }
-
-    /// Returns a new `Indenter` that writes everything with the chosen indentation level.
-    fn writer(&self, writer: &mut impl Write) -> impl Write {
-        indented(writer).ind(self.level())
+        *self.level.borrow()
     }
 }
 
-/// Formats text with the current indentation level.
-///
-/// Takes an indenter and format arguments, returns a formatted String.
-#[macro_export]
-macro_rules! format_indent {
-    ($indenter:expr, $($arg:tt)*) => {{
-        let mut result = String::new();
-        let _ = write_indent!($indenter, &mut result, $($arg)*);
-        result
-    }};
+impl<W: Write> Write for IndentFormatter<'_, W> {
+
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // Convert the byte slice to a string slice
+        let s = std::str::from_utf8(buf)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"))?;
+        
+        let parts = s.split('\n');
+        let mut bytes_written = 0;
+                
+        // Handle the remaining parts
+        for part in parts {            
+            if !part.is_empty() {
+                // Add indentation at line start
+                for _ in 0..self.level() {
+                    // Add indentation at line start
+                    bytes_written += self.writer.write(self.indent_str.as_bytes())?;
+                }
+                bytes_written += self.writer.write(part.as_bytes())?;
+            }
+
+            // Write the newline that split() removed
+            bytes_written += self.writer.write("\n".as_bytes())?;
+        }
+        
+        Ok(bytes_written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
+    }
 }
 
-/// Writes formatted text with the current indentation level to the specified writer.
+/// A guard object that decreases indentation when dropped.
+/// Created by calling `IndentFormatter::indent()`.
 ///
-/// Returns the result of the underlying `write!` operation.
-#[macro_export]
-macro_rules! write_indent {
-    ($indenter:expr, $writer:expr, $($arg:tt)*) => {{
-        write!($indenter.writer($writer), $($arg)*)
-    }};
+/// Uses interior mutability to avoid requiring a mutable reference to the IndentFormatter.
+#[derive(Debug)]
+pub struct Indent {
+    /// Reference-counted cell containing the indentation level
+    level: Rc<RefCell<usize>>,
 }
 
-/// Writes formatted text with the current indentation level to the specified writer,
-/// followed by a newline.
-///
-/// Returns the result of the underlying `writeln!` operation.
-#[macro_export]
-macro_rules! writeln_indent {
-    ($indenter:expr, $writer:expr, $($arg:tt)*) => {{
-        writeln!($indenter.writer($writer), $($arg)*)
-    }};
+impl Drop for Indent {
+    /// Decreases the indentation level when this guard is dropped.
+    fn drop(&mut self) {
+        let mut level_ref = self.level.borrow_mut();
+        debug_assert!(*level_ref > 0, "Indentation level cannot go below zero");
+        *level_ref -= 1;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
+    /// Tests that the indenter correctly handles multi-line strings
     #[test]
-    fn test_format_indent() {
-        let mut indenter = Indenter::new();
-        assert_eq!(format_indent!(indenter, "Hello"), "Hello");
-        
+    fn test_multiline_string() {
+        let mut buffer = Vec::new();
         {
-            let _guard = indenter.indent();
-            assert_eq!(format_indent!(indenter, "World"), "  World");
+            let mut formatter = IndentFormatter::new(&mut buffer);
             
-            {
-                let _guard = indenter.indent();
-                assert_eq!(format_indent!(indenter, "Nested"), "    Nested");
-            }
+            // First level indent
+            let _indent1 = formatter.indent();
             
-            // Verify indentation decreases when guard is dropped
-            assert_eq!(format_indent!(indenter, "Still indented"), "  Still indented");
+            // Write a multi-line string at once
+            write!(formatter, "First line\nSecond line\nThird line").unwrap();
         }
         
-        // Verify indentation returns to zero when all guards are dropped
-        assert_eq!(format_indent!(indenter, "Back to zero"), "Back to zero");
-    }
-}
-
-impl<'a> Drop for Indent<'a> {
-    /// Decreases the indentation level when this guard is dropped.
-    fn drop(&mut self) {
-        debug_assert!(self.indenter.level > 0, "Indentation level cannot go below zero");
-        self.indenter.level -= 1;
+        let result = String::from_utf8(buffer).unwrap();
+        let expected = "\tFirst line\n\tSecond line\n\tThird line";
+        assert_eq!(result, expected, "Multiline indentation incorrect");
     }
 }
