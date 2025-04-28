@@ -8,3 +8,4 @@ mod indenter;
 
 pub use innermost_codegen::*;
 pub use sabre_compiling::*;
+pub use indenter::*;

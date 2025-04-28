@@ -3,3 +3,7 @@ name = "mcrl3_unsafety"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
+
+[dependencies]
+hashbrown.workspace = true
+rustc-hash.workspace = true

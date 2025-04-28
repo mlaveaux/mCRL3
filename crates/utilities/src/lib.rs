@@ -1,6 +1,7 @@
-//! Utility types and functions for the mCRL3 toolset.
 
-// Forbid unsafe code in this crate.
+//! Utility types and functions for the mCRL3 toolset.
+//! 
+//! Forbid unsafe code in this crate.
 #![forbid(unsafe_code)]
 
 mod bitstream;
