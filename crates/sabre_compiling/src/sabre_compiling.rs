@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use libloading::Library;
 use libloading::Symbol;
 use log::info;
-use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Term;
 use mcrl3_utilities::MCRL3Error;

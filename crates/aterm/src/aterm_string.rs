@@ -53,7 +53,7 @@ mod inner {
     #[mcrl3_ignore]
     impl From<&str> for ATermString {
         fn from(s: &str) -> Self {
-            ATermString::new(s.deref())
+            ATermString::new(s)
         }
     }
 

@@ -1,5 +1,4 @@
 use std::fmt;
-use std::ops::Deref;
 
 use ahash::HashSet;
 use mcrl3_aterm::ATermRef;
@@ -17,7 +16,7 @@ use mcrl3_sabre::is_supported_rule;
 fn find_variables(t: &DataExpressionRef<'_>, variables: &mut HashSet<String>) {
     for child in t.iter() {
         if is_data_variable(&child) {
-            variables.insert(DataVariableRef::from(child.copy()).name().deref().into());
+            variables.insert(DataVariableRef::from(child.copy()).name().into());
         }
     }
 }

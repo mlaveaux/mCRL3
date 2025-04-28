@@ -4,7 +4,6 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
-use std::num::NonZero;
 use std::ops::Deref;
 
 use delegate::delegate;

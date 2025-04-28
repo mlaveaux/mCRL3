@@ -1,12 +1,10 @@
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::num::NonZero;
 use std::sync::Arc;
 
 use hashbrown::Equivalent;
 
 use mcrl3_unsafety::StablePointerSet;
-use mcrl3_utilities::IndexedSet;
 
 use crate::Symb;
 use crate::SymbolIndex;
