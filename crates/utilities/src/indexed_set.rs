@@ -14,6 +14,7 @@ use rustc_hash::FxBuildHasher;
 /// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
 ///
 /// TODO: Remove the need for duplicating the key in the hash map.
+/// TODO: For safety generational indices should be used
 pub struct IndexedSet<T, S = FxBuildHasher> {
     table: Vec<IndexSetEntry<T>>,
     index: HashMap<T, usize, S>,

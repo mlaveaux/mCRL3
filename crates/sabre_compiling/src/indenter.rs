@@ -57,24 +57,28 @@ impl<W: Write> Write for IndentFormatter<'_, W> {
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"))?;
         
         let parts = s.split('\n');
-        let mut bytes_written = 0;
+        let mut first = true;
                 
         // Handle the remaining parts
-        for part in parts {            
+        for part in parts {   
+            // Write the newline that split() removed
+            if !first {
+                self.writer.write("\n".as_bytes())?;  
+            }       
+            
             if !part.is_empty() {
                 // Add indentation at line start
                 for _ in 0..self.level() {
                     // Add indentation at line start
-                    bytes_written += self.writer.write(self.indent_str.as_bytes())?;
+                    self.writer.write(self.indent_str.as_bytes())?;
                 }
-                bytes_written += self.writer.write(part.as_bytes())?;
+                self.writer.write(part.as_bytes())?;
             }
 
-            // Write the newline that split() removed
-            bytes_written += self.writer.write("\n".as_bytes())?;
+            first = false;
         }
         
-        Ok(bytes_written)
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -120,7 +124,7 @@ mod tests {
         }
         
         let result = String::from_utf8(buffer).unwrap();
-        let expected = "\tFirst line\n\tSecond line\n\tThird line";
+        let expected = "  First line\n  Second line\n  Third line";
         assert_eq!(result, expected, "Multiline indentation incorrect");
     }
 }
