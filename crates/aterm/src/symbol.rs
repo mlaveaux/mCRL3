@@ -46,9 +46,9 @@ const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<us
 
 /// A reference to a function symbol with a known lifetime.
 impl<'a> SymbolRef<'a> {
-    pub(crate) fn from_index(index: SymbolIndex) -> SymbolRef<'a> {
+    pub(crate) unsafe fn from_index(index: &SymbolIndex) -> SymbolRef<'a> {
         SymbolRef {
-            shared: index,
+            shared: unsafe { index.copy() },
             marker: PhantomData,
         }
     }
@@ -72,17 +72,16 @@ impl SymbolRef<'_> {
 impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     fn name(&self) -> &'a str {
         unsafe {
-            // SAFETY: The symbol is guaranteed to be valid as long as the thread term pool is alive.
-            std::mem::transmute(THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_name(self)))
+            std::mem::transmute(self.shared.name())
         }
     }
 
     fn arity(&self) -> usize {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.symbol_arity(self))
+        self.shared.arity()
     }
 
     fn copy(&self) -> SymbolRef<'a> {
-        SymbolRef::from_index(unsafe { self.shared.copy() })
+        unsafe { SymbolRef::from_index(self.shared()) }
     }
 
     fn index(&self) -> usize {
@@ -121,9 +120,9 @@ impl Symbol {
 
 impl Symbol {
     /// Internal constructor to create a symbol from an index and a root.
-    pub(crate) fn from_index(index: SymbolIndex, root: usize) -> Symbol {
+    pub(crate) fn from_index(index: &SymbolIndex, root: usize) -> Symbol {
         Self {
-            symbol: SymbolRef::from_index(index),
+            symbol: unsafe { SymbolRef::from_index(index) },
             root,
         }
     }

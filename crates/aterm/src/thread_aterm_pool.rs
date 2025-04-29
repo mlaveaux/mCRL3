@@ -19,6 +19,7 @@ use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::global_aterm_pool::Mutex;
 use crate::global_aterm_pool::mutex_unwrap;
+use crate::AGRESSIVE_GC;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
@@ -44,13 +45,13 @@ impl ThreadTermPool {
         // Arbitrary value to trigger garbage collection
         Self {
             protection_set,
-            garbage_collection_counter: Cell::new(1000),
+            garbage_collection_counter: Cell::new(if AGRESSIVE_GC { 1 } else { 1000 }),
         }
     }
 
     /// Creates a term without arguments.
     pub fn create_constant(&self, symbol: &SymbolRef<'_>) -> ATerm {
-        assert!(self.symbol_arity(symbol) == 0, "A constant should not have arity > 0");
+        assert!(symbol.arity() == 0, "A constant should not have arity > 0");
 
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
@@ -97,31 +98,7 @@ impl ThreadTermPool {
 
         tp
             .borrow_mut()
-            .create_symbol(name, arity, |index| self.protect_symbol(&SymbolRef::from_index(index)))
-    }
-
-    /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn get_head_symbol<'a>(&self, term: &ATermRef<'a>) -> SymbolRef<'a> {
-        let tp = GLOBAL_TERM_POOL.lock();
-        tp.borrow().get_head_symbol(term)
-    }
-
-    /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn get_argument<'a, 'b: 'a>(&'b self, term: &ATermRef<'a>, i: usize) -> ATermRef<'a> {
-        let tp = GLOBAL_TERM_POOL.lock();
-        tp.borrow().get_argument(term, i)
-    }
-
-    /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
-        let tp = GLOBAL_TERM_POOL.lock();
-        tp.borrow().symbol_name(symbol)
-    }
-
-    /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn symbol_arity(&self, symbol: &SymbolRef<'_>) -> usize {
-        let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow().symbol_arity(symbol)
+            .create_symbol(name, arity, |index| unsafe { self.protect_symbol(&SymbolRef::from_index(&index)) })
     }
 
     /// Protect the term by adding its index to the protection set
@@ -129,10 +106,10 @@ impl ThreadTermPool {
         // Protect the term by adding its index to the protection set
         let root = mutex_unwrap(self.protection_set.lock())
             .protection_set
-            .protect(term.index());
+            .protect(unsafe { term.shared().copy() });
 
         // Return the protected term
-        ATerm::from_index(term.index(), root)
+        ATerm::from_index(term.shared(), root)
     }
 
     /// Protects a term from garbage collection after it was potentially inserted
@@ -140,7 +117,7 @@ impl ThreadTermPool {
         // Protect the term by adding its index to the protection set
         let root = mutex_unwrap(self.protection_set.lock())
             .protection_set
-            .protect(term.index());
+            .protect(unsafe { term.shared().copy() });
 
         // If the term was newly inserted, decrease the garbage collection counter and trigger garbage collection if necessary
         if inserted {
@@ -156,7 +133,7 @@ impl ThreadTermPool {
         }
 
         // Return the protected terms
-        ATerm::from_index(term.index(), root)
+        ATerm::from_index(term.shared(), root)
     }
 
     /// Unprotects a term from this thread's protection set.
@@ -202,14 +179,15 @@ impl ThreadTermPool {
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
         let mut lock = mutex_unwrap(self.protection_set.lock());
         let result = unsafe {
-            Symbol::from_index(symbol.shared().copy(), lock.symbol_protection_set.protect(symbol.shared().copy()))
+            Symbol::from_index(&symbol.shared(), lock.symbol_protection_set.protect(symbol.shared().copy()))
         };
 
+        // Drop to avoid double borrowing.
         trace!(
             "Protected symbol {}, root {}, protection set {}",
-            symbol.index(),
+            symbol,
             result.root(),
-            lock.index
+            lock.index,
         );
 
         result

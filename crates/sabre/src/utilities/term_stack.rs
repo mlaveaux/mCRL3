@@ -322,7 +322,7 @@ mod tests {
     pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| {
             apply(tp, t, &|_tp, arg| {
-                if variables.contains(arg.get_head_symbol().name().deref()) {
+                if variables.contains(arg.get_head_symbol().name()) {
                     // Convert a constant variable, for example 'x', into an untyped variable.
                     Some(DataVariable::new(arg.get_head_symbol().name()).into())
                 } else {

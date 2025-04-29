@@ -20,7 +20,7 @@ enum Entry<T> {
 impl<T> ProtectionSet<T> {
     pub fn new() -> Self {
         ProtectionSet {
-            roots: vec![],
+            roots: Vec::new(),
             free: None,
             number_of_insertions: 0,
             size: 0,

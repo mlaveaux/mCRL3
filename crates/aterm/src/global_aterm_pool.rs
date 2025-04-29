@@ -11,6 +11,7 @@ use hashbrown::Equivalent;
 use log::info;
 use log::trace;
 use mcrl3_utilities::SimpleTimer;
+use mcrl3_unsafety::StablePointerSet;
 
 #[cfg(not(feature = "mcrl3_miri"))]
 mod mutex {
@@ -40,10 +41,10 @@ mod mutex {
 // Depends on the selection of the feature, the mutex type is either a parking_lot or std mutex.
 pub use mutex::*;
 
-use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
 
 use crate::ATerm;
+use crate::ATermIndex;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Symb;
@@ -56,6 +57,9 @@ use crate::Term;
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
     LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
+
+/// Enables aggressive garbage collection, which is used for testing.
+pub (crate) const AGRESSIVE_GC: bool = true;
 
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
@@ -77,8 +81,8 @@ pub fn is_empty_list<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
-    /// Unique table of all terms
-    terms: IndexedSet<SharedTerm>,
+    /// Unique table of all terms with stable pointers for references
+    terms: StablePointerSet<SharedTerm>,
     /// The symbol pool for managing function symbols.
     symbol_pool: SymbolPool,
     /// The thread-specific protection sets.
@@ -88,12 +92,12 @@ pub(crate) struct GlobalTermPool {
     tmp_arguments: Vec<ATermRef<'static>>,
 
     // Data structures used for garbage collection
-    /// Used to avoid reallocations for the markings of all terms
-    marked_terms: Vec<bool>,
+    /// Used to avoid reallocations for the markings of all terms - uses pointers as keys
+    marked_terms: HashSet<ATermIndex>,
     /// Used to avoid reallocations for the markings of all symbols
     marked_symbols: HashSet<SymbolIndex>,
     /// A stack used to mark terms recursively.
-    stack: Vec<usize>,
+    stack: Vec<ATermIndex>,
 
     /// Default terms
     int_symbol: SymbolRef<'static>,
@@ -103,57 +107,24 @@ pub(crate) struct GlobalTermPool {
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
-        // We should have no term with index zero, so insert bogus value.
-        let mut terms = IndexedSet::new();
-        terms.insert(SharedTerm {
-            symbol: SymbolRef::from_index(SymbolIndex::dangling()),
-            arguments: Vec::new(),
-        });
-
+        // Insert the default symbols.
         let mut symbol_pool = SymbolPool::new();
-        let int_symbol = symbol_pool.create("Int", 0, |index| SymbolRef::from_index(index));
-        let list_symbol = symbol_pool.create("List", 2, |index| SymbolRef::from_index(index));
-        let empty_list_symbol = symbol_pool.create("[]", 0, |index| SymbolRef::from_index(index));
+        let int_symbol = symbol_pool.create("Int", 0, |index| unsafe { SymbolRef::from_index(&index) });
+        let list_symbol = symbol_pool.create("List", 2, |index| unsafe { SymbolRef::from_index(&index) });
+        let empty_list_symbol = symbol_pool.create("[]", 0, |index| unsafe { SymbolRef::from_index(&index) });
 
         GlobalTermPool {
-            terms,
+            terms: StablePointerSet::new(),
             symbol_pool,
             thread_pools: Vec::new(),
             tmp_arguments: Vec::new(),
-            marked_terms: Vec::new(),
+            marked_terms: HashSet::new(),
             marked_symbols: HashSet::new(),
             stack: Vec::new(),
             int_symbol,
             list_symbol,
             empty_list_symbol,
         }
-    }
-
-    /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn get_head_symbol<'t>(&self, term: &ATermRef<'t>) -> SymbolRef<'t> {
-        SymbolRef::from_symbol(self.terms.get(term.index().get()).unwrap().symbol())
-    }
-
-    /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn get_argument<'t>(&self, term: &ATermRef<'t>, i: usize) -> ATermRef<'t> {
-        ATermRef::from_term(
-            self.terms
-                .get(term.index().get())
-                .unwrap()
-                .arguments()
-                .get(i)
-                .expect("Argument index out of bounds"),
-        )
-    }
-
-    /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
-        self.symbol_pool.symbol_name(symbol)
-    }
-
-    /// Return the i-th argument of the SharedTerm for the given ATermRef
-    pub fn symbol_arity<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> usize {
-        self.symbol_pool.symbol_arity(symbol)
     }
 
     /// Returns the number of terms in the pool.
@@ -169,22 +140,22 @@ impl GlobalTermPool {
     /// Creates a term storing a single integer value.
     pub fn create_int<P>(&mut self, value: usize, protect: P) -> ATerm
     where
-        P: FnOnce(&mut GlobalTermPool, NonZero<usize>, bool) -> ATerm,
+        P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
     {
         // Fill the arguments in the existing
         self.tmp_arguments.clear();
         unsafe {
             self.tmp_arguments
-                .push(ATermRef::from_index(NonZero::new(value + 1).unwrap()));
+                .push(ATermRef::from_index(&ATermIndex::from_index(NonZero::new_unchecked(value + 1))));
         }
 
         let shared_term = SharedTermLookup {
-            symbol: SymbolRef::from_index(unsafe { self.int_symbol.shared().copy() }),
+            symbol: unsafe { SymbolRef::from_index(self.int_symbol.shared()) },
             arguments: &self.tmp_arguments,
         };
 
         let (index, inserted) = self.terms.insert_equiv(&shared_term);
-        protect(self, NonZero::new(index).unwrap(), inserted)
+        protect(self, &index, inserted)
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
@@ -197,12 +168,12 @@ impl GlobalTermPool {
     where
         I: IntoIterator<Item = T>,
         T: Term<'c, 'd>,
-        P: FnOnce(&mut GlobalTermPool, NonZero<usize>, bool) -> ATerm,
+        P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
     {
         self.tmp_arguments.clear();
         for arg in args {
             unsafe {
-                self.tmp_arguments.push(ATermRef::from_index(arg.index()));
+                self.tmp_arguments.push(ATermRef::from_index(arg.shared()));
             }
         }
 
@@ -212,13 +183,13 @@ impl GlobalTermPool {
         };
 
         debug_assert_eq!(
-            self.symbol_arity(symbol),
+            symbol.arity(),
             shared_term.arguments.len(),
             "The number of arguments does not match the arity of the symbol"
         );
 
         let (index, inserted) = self.terms.insert_equiv(&shared_term);
-        protect(self, NonZero::new(index).unwrap(), inserted)
+        protect(self, &index, inserted)
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
@@ -229,12 +200,12 @@ impl GlobalTermPool {
         protect: P,
     ) -> ATerm
     where
-        P: FnOnce(&mut GlobalTermPool, NonZero<usize>, bool) -> ATerm,
+        P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
     {
         self.tmp_arguments.clear();
         for arg in args {
             unsafe {
-                self.tmp_arguments.push(ATermRef::from_index(arg.index()));
+                self.tmp_arguments.push(ATermRef::from_index(arg.shared()));
             }
         }
 
@@ -244,13 +215,13 @@ impl GlobalTermPool {
         };
 
         debug_assert_eq!(
-            self.symbol_arity(symbol),
+            symbol.shared().arity(),
             shared_term.arguments.len(),
             "The number of arguments does not match the arity of the symbol"
         );
 
         let (index, inserted) = self.terms.insert_equiv(&shared_term);
-        protect(self, NonZero::new(index).unwrap(), inserted)
+        protect(self, &index, inserted)
     }
 
     /// Create a function symbol
@@ -287,13 +258,21 @@ impl GlobalTermPool {
     /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
     pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
         self.collect_garbage();
+
+        if AGRESSIVE_GC {
+            return 1;
+        }
+
         self.len()
     }
 
     /// Collects garbage terms.
     fn collect_garbage(&mut self) {
-        // Resize to fit all terms
-        self.marked_terms.resize(self.capacity(), false);
+
+        // Clear marking data structures
+        self.marked_terms.clear();
+        self.marked_symbols.clear();
+        self.stack.clear();
 
         // Mark the default symbols
         unsafe {
@@ -302,13 +281,10 @@ impl GlobalTermPool {
             self.marked_symbols.insert(self.empty_list_symbol.shared().copy());
         }
 
-        self.marked_terms[0] = true; // The bogus term
-
         let mut marker = Marker {
             marked_terms: &mut self.marked_terms,
             marked_symbols: &mut self.marked_symbols,
             stack: &mut self.stack,
-            terms: &self.terms,
         };
 
         let mut mark_time = SimpleTimer::new();
@@ -318,10 +294,18 @@ impl GlobalTermPool {
             if let Some(pool) = pool {
                 let pool = mutex_unwrap(pool.lock());
 
-                for (term, _) in pool.protection_set.iter() {
-                    // Remove all terms that are not protected
+                for (symbol, _) in pool.symbol_protection_set.iter() {
+                    trace!("Marking root symbol {symbol:?}");
+                    // Remove all symbols that are not protected
                     unsafe {
-                        ATermRef::from_index(*term).mark(&mut marker);
+                        marker.marked_symbols.insert(symbol.copy());
+                    }
+                }
+
+                for (term, _) in pool.protection_set.iter() {
+                    trace!("Marking root term {term:?}");
+                    unsafe {
+                        ATermRef::from_index(term).mark(&mut marker);
                     }
                 }
 
@@ -335,34 +319,46 @@ impl GlobalTermPool {
         let collect_time = SimpleTimer::new();
 
         let num_of_terms = self.len();
+        let num_of_symbols = self.symbol_pool.len();
 
         // Delete all terms that are not marked
-        self.terms.retain_mut(|index, _term| {
-            trace!("Removing term {}", index);
-            self.marked_terms[index]
-        });
+        unsafe {
+            self.terms.retain(|term| {
+                if !self.marked_terms.contains(term) {
+                    trace!("Dropping term: {:?}", term);
+                    return false;
+                }
+
+                true
+            });
+        }
 
         unsafe {
             // We ensure that every removed symbol is not used anymore.
-            self.symbol_pool.retain(|shared| {
-                self.marked_symbols.contains(shared)
+            self.symbol_pool.retain(|symbol| {
+                if !self.marked_symbols.contains(symbol) {
+                    trace!("Dropping symbol: {:?}", symbol);
+                    return false;
+                }
+
+                true
             });
         }
 
         info!(
-            "Garbage collection: marking took {}ms, collection took {}ms, {} terms removed",
+            "Garbage collection: marking took {}ms, collection took {}ms, {} terms and {} symbols removed",
             mark_time.elapsed().as_millis(),
             collect_time.elapsed().as_millis(),
-            num_of_terms - self.len()
+            num_of_terms - self.len(),
+            num_of_symbols - self.symbol_pool.len()
         );
 
         info!("{:?}", self);
 
+        // Print information from the protection sets.
         for pool in self.thread_pools.iter() {
             if let Some(pool) = pool {
                 let pool = pool.lock();
-
-                // Remove all terms that are not protected
                 info!("{:?}", pool);
             }
         }
@@ -375,14 +371,14 @@ impl fmt::Debug for GlobalTermPool {
             f,
             "There are {} terms, and {} symbols",
             self.terms.len(),
-            self.symbol_pool.size()
+            self.symbol_pool.len()
         )
     }
 }
 
 pub(crate) struct SharedTermProtection {
     /// Protection set for terms
-    pub(crate) protection_set: ProtectionSet<NonZero<usize>>,
+    pub(crate) protection_set: ProtectionSet<ATermIndex>,
     /// Protection set to prevent garbage collection of symbols
     pub(crate) symbol_protection_set: ProtectionSet<SymbolIndex>,
     /// Protection set for containers
@@ -422,34 +418,32 @@ impl fmt::Debug for SharedTermProtection {
 
 /// Helper struct to pass private data required to mark term recursively.
 pub struct Marker<'a> {
-    marked_terms: &'a mut Vec<bool>,
+    marked_terms: &'a mut HashSet<ATermIndex>,
     marked_symbols: &'a mut HashSet<SymbolIndex>,
-    terms: &'a IndexedSet<SharedTerm>,
-    stack: &'a mut Vec<usize>,
+    stack: &'a mut Vec<ATermIndex>,
 }
 
 impl Marker<'_> {
     // Marks the given term as being reachable.
-    pub fn mark(&mut self, term: &ATermRef<'_>) {
-        let term_index: usize = term.index().get();
-        if !self.marked_terms[term_index] {
-            self.stack.push(term_index);
+    pub fn mark(&mut self, term: &ATermRef<'_>) {   
+        if !self.marked_terms.contains(&term.shared()) {
+            self.stack.push(unsafe { term.shared().copy() });
 
-            while let Some(index) = self.stack.pop() {
+            while let Some(term) = self.stack.pop() {
                 // Each term should be marked.
-                self.marked_terms[index] = true;
-
-                let term = self.terms.get(index).unwrap();
+                self.marked_terms.insert(unsafe { term.copy() });
 
                 // Mark the function symbol.
                 self.marked_symbols.insert(unsafe { term.symbol().shared().copy() });
 
-                for arg in term.arguments() {
-                    let arg_index: usize = arg.index().get();
+                for arg in term.arguments() {                    
                     // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
-                    if !self.marked_terms[arg_index] {
-                        self.marked_terms[arg_index] = true;
-                        self.stack.push(arg_index);
+                    if !self.marked_terms.contains(arg.shared()) {
+                        unsafe {
+                            self.marked_terms.insert(arg.shared().copy());
+                            self.marked_symbols.insert(arg.get_head_symbol().shared().copy());
+                            self.stack.push(arg.shared().copy());
+                        }
                     }
                 }
             }
@@ -467,11 +461,11 @@ pub struct SharedTerm {
 impl Clone for SharedTerm {
     fn clone(&self) -> Self {
         SharedTerm {
-            symbol: SymbolRef::from_index(unsafe { self.symbol.shared().copy() }),
+            symbol: unsafe { SymbolRef::from_index(self.symbol.shared()) },
             arguments: self
                 .arguments
                 .iter()
-                .map(|x| unsafe { ATermRef::from_index(x.index()) })
+                .map(|x| unsafe { ATermRef::from_index(x.shared()) })
                 .collect(),
         }
     }
@@ -497,11 +491,11 @@ struct SharedTermLookup<'a> {
 impl From<&SharedTermLookup<'_>> for SharedTerm {
     fn from(lookup: &SharedTermLookup<'_>) -> Self {
         SharedTerm {
-            symbol: SymbolRef::from_index(unsafe { lookup.symbol.shared().copy() }),
+            symbol: unsafe {  SymbolRef::from_index(lookup.symbol.shared()) },
             arguments: lookup
                 .arguments
                 .iter()
-                .map(|x| unsafe { ATermRef::from_index(x.index()) })
+                .map(|x| unsafe { ATermRef::from_index(x.shared()) })
                 .collect(),
         }
     }

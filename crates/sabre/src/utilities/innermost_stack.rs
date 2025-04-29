@@ -123,7 +123,7 @@ impl fmt::Display for InnermostStack {
         for (i, entry) in self.terms.read().iter().enumerate() {
             match entry {
                 Some(term) => writeln!(f, "{}\t{}", i, term)?,
-                None => writeln!(f, "{}\t<default>", i)?,
+                None => writeln!(f, "{}\tNone", i)?,
             }
         }
         writeln!(f, "]")?;

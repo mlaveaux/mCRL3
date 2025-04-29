@@ -9,6 +9,7 @@ use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermArgs;
 use mcrl3_aterm::ATermInt;
 use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::ATermIndex;
 use mcrl3_aterm::ATermString;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
@@ -35,7 +36,6 @@ use crate::is_data_variable;
 mod inner {
 
     use std::iter;
-    use std::num::NonZero;
 
     use mcrl3_aterm::ATermStringRef;
 

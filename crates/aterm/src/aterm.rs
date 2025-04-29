@@ -5,23 +5,22 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
-use std::num::NonZero;
 
 use delegate::delegate;
 
+use mcrl3_unsafety::StablePointer;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 
 use crate::Markable;
 use crate::Marker;
+use crate::SharedTerm;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
 use crate::is_empty_list;
 use crate::is_int;
 use crate::is_list;
-
-use super::global_aterm_pool::GLOBAL_TERM_POOL;
 
 pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection
@@ -51,14 +50,23 @@ pub trait Term<'a, 'b> {
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
     fn iter(&'b self) -> TermIterator<'a>;
 
-    /// Returns the index of the term in the term pool
-    fn index(&self) -> NonZero<usize>;
+    /// Returns a unique index of the term in the term pool
+    fn index(&self) -> usize;
+
+    /// Returns the shared ptr of the term in the term pool
+    fn shared(&self) -> &ATermIndex;
 }
+
+/// Type alias for term indices, representing a non-zero index in the term pool.
+/// 
+/// This type is used throughout the ATerm system to reference terms in the global
+/// term pool. Using NonZero<usize> enables niche optimization for Option<ATermIndex>.
+pub type ATermIndex = StablePointer<SharedTerm>;
 
 /// This represents a lifetime bound reference to an existing ATerm.
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ATermRef<'a> {
-    index: NonZero<usize>,
+    shared: ATermIndex,
     marker: PhantomData<&'a ()>,
 }
 
@@ -79,17 +87,9 @@ impl ATermRef<'_> {
     /// # Safety
     ///
     /// This function is unsafe because it does not check if the index is valid for the given lifetime.
-    pub unsafe fn from_index(index: NonZero<usize>) -> Self {
+    pub unsafe fn from_index(shared: &ATermIndex) -> Self {
         ATermRef {
-            index,
-            marker: PhantomData,
-        }
-    }
-
-    /// Creates a term reference from a given term.
-    pub(crate) fn from_term<'a, 'b>(term: &'b impl Term<'a, 'b>) -> Self {
-        ATermRef {
-            index: term.index(),
+            shared: unsafe { shared.copy() },
             marker: PhantomData,
         }
     }
@@ -107,8 +107,7 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
             self
         );
 
-        let tp = GLOBAL_TERM_POOL.lock();
-        (*tp).borrow().get_argument(self, index)
+        self.shared().arguments()[index].borrow().copy()
     }
 
     fn arguments(&self) -> ATermArgs<'a> {
@@ -116,11 +115,13 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
     }
 
     fn copy(&self) -> ATermRef<'a> {
-        unsafe { ATermRef::from_index(self.index) }
+        unsafe { ATermRef::from_index(self.shared()) }
     }
 
     fn get_head_symbol(&self) -> SymbolRef<'a> {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.get_head_symbol(self))
+        unsafe {
+            std::mem::transmute(self.shared().symbol().copy())
+        }
     }
 
     fn is_list(&self) -> bool {
@@ -139,8 +140,12 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
         TermIterator::new(self.copy())
     }
 
-    fn index(&self) -> NonZero<usize> {
-        self.index
+    fn index(&self) -> usize {
+        self.shared.address()
+    }
+
+    fn shared(&self) -> &ATermIndex {
+        &self.shared
     }
 }
 
@@ -169,11 +174,15 @@ impl fmt::Debug for ATermRef<'_> {
         if self.arguments().is_empty() {
             write!(f, "{}", self.get_head_symbol().name())?;
         } else {
-            // TODO: This is recursive and will overflow the stack for large terms!
+            // Format the term with its head symbol and arguments, avoiding trailing comma
             write!(f, "{:?}(", self.get_head_symbol())?;
 
-            for arg in self.arguments() {
-                write!(f, "{:?}, ", arg)?;
+            let mut args = self.arguments().peekable();
+            while let Some(arg) = args.next() {
+                write!(f, "{:?}", arg)?;
+                if args.peek().is_some() {
+                    write!(f, ", ")?;
+                }
             }
 
             write!(f, ")")?;
@@ -232,7 +241,7 @@ impl ATerm {
 
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn from_index(term: NonZero<usize>, root: usize) -> ATerm {
+    pub(crate) fn from_index(term: &ATermIndex, root: usize) -> ATerm {
         unsafe {
             ATerm {
                 term: ATermRef::from_index(term),
@@ -258,7 +267,8 @@ where
             fn is_empty_list(&self) -> bool;
             fn is_int(&self) -> bool;
             fn iter(&self) -> TermIterator<'a>;
-            fn index(&self) -> NonZero<usize>;
+            fn index(&self) -> usize;
+            fn shared(&self) -> &ATermIndex;
         }
     }
 }
@@ -468,7 +478,11 @@ impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b T {
         (*self).iter()
     }
 
-    fn index(&self) -> NonZero<usize> {
+    fn index(&self) -> usize {
         (*self).index()
+    }
+
+    fn shared(&self) -> &ATermIndex {
+        (*self).shared()
     }
 }

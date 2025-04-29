@@ -49,7 +49,7 @@ impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
     }
 
     /// Provides immutable access to the underlying container.
-    pub fn read<'a>(&'a self) -> ProtectedReadGuard<'a, C> {
+    pub fn read(&self) -> ProtectedReadGuard<'_, C> {
         ProtectedReadGuard::new(self.container.read())
     }
 }

@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::mem::transmute;
-use std::num::NonZero;
 use std::ops::Deref;
 
 use delegate::delegate;
@@ -14,6 +13,7 @@ use crate::ATerm;
 
 use crate::ATermArgs;
 use crate::ATermRef;
+use crate::ATermIndex;
 use crate::Markable;
 use crate::Marker;
 use crate::Symb;

@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::mem::transmute;
-use std::num::NonZero;
 use std::ops::Deref;
 
 use delegate::delegate;
@@ -10,6 +9,7 @@ use mcrl3_macros::mcrl3_term;
 
 use crate::ATerm;
 use crate::ATermArgs;
+use crate::ATermIndex;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
@@ -44,7 +44,7 @@ mod inner {
 
         /// Returns the value of the integer term.
         pub fn value(&self) -> usize {
-            self.term.index().get() - 1
+            self.term.shared().address() - 1
         }
     }
 }

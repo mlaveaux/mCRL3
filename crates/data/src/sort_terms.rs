@@ -1,7 +1,6 @@
 use core::fmt;
 use std::borrow::Borrow;
 use std::mem::transmute;
-use std::num::NonZero;
 use std::ops::Deref;
 
 use delegate::delegate;
@@ -9,6 +8,7 @@ use delegate::delegate;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermArgs;
 use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::ATermIndex;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
 use mcrl3_aterm::Symb;

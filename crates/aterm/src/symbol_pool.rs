@@ -1,6 +1,5 @@
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::sync::Arc;
 
 use hashbrown::Equivalent;
 
@@ -22,10 +21,7 @@ pub struct SymbolPool {
 impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
-        let mut symbols = StablePointerSet::new();
-        symbols.insert(SharedSymbol::new("<default>", 0));
-
-        Self { symbols }
+        Self { symbols: StablePointerSet::new() }
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
@@ -52,7 +48,7 @@ impl SymbolPool {
     }
 
     /// Returns the number of symbols in the pool.
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.symbols.len()
     }
 
@@ -76,7 +72,7 @@ impl SymbolPool {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SharedSymbol {
     /// Name of the function
-    name: Arc<String>,
+    name: String,
     /// Number of arguments
     arity: usize,
 }
@@ -85,7 +81,7 @@ impl SharedSymbol {
     /// Creates a new function symbol.
     pub fn new(name: impl Into<String>, arity: usize) -> Self {
         Self {
-            name: Arc::new(name.into()),
+            name: name.into(),
             arity,
         }
     }
@@ -117,7 +113,7 @@ impl<T: Into<String> + AsRef<str>> From<&SharedSymbolLookup<T>> for SharedSymbol
 
 impl<T: Into<String> + AsRef<str>> Equivalent<SharedSymbol> for SharedSymbolLookup<T> {
     fn equivalent(&self, other: &SharedSymbol) -> bool {
-        self.name.as_ref() == *other.name && self.arity == other.arity
+        self.name.as_ref() == other.name && self.arity == other.arity
     }
 }
 

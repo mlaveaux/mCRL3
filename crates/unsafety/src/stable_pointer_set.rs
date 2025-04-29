@@ -1,3 +1,4 @@
+use std::num::NonZero;
 use std::ptr::NonNull;
 use std::{hash::Hash, borrow::Borrow, ops::Deref, fmt};
 use hashbrown::Equivalent;
@@ -10,7 +11,10 @@ use std::collections::hash_map::RandomState;
 /// This type is guaranteed to point to a valid, immutable T managed by a StablePointerSet.
 /// 
 /// Comparisons are based on the pointer's address, not the value it points to.
-#[derive(Copy, Clone, Hash)]
+/// 
+/// TODO: Could we use reference counters to ensure safety at runtime?
+#[repr(transparent)]
+#[derive(Clone, Hash)]
 pub struct StablePointer<T>(NonNull<T>);
 
 /// Check that the Option<StablePointer> is the same size as a usize.
@@ -43,10 +47,14 @@ unsafe impl<T> Send for StablePointer<T> {}
 unsafe impl<T> Sync for StablePointer<T> {}
 
 impl<T> StablePointer<T> {
-    /// Should never be dereferenced, as it is a dangling pointer.
-    pub fn dangling() -> Self {
-        // SAFETY: This is safe because we are creating a dangling pointer, which is valid.
-        Self(NonNull::dangling())
+
+    /// TODO: We store a number in the pointer that MUST not be dereferenced.
+    pub fn from_index(index: NonZero<usize>) -> Self {   
+        let ptr =  unsafe { 
+            NonNull::new_unchecked(index.get() as *mut T)
+        };
+
+        Self(ptr)
     }
 
     /// Returns a unique index for the StablePointer. Note that this index cannot be converted into a pointer.
@@ -260,39 +268,6 @@ where
         self.storage.iter().map(|boxed| boxed.as_ref())
     }
 
-    /// Clears the set, removing all values.
-    pub fn clear(&mut self) {
-        self.index.clear();
-        self.storage.clear();
-    }
-
-    /// Returns a stable pointer to the value in the set, if any, that is equal to the given value.
-    fn get_raw_ptr<Q: ?Sized>(&self, value: &Q) -> Option<StablePointer<T>>
-    where
-        T: Borrow<Q>,
-        Q: Hash + Eq,
-    {
-        for ptr in &self.index {
-            if (**ptr).borrow() == value {
-                return Some(unsafe { ptr.copy() });
-            }
-        }
-        None
-    }
-
-    /// Returns a stable pointer to the value in the set, if any, that is equivalent to the given value.
-    fn get_raw_ptr_equiv<Q>(&self, equiv: &Q) -> Option<StablePointer<T>>
-    where
-        Q: Equivalent<T>,
-    {
-        for ptr in &self.index {
-            if equiv.equivalent(&**ptr) {
-                return Some(unsafe { ptr.copy() });
-            }
-        }
-        None
-    }
-
     /// Removes an element from the set using its stable pointer. This is very inefficient and requires O(n) time.
     ///
     /// Returns the removed element if it was in the set.
@@ -362,6 +337,42 @@ where
         debug_assert_eq!(self.index.len(), self.storage.len(), 
             "Index and storage sizes must match after retention");
     }
+
+    /// Clears the set, removing all values and invalidating all pointers.
+    /// 
+    /// # Safety
+    /// This is unsafe because it invalidates all pointers to the elements in the set.
+    pub unsafe fn clear(&mut self) {
+        self.index.clear();
+        self.storage.clear();
+    }
+
+    /// Returns a stable pointer to the value in the set, if any, that is equal to the given value.
+    fn get_raw_ptr<Q: ?Sized>(&self, value: &Q) -> Option<StablePointer<T>>
+    where
+        T: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        for ptr in &self.index {
+            if (**ptr).borrow() == value {
+                return Some(unsafe { ptr.copy() });
+            }
+        }
+        None
+    }
+
+    /// Returns a stable pointer to the value in the set, if any, that is equivalent to the given value.
+    fn get_raw_ptr_equiv<Q>(&self, equiv: &Q) -> Option<StablePointer<T>>
+    where
+        Q: Equivalent<T>,
+    {
+        for ptr in &self.index {
+            if equiv.equivalent(&**ptr) {
+                return Some(unsafe { ptr.copy() });
+            }
+        }
+        None
+    }
 }
 
 impl<T, S> Drop for StablePointerSet<T, S>
@@ -370,8 +381,8 @@ where
     S: BuildHasher,
 {
     fn drop(&mut self) {
-        // Ensure storage is cleared explicitly to make the drop order deterministic
-        self.clear();
+        // SAFETY: Removing all elements from the set before dropping ensures that no dangling pointers remain.
+        assert!(self.is_empty(), "StablePointerSet must be empty before dropping");
     }
 }
 
@@ -511,7 +522,7 @@ mod tests {
         
         // Remove one value
         unsafe {
-            let removed = set.remove(ptr1);
+            let removed = set.remove(ptr1.copy());
             assert_eq!(removed, Some(42));
             assert_eq!(set.len(), 1);
             

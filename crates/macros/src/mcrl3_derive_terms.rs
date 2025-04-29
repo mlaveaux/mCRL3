@@ -120,7 +120,8 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
                                         fn iter(&'b self) -> TermIterator<'a>;
-                                        fn index(&self) -> NonZero<usize>;
+                                        fn index(&self) -> usize;
+                                        fn shared(&self) -> &ATermIndex;
                                     }
                                 }
                             }
@@ -167,7 +168,8 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn is_empty_list(&self) -> bool;
                                         fn is_int(&self) -> bool;
                                         fn iter(&self) -> TermIterator<'a>;
-                                        fn index(&self) -> NonZero<usize>;
+                                        fn index(&self) -> usize;
+                                        fn shared(&self) -> &ATermIndex;
                                     }
                                 }
                             }

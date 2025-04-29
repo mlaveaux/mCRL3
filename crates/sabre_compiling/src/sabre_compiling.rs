@@ -30,7 +30,7 @@ impl RewriteEngine for SabreCompilingRewriter {
         unsafe {
             let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> = self.library.get(b"rewrite").unwrap();
 
-            let result = func(&DataExpressionRefFFI::from_index(term.index()));
+            let result = func(&DataExpressionRefFFI::from_index(&term.shared()));
             ATermRef::from_index(result.index()).protect().into()
         }
     }
