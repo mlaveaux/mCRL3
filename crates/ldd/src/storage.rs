@@ -1,8 +1,11 @@
 use std::cell::RefCell;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::ops::Index;
 use std::rc::Rc;
 
+use ldd::SharedProtectionSet;
+use mcrl3_utilities::IndexType;
 use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
 
@@ -21,17 +24,18 @@ pub type Value = u32;
 #[derive(Clone)]
 pub struct Node {
     value: Value,
-    down: usize,
-    right: usize,
+    down: IndexType,
+    right: IndexType,
 
     marked: bool,
 }
 
 /// Check that the node size has the expected size.
+#[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<Node>() == std::mem::size_of::<(usize, usize, usize)>());
 
 impl Node {
-    fn new(value: Value, down: usize, right: usize) -> Node {
+    fn new(value: Value, down: IndexType, right: IndexType) -> Node {
         Node {
             value,
             down,
@@ -73,7 +77,7 @@ pub struct DataRef<'a>(pub Value, pub LddRef<'a>, pub LddRef<'a>);
 /// table. Therefore guaranteeing that Ldds n and m are identical iff their
 /// indices in the node table match.
 pub struct Storage {
-    protection_set: Rc<RefCell<ProtectionSet<usize>>>, // Every Ldd points to the underlying protection set.
+    protection_set: SharedProtectionSet, // Every Ldd points to the underlying protection set.
     nodes: IndexedSet<Node>,
     cache: OperationCache,
 
@@ -95,8 +99,8 @@ impl Storage {
         let shared = Rc::new(RefCell::new(ProtectionSet::new()));
         // Add two nodes representing 'false' and 'true' respectively; these cannot be created using insert.
         let mut nodes = IndexedSet::new();
-        let empty_set = nodes.insert(Node::new(0, 0, 0)).0;
-        let empty_vector = nodes.insert(Node::new(1, 0, 0)).0;
+        let empty_set = nodes.insert(Node::new(0, IndexType::default(), IndexType::default())).0;
+        let empty_vector = nodes.insert(Node::new(1, IndexType::default(), IndexType::default())).0;
 
         Self {
             protection_set: shared.clone(),
@@ -121,8 +125,8 @@ impl Storage {
         // These invariants ensure that the result is a valid LDD.
         debug_assert_ne!(down, self.empty_set(), "down node can never be the empty set.");
         debug_assert_ne!(right, self.empty_vector(), "right node can never be the empty vector.");
-        debug_assert!(down.index() < self.nodes.len(), "down node not in table.");
-        debug_assert!(right.index() < self.nodes.len(), "right not not in table.");
+        debug_assert!(*down.index() < self.nodes.len(), "down node not in table.");
+        debug_assert!(*right.index() < self.nodes.len(), "right not not in table.");
 
         if right != self.empty_set() {
             debug_assert_eq!(
@@ -160,7 +164,7 @@ impl Storage {
         self.cache.limit(self.nodes.len());
 
         // Mark all nodes that are (indirect) children of nodes with positive reference count.
-        let mut stack: Vec<usize> = Vec::new();
+        let mut stack: Vec<IndexType> = Vec::new();
         for (root, _index) in self.protection_set.borrow().iter() {
             mark_node(&mut self.nodes, &mut stack, *root);
         }
@@ -288,7 +292,7 @@ impl Drop for Storage {
 /// Mark all LDDs reachable from the given root index.
 ///
 /// Reuses the stack for the depth-first exploration.
-fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<usize>, root: usize) {
+fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<IndexType>, root: IndexType) {
     stack.push(root);
     while let Some(current) = stack.pop() {
         let node = &mut nodes[current];
@@ -297,7 +301,7 @@ fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<usize>, root: usize) 
             continue;
         } else {
             node.marked = true;
-            if current != 0 && current != 1 {
+            if *current != 0 && *current != 1 {
                 stack.push(node.down);
                 stack.push(node.right);
             }
