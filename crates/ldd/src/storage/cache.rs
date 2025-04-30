@@ -1,13 +1,13 @@
 use ahash::RandomState;
+use mcrl3_utilities::IndexType;
 use core::hash::Hash;
-use mcrl3_utilities::ProtectionSet;
-use std::cell::RefCell;
 use std::hash::BuildHasher;
-use std::rc::Rc;
 
 use crate::Ldd;
 use crate::LddRef;
 use crate::Storage;
+
+use super::ldd::SharedProtectionSet;
 
 /// The operation cache can significantly speed up operations by caching
 /// intermediate results. This is necessary since the maximal sharing means that
@@ -18,14 +18,14 @@ use crate::Storage;
 /// introduce a cache. The cache that belongs to one operation is identified by
 /// the value of [UnaryFunction], [BinaryOperator] or [TernaryOperator].
 pub struct OperationCache {
-    protection_set: Rc<RefCell<ProtectionSet<usize>>>,
-    caches1: Vec<Cache<usize, usize>>,
-    caches2: Vec<Cache<(usize, usize), usize>>,
-    caches3: Vec<Cache<(usize, usize, usize), usize>>,
+    protection_set: SharedProtectionSet,
+    caches1: Vec<Cache<IndexType, usize>>,
+    caches2: Vec<Cache<(IndexType, IndexType), IndexType>>,
+    caches3: Vec<Cache<(IndexType, IndexType, IndexType), IndexType>>,
 }
 
 impl OperationCache {
-    pub fn new(protection_set: Rc<RefCell<ProtectionSet<usize>>>) -> OperationCache {
+    pub fn new(protection_set: SharedProtectionSet) -> OperationCache {
         OperationCache {
             protection_set,
             caches1: vec![Cache::new()],
@@ -91,13 +91,13 @@ impl OperationCache {
         }
     }
 
-    fn get_cache1(&mut self, operator: &UnaryFunction) -> &mut Cache<usize, usize> {
+    fn get_cache1(&mut self, operator: &UnaryFunction) -> &mut Cache<IndexType, usize> {
         match operator {
             UnaryFunction::Len => &mut self.caches1[0],
         }
     }
 
-    fn get_cache2(&mut self, operator: &BinaryOperator) -> &mut Cache<(usize, usize), usize> {
+    fn get_cache2(&mut self, operator: &BinaryOperator) -> &mut Cache<(IndexType, IndexType), IndexType> {
         match operator {
             BinaryOperator::Union => &mut self.caches2[0],
             BinaryOperator::Merge => &mut self.caches2[1],
@@ -105,14 +105,14 @@ impl OperationCache {
         }
     }
 
-    fn get_cache3(&mut self, operator: &TernaryOperator) -> &mut Cache<(usize, usize, usize), usize> {
+    fn get_cache3(&mut self, operator: &TernaryOperator) -> &mut Cache<(IndexType, IndexType, IndexType), IndexType> {
         match operator {
             TernaryOperator::RelationalProduct => &mut self.caches3[0],
         }
     }
 
     /// Create an Ldd from the given index. Only safe because this is a private function.
-    fn create(&mut self, index: usize) -> Ldd {
+    fn create(&mut self, index: IndexType) -> Ldd {
         Ldd::new(&self.protection_set, index)
     }
 }
@@ -222,7 +222,7 @@ pub enum TernaryOperator {
 /// Implements an operation cache for a unary LDD operator.
 pub fn cache_unary_function<F>(storage: &mut Storage, operator: UnaryFunction, a: &LddRef, f: F) -> usize
 where
-    F: Fn(&mut Storage, &LddRef) -> usize,
+    F: Fn(&mut Storage, &LddRef<'_>) -> usize,
 {
     let key = a.index();
     if let Some(result) = storage.operation_cache().get_cache1(&operator).get(&key) {
@@ -237,7 +237,7 @@ where
 /// Implements an operation cache for a binary LDD operator.
 pub fn cache_binary_op<F>(storage: &mut Storage, operator: BinaryOperator, a: &LddRef, b: &LddRef, f: F) -> Ldd
 where
-    F: Fn(&mut Storage, &LddRef, &LddRef) -> Ldd,
+    F: Fn(&mut Storage, &LddRef<'_>, &LddRef<'_>) -> Ldd,
 {
     let key = (a.index(), b.index());
     if let Some(result) = storage.operation_cache().get_cache2(&operator).get(&key) {
@@ -257,7 +257,7 @@ where
 /// an operator f such that f(a,b) = f(b,a) for all LDD a and b.
 pub fn cache_comm_binary_op<F>(storage: &mut Storage, operator: BinaryOperator, a: &LddRef, b: &LddRef, f: F) -> Ldd
 where
-    F: Fn(&mut Storage, &LddRef, &LddRef) -> Ldd,
+    F: Fn(&mut Storage, &LddRef<'_>, &LddRef<'_>) -> Ldd,
 {
     // Reorder the inputs to improve caching behaviour (can potentially half the cache size)
     if a.index() < b.index() {
@@ -277,7 +277,7 @@ pub fn cache_terniary_op<F>(
     f: F,
 ) -> Ldd
 where
-    F: Fn(&mut Storage, &LddRef, &LddRef, &LddRef) -> Ldd,
+    F: Fn(&mut Storage, &LddRef<'_>, &LddRef<'_>, &LddRef<'_>) -> Ldd,
 {
     let key = (a.index(), b.index(), c.index());
     if let Some(result) = storage.operation_cache().get_cache3(&operator).get(&key) {

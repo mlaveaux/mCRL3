@@ -1,8 +1,10 @@
 use core::panic;
 use std::hash::Hash;
 use std::hash::BuildHasher;
+use std::ops::Deref;
 use std::ops::Index;
 use std::ops::IndexMut;
+use std::fmt;
 
 use hashbrown::Equivalent;
 use hashbrown::HashMap;
@@ -11,21 +13,53 @@ use hashbrown::hash_map::EntryRef;
 
 use rustc_hash::FxBuildHasher;
 
+/// A type-safe index for use with IndexedSet.
+/// This newtype prevents accidental usage of raw usize values as indices.
+#[derive(Copy, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct IndexType(usize);
+
+impl IndexType {
+    /// Returns the underlying usize value.
+    fn value(self) -> usize {
+        self.0
+    }
+}
+
+impl Deref for IndexType {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Debug for IndexType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Index({})", self.0)
+    }
+}
+
+impl fmt::Display for IndexType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
 ///
 /// TODO: Remove the need for duplicating the key in the hash map.
 /// TODO: For safety generational indices should be used
 pub struct IndexedSet<T, S = FxBuildHasher> {
     table: Vec<IndexSetEntry<T>>,
-    index: HashMap<T, usize, S>,
+    index: HashMap<T, IndexType, S>,
     /// A list of free nodes, where the value is the first free node.
-    free: Option<usize>,
+    free: Option<IndexType>,
 }
 
 /// An entry in the indexed set, which can either be filled or empty.
 enum IndexSetEntry<T> {
     Filled(T),
-    Empty(usize),
+    Empty(IndexType),
 }
 
 /// A macro to return the pat type of an enum class target, and panics otherwise.
@@ -34,10 +68,9 @@ enum IndexSetEntry<T> {
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
         if let $pat(a) = $target {
-            // #1
             a
         } else {
-            panic!("mismatch variant when cast to {}", stringify!($pat)); // #2
+            panic!("mismatch variant when cast to {}", stringify!($pat));
         }
     }};
 }
@@ -72,8 +105,8 @@ impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
     }
 
     /// Returns a reference to the element at the given index, if it exists.
-    pub fn get(&self, index: usize) -> Option<&T> {
-        if let Some(entry) = self.table.get(index) {
+    pub fn get(&self, index: IndexType) -> Option<&T> {
+        if let Some(entry) = self.table.get(index.value()) {
             match entry {
                 IndexSetEntry::Filled(element) => Some(element),
                 IndexSetEntry::Empty(_) => None,
@@ -92,7 +125,7 @@ impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
     pub fn iter(&self) -> Iter<T, S> {
         Iter {
             reference: self,
-            index: 0,
+            index: IndexType(0),
         }
     }
 
@@ -103,7 +136,8 @@ impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
             .iter_mut()
             .filter(|element| matches!(element, IndexSetEntry::Filled(_)))
             .map(|element| cast!(element, IndexSetEntry::Filled))
-            .enumerate();
+            .enumerate()
+            .map(|(idx, elem)| (IndexType(idx), elem));
 
         IterMut { iter: Box::new(iter) }
     }
@@ -113,7 +147,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     /// Inserts the given element into the set
     ///
     /// Returns the corresponding index and a boolean indicating if the element was inserted.
-    pub fn insert_equiv<'a, Q>(&mut self, value: &'a Q) -> (usize, bool)
+    pub fn insert_equiv<'a, Q>(&mut self, value: &'a Q) -> (IndexType, bool)
     where
         Q: Hash + Equivalent<T>,
         T: From<&'a Q>,
@@ -123,7 +157,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
             EntryRef::Vacant(entry) => {
                 let index = match self.free {
                     Some(first) => {
-                        let next = match self.table[first] {
+                        let next = match self.table[first.value()] {
                             IndexSetEntry::Empty(x) => x,
                             IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
                         };
@@ -136,13 +170,13 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
                             self.free = Some(next);
                         }
 
-                        self.table[first] = IndexSetEntry::Filled(value.into());
+                        self.table[first.value()] = IndexSetEntry::Filled(value.into());
                         first
                     }
                     None => {
                         // No free positions so insert new.
                         self.table.push(IndexSetEntry::Filled(value.into()));
-                        self.table.len() - 1
+                        IndexType(self.table.len() - 1)
                     }
                 };
 
@@ -155,7 +189,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     /// Inserts the given element into the set
     ///
     /// Returns the corresponding index and a boolean indicating if the element was inserted.
-    pub fn insert(&mut self, value: T) -> (usize, bool)
+    pub fn insert(&mut self, value: T) -> (IndexType, bool)
     where
         T: Clone,
     {
@@ -164,7 +198,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
             Entry::Vacant(entry) => {
                 let index = match self.free {
                     Some(first) => {
-                        let next = match self.table[first] {
+                        let next = match self.table[first.value()] {
                             IndexSetEntry::Empty(x) => x,
                             IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
                         };
@@ -177,13 +211,13 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
                             self.free = Some(next);
                         }
 
-                        self.table[first] = IndexSetEntry::Filled(value);
+                        self.table[first.value()] = IndexSetEntry::Filled(value);
                         first
                     }
                     None => {
                         // No free positions so insert new.
                         self.table.push(IndexSetEntry::Filled(value));
-                        self.table.len() - 1
+                        IndexType(self.table.len() - 1)
                     }
                 };
 
@@ -199,9 +233,10 @@ impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
     /// modifying the given element (as long as the hash/equality does not change).
     pub fn retain_mut<F>(&mut self, mut f: F)
     where
-        F: FnMut(usize, &mut T) -> bool,
+        F: FnMut(IndexType, &mut T) -> bool,
     {
-        for (index, element) in self.table.iter_mut().enumerate() {
+        for (idx, element) in self.table.iter_mut().enumerate() {
+            let index = IndexType(idx);
             if let IndexSetEntry::Filled(value) = element {
                 if !f(index, value) {
                     self.index.remove(value);
@@ -228,7 +263,7 @@ impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
                 None => index,
             };
 
-            self.table[index] = IndexSetEntry::Empty(next);
+            self.table[index.value()] = IndexSetEntry::Empty(next);
             self.free = Some(index);
         }
     }
@@ -240,35 +275,36 @@ impl<T, S: BuildHasher + Default> Default for IndexedSet<T, S> {
     }
 }
 
-impl<T, S: BuildHasher> Index<usize> for IndexedSet<T, S> {
+impl<T, S: BuildHasher> Index<IndexType> for IndexedSet<T, S> {
     type Output = T;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        cast!(&self.table[index], IndexSetEntry::Filled)
+    fn index(&self, index: IndexType) -> &Self::Output {
+        cast!(&self.table[index.value()], IndexSetEntry::Filled)
     }
 }
 
-impl<T, S: BuildHasher> IndexMut<usize> for IndexedSet<T, S> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        cast!(&mut self.table[index], IndexSetEntry::Filled)
+impl<T, S: BuildHasher> IndexMut<IndexType> for IndexedSet<T, S> {
+    fn index_mut(&mut self, index: IndexType) -> &mut Self::Output {
+        cast!(&mut self.table[index.value()], IndexSetEntry::Filled)
     }
 }
 
 pub struct Iter<'a, T, S> {
     reference: &'a IndexedSet<T, S>,
-    index: usize,
+    index: IndexType,
 }
 
 impl<'a, T, S> Iterator for Iter<'a, T, S> {
-    type Item = (usize, &'a T);
+    type Item = (IndexType, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.index < self.reference.table.len() {
-            if let IndexSetEntry::Filled(element) = &self.reference.table[self.index] {
-                self.index += 1;
-                return Some((self.index - 1, element));
+        while self.index.value() < self.reference.table.len() {
+            let current_index = self.index;
+            self.index = IndexType(self.index.value() + 1);
+
+            if let IndexSetEntry::Filled(element) = &self.reference.table[current_index.value()] {
+                return Some((current_index, element));
             }
-            self.index += 1;
         }
 
         None
@@ -276,11 +312,11 @@ impl<'a, T, S> Iterator for Iter<'a, T, S> {
 }
 
 pub struct IterMut<'a, T> {
-    iter: Box<dyn Iterator<Item = (usize, &'a mut T)> + 'a>,
+    iter: Box<dyn Iterator<Item = (IndexType, &'a mut T)> + 'a>,
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = (usize, &'a mut T);
+    type Item = (IndexType, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next()
@@ -288,7 +324,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 }
 
 impl<'a, T, S: BuildHasher + Default> IntoIterator for &'a IndexedSet<T, S> {
-    type Item = (usize, &'a T);
+    type Item = (IndexType, &'a T);
     type IntoIter = Iter<'a, T, S>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -314,13 +350,13 @@ mod tests {
 
         let mut input = vec![];
         for _ in 0..100 {
-            input.push(rand.random::<u64>() as usize);
+            input.push(IndexType(rand.random::<u64>() as usize));
         }
 
-        let mut indices: HashMap<usize, usize> = HashMap::default();
+        let mut indices: HashMap<IndexType, IndexType> = HashMap::default();
 
         // Insert several elements and keep track of the resulting indices.
-        let mut set: IndexedSet<usize> = IndexedSet::default();
+        let mut set: IndexedSet<IndexType> = IndexedSet::default();
         for element in &input {
             let index = set.insert(*element).0;
 
@@ -347,7 +383,7 @@ mod tests {
         for (value, index) in &indices {
             assert!(
                 set.get(*index) == Some(value),
-                "Index {index} should still match element {value}"
+                "Index {} should still match element {:?}", index.value(), value
             );
         }
     }
@@ -358,39 +394,53 @@ mod tests {
         let mut rand = test_rng();
 
         // Create a set with a custom hasher (AHasher)
-        let mut set: IndexedSet<usize, RandomState> = IndexedSet::with_hasher(RandomState::new());
-        
+        let mut set: IndexedSet<IndexType, RandomState> = IndexedSet::with_hasher(RandomState::new());
+
         let mut indices = HashMap::new();
-        
+
         // Insert some elements
         for _ in 0..50 {
-            let value = rand.random::<u64>() as usize;
+            let value = IndexType(rand.random::<u64>() as usize);
             let (index, _) = set.insert(value);
             indices.insert(value, index);
         }
-        
+
         // Verify all elements are accessible
         for (value, index) in &indices {
             assert_eq!(set.get(*index), Some(value));
         }
-        
+
         // Remove some elements
         let mut to_remove = indices.keys().cloned().collect::<Vec<_>>();
         to_remove.truncate(10);
-        
+
         for value in to_remove {
             set.remove(&value);
             indices.remove(&value);
         }
-        
+
         // Check consistency after removal
         for (value, index) in &indices {
             assert_eq!(set.get(*index), Some(value));
         }
-        
+
         // Verify iteration works correctly
         for (index, value) in &set {
             assert_eq!(indices[value], index);
         }
+    }
+
+    #[test]
+    fn test_newtype_index() {
+        // Test that the newtype index works correctly
+        let idx = IndexType(42);
+        assert_eq!(idx.value(), 42);
+
+        // Test From<usize> implementation
+        let idx2 = IndexType(23);
+        assert_eq!(idx2.value(), 24);
+
+        // Test Debug format
+        assert_eq!(format!("{:?}", idx), "Idx(42)");
     }
 }
