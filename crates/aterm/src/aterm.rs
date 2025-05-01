@@ -11,6 +11,7 @@ use delegate::delegate;
 use mcrl3_unsafety::StablePointer;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
+use mcrl3_utilities::ProtectionIndex;
 
 use crate::Markable;
 use crate::Marker;
@@ -58,7 +59,7 @@ pub trait Term<'a, 'b> {
 }
 
 /// Type alias for term indices, representing a non-zero index in the term pool.
-/// 
+///
 /// This type is used throughout the ATerm system to reference terms in the global
 /// term pool. Using NonZero<usize> enables niche optimization for Option<ATermIndex>.
 pub type ATermIndex = StablePointer<SharedTerm>;
@@ -119,9 +120,7 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
     }
 
     fn get_head_symbol(&self) -> SymbolRef<'a> {
-        unsafe {
-            std::mem::transmute(self.shared().symbol().copy())
-        }
+        unsafe { std::mem::transmute(self.shared().symbol().copy()) }
     }
 
     fn is_list(&self) -> bool {
@@ -197,7 +196,7 @@ pub struct ATerm {
     term: ATermRef<'static>,
 
     /// The root of the term in the protection set
-    root: usize,
+    root: ProtectionIndex,
 
     // ATerm is not Send because it uses thread-local state for its protection
     // mechanism.
@@ -235,13 +234,13 @@ impl ATerm {
     }
 
     /// Returns the root of the term
-    pub fn root(&self) -> usize {
+    pub fn root(&self) -> ProtectionIndex {
         self.root
     }
 
     /// Creates a new term from the given reference and protection set root
     /// entry.
-    pub(crate) fn from_index(term: &ATermIndex, root: usize) -> ATerm {
+    pub(crate) fn from_index(term: &ATermIndex, root: ProtectionIndex) -> ATerm {
         unsafe {
             ATerm {
                 term: ATermRef::from_index(term),

@@ -8,6 +8,7 @@ use std::ops::Deref;
 
 use delegate::delegate;
 use mcrl3_unsafety::StablePointer;
+use mcrl3_utilities::ProtectionIndex;
 
 use crate::SharedSymbol;
 use crate::THREAD_TERM_POOL;
@@ -71,9 +72,7 @@ impl SymbolRef<'_> {
 
 impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     fn name(&self) -> &'a str {
-        unsafe {
-            std::mem::transmute(self.shared.name())
-        }
+        unsafe { std::mem::transmute(self.shared.name()) }
     }
 
     fn arity(&self) -> usize {
@@ -108,7 +107,7 @@ impl fmt::Debug for SymbolRef<'_> {
 /// A protected function symbol.
 pub struct Symbol {
     symbol: SymbolRef<'static>,
-    root: usize,
+    root: ProtectionIndex,
 }
 
 impl Symbol {
@@ -120,7 +119,7 @@ impl Symbol {
 
 impl Symbol {
     /// Internal constructor to create a symbol from an index and a root.
-    pub(crate) fn from_index(index: &SymbolIndex, root: usize) -> Symbol {
+    pub(crate) fn from_index(index: &SymbolIndex, root: ProtectionIndex) -> Symbol {
         Self {
             symbol: unsafe { SymbolRef::from_index(index) },
             root,
@@ -128,7 +127,7 @@ impl Symbol {
     }
 
     /// Returns the root index, i.e., the index in the protection set. See `SharedTermProtection`.
-    pub(crate) fn root(&self) -> usize {
+    pub(crate) fn root(&self) -> ProtectionIndex {
         self.root
     }
 

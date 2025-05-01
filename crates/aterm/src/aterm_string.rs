@@ -12,8 +12,8 @@ use mcrl3_macros::mcrl3_term;
 use crate::ATerm;
 
 use crate::ATermArgs;
-use crate::ATermRef;
 use crate::ATermIndex;
+use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
 use crate::Symb;

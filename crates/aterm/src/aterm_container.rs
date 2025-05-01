@@ -8,6 +8,7 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 
 use mcrl3_utilities::PhantomUnsend;
+use mcrl3_utilities::ProtectionIndex;
 
 use crate::Marker;
 use crate::THREAD_TERM_POOL;
@@ -21,7 +22,7 @@ use crate::gc_mutex::GcMutexGuard;
 /// during garbage collection by being in the container itself.
 pub struct Protected<C> {
     container: Arc<GcMutex<C>>,
-    root: usize,
+    root: ProtectionIndex,
 
     // Protected is not Send because it uses thread-local state for its protection
     // mechanism.

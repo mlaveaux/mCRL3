@@ -10,8 +10,8 @@ use std::sync::LazyLock;
 use hashbrown::Equivalent;
 use log::info;
 use log::trace;
-use mcrl3_utilities::SimpleTimer;
 use mcrl3_unsafety::StablePointerSet;
+use mcrl3_utilities::SimpleTimer;
 
 #[cfg(not(feature = "mcrl3_miri"))]
 mod mutex {
@@ -59,7 +59,7 @@ pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPo
     LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
 
 /// Enables aggressive garbage collection, which is used for testing.
-pub (crate) const AGRESSIVE_GC: bool = true;
+pub(crate) const AGRESSIVE_GC: bool = true;
 
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
@@ -146,7 +146,9 @@ impl GlobalTermPool {
         self.tmp_arguments.clear();
         unsafe {
             self.tmp_arguments
-                .push(ATermRef::from_index(&ATermIndex::from_index(NonZero::new_unchecked(value + 1))));
+                .push(ATermRef::from_index(&ATermIndex::from_index(NonZero::new_unchecked(
+                    value + 1,
+                ))));
         }
 
         let shared_term = SharedTermLookup {
@@ -268,7 +270,6 @@ impl GlobalTermPool {
 
     /// Collects garbage terms.
     fn collect_garbage(&mut self) {
-
         // Clear marking data structures
         self.marked_terms.clear();
         self.marked_symbols.clear();
@@ -425,7 +426,7 @@ pub struct Marker<'a> {
 
 impl Marker<'_> {
     // Marks the given term as being reachable.
-    pub fn mark(&mut self, term: &ATermRef<'_>) {   
+    pub fn mark(&mut self, term: &ATermRef<'_>) {
         if !self.marked_terms.contains(&term.shared()) {
             self.stack.push(unsafe { term.shared().copy() });
 
@@ -436,7 +437,7 @@ impl Marker<'_> {
                 // Mark the function symbol.
                 self.marked_symbols.insert(unsafe { term.symbol().shared().copy() });
 
-                for arg in term.arguments() {                    
+                for arg in term.arguments() {
                     // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
                     if !self.marked_terms.contains(arg.shared()) {
                         unsafe {
@@ -491,7 +492,7 @@ struct SharedTermLookup<'a> {
 impl From<&SharedTermLookup<'_>> for SharedTerm {
     fn from(lookup: &SharedTermLookup<'_>) -> Self {
         SharedTerm {
-            symbol: unsafe {  SymbolRef::from_index(lookup.symbol.shared()) },
+            symbol: unsafe { SymbolRef::from_index(lookup.symbol.shared()) },
             arguments: lookup
                 .arguments
                 .iter()

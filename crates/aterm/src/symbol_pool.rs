@@ -21,7 +21,9 @@ pub struct SymbolPool {
 impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
-        Self { symbols: StablePointerSet::new() }
+        Self {
+            symbols: StablePointerSet::new(),
+        }
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.

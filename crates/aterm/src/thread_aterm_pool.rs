@@ -1,10 +1,12 @@
 use log::trace;
 use mcrl3_utilities::MCRL3Error;
+use mcrl3_utilities::ProtectionIndex;
 use pest_consume::Parser;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
 
+use crate::AGRESSIVE_GC;
 use crate::GlobalTermPool;
 use crate::Markable;
 use crate::Rule;
@@ -19,7 +21,6 @@ use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::global_aterm_pool::Mutex;
 use crate::global_aterm_pool::mutex_unwrap;
-use crate::AGRESSIVE_GC;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
@@ -96,9 +97,9 @@ impl ThreadTermPool {
     pub fn create_symbol(&self, name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
         let tp = GLOBAL_TERM_POOL.lock();
 
-        tp
-            .borrow_mut()
-            .create_symbol(name, arity, |index| unsafe { self.protect_symbol(&SymbolRef::from_index(&index)) })
+        tp.borrow_mut().create_symbol(name, arity, |index| unsafe {
+            self.protect_symbol(&SymbolRef::from_index(&index))
+        })
     }
 
     /// Protect the term by adding its index to the protection set
@@ -151,7 +152,7 @@ impl ThreadTermPool {
     }
 
     /// Protects a container in this thread's container protection set.
-    pub(crate) fn protect_container(&self, container: Arc<dyn Markable + Send + Sync>) -> usize {
+    pub(crate) fn protect_container(&self, container: Arc<dyn Markable + Send + Sync>) -> ProtectionIndex {
         let root = mutex_unwrap(self.protection_set.lock())
             .container_protection_set
             .protect(container);
@@ -160,7 +161,7 @@ impl ThreadTermPool {
     }
 
     /// Unprotects a container from this thread's container protection set.
-    pub(crate) fn drop_container(&self, root: usize) {
+    pub(crate) fn drop_container(&self, root: ProtectionIndex) {
         mutex_unwrap(self.protection_set.lock())
             .container_protection_set
             .unprotect(root);
@@ -179,7 +180,10 @@ impl ThreadTermPool {
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
         let mut lock = mutex_unwrap(self.protection_set.lock());
         let result = unsafe {
-            Symbol::from_index(&symbol.shared(), lock.symbol_protection_set.protect(symbol.shared().copy()))
+            Symbol::from_index(
+                &symbol.shared(),
+                lock.symbol_protection_set.protect(symbol.shared().copy()),
+            )
         };
 
         // Drop to avoid double borrowing.
