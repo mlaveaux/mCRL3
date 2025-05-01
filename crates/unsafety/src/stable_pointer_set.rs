@@ -7,20 +7,27 @@ use std::hash::Hash;
 use std::num::NonZero;
 use std::ops::Deref;
 use std::ptr::NonNull;
+use std::sync::Arc;
 
 /// A safe wrapper around a raw pointer that allows immutable dereferencing. This remains valid as long as the `StablePointerSet` remains
 /// valid, which is not managed by the borrow checker.
 ///
-/// This type is guaranteed to point to a valid, immutable T managed by a StablePointerSet.
-///
 /// Comparisons are based on the pointer's address, not the value it points to.
-///
-/// TODO: Could we use reference counters to ensure safety at runtime?
-#[repr(transparent)]
+#[repr(C)]
 #[derive(Clone, Hash)]
-pub struct StablePointer<T>(NonNull<T>);
+pub struct StablePointer<T> {
+    /// The raw pointer to the element.
+    /// This is a NonNull pointer, which means it is guaranteed to be non-null.
+    /// The pointer is not dereferenced directly, but through the StablePointerSet.
+    ptr: NonNull<T>,
 
-/// Check that the Option<StablePointer> is the same size as a usize.
+    /// Keep track of reference counts in debug mode.
+    #[cfg(debug_assertions)]
+    reference_counter: Arc<()>,
+}
+
+/// Check that the Option<StablePointer> is the same size as a usize for release builds.
+#[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<Option<StablePointer<usize>>>() == std::mem::size_of::<usize>());
 
 impl<T> PartialEq for StablePointer<T> {
@@ -50,25 +57,21 @@ unsafe impl<T> Send for StablePointer<T> {}
 unsafe impl<T> Sync for StablePointer<T> {}
 
 impl<T> StablePointer<T> {
-    /// TODO: We store a number in the pointer that MUST not be dereferenced.
-    pub fn from_index(index: NonZero<usize>) -> Self {
-        let ptr = unsafe { NonNull::new_unchecked(index.get() as *mut T) };
-
-        Self(ptr)
-    }
-
     /// Returns a unique index for the StablePointer. Note that this index cannot be converted into a pointer.
     pub fn address(&self) -> usize {
-        self.0.addr().into()
+        self.ptr.addr().into()
     }
 
     /// Returns a copy of the StablePointer.
     ///
     /// # Safety
-    // This is a no-op, as the pointer is already stable and valid.
-    // The caller must ensure the pointer is valid and outlives this StablePointer.
+    /// The caller must ensure the pointer points to a valid T that outlives the returned StablePointer.
     pub unsafe fn copy(&self) -> Self {
-        Self::new(self.0)
+        Self {
+            ptr: self.ptr,
+            #[cfg(debug_assertions)]
+            reference_counter: Arc::clone(&self.reference_counter),
+        }
     }
 
     /// Creates a new StablePointer from a raw pointer.
@@ -76,7 +79,22 @@ impl<T> StablePointer<T> {
     /// # Safety
     /// The caller must ensure the pointer points to a valid T that outlives this StablePointer.
     fn new(ptr: NonNull<T>) -> Self {
-        Self(ptr)
+        Self {
+            ptr,
+            #[cfg(debug_assertions)]
+            reference_counter: Arc::new(()),
+        }
+    }
+
+    /// We store a number in the pointer that MUST not be dereferenced.
+    pub fn from_index(index: NonZero<usize>) -> Self {
+        let ptr = unsafe { NonNull::new_unchecked(index.get() as *mut T) };
+
+        Self {
+            ptr,
+            #[cfg(debug_assertions)]
+            reference_counter: Arc::new(()),
+        }
     }
 }
 
@@ -84,9 +102,8 @@ impl<T> Deref for StablePointer<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // SAFETY: StablePointerSet guarantees this pointer points to a valid T
-        // that lives at least as long as the StablePointerSet
-        unsafe { self.0.as_ref() }
+        // The caller must ensure the pointer points to a valid T that outlives this StablePointer.
+        unsafe { self.ptr.as_ref() }
     }
 }
 
@@ -100,10 +117,6 @@ impl<T: fmt::Debug> fmt::Debug for StablePointer<T> {
 ///
 /// Similar to `IndexedSet` but uses pointers instead of indices for direct access to elements.
 /// Elements are stored in stable memory locations, with the hash set maintaining references.
-/// This design allows for:
-/// 1. Direct element access without re-indexing
-/// 2. Element access during collection resize operations
-/// 3. Configurable hashing strategy for workload optimization
 ///
 /// The set can use a custom hasher type for potentially better performance based on workload characteristics.
 pub struct StablePointerSet<T, S = RandomState>
@@ -186,7 +199,7 @@ where
     /// with a stable pointer to the existing element.
     pub fn insert(&mut self, value: T) -> (StablePointer<T>, bool) {
         // Check if we already have this value
-        let raw_ptr = self.get_raw_ptr(&value);
+        let raw_ptr = self.get(&value);
 
         if let Some(ptr) = raw_ptr {
             // We already have this value, return pointer to existing element
@@ -246,7 +259,7 @@ where
         T: Borrow<Q>,
         Q: Hash + Eq,
     {
-        self.get_raw_ptr(value).is_some()
+        self.get(value).is_some()
     }
 
     /// Returns a stable pointer to a value in the set, if present.
@@ -258,7 +271,12 @@ where
         T: Borrow<Q>,
         Q: Hash + Eq,
     {
-        self.get_raw_ptr(value)
+        for ptr in &self.index {
+            if (**ptr).borrow() == value {
+                return Some(unsafe { ptr.copy() });
+            }
+        }
+        None
     }
 
     /// Returns an iterator over the elements of the set.
@@ -269,14 +287,9 @@ where
     /// Removes an element from the set using its stable pointer. This is very inefficient and requires O(n) time.
     ///
     /// Returns the removed element if it was in the set.
-    ///
-    /// # Safety
-    ///
-    /// This is unsafe because:
-    /// - The provided pointer must be valid and originally obtained from this set
-    /// - Any other StablePointers to the removed element become dangling and must not be used
-    /// - The caller takes ownership of the returned value
     pub unsafe fn remove(&mut self, pointer: StablePointer<T>) -> Option<T> {
+        // At this point, we remove a stable pointer that has no other references.
+
         // First check if the pointer is in our index
         if !self.index.remove(&pointer) {
             return None;
@@ -285,7 +298,7 @@ where
         // Find the element in storage
         let mut index_to_remove = None;
         for (i, boxed) in self.storage.iter().enumerate() {
-            if std::ptr::eq(boxed.as_ref() as *const T, pointer.0.as_ptr()) {
+            if std::ptr::eq(boxed.as_ref() as *const T, pointer.ptr.as_ptr()) {
                 index_to_remove = Some(i);
                 break;
             }
@@ -329,6 +342,7 @@ where
             let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(element.as_ref() as *const T as *mut T)) };
 
             if !predicate(&ptr) {
+                debug_assert!(Arc::strong_count(&ptr.reference_counter) == 1, "No other references should exist when removed");
                 self.index.remove(&ptr);
                 return false;
             }
@@ -352,20 +366,6 @@ where
         self.storage.clear();
     }
 
-    /// Returns a stable pointer to the value in the set, if any, that is equal to the given value.
-    fn get_raw_ptr<Q: ?Sized>(&self, value: &Q) -> Option<StablePointer<T>>
-    where
-        T: Borrow<Q>,
-        Q: Hash + Eq,
-    {
-        for ptr in &self.index {
-            if (**ptr).borrow() == value {
-                return Some(unsafe { ptr.copy() });
-            }
-        }
-        None
-    }
-
     /// Returns a stable pointer to the value in the set, if any, that is equivalent to the given value.
     fn get_raw_ptr_equiv<Q>(&self, equiv: &Q) -> Option<StablePointer<T>>
     where
@@ -387,7 +387,7 @@ where
 {
     fn drop(&mut self) {
         // SAFETY: Removing all elements from the set before dropping ensures that no dangling pointers remain.
-        assert!(self.is_empty(), "StablePointerSet must be empty before dropping");
+        assert!(self.is_empty(), "StablePointerSet must be empty before dropping!");
     }
 }
 
@@ -416,6 +416,9 @@ mod tests {
 
         // Verify that we have only one element
         assert_eq!(set.len(), 1);
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -427,6 +430,9 @@ mod tests {
         assert!(set.contains(&42));
         assert!(set.contains(&100));
         assert!(!set.contains(&200));
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -442,6 +448,9 @@ mod tests {
         assert_eq!(*ptr, 100);
 
         assert!(set.get(&200).is_none(), "Value should not exist");
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -455,6 +464,9 @@ mod tests {
         values.sort();
 
         assert_eq!(values, vec![1, 2, 3]);
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -501,6 +513,9 @@ mod tests {
 
         // Ensure we have exactly two elements
         assert_eq!(set.len(), 2);
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -514,6 +529,9 @@ mod tests {
 
         // Test methods on the dereferenced value
         assert_eq!((*ptr).checked_add(10), Some(52));
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -541,6 +559,10 @@ mod tests {
             let removed2 = set.remove(ptr2);
             assert_eq!(removed2, Some(100));
             assert_eq!(set.len(), 0);
+        }
+        
+        unsafe {
+            set.clear();
         }
     }
 
@@ -576,6 +598,10 @@ mod tests {
             assert_eq!(set.remove(ptr1), None);
             assert_eq!(set.remove(ptr3), None);
         }
+
+        unsafe {
+            set.clear();
+        }
     }
 
     #[test]
@@ -599,5 +625,9 @@ mod tests {
         assert!(set.contains(&42));
         assert!(set.contains(&100));
         assert!(!set.contains(&200));
+
+        unsafe {
+            set.clear();
+        }
     }
 }

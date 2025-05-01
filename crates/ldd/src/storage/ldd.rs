@@ -7,14 +7,17 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::ops::Index;
 use std::rc::Rc;
 
 use mcrl3_utilities::ProtectionIndex;
 use mcrl3_utilities::SetIndex;
 use mcrl3_utilities::ProtectionSet;
 
-pub(crate) type SharedProtectionSet = Rc<RefCell<ProtectionSet<SetIndex>>>;
+/// An alias for the ldd index type.
+pub type LddIndex = SetIndex;
+
+/// The shared protection set is used to keep track of the nodes that are reachable.
+pub(crate) type SharedProtectionSet = Rc<RefCell<ProtectionSet<LddIndex>>>;
 
 /// Every Ldd points to its root node in the Storage instance for maximal
 /// sharing. These Ldd instances can only be created from the storage.
@@ -25,7 +28,8 @@ pub struct Ldd {
 }
 
 impl Ldd {
-    pub fn new(protection_set: &SharedProtectionSet, index: SetIndex) -> Ldd {
+    /// Creates a new Ldd instance. This should only be called from the storage.
+    pub fn new(protection_set: &SharedProtectionSet, index: LddIndex) -> Ldd {
         let root = protection_set.borrow_mut().protect(index);
         Ldd {
             protection_set: Rc::clone(protection_set),
@@ -34,7 +38,8 @@ impl Ldd {
         }
     }
 
-    pub fn index(&self) -> SetIndex {
+    /// Returns the index of the Ldd.
+    pub fn index(&self) -> LddIndex {
         self.ldd.index
     }
 }
@@ -103,20 +108,21 @@ impl Eq for Ldd {}
 /// LddRef can never be misused.
 #[derive(Hash, PartialEq, Eq, Debug)]
 pub struct LddRef<'a> {
-    index: SetIndex, // Index in the node table.
+    index: LddIndex, // Index in the node table.
     marker: PhantomData<&'a ()>,
 }
 
 impl<'a> LddRef<'a> {
     /// TODO: This function should only be called by Storage and [Ldd]
-    pub fn new(index: SetIndex) -> LddRef<'a> {
+    pub fn new(index: LddIndex) -> LddRef<'a> {
         LddRef {
             index,
             marker: PhantomData,
         }
     }
 
-    pub fn index(&self) -> SetIndex {
+    /// Returns the index of the LddRef in the node table.
+    pub fn index(&self) -> LddIndex {
         self.index
     }
 

@@ -3,8 +3,8 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::rc::Rc;
 
+use ldd::LddIndex;
 use ldd::SharedProtectionSet;
-use mcrl3_utilities::SetIndex;
 use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
 
@@ -23,8 +23,8 @@ pub type Value = u32;
 #[derive(Clone)]
 pub struct Node {
     value: Value,
-    down: SetIndex,
-    right: SetIndex,
+    down: LddIndex,
+    right: LddIndex,
 
     marked: bool,
 }
@@ -34,7 +34,7 @@ pub struct Node {
 const _: () = assert!(std::mem::size_of::<Node>() == std::mem::size_of::<(usize, usize, usize)>());
 
 impl Node {
-    fn new(value: Value, down: SetIndex, right: SetIndex) -> Node {
+    fn new(value: Value, down: LddIndex, right: LddIndex) -> Node {
         Node {
             value,
             down,
@@ -98,8 +98,8 @@ impl Storage {
         let shared = Rc::new(RefCell::new(ProtectionSet::new()));
         // Add two nodes representing 'false' and 'true' respectively; these cannot be created using insert.
         let mut nodes = IndexedSet::new();
-        let empty_set = nodes.insert(Node::new(0, SetIndex::default(), SetIndex::default())).0;
-        let empty_vector = nodes.insert(Node::new(1, SetIndex::default(), SetIndex::default())).0;
+        let empty_set = nodes.insert(Node::new(0, LddIndex::default(), LddIndex::default())).0;
+        let empty_vector = nodes.insert(Node::new(1, LddIndex::default(), LddIndex::default())).0;
 
         Self {
             protection_set: shared.clone(),
@@ -163,9 +163,9 @@ impl Storage {
         self.cache.limit(self.nodes.len());
 
         // Mark all nodes that are (indirect) children of nodes with positive reference count.
-        let mut stack: Vec<SetIndex> = Vec::new();
-        for (root, _index) in self.protection_set.borrow().iter() {
-            mark_node(&mut self.nodes, &mut stack, *root);
+        let mut stack: Vec<LddIndex> = Vec::new();
+        for (_root, index) in self.protection_set.borrow().iter() {
+            mark_node(&mut self.nodes, &mut stack, *index);
         }
 
         // Collect all garbage nodes.
@@ -183,12 +183,13 @@ impl Storage {
 
         // Check whether the direct children of a valid node are valid (this implies that the whole tree is valid if the root is valid).
         for (_, node) in &self.nodes {
+            // Special cases for the empty set and empty vector.
             debug_assert!(
-                self.nodes.get(node.down).is_some(),
+                *node.down == 0 || self.nodes.get(node.down).is_some(),
                 "The down node of a valid node must be valid."
             );
             debug_assert!(
-                self.nodes.get(node.right).is_some(),
+                *node.right == 0 || self.nodes.get(node.right).is_some(),
                 "The right node of a valid node must be valid."
             );
         }
@@ -291,7 +292,7 @@ impl Drop for Storage {
 /// Mark all LDDs reachable from the given root index.
 ///
 /// Reuses the stack for the depth-first exploration.
-fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<SetIndex>, root: SetIndex) {
+fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<LddIndex>, root: LddIndex) {
     stack.push(root);
     while let Some(current) = stack.pop() {
         let node = &mut nodes[current];

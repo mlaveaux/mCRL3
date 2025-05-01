@@ -138,6 +138,14 @@ impl<I> PartialEq for GenerationalIndex<I>
     where I: Copy + Into<usize> + Eq
 {
     fn eq(&self, other: &Self) -> bool {
+        // TODO: Should we have a default index?
+        #[cfg(debug_assertions)]
+        {
+            if self.generation == usize::MAX || other.generation == usize::MAX {
+                return false;
+            }
+        }
+
         debug_assert_eq!(self.generation, other.generation, "Comparing indices of different generations");
 
         self.index == other.index

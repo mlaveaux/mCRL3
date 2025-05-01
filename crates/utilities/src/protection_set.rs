@@ -42,6 +42,7 @@ pub struct ProtectionSet<T> {
     generation_counter: GenerationCounter,
 }
 
+/// TODO: Is it possible to get the size of entries down to a sizeof(NonZero<usize>)?
 #[derive(Debug)]
 enum Entry<T> {
     Filled(T),
