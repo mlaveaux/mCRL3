@@ -18,11 +18,11 @@ use clap::Parser;
 
 use log::debug;
 use log::info;
-use slint::quit_event_loop;
 use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
 use slint::invoke_from_event_loop;
+use slint::quit_event_loop;
 
 use mcrl3_gui::console;
 use mcrl3_lts::read_aut;
@@ -166,7 +166,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                     (Instant::now() - start).as_millis()
                 );
                 *canvas.lock().unwrap() = pixel_buffer.clone();
-            } else {                 
+            } else {
                 // Resize the canvas when necessary
                 let settings_clone = settings.lock().unwrap().clone();
                 let mut canvas = canvas.lock().unwrap();

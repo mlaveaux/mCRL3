@@ -12,9 +12,9 @@ use std::str::FromStr;
 
 use benchmark::Rewriter;
 
+mod benchmark;
 mod coverage;
 mod sanitizer;
-mod benchmark;
 
 fn main() -> Result<ExitCode, Box<dyn Error>> {
     let mut args = env::args();

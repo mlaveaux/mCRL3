@@ -295,7 +295,7 @@ impl GlobalTermPool {
             if let Some(pool) = pool {
                 let pool = mutex_unwrap(pool.lock());
 
-                for (symbol, _) in pool.symbol_protection_set.iter() {
+                for (_, symbol) in pool.symbol_protection_set.iter() {
                     trace!("Marking root symbol {symbol:?}");
                     // Remove all symbols that are not protected
                     unsafe {
@@ -303,27 +303,27 @@ impl GlobalTermPool {
                     }
                 }
 
-                for (term, _) in pool.protection_set.iter() {
-                    trace!("Marking root term {term:?}");
+                for (_, term) in pool.protection_set.iter() {
+                    //trace!("Marking root term {term:?}");
                     unsafe {
-                        ATermRef::from_index(term).mark(&mut marker);
+                        //ATermRef::from_index(term).mark(&mut marker);
                     }
                 }
 
-                for (container, _) in pool.container_protection_set.iter() {
+                for (_, container) in pool.container_protection_set.iter() {
                     container.mark(&mut marker);
                 }
             }
         }
+        return;
 
-        mark_time.stop();
         let collect_time = SimpleTimer::new();
 
         let num_of_terms = self.len();
         let num_of_symbols = self.symbol_pool.len();
 
         // Delete all terms that are not marked
-        unsafe {
+        /*unsafe {
             self.terms.retain(|term| {
                 if !self.marked_terms.contains(term) {
                     trace!("Dropping term: {:?}", term);
@@ -344,7 +344,7 @@ impl GlobalTermPool {
 
                 true
             });
-        }
+        }*/
 
         info!(
             "Garbage collection: marking took {}ms, collection took {}ms, {} terms and {} symbols removed",

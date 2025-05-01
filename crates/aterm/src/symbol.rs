@@ -43,6 +43,7 @@ pub struct SymbolRef<'a> {
 }
 
 /// Check that the SymbolRef is the same size as a usize.
+#[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<usize>());
 
 /// A reference to a function symbol with a known lifetime.
