@@ -10,21 +10,22 @@ use std::ops::Deref;
 use std::ops::Index;
 use std::rc::Rc;
 
-use mcrl3_utilities::IndexType;
+use mcrl3_utilities::ProtectionIndex;
+use mcrl3_utilities::SetIndex;
 use mcrl3_utilities::ProtectionSet;
 
-pub(crate) type SharedProtectionSet = Rc<RefCell<ProtectionSet<IndexType>>>;
+pub(crate) type SharedProtectionSet = Rc<RefCell<ProtectionSet<SetIndex>>>;
 
 /// Every Ldd points to its root node in the Storage instance for maximal
 /// sharing. These Ldd instances can only be created from the storage.
 pub struct Ldd {
-    ldd: LddRef<'static>, // Reference in the node table.
-    root: usize,          // Index in the root set.
+    ldd: LddRef<'static>,  // Reference in the node table.
+    root: ProtectionIndex, // Index in the root set.
     protection_set: SharedProtectionSet,
 }
 
 impl Ldd {
-    pub fn new(protection_set: &SharedProtectionSet, index: IndexType) -> Ldd {
+    pub fn new(protection_set: &SharedProtectionSet, index: SetIndex) -> Ldd {
         let root = protection_set.borrow_mut().protect(index);
         Ldd {
             protection_set: Rc::clone(protection_set),
@@ -33,7 +34,7 @@ impl Ldd {
         }
     }
 
-    pub fn index(&self) -> IndexType {
+    pub fn index(&self) -> SetIndex {
         self.ldd.index
     }
 }
@@ -102,20 +103,20 @@ impl Eq for Ldd {}
 /// LddRef can never be misused.
 #[derive(Hash, PartialEq, Eq, Debug)]
 pub struct LddRef<'a> {
-    index: IndexType, // Index in the node table.
+    index: SetIndex, // Index in the node table.
     marker: PhantomData<&'a ()>,
 }
 
 impl<'a> LddRef<'a> {
     /// TODO: This function should only be called by Storage and [Ldd]
-    pub fn new(index: IndexType) -> LddRef<'a> {
+    pub fn new(index: SetIndex) -> LddRef<'a> {
         LddRef {
             index,
             marker: PhantomData,
         }
     }
 
-    pub fn index(&self) -> IndexType {
+    pub fn index(&self) -> SetIndex {
         self.index
     }
 

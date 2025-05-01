@@ -96,13 +96,9 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> Da
                 |_tp, args, t| {
                     if variables.contains(t.get_head_symbol().name()) {
                         // Convert a constant variable, for example 'x', into an untyped variable.
-                        Ok(Yield::Term(
-                            DataVariable::new(t.get_head_symbol().name()).into(),
-                        ))
+                        Ok(Yield::Term(DataVariable::new(t.get_head_symbol().name()).into()))
                     } else if t.get_head_symbol().arity() == 0 {
-                        Ok(Yield::Term(
-                            DataFunctionSymbol::new(t.get_head_symbol().name()).into(),
-                        ))
+                        Ok(Yield::Term(DataFunctionSymbol::new(t.get_head_symbol().name()).into()))
                     } else {
                         // This is a function symbol applied to a number of arguments
                         let head = DataFunctionSymbol::new(t.get_head_symbol().name());

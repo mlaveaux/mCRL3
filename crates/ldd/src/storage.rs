@@ -1,11 +1,10 @@
 use std::cell::RefCell;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::ops::Index;
 use std::rc::Rc;
 
 use ldd::SharedProtectionSet;
-use mcrl3_utilities::IndexType;
+use mcrl3_utilities::SetIndex;
 use mcrl3_utilities::IndexedSet;
 use mcrl3_utilities::ProtectionSet;
 
@@ -24,8 +23,8 @@ pub type Value = u32;
 #[derive(Clone)]
 pub struct Node {
     value: Value,
-    down: IndexType,
-    right: IndexType,
+    down: SetIndex,
+    right: SetIndex,
 
     marked: bool,
 }
@@ -35,7 +34,7 @@ pub struct Node {
 const _: () = assert!(std::mem::size_of::<Node>() == std::mem::size_of::<(usize, usize, usize)>());
 
 impl Node {
-    fn new(value: Value, down: IndexType, right: IndexType) -> Node {
+    fn new(value: Value, down: SetIndex, right: SetIndex) -> Node {
         Node {
             value,
             down,
@@ -99,8 +98,8 @@ impl Storage {
         let shared = Rc::new(RefCell::new(ProtectionSet::new()));
         // Add two nodes representing 'false' and 'true' respectively; these cannot be created using insert.
         let mut nodes = IndexedSet::new();
-        let empty_set = nodes.insert(Node::new(0, IndexType::default(), IndexType::default())).0;
-        let empty_vector = nodes.insert(Node::new(1, IndexType::default(), IndexType::default())).0;
+        let empty_set = nodes.insert(Node::new(0, SetIndex::default(), SetIndex::default())).0;
+        let empty_vector = nodes.insert(Node::new(1, SetIndex::default(), SetIndex::default())).0;
 
         Self {
             protection_set: shared.clone(),
@@ -164,7 +163,7 @@ impl Storage {
         self.cache.limit(self.nodes.len());
 
         // Mark all nodes that are (indirect) children of nodes with positive reference count.
-        let mut stack: Vec<IndexType> = Vec::new();
+        let mut stack: Vec<SetIndex> = Vec::new();
         for (root, _index) in self.protection_set.borrow().iter() {
             mark_node(&mut self.nodes, &mut stack, *root);
         }
@@ -292,7 +291,7 @@ impl Drop for Storage {
 /// Mark all LDDs reachable from the given root index.
 ///
 /// Reuses the stack for the depth-first exploration.
-fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<IndexType>, root: IndexType) {
+fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<SetIndex>, root: SetIndex) {
     stack.push(root);
     while let Some(current) = stack.pop() {
         let node = &mut nodes[current];

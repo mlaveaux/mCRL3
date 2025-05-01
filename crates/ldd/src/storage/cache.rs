@@ -1,6 +1,6 @@
 use ahash::RandomState;
-use mcrl3_utilities::IndexType;
 use core::hash::Hash;
+use mcrl3_utilities::SetIndex;
 use std::hash::BuildHasher;
 
 use crate::Ldd;
@@ -19,9 +19,9 @@ use super::ldd::SharedProtectionSet;
 /// the value of [UnaryFunction], [BinaryOperator] or [TernaryOperator].
 pub struct OperationCache {
     protection_set: SharedProtectionSet,
-    caches1: Vec<Cache<IndexType, usize>>,
-    caches2: Vec<Cache<(IndexType, IndexType), IndexType>>,
-    caches3: Vec<Cache<(IndexType, IndexType, IndexType), IndexType>>,
+    caches1: Vec<Cache<SetIndex, usize>>,
+    caches2: Vec<Cache<(SetIndex, SetIndex), SetIndex>>,
+    caches3: Vec<Cache<(SetIndex, SetIndex, SetIndex), SetIndex>>,
 }
 
 impl OperationCache {
@@ -91,13 +91,13 @@ impl OperationCache {
         }
     }
 
-    fn get_cache1(&mut self, operator: &UnaryFunction) -> &mut Cache<IndexType, usize> {
+    fn get_cache1(&mut self, operator: &UnaryFunction) -> &mut Cache<SetIndex, usize> {
         match operator {
             UnaryFunction::Len => &mut self.caches1[0],
         }
     }
 
-    fn get_cache2(&mut self, operator: &BinaryOperator) -> &mut Cache<(IndexType, IndexType), IndexType> {
+    fn get_cache2(&mut self, operator: &BinaryOperator) -> &mut Cache<(SetIndex, SetIndex), SetIndex> {
         match operator {
             BinaryOperator::Union => &mut self.caches2[0],
             BinaryOperator::Merge => &mut self.caches2[1],
@@ -105,14 +105,14 @@ impl OperationCache {
         }
     }
 
-    fn get_cache3(&mut self, operator: &TernaryOperator) -> &mut Cache<(IndexType, IndexType, IndexType), IndexType> {
+    fn get_cache3(&mut self, operator: &TernaryOperator) -> &mut Cache<(SetIndex, SetIndex, SetIndex), SetIndex> {
         match operator {
             TernaryOperator::RelationalProduct => &mut self.caches3[0],
         }
     }
 
     /// Create an Ldd from the given index. Only safe because this is a private function.
-    fn create(&mut self, index: IndexType) -> Ldd {
+    fn create(&mut self, index: SetIndex) -> Ldd {
         Ldd::new(&self.protection_set, index)
     }
 }

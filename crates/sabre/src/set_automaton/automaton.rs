@@ -63,7 +63,6 @@ impl MatchAnnouncement {
     }
 }
 
-
 #[derive(Clone)]
 pub struct Transition<T> {
     pub(crate) symbol: DataFunctionSymbol,

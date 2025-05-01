@@ -7,8 +7,8 @@ use delegate::delegate;
 
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermArgs;
-use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::ATermIndex;
+use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
 use mcrl3_aterm::Symb;
