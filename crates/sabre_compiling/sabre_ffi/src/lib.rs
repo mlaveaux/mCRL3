@@ -10,15 +10,16 @@ mod export;
 #[cfg(not(feature = "import"))]
 pub use export::*;
 use mcrl3_aterm::ATermIndex;
+use mcrl3_utilities::ProtectionIndex;
 
 #[repr(C)]
 pub struct DataExpression {
     index: ATermIndex,
-    root: usize,
+    root: ProtectionIndex,
 }
 
 impl DataExpression {
-    pub unsafe fn from_index(index: &ATermIndex, root: usize) -> Self {
+    pub unsafe fn from_index(index: &ATermIndex, root: ProtectionIndex) -> Self {
         Self {
             index: unsafe { index.copy() },
             root,
@@ -31,7 +32,7 @@ impl DataExpression {
     pub fn copy(&self) -> DataExpressionRef<'_> {
         unsafe { DataExpressionRef::from_index(&self.index) }
     }
-    
+
     /// Returns the index of the data expression.
     pub fn index(&self) -> &ATermIndex {
         &self.index

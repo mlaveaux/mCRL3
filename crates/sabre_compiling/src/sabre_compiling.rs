@@ -28,7 +28,8 @@ impl RewriteEngine for SabreCompilingRewriter {
     fn rewrite(&mut self, term: &DataExpression) -> DataExpression {
         // TODO: This ought to be stored somewhere for repeated calls.
         unsafe {
-            let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> = self.library.get(b"rewrite").unwrap();
+            let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> =
+                self.library.get(b"rewrite").unwrap();
 
             let result = func(&DataExpressionRefFFI::from_index(&term.shared()));
             ATermRef::from_index(result.index()).protect().into()
@@ -100,8 +101,11 @@ mod tests {
 
     #[test]
     fn test_compilation() {
-        let (spec, terms) = load_REC_from_strings(&[include_str!("../../../examples/REC/rec/factorial6.rec"),
-            include_str!("../../../examples/REC/rec/factorial.rec")]).unwrap();
+        let (spec, terms) = load_REC_from_strings(&[
+            include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial.rec"),
+        ])
+        .unwrap();
 
         let spec = spec.to_rewrite_spec();
 

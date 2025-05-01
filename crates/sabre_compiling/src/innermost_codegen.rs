@@ -25,7 +25,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
     // Generate the automata used for matching
     let apma = SetAutomaton::new(spec, |_| (), true);
-    
+
     // Debug assertion to verify we have at least one state in the automaton
     debug_assert!(!apma.states().is_empty(), "Automaton must have at least one state");
 
@@ -52,10 +52,10 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
             "fn rewrite_{}(t: &DataExpressionRef<'_>) -> DataExpression {{",
             index
         )?;
-        
+
         // Use the IndentFormatter to properly indent the function body
         let _indent = formatter.indent();
-        
+
         writeln!(
             &mut formatter,
             "let arg = get_position_{}(t);",
@@ -66,7 +66,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
         positions.insert(state.label().clone());
 
         writeln!(&mut formatter, "match symbol.operation_id() {{")?;
-        
+
         // Indent the match block
         let _match_indent = formatter.indent();
 
@@ -74,17 +74,14 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
             if *from == index {
                 // Outgoing transition
                 writeln!(&mut formatter, "{symbol} => {{")?;
-                
+
                 // Indent the case block
                 let _case_indent = formatter.indent();
 
                 // Continue on the outgoing transition.
                 for (_announcement, _annotation) in transition.announcements() {
                     // Check for conditions and non linear patterns.
-                    writeln!(
-                        &mut formatter,
-                        "t.protect()"
-                    )?;
+                    writeln!(&mut formatter, "t.protect()")?;
                 }
 
                 for (position, to) in transition.destinations() {
@@ -104,17 +101,17 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
         // No match
         writeln!(&mut formatter, "_ => {{")?;
-        
+
         // Indent the default case
         let _default_indent = formatter.indent();
         writeln!(&mut formatter, "t.protect()")?;
-        
+
         // The default case indent is automatically decreased
         writeln!(&mut formatter, "}}")?;
 
         // The match indent is automatically decreased
         writeln!(&mut formatter, "}}")?;
-        
+
         // The function indent is automatically decreased
         writeln!(&mut formatter, "}}")?;
         writeln!(&mut formatter)?;
@@ -127,21 +124,19 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
             "fn get_position_{}<'a>(t: &DataExpressionRef<'a>) -> DataExpressionRef<'a> {{",
             UnderscoreFormatter(position)
         )?;
-        
+
         // Indent the function body
         let _indent = formatter.indent();
 
         if position.is_empty() {
             writeln!(&mut formatter, "t.copy()")?;
-        }
-        else
-        {
+        } else {
             write!(&mut formatter, "t")?;
 
             for index in &position.indices {
                 write!(&mut formatter, ".arg({index})")?;
             }
-            
+
             // Add newline after the chain of method calls
             writeln!(&mut formatter)?;
         }
