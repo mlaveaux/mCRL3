@@ -1,17 +1,20 @@
-use std::num::NonZero;
-use std::ptr::NonNull;
-use std::{hash::Hash, borrow::Borrow, ops::Deref, fmt};
 use hashbrown::Equivalent;
-use std::hash::BuildHasher;
+use std::borrow::Borrow;
 use std::collections::hash_map::RandomState;
+use std::fmt;
+use std::hash::BuildHasher;
+use std::hash::Hash;
+use std::num::NonZero;
+use std::ops::Deref;
+use std::ptr::NonNull;
 
 /// A safe wrapper around a raw pointer that allows immutable dereferencing. This remains valid as long as the `StablePointerSet` remains
 /// valid, which is not managed by the borrow checker.
 ///
 /// This type is guaranteed to point to a valid, immutable T managed by a StablePointerSet.
-/// 
+///
 /// Comparisons are based on the pointer's address, not the value it points to.
-/// 
+///
 /// TODO: Could we use reference counters to ensure safety at runtime?
 #[repr(transparent)]
 #[derive(Clone, Hash)]
@@ -47,12 +50,9 @@ unsafe impl<T> Send for StablePointer<T> {}
 unsafe impl<T> Sync for StablePointer<T> {}
 
 impl<T> StablePointer<T> {
-
     /// TODO: We store a number in the pointer that MUST not be dereferenced.
-    pub fn from_index(index: NonZero<usize>) -> Self {   
-        let ptr =  unsafe { 
-            NonNull::new_unchecked(index.get() as *mut T)
-        };
+    pub fn from_index(index: NonZero<usize>) -> Self {
+        let ptr = unsafe { NonNull::new_unchecked(index.get() as *mut T) };
 
         Self(ptr)
     }
@@ -61,9 +61,9 @@ impl<T> StablePointer<T> {
     pub fn address(&self) -> usize {
         self.0.addr().into()
     }
-    
+
     /// Returns a copy of the StablePointer.
-    /// 
+    ///
     /// # Safety
     // This is a no-op, as the pointer is already stable and valid.
     // The caller must ensure the pointer is valid and outlives this StablePointer.
@@ -72,7 +72,7 @@ impl<T> StablePointer<T> {
     }
 
     /// Creates a new StablePointer from a raw pointer.
-    /// 
+    ///
     /// # Safety
     /// The caller must ensure the pointer points to a valid T that outlives this StablePointer.
     fn new(ptr: NonNull<T>) -> Self {
@@ -82,7 +82,7 @@ impl<T> StablePointer<T> {
 
 impl<T> Deref for StablePointer<T> {
     type Target = T;
-    
+
     fn deref(&self) -> &Self::Target {
         // SAFETY: StablePointerSet guarantees this pointer points to a valid T
         // that lives at least as long as the StablePointerSet
@@ -92,9 +92,7 @@ impl<T> Deref for StablePointer<T> {
 
 impl<T: fmt::Debug> fmt::Debug for StablePointer<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("StablePointer")
-            .field(&**self)
-            .finish()
+        f.debug_tuple("StablePointer").field(&**self).finish()
     }
 }
 
@@ -108,7 +106,7 @@ impl<T: fmt::Debug> fmt::Debug for StablePointer<T> {
 /// 3. Configurable hashing strategy for workload optimization
 ///
 /// The set can use a custom hasher type for potentially better performance based on workload characteristics.
-pub struct StablePointerSet<T, S = RandomState> 
+pub struct StablePointerSet<T, S = RandomState>
 where
     T: Hash + Eq,
     S: BuildHasher,
@@ -117,7 +115,7 @@ where
     storage: Vec<Box<T>>,
 }
 
-impl<T> StablePointerSet<T, RandomState> 
+impl<T> StablePointerSet<T, RandomState>
 where
     T: Hash + Eq,
 {
@@ -158,10 +156,14 @@ where
             storage: Vec::with_capacity(capacity),
         }
     }
-    
+
     /// Returns the number of elements in the set.
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.index.len(), self.storage.len(), "Index and storage sizes must match");
+        debug_assert_eq!(
+            self.index.len(),
+            self.storage.len(),
+            "Index and storage sizes must match"
+        );
         self.index.len()
     }
 
@@ -193,16 +195,14 @@ where
 
         // Insert new value
         let boxed = Box::new(value);
-        let ptr = unsafe {
-            StablePointer::new(NonNull::new_unchecked(boxed.as_ref() as *const T as *mut T))
-        };
-        
+        let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(boxed.as_ref() as *const T as *mut T)) };
+
         // First add to storage, then to index
         self.storage.push(boxed);
         let inserted = self.index.insert(unsafe { ptr.copy() });
-        
+
         debug_assert!(inserted, "Value should not already exist in the index");
-        
+
         (ptr, true)
     }
 
@@ -213,7 +213,7 @@ where
     /// and a boolean indicating whether the element was inserted.
     pub fn insert_equiv<'a, Q>(&mut self, value: &'a Q) -> (StablePointer<T>, bool)
     where
-        Q: Hash + Equivalent<T>, 
+        Q: Hash + Equivalent<T>,
         T: From<&'a Q>,
     {
         // Check if we already have this value
@@ -226,19 +226,17 @@ where
 
         // Convert the reference to an actual value only if needed
         let value_to_insert = T::from(value);
-        
+
         // Insert new value
         let boxed = Box::new(value_to_insert);
-        let ptr  = unsafe {
-            StablePointer::new(NonNull::new_unchecked(boxed.as_ref() as *const T as *mut T))
-        };
+        let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(boxed.as_ref() as *const T as *mut T)) };
 
         // First add to storage, then to index
-        self.storage.push(boxed);        
-        let inserted = self.index.insert(unsafe { ptr.copy() });  
+        self.storage.push(boxed);
+        let inserted = self.index.insert(unsafe { ptr.copy() });
 
         debug_assert!(inserted, "Value should not already exist in the index");
-        
+
         (ptr, true)
     }
 
@@ -297,19 +295,25 @@ where
         if let Some(idx) = index_to_remove {
             // Remove the box and convert it to the inner value
             let boxed = self.storage.swap_remove(idx);
-            debug_assert_eq!(self.index.len(), self.storage.len(), "Index and storage sizes must match after removal");
+            debug_assert_eq!(
+                self.index.len(),
+                self.storage.len(),
+                "Index and storage sizes must match after removal"
+            );
             Some(*boxed)
         } else {
             // This should never happen if our index and storage are in sync
-            debug_assert!(false, "Pointer found in index but not in storage - internal state corruption");
+            debug_assert!(
+                false,
+                "Pointer found in index but not in storage - internal state corruption"
+            );
             None
         }
     }
 
-
     /// Retains only the elements specified by the predicate, modifying the set in-place.
     ///
-    /// The predicate closure is called with a mutable reference to each element and must 
+    /// The predicate closure is called with a mutable reference to each element and must
     /// return true if the element should remain in the set.
     ///
     /// # Safety
@@ -318,13 +322,11 @@ where
     /// - It invalidates any StablePointers to removed elements
     pub unsafe fn retain<F>(&mut self, mut predicate: F)
     where
-        F: FnMut(&StablePointer<T>) -> bool
+        F: FnMut(&StablePointer<T>) -> bool,
     {
         // First pass: determine what to keep/remove without modifying the collection
         self.storage.retain(|element| {
-            let ptr = unsafe {
-                StablePointer::new(NonNull::new_unchecked(element.as_ref() as *const T as *mut T))
-            };
+            let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(element.as_ref() as *const T as *mut T)) };
 
             if !predicate(&ptr) {
                 self.index.remove(&ptr);
@@ -334,12 +336,15 @@ where
             true
         });
 
-        debug_assert_eq!(self.index.len(), self.storage.len(), 
-            "Index and storage sizes must match after retention");
+        debug_assert_eq!(
+            self.index.len(),
+            self.storage.len(),
+            "Index and storage sizes must match after retention"
+        );
     }
 
     /// Clears the set, removing all values and invalidating all pointers.
-    /// 
+    ///
     /// # Safety
     /// This is unsafe because it invalidates all pointers to the elements in the set.
     pub unsafe fn clear(&mut self) {
@@ -395,20 +400,20 @@ mod tests {
     #[test]
     fn test_insert_and_get() {
         let mut set = StablePointerSet::new();
-        
+
         // Insert a value and ensure we get it back
         let (ptr1, inserted) = set.insert(42);
         assert!(inserted);
         assert_eq!(*ptr1, 42);
-        
+
         // Insert the same value and ensure we get the same pointer
         let (ptr2, inserted) = set.insert(42);
         assert!(!inserted);
         assert_eq!(*ptr2, 42);
-        
+
         // Pointers to the same value should be identical
         assert_eq!(ptr1, ptr2);
-        
+
         // Verify that we have only one element
         assert_eq!(set.len(), 1);
     }
@@ -418,7 +423,7 @@ mod tests {
         let mut set = StablePointerSet::new();
         set.insert(42);
         set.insert(100);
-        
+
         assert!(set.contains(&42));
         assert!(set.contains(&100));
         assert!(!set.contains(&200));
@@ -445,10 +450,10 @@ mod tests {
         set.insert(1);
         set.insert(2);
         set.insert(3);
-        
+
         let mut values: Vec<i32> = set.iter().map(|&v| v).collect();
         values.sort();
-        
+
         assert_eq!(values, vec![1, 2, 3]);
     }
 
@@ -476,37 +481,37 @@ mod tests {
         }
 
         let mut set: StablePointerSet<TestValue> = StablePointerSet::new();
-        
+
         // Insert using equivalent reference (i32 -> TestValue)
         let (ptr1, inserted) = set.insert_equiv(&42);
         assert!(inserted, "Value should be inserted");
         assert_eq!(ptr1.id, 42);
         assert_eq!(ptr1.name, "Value-42");
-        
+
         // Try inserting the same value again via equivalent
         let (ptr2, inserted) = set.insert_equiv(&42);
         assert!(!inserted, "Value should not be inserted again");
         assert_eq!(ptr1, ptr2, "Should return the same pointer");
-        
+
         // Insert a different value
         let (ptr3, inserted) = set.insert_equiv(&100);
         assert!(inserted, "New value should be inserted");
         assert_eq!(ptr3.id, 100);
         assert_eq!(ptr3.name, "Value-100");
-        
-        // Ensure we have exactly two elements 
+
+        // Ensure we have exactly two elements
         assert_eq!(set.len(), 2);
     }
-    
+
     #[test]
     fn test_stable_pointer_deref() {
         let mut set = StablePointerSet::new();
         let (ptr, _) = set.insert(42);
-        
+
         // Test dereferencing
         let value: &i32 = &*ptr;
         assert_eq!(*value, 42);
-        
+
         // Test methods on the dereferenced value
         assert_eq!((*ptr).checked_add(10), Some(52));
     }
@@ -514,24 +519,24 @@ mod tests {
     #[test]
     fn test_remove() {
         let mut set = StablePointerSet::new();
-        
+
         // Insert values
         let (ptr1, _) = set.insert(42);
         let (ptr2, _) = set.insert(100);
         assert_eq!(set.len(), 2);
-        
+
         // Remove one value
         unsafe {
             let removed = set.remove(ptr1.copy());
             assert_eq!(removed, Some(42));
             assert_eq!(set.len(), 1);
-            
+
             // The pointer is now invalid, using it would be unsafe
-            
+
             // Try to remove same pointer again - should fail
             let removed_again = set.remove(ptr1);
             assert_eq!(removed_again, None);
-            
+
             // Remove other value
             let removed2 = set.remove(ptr2);
             assert_eq!(removed2, Some(100));
@@ -542,31 +547,31 @@ mod tests {
     #[test]
     fn test_retain_mut() {
         let mut set = StablePointerSet::new();
-        
+
         // Insert values
         let (ptr1, _) = set.insert(1);
         let (ptr2, _) = set.insert(2);
         let (ptr3, _) = set.insert(3);
         let (ptr4, _) = set.insert(4);
         assert_eq!(set.len(), 4);
-        
+
         // Retain only even numbers
         unsafe {
             set.retain(|x| **x % 2 == 0);
         }
-        
+
         // Verify results
         assert_eq!(set.len(), 2);
         assert!(!set.contains(&1));
         assert!(set.contains(&2));
         assert!(!set.contains(&3));
         assert!(set.contains(&4));
-        
+
         // Verify that removed pointers are invalid and remaining are valid
         unsafe {
             assert_eq!(set.remove(ptr2), Some(2));
             assert_eq!(set.remove(ptr4), Some(4));
-            
+
             // These pointers are no longer valid - the remove should return None
             assert_eq!(set.remove(ptr1), None);
             assert_eq!(set.remove(ptr3), None);
@@ -576,20 +581,20 @@ mod tests {
     #[test]
     fn test_custom_hasher() {
         // Use FxHasher explicitly
-        let mut set: StablePointerSet<i32, BuildHasherDefault<FxHasher>> = 
+        let mut set: StablePointerSet<i32, BuildHasherDefault<FxHasher>> =
             StablePointerSet::with_hasher(BuildHasherDefault::<FxHasher>::default());
-        
+
         // Insert some values
         let (ptr1, inserted) = set.insert(42);
         assert!(inserted);
         let (ptr2, inserted) = set.insert(100);
         assert!(inserted);
-        
+
         // Check that everything works as expected
         assert_eq!(set.len(), 2);
         assert_eq!(*ptr1, 42);
         assert_eq!(*ptr2, 100);
-        
+
         // Test contains
         assert!(set.contains(&42));
         assert!(set.contains(&100));

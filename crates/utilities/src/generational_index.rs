@@ -10,6 +10,7 @@ use std::ops::Deref;
 ///
 /// This allows detecting use-after-free scenarios in debug mode while
 /// maintaining zero overhead in release mode.
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct GenerationalIndex<I: Copy + Into<usize> = usize> {
     /// The raw index value
@@ -18,6 +19,16 @@ pub struct GenerationalIndex<I: Copy + Into<usize> = usize> {
     #[cfg(debug_assertions)]
     /// Generation counter, only available in debug builds
     generation: usize,
+}
+
+impl Default for GenerationalIndex<usize> {
+    fn default() -> Self {
+        GenerationalIndex {
+            index: 0,
+            #[cfg(debug_assertions)]
+            generation: usize::MAX,
+        }
+    }
 }
 
 impl<I: Copy + Into<usize>> Deref for GenerationalIndex<I> {
@@ -85,7 +96,9 @@ impl GenerationCounter {
                 0
             }
             else {
-                self.current_generation[index.into() as usize].wrapping_add(1)
+                let generation = &mut self.current_generation[index.into() as usize];
+                *generation = generation.wrapping_add(1);
+                *generation
             };
 
             GenerationalIndex::new(index, generation)

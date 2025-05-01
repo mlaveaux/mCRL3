@@ -125,7 +125,7 @@ where
             let value = (self.function)(key);
             self.cache.insert(key.clone(), value);
         }
-        
+
         self.cache.get(key).unwrap()
     }
 

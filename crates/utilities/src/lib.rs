@@ -1,6 +1,5 @@
-
 //! Utility types and functions for the mCRL3 toolset.
-//! 
+//!
 //! Forbid unsafe code in this crate.
 #![forbid(unsafe_code)]
 
@@ -8,6 +7,7 @@ mod bitstream;
 mod error;
 mod fixed_cache_policy;
 mod fixed_size_cache;
+mod generational_index;
 mod helper;
 mod indexed_set;
 mod line_iterator;
@@ -24,6 +24,7 @@ pub use bitstream::*;
 pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
+pub use generational_index::*;
 pub use helper::*;
 pub use indexed_set::*;
 pub use line_iterator::*;
