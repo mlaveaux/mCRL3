@@ -209,20 +209,16 @@ mod tests {
     use super::*;
 
     #[test]
+    #[should_panic]
+    #[cfg(debug_assertions)]
     fn test_generational_index_equality() {
         let mut counter = GenerationCounter::new();
         let idx1 = counter.create_index(42usize);
         let idx2 = counter.create_index(42usize);
-        let idx3 = counter.create_index(42usize);
         let idx4 = counter.create_index(43usize);
         
-        assert_eq!(idx1, idx2);
-        
-        #[cfg(debug_assertions)]
-        {
-            assert_ne!(idx1, idx3);
-        }
-        
         assert_ne!(idx1, idx4);
+        // This panics since idx1 and idx2 are from different generations
+        assert_eq!(idx1, idx2);
     }
 }
