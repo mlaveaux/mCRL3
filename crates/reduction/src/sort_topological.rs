@@ -211,10 +211,7 @@ mod tests {
         let mut rng = test_rng();
 
         let lts = random_lts(&mut rng, 10, 3, 2);
-        match sort_topological(&lts, |_, _| true, false) {
-            Ok(order) => assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false)),
-            Err(_) => {}
-        }
+        if let Ok(order) = sort_topological(&lts, |_, _| true, false) { assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false)) }
     }
 
     #[test]
@@ -272,14 +269,14 @@ mod tests {
         assert!(is_valid_permutation(&|i| valid_permutation[i], valid_permutation.len()));
 
         // Generate an invalid permutation (duplicate entries).
-        let invalid_permutation = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 8];
+        let invalid_permutation = [0, 1, 2, 3, 4, 5, 6, 7, 8, 8];
         assert!(!is_valid_permutation(
             &|i| invalid_permutation[i],
             invalid_permutation.len()
         ));
 
         // Generate an invalid permutation (missing entries).
-        let invalid_permutation = vec![0, 1, 3, 4, 5, 6, 7, 8];
+        let invalid_permutation = [0, 1, 3, 4, 5, 6, 7, 8];
         assert!(!is_valid_permutation(
             &|i| invalid_permutation[i],
             invalid_permutation.len()

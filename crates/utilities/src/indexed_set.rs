@@ -20,13 +20,14 @@ use crate::GenerationalIndex;
 /// This newtype prevents accidental usage of raw usize values as indices.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Default)]
 pub struct SetIndex(GenerationalIndex<usize>);
 
 impl Deref for SetIndex {
     type Target = usize;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
@@ -42,11 +43,6 @@ impl fmt::Display for SetIndex {
     }
 }
 
-impl Default for SetIndex {
-    fn default() -> Self {
-        SetIndex(GenerationalIndex::default())
-    }
-}
 
 /// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
 ///
@@ -307,7 +303,7 @@ impl<'a, T, S> Iterator for Iter<'a, T, S> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.reference.table.len() {
             let current_index = self.index;
-            self.index = self.index + 1;
+            self.index += 1;
 
             if let IndexSetEntry::Filled(element) = &self.reference.table[current_index] {
                 return Some((SetIndex(self.generation_counter.recall_index(current_index)), element));
@@ -368,7 +364,7 @@ mod tests {
             let index = set.insert(*element).0;
 
             assert!(
-                indices.get(&index).is_none() || **indices.get(&index).unwrap() == *element,
+                indices.contains_key(&index) || **indices.get(&index).unwrap() == *element,
                 "Index was already used for another element"
             );
             indices.insert(*element, index);

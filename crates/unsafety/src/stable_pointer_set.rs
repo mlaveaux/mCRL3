@@ -66,7 +66,7 @@ impl<T> Ord for StablePointer<T> {
 impl<T> PartialOrd for StablePointer<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        self.address().partial_cmp(&(other.address()))
+        Some(self.address().cmp(&(other.address())))
     }
 }
 
@@ -149,6 +149,15 @@ where
     S: BuildHasher,
 {
     index: HashSet<Entry<T>, S>,
+}
+
+impl<T> Default for StablePointerSet<T, RandomState>
+where
+    T: Hash + Eq,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T> StablePointerSet<T, RandomState>
@@ -378,7 +387,7 @@ impl<T> Deref for Entry<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.value
+        &self.value
     }
 }
 
@@ -400,7 +409,7 @@ impl<T: Eq> Eq for Entry<T> {}
 #[derive(Hash, PartialEq, Eq)]
 struct LookUp<'a, T: ?Sized>(&'a T);
 
-impl<'a, T, Q: ?Sized> Equivalent<Entry<T>> for LookUp<'a, Q>
+impl<T, Q: ?Sized> Equivalent<Entry<T>> for LookUp<'_, Q>
     where Q: Equivalent<T>
 {
     fn equivalent(&self, other: &Entry<T>) -> bool {
@@ -468,7 +477,7 @@ mod tests {
         set.insert(2);
         set.insert(3);
 
-        let mut values: Vec<i32> = set.iter().map(|&v| v).collect();
+        let mut values: Vec<i32> = set.iter().copied().collect();
         values.sort();
 
         assert_eq!(values, vec![1, 2, 3]);
@@ -532,7 +541,7 @@ mod tests {
         let (ptr, _) = set.insert(42);
 
         // Test dereferencing
-        let value: &i32 = &*ptr;
+        let value: &i32 = &ptr;
         assert_eq!(*value, 42);
 
         // Test methods on the dereferenced value
@@ -558,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn test_retain_mut() {
+    fn test_retain() {
         let mut set = StablePointerSet::new();
 
         // Insert values

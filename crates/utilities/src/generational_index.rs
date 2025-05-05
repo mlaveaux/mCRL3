@@ -91,12 +91,12 @@ impl GenerationCounter {
         where I: Copy + Into<usize>
     {
         #[cfg(debug_assertions)] {
-            let generation = if self.current_generation.len() <= index.into() as usize {
-                self.current_generation.resize(index.into() as usize + 1, 0);
+            let generation = if self.current_generation.len() <= index.into() {
+                self.current_generation.resize(index.into() + 1, 0);
                 0
             }
             else {
-                let generation = &mut self.current_generation[index.into() as usize];
+                let generation = &mut self.current_generation[index.into()];
                 *generation = generation.wrapping_add(1);
                 *generation
             };
@@ -114,7 +114,7 @@ impl GenerationCounter {
     pub fn recall_index<I>(&self, index: I) -> GenerationalIndex<I> 
         where I: Copy + Into<usize>
     {
-        GenerationalIndex::new(index, self.current_generation[index.into() as usize])
+        GenerationalIndex::new(index, self.current_generation[index.into()])
     }
 
     /// Returns the underlying index, checks if the generation is correct.
@@ -123,7 +123,7 @@ impl GenerationCounter {
     {
         #[cfg(debug_assertions)]
         {
-            if self.current_generation[index.index.into() as usize] != index.generation {
+            if self.current_generation[index.index.into()] != index.generation {
                 panic!("Attempting to access an invalid index: {:?}", index);
             }
         }

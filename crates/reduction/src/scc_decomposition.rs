@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_cycles() {
-        let transitions = vec![(0, 0, 2), (0, 0, 4), (1, 0, 0), (2, 0, 1), (2, 0, 0)];
+        let transitions = [(0, 0, 2), (0, 0, 4), (1, 0, 0), (2, 0, 1), (2, 0, 0)];
 
         let lts = LabelledTransitionSystem::new(
             0,

@@ -55,7 +55,7 @@ impl Debug for MCRL3Error {
         {
             let backtrace = &self.inner.backtrace;
             if let std::backtrace::BacktraceStatus::Captured = backtrace.status() {
-                println!("{}", backtrace);
+                writeln!(f, "{}", backtrace)?;
             }
         }
 

@@ -19,7 +19,8 @@ pub fn benchmark_vector(c: &mut Criterion) {
                     black_box(x.vector.len());
                 },
                 |x| {
-                    black_box(x.vector.push(1));
+                    x.vector.push(1);
+                    black_box(());
                 },
                 num_threads,
                 NUM_ITERATIONS,

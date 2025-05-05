@@ -31,7 +31,7 @@ impl RewriteEngine for SabreCompilingRewriter {
             let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> =
                 self.library.get(b"rewrite").unwrap();
 
-            let result = func(&DataExpressionRefFFI::from_index(&term.shared()));
+            let result = func(&DataExpressionRefFFI::from_index(term.shared()));
             ATermRef::from_index(result.index()).protect().into()
         }
     }
@@ -92,12 +92,12 @@ impl SabreCompilingRewriter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
-    use ahash::AHashSet;
-    use mcrl3_rec_tests::load_REC_from_strings;
-    use mcrl3_sabre::utilities::to_untyped_data_expression;
-    use test_log::test;
+    
+    
+    
+    
 
     // #[test]
     // fn test_compilation() {

@@ -19,7 +19,7 @@ pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRef<'a>
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn data_expression_protect<'a>(term: &DataExpressionRef<'a>) -> DataExpression {
+pub unsafe extern "C" fn data_expression_protect(term: &DataExpressionRef<'_>) -> DataExpression {
     unsafe {
         let t = ATermRef::from_index(term.shared()).protect();
 

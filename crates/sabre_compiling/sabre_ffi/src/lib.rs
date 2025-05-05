@@ -21,7 +21,7 @@ pub struct DataExpression {
 impl DataExpression {
     pub unsafe fn from_index(index: &ATermIndex, root: ProtectionIndex) -> Self {
         Self {
-            index: unsafe { index.copy() },
+            index: index.copy(),
             root,
         }
     }
@@ -50,7 +50,7 @@ impl DataExpressionRef<'_> {
     /// The index must be a valid index of a data expression, that is valid for this lifetime.
     pub unsafe fn from_index(index: &ATermIndex) -> Self {
         Self {
-            index: unsafe { index.copy() },
+            index: index.copy(),
             _marker: PhantomData,
         }
     }
@@ -94,13 +94,13 @@ impl DataFunctionSymbolRef<'_> {
     /// The index must be a valid index of a data function symbol, that is valid for this lifetime.
     unsafe fn from_index(index: &ATermIndex) -> Self {
         Self {
-            index: unsafe { index.copy() },
+            index: index.copy(),
             _marker: PhantomData,
         }
     }
 }
 
-impl<'a> DataFunctionSymbolRef<'a> {
+impl DataFunctionSymbolRef<'_> {
     /// Returns the operation id of the data function symbol.
     pub fn operation_id(&self) -> usize {
         self.index.address()

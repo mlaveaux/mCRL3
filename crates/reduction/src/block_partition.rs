@@ -586,7 +586,7 @@ mod tests {
 
         partition.split_marked(0, |element| element < 7);
         for element in partition.iter_block(2) {
-            assert!(element >= 3 && element < 7);
+            assert!((3..7).contains(&element));
         }
 
         for element in partition.iter_block(0) {

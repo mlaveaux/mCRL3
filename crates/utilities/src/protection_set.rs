@@ -191,7 +191,7 @@ impl<'a, T> Iterator for ProtSetIter<'a, T> {
         // Find the next valid entry, return it when found or None when end of roots is reached.
         while self.current < self.protection_set.roots.len() {
             let idx = self.current;
-            self.current = self.current + 1;
+            self.current += 1;
             
             if let Entry::Filled(object) = &self.protection_set.roots[idx] {
                 return Some((ProtectionIndex(self.generation_counter.recall_index(idx)), object));

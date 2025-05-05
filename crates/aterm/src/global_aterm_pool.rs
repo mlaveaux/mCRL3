@@ -289,26 +289,24 @@ impl GlobalTermPool {
         let mark_time = SimpleTimer::new();
 
         // Loop through all protection sets and mark the terms.
-        for pool in self.thread_pools.iter() {
-            if let Some(pool) = pool {
-                let pool = mutex_unwrap(pool.lock());
+        for pool in self.thread_pools.iter().flatten() {
+            let pool = mutex_unwrap(pool.lock());
 
-                for (_, symbol) in pool.symbol_protection_set.iter() {
-                    trace!("Marking root symbol {symbol:?}");
-                    // Remove all symbols that are not protected
-                    marker.marked_symbols.insert(symbol.copy());
-                }
+            for (_, symbol) in pool.symbol_protection_set.iter() {
+                trace!("Marking root symbol {symbol:?}");
+                // Remove all symbols that are not protected
+                marker.marked_symbols.insert(symbol.copy());
+            }
 
-                for (_, term) in pool.protection_set.iter() {
-                    trace!("Marking root term {term:?}");
-                    unsafe {
-                        ATermRef::from_index(term).mark(&mut marker);
-                    }
+            for (_, term) in pool.protection_set.iter() {
+                trace!("Marking root term {term:?}");
+                unsafe {
+                    ATermRef::from_index(term).mark(&mut marker);
                 }
+            }
 
-                for (_, container) in pool.container_protection_set.iter() {
-                    container.mark(&mut marker);
-                }
+            for (_, container) in pool.container_protection_set.iter() {
+                container.mark(&mut marker);
             }
         }
 
@@ -327,17 +325,15 @@ impl GlobalTermPool {
             true
         });
 
-        unsafe {
-            // We ensure that every removed symbol is not used anymore.
-            self.symbol_pool.retain(|symbol| {
-                if !self.marked_symbols.contains(symbol) {
-                    trace!("Dropping symbol: {:?}", symbol);
-                    return false;
-                }
+        // We ensure that every removed symbol is not used anymore.
+        self.symbol_pool.retain(|symbol| {
+            if !self.marked_symbols.contains(symbol) {
+                trace!("Dropping symbol: {:?}", symbol);
+                return false;
+            }
 
-                true
-            });
-        }
+            true
+        });
 
         info!(
             "Garbage collection: marking took {}ms, collection took {}ms, {} terms and {} symbols removed",
@@ -419,7 +415,7 @@ impl Marker<'_> {
     // Marks the given term as being reachable.
     pub fn mark(&mut self, term: &ATermRef<'_>) {
         if !self.marked_terms.contains(term.shared()) {
-            self.stack.push(unsafe { term.shared().copy() });
+            self.stack.push(term.shared().copy());
 
             while let Some(term) = self.stack.pop() {
                 // Each term should be marked.
