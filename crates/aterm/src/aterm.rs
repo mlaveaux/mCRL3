@@ -92,7 +92,7 @@ impl ATermRef<'_> {
     /// This function is unsafe because it does not check if the index is valid for the given lifetime.
     pub unsafe fn from_index(shared: &ATermIndex) -> Self {
         ATermRef {
-            shared: unsafe { shared.copy() },
+            shared: shared.copy(),
             marker: PhantomData,
         }
     }

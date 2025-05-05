@@ -50,7 +50,7 @@ const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<us
 impl<'a> SymbolRef<'a> {
     pub(crate) unsafe fn from_index(index: &SymbolIndex) -> SymbolRef<'a> {
         SymbolRef {
-            shared: unsafe { index.copy() },
+            shared: index.copy(),
             marker: PhantomData,
         }
     }
@@ -65,7 +65,7 @@ impl SymbolRef<'_> {
     /// Internal constructo to convert any `Symb` to a `SymbolRef`.
     pub(crate) fn from_symbol<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> Self {
         SymbolRef {
-            shared: unsafe { symbol.shared().copy() },
+            shared: symbol.shared().copy(),
             marker: PhantomData,
         }
     }

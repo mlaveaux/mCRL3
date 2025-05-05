@@ -512,7 +512,7 @@ mod tests {
         let set_b = random_vector_set(&mut rng, 32, 10, 10);
 
         // Compute the interleave explicitly.
-        fn interleave(a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
+        fn interleave(a: &[u32], b: &[u32]) -> Vec<u32> {
             let mut result = vec![];
 
             let mut iter = b.iter();

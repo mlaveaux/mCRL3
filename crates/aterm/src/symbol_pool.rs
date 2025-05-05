@@ -54,13 +54,18 @@ impl SymbolPool {
         self.symbols.len()
     }
 
+    /// Returns true if the pool is empty.
+    pub fn is_empty(&self) -> bool {
+        self.symbols.is_empty()
+    }
+
     /// Returns the capacity of the pool.
     pub fn capacity(&self) -> usize {
         self.symbols.capacity()
     }
 
     /// Retain only symbols satisfying the given predicate.
-    pub unsafe fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&SymbolIndex) -> bool,
     {

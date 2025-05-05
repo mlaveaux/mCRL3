@@ -148,7 +148,7 @@ mod inner {
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
         pub fn operation_id(&self) -> usize {
-            self.term.index().into()
+            self.term.index()
         }
     }
 

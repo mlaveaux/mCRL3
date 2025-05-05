@@ -181,7 +181,7 @@ impl ThreadTermPool {
         let mut lock = mutex_unwrap(self.protection_set.lock());
         let result = unsafe {
             Symbol::from_index(
-                &symbol.shared(),
+                symbol.shared(),
                 lock.symbol_protection_set.protect(symbol.shared().copy()),
             )
         };

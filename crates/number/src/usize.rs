@@ -38,32 +38,6 @@ pub(crate) fn subtract_single_number(n1: usize, n2: usize, carry: &mut usize) ->
     result
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_subtract_single_number() {
-        // Test cases without initial carry
-        let mut carry = 0;
-        assert_eq!(subtract_single_number(10, 5, &mut carry), 5);
-        assert_eq!(carry, 0);
-
-        carry = 0;
-        assert_eq!(subtract_single_number(5, 10, &mut carry), usize::MAX - 4);
-        assert_eq!(carry, 1);
-
-        // Test cases with initial carry
-        carry = 1;
-        assert_eq!(subtract_single_number(10, 5, &mut carry), 4);
-        assert_eq!(carry, 0);
-
-        carry = 1;
-        assert_eq!(subtract_single_number(5, 5, &mut carry), usize::MAX);
-        assert_eq!(carry, 1);
-    }
-}
-
 /// Calculate <carry,result>:=n1*n2+carry, where the lower bits of the calculation
 // are stored in the result, and the higher bits are stored in carry.
 pub(crate) fn multiply_single_number(n1: usize, n2: usize, carry: &mut usize) -> usize {
@@ -128,4 +102,30 @@ pub(crate) fn divide_single_number(p: usize, q: usize, mut remainder: usize) -> 
 
     // Combine results and return with new remainder
     ((result_high << bits) | result_low, remainder)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_subtract_single_number() {
+        // Test cases without initial carry
+        let mut carry = 0;
+        assert_eq!(subtract_single_number(10, 5, &mut carry), 5);
+        assert_eq!(carry, 0);
+
+        carry = 0;
+        assert_eq!(subtract_single_number(5, 10, &mut carry), usize::MAX - 4);
+        assert_eq!(carry, 1);
+
+        // Test cases with initial carry
+        carry = 1;
+        assert_eq!(subtract_single_number(10, 5, &mut carry), 4);
+        assert_eq!(carry, 0);
+
+        carry = 1;
+        assert_eq!(subtract_single_number(5, 5, &mut carry), usize::MAX);
+        assert_eq!(carry, 1);
+    }
 }

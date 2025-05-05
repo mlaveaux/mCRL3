@@ -287,11 +287,11 @@ impl<'a, C: Markable + Transmutable + 'a> Deref for ProtectedWriteGuard<'a, C> {
     type Target = C::Target<'a>;
 
     fn deref(&self) -> &Self::Target {
-        &self.reference.transmute_lifetime()
+        self.reference.transmute_lifetime()
     }
 }
 
-impl<'a, C: Markable + Transmutable> DerefMut for ProtectedWriteGuard<'a, C> {
+impl<C: Markable + Transmutable> DerefMut for ProtectedWriteGuard<'_, C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.reference.deref_mut().transmute_lifetime_mut()
     }
@@ -311,7 +311,7 @@ impl<'a, C: Transmutable> Deref for ProtectedReadGuard<'a, C> {
     type Target = C::Target<'a>;
 
     fn deref(&self) -> &Self::Target {
-        &self.reference.transmute_lifetime()
+        self.reference.transmute_lifetime()
     }
 }
 

@@ -21,7 +21,7 @@ mod mutex {
     pub use parking_lot::ReentrantMutexGuard;
 
     /// Helper function used to unwrap the mutex guard
-    pub fn mutex_unwrap<'a, T>(guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+    pub fn mutex_unwrap<T>(guard: MutexGuard<'_, T>) -> MutexGuard<'_, T> {
         guard
     }
 }
@@ -276,11 +276,9 @@ impl GlobalTermPool {
         self.stack.clear();
 
         // Mark the default symbols
-        unsafe {
-            self.marked_symbols.insert(self.int_symbol.shared().copy());
-            self.marked_symbols.insert(self.list_symbol.shared().copy());
-            self.marked_symbols.insert(self.empty_list_symbol.shared().copy());
-        }
+        self.marked_symbols.insert(self.int_symbol.shared().copy());
+        self.marked_symbols.insert(self.list_symbol.shared().copy());
+        self.marked_symbols.insert(self.empty_list_symbol.shared().copy());
 
         let mut marker = Marker {
             marked_terms: &mut self.marked_terms,
@@ -288,7 +286,7 @@ impl GlobalTermPool {
             stack: &mut self.stack,
         };
 
-        let mut mark_time = SimpleTimer::new();
+        let mark_time = SimpleTimer::new();
 
         // Loop through all protection sets and mark the terms.
         for pool in self.thread_pools.iter() {
@@ -298,9 +296,7 @@ impl GlobalTermPool {
                 for (_, symbol) in pool.symbol_protection_set.iter() {
                     trace!("Marking root symbol {symbol:?}");
                     // Remove all symbols that are not protected
-                    unsafe {
-                        marker.marked_symbols.insert(symbol.copy());
-                    }
+                    marker.marked_symbols.insert(symbol.copy());
                 }
 
                 for (_, term) in pool.protection_set.iter() {
@@ -322,16 +318,14 @@ impl GlobalTermPool {
         let num_of_symbols = self.symbol_pool.len();
 
         // Delete all terms that are not marked
-        unsafe {
-            self.terms.retain(|term| {
-                if !self.marked_terms.contains(term) {
-                    trace!("Dropping term: {:?}", term);
-                    return false;
-                }
+        self.terms.retain(|term| {
+            if !self.marked_terms.contains(term) {
+                trace!("Dropping term: {:?}", term);
+                return false;
+            }
 
-                true
-            });
-        }
+            true
+        });
 
         unsafe {
             // We ensure that every removed symbol is not used anymore.
@@ -356,11 +350,9 @@ impl GlobalTermPool {
         info!("{:?}", self);
 
         // Print information from the protection sets.
-        for pool in self.thread_pools.iter() {
-            if let Some(pool) = pool {
-                let pool = pool.lock();
-                info!("{:?}", pool);
-            }
+        for pool in self.thread_pools.iter().flatten() {
+            let pool = pool.lock();
+            info!("{:?}", pool);
         }
     }
 }
@@ -426,24 +418,22 @@ pub struct Marker<'a> {
 impl Marker<'_> {
     // Marks the given term as being reachable.
     pub fn mark(&mut self, term: &ATermRef<'_>) {
-        if !self.marked_terms.contains(&term.shared()) {
+        if !self.marked_terms.contains(term.shared()) {
             self.stack.push(unsafe { term.shared().copy() });
 
             while let Some(term) = self.stack.pop() {
                 // Each term should be marked.
-                self.marked_terms.insert(unsafe { term.copy() });
+                self.marked_terms.insert(term.copy());
 
                 // Mark the function symbol.
-                self.marked_symbols.insert(unsafe { term.symbol().shared().copy() });
+                self.marked_symbols.insert(term.symbol().shared().copy());
 
                 for arg in term.arguments() {
                     // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
                     if !self.marked_terms.contains(arg.shared()) {
-                        unsafe {
-                            self.marked_terms.insert(arg.shared().copy());
-                            self.marked_symbols.insert(arg.get_head_symbol().shared().copy());
-                            self.stack.push(arg.shared().copy());
-                        }
+                        self.marked_terms.insert(arg.shared().copy());
+                        self.marked_symbols.insert(arg.get_head_symbol().shared().copy());
+                        self.stack.push(arg.shared().copy());
                     }
                 }
             }

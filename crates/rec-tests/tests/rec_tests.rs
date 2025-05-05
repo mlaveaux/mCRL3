@@ -61,14 +61,14 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
         let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
         let expected_result = to_untyped_data_expression(&expected_term, &AHashSet::new());
 
-        let result = inner.rewrite(&term);
+        let result = inner.rewrite(term);
         assert_eq!(
             result,
             expected_result.clone(),
             "The inner rewrite result doesn't match the expected result",
         );
 
-        let result = sa.rewrite(&term);
+        let result = sa.rewrite(term);
         assert_eq!(
             result, expected_result,
             "The sabre rewrite result doesn't match the expected result"
