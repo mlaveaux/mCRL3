@@ -33,11 +33,11 @@ impl<T: From<ATerm>> ATermList<T> {
 
 impl<T> ATermList<T> {
     /// Constructs a new list from an iterator that is consumed.
-    pub fn from_iter(iter: impl IntoIterator<Item = T>) -> Self 
+    pub fn from_iter(iter: impl DoubleEndedIterator<Item = T>) -> Self 
         where T: Into<ATerm>  
     {
         let mut list = Self::empty();
-        for item in iter {
+        for item in iter.rev() {
             list = list.cons(item);
         }
         list
@@ -48,7 +48,7 @@ impl<T> ATermList<T> {
         where T: Into<ATerm> 
     {
         ATermList {
-            term: THREAD_TERM_POOL.with_borrow(|tp| ATerm::with_args(tp.list_symbol(), &[item.into()])),
+            term: THREAD_TERM_POOL.with_borrow(|tp| ATerm::with_args(tp.list_symbol(), &[item.into().copy(), self.term.copy()])),
             _marker: PhantomData,
         }
     }
@@ -108,7 +108,7 @@ impl<T: From<ATerm>> Iterator for ATermListIter<T> {
 
 impl<T> From<ATerm> for ATermList<T> {
     fn from(value: ATerm) -> Self {
-        debug_assert!(is_list_term(&value), "Can only convert a aterm_list");
+        debug_assert!(is_list_term(&value) || is_empty_list_term(&value), "Can only convert a aterm_list");
         ATermList::<T> {
             term: value,
             _marker: PhantomData,
@@ -118,7 +118,7 @@ impl<T> From<ATerm> for ATermList<T> {
 
 impl<'a, T> From<ATermRef<'a>> for ATermList<T> {
     fn from(value: ATermRef<'a>) -> Self {
-        debug_assert!(is_list_term(&value), "Can only convert a aterm_list");
+        debug_assert!(is_list_term(&value) || is_empty_list_term(&value), "Can only convert a aterm_list");
         ATermList::<T> {
             term: value.protect(),
             _marker: PhantomData,
@@ -156,7 +156,7 @@ mod tests {
         use super::*;
         use crate::ATermInt;
 
-        let list = ATermList::from_iter(vec![ATermInt::new(1), ATermInt::new(2), ATermInt::new(3)]);
+        let list = ATermList::from_iter(vec![ATermInt::new(1), ATermInt::new(2), ATermInt::new(3)].into_iter());
         assert_eq!(list.head().value(), 1);
         assert_eq!(list.tail().head().value(), 2);
         assert_eq!(list.tail().tail().head().value(), 3);
