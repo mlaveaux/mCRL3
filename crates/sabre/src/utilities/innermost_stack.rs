@@ -65,7 +65,7 @@ impl InnermostStack {
             first = false;
         }
         trace!(
-            "\t applied stack size: {}, substitution: {}, stack: [{}]",
+            "\t applied stack size: {}, substitution: {{{}}}, stack: [{}]",
             rhs_stack.stack_size,
             rhs_stack.variables.iter().format_with(", ", |element, f| {
                 f(&format_args!("{} -> {}", element.0, element.1))

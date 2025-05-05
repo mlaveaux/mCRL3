@@ -119,7 +119,16 @@ impl ThreadTermPool {
             .protect(term.shared().copy());
 
         // Return the protected term
-        ATerm::from_index(term.shared(), root)
+        let result = ATerm::from_index(term.shared(), root);
+        
+        trace!(
+            "Protected term {:?}, root {}, protection set {}",
+            term,
+            root,
+            self.index()
+        );
+
+        result
     }
 
     /// Protects a term from garbage collection after it was potentially inserted
@@ -143,7 +152,16 @@ impl ThreadTermPool {
         }
 
         // Return the protected terms
-        ATerm::from_index(term.shared(), root)
+        let result = ATerm::from_index(term.shared(), root);
+        
+        trace!(
+            "Protected term {:?}, root {}, protection set {}",
+            result,
+            root,
+            self.index()
+        );
+
+        result
     }
 
     /// Unprotects a term from this thread's protection set.

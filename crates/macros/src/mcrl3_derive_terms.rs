@@ -123,7 +123,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            #[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+                            #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref<'a> {
                                 pub(crate) term: ATermRef<'a>
                             }

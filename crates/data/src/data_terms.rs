@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 
+use mcrl3_aterm::is_int_term;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::SymbolRef;
@@ -62,7 +63,7 @@ impl DataSymbols {
     }
 
     pub fn is_data_machine_number<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
-        term.is_int()
+        is_int_term(term)
     }
 
     pub fn is_data_where_clause<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
