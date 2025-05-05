@@ -36,9 +36,9 @@ pub struct ThreadTermPool {
     garbage_collection_counter: Cell<usize>,
 
     /// Copy of the default terms since thread local access is cheaper.
-    int_symbol: Symbol,
-    empty_list_symbol: Symbol,
-    list_symbol: Symbol,
+    int_symbol: SymbolRef<'static>,
+    empty_list_symbol: SymbolRef<'static>,
+    list_symbol: SymbolRef<'static>,
 }
 
 impl ThreadTermPool {
@@ -46,22 +46,16 @@ impl ThreadTermPool {
     fn new() -> Self {
         // Register protection sets with global pool
         let tp = GLOBAL_TERM_POOL.lock();
-        let pool = (*tp).borrow_mut();
+        let mut pool = (*tp).borrow_mut();
         let protection_set = pool.register_thread_term_pool();
-
-        let protection = protection_set.lock();
         
-        let int_symbol = pool.create_symbol("Int", 0, |index| protection.symbol_protection_set.protect(&unsafe { SymbolRef::from_index(&index) }));
-        let list_symbol = pool.create_symbol("List", 2, |index| unsafe { SymbolRef::from_index(&index) });
-        let empty_list_symbol = pool.create_symbol("[]", 0, |index| unsafe { SymbolRef::from_index(&index) });
-
         // Arbitrary value to trigger garbage collection
         Self {
             protection_set,
             garbage_collection_counter: Cell::new(if AGRESSIVE_GC { 1 } else { 1000 }),
-            int_symbol,
-            empty_list_symbol,
-            list_symbol,
+            int_symbol: pool.get_int_symbol().copy(),
+            empty_list_symbol: pool.get_empty_list_symbol().copy(),
+            list_symbol: pool.get_list_symbol().copy(),
         }
     }
 
@@ -219,21 +213,20 @@ impl ThreadTermPool {
             .unprotect(symbol.root());
     }
     
-    /// Check if the symbol is the default ATermInt symbol
-    pub fn is_int_symbol<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> bool {
-        *self.int_symbol == symbol.copy()
+    /// Returns the symbol for ATermInt
+    pub fn int_symbol(&self) -> &SymbolRef<'_> {
+        &self.int_symbol
     }
 
-    /// Check if the symbol is the default ATermList symbol
-    pub fn is_list<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> bool {
-        *self.list_symbol == symbol.copy()
+    /// Returns the symbol for ATermList
+    pub fn list_symbol(&self) -> &SymbolRef<'_> {
+        &self.list_symbol
     }
 
-    /// Check if the symbol is the default "empty ATermList symbol
-    pub fn is_empty_list<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> bool {
-        *self.empty_list_symbol == symbol.copy()
+    /// Returns the symbol for the empty ATermInt
+    pub fn empty_list_symbol(&self) -> &SymbolRef<'_> {
+        &self.empty_list_symbol
     }
-
 
     /// Returns the index of the protection set.
     fn index(&self) -> usize {

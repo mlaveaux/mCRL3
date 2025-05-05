@@ -336,6 +336,21 @@ impl GlobalTermPool {
             info!("{:?}", pool);
         }
     }
+
+    /// Returns integer function symbol.
+    pub(crate) fn get_int_symbol(&self) -> &SymbolRef<'static> {
+        &self.int_symbol
+    }
+
+    /// Returns integer function symbol.
+    pub(crate) fn get_list_symbol(&self) -> &SymbolRef<'static> {
+        &self.list_symbol
+    }
+
+    /// Returns integer function symbol.
+    pub(crate) fn get_empty_list_symbol(&self) -> &SymbolRef<'static> {
+        &self.empty_list_symbol
+    }
 }
 
 impl fmt::Debug for GlobalTermPool {

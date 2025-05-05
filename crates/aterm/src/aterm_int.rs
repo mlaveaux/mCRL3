@@ -23,7 +23,7 @@ use crate::Transmutable;
 /// Returns true if the term is an ATermInt term.
 pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| {
-        tp.is_int_symbol(&t.get_head_symbol())
+        *tp.int_symbol() == t.get_head_symbol()
     })
 }
 

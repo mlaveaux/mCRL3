@@ -13,7 +13,6 @@ use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
 
-use crate::is_int_term;
 use crate::ATermIntRef;
 use crate::Markable;
 use crate::Marker;
@@ -21,6 +20,7 @@ use crate::SharedTerm;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
+use crate::is_int_term;
 
 pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection
@@ -88,7 +88,7 @@ impl ATermRef<'_> {
     }
 }
 
-impl<'a> Term<'a, '_> for ATermRef<'a> {
+impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
     fn protect(&self) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect(&self.copy()))
     }
@@ -111,8 +111,8 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
         unsafe { ATermRef::from_index(self.shared()) }
     }
 
-    fn get_head_symbol(&self) -> SymbolRef<'a> {
-        unsafe { std::mem::transmute(self.shared().symbol().copy()) }
+    fn get_head_symbol(&'b self) -> SymbolRef<'a> {
+        unsafe { std::mem::transmute::<SymbolRef<'b>, SymbolRef<'a>>(self.shared().symbol().copy()) }
     }
 
     fn iter(&self) -> TermIterator<'a> {
