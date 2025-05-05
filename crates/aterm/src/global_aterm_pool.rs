@@ -53,6 +53,7 @@ use crate::SymbolIndex;
 use crate::SymbolPool;
 use crate::SymbolRef;
 use crate::Term;
+use crate::THREAD_TERM_POOL;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
@@ -439,10 +440,24 @@ impl Marker<'_> {
 }
 
 /// The underlying type of terms that are actually shared.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
     arguments: Vec<ATermRef<'static>>,
+}
+
+impl fmt::Debug for SharedTerm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        THREAD_TERM_POOL.with_borrow(|tp| {
+            // This is not very nice, but we cannot print the argument of an integer term.
+            if *tp.int_symbol() == self.symbol {
+                write!(f, "Int({})", self.arguments[0].shared().address() - 1)
+            }
+            else {
+                write!(f, "SharedTerm {{ symbol: {:?}, arguments: {:?} }}", self.symbol, self.arguments)
+            }
+        })
+    }
 }
 
 impl Clone for SharedTerm {
