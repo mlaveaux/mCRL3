@@ -304,9 +304,9 @@ impl GlobalTermPool {
                 }
 
                 for (_, term) in pool.protection_set.iter() {
-                    //trace!("Marking root term {term:?}");
+                    trace!("Marking root term {term:?}");
                     unsafe {
-                        //ATermRef::from_index(term).mark(&mut marker);
+                        ATermRef::from_index(term).mark(&mut marker);
                     }
                 }
 
@@ -315,7 +315,6 @@ impl GlobalTermPool {
                 }
             }
         }
-        return;
 
         let collect_time = SimpleTimer::new();
 
@@ -323,7 +322,7 @@ impl GlobalTermPool {
         let num_of_symbols = self.symbol_pool.len();
 
         // Delete all terms that are not marked
-        /*unsafe {
+        unsafe {
             self.terms.retain(|term| {
                 if !self.marked_terms.contains(term) {
                     trace!("Dropping term: {:?}", term);
@@ -344,7 +343,7 @@ impl GlobalTermPool {
 
                 true
             });
-        }*/
+        }
 
         info!(
             "Garbage collection: marking took {}ms, collection took {}ms, {} terms and {} symbols removed",

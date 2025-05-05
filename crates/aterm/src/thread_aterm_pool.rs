@@ -107,7 +107,7 @@ impl ThreadTermPool {
         // Protect the term by adding its index to the protection set
         let root = mutex_unwrap(self.protection_set.lock())
             .protection_set
-            .protect(unsafe { term.shared().copy() });
+            .protect(term.shared().copy());
 
         // Return the protected term
         ATerm::from_index(term.shared(), root)
@@ -118,7 +118,7 @@ impl ThreadTermPool {
         // Protect the term by adding its index to the protection set
         let root = mutex_unwrap(self.protection_set.lock())
             .protection_set
-            .protect(unsafe { term.shared().copy() });
+            .protect(term.shared().copy());
 
         // If the term was newly inserted, decrease the garbage collection counter and trigger garbage collection if necessary
         if inserted {

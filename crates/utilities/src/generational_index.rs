@@ -216,8 +216,12 @@ mod tests {
         let idx1 = counter.create_index(42usize);
         let idx2 = counter.create_index(42usize);
         let idx4 = counter.create_index(43usize);
+
+        let idx3 = counter.recall_index(42usize);
         
         assert_ne!(idx1, idx4);
+        assert_eq!(idx2, idx3);
+
         // This panics since idx1 and idx2 are from different generations
         assert_eq!(idx1, idx2);
     }

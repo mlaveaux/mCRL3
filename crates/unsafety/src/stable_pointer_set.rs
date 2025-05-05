@@ -1,9 +1,10 @@
 use hashbrown::Equivalent;
-use std::borrow::Borrow;
+use hashbrown::HashSet;
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::BuildHasher;
 use std::hash::Hash;
+use std::hash::Hasher;
 use std::num::NonZero;
 use std::ops::Deref;
 use std::ptr::NonNull;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 ///
 /// Comparisons are based on the pointer's address, not the value it points to.
 #[repr(C)]
-#[derive(Clone, Hash)]
+#[derive(Clone)]
 pub struct StablePointer<T> {
     /// The raw pointer to the element.
     /// This is a NonNull pointer, which means it is guaranteed to be non-null.
@@ -29,6 +30,22 @@ pub struct StablePointer<T> {
 /// Check that the Option<StablePointer> is the same size as a usize for release builds.
 #[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<Option<StablePointer<usize>>>() == std::mem::size_of::<usize>());
+
+impl<T> StablePointer<T> {
+
+    /// Returns true if this is the last reference to the pointer.
+    fn is_last_reference(&self) -> bool {
+        #[cfg(debug_assertions)]
+        {
+            // There is a reference in the table, and the one that we now removing.
+            Arc::strong_count(&self.reference_counter) == 2
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            true
+        }
+    }
+}
 
 impl<T> PartialEq for StablePointer<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -53,6 +70,13 @@ impl<T> PartialOrd for StablePointer<T> {
     }
 }
 
+impl <T> Hash for StablePointer<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // SAFETY: This is safe because we are hashing pointers, which is a valid operation.
+        self.address().hash(state);
+    }    
+}
+
 unsafe impl<T> Send for StablePointer<T> {}
 unsafe impl<T> Sync for StablePointer<T> {}
 
@@ -66,7 +90,7 @@ impl<T> StablePointer<T> {
     ///
     /// # Safety
     /// The caller must ensure the pointer points to a valid T that outlives the returned StablePointer.
-    pub unsafe fn copy(&self) -> Self {
+    pub fn copy(&self) -> Self {
         Self {
             ptr: self.ptr,
             #[cfg(debug_assertions)]
@@ -74,15 +98,15 @@ impl<T> StablePointer<T> {
         }
     }
 
-    /// Creates a new StablePointer from a raw pointer.
-    ///
-    /// # Safety
-    /// The caller must ensure the pointer points to a valid T that outlives this StablePointer.
-    fn new(ptr: NonNull<T>) -> Self {
+    /// Creates a new StablePointer from a boxed element.
+    fn from_entry(entry: &Entry<T>) -> Self {
+        // SAFETY: The pointer is valid as long as the boxed element is valid.
+        let ptr = unsafe { NonNull::new_unchecked(entry.value.as_ref() as *const T as *mut T) };
+
         Self {
             ptr,
             #[cfg(debug_assertions)]
-            reference_counter: Arc::new(()),
+            reference_counter: Arc::clone(&entry.reference_counter),
         }
     }
 
@@ -124,8 +148,7 @@ where
     T: Hash + Eq,
     S: BuildHasher,
 {
-    index: hashbrown::HashSet<StablePointer<T>, S>,
-    storage: Vec<Box<T>>,
+    index: HashSet<Entry<T>, S>,
 }
 
 impl<T> StablePointerSet<T, RandomState>
@@ -136,7 +159,6 @@ where
     pub fn new() -> Self {
         Self {
             index: hashbrown::HashSet::default(),
-            storage: Vec::new(),
         }
     }
 
@@ -144,7 +166,6 @@ where
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             index: hashbrown::HashSet::with_capacity_and_hasher(capacity, RandomState::new()),
-            storage: Vec::with_capacity(capacity),
         }
     }
 }
@@ -157,26 +178,19 @@ where
     /// Creates an empty StablePointerSet with the specified hasher.
     pub fn with_hasher(hasher: S) -> Self {
         Self {
-            index: hashbrown::HashSet::with_hasher(hasher),
-            storage: Vec::new(),
+            index: HashSet::with_hasher(hasher),
         }
     }
 
     /// Creates an empty StablePointerSet with the specified capacity and hasher.
     pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
         Self {
-            index: hashbrown::HashSet::with_capacity_and_hasher(capacity, hasher),
-            storage: Vec::with_capacity(capacity),
+            index: HashSet::with_capacity_and_hasher(capacity, hasher),
         }
     }
 
     /// Returns the number of elements in the set.
     pub fn len(&self) -> usize {
-        debug_assert_eq!(
-            self.index.len(),
-            self.storage.len(),
-            "Index and storage sizes must match"
-        );
         self.index.len()
     }
 
@@ -207,12 +221,11 @@ where
         }
 
         // Insert new value
-        let boxed = Box::new(value);
-        let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(boxed.as_ref() as *const T as *mut T)) };
+        let boxed = Entry::new(value);
+        let ptr = StablePointer::from_entry(&boxed);
 
         // First add to storage, then to index
-        self.storage.push(boxed);
-        let inserted = self.index.insert(unsafe { ptr.copy() });
+        let inserted = self.index.insert(boxed);
 
         debug_assert!(inserted, "Value should not already exist in the index");
 
@@ -230,7 +243,7 @@ where
         T: From<&'a Q>,
     {
         // Check if we already have this value
-        let raw_ptr = self.get_raw_ptr_equiv(value);
+        let raw_ptr = self.get(value);
 
         if let Some(ptr) = raw_ptr {
             // We already have this value, return pointer to existing element
@@ -241,12 +254,11 @@ where
         let value_to_insert = T::from(value);
 
         // Insert new value
-        let boxed = Box::new(value_to_insert);
-        let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(boxed.as_ref() as *const T as *mut T)) };
+        let boxed = Entry::new(value_to_insert);
+        let ptr = StablePointer::from_entry(&boxed);
 
         // First add to storage, then to index
-        self.storage.push(boxed);
-        let inserted = self.index.insert(unsafe { ptr.copy() });
+        let inserted = self.index.insert(boxed);
 
         debug_assert!(inserted, "Value should not already exist in the index");
 
@@ -254,10 +266,10 @@ where
     }
 
     /// Returns `true` if the set contains a value.
-    pub fn contains<Q: ?Sized>(&self, value: &Q) -> bool
+    pub fn contains<Q>(&self, value: &Q) -> bool
     where
-        T: Borrow<Q>,
-        Q: Hash + Eq,
+        T: Eq + Hash,
+        Q: ?Sized + Hash + Equivalent<T>,
     {
         self.get(value).is_some()
     }
@@ -266,62 +278,32 @@ where
     ///
     /// Searches for a value equal to the provided reference and returns a pointer to the stored element.
     /// The returned pointer remains valid until the element is removed from the set.
-    pub fn get<Q: ?Sized>(&self, value: &Q) -> Option<StablePointer<T>>
+    pub fn get<Q>(&self, value: &Q) -> Option<StablePointer<T>>
     where
-        T: Borrow<Q>,
-        Q: Hash + Eq,
+        T: Eq + Hash,
+        Q: ?Sized + Hash + Equivalent<T>,
     {
-        for ptr in &self.index {
-            if (**ptr).borrow() == value {
-                return Some(unsafe { ptr.copy() });
-            }
-        }
-        None
+        // Find the boxed element that contains an equivalent value
+        let boxed = self.index.get(&LookUp(value))?;
+
+        // SAFETY: The pointer is valid as long as the set is valid.
+        let ptr = StablePointer::from_entry(boxed);
+        Some(ptr)
     }
 
     /// Returns an iterator over the elements of the set.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.storage.iter().map(|boxed| boxed.as_ref())
+        self.index.iter().map(|boxed| boxed.value.as_ref())
     }
 
     /// Removes an element from the set using its stable pointer. This is very inefficient and requires O(n) time.
     ///
-    /// Returns the removed element if it was in the set.
-    pub unsafe fn remove(&mut self, pointer: StablePointer<T>) -> Option<T> {
-        // At this point, we remove a stable pointer that has no other references.
-
-        // First check if the pointer is in our index
-        if !self.index.remove(&pointer) {
-            return None;
-        }
-
-        // Find the element in storage
-        let mut index_to_remove = None;
-        for (i, boxed) in self.storage.iter().enumerate() {
-            if std::ptr::eq(boxed.as_ref() as *const T, pointer.ptr.as_ptr()) {
-                index_to_remove = Some(i);
-                break;
-            }
-        }
-
-        // If found, remove it from storage and return the value
-        if let Some(idx) = index_to_remove {
-            // Remove the box and convert it to the inner value
-            let boxed = self.storage.swap_remove(idx);
-            debug_assert_eq!(
-                self.index.len(),
-                self.storage.len(),
-                "Index and storage sizes must match after removal"
-            );
-            Some(*boxed)
-        } else {
-            // This should never happen if our index and storage are in sync
-            debug_assert!(
-                false,
-                "Pointer found in index but not in storage - internal state corruption"
-            );
-            None
-        }
+    /// Returns true if the element was found and removed.
+    pub fn remove(&mut self, pointer: StablePointer<T>) -> bool {
+        debug_assert!(pointer.is_last_reference(), "Pointer must be the last reference to the element");
+        // SAFETY: This is the last reference to the element, so it is safe to remove it.
+        let t = pointer.deref();
+        self.index.remove(&LookUp(t))
     }
 
     /// Retains only the elements specified by the predicate, modifying the set in-place.
@@ -331,52 +313,33 @@ where
     ///
     /// # Safety
     ///
-    /// This is unsafe because:
-    /// - It invalidates any StablePointers to removed elements
-    pub unsafe fn retain<F>(&mut self, mut predicate: F)
+    /// It invalidates any StablePointers to removed elements
+    pub fn retain<F>(&mut self, mut predicate: F)
     where
         F: FnMut(&StablePointer<T>) -> bool,
     {
         // First pass: determine what to keep/remove without modifying the collection
-        self.storage.retain(|element| {
-            let ptr = unsafe { StablePointer::new(NonNull::new_unchecked(element.as_ref() as *const T as *mut T)) };
+        self.index.retain(|element| {
+            let ptr = StablePointer::from_entry(element);
 
             if !predicate(&ptr) {
-                debug_assert!(Arc::strong_count(&ptr.reference_counter) == 1, "No other references should exist when removed");
-                self.index.remove(&ptr);
+                #[cfg(debug_assertions)]
+                debug_assert_eq!(Arc::strong_count(&element.reference_counter), 2, "No other references should exist when removed");
                 return false;
             }
 
             true
         });
-
-        debug_assert_eq!(
-            self.index.len(),
-            self.storage.len(),
-            "Index and storage sizes must match after retention"
-        );
     }
 
     /// Clears the set, removing all values and invalidating all pointers.
     ///
     /// # Safety
     /// This is unsafe because it invalidates all pointers to the elements in the set.
-    pub unsafe fn clear(&mut self) {
-        self.index.clear();
-        self.storage.clear();
-    }
+    pub fn clear(&mut self) {
+        debug_assert!(self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1), "All pointers must be the last reference to the element");
 
-    /// Returns a stable pointer to the value in the set, if any, that is equivalent to the given value.
-    fn get_raw_ptr_equiv<Q>(&self, equiv: &Q) -> Option<StablePointer<T>>
-    where
-        Q: Equivalent<T>,
-    {
-        for ptr in &self.index {
-            if equiv.equivalent(&**ptr) {
-                return Some(unsafe { ptr.copy() });
-            }
-        }
-        None
+        self.index.clear();
     }
 }
 
@@ -386,8 +349,62 @@ where
     S: BuildHasher,
 {
     fn drop(&mut self) {
-        // SAFETY: Removing all elements from the set before dropping ensures that no dangling pointers remain.
-        assert!(self.is_empty(), "StablePointerSet must be empty before dropping!");
+        debug_assert!(self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1), "All pointers must be the last reference to the element");
+    }
+}
+
+/// A helper struct to store the boxed element in the set.
+/// 
+/// Optionally stores a reference counter for debugging purposes in debug builds.
+struct Entry<T> {
+    value: Box<T>,
+
+    #[cfg(debug_assertions)]
+    reference_counter: Arc<()>,
+}
+
+impl<T> Entry<T> {
+    fn new(boxed: T) -> Self {
+        Self {
+            value: Box::new(boxed),
+            
+            #[cfg(debug_assertions)]
+            reference_counter: Arc::new(()),
+        }
+    }
+}
+
+impl<T> Deref for Entry<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.value
+    }
+}
+
+impl<T: PartialEq> PartialEq for Entry<T> {
+    fn eq(&self, other: &Self) -> bool {
+        *self.value == *other.value
+    }
+}
+
+impl<T: Hash> Hash for Entry<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl<T: Eq> Eq for Entry<T> {}
+
+/// A helper struct to look up elements in the set using a reference.
+#[derive(Hash, PartialEq, Eq)]
+struct LookUp<'a, T: ?Sized>(&'a T);
+
+impl<'a, T, Q: ?Sized> Equivalent<Entry<T>> for LookUp<'a, Q>
+    where Q: Equivalent<T>
+{
+    fn equivalent(&self, other: &Entry<T>) -> bool {
+        self.0.equivalent(other.value.as_ref())
     }
 }
 
@@ -416,9 +433,6 @@ mod tests {
 
         // Verify that we have only one element
         assert_eq!(set.len(), 1);
-        unsafe {
-            set.clear();
-        }
     }
 
     #[test]
@@ -430,9 +444,6 @@ mod tests {
         assert!(set.contains(&42));
         assert!(set.contains(&100));
         assert!(!set.contains(&200));
-        unsafe {
-            set.clear();
-        }
     }
 
     #[test]
@@ -448,9 +459,6 @@ mod tests {
         assert_eq!(*ptr, 100);
 
         assert!(set.get(&200).is_none(), "Value should not exist");
-        unsafe {
-            set.clear();
-        }
     }
 
     #[test]
@@ -464,14 +472,11 @@ mod tests {
         values.sort();
 
         assert_eq!(values, vec![1, 2, 3]);
-        unsafe {
-            set.clear();
-        }
     }
 
     #[test]
     fn test_insert_equiv_ref() {
-        #[derive(Hash, PartialEq, Eq, Debug)]
+        #[derive(PartialEq, Eq, Debug)]
         struct TestValue {
             id: i32,
             name: String,
@@ -483,6 +488,12 @@ mod tests {
                     id: *id,
                     name: format!("Value-{}", id),
                 }
+            }
+        }
+
+        impl Hash for TestValue {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                self.id.hash(state);
             }
         }
 
@@ -513,9 +524,6 @@ mod tests {
 
         // Ensure we have exactly two elements
         assert_eq!(set.len(), 2);
-        unsafe {
-            set.clear();
-        }
     }
 
     #[test]
@@ -529,9 +537,6 @@ mod tests {
 
         // Test methods on the dereferenced value
         assert_eq!((*ptr).checked_add(10), Some(52));
-        unsafe {
-            set.clear();
-        }
     }
 
     #[test]
@@ -544,26 +549,12 @@ mod tests {
         assert_eq!(set.len(), 2);
 
         // Remove one value
-        unsafe {
-            let removed = set.remove(ptr1.copy());
-            assert_eq!(removed, Some(42));
-            assert_eq!(set.len(), 1);
+        assert!(set.remove(ptr1));
+        assert_eq!(set.len(), 1);
 
-            // The pointer is now invalid, using it would be unsafe
-
-            // Try to remove same pointer again - should fail
-            let removed_again = set.remove(ptr1);
-            assert_eq!(removed_again, None);
-
-            // Remove other value
-            let removed2 = set.remove(ptr2);
-            assert_eq!(removed2, Some(100));
-            assert_eq!(set.len(), 0);
-        }
-        
-        unsafe {
-            set.clear();
-        }
+        // Remove other value
+        assert!(set.remove(ptr2));
+        assert_eq!(set.len(), 0);
     }
 
     #[test]
@@ -571,17 +562,15 @@ mod tests {
         let mut set = StablePointerSet::new();
 
         // Insert values
-        let (ptr1, _) = set.insert(1);
+        set.insert(1);
         let (ptr2, _) = set.insert(2);
-        let (ptr3, _) = set.insert(3);
+        set.insert(3);
         let (ptr4, _) = set.insert(4);
         assert_eq!(set.len(), 4);
 
         // Retain only even numbers
-        unsafe {
-            set.retain(|x| **x % 2 == 0);
-        }
-
+        set.retain(|x| **x % 2 == 0);
+        
         // Verify results
         assert_eq!(set.len(), 2);
         assert!(!set.contains(&1));
@@ -590,18 +579,8 @@ mod tests {
         assert!(set.contains(&4));
 
         // Verify that removed pointers are invalid and remaining are valid
-        unsafe {
-            assert_eq!(set.remove(ptr2), Some(2));
-            assert_eq!(set.remove(ptr4), Some(4));
-
-            // These pointers are no longer valid - the remove should return None
-            assert_eq!(set.remove(ptr1), None);
-            assert_eq!(set.remove(ptr3), None);
-        }
-
-        unsafe {
-            set.clear();
-        }
+        assert!(set.remove(ptr2));
+        assert!(set.remove(ptr4));
     }
 
     #[test]
@@ -625,9 +604,5 @@ mod tests {
         assert!(set.contains(&42));
         assert!(set.contains(&100));
         assert!(!set.contains(&200));
-
-        unsafe {
-            set.clear();
-        }
     }
 }

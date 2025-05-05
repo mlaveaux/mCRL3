@@ -120,7 +120,7 @@ impl Symbol {
 
 impl Symbol {
     /// Internal constructor to create a symbol from an index and a root.
-    pub(crate) fn from_index(index: &SymbolIndex, root: ProtectionIndex) -> Symbol {
+    pub(crate) unsafe fn from_index(index: &SymbolIndex, root: ProtectionIndex) -> Symbol {
         Self {
             symbol: unsafe { SymbolRef::from_index(index) },
             root,

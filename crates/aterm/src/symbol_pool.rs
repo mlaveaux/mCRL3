@@ -64,9 +64,7 @@ impl SymbolPool {
     where
         F: FnMut(&SymbolIndex) -> bool,
     {
-        unsafe {
-            self.symbols.retain(|element| f(element));
-        }
+        self.symbols.retain(|element| f(element));
     }
 }
 
