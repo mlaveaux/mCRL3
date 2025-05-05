@@ -24,14 +24,14 @@ members = [
 [workspace.dependencies]
 ahash = "0.8"
 backtrace = "0.3"
-bitstream-io = "3.3"
+bitstream-io = "4.0"
 bitvec = "1.0"
 bumpalo = "3.17"
 clap = { version = "4.5", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 crossbeam = "0.8"
 delegate = "0.13"
-hashbrown = "0.15.2"
+hashbrown = "0.15"
 html-escape = "0.2"
 itertools = "0.14"
 libloading = "0.8"
