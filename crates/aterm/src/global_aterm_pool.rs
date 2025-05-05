@@ -64,21 +64,6 @@ pub(crate) const AGRESSIVE_GC: bool = true;
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
 
-/// Check if the symbol is the default "Int" symbol
-pub fn is_int<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
-    GLOBAL_TERM_POOL.lock().borrow().int_symbol == symbol.copy()
-}
-
-/// Check if the symbol is the default "List" symbol
-pub fn is_list<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
-    GLOBAL_TERM_POOL.lock().borrow().list_symbol == symbol.copy()
-}
-
-/// Check if the symbol is the default "[]" symbol
-pub fn is_empty_list<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> bool {
-    GLOBAL_TERM_POOL.lock().borrow().empty_list_symbol == symbol.copy()
-}
-
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
     /// Unique table of all terms with stable pointers for references
@@ -142,7 +127,7 @@ impl GlobalTermPool {
     where
         P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
     {
-        // Fill the arguments in the existing
+        // We abuse the first argument of the term to store the integer value.
         self.tmp_arguments.clear();
         unsafe {
             self.tmp_arguments
@@ -424,7 +409,8 @@ impl Marker<'_> {
                 // Mark the function symbol.
                 self.marked_symbols.insert(term.symbol().shared().copy());
 
-                for arg in term.arguments() {
+                // For some terms, such as ATermInt, we must ONLY consider the valid arguments (indicated by the arity)
+                for arg in term.arguments()[0..term.symbol().arity()].iter() {
                     // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
                     if !self.marked_terms.contains(arg.shared()) {
                         self.marked_terms.insert(arg.shared().copy());

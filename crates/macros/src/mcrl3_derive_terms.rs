@@ -116,9 +116,6 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn arguments(&'b self) -> ATermArgs<'a>;
                                         fn copy(&'b self) -> ATermRef<'a>;
                                         fn get_head_symbol(&'b self) -> SymbolRef<'a>;
-                                        fn is_list(&self) -> bool;
-                                        fn is_empty_list(&self) -> bool;
-                                        fn is_int(&self) -> bool;
                                         fn iter(&'b self) -> TermIterator<'a>;
                                         fn index(&self) -> usize;
                                         fn shared(&self) -> &ATermIndex;
@@ -126,7 +123,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+                            #[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref<'a> {
                                 pub(crate) term: ATermRef<'a>
                             }
@@ -164,9 +161,6 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                         fn arguments(&self) -> ATermArgs<'a>;
                                         fn copy(&self) -> ATermRef<'a>;
                                         fn get_head_symbol(&self) -> SymbolRef<'a>;
-                                        fn is_list(&self) -> bool;
-                                        fn is_empty_list(&self) -> bool;
-                                        fn is_int(&self) -> bool;
                                         fn iter(&self) -> TermIterator<'a>;
                                         fn index(&self) -> usize;
                                         fn shared(&self) -> &ATermIndex;

@@ -13,15 +13,14 @@ use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
 
+use crate::is_int_term;
+use crate::ATermIntRef;
 use crate::Markable;
 use crate::Marker;
 use crate::SharedTerm;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
-use crate::is_empty_list;
-use crate::is_int;
-use crate::is_list;
 
 pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection
@@ -38,15 +37,6 @@ pub trait Term<'a, 'b> {
 
     /// Returns the function of an ATermRef
     fn get_head_symbol(&'b self) -> SymbolRef<'a>;
-
-    /// Returns true iff this is an aterm_list
-    fn is_list(&self) -> bool;
-
-    /// Returns true iff this is the empty aterm_list
-    fn is_empty_list(&self) -> bool;
-
-    /// Returns true iff this is a aterm_int
-    fn is_int(&self) -> bool;
 
     /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
     fn iter(&'b self) -> TermIterator<'a>;
@@ -125,18 +115,6 @@ impl<'a> Term<'a, '_> for ATermRef<'a> {
         unsafe { std::mem::transmute(self.shared().symbol().copy()) }
     }
 
-    fn is_list(&self) -> bool {
-        is_list(&self.get_head_symbol())
-    }
-
-    fn is_empty_list(&self) -> bool {
-        is_empty_list(&self.get_head_symbol())
-    }
-
-    fn is_int(&self) -> bool {
-        is_int(&self.get_head_symbol())
-    }
-
     fn iter(&self) -> TermIterator<'a> {
         TermIterator::new(self.copy())
     }
@@ -174,6 +152,8 @@ impl fmt::Debug for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.arguments().is_empty() {
             write!(f, "{}", self.get_head_symbol().name())?;
+        } else if is_int_term(self) {
+            write!(f, "{}", Into::<ATermIntRef>::into(self.copy()))?;
         } else {
             // Format the term with its head symbol and arguments, avoiding trailing comma
             write!(f, "{:?}(", self.get_head_symbol())?;
@@ -264,9 +244,6 @@ where
             fn arguments(&self) -> ATermArgs<'a>;
             fn copy(&self) -> ATermRef<'a>;
             fn get_head_symbol(&self) -> SymbolRef<'a>;
-            fn is_list(&self) -> bool;
-            fn is_empty_list(&self) -> bool;
-            fn is_int(&self) -> bool;
             fn iter(&self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
@@ -461,18 +438,6 @@ impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b T {
 
     fn get_head_symbol(&self) -> SymbolRef<'a> {
         (*self).get_head_symbol()
-    }
-
-    fn is_list(&self) -> bool {
-        (*self).is_list()
-    }
-
-    fn is_empty_list(&self) -> bool {
-        (*self).is_empty_list()
-    }
-
-    fn is_int(&self) -> bool {
-        (*self).is_int()
     }
 
     fn iter(&self) -> TermIterator<'a> {

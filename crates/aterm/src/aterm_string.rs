@@ -66,3 +66,17 @@ mod inner {
 }
 
 pub use inner::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_string() {
+        let _ = mcrl3_utilities::test_logger();
+
+        let s = ATermString::new("test");
+        assert_eq!(s.value(), "test");
+        assert_eq!(s.to_string(), "test");
+    }
+}
