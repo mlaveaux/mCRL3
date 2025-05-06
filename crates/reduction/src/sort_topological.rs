@@ -211,7 +211,9 @@ mod tests {
         let mut rng = test_rng();
 
         let lts = random_lts(&mut rng, 10, 3, 2);
-        if let Ok(order) = sort_topological(&lts, |_, _| true, false) { assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false)) }
+        if let Ok(order) = sort_topological(&lts, |_, _| true, false) {
+            assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false))
+        }
     }
 
     #[test]

@@ -32,7 +32,6 @@ pub struct StablePointer<T> {
 const _: () = assert!(std::mem::size_of::<Option<StablePointer<usize>>>() == std::mem::size_of::<usize>());
 
 impl<T> StablePointer<T> {
-
     /// Returns true if this is the last reference to the pointer.
     fn is_last_reference(&self) -> bool {
         #[cfg(debug_assertions)]
@@ -70,11 +69,11 @@ impl<T> PartialOrd for StablePointer<T> {
     }
 }
 
-impl <T> Hash for StablePointer<T> {
+impl<T> Hash for StablePointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // SAFETY: This is safe because we are hashing pointers, which is a valid operation.
         self.address().hash(state);
-    }    
+    }
 }
 
 unsafe impl<T> Send for StablePointer<T> {}
@@ -154,7 +153,7 @@ where
 impl<T> Default for StablePointerSet<T, RandomState>
 where
     T: Hash + Eq,
- {
+{
     fn default() -> Self {
         Self::new()
     }
@@ -309,7 +308,10 @@ where
     ///
     /// Returns true if the element was found and removed.
     pub fn remove(&mut self, pointer: StablePointer<T>) -> bool {
-        debug_assert!(pointer.is_last_reference(), "Pointer must be the last reference to the element");
+        debug_assert!(
+            pointer.is_last_reference(),
+            "Pointer must be the last reference to the element"
+        );
         // SAFETY: This is the last reference to the element, so it is safe to remove it.
         let t = pointer.deref();
         self.index.remove(&LookUp(t))
@@ -333,7 +335,11 @@ where
 
             if !predicate(&ptr) {
                 #[cfg(debug_assertions)]
-                debug_assert_eq!(Arc::strong_count(&element.reference_counter), 2, "No other references should exist when removed");
+                debug_assert_eq!(
+                    Arc::strong_count(&element.reference_counter),
+                    2,
+                    "No other references should exist when removed"
+                );
                 return false;
             }
 
@@ -346,7 +352,10 @@ where
     /// # Safety
     /// This is unsafe because it invalidates all pointers to the elements in the set.
     pub fn clear(&mut self) {
-        debug_assert!(self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1), "All pointers must be the last reference to the element");
+        debug_assert!(
+            self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1),
+            "All pointers must be the last reference to the element"
+        );
 
         self.index.clear();
     }
@@ -358,12 +367,15 @@ where
     S: BuildHasher,
 {
     fn drop(&mut self) {
-        debug_assert!(self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1), "All pointers must be the last reference to the element");
+        debug_assert!(
+            self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1),
+            "All pointers must be the last reference to the element"
+        );
     }
 }
 
 /// A helper struct to store the boxed element in the set.
-/// 
+///
 /// Optionally stores a reference counter for debugging purposes in debug builds.
 struct Entry<T> {
     value: Box<T>,
@@ -376,7 +388,7 @@ impl<T> Entry<T> {
     fn new(boxed: T) -> Self {
         Self {
             value: Box::new(boxed),
-            
+
             #[cfg(debug_assertions)]
             reference_counter: Arc::new(()),
         }
@@ -410,7 +422,8 @@ impl<T: Eq> Eq for Entry<T> {}
 struct LookUp<'a, T: ?Sized>(&'a T);
 
 impl<T, Q: ?Sized> Equivalent<Entry<T>> for LookUp<'_, Q>
-    where Q: Equivalent<T>
+where
+    Q: Equivalent<T>,
 {
     fn equivalent(&self, other: &Entry<T>) -> bool {
         self.0.equivalent(other.value.as_ref())
@@ -579,7 +592,7 @@ mod tests {
 
         // Retain only even numbers
         set.retain(|x| **x % 2 == 0);
-        
+
         // Verify results
         assert_eq!(set.len(), 2);
         assert!(!set.contains(&1));

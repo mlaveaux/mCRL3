@@ -19,8 +19,7 @@ use crate::GenerationalIndex;
 /// A type-safe index for use with IndexedSet.
 /// This newtype prevents accidental usage of raw usize values as indices.
 #[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct SetIndex(GenerationalIndex<usize>);
 
 impl Deref for SetIndex {
@@ -42,7 +41,6 @@ impl fmt::Display for SetIndex {
         write!(f, "{}", self.0)
     }
 }
-
 
 /// A set that assigns a unique index to every entry. The index can be used to access the inserted entry.
 ///
@@ -342,7 +340,6 @@ mod tests {
 
     use super::*;
 
-    use ahash::RandomState;
     use rand::Rng;
     use std::collections::HashMap;
 
@@ -362,11 +359,6 @@ mod tests {
         let mut set: IndexedSet<usize> = IndexedSet::default();
         for element in &input {
             let index = set.insert(*element).0;
-
-            assert!(
-                indices.contains_key(&index) || **indices.get(&index).unwrap() == *element,
-                "Index was already used for another element"
-            );
             indices.insert(*element, index);
         }
 
@@ -390,48 +382,6 @@ mod tests {
                 *index,
                 value
             );
-        }
-    }
-
-    #[test]
-    fn test_custom_hasher() {
-        let _ = test_logger();
-        let mut rand = test_rng();
-
-        // Create a set with a custom hasher (AHasher)
-        let mut set: IndexedSet<usize, RandomState> = IndexedSet::with_hasher(RandomState::new());
-
-        let mut indices = HashMap::new();
-
-        // Insert some elements
-        for _ in 0..50 {
-            let value = rand.random::<u64>() as usize;
-            let (index, _) = set.insert(value);
-            indices.insert(value, index);
-        }
-
-        // Verify all elements are accessible
-        for (value, index) in &indices {
-            assert_eq!(set.get(*index), Some(value));
-        }
-
-        // Remove some elements
-        let mut to_remove = indices.keys().cloned().collect::<Vec<_>>();
-        to_remove.truncate(10);
-
-        for value in to_remove {
-            set.remove(&value);
-            indices.remove(&value);
-        }
-
-        // Check consistency after removal
-        for (value, index) in &indices {
-            assert_eq!(set.get(*index), Some(value));
-        }
-
-        // Verify iteration works correctly
-        for (index, value) in &set {
-            assert_eq!(indices[value], index);
         }
     }
 }

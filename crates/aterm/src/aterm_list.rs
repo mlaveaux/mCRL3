@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 
 use crate::ATerm;
 use crate::ATermRef;
-use crate::Term;
 use crate::THREAD_TERM_POOL;
+use crate::Term;
 
 /// Returns true iff the term is a list term.
 pub fn is_list_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
@@ -33,8 +33,9 @@ impl<T: From<ATerm>> ATermList<T> {
 
 impl<T> ATermList<T> {
     /// Constructs a new list from an iterator that is consumed.
-    pub fn from_iter(iter: impl DoubleEndedIterator<Item = T>) -> Self 
-        where T: Into<ATerm>  
+    pub fn from_iter(iter: impl DoubleEndedIterator<Item = T>) -> Self
+    where
+        T: Into<ATerm>,
     {
         let mut list = Self::empty();
         for item in iter.rev() {
@@ -45,10 +46,12 @@ impl<T> ATermList<T> {
 
     /// Constructs a new list with the given item as the head and the current list as the tail.
     pub fn cons(&self, item: T) -> Self
-        where T: Into<ATerm> 
+    where
+        T: Into<ATerm>,
     {
         ATermList {
-            term: THREAD_TERM_POOL.with_borrow(|tp| ATerm::with_args(tp.list_symbol(), &[item.into().copy(), self.term.copy()])),
+            term: THREAD_TERM_POOL
+                .with_borrow(|tp| ATerm::with_args(tp.list_symbol(), &[item.into().copy(), self.term.copy()])),
             _marker: PhantomData,
         }
     }
@@ -108,7 +111,10 @@ impl<T: From<ATerm>> Iterator for ATermListIter<T> {
 
 impl<T> From<ATerm> for ATermList<T> {
     fn from(value: ATerm) -> Self {
-        debug_assert!(is_list_term(&value) || is_empty_list_term(&value), "Can only convert a aterm_list");
+        debug_assert!(
+            is_list_term(&value) || is_empty_list_term(&value),
+            "Can only convert a aterm_list"
+        );
         ATermList::<T> {
             term: value,
             _marker: PhantomData,
@@ -118,7 +124,10 @@ impl<T> From<ATerm> for ATermList<T> {
 
 impl<'a, T> From<ATermRef<'a>> for ATermList<T> {
     fn from(value: ATermRef<'a>) -> Self {
-        debug_assert!(is_list_term(&value) || is_empty_list_term(&value), "Can only convert a aterm_list");
+        debug_assert!(
+            is_list_term(&value) || is_empty_list_term(&value),
+            "Can only convert a aterm_list"
+        );
         ATermList::<T> {
             term: value.protect(),
             _marker: PhantomData,

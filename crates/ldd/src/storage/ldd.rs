@@ -10,8 +10,8 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use mcrl3_utilities::ProtectionIndex;
-use mcrl3_utilities::SetIndex;
 use mcrl3_utilities::ProtectionSet;
+use mcrl3_utilities::SetIndex;
 
 /// An alias for the ldd index type.
 pub type LddIndex = SetIndex;

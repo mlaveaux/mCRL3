@@ -1,9 +1,11 @@
 use core::panic;
-use std::ops::{Deref, Index};
-use std::hash::Hash;
 use std::fmt;
+use std::hash::Hash;
+use std::ops::Deref;
+use std::ops::Index;
 
-use crate::{GenerationCounter, GenerationalIndex};
+use crate::GenerationCounter;
+use crate::GenerationalIndex;
 
 /// A type-safe index for the ProtectionSet to prevent accidental use of wrong indices
 #[repr(transparent)]
@@ -20,7 +22,7 @@ impl Deref for ProtectionIndex {
 
 impl fmt::Debug for ProtectionIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Index({})", self.0)
+        write!(f, "ProtectionIndex({:?})", self.0)
     }
 }
 
@@ -101,7 +103,7 @@ impl<T> ProtectionSet<T> {
         self.size += 1;
 
         let index = match self.free {
-            Some(first) => {                
+            Some(first) => {
                 match &self.roots[first] {
                     Entry::Free(next) => {
                         if first == *next {
@@ -124,11 +126,13 @@ impl<T> ProtectionSet<T> {
                 // If free list is empty insert new entry into roots.
                 self.roots.push(Entry::Filled(object));
                 let index = self.roots.len() - 1;
-                
+
                 // Postcondition: verify the object was correctly added
-                debug_assert!(matches!(self.roots[index], Entry::Filled(_)), 
-                              "Failed to add object to protection set");
-                              
+                debug_assert!(
+                    matches!(self.roots[index], Entry::Filled(_)),
+                    "Failed to add object to protection set"
+                );
+
                 index
             }
         };
@@ -143,9 +147,10 @@ impl<T> ProtectionSet<T> {
 
         debug_assert!(
             matches!(self.roots[index], Entry::Filled(_)),
-            "Index {} is not valid - it does not contain a filled entry", index
+            "Index {} is does not point to a filled entry",
+            index
         );
-        
+
         self.size -= 1;
 
         match self.free {
@@ -158,17 +163,19 @@ impl<T> ProtectionSet<T> {
         };
 
         self.free = Some(index);
-        
+
         // Postcondition: verify the object was correctly removed from protection
-        debug_assert!(matches!(self.roots[index], Entry::Free(_)), 
-                      "Failed to unprotect object");
+        debug_assert!(
+            matches!(self.roots[index], Entry::Free(_)),
+            "Failed to unprotect object"
+        );
     }
 }
 
 impl<T> Index<ProtectionIndex> for ProtectionSet<T> {
     type Output = T;
 
-    fn index(&self, index: ProtectionIndex) -> &Self::Output {        
+    fn index(&self, index: ProtectionIndex) -> &Self::Output {
         match &self.roots[*index] {
             Entry::Filled(value) => value,
             Entry::Free(_) => {
@@ -192,7 +199,7 @@ impl<'a, T> Iterator for ProtSetIter<'a, T> {
         while self.current < self.protection_set.roots.len() {
             let idx = self.current;
             self.current += 1;
-            
+
             if let Entry::Filled(object) = &self.protection_set.roots[idx] {
                 return Some((ProtectionIndex(self.generation_counter.recall_index(idx)), object));
             }
@@ -262,28 +269,28 @@ mod tests {
         assert!(protection_set.maximum_size() >= 5000);
         assert!(!protection_set.is_empty());
     }
-        
+
     #[test]
     fn test_protection_set_basic() {
         let mut set = ProtectionSet::<String>::new();
-        
+
         // Protect some values
         let idx1 = set.protect(String::from("value1"));
         let idx2 = set.protect(String::from("value2"));
-        
+
         // Verify contains_root works
         assert!(set.contains_root(idx1));
         assert!(set.contains_root(idx2));
-        
+
         // Test indexing
         assert_eq!(set[idx1], "value1");
         assert_eq!(set[idx2], "value2");
-        
+
         // Test unprotect
         set.unprotect(idx1);
         assert!(!set.contains_root(idx1));
         assert!(set.contains_root(idx2));
-        
+
         // Re-use freed slot
         let idx3 = set.protect(String::from("value3"));
         assert_eq!(set[idx3], "value3");

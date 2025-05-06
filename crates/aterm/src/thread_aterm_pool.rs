@@ -48,7 +48,7 @@ impl ThreadTermPool {
         let tp = GLOBAL_TERM_POOL.lock();
         let mut pool = (*tp).borrow_mut();
         let protection_set = pool.register_thread_term_pool();
-        
+
         // Arbitrary value to trigger garbage collection
         Self {
             protection_set,
@@ -120,7 +120,7 @@ impl ThreadTermPool {
 
         // Return the protected term
         let result = ATerm::from_index(term.shared(), root);
-        
+
         trace!(
             "Protected term {:?}, root {}, protection set {}",
             term,
@@ -153,7 +153,7 @@ impl ThreadTermPool {
 
         // Return the protected terms
         let result = ATerm::from_index(term.shared(), root);
-        
+
         trace!(
             "Protected term {:?}, root {}, protection set {}",
             result,
@@ -230,7 +230,7 @@ impl ThreadTermPool {
             .symbol_protection_set
             .unprotect(symbol.root());
     }
-    
+
     /// Returns the symbol for ATermInt
     pub fn int_symbol(&self) -> &SymbolRef<'_> {
         &self.int_symbol

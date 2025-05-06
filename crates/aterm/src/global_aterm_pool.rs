@@ -52,15 +52,15 @@ use crate::Symbol;
 use crate::SymbolIndex;
 use crate::SymbolPool;
 use crate::SymbolRef;
-use crate::Term;
 use crate::THREAD_TERM_POOL;
+use crate::Term;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
     LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
 
 /// Enables aggressive garbage collection, which is used for testing.
-pub(crate) const AGRESSIVE_GC: bool = true;
+pub(crate) const AGRESSIVE_GC: bool = false;
 
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
@@ -120,7 +120,7 @@ impl GlobalTermPool {
 
     /// Returns the capacity of terms in the pool.
     pub fn capacity(&self) -> usize {
-        self.terms.len()
+        self.terms.capacity()
     }
 
     /// Creates a term storing a single integer value.
@@ -278,14 +278,14 @@ impl GlobalTermPool {
         for pool in self.thread_pools.iter().flatten() {
             let pool = mutex_unwrap(pool.lock());
 
-            for (_, symbol) in pool.symbol_protection_set.iter() {
-                trace!("Marking root symbol {symbol:?}");
+            for (root, symbol) in pool.symbol_protection_set.iter() {
+                trace!("Marking root {root} symbol {symbol:?}");
                 // Remove all symbols that are not protected
                 marker.marked_symbols.insert(symbol.copy());
             }
 
-            for (_, term) in pool.protection_set.iter() {
-                trace!("Marking root term {term:?}");
+            for (root, term) in pool.protection_set.iter() {
+                trace!("Marking root {root} term {term:?}");
                 unsafe {
                     ATermRef::from_index(term).mark(&mut marker);
                 }
@@ -452,9 +452,12 @@ impl fmt::Debug for SharedTerm {
             // This is not very nice, but we cannot print the argument of an integer term.
             if *tp.int_symbol() == self.symbol {
                 write!(f, "Int({})", self.arguments[0].shared().address() - 1)
-            }
-            else {
-                write!(f, "SharedTerm {{ symbol: {:?}, arguments: {:?} }}", self.symbol, self.arguments)
+            } else {
+                write!(
+                    f,
+                    "SharedTerm {{ symbol: {:?}, arguments: {:?} }}",
+                    self.symbol, self.arguments
+                )
             }
         })
     }

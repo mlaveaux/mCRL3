@@ -92,12 +92,6 @@ impl SabreCompilingRewriter {
 
 #[cfg(test)]
 mod tests {
-    
-
-    
-    
-    
-    
 
     // #[test]
     // fn test_compilation() {

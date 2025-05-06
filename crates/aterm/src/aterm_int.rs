@@ -22,9 +22,7 @@ use crate::Transmutable;
 
 /// Returns true if the term is an ATermInt term.
 pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
-    THREAD_TERM_POOL.with_borrow(|tp| {
-        *tp.int_symbol() == t.get_head_symbol()
-    })
+    THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == t.get_head_symbol())
 }
 
 #[mcrl3_derive_terms]

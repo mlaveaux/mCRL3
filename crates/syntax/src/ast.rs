@@ -41,24 +41,6 @@ pub struct IdDecl {
     pub span: Span,
 }
 
-/// Source location information.
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Span {
-    /// Start position in source
-    pub start: usize,
-    /// End position in source
-    pub end: usize,
-}
-
-impl From<pest::Span<'_>> for Span {
-    fn from(span: pest::Span) -> Self {
-        Span {
-            start: span.start(),
-            end: span.end(),
-        }
-    }
-}
-
 /// Expression representing a sort (type).
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SortExpression {
@@ -135,10 +117,15 @@ pub struct VarDecl {
     pub span: Span,
 }
 
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct EqnSpec {
+    pub variables: Vec<VarDecl>,
+    pub equations: Vec<EqnDecl>,
+}
+
 /// Equation declaration
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct EqnDecl {
-    pub vars: Vec<VarDecl>,
     pub condition: Option<DataExpr>,
     pub lhs: DataExpr,
     pub rhs: DataExpr,
@@ -194,9 +181,19 @@ pub enum DataExpr {
         body: Box<DataExpr>,
     },
     Forall {
-        variables: Vec<VarDecl>,
         body: Box<DataExpr>,
+        variables: Vec<VarDecl>,
     },
+    FunctionUpdate {
+        expr: Box<DataExpr>,
+        update: DataExprUpdate,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct DataExprUpdate {
+    pub expr: Box<DataExpr>,
+    pub update: Box<DataExpr>,
 }
 
 /// Process expression
@@ -255,6 +252,24 @@ pub struct CommAction {
     pub inputs: Vec<String>,
     pub output: String,
     pub span: Span,
+}
+
+/// Source location information.
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Span {
+    /// Start position in source
+    pub start: usize,
+    /// End position in source
+    pub end: usize,
+}
+
+impl From<pest::Span<'_>> for Span {
+    fn from(span: pest::Span) -> Self {
+        Span {
+            start: span.start(),
+            end: span.end(),
+        }
+    }
 }
 
 /// Prints location information for a span in the source.

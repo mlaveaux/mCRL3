@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 
-use mcrl3_aterm::is_int_term;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::SymbolRef;
 use mcrl3_aterm::Term;
+use mcrl3_aterm::is_int_term;
 
 thread_local! {
     pub static DATA_SYMBOLS: RefCell<DataSymbols> = RefCell::new(DataSymbols::new());
