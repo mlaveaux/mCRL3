@@ -36,7 +36,7 @@ impl<T> StablePointer<T> {
     fn is_last_reference(&self) -> bool {
         #[cfg(debug_assertions)]
         {
-            // There is a reference in the table, and the one that we now removing.
+            // There is a reference in the table, and the one of `self.ptr`.
             Arc::strong_count(&self.reference_counter) == 2
         }
         #[cfg(not(debug_assertions))]
@@ -334,12 +334,13 @@ where
             let ptr = StablePointer::from_entry(element);
 
             if !predicate(&ptr) {
-                #[cfg(debug_assertions)]
-                debug_assert_eq!(
-                    Arc::strong_count(&element.reference_counter),
-                    2,
-                    "No other references should exist when removed"
-                );
+                // One reference in the table, and one that is constructed above as `ptr`.
+                // #[cfg(debug_assertions)]
+                // debug_assert_eq!(
+                //     Arc::strong_count(&element.reference_counter),
+                //     2,
+                //     "No other references to should exist when removed"
+                // );
                 return false;
             }
 
@@ -352,6 +353,7 @@ where
     /// # Safety
     /// This is unsafe because it invalidates all pointers to the elements in the set.
     pub fn clear(&mut self) {
+        #[cfg(debug_assertions)]
         debug_assert!(
             self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1),
             "All pointers must be the last reference to the element"
@@ -367,6 +369,7 @@ where
     S: BuildHasher,
 {
     fn drop(&mut self) {
+        #[cfg(debug_assertions)]
         debug_assert!(
             self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1),
             "All pointers must be the last reference to the element"

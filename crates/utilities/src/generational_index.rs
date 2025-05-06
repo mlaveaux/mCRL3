@@ -42,16 +42,15 @@ impl<I: Copy + Into<usize>> Deref for GenerationalIndex<I> {
 }
 
 impl<I: Copy + Into<usize>> GenerationalIndex<I> {
-    /// Creates a new generational index with the specified index and generation.
-    ///
-    /// In release builds, the generation parameter is ignored.
+    /// Creates a new generational index with the specified index.
+    #[cfg(debug_assertions)]
     fn new(index: I, generation: usize) -> Self {
-        #[cfg(debug_assertions)]
-        {
-            Self { index, generation }
-        }
-
-        #[cfg(not(debug_assertions))]
+        Self { index, generation }
+    }
+    
+    /// Creates a new generational index with the specified index and generation.
+    #[cfg(not(debug_assertions))]
+    fn new(index: I) -> Self {
         Self { index }
     }
 }
@@ -102,7 +101,7 @@ impl GenerationCounter {
 
         #[cfg(not(debug_assertions))]
         {
-            GenerationalIndex::new(index, 0)
+            GenerationalIndex::new(index)
         }
     }
 
@@ -111,7 +110,14 @@ impl GenerationCounter {
     where
         I: Copy + Into<usize>,
     {
-        GenerationalIndex::new(index, self.current_generation[index.into()])
+        #[cfg(debug_assertions)]
+        {
+            GenerationalIndex::new(index, self.current_generation[index.into()])
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            GenerationalIndex::new(index)
+        }
     }
 
     /// Returns the underlying index, checks if the generation is correct.
@@ -143,12 +149,12 @@ where
             if self.generation == usize::MAX || other.generation == usize::MAX {
                 return false;
             }
-        }
 
-        debug_assert_eq!(
-            self.generation, other.generation,
-            "Comparing indices of different generations"
-        );
+            debug_assert_eq!(
+                self.generation, other.generation,
+                "Comparing indices of different generations"
+            );
+        }
 
         self.index == other.index
     }
@@ -161,6 +167,7 @@ where
     I: Copy + Into<usize> + PartialOrd + Eq,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        #[cfg(debug_assertions)]
         debug_assert_eq!(
             self.generation, other.generation,
             "Comparing indices of different generations"
@@ -175,6 +182,7 @@ where
     I: Copy + Into<usize> + Eq + Ord,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        #[cfg(debug_assertions)]
         debug_assert_eq!(
             self.generation, other.generation,
             "Comparing indices of different generations"
