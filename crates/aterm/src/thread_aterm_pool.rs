@@ -121,6 +121,7 @@ impl ThreadTermPool {
         // Return the protected term
         let result = ATerm::from_index(term.shared(), root);
 
+        #[cfg(feature = "mcrl3_debug")]
         trace!(
             "Protected term {:?}, root {}, protection set {}",
             term,
@@ -154,6 +155,7 @@ impl ThreadTermPool {
         // Return the protected terms
         let result = ATerm::from_index(term.shared(), root);
 
+        #[cfg(feature = "mcrl3_debug")]
         trace!(
             "Protected term {:?}, root {}, protection set {}",
             result,
@@ -170,6 +172,7 @@ impl ThreadTermPool {
             .protection_set
             .unprotect(term.root());
 
+        #[cfg(feature = "mcrl3_debug")]
         trace!(
             "Unprotected term {:?}, root {}, protection set {}",
             term,
@@ -183,7 +186,10 @@ impl ThreadTermPool {
         let root = mutex_unwrap(self.protection_set.lock())
             .container_protection_set
             .protect(container);
+
+        #[cfg(feature = "mcrl3_debug")]
         trace!("Protected container index {}, protection set {}", root, self.index());
+        
         root
     }
 
@@ -192,6 +198,8 @@ impl ThreadTermPool {
         mutex_unwrap(self.protection_set.lock())
             .container_protection_set
             .unprotect(root);
+
+        #[cfg(feature = "mcrl3_debug")]
         trace!("Unprotected container index {}, protection set {}", root, self.index());
     }
 
@@ -213,7 +221,7 @@ impl ThreadTermPool {
             )
         };
 
-        // Drop to avoid double borrowing.
+        #[cfg(feature = "mcrl3_debug")]
         trace!(
             "Protected symbol {}, root {}, protection set {}",
             symbol,

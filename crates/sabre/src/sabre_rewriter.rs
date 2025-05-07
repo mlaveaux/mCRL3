@@ -1,5 +1,4 @@
 use log::info;
-use log::trace;
 use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataExpression;
@@ -14,6 +13,9 @@ use crate::utilities::ConfigurationStack;
 use crate::utilities::PositionIndexed;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
+
+#[cfg(feature = "mcrl3_debug")]
+use log::trace;
 
 /// A shared trait for all the rewriters
 pub trait RewriteEngine {
@@ -82,6 +84,7 @@ impl SabreRewriter {
         'outer: loop {
             // Inner loop so that we can easily break; to the next iteration
             'skip_point: loop {
+                #[cfg(feature = "mcrl3_debug")]
                 trace!("{}", cs);
 
                 // Check if there is any configuration leaf left to explore, if not we have found a normal form
@@ -108,6 +111,7 @@ impl SabreRewriter {
                                 for (announcement, annotation) in tr.announcements() {
                                     if annotation.conditions.is_empty() && annotation.equivalence_classes.is_empty() {
                                         if annotation.is_duplicating {
+                                            #[cfg(feature = "mcrl3_debug")]
                                             trace!("Delaying duplicating rule {}", announcement.rule);
 
                                             // We do not want to apply duplicating rules straight away
@@ -131,7 +135,9 @@ impl SabreRewriter {
                                         }
                                     } else {
                                         // We delay the condition checks
+                                        #[cfg(feature = "mcrl3_debug")]
                                         trace!("Delaying condition check for rule {}", announcement.rule);
+
                                         cs.side_branch_stack.push(SideInfo {
                                             corresponding_configuration: leaf_index,
                                             info: SideInfoType::EquivalenceAndConditionCheck(announcement, annotation),
@@ -241,6 +247,7 @@ impl SabreRewriter {
             .rhs_term_stack
             .evaluate(&leaf_subterm.get_position(&announcement.position));
 
+        #[cfg(feature = "mcrl3_debug")]
         trace!(
             "rewrote {} to {} using rule {}",
             &leaf_subterm, &new_subterm, announcement.rule

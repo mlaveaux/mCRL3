@@ -1,5 +1,4 @@
 use log::info;
-use log::trace;
 
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::THREAD_TERM_POOL;
@@ -25,10 +24,14 @@ use crate::utilities::PositionIndexed;
 use crate::utilities::TermStack;
 use crate::utilities::TermStackBuilder;
 
+#[cfg(feature = "mcrl3_debug")]
+use log::trace;
+
 impl RewriteEngine for InnermostRewriter {
     fn rewrite(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
+        #[cfg(feature = "mcrl3_debug")]
         trace!("input: {}", t);
 
         let result = THREAD_TERM_POOL.with_borrow(|tp| {
@@ -89,6 +92,7 @@ impl InnermostRewriter {
         }
 
         loop {
+            #[cfg(feature = "mcrl3_debug")]
             trace!("{}", stack);
 
             let mut write_configs = stack.configs.write();
@@ -138,12 +142,13 @@ impl InnermostRewriter {
                         drop(write_configs);
 
                         match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term.copy().into()) {
-                            Some((announcement, annotation)) => {
+                            Some((_announcement, annotation)) => {
+                                #[cfg(feature = "mcrl3_debug")]
                                 trace!(
                                     "rewrite {} => {} using rule {}",
                                     term,
-                                    annotation.rhs_stack.evaluate(&term),
-                                    announcement.rule
+                                    _annotation.rhs_stack.evaluate(&term),
+                                    _announcement.rule
                                 );
 
                                 // Reacquire the write access and add the matching RHSStack.

@@ -1,6 +1,5 @@
 use std::fmt;
 
-use itertools::Itertools;
 
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::ProtectedWriteGuard;
@@ -12,6 +11,7 @@ use crate::utilities::PositionIndexed;
 use super::Config;
 use super::TermStack;
 
+use itertools::Itertools;
 use log::trace;
 
 /// This stack is used to avoid recursion and also to keep track of terms in
@@ -64,6 +64,7 @@ impl InnermostStack {
             }
             first = false;
         }
+        #[cfg(feature = "mcrl3_debug")]
         trace!(
             "\t applied stack size: {}, substitution: {{{}}}, stack: [{}]",
             rhs_stack.stack_size,

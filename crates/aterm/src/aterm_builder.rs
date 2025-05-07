@@ -129,6 +129,7 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
                 }
             }
 
+            #[cfg(feature = "mcrl3_debug")]
             trace!("{:?}", self);
         }
 
