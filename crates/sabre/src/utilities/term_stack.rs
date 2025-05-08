@@ -173,8 +173,7 @@ impl TermStack {
         );
 
         loop {
-            #[cfg(feature = "mcrl3_debug")]
-            trace!("{}", stack);
+            debug_trace!("{}", stack);
 
             let mut write_configs = stack.configs.write();
             if let Some(config) = write_configs.pop() {

@@ -23,16 +23,13 @@ use crate::utilities::InnermostStack;
 use crate::utilities::PositionIndexed;
 use crate::utilities::TermStack;
 use crate::utilities::TermStackBuilder;
-
-#[cfg(feature = "mcrl3_debug")]
-use log::trace;
+use mcrl3_utilities::debug_trace;
 
 impl RewriteEngine for InnermostRewriter {
     fn rewrite(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!("input: {}", t);
+        debug_trace!("input: {}", t);
 
         let result = THREAD_TERM_POOL.with_borrow(|tp| {
             InnermostRewriter::rewrite_aux(tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t)
@@ -92,8 +89,7 @@ impl InnermostRewriter {
         }
 
         loop {
-            #[cfg(feature = "mcrl3_debug")]
-            trace!("{}", stack);
+            debug_trace!("{}", stack);
 
             let mut write_configs = stack.configs.write();
             if let Some(config) = write_configs.pop() {
@@ -143,8 +139,7 @@ impl InnermostRewriter {
 
                         match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term.copy().into()) {
                             Some((_announcement, annotation)) => {
-                                #[cfg(feature = "mcrl3_debug")]
-                                trace!(
+                                debug_trace!(
                                     "rewrite {} => {} using rule {}",
                                     term,
                                     _annotation.rhs_stack.evaluate(&term),

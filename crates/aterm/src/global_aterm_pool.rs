@@ -9,10 +9,8 @@ use std::sync::LazyLock;
 use hashbrown::Equivalent;
 use log::info;
 use mcrl3_unsafety::StablePointerSet;
+use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::SimpleTimer;
-
-#[cfg(feature = "mcrl3_debug")]
-use log::trace;
 
 #[cfg(not(feature = "mcrl3_miri"))]
 mod mutex {
@@ -280,15 +278,13 @@ impl GlobalTermPool {
             let pool = mutex_unwrap(pool.lock());
 
             for (_root, symbol) in pool.symbol_protection_set.iter() {
-                #[cfg(feature = "mcrl3_debug")]
-                trace!("Marking root {_root} symbol {symbol:?}");
+                debug_trace!("Marking root {_root} symbol {symbol:?}");
                 // Remove all symbols that are not protected
                 marker.marked_symbols.insert(symbol.copy());
             }
 
             for (_root, term) in pool.protection_set.iter() {
-                #[cfg(feature = "mcrl3_debug")]
-                trace!("Marking root {_root} term {term:?}");
+                debug_trace!("Marking root {_root} term {term:?}");
                 unsafe {
                     ATermRef::from_index(term).mark(&mut marker);
                 }
@@ -307,8 +303,7 @@ impl GlobalTermPool {
         // Delete all terms that are not marked
         self.terms.retain(|term| {
             if !self.marked_terms.contains(term) {
-                #[cfg(feature = "mcrl3_debug")]
-                trace!("Dropping term: {:?}", term);
+                debug_trace!("Dropping term: {:?}", term);
                 return false;
             }
 
@@ -318,8 +313,7 @@ impl GlobalTermPool {
         // We ensure that every removed symbol is not used anymore.
         self.symbol_pool.retain(|symbol| {
             if !self.marked_symbols.contains(symbol) {
-                #[cfg(feature = "mcrl3_debug")]
-                trace!("Dropping symbol: {:?}", symbol);
+                debug_trace!("Dropping symbol: {:?}", symbol);
                 return false;
             }
 

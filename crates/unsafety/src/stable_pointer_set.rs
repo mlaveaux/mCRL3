@@ -8,6 +8,8 @@ use std::hash::Hasher;
 use std::num::NonZero;
 use std::ops::Deref;
 use std::ptr::NonNull;
+
+#[cfg(debug_assertions)]
 use std::sync::Arc;
 
 /// A safe wrapper around a raw pointer that allows immutable dereferencing. This remains valid as long as the `StablePointerSet` remains

@@ -4,9 +4,6 @@ version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
 
-[features]
-mcrl3_debug = []
-
 [dependencies]
 mcrl3_aterm.workspace = true
 mcrl3_data.workspace = true

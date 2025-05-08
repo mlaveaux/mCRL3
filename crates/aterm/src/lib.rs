@@ -1,10 +1,10 @@
-//! Implementation of the `ATerm` data structure.
+//! Implementation of the [ATerm] related data structure.
 //!
 //! An aterm is a first-order term of the following form:
 //!
-//! T := a | f_n(T1, ..., Tn) | u64
+//! t := c | f(t1, ..., tn) | u64
 //!
-//! where f_n is a function symbol with arity n and a unique name.
+//! where `f` is a function symbol with arity `n > 0` and a unique name, `c` is a constant and `u64` is a numerical term.
 //!
 //! Terms are stored maximally shared in the global aterm pool, meaning that T1,
 //! Tn are shared between all terms and the term is immutable. This global aterm
