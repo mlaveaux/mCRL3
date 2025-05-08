@@ -9,7 +9,7 @@ use std::rc::Rc;
 /// guard that automatically decreases the indentation when dropped.
 #[derive(Debug)]
 pub struct IndentFormatter<'a, W: Write> {
-    /// The current indentation level (number of tabs), wrapped in Rc<RefCell> for interior mutability
+    /// The current indentation level (number of tabs), wrapped in `Rc<RefCell>` for interior mutability
     level: Rc<RefCell<usize>>,
     /// The underlying writer to which indented content will be written
     writer: &'a mut W,

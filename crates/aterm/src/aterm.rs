@@ -22,6 +22,8 @@ use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
 use crate::is_int_term;
 
+/// The ATerm trait represents a first-order term in the ATerm library.
+/// It provides methods to manipulate and access the term's properties.
 pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection
     fn protect(&self) -> ATerm;
@@ -48,13 +50,10 @@ pub trait Term<'a, 'b> {
     fn shared(&self) -> &ATermIndex;
 }
 
-/// Type alias for term indices, representing a non-zero index in the term pool.
-///
-/// This type is used throughout the ATerm system to reference terms in the global
-/// term pool. Using NonZero<usize> enables niche optimization for Option<ATermIndex>.
+/// Type alias for [ATerm] indices, representing a non-zero index into the term pool.
 pub type ATermIndex = StablePointer<SharedTerm>;
 
-/// This represents a lifetime bound reference to an existing ATerm.
+/// This represents a lifetime bound reference to an existing [ATerm].
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ATermRef<'a> {
     shared: ATermIndex,

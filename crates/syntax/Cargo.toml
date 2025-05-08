@@ -9,9 +9,10 @@ edition.workspace = true
 [dependencies]
 mcrl3_utilities.workspace = true
 
-pest.workspace = true
-pest_derive.workspace = true
+log.workspace = true
 pest_consume.workspace = true
+pest_derive.workspace = true
+pest.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true

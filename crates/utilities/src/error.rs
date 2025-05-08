@@ -4,7 +4,6 @@ use core::fmt::Display;
 
 /// The MCRL3 error type. This has a blanket [`From`] impl for any type that implements Rust's [`Error`],
 /// meaning it can be used as a "catch all" error. Captures a backtrace that can be printed from this object.
-/// ```
 pub struct MCRL3Error {
     inner: Box<InnerMCRL3Error>,
 }

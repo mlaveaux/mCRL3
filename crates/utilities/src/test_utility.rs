@@ -1,12 +1,12 @@
 use rand::Rng;
 use rand::SeedableRng;
 
-/// Constructs a logger for inside tests.
+/// Constructs a logger for tests. This logger will not print anything to the console, but will instead write to a buffer.
 pub fn test_logger() -> Result<(), log::SetLoggerError> {
     env_logger::builder().is_test(true).try_init()
 }
 
-/// Constructs a random number generator for inside tests.
+/// Constructs a random number generator that should be used in random tests. Prints its seed to the console for reproducibility.
 pub fn test_rng() -> impl Rng {
     use rand::rngs::StdRng;
 

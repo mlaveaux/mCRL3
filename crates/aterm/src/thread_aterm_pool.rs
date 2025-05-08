@@ -1,4 +1,3 @@
-use log::trace;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::ProtectionIndex;
 use pest_consume::Parser;
@@ -21,6 +20,9 @@ use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::global_aterm_pool::Mutex;
 use crate::global_aterm_pool::mutex_unwrap;
+
+#[cfg(feature = "mcrl3_debug")]
+use log::trace;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.

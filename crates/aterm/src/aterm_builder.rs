@@ -9,8 +9,8 @@ use crate::Symbol;
 use crate::Term;
 use crate::ThreadTermPool;
 
-/// This can be used to construct a term from a given input of (inductive) type I,
-/// without using the system stack, i.e. recursion. See evaluate.
+/// This can be used to construct an [ATerm] from a given input of (inductive) type I
+/// without using recursion, as such avoiding system stack overflows. See [evaluate].
 #[derive(Default)]
 pub struct TermBuilder<I, C> {
     // The stack of terms

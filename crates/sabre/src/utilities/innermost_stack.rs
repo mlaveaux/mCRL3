@@ -11,7 +11,9 @@ use crate::utilities::PositionIndexed;
 use super::Config;
 use super::TermStack;
 
+#[cfg(feature = "mcrl3_debug")]
 use itertools::Itertools;
+#[cfg(feature = "mcrl3_debug")]
 use log::trace;
 
 /// This stack is used to avoid recursion and also to keep track of terms in

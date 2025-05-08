@@ -1,3 +1,5 @@
+//! TODO: We could consider introducing "annotated" terms formally where the last argument is a pointer to the annotation.
+
 use std::borrow::Borrow;
 use std::fmt;
 use std::mem::transmute;
@@ -32,7 +34,6 @@ mod inner {
     use super::*;
 
     /// This is a wrapper around the ATerm type that represents an integer.
-    /// TODO: We could consider introducing "annotated" terms formally where the last argument is a pointer to the annotation.
     #[mcrl3_term(is_int_term)]
     pub struct ATermInt {
         term: ATerm,

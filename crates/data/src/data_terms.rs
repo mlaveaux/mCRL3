@@ -33,7 +33,7 @@ impl DataSymbols {
 
             data_where_clause: ManuallyDrop::new(Symbol::new("Where", 2)),
             data_abstraction: ManuallyDrop::new(Symbol::new("Abstraction", 2)),
-            data_appl: vec![],
+            data_appl: Vec::new(),
         }
     }
 
@@ -53,9 +53,9 @@ impl DataSymbols {
         self.is_data_variable(term)
             || self.is_data_function_symbol(term)
             || self.is_data_machine_number(term)
-            || self.is_data_application(term)
             || self.is_data_abstraction(term)
             || self.is_data_where_clause(term)
+            || self.is_data_application(term)
     }
 
     pub fn is_data_function_symbol<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
@@ -75,8 +75,12 @@ impl DataSymbols {
     }
 
     /// Returns true iff the given term is a data application.
-    pub fn is_data_application<'a, 'b>(&mut self, term: &'b impl Term<'a, 'b>) -> bool {
-        term.get_head_symbol() == *self.get_data_application_symbol(term.get_head_symbol().arity())
+    pub fn is_data_application<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
+        if let Some(symbol) = self.data_appl.get(term.get_head_symbol().arity()) {
+            return term.get_head_symbol() == **symbol
+        }
+        
+        false
     }
 
     pub fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
@@ -124,5 +128,5 @@ pub fn is_data_abstraction<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
 }
 
 pub fn is_data_application<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
-    DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_application(term))
 }

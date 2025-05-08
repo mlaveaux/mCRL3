@@ -10,8 +10,8 @@ use crate::SymbolIndex;
 use crate::SymbolRef;
 
 /// Pool for maximal sharing of function symbols. Ensures that function symbols
-/// with the same name and arity point to the same `SharedSymbol` object.
-/// Returns `Symbol` that can be used to refer to the shared symbol, avoiding
+/// with the same name and arity point to the same [SharedSymbol] object.
+/// Returns [Symbol] that can be used to refer to the shared symbol, avoiding
 /// garbage collection of the underlying shared symbol.
 pub struct SymbolPool {
     /// Unique table of all function symbols
