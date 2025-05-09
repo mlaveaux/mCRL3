@@ -439,7 +439,7 @@ mod tests {
 
         let mut input = vec![];
         for _ in 0..100 {
-            input.push(rand.random::<u64>() as usize);
+            input.push(rand.random_range(0..8) as usize);
         }
 
         let mut indices: HashMap<usize, SetIndex> = HashMap::default();
