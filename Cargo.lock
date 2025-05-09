@@ -3443,7 +3443,6 @@ dependencies = [
  "mcrl3_reduction",
  "mcrl3_unsafety",
  "mcrl3_utilities",
- "tikv-jemallocator",
 ]
 
 [[package]]
@@ -3732,6 +3731,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "streaming-iterator",
  "thiserror 2.0.12",
+ "tikv-jemallocator",
 ]
 
 [[package]]
@@ -3748,7 +3748,6 @@ dependencies = [
  "mcrl3_sabre",
  "mcrl3_unsafety",
  "mcrl3_utilities",
- "tikv-jemallocator",
 ]
 
 [[package]]

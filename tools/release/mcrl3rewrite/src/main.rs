@@ -12,17 +12,6 @@ use trs_format::TrsFormatter;
 
 mod trs_format;
 
-#[cfg(feature = "mcrl3_measure-allocs")]
-#[global_allocator]
-static MEASURE_ALLOC: mcrl3_unsafety::AllocCounter = mcrl3_unsafety::AllocCounter;
-#[cfg(feature = "mcrl3_measure-allocs")]
-use log::info;
-
-#[cfg(not(target_env = "msvc"))]
-#[cfg(not(feature = "mcrl3_measure-allocs"))]
-#[global_allocator]
-static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 #[derive(clap::Parser, Debug)]
 #[command(name = "Maurice Laveaux", about = "A command line rewriting tool")]
 pub(crate) enum Cli {
@@ -77,9 +66,6 @@ fn main() -> Result<ExitCode, MCRL3Error> {
             }
         }
     }
-
-    #[cfg(feature = "mcrl3_measure-allocs")]
-    info!("Allocations: {}", MEASURE_ALLOC.number_of_allocations());
 
     Ok(ExitCode::SUCCESS)
 }

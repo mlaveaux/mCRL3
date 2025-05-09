@@ -3,6 +3,16 @@ name = "mcrl3_utilities"
 version.workspace = true
 edition.workspace = true
 
+[features]
+# Enables a counting allocator that keeps track of the number of allocations.
+mcrl3_measure-allocs = []
+
+# Requires feature for memory sanitizer builds, disables jemallocator.
+mcrl3_jemalloc = ["dep:tikv-jemallocator"]
+
+# Enables extra debug 
+mcrl3_debug = ["tikv-jemallocator/debug"]
+
 [dependencies]
 ahash.workspace = true
 backtrace.workspace = true
@@ -17,3 +27,5 @@ regex.workspace = true
 rustc-hash.workspace = true
 streaming-iterator.workspace = true
 thiserror.workspace = true
+
+tikv-jemallocator = { workspace = true, optional = true }

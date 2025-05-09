@@ -18,7 +18,7 @@ fn add_target_flag(_arguments: &mut Vec<String>) {
 }
 
 ///
-/// Run the tests with the address sanitizer enabled to detect memory issues in unsafe and C++ code.
+/// Run the tests with the address sanitizer enabled to detect memory issues in unsafe code.
 ///
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
@@ -44,7 +44,7 @@ pub fn address_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Err
 }
 
 ///
-/// Run the tests with the address sanitizer enabled to detect memory issues in unsafe and C++ code.
+/// Run the tests with the address sanitizer enabled to detect memory issues in unsafe code.
 ///
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
@@ -54,6 +54,7 @@ pub fn memory_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Erro
         "run".to_string(),
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
+        
     ];
 
     add_target_flag(&mut arguments);

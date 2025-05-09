@@ -5,12 +5,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use clap::ValueEnum;
-#[cfg(feature = "measure-allocs")]
-#[global_allocator]
-static MEASURE_ALLOC: mcrl3_unsafety::AllocCounter = mcrl3_unsafety::AllocCounter;
 
-#[cfg(feature = "measure-allocs")]
-use log::info;
 
 use mcrl3_lts::read_aut;
 use mcrl3_lts::write_aut;
@@ -23,11 +18,6 @@ use mcrl3_reduction::strong_bisim_sigref_naive;
 
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::Timing;
-
-#[cfg(not(target_env = "msvc"))]
-#[cfg(not(feature = "measure-allocs"))]
-#[global_allocator]
-static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[derive(Clone, Debug, ValueEnum)]
 enum Equivalence {
@@ -88,9 +78,6 @@ fn main() -> Result<ExitCode, MCRL3Error> {
     if cli.time {
         timing.print();
     }
-
-    #[cfg(feature = "measure-allocs")]
-    eprintln!("allocations: {}", MEASURE_ALLOC.number_of_allocations());
 
     Ok(ExitCode::SUCCESS)
 }

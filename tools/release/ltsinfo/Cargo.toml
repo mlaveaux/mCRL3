@@ -4,9 +4,6 @@ version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
 
-[features]
-measure-allocs = []
-
 [dependencies]
 mcrl3_lts.workspace = true
 mcrl3_unsafety.workspace = true
@@ -16,6 +13,3 @@ mcrl3_reduction.workspace = true
 clap.workspace = true
 env_logger.workspace = true
 log.workspace = true
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator.workspace = true
