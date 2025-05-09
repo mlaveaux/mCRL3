@@ -1,20 +1,16 @@
 use std::fmt;
 
-
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::ProtectedWriteGuard;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
+use mcrl3_utilities::debug_trace;
 
 use crate::utilities::PositionIndexed;
 
 use super::Config;
 use super::TermStack;
 
-#[cfg(feature = "mcrl3_debug")]
-use itertools::Itertools;
-#[cfg(feature = "mcrl3_debug")]
-use log::trace;
 
 /// This stack is used to avoid recursion and also to keep track of terms in
 /// normal forms by explicitly representing the rewrites of a right hand
@@ -66,8 +62,7 @@ impl InnermostStack {
             }
             first = false;
         }
-        #[cfg(feature = "mcrl3_debug")]
-        trace!(
+        debug_trace!(
             "\t applied stack size: {}, substitution: {{{}}}, stack: [{}]",
             rhs_stack.stack_size,
             rhs_stack.variables.iter().format_with(", ", |element, f| {

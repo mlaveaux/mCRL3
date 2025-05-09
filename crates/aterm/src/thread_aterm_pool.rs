@@ -1,9 +1,9 @@
-use mcrl3_utilities::MCRL3Error;
-use mcrl3_utilities::ProtectionIndex;
-use pest_consume::Parser;
+
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
+
+use pest_consume::Parser;
 
 use crate::AGRESSIVE_GC;
 use crate::GlobalTermPool;
@@ -21,8 +21,9 @@ use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::global_aterm_pool::Mutex;
 use crate::global_aterm_pool::mutex_unwrap;
 
-#[cfg(feature = "mcrl3_debug")]
-use log::trace;
+use mcrl3_utilities::debug_trace;
+use mcrl3_utilities::MCRL3Error;
+use mcrl3_utilities::ProtectionIndex;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
@@ -123,8 +124,7 @@ impl ThreadTermPool {
         // Return the protected term
         let result = ATerm::from_index(term.shared(), root);
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!(
+        debug_trace!(
             "Protected term {:?}, root {}, protection set {}",
             term,
             root,
@@ -157,8 +157,7 @@ impl ThreadTermPool {
         // Return the protected terms
         let result = ATerm::from_index(term.shared(), root);
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!(
+        debug_trace!(
             "Protected term {:?}, root {}, protection set {}",
             result,
             root,
@@ -174,8 +173,7 @@ impl ThreadTermPool {
             .protection_set
             .unprotect(term.root());
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!(
+        debug_trace!(
             "Unprotected term {:?}, root {}, protection set {}",
             term,
             term.root(),
@@ -189,8 +187,7 @@ impl ThreadTermPool {
             .container_protection_set
             .protect(container);
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!("Protected container index {}, protection set {}", root, self.index());
+        debug_trace!("Protected container index {}, protection set {}", root, self.index());
         
         root
     }
@@ -201,8 +198,7 @@ impl ThreadTermPool {
             .container_protection_set
             .unprotect(root);
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!("Unprotected container index {}, protection set {}", root, self.index());
+        debug_trace!("Unprotected container index {}, protection set {}", root, self.index());
     }
 
     /// Parse the given string and returns the Term representation.
@@ -223,8 +219,7 @@ impl ThreadTermPool {
             )
         };
 
-        #[cfg(feature = "mcrl3_debug")]
-        trace!(
+        debug_trace!(
             "Protected symbol {}, root {}, protection set {}",
             symbol,
             result.root(),

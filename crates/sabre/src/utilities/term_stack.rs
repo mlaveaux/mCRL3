@@ -2,7 +2,6 @@ use std::fmt;
 
 use ahash::HashMap;
 use ahash::HashMapExt;
-use log::trace;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
@@ -17,6 +16,7 @@ use mcrl3_data::DataVariable;
 use mcrl3_data::is_data_expression;
 use mcrl3_data::is_data_machine_number;
 use mcrl3_data::is_data_variable;
+use mcrl3_utilities::debug_trace;
 
 use crate::Rule;
 use crate::utilities::InnermostStack;
