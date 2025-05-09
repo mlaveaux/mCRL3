@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 mod bitstream;
+mod debug_trace;
 mod error;
 mod fixed_cache_policy;
 mod fixed_size_cache;
@@ -22,6 +23,7 @@ mod text_utility;
 mod timing;
 
 pub use bitstream::*;
+pub use debug_trace::*;
 pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
