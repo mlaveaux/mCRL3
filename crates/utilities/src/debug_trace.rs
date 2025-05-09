@@ -11,11 +11,21 @@
 /// debug_trace!("Complex calculation result: {:#?}", result);
 /// ```
 #[macro_export]
+#[cfg(feature = "mcrl3_debug")]
 macro_rules! debug_trace {
     ($($arg:tt)*) => {
-        #[cfg(feature = "mcrl3_debug")]
         {
             log::trace!($($arg)*);
+        }
+    };
+}
+
+#[macro_export]
+#[cfg(not(feature = "mcrl3_debug"))]
+macro_rules! debug_trace {
+    ($($arg:tt)*) => {
+        { 
+            // No-op when mcrl3_debug is not enabled
         }
     };
 }

@@ -23,7 +23,6 @@ mod text_utility;
 mod timing;
 
 pub use bitstream::*;
-pub use debug_trace::*;
 pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
