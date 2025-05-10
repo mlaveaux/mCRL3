@@ -9,7 +9,7 @@ use std::sync::MutexGuard;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
-use crossbeam::utils::CachePadded;
+use crossbeam_utils::CachePadded;
 
 /// A shared mutex (readers-writer lock) implementation based on the so-called
 /// busy-forbidden protocol. Instead of a regular Mutex this class is Send and

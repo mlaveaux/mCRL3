@@ -9,7 +9,7 @@ rust-version.workspace = true
 [dependencies]
 mcrl3_utilities.workspace = true
 
-crossbeam.workspace = true
+crossbeam-utils.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
