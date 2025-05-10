@@ -7,6 +7,7 @@ use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use crate::big_numbers::BigNatural;
 
@@ -44,7 +45,7 @@ impl ProbabilisticFraction {
 
     /// Returns the constant zero (0/1).
     pub fn zero() -> &'static Self {
-        static ZERO: once_cell::sync::Lazy<ProbabilisticFraction> = once_cell::sync::Lazy::new(|| {
+        static ZERO: LazyLock<ProbabilisticFraction> = LazyLock::new(|| {
             ProbabilisticFraction::new(BigNatural::from_usize(0), BigNatural::from_usize(1))
         });
         &ZERO
@@ -52,7 +53,7 @@ impl ProbabilisticFraction {
 
     /// Returns the constant one (1/1).
     pub fn one() -> &'static Self {
-        static ONE: once_cell::sync::Lazy<ProbabilisticFraction> = once_cell::sync::Lazy::new(|| {
+        static ONE: LazyLock<ProbabilisticFraction> = LazyLock::new(|| {
             ProbabilisticFraction::new(BigNatural::from_usize(1), BigNatural::from_usize(1))
         });
         &ONE
