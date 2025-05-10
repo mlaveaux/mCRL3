@@ -13,6 +13,7 @@ debug = "line-tables-only"
 [workspace]
 resolver = "2"
 members = [
+    "3rd-party/*",
     "crates/*",
     "crates/**/benchmarks",
     "crates/sabre_compiling/sabre_ffi",
@@ -38,7 +39,6 @@ log = "0.4"
 num = "0.4"
 parking_lot = "0.12"
 pest = "2.8"
-pest_consume  = "1.1"
 pest_derive  = "2.7"
 rand = "0.9"
 regex = "1.0"
@@ -104,3 +104,5 @@ mcrl3_sharedmutex = { path="crates/sharedmutex" }
 mcrl3_syntax = { path = "crates/syntax" }
 mcrl3_unsafety = { path="crates/unsafety" }
 mcrl3_utilities = { path = "crates/utilities" }
+pest_consume  = { path = "3rd-party/pest_consume" }
+pest_consume_macros  = { path = "3rd-party/pest_consume_macros" }
