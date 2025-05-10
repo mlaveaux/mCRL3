@@ -155,12 +155,7 @@ fn multi_number_skip() {
         Ok(vec![41, 42])
     );
     assert_eq!(
-        multi_number_skip(vec![
-            boolean(true),
-            number(41),
-            number(42),
-            boolean(false)
-        ]),
+        multi_number_skip(vec![boolean(true), number(41), number(42), boolean(false)]),
         Ok(vec![41, 42])
     );
 }
@@ -193,14 +188,8 @@ fn multi_multi() {
     };
     assert!(multi_multi(vec![]).is_err());
     assert_eq!(multi_multi(vec![number(1), number(2)]), Ok((1, true)));
-    assert_eq!(
-        multi_multi(vec![number(1), number(2), number(4)]),
-        Ok((3, true))
-    );
-    assert_eq!(
-        multi_multi(vec![number(1), boolean(true), number(4)]),
-        Ok((1, true))
-    );
+    assert_eq!(multi_multi(vec![number(1), number(2), number(4)]), Ok((3, true)));
+    assert_eq!(multi_multi(vec![number(1), boolean(true), number(4)]), Ok((1, true)));
     assert_eq!(
         multi_multi(vec![boolean(false), boolean(true), number(4)]),
         Ok((0, false))
@@ -251,14 +240,8 @@ fn multi_multi_tag() {
             [tag1 # number(x).., tag2 # number(y)..] => (x.sum(), y.sum()),
         ))
     };
-    assert_eq!(
-        multi_multi_tag(vec![number(1).with_tag("tag1")]),
-        Ok((1, 0))
-    );
-    assert_eq!(
-        multi_multi_tag(vec![number(1).with_tag("tag2")]),
-        Ok((0, 1))
-    );
+    assert_eq!(multi_multi_tag(vec![number(1).with_tag("tag1")]), Ok((1, 0)));
+    assert_eq!(multi_multi_tag(vec![number(1).with_tag("tag2")]), Ok((0, 1)));
     assert_eq!(
         multi_multi_tag(vec![
             number(1).with_tag("tag1"),

@@ -1,32 +1,54 @@
-use proc_macro2::{Span, TokenStream, TokenTree};
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use proc_macro2::TokenTree;
 use quote::quote;
-use syn::parse::{Parse, ParseStream, Result};
+use syn::Expr;
+use syn::Ident;
+use syn::Pat;
+use syn::Type;
+use syn::bracketed;
+use syn::parenthesized;
+use syn::parse::Parse;
+use syn::parse::ParseStream;
+use syn::parse::Result;
+use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{
-    bracketed, parenthesized, parse_quote, token, Expr, Ident, Pat, Token, Type,
-};
+use syn::token;
 
+/// Pattern for matching a node in a pattern matching expression.
+///
+/// Represents an individual pattern element with optional tag, rule name,
+/// binding pattern, and multiplicity flag.
 struct Pattern {
-    tag: Option<String>,
-    rule_name: Option<Ident>,
-    binder: Pat,
-    multiple: bool,
+    tag: Option<String>,      // Optional tag for the pattern
+    rule_name: Option<Ident>, // Optional rule name for parsing
+    binder: Pat,              // Pattern to bind the matched node to
+    multiple: bool,           // Whether this pattern matches multiple nodes
 }
 
+/// Alternative in a pattern matching expression.
+///
+/// Represents a sequence of patterns that can be matched against nodes.
 struct Alternative {
-    patterns: Punctuated<Pattern, Token![,]>,
+    patterns: Punctuated<Pattern, token::Comma>, // Comma-separated patterns
 }
 
+/// Branch in a pattern matching expression.
+///
+/// Represents a set of alternatives and their associated body expression.
 struct MatchBranch {
-    alternatives: Punctuated<Alternative, Token![|]>,
-    body: Expr,
+    alternatives: Punctuated<Alternative, token::Or>, // Alternatives separated by |
+    body: Expr,                                       // Body expression to evaluate on match
 }
 
+/// Input for the match_nodes macro.
+///
+/// Contains parser type, input expression, and pattern matching branches.
 struct MacroInput {
-    parser: Type,
-    input_expr: Expr,
-    branches: Punctuated<MatchBranch, Token![,]>,
+    parser: Type,                                    // Parser type
+    input_expr: Expr,                                // Expression to match against
+    branches: Punctuated<MatchBranch, token::Comma>, // Pattern matching branches
 }
 
 impl Parse for MacroInput {
@@ -35,13 +57,14 @@ impl Parse for MacroInput {
             let _: token::Lt = input.parse()?;
             let parser = input.parse()?;
             let _: token::Gt = input.parse()?;
-            let _: Token![;] = input.parse()?;
+            let _: token::Semi = input.parse()?;
             parser
         } else {
             parse_quote!(Self)
         };
+
         let input_expr = input.parse()?;
-        let _: Token![;] = input.parse()?;
+        let _: token::Semi = input.parse()?;
         let branches = Punctuated::parse_terminated(input)?;
 
         Ok(MacroInput {
@@ -54,8 +77,8 @@ impl Parse for MacroInput {
 
 impl Parse for MatchBranch {
     fn parse(input: ParseStream) -> Result<Self> {
-        let alternatives = Punctuated::parse_separated_nonempty(&input)?;
-        let _: Token![=>] = input.parse()?;
+        let alternatives = Punctuated::parse_separated_nonempty(input)?;
+        let _: token::FatArrow = input.parse()?;
         let body = input.parse()?;
 
         Ok(MatchBranch { alternatives, body })
@@ -74,7 +97,7 @@ impl Parse for Alternative {
 impl Parse for Pattern {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut tag = None;
-        let binder;
+        let binder: Pat;
         let multiple;
         let rule_name;
 
@@ -93,20 +116,22 @@ impl Parse for Pattern {
             rule_name = Some(input.parse()?);
             let contents;
             parenthesized!(contents in input);
-            binder = contents.parse()?;
+            binder = Pat::parse_multi(&contents)?;
         } else {
             // A plain pattern captures the node itself without parsing anything.
             rule_name = None;
-            binder = input.parse()?;
+            binder = Pat::parse_multi(input)?;
         }
-        if input.peek(Token![..]) {
-            let _: Token![..] = input.parse()?;
+
+        if input.peek(token::DotDot) {
+            let _: token::DotDot = input.parse()?;
             multiple = true;
-        } else if input.is_empty() || input.peek(Token![,]) {
+        } else if input.is_empty() || input.peek(token::Comma) {
             multiple = false;
         } else {
             return Err(input.error("expected `..` or nothing"));
         }
+
         Ok(Pattern {
             tag,
             rule_name,
@@ -116,8 +141,7 @@ impl Parse for Pattern {
     }
 }
 
-/// Takes the ident of a mutable slice. Generates code that matches on the pattern and calls
-/// `process_item` for each item. Calls `error` if we can't proceed.
+/// Traverses a pattern and generates code to match against nodes.
 fn traverse_pattern(
     mut patterns: &[Pattern],
     i_iter: &Ident,
@@ -127,12 +151,12 @@ fn traverse_pattern(
 ) -> TokenStream {
     let mut steps = Vec::new();
 
-    // We will match variable patterns greedily. In order for trailing single patterns like `[x..,
-    // y, z]` to work, we must handle them first.
+    // Handle trailing single patterns first for correct non-greedy matching
     while patterns.last().is_some_and(|pat| !pat.multiple) {
         let [remaining_pats @ .., pat] = patterns else {
             unreachable!()
         };
+
         patterns = remaining_pats;
         let this_node = process_item(pat, quote!(node));
         steps.push(quote!(
@@ -141,15 +165,17 @@ fn traverse_pattern(
         ));
     }
 
+    // Process remaining patterns
     for pat in patterns {
         if !pat.multiple {
+            // Single pattern - match exactly one node
             let this_node = process_item(pat, quote!(node));
             steps.push(quote!(
                 let Some(node) = #i_iter.next() else { #error };
                 #this_node;
             ));
         } else {
-            // Match greedily: take nodes as long as they match.
+            // Multiple pattern - match greedily as long as nodes match
             let matches_node = matches_pat(pat, quote!(node));
             let this_slice = process_item(pat, quote!(matched));
             steps.push(quote!(
@@ -159,6 +185,11 @@ fn traverse_pattern(
         }
     }
 
+    debug_assert!(
+        !steps.is_empty() || patterns.is_empty(),
+        "Must generate steps for non-empty patterns"
+    );
+
     quote!(
         #[allow(unused_mut)]
         let mut #i_iter = #i_iter.peekable();
@@ -166,6 +197,7 @@ fn traverse_pattern(
     )
 }
 
+/// Generates code for a single pattern matching alternative.
 fn make_alternative(
     alternative: Alternative,
     body: &Expr,
@@ -178,6 +210,7 @@ fn make_alternative(
     let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);
     let patterns: Vec<_> = alternative.patterns.into_iter().collect();
 
+    // Function to generate code for checking if a pattern matches a node
     let matches_pat = |pat: &Pattern, x| {
         let rule_cond = match &pat.rule_name {
             Some(rule_name) => {
@@ -194,7 +227,7 @@ fn make_alternative(
         quote!(#rule_cond && #tag_cond)
     };
 
-    // Determine if we can take this branch.
+    // Generate code for checking if this alternative matches
     let process_item = |pat: &Pattern, i_matched| {
         if !pat.multiple {
             let cond = matches_pat(pat, i_matched);
@@ -208,6 +241,7 @@ fn make_alternative(
             )
         }
     };
+
     let conditions = traverse_pattern(
         patterns.as_slice(),
         &i_nodes_iter,
@@ -216,11 +250,12 @@ fn make_alternative(
         quote!(return false),
     );
 
-    // Once we have found a branch that matches, we need to parse the nodes.
+    // Generate code for parsing nodes when the alternative matches
     let parse_rule = |rule: &Option<_>, node| match rule {
         Some(rule_name) => quote!(#parser::#rule_name(#node)),
         None => quote!(Ok(#node)),
     };
+    
     let process_item = |pat: &Pattern, i_matched| {
         if !pat.multiple {
             let parse = parse_rule(&pat.rule_name, quote!(#i_matched));
@@ -239,6 +274,7 @@ fn make_alternative(
             )
         }
     };
+
     let parses = traverse_pattern(
         patterns.as_slice(),
         &i_nodes_iter,
@@ -246,6 +282,8 @@ fn make_alternative(
         process_item,
         quote!(unreachable!()),
     );
+
+    debug_assert!(!patterns.is_empty(), "Alternative must have at least one pattern");
 
     quote!(
         _ if {
@@ -263,9 +301,8 @@ fn make_alternative(
     )
 }
 
-pub fn match_nodes(
-    input: proc_macro::TokenStream,
-) -> Result<proc_macro2::TokenStream> {
+/// Implements the match_nodes macro.
+pub fn match_nodes(input: proc_macro::TokenStream) -> Result<proc_macro2::TokenStream> {
     let input: MacroInput = syn::parse(input)?;
 
     let i_nodes = Ident::new("___nodes", input.input_expr.span());
@@ -274,6 +311,8 @@ pub fn match_nodes(
 
     let input_expr = &input.input_expr;
     let parser = &input.parser;
+
+    // Generate code for each alternative in each branch
     let branches = input
         .branches
         .into_iter()
@@ -281,11 +320,13 @@ pub fn match_nodes(
             let body = br.body;
             let i_nodes = &i_nodes;
             let i_node_namer = &i_node_namer;
-            br.alternatives.into_iter().map(move |alt| {
-                make_alternative(alt, &body, i_nodes, i_node_namer, parser)
-            })
+            br.alternatives
+                .into_iter()
+                .map(move |alt| make_alternative(alt, &body, i_nodes, i_node_namer, parser))
         })
         .collect::<Vec<_>>();
+
+    debug_assert!(!branches.is_empty(), "Must generate at least one branch");
 
     let node_list_ty = quote!(<_ as ::pest_consume::NodeList<#parser>>);
     let node_namer_ty = quote!(<_ as ::pest_consume::NodeNamer<#parser>>);

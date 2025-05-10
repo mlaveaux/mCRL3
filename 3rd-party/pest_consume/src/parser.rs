@@ -1,4 +1,5 @@
-use crate::{Error, Nodes};
+use crate::Error;
+use crate::Nodes;
 use pest::Parser as PestParser;
 use pest::RuleType;
 
@@ -18,10 +19,7 @@ pub trait Parser {
     fn allows_shortcut(rule: Self::Rule) -> bool;
 
     /// Parses a `&str` starting from `rule`
-    fn parse<'i>(
-        rule: Self::Rule,
-        input_str: &'i str,
-    ) -> Result<Nodes<'i, Self::Rule, ()>, Error<Self::Rule>> {
+    fn parse<'i>(rule: Self::Rule, input_str: &'i str) -> Result<Nodes<'i, Self::Rule, ()>, Error<Self::Rule>> {
         Self::parse_with_userdata(rule, input_str, ())
     }
 
