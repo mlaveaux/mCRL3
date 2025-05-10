@@ -11,7 +11,6 @@ use crate::utilities::PositionIndexed;
 use super::Config;
 use super::TermStack;
 
-
 /// This stack is used to avoid recursion and also to keep track of terms in
 /// normal forms by explicitly representing the rewrites of a right hand
 /// side.

@@ -54,7 +54,6 @@ pub fn memory_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Erro
         "run".to_string(),
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
-        
     ];
 
     add_target_flag(&mut arguments);

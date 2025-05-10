@@ -47,7 +47,7 @@ impl<I: Copy + Into<usize>> GenerationalIndex<I> {
     fn new(index: I, generation: usize) -> Self {
         Self { index, generation }
     }
-    
+
     /// Creates a new generational index with the specified index and generation.
     #[cfg(not(debug_assertions))]
     fn new(index: I) -> Self {

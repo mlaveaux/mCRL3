@@ -45,17 +45,15 @@ impl ProbabilisticFraction {
 
     /// Returns the constant zero (0/1).
     pub fn zero() -> &'static Self {
-        static ZERO: LazyLock<ProbabilisticFraction> = LazyLock::new(|| {
-            ProbabilisticFraction::new(BigNatural::from_usize(0), BigNatural::from_usize(1))
-        });
+        static ZERO: LazyLock<ProbabilisticFraction> =
+            LazyLock::new(|| ProbabilisticFraction::new(BigNatural::from_usize(0), BigNatural::from_usize(1)));
         &ZERO
     }
 
     /// Returns the constant one (1/1).
     pub fn one() -> &'static Self {
-        static ONE: LazyLock<ProbabilisticFraction> = LazyLock::new(|| {
-            ProbabilisticFraction::new(BigNatural::from_usize(1), BigNatural::from_usize(1))
-        });
+        static ONE: LazyLock<ProbabilisticFraction> =
+            LazyLock::new(|| ProbabilisticFraction::new(BigNatural::from_usize(1), BigNatural::from_usize(1)));
         &ONE
     }
 

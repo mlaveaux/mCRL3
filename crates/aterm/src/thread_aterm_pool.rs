@@ -1,4 +1,3 @@
-
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -21,9 +20,9 @@ use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::global_aterm_pool::Mutex;
 use crate::global_aterm_pool::mutex_unwrap;
 
-use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::ProtectionIndex;
+use mcrl3_utilities::debug_trace;
 
 thread_local! {
     /// Thread-specific term pool that manages protection sets.
@@ -188,7 +187,7 @@ impl ThreadTermPool {
             .protect(container);
 
         debug_trace!("Protected container index {}, protection set {}", root, self.index());
-        
+
         root
     }
 

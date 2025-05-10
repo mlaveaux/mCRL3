@@ -9,8 +9,8 @@ use std::sync::LazyLock;
 use hashbrown::Equivalent;
 use log::info;
 use mcrl3_unsafety::StablePointerSet;
-use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::SimpleTimer;
+use mcrl3_utilities::debug_trace;
 
 #[cfg(not(feature = "mcrl3_miri"))]
 mod mutex {

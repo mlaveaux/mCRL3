@@ -244,7 +244,9 @@ impl SabreRewriter {
 
         debug_trace!(
             "rewrote {} to {} using rule {}",
-            &leaf_subterm, &new_subterm, announcement.rule
+            &leaf_subterm,
+            &new_subterm,
+            announcement.rule
         );
 
         // The match announcement tells us how far we need to prune back.

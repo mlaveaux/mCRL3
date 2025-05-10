@@ -77,9 +77,9 @@ impl DataSymbols {
     /// Returns true iff the given term is a data application.
     pub fn is_data_application<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         if let Some(symbol) = self.data_appl.get(term.get_head_symbol().arity()) {
-            return term.get_head_symbol() == **symbol
+            return term.get_head_symbol() == **symbol;
         }
-        
+
         false
     }
 

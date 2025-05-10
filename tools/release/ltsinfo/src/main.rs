@@ -6,7 +6,6 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::ValueEnum;
 
-
 use mcrl3_lts::read_aut;
 use mcrl3_lts::write_aut;
 use mcrl3_reduction::IndexedPartition;

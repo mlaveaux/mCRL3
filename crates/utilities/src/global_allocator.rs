@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "mcrl3_measure-allocs")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: counting_allocator::CountingAllocator = counting_allocator::CountingAllocator;

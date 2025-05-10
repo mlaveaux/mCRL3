@@ -3,9 +3,9 @@
 
 /// Macro that prints debug trace information only when the mcrl3_debug feature is enabled.
 /// When enabled, this macro delegates to the standard trace! macro from the log crate.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// debug_trace!("Processing item {}", item_id);
 /// debug_trace!("Complex calculation result: {:#?}", result);
@@ -23,9 +23,7 @@ macro_rules! debug_trace {
 #[macro_export]
 #[cfg(not(feature = "mcrl3_debug"))]
 macro_rules! debug_trace {
-    ($($arg:tt)*) => {
-        { 
-            // No-op when mcrl3_debug is not enabled
-        }
-    };
+    ($($arg:tt)*) => {{
+        // No-op when mcrl3_debug is not enabled
+    }};
 }
