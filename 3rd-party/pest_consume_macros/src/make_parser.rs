@@ -3,7 +3,6 @@ use std::iter;
 
 use quote::quote;
 use syn::Error;
-use syn::Expr;
 use syn::FnArg;
 use syn::Ident;
 use syn::ImplItem;

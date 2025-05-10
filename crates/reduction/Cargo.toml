@@ -1,8 +1,9 @@
 [package]
 name = "mcrl3_reduction"
 version.workspace = true
-rust-version.workspace = true
 edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 mcrl3_lts.workspace = true

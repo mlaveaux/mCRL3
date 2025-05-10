@@ -2,6 +2,9 @@
 name = "mcrl3_utilities"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
 
 [features]
 # Enables a counting allocator that keeps track of the number of allocations.
