@@ -222,7 +222,7 @@ impl InnermostRewriter {
 
             // Get the transition for the label and check if there is a pattern match
             if let Some(transition) = automaton.transitions().get(&(state_index, symbol.operation_id())) {
-                for (announcement, annotation) in transition.announcements() {
+                for (announcement, annotation) in &transition.announcements {
                     if check_equivalence_classes(t, &annotation.equivalence_classes)
                         && InnermostRewriter::check_conditions(tp, stack, builder, stats, automaton, annotation, t)
                     {
@@ -278,7 +278,7 @@ pub struct InnermostRewriter {
     builder: TermStackBuilder,
 }
 
-pub(crate) struct AnnouncementInnermost {
+pub struct AnnouncementInnermost {
     /// Positions in the pattern with the same variable, for non-linear patterns
     equivalence_classes: Vec<EquivalenceClass>,
 
@@ -290,7 +290,7 @@ pub(crate) struct AnnouncementInnermost {
 }
 
 impl AnnouncementInnermost {
-    fn new(rule: &Rule) -> AnnouncementInnermost {
+    pub fn new(rule: &Rule) -> AnnouncementInnermost {
         AnnouncementInnermost {
             conditions: extend_conditions(rule),
             equivalence_classes: derive_equivalence_classes(rule),

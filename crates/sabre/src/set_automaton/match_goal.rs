@@ -13,12 +13,19 @@ use super::MatchObligation;
 /// A match goal contains a number of obligations (positions that must still be
 /// matched) and the corresponding rule that can be announced as being a match.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct MatchGoal {
-    pub(crate) obligations: Vec<MatchObligation>,
-    pub(crate) announcement: MatchAnnouncement,
+pub struct MatchGoal {
+    pub obligations: Vec<MatchObligation>,
+    pub announcement: MatchAnnouncement,
 }
 
 impl MatchGoal {
+    pub fn new(announcement: MatchAnnouncement, obligations: Vec<MatchObligation>) -> Self {
+        Self {
+            obligations,
+            announcement,
+        }
+    }
+
     /// Derive the greatest common prefix of the announcement and obligation positions
     /// of a list of match goals.
     pub fn greatest_common_prefix(goals: &Vec<MatchGoal>) -> ExplicitPosition {

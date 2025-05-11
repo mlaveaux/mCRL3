@@ -41,51 +41,29 @@ pub struct SetAutomaton<T> {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MatchAnnouncement {
-    pub(crate) rule: Rule,
-    pub(crate) position: ExplicitPosition,
-    pub(crate) symbols_seen: usize,
-}
-
-impl MatchAnnouncement {
-    /// Returns the rule of the match announcement
-    pub fn rule(&self) -> &Rule {
-        &self.rule
-    }
-
-    /// Returns the position of the match announcement
-    pub fn position(&self) -> &ExplicitPosition {
-        &self.position
-    }
-
-    /// Returns the number of symbols seen in the match announcement
-    pub fn symbols_seen(&self) -> usize {
-        self.symbols_seen
-    }
+    pub rule: Rule,
+    pub position: ExplicitPosition,
+    pub symbols_seen: usize,
 }
 
 #[derive(Clone)]
 pub struct Transition<T> {
-    pub(crate) symbol: DataFunctionSymbol,
-    announcements: SmallVec<[(MatchAnnouncement, T); 1]>,
-    pub(crate) destinations: SmallVec<[(ExplicitPosition, usize); 1]>,
-}
-
-impl<T> Transition<T> {
-    /// Returns the match announcements of the transition
-    pub fn announcements(&self) -> &SmallVec<[(MatchAnnouncement, T); 1]> {
-        &self.announcements
-    }
-
-    /// Returns the symbol of the transition
-    pub fn destinations(&self) -> &SmallVec<[(ExplicitPosition, usize); 1]> {
-        &self.destinations
-    }
+    pub symbol: DataFunctionSymbol,
+    pub announcements: SmallVec<[(MatchAnnouncement, T); 1]>,
+    pub destinations: SmallVec<[(ExplicitPosition, usize); 1]>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct MatchObligation {
-    pub(crate) pattern: DataExpression,
-    pub(crate) position: ExplicitPosition,
+pub struct MatchObligation {
+    pub pattern: DataExpression,
+    pub position: ExplicitPosition,
+}
+
+impl MatchObligation {
+    /// Returns the pattern of the match obligation
+    pub fn new(pattern: DataExpression, position: ExplicitPosition) -> Self {
+        MatchObligation { pattern, position }
+    }
 }
 
 #[derive(Debug)]
@@ -134,17 +112,16 @@ impl<M> SetAutomaton<M> {
         // with one obligation l@ε and announcement l@ε.
         let mut initial_match_goals = Vec::<MatchGoal>::new();
         for rr in &supported_rules {
-            initial_match_goals.push(MatchGoal {
-                obligations: vec![MatchObligation {
-                    pattern: rr.lhs.clone(),
-                    position: ExplicitPosition::empty_pos(),
-                }],
-                announcement: MatchAnnouncement {
+            initial_match_goals.push(MatchGoal::new(
+                MatchAnnouncement {
                     rule: (*rr).clone(),
                     position: ExplicitPosition::empty_pos(),
                     symbols_seen: 0,
                 },
-            });
+                vec![
+                    MatchObligation::new(rr.lhs.clone(), ExplicitPosition::empty_pos()),
+                ])
+            );
         }
 
         // Match goals need to be sorted so that we can easily check whether a state with a certain
@@ -290,9 +267,9 @@ impl<M> SetAutomaton<M> {
 
 #[derive(Debug)]
 pub struct Derivative {
-    pub(crate) completed: Vec<MatchGoal>,
-    pub(crate) unchanged: Vec<MatchGoal>,
-    pub(crate) reduced: Vec<MatchGoal>,
+    pub completed: Vec<MatchGoal>,
+    pub unchanged: Vec<MatchGoal>,
+    pub reduced: Vec<MatchGoal>,
 }
 
 #[derive(Debug)]
@@ -551,7 +528,7 @@ impl State {
     }
 
     /// Returns the match goals of the state
-    pub(crate) fn match_goals(&self) -> &Vec<MatchGoal> {
+    pub fn match_goals(&self) -> &Vec<MatchGoal> {
         &self.match_goals
     }
 }

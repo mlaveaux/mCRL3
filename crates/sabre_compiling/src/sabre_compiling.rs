@@ -99,25 +99,25 @@ mod tests {
     use super::SabreCompilingRewriter;
 
 
-    // #[test]
-    // fn test_compilation() {
-    //     let (spec, terms) = load_REC_from_strings(&[
-    //         include_str!("../../../examples/REC/rec/factorial6.rec"),
-    //         include_str!("../../../examples/REC/rec/factorial.rec"),
-    //     ])
-    //     .unwrap();
+    #[test]
+    fn test_compilation() {
+        let (spec, terms) = load_REC_from_strings(&[
+            include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial.rec"),
+        ])
+        .unwrap();
 
-    //     let spec = spec.to_rewrite_spec();
+        let spec = spec.to_rewrite_spec();
 
-    //     let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
+        let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
 
-    //     for t in terms {
-    //         let data_term = to_untyped_data_expression(&t, &AHashSet::new());
-    //         assert_eq!(
-    //             rewriter.rewrite(&data_term),
-    //             data_term,
-    //             "The rewritten result does not match the expected result"
-    //         );
-    //     }
-    // }
+        for t in terms {
+            let data_term = to_untyped_data_expression(&t, &AHashSet::new());
+            assert_eq!(
+                rewriter.rewrite(&data_term),
+                data_term,
+                "The rewritten result does not match the expected result"
+            );
+        }
+    }
 }

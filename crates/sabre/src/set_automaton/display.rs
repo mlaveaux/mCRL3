@@ -21,7 +21,7 @@ impl<M> fmt::Display for Transition<M> {
             f,
             "Transition {{ {}, announce: [{}], dest: [{}] }}",
             self.symbol,
-            self.announcements().iter().map(|(x, _)| { x }).format(", "),
+            self.announcements.iter().map(|(x, _)| { x }).format(", "),
             self.destinations.iter().format_with(", ", |element, f| {
                 f(&format_args!("{} -> {}", element.0, element.1))
             })
@@ -105,7 +105,7 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
         }
 
         for ((i, _), tr) in self.automaton.transitions() {
-            let announcements = tr.announcements().iter().format_with(", ", |(announcement, _), f| {
+            let announcements = tr.announcements.iter().format_with(", ", |(announcement, _), f| {
                 f(&format_args!("{}@{}", announcement.rule.rhs, announcement.position))
             });
 
