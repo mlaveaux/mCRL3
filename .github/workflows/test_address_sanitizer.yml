@@ -50,7 +50,7 @@ jobs:
         submodules: true
 
     - name: Run address-sanitizer tests
-      run: cargo +nightly xtask address-sanitizer
+      run: cargo +nightly xtask address-sanitizer nextest run
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug
