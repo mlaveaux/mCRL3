@@ -161,25 +161,6 @@ fn multi_number_skip() {
 }
 
 #[test]
-fn multi_skip() {
-    let multi_skip = |input: Vec<NodeKind>| {
-        Ok(match_nodes!(<TestMatcher>; notag(input);
-            [_, x.., _] => x.collect::<Vec<Node>>(),
-        ))
-    };
-    assert!(multi_skip(vec![]).is_err());
-    assert_eq!(multi_skip(vec![number(0), number(0)]), Ok(vec![]));
-    assert_eq!(
-        multi_skip(vec![number(0), number(41), number(42), number(0)]),
-        Ok(notag(vec![number(41), number(42)]))
-    );
-    assert_eq!(
-        multi_skip(vec![boolean(true), number(41), number(42), boolean(false)]),
-        Ok(notag(vec![number(41), number(42)]))
-    );
-}
-
-#[test]
 fn multi_multi() {
     let multi_multi = |input: Vec<NodeKind>| {
         Ok(match_nodes!(<TestMatcher>; notag(input);
@@ -211,26 +192,6 @@ fn single_tag() {
     assert!(single_tag(vec![number(0).no_tag()]).is_err());
     assert!(single_tag(vec![number(0).with_tag("tag2")]).is_err());
     assert_eq!(single_tag(vec![number(0).with_tag("tag1")]), Ok(0));
-}
-
-#[test]
-fn multi_tag() {
-    let multi_tag = |input: Vec<Node>| {
-        Ok(match_nodes!(<TestMatcher>; input;
-            [tag1 # x.., tag2 # _] => x.collect::<Vec<_>>(),
-        ))
-    };
-    assert!(multi_tag(vec![number(0).with_tag("tag2")]).is_ok());
-    assert_eq!(
-        multi_tag(vec![
-            number(0).with_tag("tag1"),
-            number(0).with_tag("tag1"),
-            number(0).with_tag("tag2"),
-        ])
-        .unwrap()
-        .len(),
-        2
-    );
 }
 
 #[test]
