@@ -7,7 +7,7 @@ use log::info;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Term;
 use mcrl3_utilities::MCRL3Error;
-use temp_dir::TempDir;
+use tempfile::tempdir;
 use toml::Table;
 
 use mcrl3_data::DataExpression;
@@ -49,7 +49,7 @@ impl SabreCompilingRewriter {
         use_local_workspace: bool,
         use_local_tmp: bool,
     ) -> Result<SabreCompilingRewriter, MCRL3Error> {
-        let system_tmp_dir = TempDir::new()?;
+        let system_tmp_dir = tempdir()?;
         let temp_dir = if use_local_tmp {
             Path::new("./tmp")
         } else {
@@ -92,26 +92,32 @@ impl SabreCompilingRewriter {
 
 #[cfg(test)]
 mod tests {
+    use ahash::AHashSet;
+    use mcrl3_rec_tests::load_REC_from_strings;
+    use mcrl3_sabre::{utilities::to_untyped_data_expression, RewriteEngine};
 
-    // #[test]
-    // fn test_compilation() {
-    //     let (spec, terms) = load_REC_from_strings(&[
-    //         include_str!("../../../examples/REC/rec/factorial6.rec"),
-    //         include_str!("../../../examples/REC/rec/factorial.rec"),
-    //     ])
-    //     .unwrap();
+    use super::SabreCompilingRewriter;
 
-    //     let spec = spec.to_rewrite_spec();
 
-    //     let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
+    #[test]
+    fn test_compilation() {
+        let (spec, terms) = load_REC_from_strings(&[
+            include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial.rec"),
+        ])
+        .unwrap();
 
-    //     for t in terms {
-    //         let data_term = to_untyped_data_expression(&t, &AHashSet::new());
-    //         assert_eq!(
-    //             rewriter.rewrite(&data_term),
-    //             data_term,
-    //             "The rewritten result does not match the expected result"
-    //         );
-    //     }
-    // }
+        let spec = spec.to_rewrite_spec();
+
+        let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
+
+        for t in terms {
+            let data_term = to_untyped_data_expression(&t, &AHashSet::new());
+            assert_eq!(
+                rewriter.rewrite(&data_term),
+                data_term,
+                "The rewritten result does not match the expected result"
+            );
+        }
+    }
 }
