@@ -4,6 +4,8 @@
 #![forbid(unsafe_code)]
 
 mod bitstream;
+#[macro_use]
+mod cast;
 mod debug_trace;
 mod error;
 mod fixed_cache_policy;
@@ -13,6 +15,7 @@ mod global_allocator;
 mod helper;
 mod indexed_set;
 mod line_iterator;
+mod no_hasher;
 mod number_postfix;
 mod parse_numbers;
 mod progress;
@@ -23,6 +26,7 @@ mod text_utility;
 mod timing;
 
 pub use bitstream::*;
+pub use cast::*;
 pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
@@ -31,6 +35,7 @@ pub use global_allocator::*;
 pub use helper::*;
 pub use indexed_set::*;
 pub use line_iterator::*;
+pub use no_hasher::*;
 pub use number_postfix::*;
 pub use parse_numbers::*;
 pub use progress::*;
