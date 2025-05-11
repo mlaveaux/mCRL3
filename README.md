@@ -1,37 +1,38 @@
-This is a re-implementation of the core functionality of the [mCRL2](https://mcrl2.org) toolset in Rust. The main goal is demonstrate correctness of the toolset in Rust, with a secondary goal to achieve similar performance to the C++ toolset. This is achieved by a combination of the safer defaults and improved static analysis of Rust and the usage of third-party libraries where applicable.
+# Overview
+
+This is a re-implementation of the core functionality of the [mCRL2](https://mcrl2.org) toolset in Rust. The main goal is demonstrate a correct implementation using mostly safe Rust, with a secondary goal to achieve similar performance to the C++ toolset. This goal is achieved by a combination of improved static analysis of the Rust compiler in combination with safe defaults. Furthermore, utilising features of the language to achieve safe apis.
 
 ## Tools
 
-The tools directory contains prototypes to show the viability of this approach. The `mcrl3rewrite` tool can for example be executed using `cargo run --release --bin mcrl3rewrite`. The libraries use the `RUST_LOG` environment variable to set the logging level, which can be set to `trace`, `info`, `debug`, `warn` and `error`. It can even be used to only show specific logging output, for example `RUST_LOG=mcrl3::aterm=trace`.
+The tools directory contains prototypes to show the viability of this approach. The `mcrl3rewrite` tool can for example be executed using `cargo run --release --bin mcrl3rewrite`. The tools and libraries use the `RUST_LOG` environment variable to set the logging level, which can be set to `trace`, `info`, `debug`, `warn` and `error`. It can even be used to only show crate specific logging output, for example `RUST_LOG=mcrl3_aterm=trace`.
 
 # Contributing
 
 Compilation requires at least rustc version 1.85.0 and we use 2024 edition rust. By default this will build in `dev` or debug mode, and a release build can be obtained by passing `--release`. Note that it is necessary to run `git submodule update` after switching branches or pulling from the remote whenever any of the modules have been changed. Source code documentation can be found at Github [pages](https://mlaveaux.github.io/mCRL3/mcrl3/index.html).
 
-## Tests
+# Testing
 
 Tests can be performed using `cargo test`, only tests of the Sabre crate can be executed with `cargo test -p mcrl3_sabre --lib` and `cargo test -- --no-capture` can be used to show the output of tests. Alternatively, an improved test runner called [nextest](https://nexte.st/) can be used with `cargo nextest run`. This can be installed using `cargo install cargo-nextest`. This test runner offers many improvements such as always showing output of failing tests, running more tests in parallel, and offer better error messages for segfaults. Some tests that are ignored by default require a larger stack size, which can be set using the environment variable `RUST_MIN_STACK`.
 
+## Fuzzing
+
+We use `libfuzzer` to also perform fuzzing in addition to using random tests and integration tests. For this it is necessary to acquire the `cargo fuzz` command using `cargo install cargo-fuzz`.
+
 ## LLVM Sanitizer
 
-For Linux targets it is  possible to run the [LLVM address sanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) to detect memory issues in unsafe code. This requires the nightly version of the rust compiler, which can acquired using `rustup toolchain install nightly` and the rust-src for the standard library, to be installed with `rustup component add rust-src --toolchain nightly`. To show the symbols for the resulting stacktrace it is also convenient to install `llvm-symbolizer`, for example using `sudo apt install llvm` on Ubuntu. Afterwards, the tests can be executed with the address sanitizer enabled using `cargo +nightly xtask address-sanitizer`. Similarly, we also provide a task for the thread sanitizer to detect data races, which can be executed by `cargo +nightly xtask thread-sanitizer`.
-All `xtask` targets use `cargo nextest run`, so that must be installed prior. 
+For Linux targets it is  possible to run the [LLVM address sanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) to detect memory issues in unsafe code. This requires the nightly version of the rust compiler, which can acquired using `rustup toolchain install nightly` and the rust-src for the standard library, to be installed with `rustup component add rust-src --toolchain nightly`. To show the symbols for the resulting stacktrace it is also convenient to install `llvm-symbolizer`, for example using `sudo apt install llvm` on Ubuntu. Afterwards, the tests can be executed with the address sanitizer enabled using `cargo +nightly xtask address-sanitizer`. Similarly, we also provide a task for the thread sanitizer and memory sanitizers.
 
-# Additional checks
+## Additional checks and miri
 
-To check for additional undefined behaviour at runtime we can also employ the `cargo careful` [project](https://github.com/RalfJung/cargo-careful). It compiles the standard library in nightly with many additional checks for undefined behaviour. It can also be installed with `cargo install cargo-careful` and requires the nightly toolchain. Then it can be executed with `cargo +nightly careful nextest run --target=x86_64-unknown-linux-gnu` (or `test` when `nextest` has not been installed). There is also a feature `mcrl3_strict` that enables additional runtime checks. Furthermore, we test with `cargo miri` for unsafe code violations, this requires the `mcrl3_miri` feature to be enabled using `--features=mcrl3_miri`.
-
-## Benchmarks
-
-Micro-benchmarks can be executed using `cargo bench`. Additionally, we can also install `cargo-criterion` and run `cargo criterion` instead to keep track of more information such as changes over time. There is a benchmark task that can be executed with `cargo xtask benchmark` that runs multiple longer running benchmarks.
-
-## Code Generation
-
-There are a few procedural macros used to replace the code generation performed in the mCRL2 toolset. Working on procedural macros is typically difficult, but there are unit and integration tests to showcase common patterns. Alternatively, install `cargo install cargo-expand` and run the command `cargo expand` in for example `crates/mcrl3-macros` to print the Rust code with the macros expanded.
+To check for additional undefined behaviour at runtime we can also employ the `cargo careful` [project](https://github.com/RalfJung/cargo-careful). It compiles the standard library in nightly with many additional checks for undefined behaviour. It can also be installed with `cargo install cargo-careful` and requires the nightly toolchain. Then it can be executed with `cargo +nightly careful nextest run --target=x86_64-unknown-linux-gnu` (or `test` when `nextest` has not been installed). There is also a feature `mcrl3_debug` that enables additional runtime checks. Furthermore, we test with `cargo miri` for unsafe code violations, this requires the `mcrl3_miri` feature to be enabled using `--features=mcrl3_miri`.
 
 ## Code Coverage
 
-Code coverage can be automatically generated for the full workspace using a cargo task. The code coverage itself is generated by LLVM with source code instrumentation, which requires the preview tools to be installed `rustup component add llvm-tools-preview`, and [grcov](https://github.com/mozilla/grcov), which can be acquired using `cargo install grcov`. To execute the code coverage task use `cargo xtask coverage nextest run`. The resulting HTML code coverage report can be found in `target/coverage` or online at the following [page](https://mlaveaux.github.io/mCRL2-rust/coverage/index.html). 
+Code coverage can be automatically generated for the full workspace using a cargo task. The code coverage itself is generated by LLVM with source code instrumentation, which requires the preview tools to be installed `rustup component add llvm-tools-preview`, and [grcov](https://github.com/mozilla/grcov), which can be acquired using `cargo install grcov`. To execute the code coverage task use `cargo xtask coverage test". The resulting HTML code coverage report can be found in `target/coverage` or online at the following [page](https://mlaveaux.github.io/mCRL2-rust/coverage/index.html). 
+
+# Benchmarks
+
+Micro-benchmarks can be executed using `cargo bench`. Additionally, we can also install `cargo-criterion` and run `cargo criterion` instead to keep track of more information such as changes over time. There is a benchmark task that can be executed with `cargo xtask benchmark` that runs multiple longer running benchmarks.
 
 ## Profiling
 
@@ -41,9 +42,17 @@ Another useful technique for profiling is to generate a so-called `flamegraph`, 
 
 Finally, in performance critical situations it can be useful to view the generated assembly, which can be achieved with the `cargo asm --rust --simplify -p <package> [--lib] <path-to-function>` that can be obtained by `cargo install cargo-show-asm`.
 
+# Libraries
+
+There are a few procedural macros used to replace the code generation performed in the mCRL2 toolset. Working on procedural macros is typically difficult, but there are unit and integration tests to showcase common patterns. Alternatively, install `cargo install cargo-expand` and run the command `cargo expand` in for example `crates/mcrl3-macros` to print the Rust code with the macros expanded.
+
 ## Formatting
 
 All source code should be formatted using `cargo fmt`, which can installed using `rustup component add rustfmt`. Individual source files can then be formatted using `cargo +nightly fmt`.
+
+## Third party libraries
+
+We generally strive for using high quality third party dependencies, we use `cargo deny`, installed with `cargo install cargo-deny` to check the license of third party libraries and to compare them to the `RustSec` advisory db. In general unmaintained dependencies should either be vendored or replaced by own code if possible. However, using third party libraries where applicable is generally not discouraged.
 
 # Related Work
 
