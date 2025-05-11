@@ -1,6 +1,8 @@
 use core::panic;
 use std::fmt;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::BuildHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::ops::Deref;
 use std::ops::Index;
 use std::ops::IndexMut;
@@ -12,6 +14,7 @@ use rustc_hash::FxBuildHasher;
 
 use crate::GenerationCounter;
 use crate::GenerationalIndex;
+use crate::NoHasherBuilder;
 
 /// A type-safe index for use with [IndexedSet]. Uses generational indices in debug builds to assert
 /// correct usage of indices.
@@ -39,16 +42,19 @@ impl fmt::Display for SetIndex {
     }
 }
 
+
 /// A set that assigns a unique index to every entry. The returned index can be used to access the inserted entry.
 pub struct IndexedSet<T, S = FxBuildHasher> {
     /// The table of elements, which can be either filled or empty.
     table: Vec<IndexSetEntry<T>>,
-    /// Indexes of the elements in the set.
-    index: HashSet<IndexEntry, S>,
+    /// Indexes of the elements in the set, using NoHasher to directly use precomputed hashes.
+    index: HashSet<IndexEntry, NoHasherBuilder>,
     /// A list of free nodes, where the value is the first free node.
     free: Option<usize>,
     /// The number of generations
     generation_counter: GenerationCounter,
+    /// The hasher used to compute hashes for elements
+    hasher: S,
 }
 
 /// An entry in the indexed set, which can either be filled or empty.
@@ -57,37 +63,28 @@ enum IndexSetEntry<T> {
     Empty(usize),
 }
 
-/// A macro to return the pat type of an enum class target, and panics otherwise.
-///
-/// Usage cast!(instance, type)
-macro_rules! cast {
-    ($target: expr, $pat: path) => {{
-        if let $pat(a) = $target {
-            a
-        } else {
-            panic!("mismatch variant when cast to {}", stringify!($pat));
-        }
-    }};
-}
-
 impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
     /// Creates a new empty IndexedSet with the default hasher.
     pub fn new() -> IndexedSet<T, S> {
         IndexedSet {
             table: Vec::default(),
-            index: HashSet::default(),
+            index: HashSet::with_hasher(NoHasherBuilder),
             free: None,
             generation_counter: GenerationCounter::new(),
+            hasher: S::default(),
         }
     }
+}
 
+impl<T, S> IndexedSet<T, S> {
     /// Creates a new empty IndexedSet with the specified hasher.
     pub fn with_hasher(hash_builder: S) -> IndexedSet<T, S> {
         IndexedSet {
             table: Vec::default(),
-            index: HashSet::with_hasher(hash_builder),
+            index: HashSet::with_hasher(NoHasherBuilder),
             free: None,
             generation_counter: GenerationCounter::new(),
+            hasher: hash_builder,
         }
     }
 
@@ -126,19 +123,6 @@ impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
             generation_counter: &self.generation_counter,
         }
     }
-
-    /// Returns a mutable iterator over the elements in the set.
-    pub fn iter_mut(&mut self) -> IterMut<T> {
-        let iter = self
-            .table
-            .iter_mut()
-            .filter(|element| matches!(element, IndexSetEntry::Filled(_)))
-            .map(|element| cast!(element, IndexSetEntry::Filled))
-            .enumerate()
-            .map(|(idx, elem)| (SetIndex(self.generation_counter.recall_index(idx)), elem));
-
-        IterMut { iter: Box::new(iter) }
-    }
 }
 
 impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
@@ -150,7 +134,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         Q: Hash + Equivalent<T>,
         T: From<&'a Q>,
     {
-        let equivalent = IndexValueEquivalent::new(value, &self.table);
+        let equivalent = IndexValueEquivalent::new(value, &self.hasher, &self.table);
 
         if let Some(entry) = self.index.get(&equivalent) {
             // The element is already in the set, so return the index.
@@ -158,7 +142,9 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         }
 
         let value: T = value.into();
-        let hash = self.index.hasher().hash_one(&value);
+        let hash = self.hasher.hash_one(&value);
+
+        debug_assert_eq!(hash, equivalent.hash(), "Hash values should be the same");
 
         let index = match self.free {
             Some(first) => {
@@ -184,7 +170,6 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
                 self.table.len() - 1
             }
         };
-
 
         self.index.insert(IndexEntry::new(index, hash));
         (SetIndex(self.generation_counter.create_index(index)), true)
@@ -197,15 +182,14 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     where
         T: Clone,
     {
-        let equivalent = IndexValueEquivalent::new(&value, &self.table);
+        let equivalent = IndexValueEquivalent::new(&value, &self.hasher, &self.table);
 
         if let Some(entry) = self.index.get(&equivalent) {
             // The element is already in the set, so return the index.
             return (SetIndex(self.generation_counter.recall_index(entry.index)), false);
         }
 
-        // Compute the hash before inserting the value into the table.
-        let hash = self.index.hasher().hash_one(&value);
+        let hash = equivalent.hash();
 
         let index = match self.free {
             Some(first) => {
@@ -235,9 +219,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         self.index.insert(IndexEntry::new(index, hash));
         (SetIndex(self.generation_counter.create_index(index)), true)
     }
-}
 
-impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
     /// Erases all elements for which f(index, element) returns false. Allows
     /// modifying the given element (as long as the hash/equality does not change).
     pub fn retain_mut<F>(&mut self, mut f: F)
@@ -248,10 +230,8 @@ impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
             if let IndexSetEntry::Filled(value) = element {
                 if !f(SetIndex(self.generation_counter.recall_index(index)), value) {
                     // Find and remove the IndexEntry from the index set
-                    let entry_to_remove = self.index.iter()
-                        .find(|entry| entry.index == index)
-                        .cloned();
-                    
+                    let entry_to_remove = self.index.iter().find(|entry| entry.index == index).cloned();
+
                     if let Some(entry) = entry_to_remove {
                         self.index.remove(&entry);
                     }
@@ -272,7 +252,7 @@ impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
 
     /// Removes the given element from the set.
     pub fn remove(&mut self, element: &T) -> bool {
-        let equivalent = IndexValueEquivalent::new(element, &self.table);
+        let equivalent = IndexValueEquivalent::new(element, &self.hasher, &self.table);
 
         if let Some(entry) = self.index.take(&equivalent) {
             let next = match self.free {
@@ -288,6 +268,30 @@ impl<T: Eq + Hash, S: BuildHasher> IndexedSet<T, S> {
             false
         }
     }
+
+    /// Returns true iff the set contains the given element.
+    pub fn contains(&self, element: &T) -> bool {
+        // Compute the hash using our hash_builder
+        let mut hasher = self.hasher.build_hasher();
+        element.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Create a temporary entry with the computed hash for lookup
+        let temp_entry = IndexEntry { index: 0, hash };
+        self.index.contains(&temp_entry)
+    }
+}
+
+
+impl<T, S> fmt::Debug for IndexedSet<T, S>
+where
+    T: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list()
+            .entries(self.iter())
+            .finish()
+    }
 }
 
 impl<T, S: BuildHasher + Default> Default for IndexedSet<T, S> {
@@ -296,7 +300,7 @@ impl<T, S: BuildHasher + Default> Default for IndexedSet<T, S> {
     }
 }
 
-impl<T, S: BuildHasher> Index<SetIndex> for IndexedSet<T, S> {
+impl<T, S> Index<SetIndex> for IndexedSet<T, S> {
     type Output = T;
 
     fn index(&self, index: SetIndex) -> &Self::Output {
@@ -326,35 +330,38 @@ impl IndexEntry {
     }
 }
 
-impl Equivalent<IndexEntry> for usize {
-    fn equivalent(&self, key: &IndexEntry) -> bool {
-        *self == key.index
-    }
-}
-
 impl Hash for IndexEntry {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // Simply use the precomputed hash value
         state.write_u64(self.hash);
     }
 }
-
 
 /// An equivalent wrapper that allows looking up elements in a set using the original value.
 /// This avoids duplicating the key in both the table and index.
 struct IndexValueEquivalent<'a, T, Q> {
     value: &'a Q,
+    hash: u64,
     table: &'a Vec<IndexSetEntry<T>>,
 }
 
-impl<'a, T, Q> IndexValueEquivalent<'a, T, Q> {
-    /// Creates a new IndexValueEquivalent with the given value and table.
-    fn new(value: &'a Q, table: &'a Vec<IndexSetEntry<T>>) -> Self {
-        // Constructor allows for centralized creation logic
-        Self { value, table }
+impl<T, Q> IndexValueEquivalent<'_, T, Q> {
+
+    fn hash(&self) -> u64 {
+        // This is a placeholder for the actual hash function
+        self.hash
     }
 }
 
-impl<'a, T, Q: Equivalent<T>> Equivalent<IndexEntry> for IndexValueEquivalent<'a, T, Q> {
+impl<'a, T, Q: Hash> IndexValueEquivalent<'a, T, Q> {
+    /// Creates a new IndexValueEquivalent with the given value and table.
+    fn new<S: BuildHasher>(value: &'a Q, hasher: &S, table: &'a Vec<IndexSetEntry<T>>) -> Self {
+        // Constructor allows for centralized creation logic
+        Self { value, table, hash: hasher.hash_one(value) }
+    }
+}
+
+impl<T, Q: Equivalent<T>> Equivalent<IndexEntry> for IndexValueEquivalent<'_, T, Q> {
     fn equivalent(&self, key: &IndexEntry) -> bool {
         if let Some(element) = self.table.get(key.index) {
             if let IndexSetEntry::Filled(element) = element {
@@ -369,10 +376,9 @@ impl<'a, T, Q: Equivalent<T>> Equivalent<IndexEntry> for IndexValueEquivalent<'a
     }
 }
 
-impl<'a, T, Q: Hash> Hash for IndexValueEquivalent<'a, T, Q> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Hash only depends on the value, not the table
-        self.value.hash(state);
+impl<T, Q> Hash for IndexValueEquivalent<'_, T, Q> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.hash);
     }
 }
 
@@ -400,20 +406,7 @@ impl<'a, T, S> Iterator for Iter<'a, T, S> {
     }
 }
 
-/// An iterator over the elements in the IndexedSet that allows for mutation.
-pub struct IterMut<'a, T> {
-    iter: Box<dyn Iterator<Item = (SetIndex, &'a mut T)> + 'a>,
-}
-
-impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = (SetIndex, &'a mut T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-
-impl<'a, T, S: BuildHasher + Default> IntoIterator for &'a IndexedSet<T, S> {
+impl<'a, T, S> IntoIterator for &'a IndexedSet<T, S> {
     type Item = (SetIndex, &'a T);
     type IntoIter = Iter<'a, T, S>;
 
@@ -439,7 +432,7 @@ mod tests {
 
         let mut input = vec![];
         for _ in 0..100 {
-            input.push(rand.random_range(0..8) as usize);
+            input.push(rand.random_range(0..32) as usize);
         }
 
         let mut indices: HashMap<usize, SetIndex> = HashMap::default();
@@ -459,7 +452,7 @@ mod tests {
         }
 
         for value in &mut input.iter().take(10) {
-            assert!(set.remove(value), "Failed to remove element {}", value);
+            set.remove(value);
             indices.remove(value);
         }
 

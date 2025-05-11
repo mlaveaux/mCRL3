@@ -26,7 +26,6 @@ mod text_utility;
 mod timing;
 
 pub use bitstream::*;
-pub use cast::*;
 pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;

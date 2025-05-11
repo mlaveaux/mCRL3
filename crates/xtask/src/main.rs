@@ -8,7 +8,6 @@
 use std::env;
 use std::error::Error;
 use std::process::ExitCode;
-use std::str::FromStr;
 
 use benchmark::Rewriter;
 
