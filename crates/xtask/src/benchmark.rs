@@ -1,3 +1,4 @@
+use core::fmt;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -12,8 +13,6 @@ use duct::cmd;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
-use strum::Display;
-use strum::EnumString;
 
 #[derive(Deserialize, Serialize)]
 struct MeasurementEntry {
@@ -22,13 +21,29 @@ struct MeasurementEntry {
     timings: Vec<f32>,
 }
 
-#[derive(EnumString, Display, PartialEq)]
+#[derive(PartialEq)]
 pub enum Rewriter {
-    #[strum(serialize = "innermost")]
     Innermost,
-
-    #[strum(serialize = "sabre")]
     Sabre,
+}
+
+impl Rewriter {
+    pub fn from_str(s: &str) -> Result<Self, &'static str> {
+        match s {
+            "innermost" => Ok(Rewriter::Innermost),
+            "sabre" => Ok(Rewriter::Sabre),
+            _ => Err("Invalid rewriter"),
+        }
+    }
+}
+
+impl fmt::Display for Rewriter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Rewriter::Innermost => write!(f, "innermost"),
+            Rewriter::Sabre => write!(f, "sabre"),
+        }
+    }
 }
 
 /// Benchmarks all the REC specifications in the example folder.

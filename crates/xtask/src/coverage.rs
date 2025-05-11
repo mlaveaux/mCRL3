@@ -3,12 +3,12 @@
 //!
 //!
 
-use fs_extra as fsx;
 use glob::glob;
 use std::env;
 use std::error::Error;
 use std::fs::create_dir_all;
-use std::path::Path;
+use std::fs::remove_dir;
+use std::fs::remove_file;
 use std::path::PathBuf;
 
 use duct::cmd;
@@ -21,35 +21,10 @@ use duct::cmd;
 ///
 fn clean_files(pattern: &str) -> Result<(), Box<dyn Error>> {
     let files: Result<Vec<PathBuf>, _> = glob(pattern)?.collect();
-    files?.iter().try_for_each(remove_file)
-}
-
-///
-/// Remove a single file
-///
-/// # Errors
-/// Fails if removal fails
-///
-fn remove_file<P>(path: P) -> Result<(), Box<dyn Error>>
-where
-    P: AsRef<Path>,
-{
-    fsx::file::remove(path)?;
-    Ok(())
-}
-
-///
-/// Remove a directory with its contents
-///
-/// # Errors
-/// Fails if removal fails
-///
-fn remove_dir<P>(path: P) -> Result<(), Box<dyn Error>>
-where
-    P: AsRef<Path>,
-{
-    fsx::dir::remove(path)?;
-    Ok(())
+    files?.iter().try_for_each(|path| {
+        remove_file(path)?;
+        Ok(())
+    })
 }
 
 ///
