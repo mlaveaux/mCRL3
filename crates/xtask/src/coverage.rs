@@ -28,12 +28,9 @@ fn clean_files(pattern: &str) -> Result<(), Box<dyn Error>> {
 }
 
 ///
-/// Run coverage
+/// Run coverage, pass the given arguments to cargo.
 ///
-/// # Errors
-/// Fails if any command fails
-///
-pub fn coverage(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+pub fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     remove_dir("target/coverage")?;
     create_dir_all("target/coverage")?;
 
@@ -47,7 +44,7 @@ pub fn coverage(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     let mut prof_directory = base_directory.clone();
     prof_directory.push("cargo-test-%p-%m.profraw");
 
-    cmd("cargo", cargo_arguments)
+    cmd("cargo", arguments)
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-Cinstrument-coverage")
         .env("LLVM_PROFILE_FILE", prof_directory)

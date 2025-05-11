@@ -48,24 +48,16 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
             }
         }
         Some("coverage") => {
-            // Take the other parameters for cargo.
-            let other_arguments: Vec<String> = args.collect();
-            coverage::coverage(other_arguments)?
+            coverage::coverage(args.collect())?
         }
         Some("address-sanitizer") => {
-            // Take the other parameters for cargo.
-            let other_arguments: Vec<String> = args.collect();
-            sanitizer::address_sanitizer(other_arguments)?
+            sanitizer::address_sanitizer(args.collect())?
         }
         Some("memory-sanitizer") => {
-            // Take the other parameters for cargo.
-            let other_arguments: Vec<String> = args.collect();
-            sanitizer::memory_sanitizer(other_arguments)?
+            sanitizer::memory_sanitizer(args.collect())?
         }
         Some("thread-sanitizer") => {
-            // Take the other parameters for cargo.
-            let other_arguments: Vec<String> = args.collect();
-            sanitizer::thread_sanitizer(other_arguments)?
+            sanitizer::thread_sanitizer(args.collect())?
         }
         Some(x) => {
             println!("Unknown task {x}");
@@ -79,6 +71,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Print the help message.
 fn print_help() {
-    println!("Available tasks: benchmark, coverage, address-sanitizer, thread-sanitizer");
+    println!("Available tasks: benchmark, coverage <cargo_args>, address-sanitizer, <cargo_args> thread-sanitizer <cargo_args>, memory-sanitizer <cargo_args>");
 }

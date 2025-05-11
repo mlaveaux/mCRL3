@@ -45,16 +45,13 @@ pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error
 ///
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
-pub fn memory_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    let mut arguments: Vec<String> = vec![
-        "nextest".to_string(),
-        "run".to_string(),
+pub fn memory_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+    arguments.extend(vec![
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
-    ];
+    ]);
 
     add_target_flag(&mut arguments);
-    arguments.extend(cargo_arguments);
 
     cmd("cargo", arguments)
         .env("RUSTFLAGS", "-Zsanitizer=memory")
@@ -71,16 +68,13 @@ pub fn memory_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Erro
 ///
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
-pub fn thread_sanitizer(cargo_arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    let mut arguments: Vec<String> = vec![
-        "nextest".to_string(),
-        "run".to_string(),
+pub fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+    arguments.extend(vec![
         "-Zbuild-std".to_string(),
         "--no-fail-fast".to_string(),
-    ];
+    ]);
 
     add_target_flag(&mut arguments);
-    arguments.extend(cargo_arguments);
 
     cmd("cargo", arguments)
         .env("RUSTFLAGS", "-Zsanitizer=thread")
