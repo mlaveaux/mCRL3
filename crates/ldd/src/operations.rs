@@ -600,6 +600,10 @@ mod tests {
         let result = minus(&mut storage, &a, &b);
 
         let expected = from_iter(&mut storage, expected_result.iter());
+
+        println!("{}", fmt_node(&storage, &result));
+        println!("{}", fmt_node(&storage, &expected));
+        
         assert_eq!(result, expected);
     }
 

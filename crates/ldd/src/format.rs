@@ -59,6 +59,7 @@ impl fmt::Display for Display<'_> {
     }
 }
 
+/// Print the vector set represented by the LDD.
 fn print(storage: &Storage, ldd: &Ldd, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     for vector in iter(storage, ldd) {
         write!(f, "<")?;

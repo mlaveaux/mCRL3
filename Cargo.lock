@@ -1953,12 +1953,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fs_extra"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
-
-[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2514,12 +2508,6 @@ checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
 dependencies = [
  "utf8-width",
 ]
-
-[[package]]
-name = "human-sort"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "140a09c9305e6d5e557e2ed7cbc68e05765a7d4213975b87cb04920689cc6219"
 
 [[package]]
 name = "i-slint-backend-linuxkms"
@@ -3608,7 +3596,7 @@ dependencies = [
  "mcrl3_sabre",
  "mcrl3_sabre-ffi",
  "mcrl3_utilities",
- "temp-dir",
+ "tempfile",
  "test-log",
  "toml",
 ]
@@ -3668,6 +3656,15 @@ dependencies = [
  "streaming-iterator",
  "thiserror 2.0.12",
  "tikv-jemallocator",
+]
+
+[[package]]
+name = "mcrl3_utilities-fuzz"
+version = "0.1.0"
+dependencies = [
+ "arbitrary",
+ "libfuzzer-sys",
+ "mcrl3_utilities",
 ]
 
 [[package]]
@@ -5757,12 +5754,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ac9aa371f599d22256307c24a9d748c041e548cbf599f35d890f9d365361790"
 
 [[package]]
-name = "temp-dir"
-version = "0.1.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83176759e9416cf81ee66cb6508dbfe9c96f20b8b56265a39917551c23c70964"
-
-[[package]]
 name = "tempfile"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7379,13 +7370,10 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "duct",
- "fs_extra",
  "glob",
- "human-sort",
  "regex",
  "serde",
  "serde_json",
- "strum",
  "which",
 ]
 
