@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use std::mem::transmute;
 use std::ops::Deref;
 
+use ahash::AHashSet;
 use delegate::delegate;
 
 use mcrl3_aterm::ATerm;
@@ -16,8 +17,11 @@ use mcrl3_aterm::Marker;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
 use mcrl3_aterm::Term;
+use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::TermIterator;
 use mcrl3_aterm::Transmutable;
+use mcrl3_aterm::Yield;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
@@ -59,6 +63,7 @@ mod inner {
     }
 
     impl DataExpression {
+        
         /// Returns the head symbol a data expression
         ///     - function symbol                  f -> f
         ///     - application       f(t_0, ..., t_n) -> f
@@ -339,6 +344,39 @@ mod inner {
 }
 
 pub use inner::*;
+
+/// Converts an [ATerm] to an untyped data expression.
+pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> DataExpression {
+    let mut builder = TermBuilder::<ATerm, ATerm>::new();
+    THREAD_TERM_POOL.with_borrow(|tp| {
+        builder
+            .evaluate(
+                tp,
+                t.clone(),
+                |_tp, args, t| {
+                    if variables.contains(t.get_head_symbol().name()) {
+                        // Convert a constant variable, for example 'x', into an untyped variable.
+                        Ok(Yield::Term(DataVariable::new(t.get_head_symbol().name()).into()))
+                    } else if t.get_head_symbol().arity() == 0 {
+                        Ok(Yield::Term(DataFunctionSymbol::new(t.get_head_symbol().name()).into()))
+                    } else {
+                        // This is a function symbol applied to a number of arguments
+                        let head = DataFunctionSymbol::new(t.get_head_symbol().name());
+
+                        for arg in t.arguments() {
+                            args.push(arg.protect());
+                        }
+
+                        Ok(Yield::Construct(head.into()))
+                    }
+                },
+                |_tp, input, args| Ok(DataApplication::with_iter(&input, args).into()),
+            )
+            .unwrap()
+            .into()
+    })
+}
+
 
 #[cfg(test)]
 mod tests {

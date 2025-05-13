@@ -1,4 +1,5 @@
 use mcrl3_aterm::ATerm;
+use mcrl3_data::to_untyped_data_expression;
 use test_case::test_case;
 
 use ahash::AHashSet;
@@ -9,7 +10,6 @@ use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SabreRewriter;
-use mcrl3_sabre::utilities::to_untyped_data_expression;
 
 #[cfg_attr(miri, ignore)]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr10.txt") ; "benchexpr10")]

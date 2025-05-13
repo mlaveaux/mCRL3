@@ -93,8 +93,9 @@ impl SabreCompilingRewriter {
 #[cfg(test)]
 mod tests {
     use ahash::AHashSet;
+    use mcrl3_data::to_untyped_data_expression;
     use mcrl3_rec_tests::load_REC_from_strings;
-    use mcrl3_sabre::{utilities::to_untyped_data_expression, RewriteEngine};
+    use mcrl3_sabre::RewriteEngine;
 
     use super::SabreCompilingRewriter;
 
