@@ -51,17 +51,10 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     let mut positions: HashSet<ExplicitPosition> = HashSet::new();
 
     for (index, state) in apma.states().iter().enumerate() {
-        writeln!(
-            &mut formatter,
-            "// Position {}", state.label()
-        )?;
+        writeln!(&mut formatter, "// Position {}", state.label())?;
 
         for goal in state.match_goals() {
-            writeln!(
-                &mut formatter,
-                "// Goal {}",
-                goal,
-            )?;
+            writeln!(&mut formatter, "// Goal {}", goal,)?;
         }
 
         writeln!(
@@ -99,7 +92,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
                 // Continue on the outgoing transition.
                 for (_announcement, _annotation) in &transition.announcements {
                     // Check for conditions and non linear patterns.
-                    writeln!(&mut formatter, "t.protect()")?;                    
+                    writeln!(&mut formatter, "t.protect()")?;
                 }
 
                 for (position, to) in &transition.destinations {

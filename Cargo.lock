@@ -3458,6 +3458,7 @@ dependencies = [
 name = "mcrl3_data"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "delegate",
  "mcrl3_aterm",
  "mcrl3_macros",
@@ -3656,15 +3657,6 @@ dependencies = [
  "streaming-iterator",
  "thiserror 2.0.12",
  "tikv-jemallocator",
-]
-
-[[package]]
-name = "mcrl3_utilities-fuzz"
-version = "0.1.0"
-dependencies = [
- "arbitrary",
- "libfuzzer-sys",
- "mcrl3_utilities",
 ]
 
 [[package]]

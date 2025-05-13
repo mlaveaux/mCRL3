@@ -310,8 +310,8 @@ mod tests {
     use mcrl3_aterm::Symb;
     use mcrl3_aterm::THREAD_TERM_POOL;
     use mcrl3_aterm::apply;
-    use mcrl3_data::to_untyped_data_expression;
     use mcrl3_data::DataFunctionSymbol;
+    use mcrl3_data::to_untyped_data_expression;
 
     use crate::test_utility::create_rewrite_rule;
 

@@ -3,11 +3,12 @@ use std::time::Instant;
 
 use ahash::AHashSet;
 use clap::ValueEnum;
+
+use mcrl3_data::to_untyped_data_expression;
 use mcrl3_rec_tests::load_REC_from_file;
 use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::SabreRewriter;
-use mcrl3_sabre::utilities::to_untyped_data_expression;
 use mcrl3_utilities::MCRL3Error;
 
 #[derive(ValueEnum, Debug, Clone)]

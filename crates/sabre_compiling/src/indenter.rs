@@ -151,26 +151,26 @@ mod tests {
 
             // First part of a line - should be indented
             write!(formatter, "Start of line ").unwrap();
-            
+
             // Continuation of the same line - should not be indented
             write!(formatter, "continued here").unwrap();
-            
+
             // New line followed by text - only the new line's content should be indented
             write!(formatter, "\nSecond line").unwrap();
-            
+
             // Another continuation
             write!(formatter, " continued").unwrap();
-            
+
             // A line ending with newline
             write!(formatter, "\nThird line\n").unwrap();
-            
+
             // A new line after previous newline - should be indented
             write!(formatter, "Fourth line").unwrap();
         }
 
         let result = String::from_utf8(buffer).unwrap();
         let expected = "  Start of line continued here\n  Second line continued\n  Third line\n  Fourth line";
-        
+
         assert_eq!(result, expected, "Line continuation handling incorrect");
     }
 }

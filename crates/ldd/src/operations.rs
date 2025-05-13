@@ -603,7 +603,7 @@ mod tests {
 
         println!("{}", fmt_node(&storage, &result));
         println!("{}", fmt_node(&storage, &expected));
-        
+
         assert_eq!(result, expected);
     }
 

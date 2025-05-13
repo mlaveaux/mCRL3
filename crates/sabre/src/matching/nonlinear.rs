@@ -91,9 +91,9 @@ mod tests {
     use ahash::AHashSet;
     use mcrl3_aterm::ATerm;
     use mcrl3_data::DataVariable;
+    use mcrl3_data::to_untyped_data_expression;
 
     use crate::test_utility::create_rewrite_rule;
-    use crate::utilities::to_untyped_data_expression;
 
     use super::*;
 

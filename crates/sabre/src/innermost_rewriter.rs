@@ -302,6 +302,7 @@ impl AnnouncementInnermost {
 #[cfg(test)]
 mod tests {
     use ahash::AHashSet;
+    use mcrl3_data::to_untyped_data_expression;
     use test_log::test;
 
     use mcrl3_aterm::random_term;
@@ -310,7 +311,6 @@ mod tests {
     use crate::InnermostRewriter;
     use crate::RewriteEngine;
     use crate::RewriteSpecification;
-    use crate::utilities::to_untyped_data_expression;
 
     #[test]
     fn random_innermost_simple() {

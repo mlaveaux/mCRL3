@@ -118,10 +118,8 @@ impl<M> SetAutomaton<M> {
                     position: ExplicitPosition::empty_pos(),
                     symbols_seen: 0,
                 },
-                vec![
-                    MatchObligation::new(rr.lhs.clone(), ExplicitPosition::empty_pos()),
-                ])
-            );
+                vec![MatchObligation::new(rr.lhs.clone(), ExplicitPosition::empty_pos())],
+            ));
         }
 
         // Match goals need to be sorted so that we can easily check whether a state with a certain

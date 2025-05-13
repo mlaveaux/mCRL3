@@ -42,7 +42,6 @@ impl fmt::Display for SetIndex {
     }
 }
 
-
 /// A set that assigns a unique index to every entry. The returned index can be used to access the inserted entry.
 pub struct IndexedSet<T, S = FxBuildHasher> {
     /// The table of elements, which can be either filled or empty.
@@ -282,15 +281,12 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     }
 }
 
-
 impl<T, S> fmt::Debug for IndexedSet<T, S>
 where
     T: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list()
-            .entries(self.iter())
-            .finish()
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -346,7 +342,6 @@ struct IndexValueEquivalent<'a, T, Q> {
 }
 
 impl<T, Q> IndexValueEquivalent<'_, T, Q> {
-
     fn hash(&self) -> u64 {
         // This is a placeholder for the actual hash function
         self.hash
@@ -357,7 +352,11 @@ impl<'a, T, Q: Hash> IndexValueEquivalent<'a, T, Q> {
     /// Creates a new IndexValueEquivalent with the given value and table.
     fn new<S: BuildHasher>(value: &'a Q, hasher: &S, table: &'a Vec<IndexSetEntry<T>>) -> Self {
         // Constructor allows for centralized creation logic
-        Self { value, table, hash: hasher.hash_one(value) }
+        Self {
+            value,
+            table,
+            hash: hasher.hash_one(value),
+        }
     }
 }
 

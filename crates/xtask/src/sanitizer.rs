@@ -23,10 +23,7 @@ fn add_target_flag(_arguments: &mut Vec<String>) {
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec![
-        "-Zbuild-std".to_string(),
-        "--no-fail-fast".to_string(),
-    ]);
+    arguments.extend(vec!["-Zbuild-std".to_string(), "--no-fail-fast".to_string()]);
 
     add_target_flag(&mut arguments);
 
@@ -46,10 +43,7 @@ pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn memory_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec![
-        "-Zbuild-std".to_string(),
-        "--no-fail-fast".to_string(),
-    ]);
+    arguments.extend(vec!["-Zbuild-std".to_string(), "--no-fail-fast".to_string()]);
 
     add_target_flag(&mut arguments);
 
@@ -69,10 +63,7 @@ pub fn memory_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec![
-        "-Zbuild-std".to_string(),
-        "--no-fail-fast".to_string(),
-    ]);
+    arguments.extend(vec!["-Zbuild-std".to_string(), "--no-fail-fast".to_string()]);
 
     add_target_flag(&mut arguments);
 

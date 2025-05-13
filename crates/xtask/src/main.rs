@@ -47,18 +47,10 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
                 return Ok(ExitCode::FAILURE);
             }
         }
-        Some("coverage") => {
-            coverage::coverage(args.collect())?
-        }
-        Some("address-sanitizer") => {
-            sanitizer::address_sanitizer(args.collect())?
-        }
-        Some("memory-sanitizer") => {
-            sanitizer::memory_sanitizer(args.collect())?
-        }
-        Some("thread-sanitizer") => {
-            sanitizer::thread_sanitizer(args.collect())?
-        }
+        Some("coverage") => coverage::coverage(args.collect())?,
+        Some("address-sanitizer") => sanitizer::address_sanitizer(args.collect())?,
+        Some("memory-sanitizer") => sanitizer::memory_sanitizer(args.collect())?,
+        Some("thread-sanitizer") => sanitizer::thread_sanitizer(args.collect())?,
         Some(x) => {
             println!("Unknown task {x}");
             println!();
@@ -73,5 +65,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
 
 /// Print the help message.
 fn print_help() {
-    println!("Available tasks: benchmark, coverage <cargo_args>, address-sanitizer, <cargo_args> thread-sanitizer <cargo_args>, memory-sanitizer <cargo_args>");
+    println!(
+        "Available tasks: benchmark, coverage <cargo_args>, address-sanitizer, <cargo_args> thread-sanitizer <cargo_args>, memory-sanitizer <cargo_args>"
+    );
 }

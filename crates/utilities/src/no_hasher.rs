@@ -1,5 +1,5 @@
-use std::hash::{BuildHasher, Hasher};
-
+use std::hash::BuildHasher;
+use std::hash::Hasher;
 
 /// A hasher that directly uses the value provided to write_u64 as the hash
 pub struct NoHasher(u64);
@@ -40,10 +40,18 @@ mod tests {
     fn test_no_hasher() {
         let mut hasher = NoHasher(0);
         hasher.write_u64(42);
-        assert_eq!(hasher.finish(), 42, "NoHasher should return the value passed to write_u64");
+        assert_eq!(
+            hasher.finish(),
+            42,
+            "NoHasher should return the value passed to write_u64"
+        );
 
         let builder = NoHasherBuilder;
         let hasher = builder.build_hasher();
-        assert_eq!(hasher.finish(), 0, "NoHasherBuilder should create a hasher with initial value 0");
+        assert_eq!(
+            hasher.finish(),
+            0,
+            "NoHasherBuilder should create a hasher with initial value 0"
+        );
     }
 }

@@ -16,12 +16,12 @@ use mcrl3_aterm::Markable;
 use mcrl3_aterm::Marker;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::SymbolRef;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::TermBuilder;
 use mcrl3_aterm::TermIterator;
 use mcrl3_aterm::Transmutable;
 use mcrl3_aterm::Yield;
-use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_macros::mcrl3_derive_terms;
 use mcrl3_macros::mcrl3_ignore;
 use mcrl3_macros::mcrl3_term;
@@ -63,7 +63,6 @@ mod inner {
     }
 
     impl DataExpression {
-        
         /// Returns the head symbol a data expression
         ///     - function symbol                  f -> f
         ///     - application       f(t_0, ..., t_n) -> f
@@ -376,7 +375,6 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> Da
             .into()
     })
 }
-
 
 #[cfg(test)]
 mod tests {

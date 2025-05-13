@@ -1,5 +1,3 @@
-use ahash::AHashSet;
-
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::Protected;
@@ -81,12 +79,12 @@ fn substitute_rec<'a, 'b>(
 mod tests {
     use super::*;
 
+    use ahash::AHashSet;
     use mcrl3_aterm::THREAD_TERM_POOL;
     use mcrl3_data::to_untyped_data_expression;
 
-    use crate::utilities::{ExplicitPosition, PositionIndexed};
-
-
+    use crate::utilities::ExplicitPosition;
+    use crate::utilities::PositionIndexed;
 
     #[test]
     fn test_substitute() {

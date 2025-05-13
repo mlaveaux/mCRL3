@@ -1,4 +1,3 @@
-use crate::Parser;
 use pest::Parser as PestParser;
 use pest::RuleType;
 use pest::Span;
@@ -6,6 +5,8 @@ use pest::error::Error;
 use pest::error::ErrorVariant;
 use pest::iterators::Pair;
 use pest::iterators::Pairs;
+
+use crate::Parser;
 
 /// A node of the parse tree.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -155,7 +156,7 @@ impl<'i, R: RuleType, D> Nodes<'i, R, D> {
     pub fn user_data(&self) -> &D {
         &self.user_data
     }
-    
+
     pub fn into_user_data(self) -> D {
         self.user_data
     }

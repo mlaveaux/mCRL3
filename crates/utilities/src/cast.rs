@@ -1,4 +1,3 @@
-
 /// A macro to return the pat type of an enum class target, and panics otherwise.
 ///
 /// Usage cast!(instance, type)

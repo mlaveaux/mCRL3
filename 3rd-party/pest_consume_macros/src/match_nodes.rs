@@ -255,7 +255,7 @@ fn make_alternative(
         Some(rule_name) => quote!(#parser::#rule_name(#node)),
         None => quote!(Ok(#node)),
     };
-    
+
     let process_item = |pat: &Pattern, i_matched| {
         if !pat.multiple {
             let parse = parse_rule(&pat.rule_name, quote!(#i_matched));
