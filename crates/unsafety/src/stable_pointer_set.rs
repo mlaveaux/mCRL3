@@ -102,7 +102,7 @@ impl<T> StablePointer<T> {
     /// Creates a new StablePointer from a boxed element.
     fn from_entry(entry: &Entry<T>) -> Self {
         // SAFETY: The pointer is valid as long as the boxed element is valid.
-        let ptr = unsafe { NonNull::new_unchecked(entry.value.as_ref() as *const T as *mut T) };
+        let ptr = NonNull::from(entry.value.as_ref());
 
         Self {
             ptr,
