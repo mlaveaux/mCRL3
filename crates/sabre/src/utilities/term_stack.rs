@@ -13,6 +13,7 @@ use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 use mcrl3_data::DataVariable;
+use mcrl3_data::DataVariableRef;
 use mcrl3_data::is_data_expression;
 use mcrl3_data::is_data_machine_number;
 use mcrl3_data::is_data_variable;
@@ -21,6 +22,7 @@ use mcrl3_utilities::debug_trace;
 use crate::Rule;
 use crate::utilities::InnermostStack;
 
+use super::DataPositionIterator;
 use super::ExplicitPosition;
 use super::PositionIterator;
 
@@ -114,17 +116,18 @@ impl TermStack {
         let mut variables = vec![];
         let mut stack_size = 0;
 
-        for (term, position) in PositionIterator::new(term.copy().into()) {
+        for (term, position) in DataPositionIterator::new(term.copy().into()) {
             if let Some(index) = position.indices.last() {
-                if *index == 1 {
+                if *index == 0 {
                     continue; // Skip the function symbol.
                 }
             }
 
             if is_data_variable(&term) {
+                let variable: DataVariableRef<'_> = term.into();
                 variables.push((
                     var_map
-                        .get(&term.protect())
+                        .get(&variable.protect())
                         .expect("All variables in the right hand side must occur in the left hand side")
                         .clone(),
                     stack_size,

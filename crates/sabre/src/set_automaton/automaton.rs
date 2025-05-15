@@ -325,9 +325,9 @@ impl State {
             }
 
             // Handle fresh match goals, they are the positions Label(state).i
-            // where i is between 2 and the arity + 2 of the function symbol of
-            // the transition. Position 1 is the function symbol.
-            for i in 2..arity + 2 {
+            // where i is between 1 and the arity of the function symbol of
+            // the transition. Position 1 is the first argument.
+            for i in 1..arity + 1 {
                 let mut pos = self.label.clone();
                 pos.indices.push(i);
 

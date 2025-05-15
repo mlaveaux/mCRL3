@@ -10,7 +10,7 @@ use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::AnnouncementSabre;
 use crate::utilities::ConfigurationStack;
-use crate::utilities::PositionIndexed;
+use crate::utilities::DataPositionIndexed;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
 use mcrl3_utilities::debug_trace;
@@ -93,8 +93,9 @@ impl SabreRewriter {
                     match ConfigurationStack::pop_side_branch_leaf(&mut cs.side_branch_stack, leaf_index) {
                         None => {
                             // Observe a symbol according to the state label of the set automaton.
-                            let pos: DataExpressionRef =
-                                leaf_term.get_position(automaton.states()[leaf.state].label()).into();
+                            let pos: DataExpressionRef = leaf_term
+                                .get_data_position(automaton.states()[leaf.state].label())
+                                .into();
 
                             let function_symbol = pos.data_function_symbol();
                             stats.symbol_comparisons += 1;
@@ -240,7 +241,7 @@ impl SabreRewriter {
         // Computes the new subterm of the configuration
         let new_subterm = annotation
             .rhs_term_stack
-            .evaluate(&leaf_subterm.get_position(&announcement.position));
+            .evaluate(&leaf_subterm.get_data_position(&announcement.position));
 
         debug_trace!(
             "rewrote {} to {} using rule {}",
@@ -265,7 +266,7 @@ impl SabreRewriter {
         stats: &mut RewritingStatistics,
     ) -> bool {
         for c in &annotation.conditions {
-            let subterm = subterm.get_position(&announcement.position);
+            let subterm = subterm.get_data_position(&announcement.position);
 
             let rhs: DataExpression = c.rhs_term_stack.evaluate(&subterm);
             let lhs: DataExpression = c.lhs_term_stack.evaluate(&subterm);

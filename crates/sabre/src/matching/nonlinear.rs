@@ -6,8 +6,8 @@ use mcrl3_data::DataVariableRef;
 use mcrl3_data::is_data_variable;
 
 use crate::Rule;
+use crate::utilities::DataPositionIndexed;
 use crate::utilities::ExplicitPosition;
-use crate::utilities::PositionIndexed;
 use crate::utilities::PositionIterator;
 
 /// An equivalence class is a variable with (multiple) positions. This is
@@ -44,7 +44,7 @@ pub fn derive_equivalence_classes(rule: &Rule) -> Vec<EquivalenceClass> {
 /// Checks if the equivalence classes hold for the given term.
 pub fn check_equivalence_classes<'a, T, P>(term: &'a P, eqs: &[EquivalenceClass]) -> bool
 where
-    P: PositionIndexed<'a, Target<'a> = T> + 'a,
+    P: DataPositionIndexed<'a, Target<'a> = T> + 'a,
     T: PartialEq,
 {
     eqs.iter().all(|ec| {
@@ -56,7 +56,7 @@ where
         // The term at the first position must be equivalent to all other positions.
         let mut iter_pos = ec.positions.iter();
         let first = iter_pos.next().unwrap();
-        iter_pos.all(|other_pos| term.get_position(first) == term.get_position(other_pos))
+        iter_pos.all(|other_pos| term.get_data_position(first) == term.get_data_position(other_pos))
     })
 }
 

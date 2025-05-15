@@ -68,7 +68,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
         writeln!(
             &mut formatter,
-            "let arg = get_position_{}(t);",
+            "let arg = get_data_position_{}(t);",
             UnderscoreFormatter(state.label())
         )?;
         writeln!(&mut formatter, "let symbol = arg.data_function_symbol();")?;
@@ -100,7 +100,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
                     writeln!(
                         &mut formatter,
-                        "rewrite_{to}(&get_position_{}(t))",
+                        "rewrite_{to}(&get_data_position_{}(t))",
                         UnderscoreFormatter(position)
                     )?;
                 }
@@ -133,7 +133,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     for position in &positions {
         writeln!(
             &mut formatter,
-            "fn get_position_{}<'a>(t: &DataExpressionRef<'a>) -> DataExpressionRef<'a> {{",
+            "fn get_data_position_{}<'a>(t: &DataExpressionRef<'a>) -> DataExpressionRef<'a> {{",
             UnderscoreFormatter(position)
         )?;
 

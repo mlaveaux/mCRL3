@@ -1,6 +1,5 @@
 use log::info;
 
-use mcrl3_aterm::ATermRef;
 use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::ThreadTermPool;
 use mcrl3_data::DataApplication;
@@ -19,8 +18,8 @@ use crate::matching::nonlinear::derive_equivalence_classes;
 use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::Config;
+use crate::utilities::DataPositionIndexed;
 use crate::utilities::InnermostStack;
-use crate::utilities::PositionIndexed;
 use crate::utilities::TermStack;
 use crate::utilities::TermStackBuilder;
 use mcrl3_utilities::debug_trace;
@@ -208,7 +207,7 @@ impl InnermostRewriter {
         builder: &mut TermStackBuilder,
         stats: &mut RewritingStatistics,
         automaton: &'a SetAutomaton<AnnouncementInnermost>,
-        t: &ATermRef<'_>,
+        t: &DataExpressionRef<'_>,
     ) -> Option<(&'a MatchAnnouncement, &'a AnnouncementInnermost)> {
         // Start at the initial state
         let mut state_index = 0;
@@ -217,7 +216,7 @@ impl InnermostRewriter {
 
             // Get the symbol at the position state.label
             stats.symbol_comparisons += 1;
-            let pos: DataExpressionRef<'_> = t.get_position(state.label()).into();
+            let pos = t.get_data_position(state.label());
             let symbol = pos.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match
@@ -253,7 +252,7 @@ impl InnermostRewriter {
         stats: &mut RewritingStatistics,
         automaton: &SetAutomaton<AnnouncementInnermost>,
         announcement: &AnnouncementInnermost,
-        t: &ATermRef<'_>,
+        t: &DataExpressionRef<'_>,
     ) -> bool {
         for c in &announcement.conditions {
             let rhs: DataExpression = c.rhs_term_stack.evaluate_with(t, builder);

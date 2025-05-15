@@ -16,7 +16,7 @@ Tests can be performed using `cargo test`, only tests of the Sabre crate can be 
 
 ## Fuzzing
 
-We use `libfuzzer` to also perform fuzzing in addition to using random tests and integration tests. For this it is necessary to acquire the `cargo fuzz` command using `cargo install cargo-fuzz`.
+We use `libfuzzer` to also perform fuzzing in addition to using random tests and integration tests. This requires a nightly Rust compiler to be installed. Furthermore, it is necessary to acquire the `cargo fuzz` command using `cargo install cargo-fuzz`. Then, in the directory of a crate that has a `fuzz` directory, for example `crates/utiltiies`, we can run the fuzzing targets using `cargo +nightly fuzz run`. On Windows with MSVC it is important that `clang_rt.asan_dynamic-XXX.dll` can be found on the `PATH` since it used by the fuzzing targets.
 
 ## LLVM Sanitizer
 

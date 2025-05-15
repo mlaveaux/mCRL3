@@ -79,13 +79,12 @@ mod inner {
         /// Returns the arguments of a data expression
         ///     - function symbol                  f -> []
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
-        pub fn data_arguments(&self) -> ATermArgs<'_> {
-            if is_data_application(&self.term) {
+        #[mcrl3_ignore]
+        pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'_>> + ExactSizeIterator + use<'_>{
+            if is_data_application(&self.term) || is_data_function_symbol(&self.term) {
                 let mut result = self.term.arguments();
                 result.next();
-                result
-            } else if is_data_function_symbol(&self.term) {
-                ATermArgs::empty()
+                result.map(|t| t.into())
             } else {
                 panic!("data_arguments not implemented for {}", self);
             }
@@ -340,9 +339,37 @@ mod inner {
             value.term.into()
         }
     }
+
+    #[mcrl3_ignore]
+    impl From<DataExpression> for DataVariable {
+        fn from(value: DataExpression) -> Self {
+            value.term.into()
+        }
+    }
+
+    #[mcrl3_ignore]
+    impl<'a> From<DataExpressionRef<'a>> for DataVariableRef<'a> {
+        fn from(value: DataExpressionRef<'a>) -> Self {
+            value.term.into()
+        }
+    }
 }
 
 pub use inner::*;
+
+impl<'a> DataExpressionRef<'a> {
+
+    pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'a>> + ExactSizeIterator + use<'a> {
+        if is_data_application(&self.term) || is_data_function_symbol(&self.term) {
+            let mut result = self.term.arguments();
+            result.next();
+            result.map(|t| t.into())
+        } else {
+            panic!("data_arguments not implemented for {}", self);
+        }
+    }
+}
+
 
 /// Converts an [ATerm] to an untyped data expression.
 pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> DataExpression {

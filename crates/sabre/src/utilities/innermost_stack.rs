@@ -6,7 +6,7 @@ use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 use mcrl3_utilities::debug_trace;
 
-use crate::utilities::PositionIndexed;
+use crate::utilities::DataPositionIndexed;
 
 use super::Config;
 use super::TermStack;
@@ -79,13 +79,14 @@ impl InnermostStack {
             // The right hand side is only a variable
             write_terms[result_index] = Some(
                 write_terms
-                    .protect(&term.get_position(&rhs_stack.variables[0].0))
+                    .protect(&term.get_data_position(&rhs_stack.variables[0].0))
                     .into(),
             );
         } else {
             for (position, index) in &rhs_stack.variables {
                 // Add the positions to the stack.
-                write_terms[top_of_stack + index - 1] = Some(write_terms.protect(&term.get_position(position)).into());
+                write_terms[top_of_stack + index - 1] =
+                    Some(write_terms.protect(&term.get_data_position(position)).into());
             }
         }
     }

@@ -15,7 +15,7 @@ use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::ExplicitPosition;
 
-use super::PositionIndexed;
+use super::DataPositionIndexed;
 use super::SubstitutionBuilder;
 use super::TermStack;
 use super::create_var_map;
@@ -197,7 +197,7 @@ impl<'a> ConfigurationStack<'a> {
 
         // Push the term belonging to the leaf.
         let mut write_terms = self.terms.write();
-        let t = write_terms.protect(&write_terms[c].get_position(pos));
+        let t = write_terms.protect(&write_terms[c].get_data_position(pos));
         write_terms.push(t.into());
 
         self.current_node = Some(c + 1);
