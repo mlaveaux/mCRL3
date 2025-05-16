@@ -5,7 +5,7 @@ use test_case::test_case;
 use ahash::AHashSet;
 
 use mcrl3_data::DataExpression;
-use mcrl3_rec_tests::load_REC_from_strings;
+use mcrl3_rec_tests::load_rec_from_strings;
 use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
@@ -40,7 +40,7 @@ use mcrl3_sabre::SabreRewriter;
 #[test_case(vec![include_str!("../../../examples/REC/rec/tricky.rec")], include_str!("snapshot/result_tricky.txt") ; "tricky")]
 fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
     let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
-        let (syntax_spec, syntax_terms) = load_REC_from_strings(&rec_files).unwrap();
+        let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
         (
             result,

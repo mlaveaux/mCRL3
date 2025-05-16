@@ -4,13 +4,13 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 
-use mcrl3_rec_tests::load_REC_from_strings;
+use mcrl3_rec_tests::load_rec_from_strings;
 use mcrl3_sabre::SetAutomaton;
 
 pub fn criterion_benchmark_set_automaton(c: &mut Criterion) {
     {
         let (name, rec_files) = ("fibfree", [include_str!("../../../../examples/REC/rec/fibfree.rec")]);
-        let (syntax_spec, _) = load_REC_from_strings(&rec_files).unwrap();
+        let (syntax_spec, _) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
 
         c.bench_function(&format!("set automaton {}", name), |bencher| {

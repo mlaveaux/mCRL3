@@ -5,7 +5,7 @@ use ahash::AHashSet;
 use clap::ValueEnum;
 
 use mcrl3_data::to_untyped_data_expression;
-use mcrl3_rec_tests::load_REC_from_file;
+use mcrl3_rec_tests::load_rec_from_file;
 use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::SabreRewriter;
@@ -19,7 +19,7 @@ pub enum Rewriter {
 
 /// Rewrites the given REC specification.
 pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: bool) -> Result<(), MCRL3Error> {
-    let (syntax_spec, syntax_terms) = load_REC_from_file(filename_specification.into())?;
+    let (syntax_spec, syntax_terms) = load_rec_from_file(filename_specification.into())?;
 
     let spec = syntax_spec.to_rewrite_spec();
 

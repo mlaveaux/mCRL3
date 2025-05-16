@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use mcrl3_rec_tests::load_REC_from_file;
+use mcrl3_rec_tests::load_rec_from_file;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3rewrite::Rewriter;
 use mcrl3rewrite::rewrite_rec;
@@ -58,7 +58,7 @@ fn main() -> Result<ExitCode, MCRL3Error> {
         Cli::Convert(args) => {
             if args.specification.ends_with(".rec") {
                 // Read the data specification
-                let (spec_text, _) = load_REC_from_file(args.specification.into())?;
+                let (spec_text, _) = load_rec_from_file(args.specification.into())?;
                 let spec = spec_text.to_rewrite_spec();
 
                 let mut output = File::create(args.output)?;

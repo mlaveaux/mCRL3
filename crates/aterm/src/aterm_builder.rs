@@ -1,7 +1,6 @@
 use std::fmt;
 
-use log::trace;
-
+use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::MCRL3Error;
 
 use crate::ATerm;
@@ -95,7 +94,7 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
         // We need impl<Iterator<Item=&ATerm>> here, but that is not possible.
         G: Fn(&ThreadTermPool, C, std::iter::Flatten<std::slice::Iter<Option<ATerm>>>) -> Result<ATerm, MCRL3Error>,
     {
-        trace!("Transforming {:?}", input);
+        debug_trace!("Transforming {:?}", input);
         self.terms.push(None);
         self.configs.push(Config::Apply(input, 0));
 
@@ -129,8 +128,7 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
                 }
             }
 
-            #[cfg(feature = "mcrl3_debug")]
-            trace!("{:?}", self);
+            debug_trace!("{:?}", self);
         }
 
         debug_assert!(self.terms.len() == 1, "Expect exactly one term on the result stack");

@@ -3,13 +3,10 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use mcrl3_aterm::ATerm;
-use mcrl3_aterm::Symbol;
 use mcrl3_aterm::THREAD_TERM_POOL;
-use mcrl3_aterm::TermBuilder;
-use mcrl3_aterm::Yield;
 use mcrl3_utilities::MCRL3Error;
 use pest::Parser;
-use pest::iterators::Pair;
+use pest_consume::{match_nodes, Error, Node};
 use pest_derive::Parser;
 
 use crate::syntax::ConditionSyntax;
@@ -20,40 +17,52 @@ use crate::syntax::RewriteSpecificationSyntax;
 #[grammar = "rec_grammar.pest"]
 pub struct RecParser;
 
+type ParseResult<T> = Result<T, Error<Rule>>;
+type ParseNode<'i> = Node<'i, Rule, ()>;
+
+/// Load a REC specification from a specified file.
+pub fn load_rec_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
+    let contents = fs::read_to_string(file.clone())?;
+    parse_rec(&contents, Some(file))
+}
+
+/// Load and join multiple REC specifications
+pub fn load_rec_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
+    let mut rewrite_spec = RewriteSpecificationSyntax::default();
+    let mut terms = vec![];
+
+    for spec in specs {
+        let (include_spec, include_terms) = parse_rec(spec, None)?;
+        rewrite_spec.merge(&include_spec);
+        terms.extend_from_slice(&include_terms);
+    }
+
+    Ok((rewrite_spec, terms))
+}
+
 /// Parses a REC specification. REC files can import other REC files.
 /// Returns a RewriteSpec containing all the rewrite rules and a list of terms that need to be rewritten.
-///
-/// Arguments
-/// `contents` - A REC specification as string
-/// `path` - An optional path to a folder in which other importable REC files can be found.
-#[allow(non_snake_case)]
-fn parse_REC(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
-    // Initialise return result
+fn parse_rec(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
+    // Initialize return result
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
 
     // Use Pest parser (generated automatically from the grammar.pest file)
-    let mut pairs = RecParser::parse(Rule::rec_spec, contents)?;
-
-    // Get relevant sections from the REC file
-    let pair = pairs.next().unwrap();
-    let mut inner = pair.into_inner();
-    let header = inner.next().unwrap();
-    let _sorts = inner.next().unwrap();
-    let cons = inner.next().unwrap();
-    let _opns = inner.next().unwrap();
-    let vars = inner.next().unwrap();
-    let rules = inner.next().unwrap();
-    let eval = inner.next().unwrap();
-    let (_name, include_files) = parse_header(header);
-
-    rewrite_spec.rewrite_rules = parse_rewrite_rules(rules);
-    rewrite_spec.constructors = parse_constructors(cons);
-    if eval.as_rule() == Rule::eval {
-        terms.extend_from_slice(&parse_eval(eval));
+    let mut parse_result = RecParser::parse(Rule::rec_spec, contents)?;
+    let root = parse_result.next().ok_or("Could not parse REC specification")?;
+    let parse_node = ParseNode::new(root);
+    
+    // Parse using the consumed-based implementation
+    let (name, include_files, constructors, variables, rewrite_rules, eval_terms) = 
+        RecParser::rec_spec(parse_node)?;
+    
+    rewrite_spec.rewrite_rules = rewrite_rules;
+    rewrite_spec.constructors = constructors;
+    rewrite_spec.variables = variables;
+    
+    if !eval_terms.is_empty() {
+        terms.extend_from_slice(&eval_terms);
     }
-
-    rewrite_spec.variables = parse_vars(vars);
 
     // REC files can import other REC files. Import all referenced by the header.
     for file in include_files {
@@ -61,8 +70,8 @@ fn parse_REC(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificat
             let include_path = p.parent().unwrap();
             let file_name = PathBuf::from_str(&(file.to_lowercase() + ".rec")).unwrap();
             let load_file = include_path.join(file_name);
-            let contents = fs::read_to_string(load_file).unwrap();
-            let (include_spec, include_terms) = parse_REC(&contents, path.clone())?;
+            let contents = fs::read_to_string(load_file)?;
+            let (include_spec, include_terms) = parse_rec(&contents, path.clone())?;
 
             // Add rewrite rules and terms to the result.
             terms.extend_from_slice(&include_terms);
@@ -81,198 +90,203 @@ fn parse_REC(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificat
     Ok((rewrite_spec, terms))
 }
 
-/// Load a REC specification from a specified file.
-#[allow(non_snake_case)]
-pub fn load_REC_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
-    let contents = fs::read_to_string(file.clone())?;
-    parse_REC(&contents, Some(file))
-}
-
-/// Load and join multiple REC specifications
-#[allow(non_snake_case)]
-pub fn load_REC_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
-    let mut rewrite_spec = RewriteSpecificationSyntax::default();
-    let mut terms = vec![];
-
-    for spec in specs {
-        let (include_spec, include_terms) = parse_REC(spec, None)?;
-        rewrite_spec.merge(&include_spec);
-        terms.extend_from_slice(&include_terms);
-    }
-
-    Ok((rewrite_spec, terms))
-}
-
-/// Extracts data from parsed header of REC spec. Returns name and include files.
-fn parse_header(pair: Pair<Rule>) -> (String, Vec<String>) {
-    debug_assert_eq!(pair.as_rule(), Rule::header);
-
-    let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let mut include_files = vec![];
-
-    for f in inner {
-        include_files.push(f.as_str().to_string());
-    }
-
-    (name, include_files)
-}
-
-/// Extracts data from parsed constructor section, derives the arity of symbols. Types are ignored.
-fn parse_constructors(pair: Pair<Rule>) -> Vec<(String, usize)> {
-    debug_assert_eq!(pair.as_rule(), Rule::cons);
-
-    let mut constructors = Vec::new();
-    for decl in pair.into_inner() {
-        debug_assert_eq!(decl.as_rule(), Rule::cons_decl);
-        let mut inner = decl.into_inner();
-        let symbol = inner.next().unwrap().as_str().to_string();
-        let arity = inner.count() - 1;
-        constructors.push((symbol, arity));
-    }
-    constructors
-}
-
-/// Extracts data from parsed rewrite rules. Returns list of rewrite rules
-fn parse_rewrite_rules(pair: Pair<Rule>) -> Vec<RewriteRuleSyntax> {
-    debug_assert_eq!(pair.as_rule(), Rule::rules);
-    let mut rules = vec![];
-    let inner = pair.into_inner();
-    for p in inner {
-        let rule = parse_rewrite_rule(p);
-        rules.push(rule);
-    }
-    rules
-}
-
-// Extracts data from the variable VARS block. Types are ignored.
-fn parse_vars(pair: Pair<Rule>) -> Vec<String> {
-    debug_assert_eq!(pair.as_rule(), Rule::vars);
-
-    let mut variables = vec![];
-    let inner = pair.into_inner();
-    for v in inner {
-        debug_assert_eq!(v.as_rule(), Rule::var_decl);
-
-        variables.extend(parse_var_decl(v));
-    }
-
-    variables
-}
-
-fn parse_var_decl(pair: Pair<Rule>) -> Vec<String> {
-    debug_assert_eq!(pair.as_rule(), Rule::var_decl);
-
-    let mut variables = vec![];
-    let inner = pair.into_inner();
-    for v in inner {
-        debug_assert_eq!(v.as_rule(), Rule::identifier);
-
-        variables.push(String::from(v.as_str()));
-    }
-
-    // There might be a better way, but the last identifier is the type.
-    variables.pop();
-
-    variables
-}
-
-/// Extracts data from parsed EVAL section, returns a list of terms that need to be rewritten.
-fn parse_eval(pair: Pair<Rule>) -> Vec<ATerm> {
-    assert_eq!(pair.as_rule(), Rule::eval);
-    let mut terms = vec![];
-    let inner = pair.into_inner();
-    for p in inner {
-        let term = parse_term(p).unwrap();
-        terms.push(term);
-    }
-
-    terms
-}
-
-/// Constructs a ATerm from a string.
-pub fn from_string(str: &str) -> Result<ATerm, MCRL3Error> {
-    let mut pairs = RecParser::parse(Rule::term, str)?;
-    parse_term(pairs.next().unwrap())
-}
-
-/// Extracts data from parsed term.
-fn parse_term(pair: Pair<Rule>) -> Result<ATerm, MCRL3Error> {
-    debug_assert_eq!(pair.as_rule(), Rule::term);
-
-    let mut builder = TermBuilder::<Pair<'_, Rule>, Symbol>::new();
-
-    THREAD_TERM_POOL.with_borrow(|tp| {
-        Ok(builder
-            .evaluate(
-                tp,
-                pair,
-                |tp, stack, pair| {
-                    match pair.as_rule() {
-                        Rule::term => {
-                            let mut inner = pair.into_inner();
-                            let head_symbol = inner.next().unwrap().as_str();
-
-                            // Queue applications for all the arguments.
-                            let mut arity = 0;
-                            if let Some(args) = inner.next() {
-                                for arg in args.into_inner() {
-                                    stack.push(arg);
-                                    arity += 1;
-                                }
-                            }
-
-                            Ok(Yield::Construct(tp.create_symbol(head_symbol, arity)))
-                        }
-                        _ => {
-                            panic!("Should be unreachable!")
-                        }
-                    }
-                },
-                |tp, symbol, args| Ok(tp.create_term_iter(&symbol, args)),
-            )
-            .unwrap())
-    })
-}
-
-// /Extracts data from parsed rewrite rule
-fn parse_rewrite_rule(pair: Pair<Rule>) -> RewriteRuleSyntax {
-    debug_assert!(pair.as_rule() == Rule::single_rewrite_rule || pair.as_rule() == Rule::rewrite_rule);
-
-    let mut inner = match pair.as_rule() {
-        Rule::single_rewrite_rule => pair.into_inner().next().unwrap().into_inner(),
-        Rule::rewrite_rule => pair.into_inner(),
-        _ => {
-            panic!("Unreachable");
-        }
-    };
-    let lhs = parse_term(inner.next().unwrap()).unwrap();
-    let rhs = parse_term(inner.next().unwrap()).unwrap();
-
-    // Extract conditions
-    let mut conditions = vec![];
-    for c in inner {
-        assert_eq!(c.as_rule(), Rule::condition);
-        let mut c_inner = c.into_inner();
-        let lhs_cond = parse_term(c_inner.next().unwrap()).unwrap();
-        let equality = match c_inner.next().unwrap().as_str() {
-            "=" => true,
-            "<>" => false,
-            _ => {
-                panic!("Unknown comparison operator");
+#[pest_consume::parser]
+impl RecParser {
+    /// Parse a REC specification
+    fn rec_spec(spec: ParseNode) -> ParseResult<(String, Vec<String>, Vec<(String, usize)>, Vec<String>, Vec<RewriteRuleSyntax>, Vec<ATerm>)> {
+        // Extract all sections of the REC file
+        match_nodes!(spec.into_children();
+            [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), eval(eval_terms)] => {
+                Ok((name, include_files, constructors, variables, rewrite_rules, eval_terms))
             }
-        };
-        let rhs_cond = parse_term(c_inner.next().unwrap()).unwrap();
-
-        let condition = ConditionSyntax {
-            lhs: lhs_cond,
-            rhs: rhs_cond,
-            equality,
-        };
-        conditions.push(condition);
+        )
     }
 
-    RewriteRuleSyntax { lhs, rhs, conditions }
+    /// Extracts data from parsed header of REC spec. Returns name and include files.
+    fn header(header: ParseNode) -> ParseResult<(String, Vec<String>)> {
+        debug_assert_eq!(header.as_rule(), Rule::header);
+        
+        match_nodes!(header.into_children();
+            [identifier(name), identifier(include_files)..] => {
+                Ok((name, include_files.collect()))
+            }
+        )
+    }
+
+    /// Extracts data from parsed constructor section, derives the arity of symbols. Types are ignored.
+    fn cons(cons: ParseNode) -> ParseResult<Vec<(String, usize)>> {
+        debug_assert_eq!(cons.as_rule(), Rule::cons);
+        
+        let mut constructors = Vec::new();
+        
+        match_nodes!(cons.into_children();
+            [cons_decl(decls)..] => {
+                constructors.extend(decls);
+                Ok(constructors)
+            }
+        )
+    }
+    
+    /// Parse a constructor declaration
+    fn cons_decl(decl: ParseNode) -> ParseResult<(String, usize)> {
+        debug_assert_eq!(decl.as_rule(), Rule::cons_decl);
+        
+        match_nodes!(decl.into_children();
+            [identifier(symbol), identifier(params).., identifier(_)] => {
+                Ok((symbol, params.len()))
+            }
+        )
+    }
+
+    /// Extracts data from parsed rewrite rules. Returns list of rewrite rules
+    fn rules(rules: ParseNode) -> ParseResult<Vec<RewriteRuleSyntax>> {
+        debug_assert_eq!(rules.as_rule(), Rule::rules);
+        
+        match_nodes!(rules.into_children();
+            [rewrite_rule(rule_nodes)..] => {
+                Ok(rule_nodes.collect())
+            }
+        )
+    }
+    
+    /// Parse a rewrite rule
+    fn rewrite_rule(rule: ParseNode) -> ParseResult<RewriteRuleSyntax> {
+        debug_assert!(rule.as_rule() == Rule::rewrite_rule);
+        
+        match_nodes!(rule.into_children();
+            [term(lhs), term(rhs), condition(conditions)..] => {
+                Ok(RewriteRuleSyntax {
+                    lhs,
+                    rhs,
+                    conditions: conditions.collect(),
+                })
+            },
+            [term(lhs), term(rhs)] => {
+                Ok(RewriteRuleSyntax {
+                    lhs,
+                    rhs,
+                    conditions: vec![],
+                })
+            }
+        )
+    }
+    
+    fn single_rewrite_rule(rule: ParseNode) -> ParseResult<RewriteRuleSyntax> {
+        debug_assert!(rule.as_rule() == Rule::single_rewrite_rule);
+        
+        match_nodes!(rule.into_children();
+            [term(lhs), term(rhs), condition(conditions)..] => {
+                Ok(RewriteRuleSyntax {
+                    lhs,
+                    rhs,
+                    conditions: conditions.collect(),
+                })
+            },
+            [term(lhs), term(rhs)] => {
+                Ok(RewriteRuleSyntax {
+                    lhs,
+                    rhs,
+                    conditions: vec![],
+                })
+            }
+        )
+    }
+
+    /// Parse a condition in a rewrite rule
+    fn condition(condition: ParseNode) -> ParseResult<ConditionSyntax> {
+        debug_assert_eq!(condition.as_rule(), Rule::condition);
+        
+        match_nodes!(condition.into_children();
+            [term(lhs), comparison(equality), term(rhs)] => {
+                Ok(ConditionSyntax {
+                    lhs,
+                    rhs,
+                    equality,
+                })
+            }
+        )
+    }
+    
+    /// Parse a comparison operator
+    fn comparison(comparison: ParseNode) -> ParseResult<bool> {
+        match comparison.as_str() {
+            "=" => Ok(true),
+            "<>" => Ok(false),
+            _ => panic!("Unknown comparison operator"),
+        }
+    }
+
+    /// Extracts data from the variable VARS block. Types are ignored.
+    fn vars(vars: ParseNode) -> ParseResult<Vec<String>> {
+        debug_assert_eq!(vars.as_rule(), Rule::vars);
+        
+        let mut variables = vec![];
+        
+        match_nodes!(vars.into_children();
+            [var_decl(var_lists)..] => {
+                for var_list in var_lists {
+                    variables.extend(var_list);
+                }
+                Ok(variables)
+            }
+        )
+    }
+    
+    /// Parse a variable declaration
+    fn var_decl(var_decl: ParseNode) -> ParseResult<Vec<String>> {        
+        match_nodes!(var_decl.into_children();
+            [identifier(vars).., identifier(_type)] => {
+                // The last identifier is the type, so we exclude it
+                Ok(vars.collect())
+            }
+        )
+    }
+
+    /// Extracts data from parsed EVAL section, returns a list of terms that need to be rewritten.
+    fn eval(eval: ParseNode) -> ParseResult<Vec<ATerm>> {        
+        match_nodes!(eval.into_children();
+            [term(terms)..] => {
+                Ok(terms.collect())
+            }
+        )
+    }
+    
+    /// Parse a term
+    fn term(term: ParseNode) -> ParseResult<ATerm> {
+        match_nodes!(term.into_children();
+            [identifier(head_symbol), args(arguments)] => {
+                THREAD_TERM_POOL.with_borrow(|tp| {
+                    let symbol = tp.create_symbol(&head_symbol, arguments.len());
+                    Ok(tp.create_term_iter(&symbol, arguments))
+                })
+            },
+            [identifier(head_symbol)] => {
+                THREAD_TERM_POOL.with_borrow(|tp| {
+                    let symbol = tp.create_symbol(&head_symbol, 0);
+                    Ok(tp.create_constant(&symbol))
+                })
+            }
+        )
+    }
+    
+    /// Parse arguments of a term
+    fn args(args: ParseNode) -> ParseResult<Vec<ATerm>> {
+        match_nodes!(args.into_children();
+            [term(term_args)..] => {
+                Ok(term_args.collect())
+            }
+        )
+    }
+    
+    /// Parse an identifier
+    fn identifier(id: ParseNode) -> ParseResult<String> {
+        Ok(id.as_str().to_string())
+    }
+
+    /// End of input
+    fn EOI(_eof: ParseNode) -> ParseResult<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -297,35 +311,36 @@ mod tests {
     #[test]
     fn test_parsing_rewrite_rule() {
         let expected = RewriteRuleSyntax {
-            lhs: from_string("f(x,b)").unwrap(),
-            rhs: from_string("g(x)").unwrap(),
+            lhs: ATerm::from_string("f(x,b)").unwrap(),
+            rhs: ATerm::from_string("g(x)").unwrap(),
             conditions: vec![
                 ConditionSyntax {
-                    lhs: from_string("x").unwrap(),
-                    rhs: from_string("a").unwrap(),
+                    lhs: ATerm::from_string("x").unwrap(),
+                    rhs: ATerm::from_string("a").unwrap(),
                     equality: true,
                 },
                 ConditionSyntax {
-                    lhs: from_string("b").unwrap(),
-                    rhs: from_string("b").unwrap(),
+                    lhs: ATerm::from_string("b").unwrap(),
+                    rhs: ATerm::from_string("b").unwrap(),
                     equality: true,
                 },
             ],
         };
 
-        let actual = parse_rewrite_rule(
-            RecParser::parse(Rule::single_rewrite_rule, "f(x,b) = g(x) if x = a and-if b = b")
-                .unwrap()
-                .next()
-                .unwrap(),
-        );
+        let mut parse_result = RecParser::parse(Rule::single_rewrite_rule, "f(x,b) = g(x) if x = a and-if b = b").unwrap();
+        let node = ParseNode::new(parse_result.next().unwrap());
+        let actual = RecParser::single_rewrite_rule(node).unwrap();
+        
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_variable_parsing() {
-        let mut pairs = RecParser::parse(Rule::var_decl, "X Y Val Max : Nat").unwrap();
-        assert_eq!(parse_var_decl(pairs.next().unwrap()), vec!["X", "Y", "Val", "Max"]);
+        let mut parse_result = RecParser::parse(Rule::var_decl, "X Y Val Max : Nat").unwrap();
+        let node = ParseNode::new(parse_result.next().unwrap());
+        let result = RecParser::var_decl(node).unwrap();
+        
+        assert_eq!(result, vec!["X", "Y", "Val", "Max"]);
     }
 
     #[test]
@@ -341,6 +356,6 @@ mod tests {
 
     #[test]
     fn loading_rec() {
-        let _ = parse_REC(include_str!("../../../examples/REC/rec/missionaries.rec"), None);
+        let _ = parse_rec(include_str!("../../../examples/REC/rec/missionaries.rec"), None);
     }
 }
