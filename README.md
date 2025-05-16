@@ -42,9 +42,6 @@ Another useful technique for profiling is to generate a so-called `flamegraph`, 
 
 Finally, in performance critical situations it can be useful to view the generated assembly, which can be achieved with the `cargo asm --rust --simplify -p <package> [--lib] <path-to-function>` that can be obtained by `cargo install cargo-show-asm`.
 
-# Libraries
-
-There are a few procedural macros used to replace the code generation performed in the mCRL2 toolset. Working on procedural macros is typically difficult, but there are unit and integration tests to showcase common patterns. Alternatively, install `cargo install cargo-expand` and run the command `cargo expand` in for example `crates/mcrl3-macros` to print the Rust code with the macros expanded.
 
 ## Formatting
 

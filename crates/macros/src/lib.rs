@@ -28,6 +28,14 @@ use mcrl3_derive_terms::mcrl3_derive_terms_impl;
 /// }
 ///
 /// use inner::*;
+/// 
+/// # Testing
+/// 
+/// There are a few procedural macros used to replace the code generation performed in the mCRL2 toolset. 
+/// Working on procedural macros is typically difficult, but there are unit and integration tests to showcase 
+/// common patterns. Alternatively, install `cargo install cargo-expand` and run the command `cargo expand` 
+/// in for example `mcrl3-macros` to print the Rust code with the macros expanded.
+
 /// ```
 #[proc_macro_attribute]
 pub fn mcrl3_derive_terms(
