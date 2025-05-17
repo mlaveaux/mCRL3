@@ -53,7 +53,7 @@ fn parse_rec(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificat
     let parse_node = ParseNode::new(root);
     
     // Parse using the consumed-based implementation
-    let (name, include_files, constructors, variables, rewrite_rules, eval_terms) = 
+    let (_name, include_files, constructors, variables, rewrite_rules, eval_terms) = 
         RecParser::rec_spec(parse_node)?;
     
     rewrite_spec.rewrite_rules = rewrite_rules;
@@ -96,16 +96,14 @@ impl RecParser {
     fn rec_spec(spec: ParseNode) -> ParseResult<(String, Vec<String>, Vec<(String, usize)>, Vec<String>, Vec<RewriteRuleSyntax>, Vec<ATerm>)> {
         // Extract all sections of the REC file
         match_nodes!(spec.into_children();
-            [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), eval(eval_terms)] => {
+            [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), eval(eval_terms), EOI(_)] => {
                 Ok((name, include_files, constructors, variables, rewrite_rules, eval_terms))
             }
         )
     }
 
     /// Extracts data from parsed header of REC spec. Returns name and include files.
-    fn header(header: ParseNode) -> ParseResult<(String, Vec<String>)> {
-        debug_assert_eq!(header.as_rule(), Rule::header);
-        
+    fn header(header: ParseNode) -> ParseResult<(String, Vec<String>)> {        
         match_nodes!(header.into_children();
             [identifier(name), identifier(include_files)..] => {
                 Ok((name, include_files.collect()))
@@ -114,9 +112,7 @@ impl RecParser {
     }
 
     /// Extracts data from parsed constructor section, derives the arity of symbols. Types are ignored.
-    fn cons(cons: ParseNode) -> ParseResult<Vec<(String, usize)>> {
-        debug_assert_eq!(cons.as_rule(), Rule::cons);
-        
+    fn cons(cons: ParseNode) -> ParseResult<Vec<(String, usize)>> {        
         let mut constructors = Vec::new();
         
         match_nodes!(cons.into_children();
@@ -128,9 +124,7 @@ impl RecParser {
     }
     
     /// Parse a constructor declaration
-    fn cons_decl(decl: ParseNode) -> ParseResult<(String, usize)> {
-        debug_assert_eq!(decl.as_rule(), Rule::cons_decl);
-        
+    fn cons_decl(decl: ParseNode) -> ParseResult<(String, usize)> {        
         match_nodes!(decl.into_children();
             [identifier(symbol), identifier(params).., identifier(_)] => {
                 Ok((symbol, params.len()))
@@ -139,9 +133,7 @@ impl RecParser {
     }
 
     /// Extracts data from parsed rewrite rules. Returns list of rewrite rules
-    fn rules(rules: ParseNode) -> ParseResult<Vec<RewriteRuleSyntax>> {
-        debug_assert_eq!(rules.as_rule(), Rule::rules);
-        
+    fn rules(rules: ParseNode) -> ParseResult<Vec<RewriteRuleSyntax>> {        
         match_nodes!(rules.into_children();
             [rewrite_rule(rule_nodes)..] => {
                 Ok(rule_nodes.collect())
@@ -150,9 +142,7 @@ impl RecParser {
     }
     
     /// Parse a rewrite rule
-    fn rewrite_rule(rule: ParseNode) -> ParseResult<RewriteRuleSyntax> {
-        debug_assert!(rule.as_rule() == Rule::rewrite_rule);
-        
+    fn rewrite_rule(rule: ParseNode) -> ParseResult<RewriteRuleSyntax> {        
         match_nodes!(rule.into_children();
             [term(lhs), term(rhs), condition(conditions)..] => {
                 Ok(RewriteRuleSyntax {
@@ -171,31 +161,17 @@ impl RecParser {
         )
     }
     
-    fn single_rewrite_rule(rule: ParseNode) -> ParseResult<RewriteRuleSyntax> {
-        debug_assert!(rule.as_rule() == Rule::single_rewrite_rule);
-        
+    /// Parse a single rewrite rule
+    fn single_rewrite_rule(rule: ParseNode) -> ParseResult<RewriteRuleSyntax> {        
         match_nodes!(rule.into_children();
-            [term(lhs), term(rhs), condition(conditions)..] => {
-                Ok(RewriteRuleSyntax {
-                    lhs,
-                    rhs,
-                    conditions: conditions.collect(),
-                })
+            [rewrite_rule(rule), EOI(_)] => {
+                Ok(rule)
             },
-            [term(lhs), term(rhs)] => {
-                Ok(RewriteRuleSyntax {
-                    lhs,
-                    rhs,
-                    conditions: vec![],
-                })
-            }
         )
     }
 
     /// Parse a condition in a rewrite rule
-    fn condition(condition: ParseNode) -> ParseResult<ConditionSyntax> {
-        debug_assert_eq!(condition.as_rule(), Rule::condition);
-        
+    fn condition(condition: ParseNode) -> ParseResult<ConditionSyntax> {        
         match_nodes!(condition.into_children();
             [term(lhs), comparison(equality), term(rhs)] => {
                 Ok(ConditionSyntax {
@@ -217,9 +193,7 @@ impl RecParser {
     }
 
     /// Extracts data from the variable VARS block. Types are ignored.
-    fn vars(vars: ParseNode) -> ParseResult<Vec<String>> {
-        debug_assert_eq!(vars.as_rule(), Rule::vars);
-        
+    fn vars(vars: ParseNode) -> ParseResult<Vec<String>> {        
         let mut variables = vec![];
         
         match_nodes!(vars.into_children();
@@ -283,10 +257,18 @@ impl RecParser {
         Ok(id.as_str().to_string())
     }
 
-    /// End of input
+    /// Ignored rules
     fn EOI(_eof: ParseNode) -> ParseResult<()> {
         Ok(())
     }
+
+    fn sorts(_sorts: ParseNode) -> ParseResult<()> {
+        Ok(())
+    }
+    
+    fn opns(_opns: ParseNode) -> ParseResult<()> {
+        Ok(())
+    }    
 }
 
 #[cfg(test)]
