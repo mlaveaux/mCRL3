@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
-use std::num::NonZero;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
@@ -51,7 +50,6 @@ use crate::Symbol;
 use crate::SymbolIndex;
 use crate::SymbolPool;
 use crate::SymbolRef;
-use crate::THREAD_TERM_POOL;
 use crate::Term;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
@@ -127,18 +125,10 @@ impl GlobalTermPool {
     where
         P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
     {
-        // We abuse the first argument of the term to store the integer value.
-        self.tmp_arguments.clear();
-        unsafe {
-            self.tmp_arguments
-                .push(ATermRef::from_index(&ATermIndex::from_index(NonZero::new_unchecked(
-                    value + 1,
-                ))));
-        }
-
         let shared_term = SharedTermLookup {
             symbol: unsafe { SymbolRef::from_index(self.int_symbol.shared()) },
-            arguments: &self.tmp_arguments,
+            arguments: &[],
+            annotation: Some(value),
         };
 
         let (index, inserted) = self.terms.insert_equiv(&shared_term);
@@ -167,6 +157,7 @@ impl GlobalTermPool {
         let shared_term = SharedTermLookup {
             symbol: SymbolRef::from_symbol(symbol),
             arguments: &self.tmp_arguments,
+            annotation: None,
         };
 
         debug_assert_eq!(
@@ -199,6 +190,7 @@ impl GlobalTermPool {
         let shared_term = SharedTermLookup {
             symbol: SymbolRef::from_symbol(symbol),
             arguments: &self.tmp_arguments,
+            annotation: None,
         };
 
         debug_assert_eq!(
@@ -364,15 +356,15 @@ impl fmt::Debug for GlobalTermPool {
     }
 }
 
-pub(crate) struct SharedTermProtection {
+pub struct SharedTermProtection {
     /// Protection set for terms
-    pub(crate) protection_set: ProtectionSet<ATermIndex>,
+    pub protection_set: ProtectionSet<ATermIndex>,
     /// Protection set to prevent garbage collection of symbols
-    pub(crate) symbol_protection_set: ProtectionSet<SymbolIndex>,
+    pub symbol_protection_set: ProtectionSet<SymbolIndex>,
     /// Protection set for containers
-    pub(crate) container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
+    pub container_protection_set: ProtectionSet<Arc<dyn Markable + Sync + Send>>,
     /// Index in global pool's thread pools list
-    pub(crate) index: usize,
+    pub index: usize,
 }
 
 impl fmt::Debug for SharedTermProtection {
@@ -443,22 +435,20 @@ impl Marker<'_> {
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
     arguments: Vec<ATermRef<'static>>,
+    annotation: Option<usize>,
 }
+
+/// Check that the ATermRef is the same size as a usize.
+#[cfg(not(debug_assertions))]
+const _: () = assert!(std::mem::size_of::<SharedTerm>() == std::mem::size_of::<usize>() * 3);
 
 impl fmt::Debug for SharedTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            // This is not very nice, but we cannot print the argument of an integer term.
-            if *tp.int_symbol() == self.symbol {
-                write!(f, "Int({})", self.arguments[0].shared().address() - 1)
-            } else {
-                write!(
-                    f,
-                    "SharedTerm {{ symbol: {:?}, arguments: {:?} }}",
-                    self.symbol, self.arguments
-                )
-            }
-        })
+        write!(
+            f,
+            "SharedTerm {{ symbol: {:?}, arguments: {:?}, annotation: {:?} }}",
+            self.symbol, self.arguments, self.annotation
+        )
     }
 }
 
@@ -471,6 +461,7 @@ impl Clone for SharedTerm {
                 .iter()
                 .map(|x| unsafe { ATermRef::from_index(x.shared()) })
                 .collect(),
+            annotation: self.annotation,
         }
     }
 }
@@ -483,6 +474,10 @@ impl SharedTerm {
     pub fn arguments(&self) -> &[ATermRef<'static>] {
         &self.arguments
     }
+
+    pub fn annotation(&self) -> Option<usize> {
+        self.annotation
+    }
 }
 
 /// A cheap reference to the elements of a shared term that can be used for
@@ -490,6 +485,7 @@ impl SharedTerm {
 struct SharedTermLookup<'a> {
     symbol: SymbolRef<'a>,
     arguments: &'a [ATermRef<'a>],
+    annotation: Option<usize>,
 }
 
 impl From<&SharedTermLookup<'_>> for SharedTerm {
@@ -501,20 +497,23 @@ impl From<&SharedTermLookup<'_>> for SharedTerm {
                 .iter()
                 .map(|x| unsafe { ATermRef::from_index(x.shared()) })
                 .collect(),
+            annotation: lookup.annotation,
         }
     }
 }
 
 impl Equivalent<SharedTerm> for SharedTermLookup<'_> {
     fn equivalent(&self, other: &SharedTerm) -> bool {
-        self.symbol == other.symbol && self.arguments == other.arguments
+        self.symbol == other.symbol && self.arguments == other.arguments && self.annotation == other.annotation
     }
 }
 
+/// This Hash implement must be the same as for [SharedTerm]
 impl Hash for SharedTermLookup<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.symbol.hash(state);
         self.arguments.hash(state);
+        self.annotation.hash(state);
     }
 }
 
@@ -522,5 +521,6 @@ impl Hash for SharedTerm {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.symbol.hash(state);
         self.arguments.hash(state);
+        self.annotation.hash(state);
     }
 }

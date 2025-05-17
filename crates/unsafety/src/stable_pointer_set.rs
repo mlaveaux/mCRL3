@@ -51,7 +51,7 @@ impl<T> StablePointer<T> {
 impl<T> PartialEq for StablePointer<T> {
     fn eq(&self, other: &Self) -> bool {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        self.address() == other.address()
+        self.ptr == other.ptr
     }
 }
 
@@ -60,21 +60,21 @@ impl<T> Eq for StablePointer<T> {}
 impl<T> Ord for StablePointer<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        self.address().cmp(&(other.address()))
+        self.ptr.cmp(&(other.ptr))
     }
 }
 
 impl<T> PartialOrd for StablePointer<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        Some(self.address().cmp(&(other.address())))
+        Some(self.ptr.cmp(&(other.ptr)))
     }
 }
 
 impl<T> Hash for StablePointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // SAFETY: This is safe because we are hashing pointers, which is a valid operation.
-        self.address().hash(state);
+        self.ptr.hash(state);
     }
 }
 
@@ -82,11 +82,6 @@ unsafe impl<T> Send for StablePointer<T> {}
 unsafe impl<T> Sync for StablePointer<T> {}
 
 impl<T> StablePointer<T> {
-    /// Returns a unique index for the StablePointer. Note that this index cannot be converted into a pointer.
-    pub fn address(&self) -> usize {
-        self.ptr.addr().into()
-    }
-
     /// Returns a copy of the StablePointer.
     ///
     /// # Safety
@@ -111,15 +106,9 @@ impl<T> StablePointer<T> {
         }
     }
 
-    /// We store a number in the pointer that MUST not be dereferenced.
-    pub fn from_index(index: NonZero<usize>) -> Self {
-        let ptr = unsafe { NonNull::new_unchecked(index.get() as *mut T) };
-
-        Self {
-            ptr,
-            #[cfg(debug_assertions)]
-            reference_counter: Arc::new(()),
-        }
+    /// This returns a unique usize of the pointer. This CANNOT be used as a valid pointer.
+    pub fn address(&self) -> usize {
+        self.ptr.as_ptr() as usize
     }
 }
 

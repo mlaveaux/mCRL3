@@ -49,8 +49,7 @@ mod inner {
 
         /// Returns the value of the integer term.
         pub fn value(&self) -> usize {
-            // This is a bit ugly, but the first argument is the integer value
-            self.shared().arguments()[0].shared().address() - 1
+            self.term.annotation().unwrap()
         }
     }
 }
@@ -71,10 +70,14 @@ pub use inner::*;
 
 #[cfg(test)]
 mod tests {
+    use mcrl3_utilities::test_logger;
+
     use super::*;
 
     #[test]
     fn test_int_term() {
+        let _ = test_logger();
+        
         let int_term = ATermInt::new(42);
         assert_eq!(int_term.value(), 42);
         assert!(is_int_term(&int_term));

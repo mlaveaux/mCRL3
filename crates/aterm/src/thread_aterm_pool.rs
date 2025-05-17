@@ -181,7 +181,7 @@ impl ThreadTermPool {
     }
 
     /// Protects a container in this thread's container protection set.
-    pub(crate) fn protect_container(&self, container: Arc<dyn Markable + Send + Sync>) -> ProtectionIndex {
+    pub fn protect_container(&self, container: Arc<dyn Markable + Send + Sync>) -> ProtectionIndex {
         let root = mutex_unwrap(self.protection_set.lock())
             .container_protection_set
             .protect(container);
@@ -192,7 +192,7 @@ impl ThreadTermPool {
     }
 
     /// Unprotects a container from this thread's container protection set.
-    pub(crate) fn drop_container(&self, root: ProtectionIndex) {
+    pub fn drop_container(&self, root: ProtectionIndex) {
         mutex_unwrap(self.protection_set.lock())
             .container_protection_set
             .unprotect(root);
