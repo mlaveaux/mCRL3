@@ -17,6 +17,7 @@ pub struct RewriteSpecificationSyntax {
 }
 
 impl RewriteSpecificationSyntax {
+    /// Converts the syntax tree into a rewrite specification
     pub fn to_rewrite_spec(&self) -> RewriteSpecification {
         // The names for all variables
         let variables = AHashSet::from_iter(self.variables.clone());
@@ -28,16 +29,16 @@ impl RewriteSpecificationSyntax {
             let mut conditions = vec![];
             for c in &rule.conditions {
                 let condition = Condition {
-                    lhs: to_untyped_data_expression(&c.lhs, &variables),
-                    rhs: to_untyped_data_expression(&c.rhs, &variables),
+                    lhs: to_untyped_data_expression(&c.lhs, Some(&variables)),
+                    rhs: to_untyped_data_expression(&c.rhs, Some(&variables)),
                     equality: c.equality,
                 };
                 conditions.push(condition);
             }
 
             rewrite_rules.push(Rule {
-                lhs: to_untyped_data_expression(&rule.lhs, &variables),
-                rhs: to_untyped_data_expression(&rule.rhs, &variables),
+                lhs: to_untyped_data_expression(&rule.lhs, Some(&variables)),
+                rhs: to_untyped_data_expression(&rule.rhs, Some(&variables)),
                 conditions,
             });
         }
@@ -45,6 +46,7 @@ impl RewriteSpecificationSyntax {
         RewriteSpecification { rewrite_rules }
     }
 
+    /// Merges the current specification with another one.
     pub fn merge(&mut self, include_spec: &RewriteSpecificationSyntax) {
         self.rewrite_rules.extend_from_slice(&include_spec.rewrite_rules);
         self.constructors.extend_from_slice(&include_spec.constructors);

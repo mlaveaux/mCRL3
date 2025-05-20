@@ -14,7 +14,6 @@ use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 use mcrl3_data::DataVariable;
 use mcrl3_data::DataVariableRef;
-use mcrl3_data::is_data_expression;
 use mcrl3_data::is_data_machine_number;
 use mcrl3_data::is_data_variable;
 use mcrl3_utilities::debug_trace;
@@ -24,7 +23,6 @@ use crate::utilities::InnermostStack;
 
 use super::DataPosition;
 use super::DataPositionIterator;
-use super::ExplicitPosition;
 
 /// A stack used to represent a term with free variables that can be constructed
 /// efficiently.
@@ -301,9 +299,7 @@ mod tests {
     use super::*;
 
     use ahash::AHashSet;
-    use mcrl3_aterm::ATerm;
     use mcrl3_data::DataFunctionSymbol;
-    use mcrl3_data::to_untyped_data_expression;
 
     use crate::test_utility::create_rewrite_rule;
 
@@ -333,15 +329,12 @@ mod tests {
         assert_eq!(rhs_stack.stack_size, 5, "The stack size does not match");
 
         // Test the evaluation
-        let lhs = ATerm::from_string("fact(s(a))").unwrap();
-        let lhs_expression = to_untyped_data_expression(&lhs, &AHashSet::new());
-
-        let rhs = ATerm::from_string("times(s(a), fact(a))").unwrap();
-        let rhs_expression = to_untyped_data_expression(&rhs, &AHashSet::new());
+        let lhs = DataExpression::from_string("fact(s(a))").unwrap();
+        let rhs = DataExpression::from_string("times(s(a), fact(a))").unwrap();
 
         assert_eq!(
-            rhs_stack.evaluate(&lhs_expression),
-            rhs_expression,
+            rhs_stack.evaluate(&lhs),
+            rhs,
             "The rhs stack does not evaluate to the expected term"
         );
     }
@@ -361,32 +354,23 @@ mod tests {
 
     #[test]
     fn test_evaluation() {
-        let t_rhs = {
-            let tmp = ATerm::from_string("f(f(a,a),x)").unwrap();
-            to_untyped_data_expression(&tmp, &AHashSet::from([String::from("x")]))
-        };
-
-        let t = ATerm::from_string("g(b)").unwrap();
-        let t_lhs = to_untyped_data_expression(&t, &AHashSet::new());
+        let rhs = DataExpression::from_string_untyped("f(f(a,a),x)", &AHashSet::from([String::from("x")])).unwrap();
+        let lhs = DataExpression::from_string("g(b)").unwrap();
 
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
-        map.insert(DataVariable::new("x"), DataPosition::new(&[2]));
+        map.insert(DataVariable::new("x"), DataPosition::new(&[1]));
 
-        let sctt = TermStack::from_term(&t_rhs.copy(), &map);
+        let sctt = TermStack::from_term(&rhs.copy(), &map);
 
-        let t = ATerm::from_string("f(f(a,a),b)").unwrap();
-        let t_expected = to_untyped_data_expression(&t, &AHashSet::new());
+        let expected = DataExpression::from_string("f(f(a,a),b)").unwrap();
 
-        assert_eq!(sctt.evaluate(&t_lhs), t_expected);
+        assert_eq!(sctt.evaluate(&lhs), expected);
     }
 
     #[test]
     fn test_create_varmap() {
-        let t = {
-            let tmp = ATerm::from_string("f(x,x)").unwrap();
-            to_untyped_data_expression(&tmp, &AHashSet::from([String::from("x")]))
-        };
+        let t = DataExpression::from_string_untyped("f(x,x)", &AHashSet::from([String::from("x")])).unwrap();
         let x = DataVariable::new("x");
 
         let map = create_var_map(&t);
@@ -395,16 +379,13 @@ mod tests {
 
     #[test]
     fn test_is_duplicating() {
-        let t_rhs = {
-            let tmp = ATerm::from_string("f(x,x)").unwrap();
-            to_untyped_data_expression(&tmp, &AHashSet::from([String::from("x")]))
-        };
-
+        let rhs = DataExpression::from_string_untyped("f(x,x)", &AHashSet::from([String::from("x")])).unwrap();
+        
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
         map.insert(DataVariable::new("x"), DataPosition::new(&[1]));
 
-        let sctt = TermStack::from_term(&t_rhs.copy(), &map);
+        let sctt = TermStack::from_term(&rhs.copy(), &map);
         assert!(sctt.contains_duplicate_var_references(), "This sctt is duplicating");
     }
 }

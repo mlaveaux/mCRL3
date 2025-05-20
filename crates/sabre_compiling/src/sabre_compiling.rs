@@ -112,7 +112,7 @@ mod tests {
         let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
 
         for t in terms {
-            let data_term = to_untyped_data_expression(&t, &AHashSet::new());
+            let data_term = to_untyped_data_expression(&t, None);
             assert_eq!(
                 rewriter.rewrite(&data_term),
                 data_term,

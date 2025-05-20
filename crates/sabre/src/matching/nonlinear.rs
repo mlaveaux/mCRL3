@@ -88,8 +88,8 @@ impl fmt::Display for EquivalenceClass {
 
 #[cfg(test)]
 mod tests {
-    use ahash::AHashSet;
     use mcrl3_aterm::ATerm;
+    use mcrl3_data::DataExpression;
     use mcrl3_data::DataVariable;
     use mcrl3_data::to_untyped_data_expression;
 
@@ -112,8 +112,7 @@ mod tests {
         );
 
         // Check the equivalence class for an example
-        let term = ATerm::from_string("f(a(b), h(a(b)))").unwrap();
-        let expression = to_untyped_data_expression(&term, &AHashSet::new());
+        let expression = DataExpression::from_string("f(a(b), h(a(b)))").unwrap();
 
         assert!(
             check_equivalence_classes(&expression, &eq),

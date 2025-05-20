@@ -46,7 +46,7 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
             result,
             syntax_terms
                 .iter()
-                .map(|t| to_untyped_data_expression(t, &AHashSet::new()))
+                .map(|t| to_untyped_data_expression(t, None))
                 .collect(),
         )
     };
@@ -59,7 +59,7 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
 
     for term in &terms {
         let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
-        let expected_result = to_untyped_data_expression(&expected_term, &AHashSet::new());
+        let expected_result = to_untyped_data_expression(&expected_term, None);
 
         let result = inner.rewrite(term);
         assert_eq!(

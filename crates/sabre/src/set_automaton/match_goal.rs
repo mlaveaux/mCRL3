@@ -2,11 +2,9 @@ use std::cmp::min;
 use std::fmt;
 
 use crate::utilities::DataPosition;
-use crate::utilities::ExplicitPosition;
 use ahash::HashMap;
 use ahash::HashMapExt;
 use log::trace;
-use smallvec::SmallVec;
 
 use super::MatchAnnouncement;
 use super::MatchObligation;

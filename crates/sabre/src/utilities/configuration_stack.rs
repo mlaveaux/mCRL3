@@ -13,16 +13,13 @@ use crate::matching::nonlinear::EquivalenceClass;
 use crate::matching::nonlinear::derive_equivalence_classes;
 use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
-use crate::utilities::ExplicitPosition;
 
 use super::data_substitute_with;
 use super::DataPosition;
 use super::DataPositionIndexed;
 use super::DataSubstitutionBuilder;
-use super::SubstitutionBuilder;
 use super::TermStack;
 use super::create_var_map;
-use super::substitute_with;
 
 /// This is the announcement for Sabre, which stores additional information about the rewrite rules.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -234,7 +231,7 @@ impl<'a> ConfigurationStack<'a> {
             tp,
             &write_terms[depth],
             new_subterm,
-            automaton.states()[self.stack[depth].state].label().indices(),
+            automaton.states()[self.stack[depth].state].label(),
         ));
         write_terms[depth] = subterm.into();
 
@@ -290,13 +287,13 @@ impl<'a> ConfigurationStack<'a> {
             // If the position is not deepened nothing needs to be done, otherwise substitute on the position stored in the configuration.
             subterm = match self.stack[up_to_date].position {
                 None => subterm,
-                Some(p) => {
+                Some(position) => {
                     let t = data_substitute_with(
                         &mut self.substitution_builder,
                         tp,
                         &write_terms[up_to_date - 1],
                         subterm.protect().into(),
-                        p.indices(),
+                        position,
                     );
                     write_terms.protect(&t)
                 }

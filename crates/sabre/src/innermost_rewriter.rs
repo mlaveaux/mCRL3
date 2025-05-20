@@ -300,7 +300,6 @@ impl AnnouncementInnermost {
 
 #[cfg(test)]
 mod tests {
-    use ahash::AHashSet;
     use mcrl3_data::to_untyped_data_expression;
     use test_log::test;
 
@@ -324,7 +323,7 @@ mod tests {
             &["a".to_string(), "b".to_string()],
             5,
         );
-        let term = to_untyped_data_expression(&term, &AHashSet::new());
+        let term = to_untyped_data_expression(&term, None);
 
         assert_eq!(
             inner.rewrite(&term),

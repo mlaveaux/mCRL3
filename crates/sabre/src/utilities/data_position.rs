@@ -77,7 +77,7 @@ impl<'b> DataPositionIndexed<'b> for DataExpression {
         let mut result = self.copy();
 
         for index in position.indices() {
-            result = result.data_arg(*index); // Note that positions are 1 indexed.
+            result = result.data_arg(*index - 1); // Note that positions are 1 indexed.
         }
 
         result
@@ -94,7 +94,7 @@ impl<'b> DataPositionIndexed<'b> for DataExpressionRef<'b> {
         let mut result = self.copy();
 
         for index in position.indices() {
-            result = result.data_arg(*index); // Note that positions are 1 indexed.
+            result = result.data_arg(*index - 1); // Note that positions are 1 indexed.
         }
 
         result
@@ -138,23 +138,19 @@ impl<'a> Iterator for DataPositionIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use ahash::AHashSet;
-    use mcrl3_aterm::ATerm;
-    use mcrl3_data::to_untyped_data_expression;
-
     use super::*;
 
     #[test]
     fn test_get_data_position() {
-        let t = to_untyped_data_expression(&ATerm::from_string("f(g(a),b)").unwrap(), &AHashSet::new());
-        let expected = to_untyped_data_expression(&ATerm::from_string("a").unwrap(),  &AHashSet::new());
+        let t = DataExpression::from_string("f(g(a),b)").unwrap();
+        let expected = DataExpression::from_string("a").unwrap();
 
         assert_eq!(t.get_data_position(&DataPosition::new(&[1, 1])), expected.copy());
     }
 
     #[test]
     fn test_data_position_iterator() {
-        let t = to_untyped_data_expression(&ATerm::from_string("f(g(a),b)").unwrap(), &AHashSet::new());
+        let t = DataExpression::from_string("f(g(a),b)").unwrap();
 
         for (term, pos) in DataPositionIterator::new(t.copy()) {
             assert_eq!(
