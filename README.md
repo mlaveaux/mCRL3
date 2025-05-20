@@ -36,7 +36,7 @@ Micro-benchmarks can be executed using `cargo bench`. Additionally, we can also 
 
 ## Profiling
 
-The `mcrl3rewrite` tool can be build using the `bench` compilation profile using `cargo build --profile bench` after which the resulting executable `target/release/lpsreach` can be profiled using any standard executable profiler, such as `Intel VTune` or `perf`. This compilation profile contains debugging information to show where time is being spent, but the code is optimised the same as in a release configuration.
+The `mcrl3rewrite` tool can be build using the `release` compilation profile using `cargo build --release --bin mcrl3rewrite` after which the resulting executable `target/release/mcrl3rewrite` can be profiled using any standard executable profiler, such as `Intel VTune` or `perf`. This compilation profile contains debugging information to show where time is being spent, but the code is optimised the same as in a release configuration.
 
 Another useful technique for profiling is to generate a so-called `flamegraph`, which essentially takes the output of `perf` and produces a callgraph of time spent over time. These can be generated using the [flamegraph-rs](https://github.com/flamegraph-rs/flamegraph) tool, which can be acquired using `cargo install flamegraph`. Note that it relies on either `perf` or `dtrace` and as such is only supported on Linux and MacOS.
 

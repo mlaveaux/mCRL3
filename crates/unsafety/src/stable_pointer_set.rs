@@ -5,7 +5,6 @@ use std::fmt;
 use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::num::NonZero;
 use std::ops::Deref;
 use std::ptr::NonNull;
 
