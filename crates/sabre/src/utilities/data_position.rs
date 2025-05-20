@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
 
-use mcrl3_aterm::ATermRef;
-use mcrl3_aterm::Term;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
@@ -28,7 +26,7 @@ impl<'b> DataPositionIndexed<'b> for DataExpression {
         let mut result = self.copy();
 
         for index in &position.indices {
-            result = result.arg(index - 2).into(); // Note that positions are 1 indexed.
+            result = result.data_arg(*index).into(); // Note that positions are 1 indexed.
         }
 
         result
@@ -45,7 +43,7 @@ impl<'b> DataPositionIndexed<'b> for DataExpressionRef<'b> {
         let mut result = self.copy();
 
         for index in &position.indices {
-            result = result.arg(index - 2).into(); // Note that positions are 1 indexed.
+            result = result.data_arg(*index).into(); // Note that positions are 1 indexed.
         }
 
         result
@@ -84,5 +82,41 @@ impl<'a> Iterator for DataPositionIterator<'a> {
 
             Some((term.into(), pos))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ahash::AHashSet;
+    use mcrl3_aterm::ATerm;
+    use mcrl3_data::to_untyped_data_expression;
+
+    use super::*;
+
+    #[test]
+    fn test_get_data_position() {
+        let t = to_untyped_data_expression(&ATerm::from_string("f(g(a),b)").unwrap(), &AHashSet::new());
+        let expected = to_untyped_data_expression(&ATerm::from_string("a").unwrap(),  &AHashSet::new());
+
+        assert_eq!(t.get_data_position(&ExplicitPosition::new(&[1, 1])), expected.copy());
+    }
+
+    #[test]
+    fn test_position_iterator() {
+        let t = to_untyped_data_expression(&ATerm::from_string("f(g(a),b)").unwrap(), &AHashSet::new());
+
+        for (term, pos) in DataPositionIterator::new(t.copy()) {
+            assert_eq!(
+                t.get_data_position(&pos),
+                term,
+                "The resulting (subterm, position) pair doesn't match the get_data_position implementation"
+            );
+        }
+
+        assert_eq!(
+            DataPositionIterator::new(t.copy()).count(),
+            4,
+            "The number of subterms doesn't match the expected value"
+        );
     }
 }

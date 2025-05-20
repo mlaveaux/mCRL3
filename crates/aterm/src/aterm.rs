@@ -156,10 +156,10 @@ impl fmt::Display for ATermRef<'_> {
 
 impl fmt::Debug for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.arguments().is_empty() {
-            write!(f, "{}", self.get_head_symbol().name())?;
-        } else if is_int_term(self) {
+        if is_int_term(self) {
             write!(f, "{}", Into::<ATermIntRef>::into(self.copy()))?;
+        } else if self.arguments().is_empty() {
+            write!(f, "{}", self.get_head_symbol().name())?;
         } else {
             // Format the term with its head symbol and arguments, avoiding trailing comma
             write!(f, "{:?}(", self.get_head_symbol())?;

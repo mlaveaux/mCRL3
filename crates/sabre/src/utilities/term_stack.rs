@@ -24,7 +24,6 @@ use crate::utilities::InnermostStack;
 
 use super::DataPositionIterator;
 use super::ExplicitPosition;
-use super::PositionIterator;
 
 /// A stack used to represent a term with free variables that can be constructed
 /// efficiently.
@@ -37,11 +36,11 @@ use super::PositionIterator;
 #[derive(Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TermStack {
     /// The innermost rewrite stack for the right hand side and the positions that must be added to the stack.
-    pub(crate) innermost_stack: Protected<Vec<Config<'static>>>,
+    pub innermost_stack: Protected<Vec<Config<'static>>>,
     /// The variables of the left-hand side that must be placed at certain places in the stack.
-    pub(crate) variables: Vec<(ExplicitPosition, usize)>,
+    pub variables: Vec<(ExplicitPosition, usize)>,
     /// The number of elements that must be reserved on the innermost stack.
-    pub(crate) stack_size: usize,
+    pub stack_size: usize,
 }
 
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -116,13 +115,7 @@ impl TermStack {
         let mut variables = vec![];
         let mut stack_size = 0;
 
-        for (term, position) in DataPositionIterator::new(term.copy().into()) {
-            if let Some(index) = position.indices.last() {
-                if *index == 0 {
-                    continue; // Skip the function symbol.
-                }
-            }
-
+        for (term, _position) in DataPositionIterator::new(term.copy().into()) {
             if is_data_variable(&term) {
                 let variable: DataVariableRef<'_> = term.into();
                 variables.push((
@@ -153,6 +146,7 @@ impl TermStack {
         }
     }
 
+    // See [evaluate_with]
     pub fn evaluate<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> DataExpression {
         let mut builder = TermStackBuilder::new();
         self.evaluate_with(term, &mut builder)
@@ -292,10 +286,10 @@ impl Default for TermStackBuilder {
 }
 
 /// Create a mapping of variables to their position in the given term
-pub fn create_var_map<'a, 'b>(t: &'b impl Term<'a, 'b>) -> HashMap<DataVariable, ExplicitPosition> {
+pub fn create_var_map(t: &DataExpression) -> HashMap<DataVariable, ExplicitPosition> {
     let mut result = HashMap::new();
 
-    for (term, position) in PositionIterator::new(t.copy()) {
+    for (term, position) in DataPositionIterator::new(t.copy()) {
         if is_data_variable(&term) {
             result.insert(term.protect().into(), position.clone());
         }
@@ -310,29 +304,12 @@ mod tests {
 
     use ahash::AHashSet;
     use mcrl3_aterm::ATerm;
-    use mcrl3_aterm::Symb;
-    use mcrl3_aterm::THREAD_TERM_POOL;
-    use mcrl3_aterm::apply;
     use mcrl3_data::DataFunctionSymbol;
     use mcrl3_data::to_untyped_data_expression;
 
     use crate::test_utility::create_rewrite_rule;
 
     use test_log::test;
-
-    /// Convert terms in variables to a [DataVariable].
-    pub fn convert_variables(t: &ATerm, variables: &AHashSet<String>) -> ATerm {
-        THREAD_TERM_POOL.with_borrow(|tp| {
-            apply(tp, t, &|_tp, arg| {
-                if variables.contains(arg.get_head_symbol().name()) {
-                    // Convert a constant variable, for example 'x', into an untyped variable.
-                    Some(DataVariable::new(arg.get_head_symbol().name()).into())
-                } else {
-                    None
-                }
-            })
-        })
-    }
 
     #[test]
     fn test_rhs_stack() {
@@ -410,7 +387,7 @@ mod tests {
     fn test_create_varmap() {
         let t = {
             let tmp = ATerm::from_string("f(x,x)").unwrap();
-            convert_variables(&tmp, &AHashSet::from([String::from("x")]))
+            to_untyped_data_expression(&tmp, &AHashSet::from([String::from("x")]))
         };
         let x = DataVariable::new("x");
 

@@ -6,9 +6,9 @@ use mcrl3_data::DataVariableRef;
 use mcrl3_data::is_data_variable;
 
 use crate::Rule;
+use crate::utilities::DataPositionIterator;
 use crate::utilities::DataPositionIndexed;
 use crate::utilities::ExplicitPosition;
-use crate::utilities::PositionIterator;
 
 /// An equivalence class is a variable with (multiple) positions. This is
 /// necessary for non-linear patterns.
@@ -29,7 +29,7 @@ pub struct EquivalenceClass {
 pub fn derive_equivalence_classes(rule: &Rule) -> Vec<EquivalenceClass> {
     let mut var_equivalences = vec![];
 
-    for (term, pos) in PositionIterator::new(rule.lhs.copy().into()) {
+    for (term, pos) in DataPositionIterator::new(rule.lhs.copy().into()) {
         if is_data_variable(&term) {
             // Register the position of the variable
             update_equivalences(&mut var_equivalences, &DataVariableRef::from(term), pos);
@@ -106,7 +106,7 @@ mod tests {
             eq,
             vec![EquivalenceClass {
                 variable: DataVariable::new("x").into(),
-                positions: vec![ExplicitPosition::new(&[2]), ExplicitPosition::new(&[3, 2])]
+                positions: vec![ExplicitPosition::new(&[1]), ExplicitPosition::new(&[2, 1])]
             },],
             "The resulting config stack is not as expected"
         );

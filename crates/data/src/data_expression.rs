@@ -80,14 +80,27 @@ mod inner {
         ///     - function symbol                  f -> []
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
         #[mcrl3_ignore]
-        pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'_>> + ExactSizeIterator + use<'_>{
-            if is_data_application(&self.term) || is_data_function_symbol(&self.term) {
-                let mut result = self.term.arguments();
+        pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'_>> + ExactSizeIterator + use<'_> {
+            let mut result = self.term.arguments();
+            if is_data_application(&self.term) {
                 result.next();
-                result.map(|t| t.into())
+            } else if is_data_function_symbol(&self.term) {
+                result.next();
+                result.next();
+            } else if is_data_variable(&self.term) {
+                result.next(); 
+                result.next();
             } else {
                 panic!("data_arguments not implemented for {}", self);
             }
+
+            result.map(|t| t.into())
+        }
+
+        /// Returns the ith argument of a data application.
+        #[mcrl3_ignore]
+        pub fn data_arg(&self, index: usize) -> DataExpressionRef<'_> {
+            self.term.arg(index + 1).into()
         }
 
         /// Returns the arguments of a data expression
@@ -173,7 +186,7 @@ mod inner {
             DATA_SYMBOLS.with_borrow(|ds| {
                 // TODO: Storing terms temporarily is not optimal.
                 let t = name.into();
-                let args: &[ATerm] = &[t.into(), ATermInt::new(0).into()];
+                let args: &[ATerm] = &[t.into(), SortExpression::unknown_sort().into()];
 
                 DataVariable {
                     term: ATerm::with_args(ds.data_variable.deref(), args),
@@ -260,6 +273,11 @@ mod inner {
             let mut result = self.term.arguments();
             result.next();
             result
+        }
+
+        /// Returns the ith argument of a data application.
+        pub fn data_arg(&self, index: usize) -> DataExpressionRef<'_> {
+            self.term.arg(index + 1).into()
         }
 
         /// Returns the sort of a data application.
@@ -360,13 +378,24 @@ pub use inner::*;
 impl<'a> DataExpressionRef<'a> {
 
     pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'a>> + ExactSizeIterator + use<'a> {
-        if is_data_application(&self.term) || is_data_function_symbol(&self.term) {
-            let mut result = self.term.arguments();
+        let mut result = self.term.arguments();
+        if is_data_application(&self.term) {
             result.next();
-            result.map(|t| t.into())
+        } else if is_data_function_symbol(&self.term) {
+            result.next();
+            result.next();
+        } else if is_data_variable(&self.term) {
+            result.next(); 
+            result.next(); 
         } else {
             panic!("data_arguments not implemented for {}", self);
         }
+
+        result.map(|t| t.into())
+    }
+
+    pub fn data_arg(&self, index: usize) -> DataExpressionRef<'a> {
+        self.term.arg(index + 1).into()
     }
 }
 
@@ -405,11 +434,9 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: &AHashSet<String>) -> Da
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_aterm::ATerm;
+    use super::*;
 
-    use crate::DataApplication;
-    use crate::DataFunctionSymbol;
-    use crate::is_data_application;
+    use mcrl3_aterm::ATerm;
 
     #[test]
     fn test_print() {
@@ -432,5 +459,25 @@ mod tests {
 
         let term: ATerm = appl.into();
         assert!(is_data_application(&term));
+    }
+
+    #[test]
+    fn test_data_arguments() {
+        let a = DataFunctionSymbol::new("a");
+        let f = DataFunctionSymbol::new("f");
+        let appl = DataApplication::with_args(&f, &[a]);
+
+        assert_eq!(appl.data_arguments().count(), 1);
+
+        let data_expr: DataExpression = appl.clone().into();
+
+        assert_eq!(data_expr.data_arguments().count(), 1);
+    }
+
+    #[test]
+    fn test_to_data_expression() {
+        let t = ATerm::from_string("s(s(a))").unwrap();
+
+        let _expression = to_untyped_data_expression(&t, &AHashSet::from_iter(["a".to_string()]));
     }
 }

@@ -264,7 +264,7 @@ impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
                 .borrow_mut()
                 .push(transmute::<ATermRef<'_>, ATermRef<'static>>(term.copy()));
 
-            transmute(term.copy())
+            transmute::<ATermRef<'_>, ATermRef<'static>>(term.copy())
         }
     }
 }

@@ -17,7 +17,7 @@ use mcrl3_utilities::SetIndex;
 pub type LddIndex = SetIndex;
 
 /// The shared protection set is used to keep track of the nodes that are reachable.
-pub(crate) type SharedProtectionSet = Rc<RefCell<ProtectionSet<LddIndex>>>;
+pub type SharedProtectionSet = Rc<RefCell<ProtectionSet<LddIndex>>>;
 
 /// Every Ldd points to its root node in the Storage instance for maximal
 /// sharing. These Ldd instances can only be created from the storage.
