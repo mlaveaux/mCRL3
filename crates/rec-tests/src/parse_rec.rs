@@ -98,6 +98,9 @@ impl RecParser {
         match_nodes!(spec.into_children();
             [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), eval(eval_terms), EOI(_)] => {
                 Ok((name, include_files, constructors, variables, rewrite_rules, eval_terms))
+            },
+            [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), EOI(_)] => {
+                Ok((name, include_files, constructors, variables, rewrite_rules, Vec::new()))
             }
         )
     }
