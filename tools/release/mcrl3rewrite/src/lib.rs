@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::time::Instant;
 
-use ahash::AHashSet;
 use clap::ValueEnum;
 
 use mcrl3_data::to_untyped_data_expression;
@@ -29,7 +28,7 @@ pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: boo
 
             let now = Instant::now();
             for term in &syntax_terms {
-                let term = to_untyped_data_expression(term, &AHashSet::new());
+                let term = to_untyped_data_expression(term, None);
                 let result = inner.rewrite(&term);
                 if output {
                     println!("{}", result)
@@ -42,7 +41,7 @@ pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: boo
 
             let now = Instant::now();
             for term in &syntax_terms {
-                let term = to_untyped_data_expression(term, &AHashSet::new());
+                let term = to_untyped_data_expression(term, None);
                 let result = sa.rewrite(&term);
                 if output {
                     println!("{}", result)
