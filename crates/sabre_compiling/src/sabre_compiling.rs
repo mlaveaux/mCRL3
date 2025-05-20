@@ -90,34 +90,34 @@ impl SabreCompilingRewriter {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use ahash::AHashSet;
-//     use mcrl3_data::to_untyped_data_expression;
-//     use mcrl3_rec_tests::load_REC_from_strings;
-//     use mcrl3_sabre::RewriteEngine;
+#[cfg(test)]
+mod tests {
+    use ahash::AHashSet;
+    use mcrl3_data::to_untyped_data_expression;
+    use mcrl3_rec_tests::load_rec_from_strings;
+    use mcrl3_sabre::RewriteEngine;
 
-//     use super::SabreCompilingRewriter;
+    use super::SabreCompilingRewriter;
 
-//     #[test]
-//     fn test_compilation() {
-//         let (spec, terms) = load_REC_from_strings(&[
-//             include_str!("../../../examples/REC/rec/factorial6.rec"),
-//             include_str!("../../../examples/REC/rec/factorial.rec"),
-//         ])
-//         .unwrap();
+    #[test]
+    fn test_compilation() {
+        let (spec, terms) = load_rec_from_strings(&[
+            include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial.rec"),
+        ])
+        .unwrap();
 
-//         let spec = spec.to_rewrite_spec();
+        let spec = spec.to_rewrite_spec();
 
-//         let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
+        let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
 
-//         for t in terms {
-//             let data_term = to_untyped_data_expression(&t, &AHashSet::new());
-//             assert_eq!(
-//                 rewriter.rewrite(&data_term),
-//                 data_term,
-//                 "The rewritten result does not match the expected result"
-//             );
-//         }
-//     }
-// }
+        for t in terms {
+            let data_term = to_untyped_data_expression(&t, &AHashSet::new());
+            assert_eq!(
+                rewriter.rewrite(&data_term),
+                data_term,
+                "The rewritten result does not match the expected result"
+            );
+        }
+    }
+}

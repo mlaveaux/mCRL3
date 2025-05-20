@@ -1,6 +1,7 @@
 use std::cmp::min;
 use std::fmt;
 
+use crate::utilities::DataPosition;
 use crate::utilities::ExplicitPosition;
 use ahash::HashMap;
 use ahash::HashMapExt;
@@ -28,10 +29,10 @@ impl MatchGoal {
 
     /// Derive the greatest common prefix of the announcement and obligation positions
     /// of a list of match goals.
-    pub fn greatest_common_prefix(goals: &Vec<MatchGoal>) -> ExplicitPosition {
+    pub fn greatest_common_prefix(goals: &Vec<MatchGoal>) -> DataPosition {
         // gcp is empty if there are no match goals
         if goals.is_empty() {
-            return ExplicitPosition::empty_pos();
+            return DataPosition::empty();
         }
 
         // Initialise the prefix with the first match goal, can only shrink afterwards
@@ -44,8 +45,8 @@ impl MatchGoal {
             let compare_length = min(gcp_length, g.announcement.position.len());
             // gcp_length shrinks if they are not the same up to compare_length
             gcp_length = MatchGoal::common_prefix_length(
-                &prefix.indices[0..compare_length],
-                &g.announcement.position.indices[0..compare_length],
+                &prefix.indices()[0..compare_length],
+                &g.announcement.position.indices()[0..compare_length],
             );
 
             for mo in &g.obligations {
@@ -53,29 +54,23 @@ impl MatchGoal {
                 let compare_length = min(gcp_length, mo.position.len());
                 // gcp_length shrinks if they are not the same up to compare_length
                 gcp_length = MatchGoal::common_prefix_length(
-                    &prefix.indices[0..compare_length],
-                    &mo.position.indices[0..compare_length],
+                    &prefix.indices()[0..compare_length],
+                    &mo.position.indices()[0..compare_length],
                 );
             }
         }
+
         // The gcp is constructed by taking the first gcp_length indices of the first match goal prefix
-        let greatest_common_prefix = SmallVec::from_slice(&prefix.indices[0..gcp_length]);
-        ExplicitPosition {
-            indices: greatest_common_prefix,
-        }
+        DataPosition::new(&prefix.indices()[0..gcp_length])
     }
 
     /// Removes the first len position indices of the match goal and obligation positions
     pub fn remove_prefix(mut goals: Vec<MatchGoal>, len: usize) -> Vec<MatchGoal> {
         for goal in &mut goals {
             // update match announcement
-            goal.announcement.position = ExplicitPosition {
-                indices: SmallVec::from_slice(&goal.announcement.position.indices[len..]),
-            };
+            goal.announcement.position = DataPosition::new(&goal.announcement.position.indices()[len..]);
             for mo_index in 0..goal.obligations.len() {
-                let shortened = ExplicitPosition {
-                    indices: SmallVec::from_slice(&goal.obligations.get(mo_index).unwrap().position.indices[len..]),
-                };
+                let shortened = DataPosition::new(&goal.obligations.get(mo_index).unwrap().position.indices()[len..]);
                 goal.obligations.get_mut(mo_index).unwrap().position = shortened;
             }
         }
@@ -86,7 +81,7 @@ impl MatchGoal {
     /// the positions. This partitioning can be done in multiple ways, but
     /// currently match goals are equivalent when their match announcements have
     /// a comparable position.
-    pub fn partition(goals: Vec<MatchGoal>) -> Vec<(Vec<MatchGoal>, Vec<ExplicitPosition>)> {
+    pub fn partition(goals: Vec<MatchGoal>) -> Vec<(Vec<MatchGoal>, Vec<DataPosition>)> {
         let mut partitions = vec![];
 
         trace!("=== partition(match_goals = [ ===");
@@ -119,7 +114,7 @@ impl MatchGoal {
             }
 
             // Sort the positions. They are now in depth first order.
-            let mut all_positions: Vec<ExplicitPosition> = position_to_goals.keys().cloned().collect();
+            let mut all_positions: Vec<DataPosition> = position_to_goals.keys().cloned().collect();
             all_positions.sort_unstable();
 
             // Compute the partitions, finished when all positions are processed
@@ -189,14 +184,14 @@ impl MatchGoal {
 
     /// Checks for two positions whether one is a subposition of the other.
     /// For example 2.2.3 and 2 are comparable. 2.2.3 and 1 are not.
-    pub fn pos_comparable(p1: &ExplicitPosition, p2: &ExplicitPosition) -> bool {
+    pub fn pos_comparable(p1: &DataPosition, p2: &DataPosition) -> bool {
         let mut index = 0;
         loop {
             if p1.len() == index || p2.len() == index {
                 return true;
             }
 
-            if p1.indices[index] != p2.indices[index] {
+            if p1.indices()[index] != p2.indices()[index] {
                 return false;
             }
             index += 1;

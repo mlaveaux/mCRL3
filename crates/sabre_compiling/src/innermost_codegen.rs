@@ -7,10 +7,10 @@ use std::path::PathBuf;
 
 use indoc::indoc;
 use log::debug;
+use mcrl3_sabre::utilities::DataPosition;
 use mcrl3_sabre::AnnouncementInnermost;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SetAutomaton;
-use mcrl3_sabre::utilities::ExplicitPosition;
 use mcrl3_utilities::MCRL3Error;
 
 use crate::indenter::IndentFormatter;
@@ -26,7 +26,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     let mut formatter = IndentFormatter::new(&mut file);
 
     // Generate the automata used for matching
-    let apma = SetAutomaton::new(spec, |rule| AnnouncementInnermost::new(rule), true);
+    let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);
 
     debug!("{:?}", apma);
 
@@ -48,7 +48,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     )?;
 
     // Introduce a match function for every state of the set automaton.
-    let mut positions: HashSet<ExplicitPosition> = HashSet::new();
+    let mut positions: HashSet<DataPosition> = HashSet::new();
 
     for (index, state) in apma.states().iter().enumerate() {
         writeln!(&mut formatter, "// Position {}", state.label())?;
@@ -145,7 +145,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
         } else {
             write!(&mut formatter, "t")?;
 
-            for index in &position.indices {
+            for index in position.indices().iter() {
                 write!(&mut formatter, ".arg({index})")?;
             }
 
@@ -168,15 +168,15 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     Ok(())
 }
 
-struct UnderscoreFormatter<'a>(&'a ExplicitPosition);
+struct UnderscoreFormatter<'a>(&'a DataPosition);
 
 impl fmt::Display for UnderscoreFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.indices.is_empty() {
+        if self.0.is_empty() {
             write!(f, "epsilon")?;
         } else {
             let mut first = true;
-            for p in &self.0.indices {
+            for p in self.0.indices().iter() {
                 if first {
                     write!(f, "{}", p)?;
                     first = false;

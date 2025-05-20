@@ -22,6 +22,7 @@ use mcrl3_utilities::debug_trace;
 use crate::Rule;
 use crate::utilities::InnermostStack;
 
+use super::DataPosition;
 use super::DataPositionIterator;
 use super::ExplicitPosition;
 
@@ -38,7 +39,7 @@ pub struct TermStack {
     /// The innermost rewrite stack for the right hand side and the positions that must be added to the stack.
     pub innermost_stack: Protected<Vec<Config<'static>>>,
     /// The variables of the left-hand side that must be placed at certain places in the stack.
-    pub variables: Vec<(ExplicitPosition, usize)>,
+    pub variables: Vec<(DataPosition, usize)>,
     /// The number of elements that must be reserved on the innermost stack.
     pub stack_size: usize,
 }
@@ -109,13 +110,13 @@ impl TermStack {
     }
 
     /// Construct a term stack from a data expression where variables are taken from a specific position of the left hand side.
-    pub fn from_term(term: &DataExpressionRef, var_map: &HashMap<DataVariable, ExplicitPosition>) -> TermStack {
+    pub fn from_term(term: &DataExpressionRef, var_map: &HashMap<DataVariable, DataPosition>) -> TermStack {
         // Compute the extra information for the InnermostRewriter.
         let mut innermost_stack: Protected<Vec<Config>> = Protected::new(vec![]);
         let mut variables = vec![];
         let mut stack_size = 0;
 
-        for (term, _position) in DataPositionIterator::new(term.copy().into()) {
+        for (term, _position) in DataPositionIterator::new(term.copy()) {
             if is_data_variable(&term) {
                 let variable: DataVariableRef<'_> = term.into();
                 variables.push((
@@ -128,14 +129,11 @@ impl TermStack {
                 stack_size += 1;
             } else if is_data_machine_number(&term) {
                 // Skip SortId(@NoValue) and OpId
-            } else if is_data_expression(&term) {
-                let t: DataExpressionRef = term.into();
-                let arity = t.data_arguments().len();
-                let mut write = innermost_stack.write();
-                write.push(Config::Construct(t.data_function_symbol(), arity, stack_size));
-                stack_size += 1;
             } else {
-                // Skip intermediate terms such as UntypeSortUnknown.
+                let arity = term.data_arguments().len();
+                let mut write = innermost_stack.write();
+                write.push(Config::Construct(term.data_function_symbol(), arity, stack_size));
+                stack_size += 1;
             }
         }
 
@@ -227,7 +225,7 @@ impl TermStack {
     /// Used to check if a subterm is duplicated, for example "times(s(x), y) =
     /// plus(y, times(x,y))" is duplicating.
     pub(crate) fn contains_duplicate_var_references(&self) -> bool {
-        let mut variables: Vec<&ExplicitPosition> = self.variables.iter().map(|(v, _)| v).collect();
+        let mut variables: Vec<&DataPosition> = self.variables.iter().map(|(v, _)| v).collect();
 
         // Check if there are duplicates.
         variables.sort_unstable();
@@ -286,7 +284,7 @@ impl Default for TermStackBuilder {
 }
 
 /// Create a mapping of variables to their position in the given term
-pub fn create_var_map(t: &DataExpression) -> HashMap<DataVariable, ExplicitPosition> {
+pub fn create_var_map(t: &DataExpression) -> HashMap<DataVariable, DataPosition> {
     let mut result = HashMap::new();
 
     for (term, position) in DataPositionIterator::new(t.copy()) {
@@ -373,7 +371,7 @@ mod tests {
 
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
-        map.insert(DataVariable::new("x"), ExplicitPosition::new(&[2]));
+        map.insert(DataVariable::new("x"), DataPosition::new(&[2]));
 
         let sctt = TermStack::from_term(&t_rhs.copy(), &map);
 
@@ -404,7 +402,7 @@ mod tests {
 
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
-        map.insert(DataVariable::new("x"), ExplicitPosition::new(&[1]));
+        map.insert(DataVariable::new("x"), DataPosition::new(&[1]));
 
         let sctt = TermStack::from_term(&t_rhs.copy(), &map);
         assert!(sctt.contains_duplicate_var_references(), "This sctt is duplicating");

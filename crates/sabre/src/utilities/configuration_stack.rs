@@ -15,7 +15,10 @@ use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::ExplicitPosition;
 
+use super::data_substitute_with;
+use super::DataPosition;
 use super::DataPositionIndexed;
+use super::DataSubstitutionBuilder;
 use super::SubstitutionBuilder;
 use super::TermStack;
 use super::create_var_map;
@@ -67,7 +70,7 @@ impl AnnouncementSabre {
 #[derive(Debug)]
 pub(crate) struct Configuration<'a> {
     pub state: usize,
-    pub position: Option<&'a ExplicitPosition>,
+    pub position: Option<&'a DataPosition>,
 }
 
 /// SideInfo stores additional information of a configuration. It stores an
@@ -120,7 +123,7 @@ pub(crate) struct SideInfo<'a> {
 ///    indeed matches.
 #[derive(Debug)]
 pub(crate) enum SideInfoType<'a> {
-    SideBranch(&'a [(ExplicitPosition, usize)]),
+    SideBranch(&'a [(DataPosition, usize)]),
     DelayedRewriteRule(&'a MatchAnnouncement, &'a AnnouncementSabre),
     EquivalenceAndConditionCheck(&'a MatchAnnouncement, &'a AnnouncementSabre),
 }
@@ -141,7 +144,9 @@ pub(crate) struct ConfigurationStack<'a> {
     /// That would be very expensive. Instead we ensure that the subterm in the current_node is always up to date.
     /// oldest_reliable_subterm is an index to the highest configuration in the tree that is up to date.
     pub oldest_reliable_subterm: usize,
-    pub substitution_builder: SubstitutionBuilder,
+
+    /// A reusable substitution builder for the configuration stack.
+    pub substitution_builder: DataSubstitutionBuilder,
 }
 
 impl<'a> ConfigurationStack<'a> {
@@ -153,7 +158,7 @@ impl<'a> ConfigurationStack<'a> {
             terms: Protected::new(vec![]),
             current_node: Some(0),
             oldest_reliable_subterm: 0,
-            substitution_builder: SubstitutionBuilder::default(),
+            substitution_builder: DataSubstitutionBuilder::default(),
         };
         conf_list.stack.push(Configuration { state, position: None });
 
@@ -175,12 +180,12 @@ impl<'a> ConfigurationStack<'a> {
     }
 
     /// Grow a Configuration with index c. tr_slice contains the hypertransition to possibly multiple states
-    pub fn grow(&mut self, c: usize, tr_slice: &'a [(ExplicitPosition, usize)]) {
+    pub fn grow(&mut self, c: usize, tr_slice: &'a [(DataPosition, usize)]) {
         // Pick the first transition to grow the stack
         let (pos, des) = tr_slice.first().unwrap();
 
         // If there are more transitions store the remaining on the side stack
-        let tr_slice: &[(ExplicitPosition, usize)] = &(tr_slice)[1..];
+        let tr_slice: &[(DataPosition, usize)] = &(tr_slice)[1..];
         if !tr_slice.is_empty() {
             self.side_branch_stack.push(SideInfo {
                 corresponding_configuration: c,
@@ -224,12 +229,12 @@ impl<'a> ConfigurationStack<'a> {
         // Update the subterm stored at the prune point.
         // Note that the subterm stored earlier may not have been up to date. We replace it with a term that is up to date
         let mut write_terms = self.terms.write();
-        let subterm = write_terms.protect(&substitute_with(
+        let subterm = write_terms.protect(&data_substitute_with(
             &mut self.substitution_builder,
             tp,
             &write_terms[depth],
-            new_subterm.into(),
-            &automaton.states()[self.stack[depth].state].label().indices,
+            new_subterm,
+            automaton.states()[self.stack[depth].state].label().indices(),
         ));
         write_terms[depth] = subterm.into();
 
@@ -286,12 +291,12 @@ impl<'a> ConfigurationStack<'a> {
             subterm = match self.stack[up_to_date].position {
                 None => subterm,
                 Some(p) => {
-                    let t = substitute_with(
+                    let t = data_substitute_with(
                         &mut self.substitution_builder,
                         tp,
                         &write_terms[up_to_date - 1],
-                        subterm.protect(),
-                        &p.indices,
+                        subterm.protect().into(),
+                        p.indices(),
                     );
                     write_terms.protect(&t)
                 }

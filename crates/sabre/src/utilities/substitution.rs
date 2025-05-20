@@ -44,7 +44,7 @@ fn substitute_rec<'a, 'b>(
     t: &'b impl Term<'a, 'b>,
     new_subterm: ATerm,
     p: &[usize],
-    args: &mut Protected<Vec<ATermRef<'static>>>,
+    args: &mut SubstitutionBuilder,
     depth: usize,
 ) -> ATerm {
     if p.len() == depth {
@@ -79,9 +79,7 @@ fn substitute_rec<'a, 'b>(
 mod tests {
     use super::*;
 
-    use ahash::AHashSet;
     use mcrl3_aterm::THREAD_TERM_POOL;
-    use mcrl3_data::to_untyped_data_expression;
 
     use crate::utilities::ExplicitPosition;
     use crate::utilities::PositionIndexed;
@@ -96,12 +94,5 @@ mod tests {
 
         // Check that indeed the new term as a 0 at position 1.1.
         assert_eq!(t0, result.get_position(&ExplicitPosition::new(&vec![1, 1])).protect());
-    }
-
-    #[test]
-    fn test_to_data_expression() {
-        let t = ATerm::from_string("s(s(a))").unwrap();
-
-        let _expression = to_untyped_data_expression(&t, &AHashSet::from_iter(["a".to_string()]));
     }
 }

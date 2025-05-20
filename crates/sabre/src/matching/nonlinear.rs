@@ -6,9 +6,9 @@ use mcrl3_data::DataVariableRef;
 use mcrl3_data::is_data_variable;
 
 use crate::Rule;
+use crate::utilities::DataPosition;
 use crate::utilities::DataPositionIterator;
 use crate::utilities::DataPositionIndexed;
-use crate::utilities::ExplicitPosition;
 
 /// An equivalence class is a variable with (multiple) positions. This is
 /// necessary for non-linear patterns.
@@ -21,8 +21,8 @@ use crate::utilities::ExplicitPosition;
 /// on the term f(a, a).
 #[derive(Hash, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct EquivalenceClass {
-    pub(crate) variable: DataVariable,
-    pub(crate) positions: Vec<ExplicitPosition>,
+    pub variable: DataVariable,
+    pub positions: Vec<DataPosition>,
 }
 
 /// Derives the positions in a pattern with same variable (for non-linear patters)
@@ -61,7 +61,7 @@ where
 }
 
 /// Adds the position of a variable to the equivalence classes
-fn update_equivalences(ve: &mut Vec<EquivalenceClass>, variable: &DataVariableRef<'_>, pos: ExplicitPosition) {
+fn update_equivalences(ve: &mut Vec<EquivalenceClass>, variable: &DataVariableRef<'_>, pos: DataPosition) {
     // Check if the variable was seen before
     if ve.iter().any(|ec| ec.variable.copy() == *variable) {
         for ec in ve.iter_mut() {
@@ -106,7 +106,7 @@ mod tests {
             eq,
             vec![EquivalenceClass {
                 variable: DataVariable::new("x").into(),
-                positions: vec![ExplicitPosition::new(&[1]), ExplicitPosition::new(&[2, 1])]
+                positions: vec![DataPosition::new(&[1]), DataPosition::new(&[2, 1])]
             },],
             "The resulting config stack is not as expected"
         );

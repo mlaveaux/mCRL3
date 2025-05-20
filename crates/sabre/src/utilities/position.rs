@@ -14,28 +14,43 @@ use smallvec::smallvec;
 /// Indices are stored in a SmallVec, which is configured to store 4 elements.
 /// If the position contains a maximum of 4 elements it is stored on the stack.
 /// If the position is longer a heap allocation is made.
+#[repr(transparent)]
 #[derive(Hash, Clone, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ExplicitPosition {
-    pub indices: SmallVec<[usize; 4]>,
+    indices: SmallVec<[usize; 4]>,
 }
 
 impl ExplicitPosition {
-    pub fn new(indices: &[usize]) -> ExplicitPosition {
-        ExplicitPosition {
+    /// Creates a new ExplicitPosition from a slice of indices.
+    pub fn new(indices: &[usize]) -> Self {
+        Self {
             indices: SmallVec::from(indices),
         }
     }
 
-    pub fn empty_pos() -> ExplicitPosition {
-        ExplicitPosition { indices: smallvec![] }
+    /// Create the empty position.
+    pub fn empty() -> Self {
+        Self { indices: smallvec![] }
     }
 
+    /// Returns the length of the position indices
     pub fn len(&self) -> usize {
         self.indices.len()
     }
 
+    /// Returns the indices of the position.
+    pub fn indices(&self) -> &[usize] {
+        &self.indices
+    }
+
+    /// Returns true iff the position is empty.
     pub fn is_empty(&self) -> bool {
         self.indices.len() == 0
+    }
+
+    /// Add the index to the position.
+    pub fn push(&mut self, index: usize) {
+        self.indices.push(index);
     }
 }
 
@@ -104,7 +119,7 @@ pub struct PositionIterator<'a> {
 impl<'a> PositionIterator<'a> {
     pub fn new(t: ATermRef<'a>) -> PositionIterator<'a> {
         PositionIterator {
-            queue: VecDeque::from([(t, ExplicitPosition::empty_pos())]),
+            queue: VecDeque::from([(t, ExplicitPosition::empty())]),
         }
     }
 }

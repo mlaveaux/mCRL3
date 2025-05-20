@@ -21,7 +21,7 @@ use smallvec::smallvec;
 
 use crate::rewrite_specification::RewriteSpecification;
 use crate::rewrite_specification::Rule;
-use crate::utilities::ExplicitPosition;
+use crate::utilities::DataPosition;
 
 use super::DotFormatter;
 use super::MatchGoal;
@@ -42,7 +42,7 @@ pub struct SetAutomaton<T> {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MatchAnnouncement {
     pub rule: Rule,
-    pub position: ExplicitPosition,
+    pub position: DataPosition,
     pub symbols_seen: usize,
 }
 
@@ -50,18 +50,18 @@ pub struct MatchAnnouncement {
 pub struct Transition<T> {
     pub symbol: DataFunctionSymbol,
     pub announcements: SmallVec<[(MatchAnnouncement, T); 1]>,
-    pub destinations: SmallVec<[(ExplicitPosition, usize); 1]>,
+    pub destinations: SmallVec<[(DataPosition, usize); 1]>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MatchObligation {
     pub pattern: DataExpression,
-    pub position: ExplicitPosition,
+    pub position: DataPosition,
 }
 
 impl MatchObligation {
     /// Returns the pattern of the match obligation
-    pub fn new(pattern: DataExpression, position: ExplicitPosition) -> Self {
+    pub fn new(pattern: DataExpression, position: DataPosition) -> Self {
         MatchObligation { pattern, position }
     }
 }
@@ -115,10 +115,10 @@ impl<M> SetAutomaton<M> {
             initial_match_goals.push(MatchGoal::new(
                 MatchAnnouncement {
                     rule: (*rr).clone(),
-                    position: ExplicitPosition::empty_pos(),
+                    position: DataPosition::empty(),
                     symbols_seen: 0,
                 },
-                vec![MatchObligation::new(rr.lhs.clone(), ExplicitPosition::empty_pos())],
+                vec![MatchObligation::new(rr.lhs.clone(), DataPosition::empty())],
             ));
         }
 
@@ -128,7 +128,7 @@ impl<M> SetAutomaton<M> {
 
         // Create the initial state
         let initial_state = State {
-            label: ExplicitPosition::empty_pos(),
+            label: DataPosition::empty(),
             match_goals: initial_match_goals.clone(),
         };
 
@@ -272,7 +272,7 @@ pub struct Derivative {
 
 #[derive(Debug)]
 pub struct State {
-    label: ExplicitPosition,
+    label: DataPosition,
     match_goals: Vec<MatchGoal>,
 }
 
@@ -289,7 +289,7 @@ impl State {
         arity: usize,
         rewrite_rules: &Vec<Rule>,
         apma: bool,
-    ) -> (Vec<MatchAnnouncement>, Vec<(ExplicitPosition, GoalsOrInitial)>) {
+    ) -> (Vec<MatchAnnouncement>, Vec<(DataPosition, GoalsOrInitial)>) {
         // Computes the derivative containing the goals that are completed, unchanged and reduced
         let mut derivative = self.compute_derivative(symbol, arity);
 
@@ -305,7 +305,7 @@ impl State {
         // with multiple endpoints
         if apma {
             if !new_match_goals.is_empty() {
-                destinations.push((ExplicitPosition::empty_pos(), GoalsOrInitial::Goals(new_match_goals)));
+                destinations.push((DataPosition::empty(), GoalsOrInitial::Goals(new_match_goals)));
             }
         } else {
             // In case we are building a set automaton we partition the match goals
@@ -329,7 +329,7 @@ impl State {
             // the transition. Position 1 is the first argument.
             for i in 1..arity + 1 {
                 let mut pos = self.label.clone();
-                pos.indices.push(i);
+                pos.push(i);
 
                 // Check if the fresh goals are related to one of the existing partitions
                 let mut partition_key = None;
@@ -345,18 +345,13 @@ impl State {
                 if let Some(key) = partition_key {
                     // If the fresh goals fall in an existing partition
                     let gcp_length = gcp_length_per_partition[key];
-                    let pos = ExplicitPosition {
-                        indices: SmallVec::from_slice(&pos.indices[gcp_length..]),
-                    };
+                    let pos = DataPosition::new(&pos.indices()[gcp_length..]);
 
                     // Add the fresh goals to the partition
                     for rr in rewrite_rules {
                         if let GoalsOrInitial::Goals(goals) = &mut destinations[key].1 {
                             goals.push(MatchGoal {
-                                obligations: vec![MatchObligation {
-                                    pattern: rr.lhs.clone(),
-                                    position: pos.clone(),
-                                }],
+                                obligations: vec![MatchObligation::new(rr.lhs.clone(), pos.clone())],
                                 announcement: MatchAnnouncement {
                                     rule: (*rr).clone(),
                                     position: pos.clone(),
@@ -436,7 +431,7 @@ impl State {
 
                             if !is_data_variable(&t) {
                                 let mut new_pos = mo.position.clone();
-                                new_pos.indices.push(index + 2);
+                                new_pos.push(index + 1);
                                 new_obligations.push(MatchObligation {
                                     pattern: t.protect().into(),
                                     position: new_pos,
@@ -491,10 +486,11 @@ impl State {
     /// Create a state from a set of match goals
     fn new(goals: Vec<MatchGoal>) -> State {
         // The label of the state is taken from a match obligation of a root match goal.
-        let mut label: Option<ExplicitPosition> = None;
+        let mut label: Option<DataPosition> = None;
+
         // Go through all match goals until a root match goal is found
         for goal in &goals {
-            if goal.announcement.position == ExplicitPosition::empty_pos() {
+            if goal.announcement.position.is_empty() {
                 // Find the shortest match obligation position.
                 // This design decision was taken as it presumably has two advantages.
                 // 1. Patterns that overlap will be more quickly distinguished, potentially decreasing
@@ -521,7 +517,7 @@ impl State {
     }
 
     /// Returns the label of the state
-    pub fn label(&self) -> &ExplicitPosition {
+    pub fn label(&self) -> &DataPosition {
         &self.label
     }
 

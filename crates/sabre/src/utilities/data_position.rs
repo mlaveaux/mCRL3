@@ -1,9 +1,60 @@
 use std::collections::VecDeque;
+use std::fmt;
 
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
 use super::ExplicitPosition;
+
+/// A newtype wrapper around ExplicitPosition specifically for data expressions
+/// This provides type safety and clarity when dealing with positions in data expressions
+#[repr(transparent)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DataPosition(ExplicitPosition);
+
+impl DataPosition {
+    /// Creates a new empty position
+    pub fn empty() -> Self {
+        Self(ExplicitPosition::empty())
+    }
+
+    /// Creates a new position from a slice of indices
+    pub fn new(indices: &[usize]) -> Self {
+        Self(ExplicitPosition::new(indices))
+    }
+
+    /// Returns the underlying indices
+    pub fn indices(&self) -> &[usize] {
+        self.0.indices()
+    }
+
+    /// Returns the length of the position indices
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns true if the position is empty
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Adds the index to the position
+    pub fn push(&mut self, index: usize) {
+        self.0.push(index);
+    }
+}
+
+impl fmt::Display for DataPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Debug for DataPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// A specialisation of the [PositionIndexed] trait for [DataExpression]. This is used to keep the indexing consistent.
 pub trait DataPositionIndexed<'b> {
@@ -13,7 +64,7 @@ pub trait DataPositionIndexed<'b> {
         Self: 'b;
 
     /// Returns the Target at the given position.
-    fn get_data_position(&'b self, position: &ExplicitPosition) -> Self::Target<'b>;
+    fn get_data_position(&'b self, position: &DataPosition) -> Self::Target<'b>;
 }
 
 impl<'b> DataPositionIndexed<'b> for DataExpression {
@@ -22,11 +73,11 @@ impl<'b> DataPositionIndexed<'b> for DataExpression {
     where
         Self: 'a;
 
-    fn get_data_position(&'b self, position: &ExplicitPosition) -> Self::Target<'b> {
+    fn get_data_position(&'b self, position: &DataPosition) -> Self::Target<'b> {
         let mut result = self.copy();
 
-        for index in &position.indices {
-            result = result.data_arg(*index).into(); // Note that positions are 1 indexed.
+        for index in position.indices() {
+            result = result.data_arg(*index); // Note that positions are 1 indexed.
         }
 
         result
@@ -39,11 +90,11 @@ impl<'b> DataPositionIndexed<'b> for DataExpressionRef<'b> {
     where
         Self: 'a;
 
-    fn get_data_position(&'b self, position: &ExplicitPosition) -> Self::Target<'b> {
+    fn get_data_position(&'b self, position: &DataPosition) -> Self::Target<'b> {
         let mut result = self.copy();
 
-        for index in &position.indices {
-            result = result.data_arg(*index).into(); // Note that positions are 1 indexed.
+        for index in position.indices() {
+            result = result.data_arg(*index); // Note that positions are 1 indexed.
         }
 
         result
@@ -52,19 +103,19 @@ impl<'b> DataPositionIndexed<'b> for DataExpressionRef<'b> {
 
 /// An iterator over all (term, position) pairs of the given ATerm.
 pub struct DataPositionIterator<'a> {
-    queue: VecDeque<(DataExpressionRef<'a>, ExplicitPosition)>,
+    queue: VecDeque<(DataExpressionRef<'a>, DataPosition)>,
 }
 
 impl<'a> DataPositionIterator<'a> {
     pub fn new(t: DataExpressionRef<'a>) -> Self {
         Self {
-            queue: VecDeque::from([(t, ExplicitPosition::empty_pos())]),
+            queue: VecDeque::from([(t, DataPosition::empty())]),
         }
     }
 }
 
 impl<'a> Iterator for DataPositionIterator<'a> {
-    type Item = (DataExpressionRef<'a>, ExplicitPosition);
+    type Item = (DataExpressionRef<'a>, DataPosition);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.queue.is_empty() {
@@ -76,11 +127,11 @@ impl<'a> Iterator for DataPositionIterator<'a> {
             // Put subterms in the queue
             for (i, argument) in term.data_arguments().enumerate() {
                 let mut new_position = pos.clone();
-                new_position.indices.push(i + 1);
-                self.queue.push_back((argument.into(), new_position));
+                new_position.push(i + 1);
+                self.queue.push_back((argument, new_position));
             }
 
-            Some((term.into(), pos))
+            Some((term, pos))
         }
     }
 }
@@ -98,11 +149,11 @@ mod tests {
         let t = to_untyped_data_expression(&ATerm::from_string("f(g(a),b)").unwrap(), &AHashSet::new());
         let expected = to_untyped_data_expression(&ATerm::from_string("a").unwrap(),  &AHashSet::new());
 
-        assert_eq!(t.get_data_position(&ExplicitPosition::new(&[1, 1])), expected.copy());
+        assert_eq!(t.get_data_position(&DataPosition::new(&[1, 1])), expected.copy());
     }
 
     #[test]
-    fn test_position_iterator() {
+    fn test_data_position_iterator() {
         let t = to_untyped_data_expression(&ATerm::from_string("f(g(a),b)").unwrap(), &AHashSet::new());
 
         for (term, pos) in DataPositionIterator::new(t.copy()) {
