@@ -215,7 +215,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         // Duplicate the implementation for the ATermRef struct that is generated above.
                         let mut ref_implementation = implementation.clone();
 
-                        // Remove ignore functions
+                        // Remove ignored functions
                         ref_implementation.items.retain(|item| match item {
                             syn::ImplItem::Fn(func) => {
                                 !func.attrs.iter().any(|attr| attr.meta.path().is_ident("mcrl3_ignore"))
@@ -224,7 +224,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         });
 
                         if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                            // Build an identifier TestRef<'_>
+                            // Build an identifier with the postfix Ref<'_>
                             let name_ref = format_ident!("{}Ref", path.path.get_ident().unwrap());
                             let path = parse_quote!(#name_ref <'_>);
 

@@ -212,8 +212,8 @@ impl ATerm {
     }
 
     /// Constructs a term from the given string.
-    pub fn from_string(s: &str) -> Result<ATerm, MCRL3Error> {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(s))
+    pub fn from_string(text: &str) -> Result<ATerm, MCRL3Error> {
+        THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(text))
     }
 
     /// Returns a borrow from the term

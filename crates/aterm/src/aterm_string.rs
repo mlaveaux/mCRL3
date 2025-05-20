@@ -24,6 +24,7 @@ use crate::Term;
 use crate::TermIterator;
 use crate::Transmutable;
 
+/// Returns true if the term is a string term
 fn is_string_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     t.get_head_symbol().arity() == 0
 }
@@ -66,6 +67,18 @@ mod inner {
 }
 
 pub use inner::*;
+
+impl PartialEq<str> for ATermString {
+    fn eq(&self, other: &str) -> bool {
+        self.value() == other
+    }
+}
+
+impl PartialEq<&str> for ATermStringRef<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        self.value() == *other
+    }
+}
 
 #[cfg(test)]
 mod tests {

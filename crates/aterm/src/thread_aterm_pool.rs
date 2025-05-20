@@ -201,8 +201,8 @@ impl ThreadTermPool {
     }
 
     /// Parse the given string and returns the Term representation.
-    pub fn from_string(&self, term: &str) -> Result<ATerm, MCRL3Error> {
-        let mut result = TermParser::parse(Rule::TermSpec, term)?;
+    pub fn from_string(&self, text: &str) -> Result<ATerm, MCRL3Error> {
+        let mut result = TermParser::parse(Rule::TermSpec, text)?;
         let root = result.next().unwrap();
 
         Ok(TermParser::TermSpec(root).unwrap())
