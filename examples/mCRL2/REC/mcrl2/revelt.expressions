@@ -1,1 +1,0 @@
-rev (dup (l (a, l (b, l (c, l (d, l (e, nil)))))))
