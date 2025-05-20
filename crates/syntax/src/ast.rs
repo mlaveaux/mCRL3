@@ -159,6 +159,18 @@ pub struct ProcDecl {
     pub span: Span,
 }
 
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum DataExprOp {
+    Conj,
+    Disj,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessEqual,
+    GreaterThan,
+    GreaterEqual,
+}
+
 /// Data expression
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub enum DataExpr {
@@ -183,6 +195,11 @@ pub enum DataExpr {
     Forall {
         body: Box<DataExpr>,
         variables: Vec<VarDecl>,
+    },
+    BinaryOperator {
+        op: DataExprOp,
+        lhs: Box<DataExpr>,
+        rhs: Box<DataExpr>,
     },
     FunctionUpdate {
         expr: Box<DataExpr>,

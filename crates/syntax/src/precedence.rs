@@ -1,12 +1,15 @@
 use std::sync::LazyLock;
 
 use pest::iterators::Pairs;
+use pest::pratt_parser::Assoc;
 use pest::pratt_parser::Assoc::Left;
 use pest::pratt_parser::Assoc::Right;
 use pest::pratt_parser::Op;
 use pest::pratt_parser::PrattParser;
 use pest_consume::Node;
 
+use crate::DataExpr;
+use crate::DataExprOp;
 use crate::Mcrl2Parser;
 use crate::Rule;
 use crate::ast::SortExpression;
@@ -59,6 +62,55 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
             Rule::SortExprProduct => SortExpression::Product {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
+            },
+            _ => unreachable!(),
+        })
+        .parse(pairs)
+}
+
+static DATAEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::infix(Rule::DataExprConj, Assoc::Left))
+        .op(Op::infix(Rule::DataExprDisj, Assoc::Left))
+        .op(Op::infix(Rule::DataExprEq, Assoc::Left))
+
+    //.op(Op::prefix(Rule::DataExprNegation) | Op::prefix(Rule::DataExprNo | Op::prefix(Rule::DataExprNot)))
+});
+
+pub fn parse_dataexpr(pairs: Pairs<Rule>) -> DataExpr {
+    DATAEXPR_PRATT_PARSER
+        .map_primary(|primary| match primary.as_rule() {
+            Rule::DataExprTrue => Mcrl2Parser::DataExprTrue(Node::new(primary)).unwrap(),
+            Rule::DataExprFalse => Mcrl2Parser::DataExprFalse(Node::new(primary)).unwrap(),
+            Rule::DataExprPrimary => Mcrl2Parser::DataExprPrimary(Node::new(primary)).unwrap(),
+            Rule::Id => DataExpr::Id(Mcrl2Parser::Id(Node::new(primary)).unwrap()),
+
+            Rule::DataExprBrackets => {
+                // Handle parentheses by recursively parsing the inner expression
+                let inner = primary.into_inner().next().unwrap();
+                parse_dataexpr(inner.into_inner())
+            }
+
+            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::DataExprConj => DataExpr::BinaryOperator {
+                op: DataExprOp::Conj,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            Rule::DataExprDisj => DataExpr::BinaryOperator {
+                op: DataExprOp::Disj,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            _ => unreachable!(),
+        })
+        .map_postfix(|expr, postfix| match postfix.as_rule() {
+            Rule::DataExprUpdate => DataExpr::FunctionUpdate {
+                expr: Box::new(expr),
+                update: Mcrl2Parser::DataExprUpdate(Node::new(postfix)).unwrap(),
             },
             _ => unreachable!(),
         })
