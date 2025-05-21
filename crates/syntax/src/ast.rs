@@ -1,4 +1,3 @@
-use std::fmt;
 use std::hash::Hash;
 
 /// An mCRL2 specification containing declarations.
@@ -106,6 +105,7 @@ pub struct SortDecl {
     pub params: Vec<String>,
     /// Sort expression (if structured)
     pub expr: Option<SortExpression>,
+    /// Where the sort is defined
     pub span: Span,
 }
 
@@ -160,30 +160,57 @@ pub struct ProcDecl {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub enum DataExprOp {
+pub enum DataExprUnaryOp {
+    Negation,
+    Minus,
+    Size
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum DataExprBinaryOp {
     Conj,
     Disj,
+    Implies,
     Equal,
     NotEqual,
     LessThan,
     LessEqual,
     GreaterThan,
     GreaterEqual,
+    Cons,
+    Snoc,
+    In,
+    Concat,
+    Add,
+    Subtract,
+    Div,
+    IntDiv,
+    Mod,
+    Multiply,
+    At
 }
 
 /// Data expression
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub enum DataExpr {
     Id(String),
-    Number(i64),
+    Number(String), // Is string because the number can be any size.
     Bool(bool),
     Application {
         function: Box<DataExpr>,
         arguments: Vec<DataExpr>,
     },
+    EmptyList,
     List(Vec<DataExpr>),
+    EmptySet,
     Set(Vec<DataExpr>),
+    EmptyBag,
     Bag(Vec<(DataExpr, DataExpr)>),
+    SetBagComp {
+        variable: VarDecl,
+        predicate: Box<DataExpr>
+    },
+    Size(Box<DataExpr>),
     Lambda {
         variables: Vec<VarDecl>,
         body: Box<DataExpr>,
@@ -193,11 +220,15 @@ pub enum DataExpr {
         body: Box<DataExpr>,
     },
     Forall {
-        body: Box<DataExpr>,
         variables: Vec<VarDecl>,
+        body: Box<DataExpr>,
+    },
+    UnaryOperator {
+        op: DataExprUnaryOp,
+        expr: Box<DataExpr>,
     },
     BinaryOperator {
-        op: DataExprOp,
+        op: DataExprBinaryOp,
         lhs: Box<DataExpr>,
         rhs: Box<DataExpr>,
     },
@@ -205,12 +236,28 @@ pub enum DataExpr {
         expr: Box<DataExpr>,
         update: DataExprUpdate,
     },
+    Whr {
+        expr: Box<DataExpr>,
+        assignments: Vec<Assignment>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct VariableDecl {
+    pub identifier: String,
+    pub sort: SortExpression,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct DataExprUpdate {
     pub expr: Box<DataExpr>,
     pub update: Box<DataExpr>,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Assignment {
+    pub identifier: String,
+    pub expr: Box<DataExpr>,
 }
 
 /// Process expression
@@ -286,106 +333,5 @@ impl From<pest::Span<'_>> for Span {
             start: span.start(),
             end: span.end(),
         }
-    }
-}
-
-/// Prints location information for a span in the source.
-pub fn print_location(input: &str, span: &Span) {
-    input.lines().enumerate().fold(span.start, |current, (number, line)| {
-        if current < line.len() {
-            println!("ln {number}, col {}", span.start - current);
-        }
-        current - line.len()
-    });
-}
-
-// Display implementations
-impl fmt::Display for Sort {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl fmt::Display for ComplexSort {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl fmt::Display for UntypedProcessSpecification {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{:?}", self.data_specification)?;
-        Ok(())
-    }
-}
-
-impl fmt::Display for UntypedDataSpecification {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for decl in &self.sort_decls {
-            writeln!(f, "{:?}", decl)?;
-        }
-        for decl in &self.cons_decls {
-            writeln!(f, "{:?}", decl)?;
-        }
-        for decl in &self.map_decls {
-            writeln!(f, "{:?}", decl)?;
-        }
-        for decl in &self.var_decls {
-            writeln!(f, "{:?}", decl)?;
-        }
-        for decl in &self.eqn_decls {
-            writeln!(f, "{:?}", decl)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for IdDecl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} : {}", self.identifier, self.sort)
-    }
-}
-
-impl fmt::Display for SortExpression {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SortExpression::Product { lhs, rhs } => write!(f, "({} # {})", lhs, rhs),
-            SortExpression::Function { domain, range } => write!(f, "({} -> {})", domain, range),
-            SortExpression::Reference(ident) => write!(f, "\"{}\"", ident),
-            SortExpression::Simple(sort) => write!(f, "{}", sort),
-            SortExpression::Complex(complex, inner) => write!(f, "{}({})", complex, inner),
-            SortExpression::Struct { inner } => {
-                write!(f, "{{")?;
-                for (i, decl) in inner.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", decl)?;
-                }
-                write!(f, "}}")
-            }
-        }
-    }
-}
-
-impl fmt::Display for ConstructorDecl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}(", self.name)?;
-        for (i, (name, sort)) in self.args.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            match name {
-                Some(name) => write!(f, "{} : {}", name, sort)?,
-                None => write!(f, "{}", sort)?,
-            }
-        }
-        write!(f, ")")?;
-
-        if let Some(projection) = &self.projection {
-            write!(f, "?{}", projection)?;
-        }
-
-        Ok(())
     }
 }

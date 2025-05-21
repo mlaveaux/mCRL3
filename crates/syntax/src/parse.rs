@@ -5,6 +5,7 @@ use pest_consume::match_nodes;
 
 use mcrl3_utilities::MCRL3Error;
 
+use crate::Assignment;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
@@ -143,6 +144,60 @@ impl Mcrl2Parser {
         )
     }
 
+    pub(crate) fn DataExprApplication(expr: ParseNode) -> ParseResult<Vec<DataExpr>> {
+        match_nodes!(expr.into_children();
+            [DataExprList(expressions)] => {
+                return Ok(expressions);
+            },
+        )
+    }
+
+    pub(crate) fn DataExprWhr(expr: ParseNode) -> ParseResult<Vec<Assignment>> {
+        match_nodes!(expr.into_children();
+            [AssignmentList(assignments)] => {
+                Ok(assignments)
+            },
+        )
+    }
+
+    pub(crate) fn AssignmentList(assignments: ParseNode) -> ParseResult<Vec<Assignment>> {
+        match_nodes!(assignments.into_children();
+            [Assignment(assignment)] => {
+                return Ok(vec![assignment]);
+            },
+            [Assignment(assignment)..] => {
+                return Ok(assignment.collect());
+            },
+        );
+    }
+
+    pub(crate) fn Assignment(assignment: ParseNode) -> ParseResult<Assignment> {
+        match_nodes!(assignment.into_children();
+            [Id(identifier), DataExpr(expr)] => {
+                Ok(Assignment { identifier, expr: Box::new(expr) })
+            },
+        )
+    }
+
+    pub(crate) fn DataExprSize(expr: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(expr.into_children();
+            [DataExpr(expr)] => {
+                return Ok(DataExpr::Size(Box::new(expr)));
+            },
+        )
+    }
+
+    fn DataExprList(expr: ParseNode) -> ParseResult<Vec<DataExpr>> {
+        match_nodes!(expr.into_children();
+            [DataExpr(expr)] => {
+                return Ok(vec![expr]);
+            },
+            [DataExpr(expr)..] => {
+                return Ok(expr.collect());
+            },
+        );
+    }
+
     fn VarSpec(vars: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(vars.into_children();
             [VarsDeclList(ids)..] => {
@@ -156,7 +211,7 @@ impl Mcrl2Parser {
         );
     }
 
-    fn VarsDeclList(vars: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn VarsDeclList(vars: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(vars.into_children();
             [VarsDecl(decl)..] => {
                 // Flatten the iterator of Vec<VarDecl> into a single Vec<VarDecl>
@@ -181,10 +236,6 @@ impl Mcrl2Parser {
     }
 
     pub fn SortExpr(expr: ParseNode) -> ParseResult<SortExpression> {
-        Ok(parse_sortexpr(expr.children().as_pairs().clone()))
-    }
-
-    pub fn SortExprAtom(expr: ParseNode) -> ParseResult<SortExpression> {
         Ok(parse_sortexpr(expr.children().as_pairs().clone()))
     }
 
@@ -306,6 +357,107 @@ impl Mcrl2Parser {
         )
     }
 
+    pub(crate) fn DataExprEmptyList(_input: ParseNode) -> ParseResult<DataExpr> {
+        Ok(DataExpr::EmptyList)
+    }
+
+    pub(crate) fn DataExprEmptySet(_input: ParseNode) -> ParseResult<DataExpr> {
+        Ok(DataExpr::EmptySet)
+    }
+
+    pub(crate) fn DataExprEmptyBag(_input: ParseNode) -> ParseResult<DataExpr> {
+        Ok(DataExpr::EmptyBag)
+    }
+
+    pub(crate) fn DataExprListEnum(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExprList(expressions)] => {
+                Ok(DataExpr::List(expressions))
+            },
+        )
+    }
+
+    pub(crate) fn DataExprBagEnum(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [BagEnumEltList(elements)] => {
+                Ok(DataExpr::Bag(elements))
+            },
+        )
+    }
+
+    fn BagEnumEltList(input: ParseNode) -> ParseResult<Vec<(DataExpr, DataExpr)>> {
+        match_nodes!(input.into_children();
+            [BagEnumElt(elements)..] => {
+                return Ok(elements.collect());
+            },
+        )
+    }
+
+    fn BagEnumElt(input: ParseNode) -> ParseResult<(DataExpr, DataExpr)> {
+        match_nodes!(input.into_children();
+            [DataExpr(expr), DataExpr(amount)] => {
+                return Ok((expr, amount));
+            },
+        )
+    }
+
+    pub(crate) fn DataExprSetEnum(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExprList(expressions)] => {
+                Ok(DataExpr::Set(expressions))
+            },
+        )
+    }
+
+    pub(crate) fn DataExprSetBagComp(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [VarDecl(variable), DataExpr(predicate)] => {
+                Ok(DataExpr::SetBagComp { variable, predicate: Box::new(predicate) })
+            },
+        )
+    }
+
+    pub(crate) fn Number(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [number] => {
+                Ok(DataExpr::Number(number.as_str().into()))
+            },
+        )
+    }
+    
+    fn VarDecl(decl: ParseNode) -> ParseResult<VarDecl> {
+        let span = decl.as_span();
+        match_nodes!(decl.into_children();
+            [Id(identifier), SortExpr(sort)] => {
+                Ok(VarDecl { identifier, sort, span: span.into() })
+            },
+        )
+    }
+
+    pub(crate) fn DataExprLambda(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(vars)] => {
+                Ok(vars)
+            },
+        )
+    }
+    
+    pub(crate) fn DataExprForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(vars)] => {
+                Ok(vars)
+            },
+        )
+    }
+
+    pub(crate) fn DataExprExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(vars)] => {
+                Ok(vars)
+            },
+        )
+    }
+
     fn EOI(_input: ParseNode) -> ParseResult<()> {
         Ok(())
     }
@@ -324,7 +476,7 @@ mod tests {
         use indoc::indoc;
 
         let spec: &str = indoc! {"map
-            f: Boolean # Int -> Int -> Bool;
+            f: Bool # Int -> Int -> Bool;
         "};
 
         println!("{}", UntypedProcessSpecification::parse(spec).unwrap());

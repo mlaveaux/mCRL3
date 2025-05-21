@@ -7,7 +7,7 @@
 //! AFTER parsing we can use a PrattParser to define the associativity and 
 //! precedence of operators for rules of the following shape:
 //!
-//! expr  =   { prefix? ~ primary ~ postfix? ~ (infix ~ prefix? ~ primary ~ postfix? )* }
+//! expr  =   { prefix* ~ primary ~ postfix* ~ (infix ~ prefix* ~ primary ~ postfix* )* }
 //!
 
 //! The | operator defines a choice operator and does not mean OR with
@@ -58,11 +58,11 @@ SortDecl = {
 
 /// A general sort expression with infix operators.
 SortExpr = {
-    SortExprAtom ~ (SortExprInfix ~ SortExprAtom)*
+    SortExprPrimary ~ (SortExprInfix ~ SortExprPrimary)*
 }
 
 /// A single sort expression
-SortExprAtom = { 
+SortExprPrimary = _{ 
         SortExprBool
     |   SortExprPos                                                  
     |   SortExprNat                                                  
@@ -105,14 +105,30 @@ ConstrDeclList = { ConstrDecl ~ ( "|" ~ ConstrDecl )* }
 
 /// A single sort A -> B -> ...
 SortProduct = {
-    SortExprAtom ~ (SortExprProduct ~ SortExprAtom)*
+    SortExprPrimary ~ (SortExprProduct ~ SortExprPrimary)*
 }
 
 /// Data Expression
-DataExpr = { DataExprPrimary ~ DataExprSuffix* ~ (DataExprInfix ~ DataExprPrimary ~ DataExprSuffix*)* }
+DataExpr = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* ~ (DataExprInfix ~ DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix*)* }
+
+// A data expression prefix
+DataExprPrefix = _{
+    | DataExprNegation
+    | DataExprMinus
+    | DataExprSize
+    | DataExprForall
+    | DataExprExists
+    | DataExprLambda
+}
+    DataExprForall = { "forall" ~ VarsDeclList ~ "." }
+    DataExprExists = { "exists" ~ VarsDeclList ~ "." }
+    DataExprLambda = { "lambda" ~ VarsDeclList ~ "." }
+    DataExprNegation = { "!" }
+    DataExprMinus = { "-" }
+    DataExprSize = { "#"  }
 
 // A single data expressions
-DataExprPrimary = {
+DataExprPrimary = _{
       DataExprTrue
     | DataExprFalse
     | DataExprEmptyList
@@ -123,12 +139,6 @@ DataExprPrimary = {
     | DataExprSetBagComp
     | DataExprSetEnum
     | DataExprBrackets
-    | DataExprNegation
-    | DataExprUnaryMinus
-    | DataExprSize
-    | DataExprForall
-    | DataExprExists
-    | DataExprLambda
     | Number
     | Id
 }
@@ -142,21 +152,15 @@ DataExprPrimary = {
     DataExprSetBagComp = { "{" ~ VarDecl ~ "|" ~ DataExpr ~ "}" }
     DataExprSetEnum = { "{" ~ DataExprList ~ "}" }
     DataExprBrackets = { "(" ~ DataExpr ~ ")" }
-    DataExprNegation = { "!" ~ DataExpr }
-    DataExprUnaryMinus = { "-" ~ DataExpr }
-    DataExprSize = { "#" ~ DataExpr }
-    DataExprForall = { "forall" ~ VarsDeclList ~ "." ~ DataExpr }
-    DataExprExists = { "exists" ~ VarsDeclList ~ "." ~ DataExpr }
-    DataExprLambda = { "lambda" ~ VarsDeclList ~ "." ~ DataExpr }
 
-DataExprSuffix = _{
+DataExprPostfix = _{
         DataExprUpdate
     |   DataExprApplication
     |   DataExprWhr
 }
     DataExprUpdate = { "[" ~ DataExpr ~ "->" ~ DataExpr ~ "]" }
     DataExprApplication = { "(" ~ DataExprList ~ ")" }
-    DataExprWhr     = { "whr" ~ AssignmentList ~ "end" }
+    DataExprWhr = { "whr" ~ AssignmentList ~ "end" }
 
 DataExprInfix = _{
         DataExprImpl
@@ -173,7 +177,7 @@ DataExprInfix = _{
     |   DataExprCons
     |   DataExprConcat
     |   DataExprAdd
-    |   DataExprMinus
+    |   DataExprSubtract
     |   DataExprDiv
     |   DataExprIntDiv
     |   DataExprMod
@@ -194,7 +198,7 @@ DataExprInfix = _{
     DataExprCons    = { "|>" }
     DataExprConcat  = { "++" }
     DataExprAdd     = { "+" }
-    DataExprMinus   = { "-" ~ !">" }
+    DataExprSubtract = { "-" ~ !">" }
     DataExprDiv     = { "/" }
     DataExprIntDiv  = { "div" }
     DataExprMod     = { "mod" }
