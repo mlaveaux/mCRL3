@@ -36,12 +36,12 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     // Write imports and the main rewrite function
     writeln!(
         &mut formatter,
-        indoc! {"use mcrl3_sabre_ffi::DataExpression;
-        use mcrl3_sabre_ffi::DataExpressionRef;
+        indoc! {"use mcrl3_sabre_ffi::DataExpressionFFI;
+        use mcrl3_sabre_ffi::DataExpressionRefFFI;
 
         /// Generic rewrite function
         #[unsafe(no_mangle)]
-        pub unsafe extern \"C\" fn rewrite(term: &DataExpressionRef<'_>) -> DataExpression {{
+        pub unsafe extern \"C\" fn rewrite(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
             rewrite_0(&term.copy())
         }}
         "}
@@ -59,7 +59,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
         writeln!(
             &mut formatter,
-            "fn rewrite_{}(t: &DataExpressionRef<'_>) -> DataExpression {{",
+            "fn rewrite_{}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{",
             index
         )?;
 
@@ -90,8 +90,13 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
                 writeln!(&mut formatter, "// Symbol {}", transition.symbol)?;
 
                 // Continue on the outgoing transition.
-                for (_announcement, _annotation) in &transition.announcements {
+                for (announcement, _annotation) in &transition.announcements {
                     // Check for conditions and non linear patterns.
+                    writeln!(&mut formatter, "// Announcement {}", announcement)?;
+                    //writeln!(&mut formatter, "t.protect()")?;
+                }
+
+                if transition.destinations.is_empty() {
                     writeln!(&mut formatter, "t.protect()")?;
                 }
 
@@ -133,7 +138,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     for position in &positions {
         writeln!(
             &mut formatter,
-            "fn get_data_position_{}<'a>(t: &DataExpressionRef<'a>) -> DataExpressionRef<'a> {{",
+            "fn get_data_position_{}<'a>(t: &DataExpressionRefFFI<'a>) -> DataExpressionRefFFI<'a> {{",
             UnderscoreFormatter(position)
         )?;
 
@@ -146,7 +151,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
             write!(&mut formatter, "t")?;
 
             for index in position.indices().iter() {
-                write!(&mut formatter, ".arg({index})")?;
+                write!(&mut formatter, ".data_arg({index})")?;
             }
 
             // Add newline after the chain of method calls

@@ -13,8 +13,8 @@ use toml::Table;
 use mcrl3_data::DataExpression;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
-use mcrl3_sabre_ffi::DataExpression as DataExpressionFFI;
-use mcrl3_sabre_ffi::DataExpressionRef as DataExpressionRefFFI;
+use mcrl3_sabre_ffi::DataExpressionFFI as DataExpressionFFI;
+use mcrl3_sabre_ffi::DataExpressionRefFFI as DataExpressionRefFFI;
 
 use crate::generate;
 use crate::library::RuntimeLibrary;
@@ -92,15 +92,17 @@ impl SabreCompilingRewriter {
 
 #[cfg(test)]
 mod tests {
-    use ahash::AHashSet;
     use mcrl3_data::to_untyped_data_expression;
     use mcrl3_rec_tests::load_rec_from_strings;
     use mcrl3_sabre::RewriteEngine;
+    use mcrl3_utilities::test_logger;
 
     use super::SabreCompilingRewriter;
 
     #[test]
     fn test_compilation() {
+        let _ = test_logger();
+
         let (spec, terms) = load_rec_from_strings(&[
             include_str!("../../../examples/REC/rec/factorial6.rec"),
             include_str!("../../../examples/REC/rec/factorial.rec"),

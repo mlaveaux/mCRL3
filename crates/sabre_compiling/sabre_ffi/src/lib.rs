@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
 
+use mcrl3_aterm::ATermIndex;
+use mcrl3_utilities::ProtectionIndex;
+
 #[cfg(feature = "import")]
 mod import;
 #[cfg(feature = "import")]
@@ -9,16 +12,19 @@ pub use import::*;
 mod export;
 #[cfg(not(feature = "import"))]
 pub use export::*;
-use mcrl3_aterm::ATermIndex;
-use mcrl3_utilities::ProtectionIndex;
 
 #[repr(C)]
-pub struct DataExpression {
+pub struct DataExpressionFFI {
     index: ATermIndex,
     root: ProtectionIndex,
 }
 
-impl DataExpression {
+impl DataExpressionFFI {
+    /// Creates a new data expression from an index and a root.
+    /// 
+    /// # Safety
+    /// 
+    /// The index must be a valid index of a data expression, that is valid for this lifetime.
     pub unsafe fn from_index(index: &ATermIndex, root: ProtectionIndex) -> Self {
         Self {
             index: index.copy(),
@@ -29,8 +35,8 @@ impl DataExpression {
     /// # Safety
     ///
     /// The index must be a valid index of a data expression, that is valid for this lifetime.
-    pub fn copy(&self) -> DataExpressionRef<'_> {
-        unsafe { DataExpressionRef::from_index(&self.index) }
+    pub fn copy(&self) -> DataExpressionRefFFI<'_> {
+        unsafe { DataExpressionRefFFI::from_index(&self.index) }
     }
 
     /// Returns the index of the data expression.
@@ -40,12 +46,12 @@ impl DataExpression {
 }
 
 #[repr(C)]
-pub struct DataExpressionRef<'a> {
+pub struct DataExpressionRefFFI<'a> {
     index: ATermIndex,
     _marker: PhantomData<&'a ()>,
 }
 
-impl DataExpressionRef<'_> {
+impl DataExpressionRefFFI<'_> {
     /// # Safety
     /// The index must be a valid index of a data expression, that is valid for this lifetime.
     pub unsafe fn from_index(index: &ATermIndex) -> Self {
@@ -61,35 +67,35 @@ impl DataExpressionRef<'_> {
     }
 }
 
-impl<'a> DataExpressionRef<'a> {
+impl<'a> DataExpressionRefFFI<'a> {
     /// Returns the data function symbol of the data expression.
-    pub fn data_function_symbol(&self) -> DataFunctionSymbolRef<'a> {
+    pub fn data_function_symbol(&self) -> DataFunctionSymbolRefFFI<'a> {
         unsafe { data_expression_symbol(self) }
     }
 
     /// Returns the argument of the data expression at the given index.
-    pub fn arg(&self, index: usize) -> DataExpressionRef<'a> {
+    pub fn data_arg(&self, index: usize) -> DataExpressionRefFFI<'a> {
         unsafe { data_expression_arg(self, index) }
     }
 
     /// Returns a copy of the data expression.
-    pub fn copy(&self) -> DataExpressionRef<'a> {
-        unsafe { DataExpressionRef::from_index(&self.index) }
+    pub fn copy(&self) -> DataExpressionRefFFI<'a> {
+        unsafe { DataExpressionRefFFI::from_index(&self.index) }
     }
 
     /// Protects the data expression, preventing it from being garbage collected.
-    pub fn protect(&self) -> DataExpression {
+    pub fn protect(&self) -> DataExpressionFFI {
         unsafe { data_expression_protect(self) }
     }
 }
 
 #[repr(C)]
-pub struct DataFunctionSymbolRef<'a> {
+pub struct DataFunctionSymbolRefFFI<'a> {
     index: ATermIndex,
     _marker: PhantomData<&'a ()>,
 }
 
-impl DataFunctionSymbolRef<'_> {
+impl DataFunctionSymbolRefFFI<'_> {
     /// # Safety
     /// The index must be a valid index of a data function symbol, that is valid for this lifetime.
     unsafe fn from_index(index: &ATermIndex) -> Self {
@@ -100,7 +106,7 @@ impl DataFunctionSymbolRef<'_> {
     }
 }
 
-impl DataFunctionSymbolRef<'_> {
+impl DataFunctionSymbolRefFFI<'_> {
     /// Returns the operation id of the data function symbol.
     pub fn operation_id(&self) -> usize {
         self.index.address()
