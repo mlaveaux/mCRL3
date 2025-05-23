@@ -279,13 +279,13 @@ pub struct InnermostRewriter {
 
 pub struct AnnouncementInnermost {
     /// Positions in the pattern with the same variable, for non-linear patterns
-    equivalence_classes: Vec<EquivalenceClass>,
+    pub equivalence_classes: Vec<EquivalenceClass>,
 
     /// Conditions for the left hand side.
-    conditions: Vec<EMACondition>,
+    pub conditions: Vec<EMACondition>,
 
     /// The innermost stack for the right hand side of the rewrite rule.
-    rhs_stack: TermStack,
+    pub rhs_stack: TermStack,
 }
 
 impl AnnouncementInnermost {
