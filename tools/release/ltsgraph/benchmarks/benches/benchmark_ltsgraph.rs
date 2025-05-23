@@ -5,6 +5,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use mcrl3_lts::read_aut;
 use mcrl3_ltsgraph_lib::GraphLayout;
+use mcrl3_ltsgraph_lib::SkiaRenderer;
 use mcrl3_ltsgraph_lib::Viewer;
 use tiny_skia::Pixmap;
 use tiny_skia::PixmapMut;
@@ -14,14 +15,16 @@ pub fn criterion_benchmark_viewer(c: &mut Criterion) {
     let file = include_str!("../../../../../examples/lts/abp.aut");
     let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
 
-    let mut viewer = Viewer::new(&lts);
+    let viewer = Viewer::new(lts.clone());
+    let mut renderer = SkiaRenderer::new(lts);
 
     let mut pixel_buffer = Pixmap::new(800, 600).unwrap();
 
     c.bench_function("ltsgraph viewer", |bencher| {
         bencher.iter(|| {
-            viewer.render(
+            renderer.render(
                 &mut PixmapMut::from_bytes(pixel_buffer.data_mut(), 800, 600).unwrap(),
+                &viewer,
                 true,
                 5.0,
                 0.0,
@@ -36,8 +39,9 @@ pub fn criterion_benchmark_viewer(c: &mut Criterion) {
 
     c.bench_function("ltsgraph viewer (no text)", |bencher| {
         bencher.iter(|| {
-            viewer.render(
+            renderer.render(
                 &mut PixmapMut::from_bytes(pixel_buffer.data_mut(), 800, 600).unwrap(),
+                &viewer,
                 false,
                 5.0,
                 0.0,
@@ -56,7 +60,7 @@ pub fn criterion_benchmark_layout(c: &mut Criterion) {
     let file = include_str!("../../../../../examples/lts/abp.aut");
     let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
 
-    let mut layout = GraphLayout::new(&lts);
+    let mut layout = GraphLayout::new(lts);
 
     c.bench_function("ltsgraph layout", |bencher| {
         bencher.iter(|| {

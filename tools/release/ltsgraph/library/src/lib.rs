@@ -4,8 +4,9 @@
 //!
 
 mod graph_layout;
+mod renderer_skia;
 mod text_cache;
 mod viewer;
 
-pub use graph_layout::*;
+pub use renderer_skia::*;
 pub use viewer::*;

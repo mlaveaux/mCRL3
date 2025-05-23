@@ -24,7 +24,7 @@ pub struct StateLayout {
 
 impl GraphLayout {
     /// Construct a new layout for the given LTS.
-    pub fn new(lts: &Arc<LabelledTransitionSystem>) -> GraphLayout {
+    pub fn new(lts: Arc<LabelledTransitionSystem>) -> GraphLayout {
         // Keep track of state layout information.
         let mut states_simulation = vec![StateLayout::default(); lts.num_of_states()];
 
@@ -39,7 +39,7 @@ impl GraphLayout {
         }
 
         GraphLayout {
-            lts: lts.clone(),
+            lts,
             layout_states: states_simulation,
         }
     }
@@ -146,7 +146,7 @@ mod tests {
         let file = include_str!("../../../../../examples/lts/abp.aut");
         let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
 
-        let mut layout = GraphLayout::new(&lts);
+        let mut layout = GraphLayout::new(lts);
 
         // Perform a number of updates
         layout.update(5.0, 1.0, 0.01);
