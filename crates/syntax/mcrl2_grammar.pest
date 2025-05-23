@@ -36,7 +36,10 @@ IdList = { Id ~ ( "," ~ Id )* }
 Number = { "0|([1-9][0-9]*)" }
 
 /// Parsing an mCRL2 specification
-MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec | VarSpec)* ~ EOI } 
+MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec)* ~ EOI } 
+
+/// Parsing an mCRL2 specification
+DataSpec = { SOI ~ (ConsSpec | EqnSpec | MapSpec | SortSpec)* ~ EOI } 
 
 /// Action specification
 ActSpec = { "act" ~ ActDecl+ }
@@ -52,8 +55,8 @@ ActDecl = { IdList ~ ( ":" ~  SortProduct )? ~ ";" }
 SortSpec = { "sort" ~ SortDecl+ } 
 
 SortDecl = {                                             
-        Id ~ "=" ~ SortExpr ~ ";"                                    // Sort alias  
-    |   IdList ~ ";"                                                 // List of sort identifiers                                               
+        Id ~ "=" ~ SortExpr ~ ";"  // Sort alias  
+    |   IdList ~ ";"               // List of sort identifiers                                               
 }
 
 /// A general sort expression with infix operators.
@@ -154,35 +157,35 @@ DataExprPrimary = _{
     DataExprBrackets = { "(" ~ DataExpr ~ ")" }
 
 DataExprPostfix = _{
-        DataExprUpdate
-    |   DataExprApplication
-    |   DataExprWhr
+      DataExprUpdate
+    | DataExprApplication
+    | DataExprWhr
 }
     DataExprUpdate = { "[" ~ DataExpr ~ "->" ~ DataExpr ~ "]" }
     DataExprApplication = { "(" ~ DataExprList ~ ")" }
     DataExprWhr = { "whr" ~ AssignmentList ~ "end" }
 
 DataExprInfix = _{
-        DataExprImpl
-    |   DataExprDisj
-    |   DataExprConj
-    |   DataExprEq
-    |   DataExprNeq
-    |   DataExprLeq
-    |   DataExprSnoc
-    |   DataExprLess
-    |   DataExprGeq
-    |   DataExprGreater
-    |   DataExprIn
-    |   DataExprCons
-    |   DataExprConcat
-    |   DataExprAdd
-    |   DataExprSubtract
-    |   DataExprDiv
-    |   DataExprIntDiv
-    |   DataExprMod
-    |   DataExprMult
-    |   DataExprAt
+      DataExprImpl
+    | DataExprDisj
+    | DataExprConj
+    | DataExprEq
+    | DataExprNeq
+    | DataExprLeq
+    | DataExprSnoc
+    | DataExprLess
+    | DataExprGeq
+    | DataExprGreater
+    | DataExprIn
+    | DataExprCons
+    | DataExprConcat
+    | DataExprAdd
+    | DataExprSubtract
+    | DataExprDiv
+    | DataExprIntDiv
+    | DataExprMod
+    | DataExprMult
+    | DataExprAt
 }
     DataExprImpl    = { "=>" }
     DataExprDisj    = { "||" }
@@ -274,10 +277,10 @@ RenExprList = { RenExpr ~ ( "," ~ RenExpr )* }
 /// An action renaming set.
 RenExprSet = { "{" ~ RenExprList? ~ "}" }
 
-ProcExpr = { ProcExprUnit ~ (ProcExprInfix ~ ProcExprUnit)* }
+ProcExpr = { ProcExprPrefix* ~ ProcExprPrimary ~ (ProcExprInfix ~ ProcExprPrefix* ~ ProcExprPrimary)* }
 
 /// Single Process expressions
-ProcExprUnit = {
+ProcExprPrimary = _{
       ProcExprDelta
     | ProcExprTau
     | ProcExprBlock
@@ -285,8 +288,6 @@ ProcExprUnit = {
     | ProcExprHide
     | ProcExprRename
     | ProcExprComm
-    | ProcExprSum
-    | ProcExprDist
     | ProcExprDataExpr
     | ProcExprBrackets
     | ProcExprId
@@ -299,29 +300,50 @@ ProcExprUnit = {
     ProcExprHide = { "hide" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")" }            // Hiding operator
     ProcExprRename = { "rename" ~ "(" ~ RenExprSet ~ "," ~ ProcExpr ~ ")" }      // Action renaming operator
     ProcExprComm = { "comm" ~ "(" ~ CommExprSet ~ "," ~ ProcExpr ~ ")" }         // Communication operator
-    ProcExprSum = { "sum" ~ VarsDeclList ~ "." ~ ProcExpr }                      // Sum operator
-    ProcExprDist = { "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." ~ ProcExpr }
     ProcExprDataExpr = { DataExpr ~ "->" ~ ProcExpr ~ ("<>" ~ ProcExpr)? }
     ProcExprBrackets = { "(" ~ ProcExpr ~ ")" }                                  // Brackets
     ProcExprId = { Id ~ "(" ~ AssignmentList? ~ ")" }                            // Process instantiation with assignment shorthand
 
-ProcExprInfix = {
-      ProcExprSum
-    | ProcExprChoice
-    | ProcExprLeftParallel
-    | ProcExprSeq
-    | ProcExprParallel
+ProcExprPrefix = _{
+    | ProcExprSum
+    | ProcExprDist    
+}
+    ProcExprSum = { "sum" ~ VarsDeclList ~ "." } // Sum operator
+    ProcExprDist = { "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." } // Dist operator
+
+ProcExprInfix = _{
+      ProcExprChoice
     | ProcExprLeftMerge
+    | ProcExprParallel
+    | ProcExprSeq
+    | ProcExprUntil
     | ProcExprSync
     | ProcExprAt
+    | ProcExprIf
+    | ProcExprIfThen
 }
     ProcExprChoice = { "+" } 
-    ProcExprLeftParallel = { "||_" }
+    ProcExprLeftMerge = { "||_" }
     ProcExprParallel = { "||" }
     ProcExprSeq = { "." }
-    ProcExprLeftMerge = { "<<" }
+    ProcExprUntil = { "<<" }
     ProcExprSync = { "|" }
     ProcExprAt = { "@" }
+    ProcExprIf = { "->" }
+    ProcExprIfThen = { "->" ~ ProcExprNoIf ~ "<>" }
+    
+ProcExprNoIf = { ProcExprPrefix* ~ ProcExprPrimary ~ (ProcExprNoIfInfix ~ ProcExprPrefix* ~ ProcExprPrimary)* }
+
+ProcExprNoIfInfix = _{
+    | ProcExprChoice
+    | ProcExprLeftMerge
+    | ProcExprParallel
+    | ProcExprSeq
+    | ProcExprUntil
+    | ProcExprSync
+    | ProcExprAt
+    | ProcExprIfThen
+}
 
 // Process declaration/
 ProcDecl = { Id ~ ( "(" ~ VarsDeclList ~ ")" )? ~ "=" ~ ProcExpr ~ ";" }
@@ -366,30 +388,21 @@ StateFrmSpec = {
 FormSpec = { "form" ~ StateFrm ~ ";" }
 
 StateFrmSpecElt = {
-        SortSpec                                                     // Sort specification
-    |   ConsSpec                                                     // Constructor specification
-    |   MapSpec                                                      // Map specification
-    |   EqnSpec                                                      // Equation specification
-    |   ActSpec                                                      // Action specification
+      SortSpec                                                     // Sort specification
+    | ConsSpec                                                     // Constructor specification
+    | MapSpec                                                      // Map specification
+    | EqnSpec                                                      // Equation specification
+    | ActSpec                                                      // Action specification
 }
 
-StateFrm = { StateFrmPrimary ~ StateFrmSuffix? ~ (StateFrmInfix ~ StateFrmPrimary ~ StateFrmSuffix?)*}
+StateFrm = { StateFrmPrimary ~ StateFrmPostfix* ~ (StateFrmInfix ~ StateFrmPrimary ~ StateFrmPostfix*)*}
 
-StateFrmPrimary = {
-    StateFrmBrackets
+StateFrmPrimary = _{
+      StateFrmBrackets
     | StateFrmTrue
     | StateFrmFalse
     | StateFrmDelay
     | StateFrmYaled
-    | StateFrmMu
-    | StateFrmNu
-    | StateFrmForall
-    | StateFrmExists
-    | StateFrmInf
-    | StateFrmSup
-    | StateFrmBox
-    | StateFrmDiamond
-    | StateFrmUnaryMinus
     | StateFrmNegation
     | StateFrmId
     | StateFrmDataValExprMult
@@ -400,21 +413,36 @@ StateFrmPrimary = {
     StateFrmFalse = { "false" }                                                     // False, can also be minus infinity
     StateFrmDelay = { "delay" ~ ( "@" ~ DataExpr )? }
     StateFrmYaled = { "yaled" ~ ( "@" ~ DataExpr )? }
-    StateFrmMu = { "mu" ~ StateVarDecl ~ "." ~ StateFrm }                           // Minimal fixed point
-    StateFrmNu = { "nu" ~ StateVarDecl ~ "." ~ StateFrm }                           // Maximal fixed point
-    StateFrmForall = { "forall" ~ VarsDeclList ~ "." ~ StateFrm }                   // Universal quantification
-    StateFrmExists = { "exists" ~ VarsDeclList ~ "." ~ StateFrm }                   // Existential quantification
-    StateFrmInf = { "inf" ~ VarsDeclList ~ "." ~ StateFrm }                         // The infimum operator
-    StateFrmSup = { "sup" ~ VarsDeclList ~ "." ~ StateFrm }                         // The supremum operator
-    StateFrmBox = { "[" ~ RegFrm ~ "]" ~ StateFrm }                                 // Box modality
-    StateFrmDiamond = { "<" ~ RegFrm ~ ">" ~ StateFrm }                             // Diamond modality
-    StateFrmUnaryMinus = { "-" ~ StateFrm }                                         // Unary minus
-    StateFrmNegation = { "!" ~ StateFrm }                                           // Negation
     StateFrmId = { Id ~ ( "(" ~ DataExprList ~ ")" )? }                             // Instantiated fixpoint variable
     StateFrmDataValExprMult = { DataValExpr ~ "*" ~ StateFrm }                      // Multiplication with a positive constant
     StateFrmDataValExpr = { DataValExpr }                                           // Boolean or real data expression
 
-StateFrmInfix = {
+StateFrmPrefix = _{
+    | StateFrmUnaryMinus
+    | StateFrmMu
+    | StateFrmNu
+    | StateFrmForall
+    | StateFrmExists
+    | StateFrmInf
+    | StateFrmSup
+    | StateFrmSum
+    | StateFrmDiamond
+    | StateFrmBox
+}
+    StateFrmMu = { "mu" ~ StateVarDecl ~ "." }                           // Minimal fixed point
+    StateFrmNu = { "nu" ~ StateVarDecl ~ "." }                           // Maximal fixed point
+    StateFrmInf = { "inf" ~ VarsDeclList ~ "." }                         // The infimum operator
+    StateFrmSup = { "sup" ~ VarsDeclList ~ "." }                         // The supremum operator
+    StateFrmSum = { "sum" ~ VarsDeclList ~ "." }                         // The supremum operator
+    StateFrmForall = { "forall" ~ VarsDeclList ~ "." }                   // Universal quantification
+    StateFrmExists = { "exists" ~ VarsDeclList ~ "." }                   // Existential quantification
+    StateFrmBox = { "[" ~ RegFrm ~ "]" }                                 // Box modality
+    StateFrmDiamond = { "<" ~ RegFrm ~ ">" }                             // Diamond modality
+    StateFrmUnaryMinus = { "-" }                                         // Unary minus
+    StateFrmNegation = { "!" }                                           // Negation
+    
+
+StateFrmInfix = _{
       StateFrmAddition
     | StateFrmLeftConstantMultiply
     | StateFrmImplication
@@ -427,50 +455,66 @@ StateFrmInfix = {
     StateFrmDisjunction = { "||" }                                                   // Disjunction, and max
     StateFrmConjunction = { "&&" }                                                   // Conjunction, and min
 
-StateFrmSuffix = {
-        "*" ~ DataValExpr   
+StateFrmPostfix = _{
+    StateFrmRightConstantMultiply   
 }
+    StateFrmRightConstantMultiply = { "*" ~ DataValExpr }
 
 /// Regular formulas.
 /// To guard for the ambiguity of a + b and a+ we use a negative premise
-RegFrm = { ActFrm ~ (RegFrmSuffix ~ !ActFrm)? ~ (RegFrmInfix ~ ActFrm ~ (RegFrmSuffix ~ !ActFrm)?)* }
+RegFrm = { ActFrm ~ (RegFrmPostfix ~ !ActFrm)? ~ (RegFrmInfix ~ ActFrm ~ (RegFrmPostfix ~ !ActFrm)?)* }
 
-RegFrmInfix = {
-        "+"                                                      // Alternative composition
-    |   "."                                                      // Sequential composition
+RegFrmInfix = _{
+       RegFrmAlternative
+    |  RegFrmComposition
 }
+    RegFrmAlternative = { "+" }
+    RegFrmComposition = { "." }
 
-RegFrmSuffix = {
-        "*"                                                      // Iteration
-    |   "+"                                                      // Nonempty iteration
+RegFrmPostfix = _{
+      RegFrmIteration
+    | RegFrmPlus
 }
+    RegFrmIteration = { "*" }
+    RegFrmPlus = { "+" }
 
 
 ActFrm = { ActFrmPrefix? ~ ActFrmPrimary ~ ActFrmSuffix? ~ (ActFrmInfix ~ ActFrmPrefix? ~ ActFrmPrimary ~ ActFrmSuffix?)* }
 
 ActFrmPrimary = {
-        "(" ~ ActFrm ~ ")"                                       // Brackets
-    |   "true"                                                   // True
-    |   "false"                                                  // False
-    |   "forall" ~ VarsDeclList ~ "." ~ ActFrm                   // Universal quantifier
-    |   "exists" ~ VarsDeclList ~ "." ~ ActFrm                   // Existential quantifier
-    |   DataValExpr                                              // Boolean/real data expression
-    |   MultAct                                                  // Multi-action
+      ActFrmBrackets
+    | ActFrmTrue
+    | ActFrmFalse
+    | DataValExpr
+    | MultAct
 }
+    ActFrmBrackets = { "(" ~ ActFrm ~ ")" }
+    ActFrmTrue = { "true" }
+    ActFrmFalse = { "false" }
 
-ActFrmPrefix = {
-    "!"                                          // Negation
+ActFrmPrefix = _{
+      ActFrmNegation
+    | ActFrmForall
+    | ActFrmExists
 }
+    ActFrmNegation = { "!" }
+    ActFrmForall = { "forall" ~ VarsDeclList ~ "." ~ ActFrm }
+    ActFrmExists = { "exists" ~ VarsDeclList ~ "." ~ ActFrm }
 
 ActFrmInfix = {
-        "=>"                                     // Implication
-    |   "||"                                     // Union of actions
-    |   "&&"                                     // Intersection of actions
+      ActFrmImplies
+    | ActFrmUnion
+    | ActFrmIntersect
 }
+    ActFrmImplies = { "=>" }
+    ActFrmUnion = { "||" }
+    ActFrmIntersect = { "&&" }
 
-ActFrmSuffix = {
-    "@" ~ DataExpr                                       // At operator
+
+ActFrmSuffix = _{
+    ActFrmAt
 }
+    ActFrmAt = { "@" }
 
 MultAct = {
         "tau"                                                    // Tau, hidden action, empty multi-action
@@ -479,7 +523,7 @@ MultAct = {
 
 ActionList = { Action ~ ( "|" ~ Action )* }                      // List of actions
 
-/// Marked data expression
+/// Marked data exression
 DataValExpr = { "val" ~ "(" ~ DataExpr ~ ")" }                  
 
 /// State variable declaration
@@ -510,35 +554,83 @@ ActionRenameRuleRHS = {
     |    Action                                                      // Action
 }
 
-/// Boolean equation system
-BesSpec = { BesEqnSpec ~ BesInit }
-
-/// Boolean equation declaration
-BesEqnSpec = { "bes" ~ BesEqnDecl+ }                                 
-
-/// Boolean fixed point equation
-BesEqnDecl = { FixedPointOperator ~ BesVar ~ "=" ~ BesExpr ~ ";" }    
-
 FixedPointOperator = { "mu" | "nu" }
 
-/// BES variable
-BesVar = { Id }                                                     
+/// Parameterised boolean equations systems
+PbesExpr = { PbesExprPrefix* ~ PbesExprPrimary ~ (PbesExprPrefix* ~ PbesExprPrimary)* }
 
-BesExpr = { BesExprPrimary ~ (BesExprInfix ~ BesExprPrimary)* }
-
-BesExprPrimary = {
-    BesVar                                                       // Boolean variable
-  | "true"                                                       // True
-  | "false"                                                      // False
-  | "!" ~ BesExpr                                                // Negation
-  | "(" ~ BesExpr ~ ")"                                          // Brackets                                  
+PbesExprPrimary = _{
+      DataValExpr
+    | PbesExprParens
+    | PbesExprTrue
+    | PbesExprFalse
+    | PbesExprId    
 }
+    PbesExprParens = { "(" ~ PbesExpr ~ ")" }
+    PbesExprTrue = { "true" }
+    PbesExprFalse = { "false" }
+    PbesExprId = { Id ~ ( "(" ~ DataExprList ~ ")")? }
 
-BesExprInfix = {
-    "=>" // Implication
-  | "||" // Disjunction
-  | "&&" // Conjunction
+PbesExprPrefix = _{
+      PbesExprForall
+    | PbesExprExists
+    | PbesExprNegation
 }
+    PbesExprForall = { "forall" ~ VarsDeclList ~ "." }
+    PbesExprExists = { "exists" ~ VarsDeclList ~ "." }
+    PbesExprNegation = { "!" }
 
-/// Initial BES variable
-BesInit = { "init" ~ BesVar ~ ";" }
+PbesExprInfix = _{
+      PbesExprImplies
+    | PbesExprDisj
+    | PbesExprConj   
+}
+    PbesExprImplies = { "=>" }
+    PbesExprConj = { "&&" }
+    PbesExprDisj = { "||" }
+
+    
+/// Parameterised boolean equations systems
+PresExpr = { PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix* ~ (PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix*)* }
+
+PresExprPrimary = _{
+      DataValExpr
+    | PresExprParens
+    | PbesExprTrue
+    | PbesExprFalse
+    | PbesExprId    
+    | PresExprEqinf
+    | PresExprEqninf
+    | PresExprCondsm
+    | PresExprCondeq
+}
+    PresExprParens = { "(" ~ PresExpr ~ ")" }
+    PresExprEqinf = { "eqinf" ~ "(" ~ PresExpr ~ ")" }
+    PresExprEqninf = { "eqninf" ~ "(" ~ PresExpr ~ ")" }
+    PresExprCondsm = { "condsm" ~ "(" ~ PresExpr ~ "," ~ PresExpr ~ "," ~ PresExpr ~ ")" }
+    PresExprCondeq = { "condeq" ~ "(" ~ PresExpr ~ "," ~ PresExpr ~ "," ~ PresExpr ~ ")" }
+
+PresExprPrefix = _{
+      PresExprInf
+    | PresExprSup
+    | PresExprSum
+    | PbesExprNegation
+    | PresExprLeftConstantMultiply
+}
+    PresExprInf = { "inf" ~ VarsDeclList ~ "." }
+    PresExprSup = { "sup" ~ VarsDeclList ~ "." }
+    PresExprSum = { "sum" ~ VarsDeclList ~ "." }
+    PresExprLeftConstantMultiply = { "*" }
+
+PresExprInfix = _{
+      PbesExprImplies
+    | PbesExprDisj
+    | PbesExprConj   
+    | PresExprAdd  
+}
+    PresExprAdd = { "+" }
+
+PresExprPostfix = _{
+    PresExprRightConstMultiply
+}
+    PresExprRightConstMultiply = { "*" }
