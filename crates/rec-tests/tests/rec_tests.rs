@@ -1,8 +1,7 @@
 use mcrl3_aterm::ATerm;
 use mcrl3_data::to_untyped_data_expression;
+use mcrl3_sabre::NaiveRewriter;
 use test_case::test_case;
-
-use ahash::AHashSet;
 
 use mcrl3_data::DataExpression;
 use mcrl3_rec_tests::load_rec_from_strings;
@@ -54,12 +53,20 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
     // Test Sabre rewriter
     let mut sa = SabreRewriter::new(&spec);
     let mut inner = InnermostRewriter::new(&spec);
+    let mut naive = NaiveRewriter::new(&spec);
 
     let mut expected = expected_result.split('\n');
 
     for term in &terms {
         let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
         let expected_result = to_untyped_data_expression(&expected_term, None);
+
+        let result = naive.rewrite(term);
+        assert_eq!(
+            result,
+            expected_result.clone(),
+            "The naive rewrite result doesn't match the expected result",
+        );
 
         let result = inner.rewrite(term);
         assert_eq!(

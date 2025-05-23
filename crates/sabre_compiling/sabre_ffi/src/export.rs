@@ -7,13 +7,28 @@ use crate::DataExpressionRefFFI;
 use crate::DataFunctionSymbolRefFFI;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn data_expression_arg<'a>(term: &DataExpressionRefFFI<'a>, index: usize) -> DataExpressionRefFFI<'a> {
-    unsafe { DataExpressionRefFFI::from_index(DataExpressionRef::from(ATermRef::from_index(term.shared())).data_arg(index).shared()) }
+pub unsafe extern "C" fn data_expression_arg<'a>(
+    term: &DataExpressionRefFFI<'a>,
+    index: usize,
+) -> DataExpressionRefFFI<'a> {
+    unsafe {
+        DataExpressionRefFFI::from_index(
+            DataExpressionRef::from(ATermRef::from_index(term.shared()))
+                .data_arg(index)
+                .shared(),
+        )
+    }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<'a>) -> DataFunctionSymbolRefFFI<'a> {
-    unsafe { DataFunctionSymbolRefFFI::from_index(DataExpressionRef::from(ATermRef::from_index(term.shared())).data_function_symbol().shared()) }
+    unsafe {
+        DataFunctionSymbolRefFFI::from_index(
+            DataExpressionRef::from(ATermRef::from_index(term.shared()))
+                .data_function_symbol()
+                .shared(),
+        )
+    }
 }
 
 #[unsafe(no_mangle)]
