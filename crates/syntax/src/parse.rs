@@ -41,7 +41,7 @@ impl UntypedDataSpecification {
     pub fn parse(spec: &str) -> Result<UntypedDataSpecification, MCRL3Error> {
         pest::set_error_detail(true);
 
-        let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec)?;
+        let mut result = Mcrl2Parser::parse(Rule::DataSpec, spec)?;
         let root = result.next().ok_or("Could not parse mCRL2 data specification")?;
         debug_trace!("Parse tree {}", DisplayPair(root.clone()));
 
