@@ -1,5 +1,3 @@
-
-
 mod configuration_stack;
 mod data_position;
 mod data_substitution;

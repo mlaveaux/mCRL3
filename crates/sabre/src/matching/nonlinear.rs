@@ -7,8 +7,8 @@ use mcrl3_data::is_data_variable;
 
 use crate::Rule;
 use crate::utilities::DataPosition;
-use crate::utilities::DataPositionIterator;
 use crate::utilities::DataPositionIndexed;
+use crate::utilities::DataPositionIterator;
 
 /// An equivalence class is a variable with (multiple) positions. This is
 /// necessary for non-linear patterns.

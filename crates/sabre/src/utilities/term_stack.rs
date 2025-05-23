@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn test_is_duplicating() {
         let rhs = DataExpression::from_string_untyped("f(x,x)", &AHashSet::from([String::from("x")])).unwrap();
-        
+
         // Make a variable map with only x@1.
         let mut map = HashMap::new();
         map.insert(DataVariable::new("x"), DataPosition::new(&[1]));

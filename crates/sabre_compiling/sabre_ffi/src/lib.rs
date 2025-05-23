@@ -21,9 +21,9 @@ pub struct DataExpressionFFI {
 
 impl DataExpressionFFI {
     /// Creates a new data expression from an index and a root.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The index must be a valid index of a data expression, that is valid for this lifetime.
     pub unsafe fn from_index(index: &ATermIndex, root: ProtectionIndex) -> Self {
         Self {

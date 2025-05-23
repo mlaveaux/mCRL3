@@ -7,10 +7,10 @@ use std::path::PathBuf;
 
 use indoc::indoc;
 use log::debug;
-use mcrl3_sabre::utilities::DataPosition;
 use mcrl3_sabre::AnnouncementInnermost;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SetAutomaton;
+use mcrl3_sabre::utilities::DataPosition;
 use mcrl3_utilities::MCRL3Error;
 
 use crate::indenter::IndentFormatter;

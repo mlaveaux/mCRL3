@@ -79,7 +79,7 @@ pub struct SharedSymbol {
     /// Name of the function
     name: String,
     /// Number of arguments
-    arity: usize,    
+    arity: usize,
 }
 
 impl SharedSymbol {

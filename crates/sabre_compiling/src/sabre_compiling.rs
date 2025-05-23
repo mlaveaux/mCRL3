@@ -13,8 +13,8 @@ use toml::Table;
 use mcrl3_data::DataExpression;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
-use mcrl3_sabre_ffi::DataExpressionFFI as DataExpressionFFI;
-use mcrl3_sabre_ffi::DataExpressionRefFFI as DataExpressionRefFFI;
+use mcrl3_sabre_ffi::DataExpressionFFI;
+use mcrl3_sabre_ffi::DataExpressionRefFFI;
 
 use crate::generate;
 use crate::library::RuntimeLibrary;

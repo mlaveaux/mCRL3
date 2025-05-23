@@ -14,12 +14,12 @@ use crate::matching::nonlinear::derive_equivalence_classes;
 use crate::set_automaton::MatchAnnouncement;
 use crate::set_automaton::SetAutomaton;
 
-use super::data_substitute_with;
 use super::DataPosition;
 use super::DataPositionIndexed;
 use super::DataSubstitutionBuilder;
 use super::TermStack;
 use super::create_var_map;
+use super::data_substitute_with;
 
 /// This is the announcement for Sabre, which stores additional information about the rewrite rules.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]

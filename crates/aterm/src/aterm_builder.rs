@@ -1,7 +1,7 @@
 use std::fmt;
 
-use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::MCRL3Error;
+use mcrl3_utilities::debug_trace;
 
 use crate::ATerm;
 use crate::Symbol;
