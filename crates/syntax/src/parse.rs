@@ -25,7 +25,7 @@ use crate::parse_sortexpr;
 
 /// Parses the given mCRL2 specification into an AST.
 impl UntypedProcessSpecification {
-    pub fn parse(spec: &str) -> std::result::Result<UntypedProcessSpecification, MCRL3Error> {
+    pub fn parse(spec: &str) -> Result<UntypedProcessSpecification, MCRL3Error> {
         pest::set_error_detail(true);
 
         let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec)?;
@@ -33,6 +33,19 @@ impl UntypedProcessSpecification {
         debug_trace!("Parse tree {}", DisplayPair(root.clone()));
 
         Ok(Mcrl2Parser::MCRL2Spec(ParseNode::new(root)).unwrap())
+    }
+}
+
+/// Parses the given mCRL2 specification into an AST.
+impl UntypedDataSpecification {
+    pub fn parse(spec: &str) -> Result<UntypedDataSpecification, MCRL3Error> {
+        pest::set_error_detail(true);
+
+        let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec)?;
+        let root = result.next().ok_or("Could not parse mCRL2 data specification")?;
+        debug_trace!("Parse tree {}", DisplayPair(root.clone()));
+
+        Ok(Mcrl2Parser::DataSpec(ParseNode::new(root)).unwrap())
     }
 }
 
@@ -66,6 +79,31 @@ impl Mcrl2Parser {
 
         Ok(UntypedProcessSpecification {
             data_specification,
+            ..Default::default()
+        })
+    }
+
+    fn DataSpec(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
+        let mut map = Vec::new();
+        let mut eqn = Vec::new();
+
+        for child in spec.into_children() {
+            match child.as_rule() {
+                Rule::MapSpec => {
+                    map.append(&mut Mcrl2Parser::MapSpec(child)?);
+                }
+                Rule::EqnSpec => {
+                    eqn.append(&mut Mcrl2Parser::EqnSpec(child)?);
+                }
+                _ => {
+                    // Handle other rules if necessary
+                }
+            }
+        }
+
+        Ok(UntypedDataSpecification {
+            map_decls: map,
+            eqn_decls: eqn,
             ..Default::default()
         })
     }
@@ -424,7 +462,7 @@ impl Mcrl2Parser {
             },
         )
     }
-    
+
     fn VarDecl(decl: ParseNode) -> ParseResult<VarDecl> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
@@ -441,7 +479,7 @@ impl Mcrl2Parser {
             },
         )
     }
-    
+
     pub(crate) fn DataExprForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {

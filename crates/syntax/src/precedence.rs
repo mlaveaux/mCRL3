@@ -71,19 +71,17 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> SortExpression {
 static DATAEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
-        .op(Op::postfix(Rule::DataExprUpdate)) // TODO: Priority
-        .op(Op::postfix(Rule::DataExprApplication)) // $left 0
+        .op(Op::postfix(Rule::DataExprWhr)) // $left 0
         .op(Op::prefix(Rule::DataExprForall) | Op::prefix(Rule::DataExprExists) | Op::prefix(Rule::DataExprLambda)) // $right 1
         .op(Op::infix(Rule::DataExprImpl, Assoc::Right)) // $right 2
         .op(Op::infix(Rule::DataExprDisj, Assoc::Right)) // $right 3
         .op(Op::infix(Rule::DataExprConj, Assoc::Right)) // $right 4
         .op(Op::infix(Rule::DataExprEq, Assoc::Left) | Op::infix(Rule::DataExprNeq, Assoc::Left)) // $left 5
-        .op(Op::infix(Rule::DataExprLess, Assoc::Left) 
-            | Op::infix(Rule::DataExprLeq, Assoc::Left) 
+        .op(Op::infix(Rule::DataExprLess, Assoc::Left)
+            | Op::infix(Rule::DataExprLeq, Assoc::Left)
             | Op::infix(Rule::DataExprGeq, Assoc::Left)
             | Op::infix(Rule::DataExprGreater, Assoc::Left)
-            | Op::infix(Rule::DataExprIn, Assoc::Left)
-        ) // $left 6
+            | Op::infix(Rule::DataExprIn, Assoc::Left)) // $left 6
         .op(Op::infix(Rule::DataExprCons, Assoc::Right)) // $right 7
         .op(Op::infix(Rule::DataExprSnoc, Assoc::Left)) // $left 8
         .op(Op::infix(Rule::DataExprConcat, Assoc::Left)) // $left 9
@@ -96,7 +94,7 @@ static DATAEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
             | Op::prefix(Rule::DataExprMinus)
             | Op::prefix(Rule::DataExprNegation)
             | Op::prefix(Rule::DataExprSize)) // $right 12
-        .op(Op::postfix(Rule::DataExprWhr)) // TODO: Priority
+        .op(Op::postfix(Rule::DataExprUpdate) | Op::postfix(Rule::DataExprApplication)) // ) // $left 13
 });
 
 pub fn parse_dataexpr(pairs: Pairs<Rule>) -> DataExpr {
@@ -110,7 +108,7 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> DataExpr {
             Rule::DataExprListEnum => Mcrl2Parser::DataExprListEnum(Node::new(primary)).unwrap(),
             Rule::DataExprBagEnum => Mcrl2Parser::DataExprBagEnum(Node::new(primary)).unwrap(),
             Rule::DataExprSetBagComp => Mcrl2Parser::DataExprSetBagComp(Node::new(primary)).unwrap(),
-            Rule::DataExprSetEnum => Mcrl2Parser::DataExprSetEnum(Node::new(primary)).unwrap(),            
+            Rule::DataExprSetEnum => Mcrl2Parser::DataExprSetEnum(Node::new(primary)).unwrap(),
             Rule::Number => Mcrl2Parser::Number(Node::new(primary)).unwrap(),
             Rule::Id => DataExpr::Id(Mcrl2Parser::Id(Node::new(primary)).unwrap()),
 
@@ -146,7 +144,7 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> DataExpr {
                 Rule::DataExprImpl => DataExprBinaryOp::Implies,
                 _ => unimplemented!("Unexpected binary operator rule: {:?}", op.as_rule()),
             };
-            
+
             DataExpr::BinaryOperator {
                 op,
                 lhs: Box::new(lhs),
@@ -197,6 +195,74 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> DataExpr {
         })
         .parse(pairs)
 }
+
+static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::infix(Rule::ProcExprChoice, Assoc::Left)) // $left 1
+        .op(Op::prefix(Rule::ProcExprSum) | Op::prefix(Rule::ProcExprDist)) // $right 2
+        .op(Op::infix(Rule::ProcExprParallel, Assoc::Right)) // $right 3
+        .op(Op::infix(Rule::ProcExprLeftMerge, Assoc::Right)) // $right 4
+        .op(Op::infix(Rule::ProcExprIf, Assoc::Right)) // $right 5
+        .op(Op::infix(Rule::ProcExprIfThen, Assoc::Right)) // $right 5
+        .op(Op::infix(Rule::ProcExprUntil, Assoc::Left)) // $left 6
+        .op(Op::infix(Rule::ProcExprSeq, Assoc::Right)) // $right 7
+        .op(Op::infix(Rule::ProcExprAt, Assoc::Left)) // $left 8
+        .op(Op::infix(Rule::ProcExprComm, Assoc::Left)) // $left 9
+});
+
+static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::infix(Rule::RegFrmAlternative, Assoc::Left)) // $left 1
+        .op(Op::infix(Rule::RegFrmComposition, Assoc::Right)) // $right 2
+        .op(Op::postfix(Rule::RegFrmIteration) | Op::postfix(Rule::RegFrmPlus)) // $left 3
+
+});
+
+static PBESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::prefix(Rule::PbesExprForall) | Op::prefix(Rule::PbesExprExists)) // $right 0
+        .op(Op::infix(Rule::PbesExprImplies, Assoc::Right)) // $right 2
+        .op(Op::infix(Rule::PbesExprDisj, Assoc::Right)) // $right 3
+        .op(Op::infix(Rule::PbesExprConj, Assoc::Right)) // $right 4
+        .op(Op::prefix(Rule::PbesExprNegation)) // $right 5
+});
+
+static PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::prefix(Rule::PresExprInf) 
+            | Op::prefix(Rule::PresExprSup)
+            | Op::prefix(Rule::PresExprSum)) // $right 0
+        .op(Op::infix(Rule::PresExprAdd, Assoc::Right)) // $right 2
+        .op(Op::infix(Rule::PbesExprImplies, Assoc::Right)) // $right 3
+        .op(Op::infix(Rule::PbesExprDisj, Assoc::Right)) // $right 4
+        .op(Op::infix(Rule::PbesExprConj, Assoc::Right)) // $right 5
+        .op(Op::prefix(Rule::PresExprLeftConstantMultiply) | Op::postfix(Rule::PresExprRightConstMultiply)) // $right 6
+        .op(Op::prefix(Rule::PbesExprNegation)) // $right 7
+});
+
+static STATEFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::prefix(Rule::StateFrmMu) | Op::prefix(Rule::StateFrmNu)) // $right 1
+        .op(Op::prefix(Rule::StateFrmForall) 
+            | Op::prefix(Rule::StateFrmExists)
+            | Op::prefix(Rule::StateFrmInf)
+            | Op::prefix(Rule::StateFrmSup)
+            | Op::prefix(Rule::StateFrmSum)) // $right 2
+        .op(Op::infix(Rule::StateFrmAddition, Assoc::Left)) // $left 3
+        .op(Op::infix(Rule::StateFrmImplication, Assoc::Right)) // $right 4
+        .op(Op::infix(Rule::StateFrmDisjunction, Assoc::Right)) // $right 5
+        .op(Op::infix(Rule::StateFrmConjunction, Assoc::Right)) // $right 6
+        .op(Op::prefix(Rule::StateFrmLeftConstantMultiply) | Op::postfix(Rule::StateFrmRightConstantMultiply)) // $right 7
+        .op(Op::prefix(Rule::StateFrmBox) | Op::postfix(Rule::StateFrmDiamond)) // $right 8
+        .op(Op::prefix(Rule::StateFrmNegation) | Op::prefix(Rule::StateFrmUnaryMinus)) // $right 9
+});
+
+
 
 #[cfg(test)]
 mod tests {

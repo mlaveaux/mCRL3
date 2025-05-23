@@ -23,10 +23,8 @@ pub struct UntypedDataSpecification {
     pub cons_decls: Vec<IdDecl>,
     /// Map declarations
     pub map_decls: Vec<IdDecl>,
-    /// Variable declarations
-    pub var_decls: Vec<VarDecl>,
     /// Equation declarations
-    pub eqn_decls: Vec<EqnDecl>,
+    pub eqn_decls: Vec<EqnSpec>,
 }
 
 /// A declaration of an identifier with its sort.
@@ -163,7 +161,7 @@ pub struct ProcDecl {
 pub enum DataExprUnaryOp {
     Negation,
     Minus,
-    Size
+    Size,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -187,7 +185,7 @@ pub enum DataExprBinaryOp {
     IntDiv,
     Mod,
     Multiply,
-    At
+    At,
 }
 
 /// Data expression
@@ -208,7 +206,7 @@ pub enum DataExpr {
     Bag(Vec<(DataExpr, DataExpr)>),
     SetBagComp {
         variable: VarDecl,
-        predicate: Box<DataExpr>
+        predicate: Box<DataExpr>,
     },
     Size(Box<DataExpr>),
     Lambda {

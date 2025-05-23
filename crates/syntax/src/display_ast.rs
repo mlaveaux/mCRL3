@@ -1,6 +1,19 @@
 use std::fmt;
 
-use crate::{Assignment, ComplexSort, ConstructorDecl, DataExpr, EqnDecl, IdDecl, Sort, SortDecl, SortExpression, Span, UntypedDataSpecification, UntypedProcessSpecification, VarDecl};
+use crate::Assignment;
+use crate::ComplexSort;
+use crate::ConstructorDecl;
+use crate::DataExpr;
+use crate::EqnDecl;
+use crate::EqnSpec;
+use crate::IdDecl;
+use crate::Sort;
+use crate::SortDecl;
+use crate::SortExpression;
+use crate::Span;
+use crate::UntypedDataSpecification;
+use crate::UntypedProcessSpecification;
+use crate::VarDecl;
 
 /// Prints location information for a span in the source.
 pub fn print_location(input: &str, span: &Span) {
@@ -52,12 +65,23 @@ impl fmt::Display for UntypedDataSpecification {
             writeln!(f, "   {}", decl)?;
         }
 
-        writeln!(f, "glob")?;
-        for decl in &self.var_decls {
-            writeln!(f, "   {}", decl)?;
-        }
         for decl in &self.eqn_decls {
             writeln!(f, "{}", decl)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for EqnSpec {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "var")?;
+        for decl in &self.variables {
+            writeln!(f, "   {}", decl)?;
+        }
+
+        writeln!(f, "eqn")?;
+        for decl in &self.equations {
+            writeln!(f, "   {}", decl)?;
         }
         Ok(())
     }
@@ -85,8 +109,8 @@ impl fmt::Display for VarDecl {
 impl fmt::Display for EqnDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.condition {
-            Some(condition) =>  write!(f, "{} -> {} = {};", condition, self.lhs, self.rhs),
-            None => write!(f, "{} = {};", self.lhs, self.rhs)
+            Some(condition) => write!(f, "{} -> {} = {};", condition, self.lhs, self.rhs),
+            None => write!(f, "{} = {};", self.lhs, self.rhs),
         }
     }
 }

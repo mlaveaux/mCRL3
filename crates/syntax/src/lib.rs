@@ -29,15 +29,15 @@
 #![forbid(unsafe_code)]
 
 mod ast;
-mod display_pair;
 mod display_ast;
+mod display_pair;
 mod grammar;
 mod parse;
 mod precedence;
 
 pub use ast::*;
-pub use display_pair::*;
 pub use display_ast::*;
+pub use display_pair::*;
 pub use grammar::*;
 pub use parse::*;
 pub use precedence::*;
