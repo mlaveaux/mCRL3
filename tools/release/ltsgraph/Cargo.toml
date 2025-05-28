@@ -13,11 +13,13 @@ mcrl3_ltsgraph-lib = { path = "./library" }
 
 clap.workspace = true
 env_logger.workspace = true
+femtovg.workspace = true
 log.workspace = true
 rfd.workspace = true
 slint.workspace = true
 tiny-skia.workspace = true
 tokio.workspace = true
+wgpu.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true

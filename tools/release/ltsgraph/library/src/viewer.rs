@@ -115,34 +115,3 @@ impl Viewer {
         &self.lts
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use mcrl3_lts::read_aut;
-    use tiny_skia::Pixmap;
-    use tiny_skia::PixmapMut;
-
-    use super::*;
-
-    #[test]
-    fn test_viewer() {
-        // Render a single from the alternating bit protocol with some settings
-        let file = include_str!("../../../../../examples/lts/abp.aut");
-        let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
-
-        let mut viewer = Viewer::new(lts);
-
-        let mut pixel_buffer = Pixmap::new(800, 600).unwrap();
-        // viewer.render(
-        //     &mut PixmapMut::from_bytes(pixel_buffer.data_mut(), 800, 600).unwrap(),
-        //     true,
-        //     5.0,
-        //     0.0,
-        //     0.0,
-        //     800,
-        //     600,
-        //     1.0,
-        //     14.0,
-        // );
-    }
-}

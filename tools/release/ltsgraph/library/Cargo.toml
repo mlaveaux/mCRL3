@@ -10,6 +10,7 @@ mcrl3_lts.workspace = true
 mcrl3_unsafety.workspace = true
 
 cosmic-text.workspace = true
+femtovg.workspace = true
 glam.workspace = true
 log.workspace = true
 rand.workspace = true

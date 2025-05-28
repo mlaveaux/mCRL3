@@ -5,6 +5,7 @@ slint::include_modules!();
 
 use std::fs::File;
 use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -16,35 +17,86 @@ use std::time::Instant;
 
 use clap::Parser;
 
+use clap::ValueEnum;
+use femtovg::renderer::WGPURenderer;
+use femtovg::Canvas;
 use log::debug;
 use log::info;
+use ltsgraph::init_wgpu;
 use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
 use slint::invoke_from_event_loop;
 use slint::quit_event_loop;
 
+use ltsgraph::PauseableThread;
+use ltsgraph::show_error_dialog;
 use mcrl3_gui::console;
+use mcrl3_lts::LabelledTransitionSystem;
 use mcrl3_lts::read_aut;
+use mcrl3_ltsgraph_lib::FemtovgRenderer;
 use mcrl3_ltsgraph_lib::GraphLayout;
+use mcrl3_ltsgraph_lib::SkiaRenderer;
 use mcrl3_ltsgraph_lib::Viewer;
 use mcrl3_utilities::MCRL3Error;
-use pauseable_thread::PauseableThread;
 
-mod error_dialog;
-mod pauseable_thread;
+#[derive(Clone, Debug, ValueEnum, PartialEq, Eq, PartialOrd, Ord)]
+enum ViewerType {
+    /// Uses tiny-skia to render the graph on the CPU
+    CPU,
+    /// Uses femtovg to render the graph on the GPU, with wgpu
+    GPU,
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "Maurice Laveaux", about = "A lts viewing tool")]
 pub struct Cli {
     #[arg(value_name = "FILE")]
     labelled_transition_system: Option<String>,
+
+    #[arg(default_value_t = ViewerType::CPU, value_enum)]
+    viewer: ViewerType,
+}
+
+/// Represents the viewer state including the viewer, pixel buffer, and renderer.
+/// Encapsulates all rendering-related components.
+struct ViewerState {
+    viewer: Viewer,
+    pixel_buffer: SharedPixelBuffer<Rgba8Pixel>,
+
+    skia_renderer: SkiaRenderer,
+    femtovg_renderer: Option<(FemtovgRenderer, Canvas<WGPURenderer>)>,
+}
+
+impl ViewerState {
+    pub fn new(lts: Arc<LabelledTransitionSystem>, wgpu: &Option<(wgpu::Device, wgpu::Queue)>) -> Result<Self, MCRL3Error> {
+        let viewer = Viewer::new(lts.clone());
+        let pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(1, 1);
+        let skia_renderer = SkiaRenderer::new(lts.clone());
+
+        let femtovg_renderer = if let Some((device, queue)) = wgpu {
+            let gpu_renderer = WGPURenderer::new(device.clone(), queue.clone());
+            let canvas = Canvas::new(gpu_renderer)?;
+
+            Some((FemtovgRenderer::new(lts), canvas))
+        } else {
+            None
+        };
+
+
+        Ok(Self {
+            viewer,
+            pixel_buffer,
+            skia_renderer,
+            femtovg_renderer
+        })
+    }
 }
 
 /// Contains all the GUI related state information.
 struct GuiState {
     graph_layout: Mutex<GraphLayout>,
-    viewer: Mutex<(Viewer, SharedPixelBuffer<Rgba8Pixel>)>,
+    viewer: Mutex<ViewerState>,
 }
 
 #[derive(Clone, Default)]
@@ -90,6 +142,13 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
     let cli = Cli::parse();
 
+    let wgpu = if cli.viewer == ViewerType::GPU {
+        // Initialize wgpu for GPU rendering
+        Some(init_wgpu().await?)
+    } else {
+        None
+    };
+
     // Stores the shared state of the GUI components.
     let state = Arc::new(RwLock::new(None::<GuiState>));
     let settings = Arc::new(Mutex::new(GuiSettings::new()));
@@ -134,30 +193,59 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
             if let Some(state) = state.read().unwrap().deref() {
                 // Render a new frame...
                 let start = Instant::now();
-                let (ref mut viewer, ref mut pixel_buffer) = *state.viewer.lock().unwrap();
+                let mut viewer_state = state.viewer.lock().unwrap();
 
                 // Resize the canvas when necessary
                 let settings_clone = settings.lock().unwrap().clone();
-                if pixel_buffer.width() != settings_clone.width || pixel_buffer.height() != settings_clone.height {
-                    *pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(settings_clone.width, settings_clone.height);
+                if viewer_state.pixel_buffer.width() != settings_clone.width
+                    || viewer_state.pixel_buffer.height() != settings_clone.height
+                {
+                    viewer_state.pixel_buffer =
+                        SharedPixelBuffer::<Rgba8Pixel>::new(settings_clone.width, settings_clone.height);
                 }
 
-                viewer.render(
-                    &mut tiny_skia::PixmapMut::from_bytes(
-                        pixel_buffer.make_mut_bytes(),
-                        settings_clone.width,
-                        settings_clone.height,
-                    )
-                    .unwrap(),
-                    settings_clone.draw_action_labels,
-                    settings_clone.state_radius,
-                    settings_clone.view_x,
-                    settings_clone.view_y,
-                    settings_clone.width,
-                    settings_clone.height,
-                    settings_clone.zoom_level,
-                    settings_clone.label_text_size,
-                );
+                let guard = viewer_state.deref_mut();
+
+                match cli.viewer {
+                    ViewerType::CPU => {
+                        let mut image = tiny_skia::PixmapMut::from_bytes(
+                            guard.pixel_buffer.make_mut_bytes(),
+                            settings_clone.width,
+                            settings_clone.height,
+                        )
+                        .unwrap();
+
+                        guard.skia_renderer.render(
+                            &mut image,
+                            &guard.viewer,
+                            settings_clone.draw_action_labels,
+                            settings_clone.state_radius,
+                            settings_clone.view_x,
+                            settings_clone.view_y,
+                            settings_clone.width,
+                            settings_clone.height,
+                            settings_clone.zoom_level,
+                            settings_clone.label_text_size,
+                        );                        
+                    }
+                    // ViewerType::GPU => {
+                    //     // Render the graph using femtovg on the GPU
+                    //     if let Some((femtovg_renderer, canvas)) = &mut guard.femtovg_renderer {
+                    //         femtovg_renderer.render(
+                    //             canvas,
+                    //             &guard.viewer,
+                    //             settings_clone.draw_action_labels,
+                    //             settings_clone.state_radius,
+                    //             settings_clone.view_x,
+                    //             settings_clone.view_y,
+                    //             settings_clone.width,
+                    //             settings_clone.height,
+                    //             settings_clone.zoom_level,
+                    //             settings_clone.label_text_size,
+                    //         );
+                    //     } 
+                    // }
+                }
 
                 debug!(
                     "Rendering step ({} by {}) took {} ms",
@@ -165,7 +253,8 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                     settings_clone.height,
                     (Instant::now() - start).as_millis()
                 );
-                *canvas.lock().unwrap() = pixel_buffer.clone();
+
+                *canvas.lock().unwrap() = viewer_state.pixel_buffer.clone();
             } else {
                 // Resize the canvas when necessary
                 let settings_clone = settings.lock().unwrap().clone();
@@ -211,8 +300,8 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                 }
 
                 // Copy layout into the view.
-                let (ref mut viewer, _) = *state.viewer.lock().unwrap();
-                viewer.update(&layout);
+                let mut viewer_state = state.viewer.lock().unwrap();
+                viewer_state.viewer.update(&layout);
 
                 // Request a redraw (if not already in progress).
                 render_handle.resume();
@@ -245,14 +334,14 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                             info!("Loaded lts {}", lts);
 
                             // Create the layout and viewer separately to make the initial state sensible.
-                            let layout = GraphLayout::new(&lts);
-                            let mut viewer = Viewer::new(&lts);
+                            let layout = GraphLayout::new(lts.clone());
+                            let mut viewer = ViewerState::new(lts, &wgpu).unwrap();
 
-                            viewer.update(&layout);
+                            viewer.viewer.update(&layout);
 
                             *state.write().unwrap() = Some(GuiState {
                                 graph_layout: Mutex::new(layout),
-                                viewer: Mutex::new((viewer, SharedPixelBuffer::new(1, 1))),
+                                viewer: Mutex::new(viewer),
                             });
 
                             // Enable the layout and rendering threads.
@@ -260,12 +349,12 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                             render_handle.resume();
                         }
                         Err(x) => {
-                            error_dialog::show_error_dialog("Failed to load LTS!", &format!("{}", x));
+                            show_error_dialog("Failed to load LTS!", &format!("{}", x));
                         }
                     }
                 }
                 Err(x) => {
-                    error_dialog::show_error_dialog("Failed to load LTS!", &format!("{}", x));
+                    show_error_dialog("Failed to load LTS!", &format!("{}", x));
                 }
             }
         }
@@ -349,9 +438,9 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                 if let Some(state) = state.read().unwrap().deref() {
                     debug!("Centering view on graph.");
 
-                    let (ref viewer, _) = *state.viewer.lock().unwrap();
+                    let state_view = state.viewer.lock().unwrap();
 
-                    let center = viewer.center();
+                    let center = state_view.viewer.center();
 
                     // Change the view to show the LTS in full.
                     app.global::<Settings>().set_view_x(center.x);

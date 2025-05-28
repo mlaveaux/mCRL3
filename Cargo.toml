@@ -60,6 +60,7 @@ tiny-skia = "0.11"
 tokio = { version = "1.45", features = ["rt", "macros"] }
 winapi = { version = "0.3", features = ["consoleapi"] }
 femtovg = { version = "0.14", features = ["wgpu"] }
+wgpu = "24.0"
 
 # Used in macros
 proc-macro2 = "1.0"

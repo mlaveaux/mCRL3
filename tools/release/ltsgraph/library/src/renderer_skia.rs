@@ -229,7 +229,7 @@ mod tests {
     use crate::viewer::Viewer;
 
     #[test]
-    fn test_renderer() {
+    fn test_skia_renderer() {
         // Render a single frame from the alternating bit protocol with some settings
         let file = include_str!("../../../../../examples/lts/abp.aut");
         let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
