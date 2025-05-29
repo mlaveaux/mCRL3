@@ -1,9 +1,8 @@
-use mcrl3_syntax::Mcrl2Parser;
-use mcrl3_syntax::Rule;
+use test_case::test_case;
+
+use mcrl3_syntax::StateFrmSpec;
 use mcrl3_syntax::UntypedDataSpecification;
 use mcrl3_syntax::UntypedProcessSpecification;
-use pest::Parser;
-use test_case::test_case;
 
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/abp.mcrl2") ; "abp.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp_bw/abp_bw.mcrl2") ; "abp_bw.mcrl2")]
@@ -348,7 +347,7 @@ fn test_parse_mcrl2_spec(input: &str) {
 #[test_case(include_str!("../../../examples/mCRL2/software_models/Treiber_stack/Treiber_CAS/properties/Correct release implies correct retrieve.mcf") ; "correct_release_implies_correct_retrieve.mcf")]
 #[test_case(include_str!("../../../examples/mCRL2/software_models/Treiber_stack/Treiber_CAS/properties/Inevitably retrieve when stacksize is 2.mcf") ; "inevitably_retrieve_when_stacksize_is_2.mcf")]
 fn test_parse_mcrl2_modal_formula(input: &str) {
-    if let Err(y) = Mcrl2Parser::parse(Rule::StateFrmSpec, input) {
+    if let Err(y) = StateFrmSpec::parse(input) {
         panic!("{}", y);
     }
 }

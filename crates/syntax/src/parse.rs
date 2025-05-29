@@ -17,6 +17,7 @@ use crate::Mcrl2Parser;
 use crate::Rule;
 use crate::Sort;
 use crate::SortExpression;
+use crate::StateFrmSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
 use crate::VarDecl;
@@ -49,8 +50,21 @@ impl UntypedDataSpecification {
     }
 }
 
-type ParseResult<T> = std::result::Result<T, Error<Rule>>;
-type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
+impl StateFrmSpec {
+    pub fn parse(spec: &str) -> Result<StateFrmSpec, MCRL3Error> {
+        pest::set_error_detail(true);
+
+        let mut result = Mcrl2Parser::parse(Rule::StateFrmSpec, spec)?;
+        let root = result.next().ok_or("Could not parse mCRL2 state formula specification")?;
+        debug_trace!("Parse tree {}", DisplayPair(root.clone()));
+
+        Ok(StateFrmSpec { })
+    }
+}
+
+/// Type alias for Errors resulting parsing.
+pub(crate) type ParseResult<T> = std::result::Result<T, Error<Rule>>;
+pub(crate) type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 
 #[pest_consume::parser]
 impl Mcrl2Parser {
@@ -159,11 +173,11 @@ impl Mcrl2Parser {
     }
 
     fn DataExpr(expr: ParseNode) -> ParseResult<DataExpr> {
-        Ok(parse_dataexpr(expr.children().as_pairs().clone()))
+        parse_dataexpr(expr.children().as_pairs().clone())
     }
 
     pub(crate) fn DataExprPrimary(expr: ParseNode) -> ParseResult<DataExpr> {
-        Ok(parse_dataexpr(expr.children().as_pairs().clone()))
+        parse_dataexpr(expr.children().as_pairs().clone())
     }
 
     pub(crate) fn DataExprTrue(_input: ParseNode) -> ParseResult<DataExpr> {
@@ -274,7 +288,7 @@ impl Mcrl2Parser {
     }
 
     pub fn SortExpr(expr: ParseNode) -> ParseResult<SortExpression> {
-        Ok(parse_sortexpr(expr.children().as_pairs().clone()))
+        parse_sortexpr(expr.children().as_pairs().clone())
     }
 
     pub fn Id(identifier: ParseNode) -> ParseResult<String> {
@@ -314,35 +328,35 @@ impl Mcrl2Parser {
     pub fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::List,
-            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
     pub fn SortExprSet(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::Set,
-            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
     pub fn SortExprBag(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::Bag,
-            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
     pub fn SortExprFSet(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::FSet,
-            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
     pub fn SortExprFBag(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::FBag,
-            Box::new(parse_sortexpr(inner.children().as_pairs().clone())),
+            Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
@@ -492,6 +506,15 @@ impl Mcrl2Parser {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
+            },
+        )
+    }
+
+    pub(crate) fn ActFrm(input: ParseNode) -> ParseResult<DataExpr> {
+        parse_act
+        match_nodes!(input.into_children();
+            [DataExpr(expr)] => {
+                Ok(expr)
             },
         )
     }
