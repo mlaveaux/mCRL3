@@ -6,6 +6,8 @@ use std::sync::atomic::Ordering;
 use std::thread::Builder;
 use std::thread::JoinHandle;
 
+use mcrl3_utilities::MCRL3Error;
+
 /// A thread that can be paused and stopped.
 pub struct PauseableThread {
     handle: Option<JoinHandle<()>>,
@@ -21,10 +23,12 @@ struct PauseableThreadShared {
 impl PauseableThread {
     /// Spawns a new thread that runs `loop_function` continuously while enabled.
     ///
-    /// The loop_function can return false to pause the thread.
-    pub fn new<F>(name: &str, loop_function: F) -> Result<PauseableThread, std::io::Error>
+    /// The init_function is called once when the thread starts, and it can return a value of type `C`.
+    /// The loop_function can return false to pause the thread explicitly, or the loop pauses whenever `stop` is called.
+    pub fn new<C, I, F>(name: &str, init_function: I, loop_function: F) -> Result<PauseableThread, std::io::Error>
     where
-        F: Fn() -> bool + Send + 'static,
+        I: Fn() -> Result<C, MCRL3Error> + Send + 'static,
+        F: Fn(&mut C) -> Result<bool, MCRL3Error> + Send + 'static,
     {
         let shared = Arc::new(PauseableThreadShared {
             running: AtomicBool::new(true),
@@ -35,6 +39,8 @@ impl PauseableThread {
         let thread = {
             let shared = shared.clone();
             Builder::new().name(name.to_string()).spawn(move || {
+                let mut init = init_function().unwrap();
+
                 while shared.running.load(std::sync::atomic::Ordering::Relaxed) {
                     // Check if paused is true and wait for it.
                     {
@@ -44,7 +50,7 @@ impl PauseableThread {
                         }
                     }
 
-                    if !loop_function() {
+                    if !loop_function(&mut init).unwrap() {
                         // Pause the thread when requested by the loop function.
                         *shared.paused.lock().unwrap() = true;
                     }
@@ -96,9 +102,9 @@ mod tests {
 
     #[test]
     fn test_pausablethread() {
-        let thread = PauseableThread::new("test", move || {
+        let thread = PauseableThread::new("test", || Ok(()), move |_| {
             // Do nothing.
-            true
+            Ok(true)
         })
         .unwrap();
 
