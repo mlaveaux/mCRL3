@@ -50,7 +50,7 @@ jobs:
         submodules: true
 
     - name: Run thread-sanitizer tests
-      run: cargo +nightly xtask thread-sanitizer nextest run
+      run: cargo +nightly xtask thread-sanitizer nextest run --no-fail-fast
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug
