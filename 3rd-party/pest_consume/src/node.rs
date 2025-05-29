@@ -119,7 +119,7 @@ impl<'i, R: RuleType, D> Nodes<'i, R, D> {
             ErrorVariant::CustomError {
                 message: message.to_string(),
             },
-            self.span.clone(),
+            self.span,
         )
     }
 

@@ -1,7 +1,12 @@
+use std::collections::HashSet;
+use std::hint::black_box;
+
 use criterion::Criterion;
-use criterion::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use rand::Rng;
+use rand::prelude::IteratorRandom;
+
 use mcrl3_ldd::Ldd;
 use mcrl3_ldd::Storage;
 use mcrl3_ldd::Value;
@@ -10,9 +15,6 @@ use mcrl3_ldd::minus;
 use mcrl3_ldd::relational_product;
 use mcrl3_ldd::singleton;
 use mcrl3_ldd::union;
-use rand::Rng;
-use rand::prelude::IteratorRandom;
-use std::collections::HashSet;
 
 /// Returns a vector of the given length with random u64 values (from 0..max_value).
 pub fn random_vector(rng: &mut impl Rng, length: usize, max_value: Value) -> Vec<Value> {

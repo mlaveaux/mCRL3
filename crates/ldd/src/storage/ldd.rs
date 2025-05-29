@@ -21,6 +21,7 @@ pub type SharedProtectionSet = Rc<RefCell<ProtectionSet<LddIndex>>>;
 
 /// Every Ldd points to its root node in the Storage instance for maximal
 /// sharing. These Ldd instances can only be created from the storage.
+#[allow(clippy::mutable_key_type)]
 pub struct Ldd {
     ldd: LddRef<'static>,  // Reference in the node table.
     root: ProtectionIndex, // Index in the root set.

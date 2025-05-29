@@ -117,8 +117,7 @@ fn collect_aliases(imp: &mut ItemImpl) -> Result<HashMap<Ident, Vec<AliasSrc>>> 
         let mut alias_attrs = function
             .attrs
             .iter()
-            .filter(|attr| attr.path().is_ident("alias"))
-            .into_iter();
+            .filter(|attr| attr.path().is_ident("alias"));
 
         if let Some(attr) = alias_attrs.next() {
             let args: AliasArgs = attr.parse_args()?;
@@ -148,14 +147,14 @@ fn collect_aliases(imp: &mut ItemImpl) -> Result<HashMap<Ident, Vec<AliasSrc>>> 
 /// Extracts an identifier from a function argument.
 fn extract_ident_argument(input_arg: &FnArg) -> Result<Ident> {
     match input_arg {
-        FnArg::Receiver(_) => return Err(Error::new(input_arg.span(), "this argument should not be `self`")),
+        FnArg::Receiver(_) => Err(Error::new(input_arg.span(), "this argument should not be `self`")),
         FnArg::Typed(input_arg) => match &*input_arg.pat {
             Pat::Ident(pat) => Ok(pat.ident.clone()),
             _ => {
-                return Err(Error::new(
+                Err(Error::new(
                     input_arg.span(),
                     "this argument should be a plain identifier instead of a pattern",
-                ));
+                ))
             }
         },
     }
@@ -174,7 +173,7 @@ fn parse_fn<'a>(function: &'a mut ImplItemFn, alias_map: &mut HashMap<Ident, Vec
     let fn_name = function.sig.ident.clone();
     // Get the name of the first function argument
     let input_arg = extract_ident_argument(&function.sig.inputs[0])?;
-    let alias_srcs = alias_map.remove(&fn_name).unwrap_or_else(Vec::new);
+    let alias_srcs = alias_map.remove(&fn_name).unwrap_or_default();
 
     debug_assert!(
         alias_srcs.iter().any(|src| src.ident == fn_name),
@@ -229,7 +228,7 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
     });
 
     debug_assert!(
-        f.alias_srcs.len() >= 1,
+        !f.alias_srcs.is_empty(),
         "Function must have at least one alias source (itself)"
     );
     Ok(())
@@ -254,7 +253,7 @@ pub fn make_parser(attrs: proc_macro::TokenStream, input: proc_macro::TokenStrea
             )
         })
         .collect();
-    let aliased_rule_variants: Vec<_> = alias_map.iter().map(|(tgt, _)| tgt.clone()).collect();
+    let aliased_rule_variants: Vec<_> = alias_map.keys().cloned().collect();
     let shortcut_branches: Vec<_> = alias_map
         .iter()
         .flat_map(|(_tgt, srcs)| srcs)
@@ -280,7 +279,7 @@ pub fn make_parser(attrs: proc_macro::TokenStream, input: proc_macro::TokenStrea
             );
 
             let mut f = parse_fn(method, &mut alias_map)?;
-            apply_special_attrs(&mut f, &rule_enum)?;
+            apply_special_attrs(&mut f, rule_enum)?;
             Ok((f.fn_name.clone(), f))
         })
         .collect::<Result<_>>()?;

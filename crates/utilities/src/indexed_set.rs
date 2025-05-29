@@ -271,9 +271,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     /// Returns true iff the set contains the given element.
     pub fn contains(&self, element: &T) -> bool {
         // Compute the hash using our hash_builder
-        let mut hasher = self.hasher.build_hasher();
-        element.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = self.hasher.hash_one(element);
 
         // Create a temporary entry with the computed hash for lookup
         let temp_entry = IndexEntry { index: 0, hash };
@@ -362,13 +360,8 @@ impl<'a, T, Q: Hash> IndexValueEquivalent<'a, T, Q> {
 
 impl<T, Q: Equivalent<T>> Equivalent<IndexEntry> for IndexValueEquivalent<'_, T, Q> {
     fn equivalent(&self, key: &IndexEntry) -> bool {
-        if let Some(element) = self.table.get(key.index) {
-            if let IndexSetEntry::Filled(element) = element {
-                // Only check equivalence if the element is filled
-                self.value.equivalent(element)
-            } else {
-                false
-            }
+        if let Some(IndexSetEntry::Filled(element)) = self.table.get(key.index) {
+            self.value.equivalent(element)
         } else {
             false
         }
