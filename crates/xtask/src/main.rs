@@ -14,6 +14,7 @@ use benchmark::Rewriter;
 mod benchmark;
 mod coverage;
 mod discover_tests;
+mod package;
 mod sanitizer;
 
 fn main() -> Result<ExitCode, Box<dyn Error>> {
@@ -53,6 +54,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
         Some("memory-sanitizer") => sanitizer::memory_sanitizer(args.collect())?,
         Some("thread-sanitizer") => sanitizer::thread_sanitizer(args.collect())?,
         Some("discover-tests") => discover_tests::discover_tests()?,
+        Some("package") => package::package()?,
         Some(x) => {
             println!("Unknown task {x}");
             println!();
@@ -68,6 +70,6 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
 /// Print the help message.
 fn print_help() {
     println!(
-        "Available tasks: benchmark, discover-tests, coverage <cargo_args>, address-sanitizer, <cargo_args> thread-sanitizer <cargo_args>, memory-sanitizer <cargo_args>"
+        "Available tasks: benchmark, discover-tests, coverage <cargo_args>, address-sanitizer, <cargo_args> thread-sanitizer <cargo_args>, memory-sanitizer <cargo_args>, package"
     );
 }
