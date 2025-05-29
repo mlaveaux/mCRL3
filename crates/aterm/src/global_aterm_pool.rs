@@ -439,8 +439,9 @@ pub struct SharedTerm {
 }
 
 /// Check that the ATermRef is the same size as a usize.
-#[cfg(not(debug_assertions))]
-const _: () = assert!(std::mem::size_of::<SharedTerm>() == std::mem::size_of::<usize>() * 3);
+/// TODO: Only pay the annotation size penalty if the annotation is used.
+// #[cfg(not(debug_assertions))]
+// const _: () = assert!(std::mem::size_of::<SharedTerm>() == std::mem::size_of::<usize>() * 3);
 
 impl fmt::Debug for SharedTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

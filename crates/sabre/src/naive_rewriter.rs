@@ -78,8 +78,6 @@ impl NaiveRewriter {
         t: &DataExpression,
         stats: &mut RewritingStatistics,
     ) -> Option<&'a AnnouncementInnermost> {
-        //println!("term {}", t);
-
         // Start at the initial state
         let mut state_index = 0;
         loop {

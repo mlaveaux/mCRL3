@@ -71,8 +71,8 @@ const _: () = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usi
 #[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<Option<ATermRef>>() == std::mem::size_of::<usize>());
 
-/// These are safe because terms are never modified. Garbage collection is
-/// always performed with exclusive access.
+/// These are safe because terms are immutable. Garbage collection is
+/// always performed with exclusive access, and reference terms have no thread-local state.
 unsafe impl Send for ATermRef<'_> {}
 unsafe impl Sync for ATermRef<'_> {}
 

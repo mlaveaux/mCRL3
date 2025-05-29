@@ -6,10 +6,13 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-ahash.workspace = true
 mcrl3_aterm.workspace = true
+mcrl3_syntax.workspace = true
 mcrl3_macros.workspace = true
 mcrl3_utilities.workspace = true
+
+ahash.workspace = true
+indoc.workspace = true
 
 delegate.workspace = true
 thiserror.workspace = true

@@ -88,10 +88,8 @@ impl fmt::Display for EquivalenceClass {
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_aterm::ATerm;
     use mcrl3_data::DataExpression;
     use mcrl3_data::DataVariable;
-    use mcrl3_data::to_untyped_data_expression;
 
     use crate::test_utility::create_rewrite_rule;
 

@@ -6,6 +6,7 @@ use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
+use arbitrary::Arbitrary;
 use delegate::delegate;
 use mcrl3_unsafety::StablePointer;
 use mcrl3_utilities::ProtectionIndex;
@@ -13,8 +14,10 @@ use mcrl3_utilities::ProtectionIndex;
 use crate::SharedSymbol;
 use crate::THREAD_TERM_POOL;
 
-/// The public interface for a function symbol, can be used to write generic
+/// The public interface for a function symbol. Can be used to write generic
 /// functions that accept both `Symbol` and `SymbolRef`.
+/// 
+/// See [Term] for more information on how to use this trait with two lifetimes.
 pub trait Symb<'a, 'b> {
     /// Obtain the symbol's name.
     fn name(&'b self) -> &'a str;
@@ -35,7 +38,7 @@ pub trait Symb<'a, 'b> {
 /// An alias for the type that is used to reference into the symbol set.
 pub type SymbolIndex = StablePointer<SharedSymbol>;
 
-/// A reference to a function symbol in the term pool.
+/// A reference to a function symbol in the symbol pool.
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
     shared: SymbolIndex,
@@ -45,6 +48,10 @@ pub struct SymbolRef<'a> {
 /// Check that the SymbolRef is the same size as a usize.
 #[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<SymbolRef>() == std::mem::size_of::<usize>());
+
+/// Check that the Option<SymbolRef> is the same size as a usize using niche value optimisation.
+#[cfg(not(debug_assertions))]
+const _: () = assert!(std::mem::size_of::<Option<SymbolRef>>() == std::mem::size_of::<usize>());
 
 /// A reference to a function symbol with a known lifetime.
 impl<'a> SymbolRef<'a> {
@@ -105,7 +112,7 @@ impl fmt::Debug for SymbolRef<'_> {
     }
 }
 
-/// A protected function symbol.
+/// A protected function symbol, with the same interface as `SymbolRef`.
 pub struct Symbol {
     symbol: SymbolRef<'static>,
     root: ProtectionIndex,
@@ -236,3 +243,27 @@ impl Borrow<SymbolRef<'static>> for Symbol {
 }
 
 impl Eq for Symbol {}
+
+impl Arbitrary<'_> for Symbol {
+    /// GEnerates a random symbol with a name and arity up to and including 3.
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let name = u.arbitrary::<String>()?;
+        let arity = u.int_in_range(0..=3)?;
+        Ok(Symbol::new(name, arity))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_property_symbol_creation() {
+        arbtest::arbtest(|u| {
+            let symbol = Symbol::arbitrary(u)?;
+            assert!(symbol.arity() <= 10);
+            Ok(())
+        });
+    }
+
+}

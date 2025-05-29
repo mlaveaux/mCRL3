@@ -8,9 +8,11 @@ use criterion::Criterion;
 use rand::distr::Bernoulli;
 use rand::distr::Distribution;
 
-// Settings for the benchmarks.
+/// The number of iterations to run for each benchmark.
 pub const NUM_ITERATIONS: usize = 100000;
+/// The number of threads to use for the benchmarks.
 pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 20];
+/// The (average) number of read operations per write operation.
 pub const READ_RATIOS: [u32; 6] = [1, 10, 100, 1000, 10000, 100000];
 
 /// Execute the benchmarks for a given readers-writer lock implementation.
