@@ -19,6 +19,7 @@ mcrl3_utilities.workspace = true
 
 ahash.workspace = true
 arbitrary.workspace = true
+arbtest.workspace = true
 delegate.workspace = true
 hashbrown.workspace = true
 itertools.workspace = true

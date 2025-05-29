@@ -20,7 +20,6 @@ use std::sync::Arc;
 pub struct StablePointer<T> {
     /// The raw pointer to the element.
     /// This is a NonNull pointer, which means it is guaranteed to be non-null.
-    /// The pointer is not dereferenced directly, but through the StablePointerSet.
     ptr: NonNull<T>,
 
     /// Keep track of reference counts in debug mode.
