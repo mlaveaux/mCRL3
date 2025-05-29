@@ -115,11 +115,6 @@ impl GlobalTermPool {
         self.terms.len()
     }
 
-    /// Returns the capacity of terms in the pool.
-    pub fn capacity(&self) -> usize {
-        self.terms.capacity()
-    }
-
     /// Creates a term storing a single integer value.
     pub fn create_int<P>(&mut self, value: usize, protect: P) -> ATerm
     where

@@ -19,16 +19,16 @@ pub trait Parser {
     fn allows_shortcut(rule: Self::Rule) -> bool;
 
     /// Parses a `&str` starting from `rule`
-    fn parse<'i>(rule: Self::Rule, input_str: &'i str) -> Result<Nodes<'i, Self::Rule, ()>, Error<Self::Rule>> {
+    fn parse(rule: Self::Rule, input_str: &str) -> Result<Nodes<'_, Self::Rule, ()>, Error<Self::Rule>> {
         Self::parse_with_userdata(rule, input_str, ())
     }
 
     /// Parses a `&str` starting from `rule`, carrying `user_data` through the parser methods.
-    fn parse_with_userdata<'i, D>(
+    fn parse_with_userdata<D>(
         rule: Self::Rule,
-        input_str: &'i str,
+        input_str: &str,
         user_data: D,
-    ) -> Result<Nodes<'i, Self::Rule, D>, Error<Self::Rule>> {
+    ) -> Result<Nodes<'_, Self::Rule, D>, Error<Self::Rule>> {
         let pairs = Self::Parser::parse(rule, input_str)?;
         Ok(Nodes::new(input_str, pairs, user_data))
     }

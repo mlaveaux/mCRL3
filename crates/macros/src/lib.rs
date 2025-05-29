@@ -28,6 +28,7 @@ use mcrl3_derive_terms::mcrl3_derive_terms_impl;
 /// }
 ///
 /// use inner::*;
+/// ```
 ///
 /// # Testing
 ///
@@ -35,8 +36,6 @@ use mcrl3_derive_terms::mcrl3_derive_terms_impl;
 /// Working on procedural macros is typically difficult, but there are unit and integration tests to showcase
 /// common patterns. Alternatively, install `cargo install cargo-expand` and run the command `cargo expand`
 /// in for example `mcrl3-macros` to print the Rust code with the macros expanded.
-
-/// ```
 #[proc_macro_attribute]
 pub fn mcrl3_derive_terms(
     _attributes: proc_macro::TokenStream,

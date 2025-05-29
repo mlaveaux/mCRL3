@@ -29,7 +29,7 @@ pub struct EquivalenceClass {
 pub fn derive_equivalence_classes(rule: &Rule) -> Vec<EquivalenceClass> {
     let mut var_equivalences = vec![];
 
-    for (term, pos) in DataPositionIterator::new(rule.lhs.copy().into()) {
+    for (term, pos) in DataPositionIterator::new(rule.lhs.copy()) {
         if is_data_variable(&term) {
             // Register the position of the variable
             update_equivalences(&mut var_equivalences, &DataVariableRef::from(term), pos);

@@ -112,7 +112,7 @@ impl InnermostRewriter {
                             InnermostStack::add_rewrite(
                                 &mut write_configs,
                                 &mut write_terms,
-                                arg.into(),
+                                arg,
                                 top_of_stack + offset,
                             );
                         }
@@ -136,7 +136,7 @@ impl InnermostRewriter {
                         drop(write_terms);
                         drop(write_configs);
 
-                        match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term.copy().into()) {
+                        match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term.copy()) {
                             Some((_announcement, annotation)) => {
                                 debug_trace!(
                                     "rewrite {} => {} using rule {}",

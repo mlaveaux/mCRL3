@@ -251,8 +251,5 @@ mod tests {
             1.0,
             14.0,
         );
-
-        // We've successfully rendered without panicking
-        assert!(true);
     }
 }

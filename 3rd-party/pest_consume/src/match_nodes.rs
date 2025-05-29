@@ -184,10 +184,13 @@ where
     fn node_name(&self, n: &Self::Node) -> P::AliasedRule {
         n.as_aliased_rule::<P>()
     }
+
     fn tag<'a>(&self, n: &'a Self::Node) -> Option<&'a str> {
         n.as_pair().as_node_tag()
     }
+
     fn error(self, message: String) -> Self::Error {
+        // TODO: What is this syntax
         (&self).error(message)
     }
 }

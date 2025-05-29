@@ -19,9 +19,7 @@ pub struct FemtovgRenderer {
 
 impl FemtovgRenderer {
     pub fn new(lts: Arc<LabelledTransitionSystem>) -> Self {
-        Self {
-            lts,
-        }
+        Self { lts }
     }
 
     /// Render the current state of the simulation into the canvas.
@@ -29,7 +27,7 @@ impl FemtovgRenderer {
         &mut self,
         canvas: &mut Canvas<T>,
         viewer: &Viewer,
-        draw_actions: bool,
+        draw_actions_labels: bool,
         state_radius: f32,
         view_x: f32,
         view_y: f32,
@@ -48,6 +46,10 @@ impl FemtovgRenderer {
         // The color information for states
         let state_inner_paint = Paint::color(Color::white());
         let initial_state_paint = Paint::color(Color::rgb(100, 255, 100));
+
+        let mut text_paint = Paint::color(Color::black());
+        text_paint.set_font_size(label_text_size);
+        text_paint.set_line_width(1.0);
 
         let mut state_outer = Paint::color(Color::black());
         state_outer.set_line_width(1.0);
@@ -104,9 +106,14 @@ impl FemtovgRenderer {
                 };
 
                 // Draw the text label
-                if draw_actions {
+                if draw_actions_labels {
                     // Calculate the transformed position for text
-                    canvas.stroke_text(label_position.x, label_position.y, &self.lts.labels()[*label], &state_outer)?;
+                    canvas.stroke_text(
+                        label_position.x,
+                        label_position.y,
+                        &self.lts.labels()[*label],
+                        &state_outer,
+                    )?;
                 }
             }
         }
@@ -123,8 +130,8 @@ impl FemtovgRenderer {
             }
         }
 
-        //canvas.fill_path(&path, &state_outer);
-        //canvas.fill_path(&initial_state_path, &initial_state_paint);
+        canvas.fill_path(&path, &state_outer);
+        canvas.fill_path(&initial_state_path, &initial_state_paint);
         canvas.stroke_path(&path, &state_inner_paint);
 
         Ok(())
@@ -150,6 +157,8 @@ mod tests {
         let viewer = Viewer::new(lts.clone());
         let mut renderer = FemtovgRenderer::new(lts);
 
-        renderer.render(&mut canvas, &viewer, true, 10.0, 0.0, 0.0, 800, 600, 1.0, 12.0);
+        renderer
+            .render(&mut canvas, &viewer, false, 10.0, 0.0, 0.0, 800, 600, 1.0, 12.0)
+            .unwrap();
     }
 }

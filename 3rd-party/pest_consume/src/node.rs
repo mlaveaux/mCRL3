@@ -184,7 +184,7 @@ where
     }
 }
 
-impl<'i, R, D> DoubleEndedIterator for Nodes<'i, R, D>
+impl<R, D> DoubleEndedIterator for Nodes<'_, R, D>
 where
     R: RuleType,
     D: Clone,
@@ -196,13 +196,13 @@ where
     }
 }
 
-impl<'i, R: RuleType, D> std::fmt::Display for Node<'i, R, D> {
+impl<R: RuleType, D> std::fmt::Display for Node<'_, R, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.pair.fmt(f)
     }
 }
 
-impl<'i, R: RuleType, D> std::fmt::Display for Nodes<'i, R, D> {
+impl<R: RuleType, D> std::fmt::Display for Nodes<'_, R, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.pairs.fmt(f)
     }

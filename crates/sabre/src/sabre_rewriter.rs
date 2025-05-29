@@ -94,8 +94,7 @@ impl SabreRewriter {
                         None => {
                             // Observe a symbol according to the state label of the set automaton.
                             let pos: DataExpressionRef = leaf_term
-                                .get_data_position(automaton.states()[leaf.state].label())
-                                .into();
+                                .get_data_position(automaton.states()[leaf.state].label());
 
                             let function_symbol = pos.data_function_symbol();
                             stats.symbol_comparisons += 1;

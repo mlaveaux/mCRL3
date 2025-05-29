@@ -81,15 +81,12 @@ mod inner {
         ///     - function symbol                  f -> []
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
         #[mcrl3_ignore]
-        pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'_>> + ExactSizeIterator + use<'_> {
+        pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'_>>  + use<'_> {
             let mut result = self.term.arguments();
             if is_data_application(&self.term) {
                 result.next();
-            } else if is_data_function_symbol(&self.term) {
+            } else if is_data_function_symbol(&self.term) || is_data_variable(&self.term) {
                 result.next();
-                result.next();
-            } else if is_data_variable(&self.term) {
-                result.next(); 
                 result.next();
             } else {
                 panic!("data_arguments not implemented for {}", self);
@@ -407,16 +404,13 @@ pub use inner::*;
 
 impl<'a> DataExpressionRef<'a> {
 
-    pub fn data_arguments(&self) -> impl Iterator<Item = DataExpressionRef<'a>> + ExactSizeIterator + use<'a> {
+    pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'a>> + use<'a> {
         let mut result = self.term.arguments();
         if is_data_application(&self.term) {
             result.next();
-        } else if is_data_function_symbol(&self.term) {
+        } else if is_data_function_symbol(&self.term) || is_data_variable(&self.term) {
             result.next();
             result.next();
-        } else if is_data_variable(&self.term) {
-            result.next(); 
-            result.next(); 
         } else {
             panic!("data_arguments not implemented for {}", self);
         }

@@ -433,7 +433,7 @@ impl State {
                                 let mut new_pos = mo.position.clone();
                                 new_pos.push(index + 1);
                                 new_obligations.push(MatchObligation {
-                                    pattern: t.protect().into(),
+                                    pattern: t.protect(),
                                     position: new_pos,
                                 });
                             }
@@ -583,7 +583,7 @@ fn find_symbols(t: &DataExpressionRef<'_>, symbols: &mut HashMap<DataFunctionSym
 
         add_symbol(t.data_function_symbol().protect(), t.data_arguments().len(), symbols);
         for arg in t.data_arguments() {
-            find_symbols(&arg.into(), symbols);
+            find_symbols(&arg, symbols);
         }
     } else if is_data_machine_number(t) {
         // Ignore machine numbers during matching?

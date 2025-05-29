@@ -84,7 +84,7 @@ impl NaiveRewriter {
             let state = &automaton.states()[state_index];
 
             // Get the symbol at the position state.label
-            let u = t.get_data_position(&state.label());
+            let u = t.get_data_position(state.label());
             let symbol = u.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match

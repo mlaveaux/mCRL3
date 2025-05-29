@@ -49,9 +49,9 @@ pub const fn align_up(num: u32, align: u32) -> u32 {
 #[derive(Clone, Debug, ValueEnum, PartialEq, Eq, PartialOrd, Ord)]
 enum ViewerType {
     /// Uses tiny-skia to render the graph on the CPU
-    CPU,
+    Cpu,
     /// Uses femtovg to render the graph on the GPU, with wgpu
-    GPU,
+    Gpu,
 }
 
 #[derive(Parser, Debug)]
@@ -60,7 +60,7 @@ pub struct Cli {
     #[arg(value_name = "FILE")]
     labelled_transition_system: Option<String>,
 
-    #[arg(default_value_t = ViewerType::CPU, value_enum)]
+    #[arg(default_value_t = ViewerType::Cpu, value_enum)]
     viewer: ViewerType,
 }
 
@@ -116,7 +116,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
     let cli = Cli::parse();
 
-    let wgpu = if cli.viewer == ViewerType::GPU {
+    let wgpu = if cli.viewer == ViewerType::Gpu {
         // Initialize wgpu for GPU rendering
         Some(init_wgpu().await?)
     } else {
@@ -239,7 +239,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                     let start = Instant::now();
 
                     match cli.viewer {
-                        ViewerType::CPU => {
+                        ViewerType::Cpu => {
                             // Resize the local pixel buffer if necessary
                             if pixel_buffer.width() != settings.width || pixel_buffer.height() != settings.height {
                                 *pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height);
@@ -255,7 +255,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                             if let Some(skia_renderer) = skia_renderer {
                                 skia_renderer.render(
                                     &mut image,
-                                    &viewer,
+                                    viewer,
                                     settings.draw_action_labels,
                                     settings.state_radius,
                                     settings.view_x,
@@ -269,7 +269,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
                             *state.canvas.lock().unwrap() = pixel_buffer.clone();
                         }
-                        ViewerType::GPU => {
+                        ViewerType::Gpu => {
                             let (device, queue) = wgpu.as_ref().expect("GPU rendering requires wgpu to be initialized");
 
                             // Render the graph using femtovg on the GPU
@@ -314,7 +314,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                                     settings.height,
                                     settings.zoom_level,
                                     settings.label_text_size,
-                                );
+                                )?;
 
                                 let buffer = femtovg_info.canvas.flush_to_surface(&femtovg_info.texture);
 
@@ -430,7 +430,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
                     // Copy layout into the view.
                     if let Some(viewer) = state.viewer.lock().unwrap().as_mut() {
-                        viewer.update(&layout);
+                        viewer.update(layout);
                     }
 
                     // Request a redraw (if not already in progress).
@@ -503,7 +503,6 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
     // Simply return the current canvas, can be updated in the meantime.
     {
-        let canvas = state.clone();
         let state = state.clone();
         let settings = settings.clone();
         let render_handle = render_handle.clone();
