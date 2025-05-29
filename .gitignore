@@ -17,3 +17,10 @@
 
 # Ignore files created by the compiling rewriter.
 crates/sabre_compiling/tmp/
+
+# Ignore files created by the fuzzer
+corpus/
+artifacts/
+
+# Ignore files created for the release package
+package/
