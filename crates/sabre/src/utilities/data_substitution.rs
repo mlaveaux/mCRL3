@@ -1,6 +1,7 @@
 use mcrl3_aterm::Protected;
+use mcrl3_aterm::Term;
 use mcrl3_aterm::ThreadTermPool;
-use mcrl3_data::DataApplication;
+use mcrl3_data::is_data_application;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 
@@ -46,12 +47,14 @@ fn substitute_rec(
         // in this case we have arrived at the place where 'new_subterm' needs to be injected
         new_subterm
     } else {
-        // else recurse deeper into 't'
-        let new_child_index = p[depth] - 1;
-        let new_child = substitute_rec(tp, &t.data_arg(new_child_index), new_subterm, p, args, depth + 1);
+        // else recurse deeper into 't', do not subtract 1 from the index, since we are using DataPosition
+        let new_child_index = p[depth];
+        let new_child = substitute_rec(tp, &t.arg(new_child_index).into(), new_subterm, p, args, depth + 1);
+
+        debug_assert!(is_data_application(t), "Can only perform data substitution on DataApplications");
 
         let mut write_args = args.write();
-        for (index, arg) in t.data_arguments().enumerate() {
+        for (index, arg) in t.arguments().enumerate() {
             if index == new_child_index {
                 let t = write_args.protect(&new_child);
                 write_args.push(t.into());
@@ -61,8 +64,8 @@ fn substitute_rec(
             }
         }
 
-        // Must be an application, so we can use the data function symbol.
-        let result = DataApplication::with_args(&t.data_function_symbol(), &write_args);
+        // Avoid the (more expensive) DataApplication constructor by simply having the data_function_symbol in args.
+        let result = tp.create_term(&t.get_head_symbol(), &write_args);
         drop(write_args);
 
         // TODO: When write is dropped we check whether all terms where inserted, but this clear violates that assumption.
