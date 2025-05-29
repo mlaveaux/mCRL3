@@ -254,15 +254,15 @@ mod inner {
     impl DataApplication {
         /// Create a new data application with the given head and arguments.
         #[mcrl3_ignore]
-        pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {
-            // TODO: Avoid this protect, but otherwise ds is borrowed again in the copy.
-            let symbol =
-                DATA_SYMBOLS.with_borrow_mut(|ds| ds.get_data_application_symbol(arguments.len() + 1).protect());
+        pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {            
+            DATA_SYMBOLS.with_borrow_mut(|ds| {
+                let symbol = ds.get_data_application_symbol(arguments.len() + 1).copy();
 
-            let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
-            let term = ATerm::with_iter(&symbol, args);
+                let args = iter::once(head.copy()).chain(arguments.iter().map(|t| t.copy()));
+                let term = ATerm::with_iter(&symbol, args);
 
-            DataApplication { term }
+                DataApplication { term }
+            })
         }
 
         /// Create a new data application with the given head and arguments.
