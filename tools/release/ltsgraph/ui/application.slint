@@ -209,6 +209,7 @@ export component Application inherits Window {
                 toggled => {
                     Settings.draw_action_labels = self.checked; 
                     settings_changed();
+                    request_redraw();
                 }
             }
             
@@ -223,6 +224,7 @@ export component Application inherits Window {
                 changed => { 
                     Settings.state_radius = self.value; 
                     settings_changed();
+                    request_redraw();
                 }
             }
 
@@ -237,6 +239,7 @@ export component Application inherits Window {
                 changed => { 
                     Settings.label_text_height = self.value; 
                     settings_changed();
+                    request_redraw();
                 }
             }
         }

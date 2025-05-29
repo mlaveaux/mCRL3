@@ -5,24 +5,21 @@ slint::include_modules!();
 
 use std::fs::File;
 use std::ops::Deref;
-use std::ops::DerefMut;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::RwLock;
-use std::thread;
-use std::time::Duration;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use clap::Parser;
 
 use clap::ValueEnum;
-use femtovg::renderer::WGPURenderer;
 use femtovg::Canvas;
+use femtovg::renderer::WGPURenderer;
 use log::debug;
 use log::info;
-use ltsgraph::init_wgpu;
 use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
@@ -30,6 +27,7 @@ use slint::invoke_from_event_loop;
 use slint::quit_event_loop;
 
 use ltsgraph::PauseableThread;
+use ltsgraph::init_wgpu;
 use ltsgraph::show_error_dialog;
 use mcrl3_gui::console;
 use mcrl3_lts::LabelledTransitionSystem;
@@ -39,6 +37,14 @@ use mcrl3_ltsgraph_lib::GraphLayout;
 use mcrl3_ltsgraph_lib::SkiaRenderer;
 use mcrl3_ltsgraph_lib::Viewer;
 use mcrl3_utilities::MCRL3Error;
+use wgpu::TextureDescriptor;
+use wgpu::TextureFormat;
+use wgpu::TextureUsages;
+
+/// Aligns a number up to the next multiple of the given alignment.
+pub const fn align_up(num: u32, align: u32) -> u32 {
+    ((num) + ((align) - 1)) & !((align) - 1)
+}
 
 #[derive(Clone, Debug, ValueEnum, PartialEq, Eq, PartialOrd, Ord)]
 enum ViewerType {
@@ -58,45 +64,13 @@ pub struct Cli {
     viewer: ViewerType,
 }
 
-/// Represents the viewer state including the viewer, pixel buffer, and renderer.
-/// Encapsulates all rendering-related components.
-struct ViewerState {
-    viewer: Viewer,
-    pixel_buffer: SharedPixelBuffer<Rgba8Pixel>,
-
-    skia_renderer: SkiaRenderer,
-    femtovg_renderer: Option<(FemtovgRenderer, Canvas<WGPURenderer>)>,
-}
-
-impl ViewerState {
-    pub fn new(lts: Arc<LabelledTransitionSystem>, wgpu: &Option<(wgpu::Device, wgpu::Queue)>) -> Result<Self, MCRL3Error> {
-        let viewer = Viewer::new(lts.clone());
-        let pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(1, 1);
-        let skia_renderer = SkiaRenderer::new(lts.clone());
-
-        let femtovg_renderer = if let Some((device, queue)) = wgpu {
-            let gpu_renderer = WGPURenderer::new(device.clone(), queue.clone());
-            let canvas = Canvas::new(gpu_renderer)?;
-
-            Some((FemtovgRenderer::new(lts), canvas))
-        } else {
-            None
-        };
-
-
-        Ok(Self {
-            viewer,
-            pixel_buffer,
-            skia_renderer,
-            femtovg_renderer
-        })
-    }
-}
-
-/// Contains all the GUI related state information.
-struct GuiState {
-    graph_layout: Mutex<GraphLayout>,
-    viewer: Mutex<ViewerState>,
+/// Contains all the GUI related state information, both the graph layout and the viewer state.
+struct State {
+    graph_layout: Mutex<Option<GraphLayout>>,
+    viewer: Mutex<Option<Viewer>>,
+    canvas: Mutex<SharedPixelBuffer<Rgba8Pixel>>,
+    lts: Mutex<Option<Arc<LabelledTransitionSystem>>>,
+    reload_lts: AtomicBool,
 }
 
 #[derive(Clone, Default)]
@@ -150,13 +124,17 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
     };
 
     // Stores the shared state of the GUI components.
-    let state = Arc::new(RwLock::new(None::<GuiState>));
     let settings = Arc::new(Mutex::new(GuiSettings::new()));
-    let canvas = Arc::new(Mutex::new(SharedPixelBuffer::new(1, 1)));
+    let state = Arc::new(State {
+        graph_layout: Mutex::new(None),
+        viewer: Mutex::new(None),
+        canvas: Mutex::new(SharedPixelBuffer::new(1, 1)),
+        reload_lts: AtomicBool::new(false),
+        lts: Mutex::new(None),
+    });
 
     // Initialize the GUI, but show it later.
     let app = Application::new()?;
-
     {
         let app_weak = app.as_weak();
         let settings = settings.clone();
@@ -187,96 +165,242 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
         let state = state.clone();
         let app_weak: slint::Weak<Application> = app.as_weak();
         let settings = settings.clone();
-        let canvas = canvas.clone();
+        let settings_init = settings.clone();
 
-        Arc::new(PauseableThread::new("ltsgraph canvas worker", move || {
-            if let Some(state) = state.read().unwrap().deref() {
-                // Render a new frame...
-                let start = Instant::now();
-                let mut viewer_state = state.viewer.lock().unwrap();
+        /// Local information required for the femtovg renderer.
+        struct FemtovgInfo {
+            renderer: FemtovgRenderer,
+            canvas: Canvas<WGPURenderer>,
+            texture: wgpu::Texture,
+            buffer: Arc<wgpu::Buffer>,
+        }
 
-                // Resize the canvas when necessary
-                let settings_clone = settings.lock().unwrap().clone();
-                if viewer_state.pixel_buffer.width() != settings_clone.width
-                    || viewer_state.pixel_buffer.height() != settings_clone.height
-                {
-                    viewer_state.pixel_buffer =
-                        SharedPixelBuffer::<Rgba8Pixel>::new(settings_clone.width, settings_clone.height);
-                }
+        Arc::new(PauseableThread::new(
+            "ltsgraph canvas worker",
+            move || {
+                let settings = settings_init.lock().unwrap().clone();
 
-                let guard = viewer_state.deref_mut();
+                Ok((
+                    None::<SkiaRenderer>,
+                    None::<FemtovgInfo>,
+                    SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height),
+                ))
+            },
+            move |(skia_renderer, femtovg_info, pixel_buffer)| {
+                let settings = settings.lock().unwrap().clone();
 
-                match cli.viewer {
-                    ViewerType::CPU => {
-                        let mut image = tiny_skia::PixmapMut::from_bytes(
-                            guard.pixel_buffer.make_mut_bytes(),
-                            settings_clone.width,
-                            settings_clone.height,
-                        )
-                        .unwrap();
+                if state.reload_lts.load(Ordering::Relaxed) {
+                    info!("Creating the renderer");
+                    if let Some(lts) = state.lts.lock().unwrap().as_ref() {
+                        *skia_renderer = Some(SkiaRenderer::new(lts.clone()));
 
-                        guard.skia_renderer.render(
-                            &mut image,
-                            &guard.viewer,
-                            settings_clone.draw_action_labels,
-                            settings_clone.state_radius,
-                            settings_clone.view_x,
-                            settings_clone.view_y,
-                            settings_clone.width,
-                            settings_clone.height,
-                            settings_clone.zoom_level,
-                            settings_clone.label_text_size,
-                        );                        
+                        *femtovg_info = if let Some((device, queue)) = &wgpu {
+                            let gpu_renderer = WGPURenderer::new(device.clone(), queue.clone());
+                            let canvas = Canvas::new(gpu_renderer)?;
+
+                            // Create the texture and buffer for the femtovg renderer
+                            let texture = device.create_texture(&TextureDescriptor {
+                                label: Some("ltsgraph canvas texture"),
+                                size: wgpu::Extent3d {
+                                    width: settings.width,
+                                    height: settings.height,
+                                    depth_or_array_layers: 1,
+                                },
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: wgpu::TextureDimension::D2,
+                                format: TextureFormat::Rgba8UnormSrgb,
+                                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
+                                view_formats: &[],
+                            });
+
+                            // This buffer is used to copy the rendered image to the texture.
+                            let buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+                                label: Some("ltsgraph canvas buffer"),
+                                size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * settings.height * 4) as u64,
+                                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                                mapped_at_creation: false,
+                            }));
+
+                            Some(FemtovgInfo {
+                                renderer: FemtovgRenderer::new(lts.clone()),
+                                canvas,
+                                texture,
+                                buffer,
+                            })
+                        } else {
+                            None
+                        };
                     }
-                    // ViewerType::GPU => {
-                    //     // Render the graph using femtovg on the GPU
-                    //     if let Some((femtovg_renderer, canvas)) = &mut guard.femtovg_renderer {
-                    //         femtovg_renderer.render(
-                    //             canvas,
-                    //             &guard.viewer,
-                    //             settings_clone.draw_action_labels,
-                    //             settings_clone.state_radius,
-                    //             settings_clone.view_x,
-                    //             settings_clone.view_y,
-                    //             settings_clone.width,
-                    //             settings_clone.height,
-                    //             settings_clone.zoom_level,
-                    //             settings_clone.label_text_size,
-                    //         );
-                    //     } 
-                    // }
+                    state.reload_lts.store(false, Ordering::Relaxed);
                 }
 
-                debug!(
-                    "Rendering step ({} by {}) took {} ms",
-                    settings_clone.width,
-                    settings_clone.height,
-                    (Instant::now() - start).as_millis()
-                );
+                if let Some(viewer) = state.viewer.lock().unwrap().as_mut() {
+                    let start = Instant::now();
 
-                *canvas.lock().unwrap() = viewer_state.pixel_buffer.clone();
-            } else {
-                // Resize the canvas when necessary
-                let settings_clone = settings.lock().unwrap().clone();
-                let mut canvas = canvas.lock().unwrap();
-                if canvas.width() != settings_clone.width || canvas.height() != settings_clone.height {
-                    *canvas = SharedPixelBuffer::<Rgba8Pixel>::new(settings_clone.width, settings_clone.height);
+                    match cli.viewer {
+                        ViewerType::CPU => {
+                            // Resize the local pixel buffer if necessary
+                            if pixel_buffer.width() != settings.width || pixel_buffer.height() != settings.height {
+                                *pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height);
+                            }
+
+                            let mut image = tiny_skia::PixmapMut::from_bytes(
+                                pixel_buffer.make_mut_bytes(),
+                                settings.width,
+                                settings.height,
+                            )
+                            .unwrap();
+
+                            if let Some(skia_renderer) = skia_renderer {
+                                skia_renderer.render(
+                                    &mut image,
+                                    &viewer,
+                                    settings.draw_action_labels,
+                                    settings.state_radius,
+                                    settings.view_x,
+                                    settings.view_y,
+                                    settings.width,
+                                    settings.height,
+                                    settings.zoom_level,
+                                    settings.label_text_size,
+                                );
+                            }
+
+                            *state.canvas.lock().unwrap() = pixel_buffer.clone();
+                        }
+                        ViewerType::GPU => {
+                            let (device, queue) = wgpu.as_ref().expect("GPU rendering requires wgpu to be initialized");
+
+                            // Render the graph using femtovg on the GPU
+                            if let Some(femtovg_info) = femtovg_info {
+                                if femtovg_info.texture.width() != settings.width
+                                    || femtovg_info.texture.height() != settings.height
+                                {
+                                    // Create the texture and buffer for the femtovg renderer
+                                    femtovg_info.texture = device.create_texture(&TextureDescriptor {
+                                        label: Some("ltsgraph canvas texture"),
+                                        size: wgpu::Extent3d {
+                                            width: settings.width,
+                                            height: settings.height,
+                                            depth_or_array_layers: 1,
+                                        },
+                                        mip_level_count: 1,
+                                        sample_count: 1,
+                                        dimension: wgpu::TextureDimension::D2,
+                                        format: TextureFormat::Rgba8UnormSrgb,
+                                        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
+                                        view_formats: &[],
+                                    });
+
+                                    // This buffer is used to copy the rendered image to the texture.
+                                    femtovg_info.buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+                                        label: Some("ltsgraph canvas buffer"),
+                                        size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * settings.height * 4) as u64,
+                                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                                        mapped_at_creation: false,
+                                    }));
+                                }
+
+                                // Render the texture using femtovg
+                                femtovg_info.renderer.render(
+                                    &mut femtovg_info.canvas,
+                                    &viewer,
+                                    settings.draw_action_labels,
+                                    settings.state_radius,
+                                    settings.view_x,
+                                    settings.view_y,
+                                    settings.width,
+                                    settings.height,
+                                    settings.zoom_level,
+                                    settings.label_text_size,
+                                );
+
+                                let buffer = femtovg_info.canvas.flush_to_surface(&femtovg_info.texture);
+
+                                // Copy the texture to a buffer such that it can be mapped on the CPU
+                                let copy = femtovg_info.texture.as_image_copy();
+
+                                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("ltsgraph canvas encoder"),
+                                });
+
+                                encoder.copy_texture_to_buffer(
+                                    copy,
+                                    wgpu::TexelCopyBufferInfo {
+                                        buffer: &femtovg_info.buffer,
+                                        layout: wgpu::TexelCopyBufferLayout {
+                                            offset: 0,
+                                            bytes_per_row: Some(align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * 4),
+                                            rows_per_image: Some(settings.height),
+                                        },
+                                    },
+                                    wgpu::Extent3d {
+                                        width: femtovg_info.texture.width(),
+                                        height: femtovg_info.texture.height(),
+                                        depth_or_array_layers: 1,
+                                    },
+                                );
+
+                                queue.submit([buffer, encoder.finish()]);
+
+                                let buffer = femtovg_info.buffer.clone();
+                                let state = state.clone();
+                                femtovg_info
+                                    .buffer
+                                    .slice(..)
+                                    .map_async(wgpu::MapMode::Read, move |result| {
+                                        if result.is_ok() {
+                                            // Copy the data from the buffer to the pixel buffer   
+
+                                            let mut canvas = state.canvas.lock().unwrap() ;
+                                            
+                                            *canvas = SharedPixelBuffer::clone_from_slice(
+                                                    buffer
+                                                    .slice(..)
+                                                    .get_mapped_range()
+                                                    .deref(),
+                                                settings.width,
+                                                settings.height);
+
+                                            buffer.unmap();
+                                        }
+                                    });
+
+                                // Wait for the buffer to be mapped and the data to be copied.                                
+                                device.poll(wgpu::Maintain::Wait);
+                            }
+                        }
+                    }
+
+                    debug!(
+                        "Rendering step ({} by {}) took {} ms",
+                        settings.width,
+                        settings.height,
+                        (Instant::now() - start).as_millis()
+                    );
+                } else {
+                    // If we are not rendering the graph, we still need to ensure the canvas is initialized.
+                    let mut canvas = state.canvas.lock().unwrap();
+                    if canvas.width() != settings.width || canvas.height() != settings.height {
+                        *canvas = SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height);
+                    }
                 }
-            }
 
-            // Request the to be updated.
-            let app_weak = app_weak.clone();
-            invoke_from_event_loop(move || {
-                if let Some(app) = app_weak.upgrade() {
-                    // Update the canvas
-                    app.global::<Settings>()
-                        .set_refresh(!app.global::<Settings>().get_refresh());
-                };
-            })
-            .unwrap();
+                // Request the canvas to be updated.
+                let app_weak = app_weak.clone();
+                invoke_from_event_loop(move || {
+                    if let Some(app) = app_weak.upgrade() {
+                        // Update the canvas
+                        app.global::<Settings>()
+                            .set_refresh(!app.global::<Settings>().get_refresh());
+                    };
+                })
+                .unwrap();
 
-            false
-        })?)
+                Ok(false)
+            },
+        )?)
     };
 
     // Run the graph layout algorithm in a separate thread to avoid blocking the UI.
@@ -285,36 +409,38 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
         let settings = settings.clone();
         let render_handle = render_handle.clone();
 
-        Arc::new(PauseableThread::new("ltsgraph layout worker", move || {
-            let start = Instant::now();
-            let mut is_stable = true;
+        Arc::new(PauseableThread::new(
+            "ltsgraph layout worker",
+            || Ok(()),
+            move |_| {
+                let mut is_stable = true;
 
-            if let Some(state) = state.read().unwrap().deref() {
-                // Read the settings and free the lock since otherwise the callback above blocks.
-                let settings = settings.lock().unwrap().clone();
-                let mut layout = state.graph_layout.lock().unwrap();
+                if let Some(layout) = state.graph_layout.lock().unwrap().as_mut() {
+                    // Read the settings and free the lock since otherwise the callback above blocks.
+                    let settings = settings.lock().unwrap().clone();
 
-                is_stable = layout.update(settings.handle_length, settings.repulsion_strength, settings.delta);
-                if is_stable {
-                    info!("Layout is stable!");
+                    let start = Instant::now();
+                    is_stable = layout.update(settings.handle_length, settings.repulsion_strength, settings.delta);
+                    if is_stable {
+                        info!("Layout is stable!");
+                    }
+
+                    let duration = Instant::now() - start;
+                    debug!("Layout step took {} ms", duration.as_millis());
+
+                    // Copy layout into the view.
+                    if let Some(viewer) = state.viewer.lock().unwrap().as_mut() {
+                        viewer.update(&layout);
+                    }
+
+                    // Request a redraw (if not already in progress).
+                    render_handle.resume();
                 }
 
-                // Copy layout into the view.
-                let mut viewer_state = state.viewer.lock().unwrap();
-                viewer_state.viewer.update(&layout);
-
-                // Request a redraw (if not already in progress).
-                render_handle.resume();
-            }
-
-            // Keep at least 16 milliseconds between two layout runs.
-            let duration = Instant::now() - start;
-            debug!("Layout step took {} ms", duration.as_millis());
-            thread::sleep(Duration::from_millis(16).saturating_sub(duration));
-
-            // If stable pause the thread.
-            !is_stable
-        })?)
+                // If stable pause the thread.
+                Ok(!is_stable)
+            },
+        )?)
     };
 
     // Load an LTS from the given path and updates the state.
@@ -335,14 +461,17 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
                             // Create the layout and viewer separately to make the initial state sensible.
                             let layout = GraphLayout::new(lts.clone());
-                            let mut viewer = ViewerState::new(lts, &wgpu).unwrap();
+                            let mut viewer = Viewer::new(lts.clone());
 
-                            viewer.viewer.update(&layout);
+                            // Update view to the initial layout.
+                            viewer.update(&layout);
 
-                            *state.write().unwrap() = Some(GuiState {
-                                graph_layout: Mutex::new(layout),
-                                viewer: Mutex::new(viewer),
-                            });
+                            state.viewer.lock().unwrap().replace(viewer);
+                            state.graph_layout.lock().unwrap().replace(layout);
+
+                            // Indicate that the LTS has been loaded such that the rendering thread can be updated.
+                            state.lts.lock().unwrap().replace(lts);
+                            state.reload_lts.store(true, Ordering::Relaxed);
 
                             // Enable the layout and rendering threads.
                             layout_handle.resume();
@@ -374,7 +503,8 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
     // Simply return the current canvas, can be updated in the meantime.
     {
-        let canvas = canvas.clone();
+        let canvas = state.clone();
+        let state = state.clone();
         let settings = settings.clone();
         let render_handle = render_handle.clone();
 
@@ -383,19 +513,19 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
             settings.width = width as u32;
             settings.height = height as u32;
 
-            let buffer = canvas.lock().unwrap().clone();
-            if buffer.width() != settings.width || buffer.height() != settings.height {
+            let canvas = state.canvas.lock().unwrap().clone();
+            if canvas.width() != settings.width || canvas.height() != settings.height {
                 // Request another redraw when the size has changed.
                 debug!(
                     "Canvas size changed from {}x{} to {width}x{height}",
-                    buffer.width(),
-                    buffer.height()
+                    canvas.width(),
+                    canvas.height()
                 );
                 render_handle.resume();
             }
 
             debug!("Updating canvas");
-            Image::from_rgba8_premultiplied(buffer)
+            Image::from_rgba8_premultiplied(canvas)
         });
     }
 
@@ -435,12 +565,10 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
         app.on_focus_view(move || {
             if let Some(app) = app_weak.upgrade() {
-                if let Some(state) = state.read().unwrap().deref() {
+                if let Some(viewer) = state.viewer.lock().unwrap().as_ref() {
                     debug!("Centering view on graph.");
 
-                    let state_view = state.viewer.lock().unwrap();
-
-                    let center = state_view.viewer.center();
+                    let center = viewer.center();
 
                     // Change the view to show the LTS in full.
                     app.global::<Settings>().set_view_x(center.x);
