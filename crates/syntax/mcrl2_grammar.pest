@@ -395,7 +395,7 @@ StateFrmSpecElt = {
     | ActSpec                                                      // Action specification
 }
 
-StateFrm = { StateFrmPrimary ~ StateFrmPostfix* ~ (StateFrmInfix ~ StateFrmPrimary ~ StateFrmPostfix*)*}
+StateFrm = { StateFrmPrefix* ~ StateFrmPrimary ~ StateFrmPostfix* ~ (StateFrmInfix ~ StateFrmPrefix* ~ StateFrmPrimary ~ StateFrmPostfix*)*}
 
 StateFrmPrimary = _{
       StateFrmBrackets
@@ -479,7 +479,7 @@ RegFrmPostfix = _{
     RegFrmPlus = { "+" }
 
 
-ActFrm = { ActFrmPrefix? ~ ActFrmPrimary ~ ActFrmSuffix? ~ (ActFrmInfix ~ ActFrmPrefix? ~ ActFrmPrimary ~ ActFrmSuffix?)* }
+ActFrm = { ActFrmPrefix* ~ ActFrmPrimary ~ ActFrmPostfix* ~ (ActFrmInfix ~ ActFrmPrefix* ~ ActFrmPrimary ~ ActFrmPostfix*)* }
 
 ActFrmPrimary = {
       ActFrmBrackets
@@ -498,10 +498,10 @@ ActFrmPrefix = _{
     | ActFrmExists
 }
     ActFrmNegation = { "!" }
-    ActFrmForall = { "forall" ~ VarsDeclList ~ "." ~ ActFrm }
-    ActFrmExists = { "exists" ~ VarsDeclList ~ "." ~ ActFrm }
+    ActFrmForall = { "forall" ~ VarsDeclList ~ "." }
+    ActFrmExists = { "exists" ~ VarsDeclList ~ "." }
 
-ActFrmInfix = {
+ActFrmInfix = _{
       ActFrmImplies
     | ActFrmUnion
     | ActFrmIntersect
@@ -510,11 +510,10 @@ ActFrmInfix = {
     ActFrmUnion = { "||" }
     ActFrmIntersect = { "&&" }
 
-
-ActFrmSuffix = _{
+ActFrmPostfix = _{
     ActFrmAt
 }
-    ActFrmAt = { "@" }
+    ActFrmAt = { "@" ~ DataExpr }
 
 MultAct = {
         "tau"                                                    // Tau, hidden action, empty multi-action
