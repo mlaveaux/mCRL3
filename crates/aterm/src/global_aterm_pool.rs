@@ -40,6 +40,7 @@ mod mutex {
 pub use mutex::*;
 
 use mcrl3_utilities::ProtectionSet;
+use rustc_hash::FxBuildHasher;
 
 use crate::ATerm;
 use crate::ATermIndex;
@@ -65,7 +66,7 @@ pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<Global
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
     /// Unique table of all terms with stable pointers for references
-    terms: StablePointerSet<SharedTerm>,
+    terms: StablePointerSet<SharedTerm, FxBuildHasher>,
     /// The symbol pool for managing function symbols.
     symbol_pool: SymbolPool,
     /// The thread-specific protection sets.
@@ -97,7 +98,7 @@ impl GlobalTermPool {
         let empty_list_symbol = symbol_pool.create("[]", 0, |index| unsafe { SymbolRef::from_index(&index) });
 
         GlobalTermPool {
-            terms: StablePointerSet::new(),
+            terms: StablePointerSet::with_hasher(FxBuildHasher::default()),
             symbol_pool,
             thread_pools: Vec::new(),
             tmp_arguments: Vec::new(),

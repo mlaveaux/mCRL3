@@ -4,6 +4,7 @@ use std::hash::Hasher;
 use hashbrown::Equivalent;
 
 use mcrl3_unsafety::StablePointerSet;
+use rustc_hash::FxBuildHasher;
 
 use crate::Symb;
 use crate::SymbolIndex;
@@ -15,14 +16,14 @@ use crate::SymbolRef;
 /// garbage collection of the underlying shared symbol.
 pub struct SymbolPool {
     /// Unique table of all function symbols
-    symbols: StablePointerSet<SharedSymbol>,
+    symbols: StablePointerSet<SharedSymbol, FxBuildHasher>,
 }
 
 impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
         Self {
-            symbols: StablePointerSet::new(),
+            symbols: StablePointerSet::with_hasher(FxBuildHasher::default()),
         }
     }
 
