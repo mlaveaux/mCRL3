@@ -53,7 +53,7 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
     // Test Sabre rewriter
     let mut sa = SabreRewriter::new(&spec);
     let mut inner = InnermostRewriter::new(&spec);
-    let mut naive = NaiveRewriter::new(&spec);
+    // let mut naive = NaiveRewriter::new(&spec);
 
     let mut expected = expected_result.split('\n');
 
