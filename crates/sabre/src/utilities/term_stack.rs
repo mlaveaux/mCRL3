@@ -181,7 +181,7 @@ impl TermStack {
                         let term: DataExpression = if arguments.is_empty() {
                             symbol.protect().into()
                         } else {
-                            DataApplication::with_iter(&symbol.copy(), arguments.iter().flatten()).into()
+                            DataApplication::with_iter(&symbol.copy(), arguments.len(), arguments.iter().flatten()).into()
                         };
 
                         // Add the term on the stack.
