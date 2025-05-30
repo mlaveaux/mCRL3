@@ -165,6 +165,45 @@ impl GlobalTermPool {
         protect(self, &index, inserted)
     }
 
+    /// Create a term from a head symbol, a head term an iterator over its arguments
+    pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T, P>(
+        &mut self,
+        symbol: &'b impl Symb<'a, 'b>,
+        head: &'d impl Term<'c, 'd>,
+        args: I,
+        protect: P,
+    ) -> ATerm
+    where
+        I: IntoIterator<Item = T>,
+        T: Term<'e, 'f>,
+        P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
+    {
+        self.tmp_arguments.clear();
+        unsafe {
+            self.tmp_arguments.push(ATermRef::from_index(head.shared()));
+        }
+        for arg in args {
+            unsafe {
+                self.tmp_arguments.push(ATermRef::from_index(arg.shared()));
+            }
+        }
+
+        let shared_term = SharedTermLookup {
+            symbol: SymbolRef::from_symbol(symbol),
+            arguments: &self.tmp_arguments,
+            annotation: None,
+        };
+
+        debug_assert_eq!(
+            symbol.arity(),
+            shared_term.arguments.len(),
+            "The number of arguments does not match the arity of the symbol"
+        );
+
+        let (index, inserted) = self.terms.insert_equiv(&shared_term);
+        protect(self, &index, inserted)
+    }
+
     /// Create a term from a head symbol and an iterator over its arguments
     pub fn create_term<'a, 'b, P>(
         &mut self,

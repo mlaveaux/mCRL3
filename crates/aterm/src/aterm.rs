@@ -192,18 +192,27 @@ pub struct ATerm {
 }
 
 impl ATerm {
-    /// Creates a new term using the pool
+    /// Creates a new term with the given symbol and arguments.
     pub fn with_args<'a, 'b>(symbol: &'b impl Symb<'a, 'b>, args: &'b [impl Term<'a, 'b>]) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term(symbol, args))
     }
 
-    /// Creates a new term using the pool
-    pub fn with_iter<'a, 'b, I, T>(symbol: &'b impl Symb<'a, 'b>, iter: I) -> ATerm
+    /// Creates a new term with the given symbol and an iterator over the arguments.
+    pub fn with_iter<'a, 'b, 'c, 'd, I, T>(symbol: &'b impl Symb<'a, 'b>, iter: I) -> ATerm
     where
         I: IntoIterator<Item = T>,
-        T: Term<'a, 'b>,
+        T: Term<'c, 'd>,
     {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter(symbol, iter))
+    }
+
+    /// Creates a new term with the given symbol and a head term, along with a list of arguments.
+    pub fn with_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(symbol: &'b impl Symb<'a, 'b>, head: &'d impl Term<'c, 'd>, iter: I) -> ATerm
+    where
+        I: IntoIterator<Item = T>,
+        T: Term<'e, 'f>,
+    {
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter_head(symbol, head, iter))
     }
 
     /// Creates a new term using the pool

@@ -269,16 +269,15 @@ mod inner {
         ///
         /// arity must be equal to the number of arguments + 1.
         #[mcrl3_ignore]
-        pub fn with_iter<'a, 'b, 'c, 'd, T, I>(head: &'b impl Term<'a, 'b>, arguments: I) -> DataApplication
+        pub fn with_iter<'a, 'b, 'c, 'd, T, I>(head: &'b impl Term<'a, 'b>, arity: usize, arguments: I) -> DataApplication
         where
-            I: Iterator<Item = T> + Clone,
-            T: Term<'c, 'd> + 'd,
+            I: Iterator<Item = T>,
+            T: Term<'c, 'd>,
         {
-            let arity = arguments.clone().count() + 1;
-
             DATA_SYMBOLS.with_borrow_mut(|ds| {
-                let args = iter::once(head.protect()).chain(arguments.map(|t| t.protect()));
-                let term = ATerm::with_iter(ds.get_data_application_symbol(arity), args);
+                let symbol = ds.get_data_application_symbol(arity).protect();
+
+                let term = ATerm::with_iter_head(&symbol, head, arguments);
 
                 DataApplication { term }
             })
@@ -457,7 +456,10 @@ pub fn to_untyped_data_expression(t: &ATerm, variables: Option<&AHashSet<String>
                         Ok(Yield::Construct(head.into()))
                     }
                 },
-                |_tp, input, args| Ok(DataApplication::with_iter(&input, args).into()),
+                |_tp, input, args| {
+                    let arity = args.clone().count();
+                    Ok(DataApplication::with_iter(&input, arity, args).into())
+                },
             )
             .unwrap()
             .into()

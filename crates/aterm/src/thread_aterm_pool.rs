@@ -104,6 +104,20 @@ impl ThreadTermPool {
             })
     }
 
+    /// Create a term with the given arguments given by the iterator.
+    pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(&self, symbol: &'b impl Symb<'a, 'b>, head: &'d impl Term<'c, 'd>, iter: I) -> ATerm
+    where
+        I: IntoIterator<Item = T>,
+        T: Term<'e, 'f>,
+    {
+        let tp = GLOBAL_TERM_POOL.lock();
+        (*tp)
+            .borrow_mut()
+            .create_term_iter_head(symbol, head, iter, |tp, index, inserted| {
+                self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
+            })
+    }
+
     /// Create a function symbol
     pub fn create_symbol(&self, name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
         let tp = GLOBAL_TERM_POOL.lock();
