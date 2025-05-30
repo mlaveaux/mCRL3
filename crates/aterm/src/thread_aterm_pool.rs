@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
 
+use log::info;
 use pest_consume::Parser;
 
 use crate::AGRESSIVE_GC;
@@ -272,6 +273,8 @@ impl ThreadTermPool {
 
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
+        info!("{:?}", self.protection_set.lock());
+
         GLOBAL_TERM_POOL
             .lock()
             .borrow_mut()
