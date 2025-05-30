@@ -221,11 +221,11 @@ pub enum DataExpr {
         variables: Vec<VarDecl>,
         body: Box<DataExpr>,
     },
-    UnaryOperator {
+    Unary {
         op: DataExprUnaryOp,
         expr: Box<DataExpr>,
     },
-    BinaryOperator {
+    Binary {
         op: DataExprBinaryOp,
         lhs: Box<DataExpr>,
         rhs: Box<DataExpr>,
@@ -258,9 +258,19 @@ pub struct Assignment {
     pub expr: Box<DataExpr>,
 }
 
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum ProcExprBinaryOp {
+    Sequence,
+    Choice,
+    Parallel,
+    LeftMerge,
+    Communication,
+}
+
 /// Process expression
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub enum ProcessExpr {
+    Id(String),
     Action(String, Vec<DataExpr>),
     Delta,
     Tau,
@@ -268,33 +278,26 @@ pub enum ProcessExpr {
         variables: Vec<VarDecl>,
         operand: Box<ProcessExpr>,
     },
-    Sequence {
-        left: Box<ProcessExpr>,
-        right: Box<ProcessExpr>,
+    Dist {
+        variables: Vec<VarDecl>,
+        expr: DataExpr,
+        operand: Box<ProcessExpr>,
     },
-    Choice {
-        left: Box<ProcessExpr>,
-        right: Box<ProcessExpr>,
-    },
-    Parallel {
-        left: Box<ProcessExpr>,
-        right: Box<ProcessExpr>,
-    },
-    Communication {
-        left: Box<ProcessExpr>,
-        right: Box<ProcessExpr>,
-        actions: Vec<CommAction>,
+    Binary {
+        op: ProcExprBinaryOp,
+        lhs: Box<ProcessExpr>,
+        rhs: Box<ProcessExpr>,
     },
     Hide {
         actions: Vec<String>,
         operand: Box<ProcessExpr>,
     },
     Rename {
-        renames: Vec<(String, String)>,
+        renames: Vec<Rename>,
         operand: Box<ProcessExpr>,
     },
     Allow {
-        actions: Vec<String>,
+        actions: Vec<MultiAction>,
         operand: Box<ProcessExpr>,
     },
     Block {
@@ -314,6 +317,75 @@ pub struct CommAction {
     pub inputs: Vec<String>,
     pub output: String,
     pub span: Span,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct StateFrmSpec {
+
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct MultiAction {
+    pub actions: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum Quantifier {
+    Exists,
+    Forall,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum ActFrmOp {
+    Implies,
+    Union,
+    Intersect,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum ActFrm {
+    True,
+    False,
+    MultAct(Vec<String>),
+    DataExprVal(DataExpr),
+    Negation(Box<ActFrm>),
+    Quantifier {
+        quantifier: Quantifier,
+        variables: Vec<VariableDecl>,
+        body: Box<ActFrm>,
+    },
+    Binary {
+        op: ActFrmOp,
+        lhs: Box<ActFrm>,
+        rhs: Box<ActFrm>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum RegFrm {
+    Action(ActFrm),
+    Iteration(Box<RegFrm>),
+    Plus(Box<RegFrm>),
+    Sequence {
+        lhs: Box<RegFrm>,
+        rhs: Box<RegFrm>,
+    },
+    Choice {
+        lhs: Box<RegFrm>,
+        rhs: Box<RegFrm>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Rename {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Comm {
+    pub from: MultiAction,
+    pub to: String,
 }
 
 /// Source location information.

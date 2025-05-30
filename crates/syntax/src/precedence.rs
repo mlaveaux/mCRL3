@@ -8,12 +8,18 @@ use pest::pratt_parser::Op;
 use pest::pratt_parser::PrattParser;
 use pest_consume::Node;
 
+use crate::ActFrm;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
 use crate::DataExprUnaryOp;
 use crate::Mcrl2Parser;
+use crate::ParseResult;
+use crate::ProcExprBinaryOp;
+use crate::ProcessExpr;
+use crate::RegFrm;
 use crate::Rule;
 use crate::ast::SortExpression;
+use crate::Sort;
 
 static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -196,7 +202,7 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
         .parse(pairs)
 }
 
-static _PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
         .op(Op::infix(Rule::ProcExprChoice, Assoc::Left)) // $left 1
@@ -211,14 +217,113 @@ static _PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::ProcExprComm, Assoc::Left)) // $left 9
 });
 
-static _REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
+    PROCEXPR_PRATT_PARSER
+        .map_primary(|primary| match primary.as_rule() {
+            Rule::ProcExprId => Ok(ProcessExpr::Id(Mcrl2Parser::Id(Node::new(primary))?)),
+            Rule::ProcExprDelta => Ok(ProcessExpr::Delta),
+            Rule::ProcExprTau => Ok(ProcessExpr::Tau),
+            Rule::ProcExprBlock => Ok(Mcrl2Parser::ProcExprBlock(Node::new(primary))?),
+            Rule::ProcExprAllow => Ok(Mcrl2Parser::ProcExprAllow(Node::new(primary))?),
+            Rule::ProcExprHide => Ok(Mcrl2Parser::ProcExprHide(Node::new(primary))?),
+            Rule::ProcExprRename => Ok(Mcrl2Parser::ProcExprRename(Node::new(primary))?),
+            Rule::ProcExprComm => Ok(Mcrl2Parser::ProcExprComm(Node::new(primary))?),
+            Rule::ProcExprBrackets => {
+                // Handle parentheses by recursively parsing the inner expression
+                let inner = primary.into_inner().next().expect("Expected inner expression in brackets");
+                parse_process_expr(inner.into_inner())
+            }
+            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::ProcExprChoice => Ok(ProcessExpr::Binary {
+                op: ProcExprBinaryOp::Choice,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::ProcExprParallel => Ok(ProcessExpr::Binary {
+                op: ProcExprBinaryOp::Parallel,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::ProcExprLeftMerge => Ok(ProcessExpr::Binary {
+                op: ProcExprBinaryOp::LeftMerge,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
+        })
+        .map_prefix(|prefix, expr| {
+            match prefix.as_rule() {
+                Rule::ProcExprSum => Ok(ProcessExpr::Sum {
+                    variables: Mcrl2Parser::ProcExprSum(Node::new(prefix))?,
+                    operand: Box::new(expr?),
+                }),
+                Rule::ProcExprDist => {
+                    let (variables, data_expr) =  Mcrl2Parser::ProcExprDist(Node::new(prefix))?;
+
+                    Ok(ProcessExpr::Dist {
+                        variables,
+                        expr: data_expr,
+                        operand: Box::new(expr?),
+                    })
+                },
+                _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
+            }
+        })
+        .parse(pairs)
+}
+
+static ACTFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::prefix(Rule::ActFrmExists) | Op::prefix(Rule::ActFrmForall)) // $right  0
+        .op(Op::infix(Rule::ActFrmImplies, Assoc::Right)) //  $right 2
+        .op(Op::infix(Rule::ActFrmUnion, Assoc::Right)) // $right 3
+        .op(Op::infix(Rule::ActFrmIntersect, Assoc::Right)) // $right 4
+        .op(Op::postfix(Rule::ActFrmAt)) //  $left 5
+        .op(Op::prefix(Rule::ActFrmNegation)) // $right 6
+});
+
+pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
+    ACTFRM_PRATT_PARSER
+        .map_primary(|primary| {
+            match primary.as_rule() {
+                Rule::ActFrmBrackets => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary.into_inner().next().expect("Expected inner expression in brackets");
+                    parse_actfrm(inner.into_inner())
+                }
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+            }
+        })        
+        .parse(pairs)
+}
+
+static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
         .op(Op::infix(Rule::RegFrmAlternative, Assoc::Left)) // $left 1
         .op(Op::infix(Rule::RegFrmComposition, Assoc::Right)) // $right 2
         .op(Op::postfix(Rule::RegFrmIteration) | Op::postfix(Rule::RegFrmPlus)) // $left 3
-
 });
+
+// pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
+//     REGFRM_PRATT_PARSER
+//         .map_primary(|primary| {
+//             match primary.as_rule() {
+//                 Rule::ActFrm => parse_regfrm(Node::new(primary))?,
+//                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+//             }            
+//         })
+//         .map_prefix(|prefix, expr| {
+//             match prefix.as_rule() {
+//                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+//             }            
+//         })
+//         .parse(pairs)
+
+// }
 
 static _PBESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -273,10 +378,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_precedence() {
-        let term = "List(Data)";
+    fn test_sort_precedence() {
+        let term = "Bool # Int -> Int -> Bool";
 
         let result = Mcrl2Parser::parse(Rule::SortExpr, term).unwrap();
-        print!("{}", parse_sortexpr(result));
+        print!("{}", parse_sortexpr(result).unwrap());
     }
 }

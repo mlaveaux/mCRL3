@@ -288,7 +288,6 @@ ProcExprPrimary = _{
     | ProcExprHide
     | ProcExprRename
     | ProcExprComm
-    | ProcExprDataExpr
     | ProcExprBrackets
     | ProcExprId
     | Action
@@ -300,7 +299,6 @@ ProcExprPrimary = _{
     ProcExprHide = { "hide" ~ "(" ~ ActIdSet ~ "," ~ ProcExpr ~ ")" }            // Hiding operator
     ProcExprRename = { "rename" ~ "(" ~ RenExprSet ~ "," ~ ProcExpr ~ ")" }      // Action renaming operator
     ProcExprComm = { "comm" ~ "(" ~ CommExprSet ~ "," ~ ProcExpr ~ ")" }         // Communication operator
-    ProcExprDataExpr = { DataExpr ~ "->" ~ ProcExpr ~ ("<>" ~ ProcExpr)? }
     ProcExprBrackets = { "(" ~ ProcExpr ~ ")" }                                  // Brackets
     ProcExprId = { Id ~ "(" ~ AssignmentList? ~ ")" }                            // Process instantiation with assignment shorthand
 
@@ -308,8 +306,10 @@ ProcExprPrefix = _{
     | ProcExprSum
     | ProcExprDist    
 }
-    ProcExprSum = { "sum" ~ VarsDeclList ~ "." } // Sum operator
-    ProcExprDist = { "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." } // Dist operator
+    ProcExprSum = { "sum" ~ VarsDeclList ~ "." }
+    ProcExprDist = { "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." }
+    ProcExprIf = { DataExpr ~ "->" }
+    ProcExprIfThen = { "->" ~ ProcExprNoIf ~ "<>" }
 
 ProcExprInfix = _{
       ProcExprChoice
@@ -329,8 +329,6 @@ ProcExprInfix = _{
     ProcExprUntil = { "<<" }
     ProcExprSync = { "|" }
     ProcExprAt = { "@" }
-    ProcExprIf = { "->" }
-    ProcExprIfThen = { "->" ~ ProcExprNoIf ~ "<>" }
     
 ProcExprNoIf = { ProcExprPrefix* ~ ProcExprPrimary ~ (ProcExprNoIfInfix ~ ProcExprPrefix* ~ ProcExprPrimary)* }
 

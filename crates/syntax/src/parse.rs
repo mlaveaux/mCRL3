@@ -1,3 +1,5 @@
+use std::iter;
+
 use mcrl3_utilities::debug_trace;
 use pest::Parser;
 use pest_consume::Error;
@@ -5,7 +7,11 @@ use pest_consume::match_nodes;
 
 use mcrl3_utilities::MCRL3Error;
 
+use crate::parse_actfrm;
+use crate::parse_process_expr;
+use crate::ActFrm;
 use crate::Assignment;
+use crate::Comm;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
@@ -14,6 +20,10 @@ use crate::EqnDecl;
 use crate::EqnSpec;
 use crate::IdDecl;
 use crate::Mcrl2Parser;
+use crate::MultiAction;
+use crate::ProcExprBinaryOp;
+use crate::ProcessExpr;
+use crate::Rename;
 use crate::Rule;
 use crate::Sort;
 use crate::SortExpression;
@@ -176,18 +186,6 @@ impl Mcrl2Parser {
         parse_dataexpr(expr.children().as_pairs().clone())
     }
 
-    pub(crate) fn DataExprPrimary(expr: ParseNode) -> ParseResult<DataExpr> {
-        parse_dataexpr(expr.children().as_pairs().clone())
-    }
-
-    pub(crate) fn DataExprTrue(_input: ParseNode) -> ParseResult<DataExpr> {
-        Ok(DataExpr::Bool(true))
-    }
-
-    pub(crate) fn DataExprFalse(_input: ParseNode) -> ParseResult<DataExpr> {
-        Ok(DataExpr::Bool(false))
-    }
-
     pub(crate) fn DataExprUpdate(expr: ParseNode) -> ParseResult<DataExprUpdate> {
         match_nodes!(expr.into_children();
             [DataExpr(expr), DataExpr(update)] => {
@@ -303,27 +301,6 @@ impl Mcrl2Parser {
         );
     }
 
-    // Simple sorts.
-    pub fn SortExprBool(_input: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Simple(Sort::Bool))
-    }
-
-    pub fn SortExprInt(_input: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Simple(Sort::Int))
-    }
-
-    pub fn SortExprPos(_input: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Simple(Sort::Pos))
-    }
-
-    pub fn SortExprNat(_input: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Simple(Sort::Nat))
-    }
-
-    pub fn SortExprReal(_input: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Simple(Sort::Real))
-    }
-
     // Complex sorts
     pub fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
@@ -407,18 +384,6 @@ impl Mcrl2Parser {
                 Ok((Some(name), sort))
             },
         )
-    }
-
-    pub(crate) fn DataExprEmptyList(_input: ParseNode) -> ParseResult<DataExpr> {
-        Ok(DataExpr::EmptyList)
-    }
-
-    pub(crate) fn DataExprEmptySet(_input: ParseNode) -> ParseResult<DataExpr> {
-        Ok(DataExpr::EmptySet)
-    }
-
-    pub(crate) fn DataExprEmptyBag(_input: ParseNode) -> ParseResult<DataExpr> {
-        Ok(DataExpr::EmptyBag)
     }
 
     pub(crate) fn DataExprListEnum(input: ParseNode) -> ParseResult<DataExpr> {
@@ -510,11 +475,168 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn ActFrm(input: ParseNode) -> ParseResult<DataExpr> {
-        parse_act
+    pub(crate) fn ActFrm(input: ParseNode) -> ParseResult<ActFrm> {
+        parse_actfrm(input.children().as_pairs().clone())
+    }
+
+    fn ActIdSet(actions: ParseNode) -> ParseResult<Vec<String>> {
+        match_nodes!(actions.into_children();
+            [IdList(list)] => {
+                return Ok(list);
+            },
+        );
+    }
+
+    fn MultActId(actions: ParseNode) -> ParseResult<MultiAction> {
+        match_nodes!(actions.into_children();
+            [Id(action), Id(actions)..] => {
+                return Ok(MultiAction { actions: iter::once(action).chain(actions).collect() });
+            },
+        );
+    }
+
+    fn MultActIdList(actions: ParseNode) -> ParseResult<Vec<MultiAction>> {
+        match_nodes!(actions.into_children();
+            [MultActId(action), MultActId(actions)..] => {
+                return Ok(iter::once(action).chain(actions).collect());
+            },
+        );
+    }
+
+    fn MultActIdSet(actions: ParseNode) -> ParseResult<Vec<MultiAction>> {
+        match_nodes!(actions.into_children();
+            [MultActIdList(list)] => {
+                return Ok(list);
+            },
+        );
+    }
+
+    fn ProcExpr(input: ParseNode) -> ParseResult<ProcessExpr> {
+        parse_process_expr(input.children().as_pairs().clone())
+    }
+
+    pub(crate) fn ProcExprBlock(input: ParseNode) -> ParseResult<ProcessExpr> {
         match_nodes!(input.into_children();
-            [DataExpr(expr)] => {
-                Ok(expr)
+            [ActIdSet(actions), ProcExpr(expr)] => {
+                Ok(ProcessExpr::Block {
+                    actions,
+                    operand: Box::new(expr),
+                })
+            },
+        )
+    }
+
+    pub(crate) fn ProcExprAllow(input: ParseNode) -> ParseResult<ProcessExpr> {
+        match_nodes!(input.into_children();
+            [MultActIdSet(actions), ProcExpr(expr)] => {
+                Ok(ProcessExpr::Allow {
+                    actions,
+                    operand: Box::new(expr),
+                })
+            },
+        )
+    }
+
+    pub(crate) fn ProcExprHide(input: ParseNode) -> ParseResult<ProcessExpr> {
+        match_nodes!(input.into_children();
+            [ActIdSet(actions), ProcExpr(expr)] => {
+                Ok(ProcessExpr::Hide {
+                    actions,
+                    operand: Box::new(expr),
+                })
+            },
+        )
+    }
+
+    fn CommExpr(action: ParseNode) -> ParseResult<Comm> {
+        match_nodes!(action.into_children();
+            [Id(id), MultActId(multiact), Id(to)] => {
+                let mut actions = vec![id];
+                actions.extend(multiact.actions);
+
+                return Ok(Comm {
+                    from: MultiAction { actions },
+                    to
+                });
+            },
+        );
+    }
+
+    fn CommExprList(actions: ParseNode) -> ParseResult<Vec<Comm>> {
+        match_nodes!(actions.into_children();
+            [CommExpr(action), CommExpr(actions)..] => {
+                return Ok(iter::once(action).chain(actions).collect());
+            },
+        );
+    }
+
+    fn CommExprSet(actions: ParseNode) -> ParseResult<Vec<Comm>> {
+        match_nodes!(actions.into_children();
+            [CommExprList(list)] => {
+                Ok(list)
+            },
+        )
+    }
+
+    pub(crate) fn ProcExprRename(input: ParseNode) -> ParseResult<ProcessExpr> {
+        match_nodes!(input.into_children();
+            [RenExprSet(renames), ProcExpr(expr)] => {
+                Ok(ProcessExpr::Rename {
+                    renames,
+                    operand: Box::new(expr),
+                })
+            },
+        )
+    }
+
+    pub(crate) fn ProcExprComm(input: ParseNode) -> ParseResult<ProcessExpr> {
+        match_nodes!(input.into_children();
+            [MultActIdSet(actions), ProcExpr(lhs), ProcExpr(rhs)] => {
+                Ok(ProcessExpr::Binary {
+                    op: ProcExprBinaryOp::Communication,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                })
+            },
+        )
+    }
+
+    fn RenExprSet(renames: ParseNode) -> ParseResult<Vec<Rename>> {
+        match_nodes!(renames.into_children();
+            [RenExprList(renames)] => {
+                Ok(renames)
+            },
+        )
+    }
+
+    fn RenExprList(renames: ParseNode) -> ParseResult<Vec<Rename>> {
+        match_nodes!(renames.into_children();
+            [RenExpr(renames)..] => {
+                return Ok(renames.collect());
+            },
+        );
+    }
+
+    fn RenExpr(renames: ParseNode) -> ParseResult<Rename> {
+        match_nodes!(renames.into_children();
+            [Id(from), Id(to)] => {
+                return Ok(Rename { from, to });
+            },
+        );
+    }
+
+    pub(crate) fn ProcExprSum(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(variables)] => {
+                Ok(variables)
+            },
+        )
+    }
+
+    pub(crate) fn ProcExprDist(input: ParseNode) -> ParseResult<(Vec<VarDecl>, DataExpr)> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(variables), DataExpr(expr)] => {
+                Ok((variables, expr))
             },
         )
     }
@@ -531,26 +653,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_term() {
-        let _ = test_logger();
-
-        use indoc::indoc;
-
-        let spec: &str = indoc! {"map
-            f: Bool # Int -> Int -> Bool;
-        "};
-
-        println!("{}", UntypedProcessSpecification::parse(spec).unwrap());
-    }
-
-    #[test]
     fn test_parse_procexpr() {
         let _ = test_logger();
 
         use indoc::indoc;
 
         let spec: &str = indoc! {"init
-            true -> (false -> delta) <> delta;
+            true -> false -> delta <> delta;
         "};
 
         println!("{}", UntypedProcessSpecification::parse(spec).unwrap());

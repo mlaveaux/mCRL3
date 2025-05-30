@@ -24,8 +24,7 @@
 //! println!("{:?}", expr);
 //! ```
 //!
-
-// Forbid unsafe code in this crate.
+//! This crate contains no unsafe code.
 #![forbid(unsafe_code)]
 
 mod ast;
