@@ -275,7 +275,7 @@ mod inner {
             T: Term<'c, 'd>,
         {
             DATA_SYMBOLS.with_borrow_mut(|ds| {
-                let symbol = ds.get_data_application_symbol(arity + 1).protect();
+                let symbol = ds.get_data_application_symbol(arity + 1).copy();
 
                 let term = ATerm::with_iter_head(&symbol, head, arguments);
 
