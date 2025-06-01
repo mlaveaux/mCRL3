@@ -194,7 +194,7 @@ DataExprInfix = _{
     DataExprNeq     = { "!=" }
     DataExprLeq     = { "<=" }
     DataExprSnoc    = { "<|" }
-    DataExprLess    = { "<" }
+    DataExprLess    = { "<" ~ !">" }
     DataExprGeq     = { ">=" }
     DataExprGreater = { ">" }
     DataExprIn      = { "in" }
@@ -304,12 +304,14 @@ ProcExprPrimary = _{
 
 ProcExprPrefix = _{
     | ProcExprSum
-    | ProcExprDist    
+    | ProcExprDist 
+    | ProcExprIfThen 
+    | ProcExprIf
 }
     ProcExprSum = { "sum" ~ VarsDeclList ~ "." }
     ProcExprDist = { "dist" ~ VarsDeclList ~ "[" ~ DataExpr ~ "]" ~ "." }
+    ProcExprIfThen = { DataExpr ~ "->" ~ ProcExprNoIf ~ "<>" }
     ProcExprIf = { DataExpr ~ "->" }
-    ProcExprIfThen = { "->" ~ ProcExprNoIf ~ "<>" }
 
 ProcExprInfix = _{
       ProcExprChoice
@@ -319,8 +321,6 @@ ProcExprInfix = _{
     | ProcExprUntil
     | ProcExprSync
     | ProcExprAt
-    | ProcExprIf
-    | ProcExprIfThen
 }
     ProcExprChoice = { "+" } 
     ProcExprLeftMerge = { "||_" }
@@ -328,7 +328,7 @@ ProcExprInfix = _{
     ProcExprSeq = { "." }
     ProcExprUntil = { "<<" }
     ProcExprSync = { "|" }
-    ProcExprAt = { "@" }
+    ProcExprAt = { "@" ~ DataExpr }
     
 ProcExprNoIf = { ProcExprPrefix* ~ ProcExprPrimary ~ (ProcExprNoIfInfix ~ ProcExprPrefix* ~ ProcExprPrimary)* }
 
@@ -514,9 +514,10 @@ ActFrmPostfix = _{
     ActFrmAt = { "@" ~ DataExpr }
 
 MultAct = {
-        "tau"                                                    // Tau, hidden action, empty multi-action
+        MultiActTau                                              // Tau, hidden action, empty multi-action
     |   ActionList                                               // Multi-action
 }
+    MultiActTau = { "tau" }
 
 ActionList = { Action ~ ( "|" ~ Action )* }                      // List of actions
 
