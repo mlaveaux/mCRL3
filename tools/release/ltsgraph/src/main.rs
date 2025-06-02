@@ -217,7 +217,9 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                             // This buffer is used to copy the rendered image to the texture.
                             let buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
                                 label: Some("ltsgraph canvas buffer"),
-                                size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * settings.height * 4) as u64,
+                                size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+                                    * settings.height
+                                    * 4) as u64,
                                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                                 mapped_at_creation: false,
                             }));
@@ -296,7 +298,9 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                                     // This buffer is used to copy the rendered image to the texture.
                                     femtovg_info.buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
                                         label: Some("ltsgraph canvas buffer"),
-                                        size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * settings.height * 4) as u64,
+                                        size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+                                            * settings.height
+                                            * 4) as u64,
                                         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                                         mapped_at_creation: false,
                                     }));
@@ -331,7 +335,9 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                                         buffer: &femtovg_info.buffer,
                                         layout: wgpu::TexelCopyBufferLayout {
                                             offset: 0,
-                                            bytes_per_row: Some(align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * 4),
+                                            bytes_per_row: Some(
+                                                align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * 4,
+                                            ),
                                             rows_per_image: Some(settings.height),
                                         },
                                     },
@@ -351,23 +357,21 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                                     .slice(..)
                                     .map_async(wgpu::MapMode::Read, move |result| {
                                         if result.is_ok() {
-                                            // Copy the data from the buffer to the pixel buffer   
+                                            // Copy the data from the buffer to the pixel buffer
 
-                                            let mut canvas = state.canvas.lock().unwrap() ;
-                                            
+                                            let mut canvas = state.canvas.lock().unwrap();
+
                                             *canvas = SharedPixelBuffer::clone_from_slice(
-                                                    buffer
-                                                    .slice(..)
-                                                    .get_mapped_range()
-                                                    .deref(),
+                                                buffer.slice(..).get_mapped_range().deref(),
                                                 settings.width,
-                                                settings.height);
+                                                settings.height,
+                                            );
 
                                             buffer.unmap();
                                         }
                                     });
 
-                                // Wait for the buffer to be mapped and the data to be copied.                                
+                                // Wait for the buffer to be mapped and the data to be copied.
                                 device.poll(wgpu::Maintain::Wait);
                             }
                         }

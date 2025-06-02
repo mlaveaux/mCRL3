@@ -224,54 +224,54 @@ mod tests {
 
     use rand::Rng;
 
-    use crate::test_logger;
-    use crate::test_rng;
+    use crate::random_test;
 
     #[test]
     fn test_random_protection_set() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut protection_set = ProtectionSet::<usize>::new();
 
-        let mut protection_set = ProtectionSet::<usize>::new();
+            // Protect a number of indices and record their roots.
+            let mut indices: Vec<ProtectionIndex> = Vec::new();
 
-        // Protect a number of indices and record their roots.
-        let mut indices: Vec<ProtectionIndex> = Vec::new();
+            for _ in 0..5000 {
+                indices.push(protection_set.protect(rng.random_range(0..1000)));
+            }
 
-        for _ in 0..5000 {
-            indices.push(protection_set.protect(rng.random_range(0..1000)));
-        }
+            // Unprotect a number of roots.
+            for index in 0..2500 {
+                assert!(protection_set[indices[index]] <= 1000);
+                protection_set.unprotect(indices[index]);
+                indices.remove(index);
+            }
 
-        // Unprotect a number of roots.
-        for index in 0..2500 {
-            assert!(protection_set[indices[index]] <= 1000);
-            protection_set.unprotect(indices[index]);
-            indices.remove(index);
-        }
+            // Protect more to test the freelist
+            for _ in 0..1000 {
+                indices.push(protection_set.protect(rng.random_range(0..1000)));
+            }
 
-        // Protect more to test the freelist
-        for _ in 0..1000 {
-            indices.push(protection_set.protect(rng.random_range(0..1000)));
-        }
+            for index in &indices {
+                assert!(
+                    protection_set.contains_root(*index),
+                    "All indices that are not unprotected should occur in the protection set"
+                );
+            }
 
-        for index in &indices {
-            assert!(
-                protection_set.contains_root(*index),
-                "All indices that are not unprotected should occur in the protection set"
+            assert_eq!(
+                protection_set.iter().count(),
+                6000 - 2500,
+                "This is the number of roots remaining"
             );
-        }
-
-        assert_eq!(
-            protection_set.iter().count(),
-            6000 - 2500,
-            "This is the number of roots remaining"
-        );
-        assert_eq!(protection_set.number_of_insertions(), 6000);
-        assert!(protection_set.maximum_size() >= 5000);
-        assert!(!protection_set.is_empty());
+            assert_eq!(protection_set.number_of_insertions(), 6000);
+            assert!(protection_set.maximum_size() >= 5000);
+            assert!(!protection_set.is_empty());
+        });
     }
 
     #[test]
     fn test_protection_set_basic() {
+        let _ = crate::test_logger();
+
         let mut set = ProtectionSet::<String>::new();
 
         // Protect some values

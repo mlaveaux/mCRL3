@@ -409,8 +409,7 @@ impl<'a, T, S> IntoIterator for &'a IndexedSet<T, S> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_logger;
-    use crate::test_rng;
+    use crate::random_test;
 
     use super::*;
 
@@ -419,50 +418,49 @@ mod tests {
 
     #[test]
     fn test_random_indexed_set_construction() {
-        let _ = test_logger();
-        let mut rand = test_rng();
+        random_test(100, |rng| {
+            let mut input = vec![];
+            for _ in 0..100 {
+                input.push(rng.random_range(0..32) as usize);
+            }
 
-        let mut input = vec![];
-        for _ in 0..100 {
-            input.push(rand.random_range(0..32) as usize);
-        }
+            let mut indices: HashMap<usize, SetIndex> = HashMap::default();
 
-        let mut indices: HashMap<usize, SetIndex> = HashMap::default();
+            // Insert several elements and keep track of the resulting indices.
+            let mut set: IndexedSet<usize> = IndexedSet::default();
+            for element in &input {
+                let index = set.insert(*element).0;
+                indices.insert(*element, index);
+            }
 
-        // Insert several elements and keep track of the resulting indices.
-        let mut set: IndexedSet<usize> = IndexedSet::default();
-        for element in &input {
-            let index = set.insert(*element).0;
-            indices.insert(*element, index);
-        }
+            for (index, value) in &set {
+                assert_eq!(
+                    indices[value], index,
+                    "The resulting index does not match the returned value"
+                );
+            }
 
-        for (index, value) in &set {
-            assert_eq!(
-                indices[value], index,
-                "The resulting index does not match the returned value"
-            );
-        }
+            for value in &mut input.iter().take(10) {
+                set.remove(value);
+                indices.remove(value);
+            }
 
-        for value in &mut input.iter().take(10) {
-            set.remove(value);
-            indices.remove(value);
-        }
+            // Check consistency of the indexed set.
+            for (index, value) in &set {
+                assert_eq!(
+                    indices[value], index,
+                    "The resulting index does not match the returned value"
+                );
+            }
 
-        // Check consistency of the indexed set.
-        for (index, value) in &set {
-            assert_eq!(
-                indices[value], index,
-                "The resulting index does not match the returned value"
-            );
-        }
-
-        for (value, index) in &indices {
-            assert!(
-                set.get(*index) == Some(value),
-                "Index {} should still match element {:?}",
-                *index,
-                value
-            );
-        }
+            for (value, index) in &indices {
+                assert!(
+                    set.get(*index) == Some(value),
+                    "Index {} should still match element {:?}",
+                    *index,
+                    value
+                );
+            }
+        })
     }
 }
