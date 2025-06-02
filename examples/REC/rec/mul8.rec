@@ -1,0 +1,70 @@
+REC-SPEC MUL8 : Bool Bit Octet OctetSum Half
+
+# 8x8 binary multiplier as a term-rewrite system - Hubert Garavel 2016, 2019
+
+SORTS
+
+CONS
+
+OPNS
+
+   testMulOctet : Octet Octet Octet Octet -> Bool
+
+VARS
+   O O' Olow Ohigh : Octet
+
+RULES
+
+   testMulOctet (O, O', Ohigh, Olow) -> andBool (eqHalf (mulOctet (O, O'), buildHalf (Ohigh, Olow)), eqHalf (mulOctet (O', O), buildHalf (Ohigh, Olow)))
+# check that (O * O') = (O' * O) = (Ohigh, Olow)
+
+EVAL
+
+# a few manually-written unit tests
+
+   testMulOctet (x00, x01, x00, x00)
+
+   testMulOctet (x01, x01, x00, x01)
+
+   testMulOctet (x01, x02, x00, x02)
+
+   testMulOctet (x02, x02, x00, x04)
+
+   testMulOctet (x00, xFF, x00, x00)
+
+   testMulOctet (x55, xFF, x54, xAB)
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+ORS = ""
+MAX = 256 # 2^8
+# for all I in 0...MAX-1 such that I is a multiple of 3
+for (I = 0 ; I < MAX; I += 3) {
+	# for all J in 0...MAX-1 such that J is a multiple of 5
+	for (J = 0 ; J < MAX; J += 5) {
+		PROD = (I * J) # expected result
+		# check predicate testMulOctet (I, J, H, L) where (H, L) = PROD
+		print "testMulOctet ("
+		PRINT_OCTET(I)
+		print ", "
+		PRINT_OCTET(J)
+		print ", "
+		PRINT_OCTET(int (PROD / 256))
+		print ", "
+		PRINT_OCTET(PROD % 256)
+		print ")"
+		print "\n"
+	}
+}
+
+END-META
+
+END-SPEC
+

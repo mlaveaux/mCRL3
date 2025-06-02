@@ -1,0 +1,87 @@
+REC-SPEC ADD32 : Bool Bit Octet OctetSum Half HalfSum Block BlockSum
+
+# 32-bit binary adder as a term-rewrite system - Hubert Garavel 2016, 2019
+
+SORTS
+
+CONS
+
+OPNS
+
+   x00FF00FF : -> Block
+   x0055CCFF : -> Block
+   x55CCFF55 : -> Block
+   xFF00FF00 : -> Block
+
+VARS
+
+RULES
+
+   x00FF00FF -> buildBlock (x00, xFF, x00, xFF)
+   x0055CCFF -> buildBlock (x00, x55, xCC, xFF)
+   x55CCFF55 -> buildBlock (x55, xCC, xFF, x55)
+   xFF00FF00 -> buildBlock (xFF, x00, xFF, x00)
+
+EVAL
+
+# a few manually-written unit tests
+
+   eqBlock (addBlock (x00FF00FF, x0055CCFF), addBlock (x0055CCFF, x00FF00FF))
+
+   eqBlock (addBlock (x0055CCFF, x55CCFF55), addBlock (x55CCFF55, x0055CCFF))
+
+   eqBlock (addBlock (x55CCFF55, xFF00FF00), addBlock (xFF00FF00, x55CCFF55))
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+function PRINT_BLOCK(N) {
+	print "buildBlock ("
+	PRINT_OCTET(int (N / 16777216))
+	print ", "
+	PRINT_OCTET(int ((N / 65536) % 256))
+	print ", "
+	PRINT_OCTET(int ((N / 256) % 256))
+	print ", "
+	PRINT_OCTET(N % 256)
+	print ")"
+}
+
+ORS = ""
+MAX = 4294967296 # 2^32
+# for all I in 0...MAX-1 such that I is a multiple of 50266112
+for (I = 0 ; I < MAX; I += 50266112) {
+	# for all J in 0...MAX-1 such that J is a multiple of 83820541
+	for (J = 0 ; J < MAX; J += 83820541) {
+		SUM = (I + J) % MAX # expected result
+		print "andBool ("
+		# check that addBlock (I, J) = SUM
+		print "eqBlock (addBlock ("
+		PRINT_BLOCK(I)
+		print ", "
+		PRINT_BLOCK(J)
+		print "), "
+		PRINT_BLOCK(SUM)
+		print ")"
+		print ", " # andBool
+		# check that addBlock (J, I) = SUM
+		print "eqBlock (addBlock ("
+		PRINT_BLOCK(J)
+		print ", "
+		PRINT_BLOCK(I)
+		print "), "
+		PRINT_BLOCK(SUM)
+		print ")"
+		print ")" # andBool
+		print "\n"
+	}
+}
+END-META
+
+END-SPEC

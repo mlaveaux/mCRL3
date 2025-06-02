@@ -53,7 +53,7 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
     // Test Sabre rewriter
     let mut sa = SabreRewriter::new(&spec);
     let mut inner = InnermostRewriter::new(&spec);
-    // let mut naive = NaiveRewriter::new(&spec);
+    let mut naive = NaiveRewriter::new(&spec);
 
     let mut expected = expected_result.split('\n');
 
@@ -61,12 +61,12 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
         let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
         let expected_result = to_untyped_data_expression(&expected_term, None);
 
-        // let result = naive.rewrite(term);
-        // assert_eq!(
-        //     result,
-        //     expected_result.clone(),
-        //     "The naive rewrite result doesn't match the expected result",
-        // );
+        let result = naive.rewrite(term);
+        assert_eq!(
+            result,
+            expected_result.clone(),
+            "The naive rewrite result doesn't match the expected result",
+        );
 
         let result = inner.rewrite(term);
         assert_eq!(
@@ -123,3 +123,15 @@ fn rec_test_release(rec_files: Vec<&str>, expected_result: &str) {
 fn rec_test_unix(rec_files: Vec<&str>, expected_result: &str) {
     rec_test(rec_files, expected_result);
 }
+
+
+// // These REC tests have META data that is not supported by the current implementation.
+// #[test_case(vec![include_str!("../../../examples/REC/rec/add8.rec")], include_str!("snapshot/result_add8.txt") ; "add8")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/add16.rec")], include_str!("snapshot/result_add16.txt") ; "add16")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/add32.rec")], include_str!("snapshot/result_add32.txt") ; "add32")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/mul8.rec")], include_str!("snapshot/result_mul8.txt") ; "mul8")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/mul16.rec")], include_str!("snapshot/result_mul16.txt") ; "mul16")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/mul32.rec")], include_str!("snapshot/result_mul32.txt") ; "mul32")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/omul8.rec")], include_str!("snapshot/result_omul8.txt") ; "omul8")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/omul32.rec")], include_str!("snapshot/result_omul32.txt") ; "omul32")]
+// #[test_case(vec![include_str!("../../../examples/REC/rec/intnat.rec")], include_str!("snapshot/result_intnat.txt") ; "intnat")]

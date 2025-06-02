@@ -1,0 +1,82 @@
+REC-SPEC ADD16 : Bool Bit Octet OctetSum Half HalfSum
+
+# 16-bit binary adder as a term-rewrite system - Hubert Garavel 2016, 2019
+
+SORTS
+
+CONS
+
+OPNS
+
+   x0055 : -> Half
+   x55CC : -> Half
+   xCCFF : -> Half
+
+VARS
+
+RULES
+
+   x0055 -> buildHalf (x00, x55)
+   x55CC -> buildHalf (x55, xCC)
+   xCCFF -> buildHalf (xCC, xFF)
+
+EVAL
+
+# a few manually-written unit tests
+
+   eqHalf (addHalf (x0055, x55CC), addHalf (x55CC, x0055))
+
+   eqHalf (addHalf (x0055, xCCFF), addHalf (xCCFF, x0055))
+
+   eqHalf (addHalf (x55CC, xCCFF), addHalf (xCCFF, x55CC))
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+function PRINT_HALF(N) {
+	print "buildHalf ("
+	PRINT_OCTET(int (N / 256))
+	print ", "
+	PRINT_OCTET(N % 256)
+	print ")"
+}
+
+ORS = ""
+MAX = 65536 # 2^16
+# for all I in 0...MAX-1 such that I is a multiple of 767
+for (I = 0 ; I < MAX; I += 767) {
+	# for all J in 0...MAX-1 such that J is a multiple of 1279
+	for (J = 0 ; J < MAX; J += 1279) {
+		SUM = (I + J) % MAX # expected result
+		print "andBool ("
+		# check that addHalf (I, J) = SUM
+		print "eqHalf (addHalf ("
+		PRINT_HALF(I)
+		print ", "
+		PRINT_HALF(J)
+		print "), "
+		PRINT_HALF(SUM)
+		print ")"
+		print ", " # andBool
+		# check that addHalf (J, I) = SUM
+		print "eqHalf (addHalf ("
+		PRINT_HALF(J)
+		print ", "
+		PRINT_HALF(I)
+		print "), "
+		PRINT_HALF(SUM)
+		print ")"
+		print ")" # andBool
+		print "\n"
+	}
+}
+
+END-META
+
+END-SPEC

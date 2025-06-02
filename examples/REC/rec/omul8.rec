@@ -1,0 +1,181 @@
+REC-SPEC OMUL8 : Bool Bit Octet OctetSum Half
+
+# 8x8 binary multiplier as a term-rewrite system - Hubert Garavel 2016, 2019
+# this is an older, more complex version of mul8.rec
+
+SORTS
+
+   OctetProd
+
+CONS
+
+   buildOctetProd : Octet Octet -> OctetProd
+   # the 1st argument is a sum of carries (between 0 and 7)
+
+OPNS
+
+   omulOctet : Octet Octet -> Half
+   # the 1st octet is the highMul
+   # the 2nd octet is the lowMul
+
+   auxMulOctetA : Octet Octet OctetProd -> Half
+   auxMulOctetB : OctetProd Octet Octet -> Half
+   auxMulOctetC : Octet OctetProd -> OctetProd
+   auxMulOctetD : Octet OctetSum -> OctetProd
+
+   lowMulOctetProd : Octet Octet -> OctetProd
+
+   lowMulOctet1 : Bit Bit Bit Bit Bit Bit Bit Bit Octet -> OctetProd
+   lowMulOctet2 : Bit Bit Bit Bit Bit Bit Bit Octet -> OctetProd
+   lowMulOctet3 : Bit Bit Bit Bit Bit Bit Octet -> OctetProd
+   lowMulOctet4 : Bit Bit Bit Bit Bit Octet -> OctetProd
+   lowMulOctet5 : Bit Bit Bit Bit Octet -> OctetProd
+   lowMulOctet6 : Bit Bit Bit Octet -> OctetProd
+   lowMulOctet7 : Bit Bit Octet -> OctetProd
+   lowMulOctet8 : Bit Octet -> OctetProd
+
+   highMulOctetProd : Octet Octet -> OctetProd
+
+   highMulOctet1 : Bit Bit Bit Bit Bit Bit Bit Bit Octet -> OctetProd
+   highMulOctet2 : Bit Bit Bit Bit Bit Bit Bit Octet -> OctetProd
+   highMulOctet3 : Bit Bit Bit Bit Bit Bit Octet -> OctetProd
+   highMulOctet4 : Bit Bit Bit Bit Bit Octet -> OctetProd
+   highMulOctet5 : Bit Bit Bit Bit Octet -> OctetProd
+   highMulOctet6 : Bit Bit Bit Octet -> OctetProd
+   highMulOctet7 : Bit Bit Octet -> OctetProd
+   highMulOctet8 : Bit Octet -> OctetProd
+
+   testMulOctet : Octet Octet Octet Octet -> Bool
+
+VARS
+
+   B1 B2 B3 B4 B5 B6 B7 B8 : Bit
+
+   O O' Ocarry O'carry Olow Ohigh: Octet
+
+RULES
+
+# ----------------------------------------------------------------------------
+
+   omulOctet (O, O') -> auxMulOctetA (O, O', lowMulOctetProd (O, O'))
+
+   auxMulOctetA (O, O', buildOctetProd (Ocarry, Olow)) -> auxMulOctetB (highMulOctetProd (O, O'), Ocarry, Olow)
+
+   auxMulOctetB (buildOctetProd (O'carry, Ohigh), Ocarry, Olow) -> buildHalf (addOctet (Ohigh, Ocarry), Olow)  # here, O'carry should be equal to x00
+
+# ----------------------------------------------------------------------------
+
+  auxMulOctetC (O, buildOctetProd (Ocarry, O')) -> auxMulOctetD (Ocarry, addOctetSum (O, O', x0))
+
+  auxMulOctetD (Ocarry, buildOctetSum (x0, O)) -> buildOctetProd (Ocarry, O)
+  auxMulOctetD (Ocarry, buildOctetSum (x1, O)) -> buildOctetProd (addOctet (Ocarry, x01), O)
+
+# ----------------------------------------------------------------------------
+
+  lowMulOctetProd (buildOctet (B1, B2, B3, B4, B5, B6, B7, B8), O') -> lowMulOctet1 (B1, B2, B3, B4, B5, B6, B7, B8, O')
+
+  lowMulOctet1 (x0, B2, B3, B4, B5, B6, B7, B8, O') -> lowMulOctet2 (B2, B3, B4, B5, B6, B7, B8, O')
+  lowMulOctet1 (x1, B2, B3, B4, B5, B6, B7, B8, O') -> auxMulOctetC (leftOctet7 (O'), lowMulOctet2 (B2, B3, B4, B5, B6, B7, B8, O'))
+
+  lowMulOctet2 (x0, B3, B4, B5, B6, B7, B8, O') -> lowMulOctet3 (B3, B4, B5, B6, B7, B8, O')
+  lowMulOctet2 (x1, B3, B4, B5, B6, B7, B8, O') -> auxMulOctetC (leftOctet6 (O'), lowMulOctet3 (B3, B4, B5, B6, B7, B8, O'))
+
+  lowMulOctet3 (x0, B4, B5, B6, B7, B8, O') -> lowMulOctet4 (B4, B5, B6, B7, B8, O')
+  lowMulOctet3 (x1, B4, B5, B6, B7, B8, O') -> auxMulOctetC (leftOctet5 (O'), lowMulOctet4 (B4, B5, B6, B7, B8, O'))
+
+  lowMulOctet4 (x0, B5, B6, B7, B8, O') -> lowMulOctet5 (B5, B6, B7, B8, O')
+  lowMulOctet4 (x1, B5, B6, B7, B8, O') -> auxMulOctetC (leftOctet4 (O'), lowMulOctet5 (B5, B6, B7, B8, O'))
+
+  lowMulOctet5 (x0, B6, B7, B8, O') -> lowMulOctet6 (B6, B7, B8, O')
+  lowMulOctet5 (x1, B6, B7, B8, O') -> auxMulOctetC (leftOctet3 (O'), lowMulOctet6 (B6, B7, B8, O'))
+
+  lowMulOctet6 (x0, B7, B8, O') -> lowMulOctet7 (B7, B8, O')
+  lowMulOctet6 (x1, B7, B8, O') -> auxMulOctetC (leftOctet2 (O'), lowMulOctet7 (B7, B8, O'))
+
+  lowMulOctet7 (x0, B8, O') -> lowMulOctet8 (B8, O')
+  lowMulOctet7 (x1, B8, O') -> auxMulOctetC (leftOctet1 (O'), lowMulOctet8 (B8, O'))
+
+  lowMulOctet8 (x0, O') -> buildOctetProd (x00, x00)
+  lowMulOctet8 (x1, O') -> buildOctetProd (x00, O')
+
+# ----------------------------------------------------------------------------
+
+  highMulOctetProd (buildOctet (B1, B2, B3, B4, B5, B6, B7, B8), O') -> highMulOctet1 (B1, B2, B3, B4, B5, B6, B7, B8, O')
+
+  highMulOctet1 (x0, B2, B3, B4, B5, B6, B7, B8, O') -> highMulOctet2 (B2, B3, B4, B5, B6, B7, B8, O')
+  highMulOctet1 (x1, B2, B3, B4, B5, B6, B7, B8, O') -> auxMulOctetC (rightOctet1 (O'), highMulOctet2 (B2, B3, B4, B5, B6, B7, B8, O'))
+
+  highMulOctet2 (x0, B3, B4, B5, B6, B7, B8, O') -> highMulOctet3 (B3, B4, B5, B6, B7, B8, O')
+  highMulOctet2 (x1, B3, B4, B5, B6, B7, B8, O') -> auxMulOctetC (rightOctet2 (O'), highMulOctet3 (B3, B4, B5, B6, B7, B8, O'))
+
+  highMulOctet3 (x0, B4, B5, B6, B7, B8, O') -> highMulOctet4 (B4, B5, B6, B7, B8, O')
+  highMulOctet3 (x1, B4, B5, B6, B7, B8, O') -> auxMulOctetC (rightOctet3 (O'), highMulOctet4 (B4, B5, B6, B7, B8, O'))
+
+  highMulOctet4 (x0, B5, B6, B7, B8, O') -> highMulOctet5 (B5, B6, B7, B8, O')
+  highMulOctet4 (x1, B5, B6, B7, B8, O') -> auxMulOctetC (rightOctet4 (O'), highMulOctet5 (B5, B6, B7, B8, O'))
+
+  highMulOctet5 (x0, B6, B7, B8, O') -> highMulOctet6 (B6, B7, B8, O')
+  highMulOctet5 (x1, B6, B7, B8, O') -> auxMulOctetC (rightOctet5 (O'), highMulOctet6 (B6, B7, B8, O'))
+
+  highMulOctet6 (x0, B7, B8, O') -> highMulOctet7 (B7, B8, O')
+  highMulOctet6 (x1, B7, B8, O') -> auxMulOctetC (rightOctet6 (O'), highMulOctet7 (B7, B8, O'))
+
+  highMulOctet7 (x0, B8, O') -> highMulOctet8 (B8, O')
+  highMulOctet7 (x1, B8, O') -> auxMulOctetC (rightOctet7 (O'), highMulOctet8 (B8, O'))
+
+  highMulOctet8 (x0, O') -> buildOctetProd (x00, x00)
+  highMulOctet8 (x1, O') -> buildOctetProd (x00, x00)
+
+# ----------------------------------------------------------------------------
+
+   testMulOctet (O, O', Ohigh, Olow) -> andBool (eqHalf (omulOctet (O, O'), buildHalf (Ohigh, Olow)), eqHalf (omulOctet (O', O), buildHalf (Ohigh, Olow)))
+# check that (O * O') = (O' * O) = (Ohigh, Olow)
+
+EVAL
+
+# a few manually-written unit tests
+   testMulOctet (x00, x01, x00, x00)
+
+   testMulOctet (x01, x01, x00, x01)
+
+   testMulOctet (x01, x02, x00, x02)
+
+   testMulOctet (x02, x02, x00, x04)
+
+   testMulOctet (x00, xFF, x00, x00)
+
+   testMulOctet (x55, xFF, x54, xAB)
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+ORS = ""
+MAX = 256 # 2^8
+# for all I in 0...MAX-1 such that I is a multiple of 3
+for (I = 0 ; I < MAX; I += 3) {
+	# for all J in 0...MAX-1 such that J is a multiple of 5
+	for (J = 0 ; J < MAX; J += 5) {
+		PROD = (I * J) # expected result
+		# check predicate testMulOctet (I, J, H, L) where (H, L) = PROD
+		print "testMulOctet ("
+		PRINT_OCTET(I)
+		print ", "
+		PRINT_OCTET(J)
+		print ", "
+		PRINT_OCTET(int (PROD / 256))
+		print ", "
+		PRINT_OCTET(PROD % 256)
+		print ")"
+		print "\n"
+	}
+}
+
+END-META
+
+END-SPEC

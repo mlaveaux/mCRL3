@@ -1,0 +1,71 @@
+REC-SPEC MUL32 : Bool Bit Octet OctetSum Half HalfSum Block BlockSum Pair
+
+# 32x32 binary multiplier as a term-rewrite system - Hubert Garavel 2016, 2019
+
+SORTS
+
+CONS
+
+OPNS
+
+   testMulBlock : Block Block Block Block -> Bool
+
+VARS
+
+   W W' W1 W2 : Block
+
+RULES
+
+   testMulBlock (W, W', W1, W2) -> andBool (eqPair (mulBlock (W, W'), buildPair (W1, W2)), eqPair (mulBlock (W', W), buildPair (W1, W2)))
+# check that (W * W') = (W' * W) = (W1, W2)
+
+EVAL
+
+# a few manually-written unit tests
+
+   testMulBlock (buildBlock (xCC, xFF, x38, x6B), buildBlock (xAB, xC0, x54, x02), buildBlock (x89, x88, x7D, x5F), buildBlock (x21, xC1, x8C, xD6))
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+function PRINT_BLOCK(N) {
+	print "buildBlock ("
+	PRINT_OCTET(int (N / 16777216))
+	print ", "
+	PRINT_OCTET(int ((N / 65536) % 256))
+	print ", "
+	PRINT_OCTET(int ((N / 256) % 256))
+	print ", "
+	PRINT_OCTET(N % 256)
+	print ")"
+}
+
+ORS = ""
+MAX = 4294967296 # 2^32
+# for all I in 0...MAX-1 such that I is a multiple of 50266112
+for (I = 0 ; I < MAX; I += 50266112) {
+	# for all J in 0...MAX-1 such that J is a multiple of 83820541
+	for (J = 0 ; J < MAX; J += 83820541) {
+		PROD = (I * J) # expected result
+		# check predicate testMulBlock (I, J, H, L) where PROD = (H, L)
+		print "testMulBlock ("
+		PRINT_BLOCK(I)
+		print ", "
+		PRINT_BLOCK(J)
+		print ", "
+		PRINT_BLOCK(int (PROD / MAX))
+		print ", "
+		PRINT_BLOCK(PROD % MAX)
+		print ")"
+		print "\n"
+	}
+}
+END-META
+
+END-SPEC

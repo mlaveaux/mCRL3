@@ -1,0 +1,90 @@
+REC-SPEC MUL16 : Bool Bit Octet OctetSum Half HalfSum Block
+
+# 16x16 binary multiplier as a term-rewrite system - Hubert Garavel 2016, 2019
+
+SORTS
+
+CONS
+
+OPNS
+
+   testMulHalf : Half Half Block -> Bool
+
+   x54CC : -> Half
+   xAB55 : -> Half
+
+VARS
+
+   H H' : Half
+
+   W : Block
+
+RULES
+
+   testMulHalf (H, H', W) -> andBool (eqBlock (mulHalf (H, H'), W), eqBlock (mulHalf (H', H), W))
+# check that (H * H') = (H' * H) = W
+
+   x54CC -> buildHalf (x54, xCC)
+   xAB55 -> buildHalf (xAB, x55)
+
+EVAL
+
+# a few manually-written unit tests
+
+   testMulHalf (x0000, xAB55, buildBlock (x00, x00, x00, x00))
+
+   testMulHalf (x0001, x54CC, buildBlock (x00, x00, x54, xCC))
+
+   testMulHalf (x54CC, xAB55, buildBlock (x38, xC0, x6B, xBC))
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+function PRINT_HALF(N) {
+	print "buildHalf ("
+	PRINT_OCTET(int (N / 256))
+	print ", "
+	PRINT_OCTET(N % 256)
+	print ")"
+}
+
+function PRINT_BLOCK(N) {
+	print "buildBlock ("
+	PRINT_OCTET(int (N / 16777216))
+	print ", "
+	PRINT_OCTET(int ((N / 65536) % 256))
+	print ", "
+	PRINT_OCTET(int ((N / 256) % 256))
+	print ", "
+	PRINT_OCTET(N % 256)
+	print ")"
+}
+
+ORS = ""
+MAX = 65536 # 2^16
+# for all I in 0...MAX-1 such that I is a multiple of 767
+for (I = 0 ; I < MAX; I += 767) {
+	# for all J in 0...MAX-1 such that I is a multiple of 1279
+	for (J = 0 ; J < MAX; J += 1279) {
+		PROD = (I * J) # expected result
+		# check predicate testMulHalf (I, J, PROD)
+		print "testMulHalf ("
+		PRINT_HALF(I)
+		print ", "
+		PRINT_HALF(J)
+		print ", "
+		PRINT_BLOCK(PROD)
+		print ")"
+		print "\n"
+	}
+}
+
+END-META
+
+END-SPEC

@@ -1,0 +1,84 @@
+REC-SPEC ADD8 : Bool Bit Octet OctetSum
+
+# 8-bit binary adder as a term-rewrite system - Hubert Garavel 2016, 2019
+
+SORTS
+
+CONS
+
+OPNS
+
+VARS
+
+RULES
+
+EVAL
+
+# a few manually-written unit tests
+
+   eqOctetSum (addOctetSum (x00, xFF, x0), addOctetSum (xFF, x00, x0))
+
+   eqOctetSum (addOctetSum (x00, xFF, x1), addOctetSum (xFF, x00, x1))
+
+   eqOctetSum (addOctetSum (x55, xCC, x0), addOctetSum (xCC, x55, x0))
+
+   eqOctetSum (addOctetSum (x55, xCC, x1), addOctetSum (xCC, x55, x1))
+
+# a bunch of automatically-generated unit tests
+# (the expected output is a list of Booleans equal to true)
+
+META
+
+function PRINT_BIT(C) {
+	print "x" C
+}
+
+function PRINT_OCTET(N) {
+	printf "x%02X", N
+}
+
+ORS = ""
+MAX = 256 # 2^8
+# for all I in 0...MAX-1 such that I is a multiple of 3
+for (I = 0 ; I < MAX; I += 3) {
+	# for all J in 0...MAX-1 such that J is a multiple of 5
+	for (J = 0 ; J < MAX; J += 5) {
+		# for all C in 0...1
+		for (C = 0; C <= 1; ++C) {
+			SUM = (I + J + C)     # expected result
+			CAR = int (SUM / MAX) # expected carry
+			print "andBool ("
+			# check that addOctetSum (I, J, C) = SUM
+			print "eqOctetSum (addOctetSum ("
+			PRINT_OCTET(I)
+			print ", "
+			PRINT_OCTET(J)
+			print ", "
+			PRINT_BIT(C)
+			print "), buildOctetSum ("
+			PRINT_BIT(CAR)
+			print ", "
+			PRINT_OCTET(SUM % 256)
+			print "))"
+			print ", " # andBool
+			# check that addOctetSum (J, I, C) = SUM
+			print "eqOctetSum (addOctetSum ("
+			PRINT_OCTET(J)
+			print ", "
+			PRINT_OCTET(I)
+			print ", "
+			PRINT_BIT(C)
+			print "), buildOctetSum ("
+			PRINT_BIT(CAR)
+			print ", "
+			PRINT_OCTET(SUM % 256)
+			print "))"
+			print ")" # andBool
+			print "\n"
+		}
+	}
+}
+
+END-META
+
+END-SPEC

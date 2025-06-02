@@ -1,0 +1,168 @@
+REC-SPEC IntNat : Bool Nat Int
+
+# tests multiplication, division, and modulo operations on Nat and Int types
+
+SORTS
+
+CONS
+
+OPNS
+
+check_divNat : Nat Nat Nat -> Bool
+check_modNat : Nat Nat Nat -> Bool
+
+check_mulInt : Int Int Int -> Bool
+check_divInt : Int Int Int -> Bool
+check_modInt : Int Int Int -> Bool
+check_remInt : Int Int Int -> Bool
+
+VARS
+
+N N' Nq : Nat
+I I' I'' : Int
+
+RULES
+
+check_divNat (N, N', Nq) -> andBool (eqNat (divNat (N, N'), Nq), eqNat (cdivNat (N, N'), Nq))
+
+check_modNat (N, N', Nq) -> andBool (eqNat (modNat (N, N'), Nq), eqNat (cmodNat (N, N'), Nq))
+
+check_mulInt (I, I', I'') -> eqInt (mulInt (I, I'), I'')
+
+check_divInt (I, I', I'') -> eqInt (divInt (I, I'), I'')
+
+check_modInt (I, I', I'') -> eqInt (modInt (I, I'), I'')
+
+check_remInt (I, I', I'') -> eqInt (remInt (I, I'), I'')
+
+EVAL
+
+META
+
+function PRINT_NAT(N) {
+	N = N + 0
+	if (N <= 20) {
+		print "n" N
+	} else {
+		for (M = N - 20; M > 0; --M) {
+			print "succNat ("
+		}
+		print "n20"
+		for (M = N - 20; M > 0; --M) {
+			print ")"
+		}	
+	}
+}
+
+function PRINT_INT(N) {
+	N = N + 0
+	if (N >= 0) {
+		if (N <= 20) {
+			print "i" N
+		} else {
+			print "posInt ("
+			PRINT_NAT(N)
+			print ")"
+		}
+	} else {
+		if (N >= -20) {
+			print "im" (-N)
+		} else {
+			print "negInt ("
+			PRINT_NAT(-N-1)
+			print ")"
+		}
+	}
+}
+
+ORS = ""
+MAX = 10
+
+for (I = 0 ; I <= MAX; ++I) {
+	for (J = 1 ; J <= MAX; ++J) {
+		DIV = int (I / J) # expected result
+		print "   check_divNat ("
+		PRINT_NAT(I)
+		print ", "
+		PRINT_NAT(J)
+		print ", "
+		PRINT_NAT(DIV)
+		print ")\n\n"
+	}
+}
+
+for (I = 0 ; I <= MAX; ++I) {
+	for (J = 1 ; J <= MAX; ++J) {
+		MOD = I % J # expected result
+		print "   check_modNat ("
+		PRINT_NAT(I)
+		print ", "
+		PRINT_NAT(J)
+		print ", "
+		PRINT_NAT(MOD)
+		print ")\n\n"
+	}
+}
+
+for (I = -MAX ; I <= MAX; ++I) {
+	for (J = -MAX ; J <= MAX; ++J) {
+		MUL = I * J # expected result
+		print "   check_mulInt ("
+		PRINT_INT(I)
+		print ", "
+		PRINT_INT(J)
+		print ", "
+		PRINT_INT(MUL)
+		print ")\n\n"
+	}
+}
+
+for (I = -MAX ; I <= MAX; ++I) {
+	for (J = -MAX ; J <= MAX; ++J) {
+		if (J == 0) continue
+		DIV = int (I / J) # expected result
+		print "   check_divInt ("
+		PRINT_INT(I)
+		print ", "
+		PRINT_INT(J)
+		print ", "
+		PRINT_INT(DIV)
+		print ")\n\n"
+	}
+}
+
+for (I = -MAX ; I <= MAX; ++I) {
+	for (J = -MAX ; J <= MAX; ++J) {
+		if (J == 0) continue
+		MOD = I % J # expected result
+		if ((MOD != 0) && (I * J < 0)) {
+			MOD += J # fix value
+		}
+		print "   check_modInt ("
+		PRINT_INT(I)
+		print ", "
+		PRINT_INT(J)
+		print ", "
+		PRINT_INT(MOD)
+		print ")\n\n"
+	}
+}
+
+for (I = -MAX ; I <= MAX; ++I) {
+	for (J = -MAX ; J <= MAX; ++J) {
+		if (J == 0) continue
+		REM = I % J # expected result
+		print "   check_remInt ("
+		PRINT_INT(I)
+		print ", "
+		PRINT_INT(J)
+		print ", "
+		PRINT_INT(REM)
+		print ")\n\n"
+	}
+}
+
+END-META
+
+END-SPEC
+
