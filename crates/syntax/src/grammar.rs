@@ -14,8 +14,6 @@ mod tests {
     use indoc::indoc;
     use pest::Parser;
 
-
-
     #[test]
     fn test_parse_ifthen() {
         let expr = "init a -> b <> b;";

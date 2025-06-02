@@ -13,16 +13,18 @@ use crate::ActFrmOp;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
 use crate::DataExprUnaryOp;
+use crate::FixedPointOperator;
 use crate::Mcrl2Parser;
 use crate::ParseResult;
 use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
+use crate::Quantifier;
 use crate::RegFrm;
 use crate::Rule;
 use crate::Sort;
 use crate::StateFrm;
-use crate::syntax_tree::SortExpression;
 use crate::StateFrmOp;
+use crate::syntax_tree::SortExpression;
 
 static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -316,6 +318,9 @@ pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
         })
+        .map_prefix(|prefix, expr| match prefix.as_rule() {
+            _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+        })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
             Rule::ActFrmUnion => Ok(ActFrm::Binary {
                 op: ActFrmOp::Union,
@@ -414,18 +419,37 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
             }
         })
         .map_prefix(|prefix, expr| match prefix.as_rule() {
-            Rule::StateFrmDataValExprMult => 
-                Ok(StateFrm::DataValExprMult(
-                    Mcrl2Parser::StateFrmDataValExprMult(Node::new(prefix))?,
-                    Box::new(expr?),
-                )),                        
+            Rule::StateFrmDataValExprMult => Ok(StateFrm::DataValExprMult(
+                Mcrl2Parser::StateFrmDataValExprMult(Node::new(prefix))?,
+                Box::new(expr?),
+            )),
             Rule::StateFrmDiamond => Ok(StateFrm::Diamond {
                 formula: Mcrl2Parser::StateFrmDiamond(Node::new(prefix))?,
                 expr: Box::new(expr?),
-            }),                       
+            }),
             Rule::StateFrmBox => Ok(StateFrm::Box {
                 formula: Mcrl2Parser::StateFrmBox(Node::new(prefix))?,
                 expr: Box::new(expr?),
+            }),
+            Rule::StateFrmExists => Ok(StateFrm::Quantifier {
+                quantifier: Quantifier::Exists,
+                variables: Mcrl2Parser::StateFrmExists(Node::new(prefix))?,
+                body: Box::new(expr?),
+            }),
+            Rule::StateFrmForall => Ok(StateFrm::Quantifier {
+                quantifier: Quantifier::Forall,
+                variables: Mcrl2Parser::StateFrmForall(Node::new(prefix))?,
+                body: Box::new(expr?),
+            }),
+            Rule::StateFrmMu => Ok(StateFrm::FixedPoint {
+                operator: FixedPointOperator::Least,
+                variable: Mcrl2Parser::StateFrmMu(Node::new(prefix))?,
+                body: Box::new(expr?),
+            }),
+            Rule::StateFrmNu => Ok(StateFrm::FixedPoint {
+                operator: FixedPointOperator::Greatest,
+                variable: Mcrl2Parser::StateFrmNu(Node::new(prefix))?,
+                body: Box::new(expr?),
             }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
         })

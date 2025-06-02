@@ -241,12 +241,6 @@ pub enum DataExpr {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct VariableDecl {
-    pub identifier: String,
-    pub sort: SortExpression,
-}
-
-#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct DataExprUpdate {
     pub expr: Box<DataExpr>,
     pub update: Box<DataExpr>,
@@ -337,6 +331,26 @@ pub enum StateFrmOp {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
+pub enum FixedPointOperator {
+    Least,
+    Greatest,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct StateVarDecl {
+    pub identifier: String,
+    pub arguments: Vec<StateVarAssignment>,
+    pub span: Span,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct StateVarAssignment {
+    pub identifier: String,
+    pub sort: SortExpression,
+    pub expr: DataExpr,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum StateFrm {
     True,
     False,
@@ -360,6 +374,16 @@ pub enum StateFrm {
         op: StateFrmOp,
         lhs: Box<StateFrm>,
         rhs: Box<StateFrm>,
+    },
+    Quantifier {
+        quantifier: Quantifier,
+        variables: Vec<VarDecl>,
+        body: Box<StateFrm>,
+    },
+    FixedPoint {
+        operator: FixedPointOperator,
+        variable: StateVarDecl,
+        body: Box<StateFrm>,
     },
 }
 
@@ -401,7 +425,7 @@ pub enum ActFrm {
     Negation(Box<ActFrm>),
     Quantifier {
         quantifier: Quantifier,
-        variables: Vec<VariableDecl>,
+        variables: Vec<VarDecl>,
         body: Box<ActFrm>,
     },
     Binary {
@@ -416,14 +440,8 @@ pub enum RegFrm {
     Action(ActFrm),
     Iteration(Box<RegFrm>),
     Plus(Box<RegFrm>),
-    Sequence {
-        lhs: Box<RegFrm>,
-        rhs: Box<RegFrm>,
-    },
-    Choice {
-        lhs: Box<RegFrm>,
-        rhs: Box<RegFrm>,
-    },
+    Sequence { lhs: Box<RegFrm>, rhs: Box<RegFrm> },
+    Choice { lhs: Box<RegFrm>, rhs: Box<RegFrm> },
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
