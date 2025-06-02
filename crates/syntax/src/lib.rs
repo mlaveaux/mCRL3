@@ -27,15 +27,15 @@
 //! This crate contains no unsafe code.
 #![forbid(unsafe_code)]
 
-mod ast;
-mod display_ast;
+mod syntax_tree;
+mod syntax_tree_display;
 mod display_pair;
 mod grammar;
 mod parse;
 mod precedence;
 
-pub use ast::*;
-pub use display_ast::*;
+pub use syntax_tree::*;
+pub use syntax_tree_display::*;
 pub use display_pair::*;
 pub use grammar::*;
 pub use parse::*;

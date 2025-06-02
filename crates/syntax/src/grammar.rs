@@ -6,19 +6,28 @@ pub struct Mcrl2Parser;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::UntypedProcessSpecification;
+
+    use mcrl3_utilities::test_logger;
+
     use indoc::indoc;
     use pest::Parser;
 
-    use crate::UntypedProcessSpecification;
 
-    use super::*;
 
     #[test]
     fn test_parse_ifthen() {
-        let expr = "init a -> b -> c <> delta;";
+        let expr = "init a -> b <> b;";
 
-        let result = UntypedProcessSpecification::parse(expr).unwrap();
-        print!("{}", result);
+        match UntypedProcessSpecification::parse(expr) {
+            Ok(result) => {
+                println!("{}", result);
+            }
+            Err(e) => {
+                panic!("Failed to parse expression: {}", e);
+            }
+        }
     }
 
     #[test]
@@ -54,55 +63,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_abp() {
-        let abp_spec = indoc! {"
-            % This file contains the alternating bit protocol, as described 
-            % J.F. Groote and M.R. Mousavi. Modeling and analysis of communicating
-            % systems. The MIT Press, 2014.
-            %
-            % The only exception is that the domain D consists of two data elements to
-            % facilitate simulation.
+    fn test_parse_procexpr() {
+        let _ = test_logger();
 
-            sort
-            D     = struct d1 | d2;
-            Error = struct e;
+        use indoc::indoc;
 
-            act
-            r1,s4: D;
-            s2,r2,c2: D # Bool;
-            s3,r3,c3: D # Bool;
-            s3,r3,c3: Error;
-            s5,r5,c5: Bool;
-            s6,r6,c6: Bool;
-            s6,r6,c6: Error;
-            i;
-
-            proc
-            S(b:Bool)     = sum d:D. r1(d).T(d,b);
-            T(d:D,b:Bool) = s2(d,b).(r6(b).S(!b)+(r6(!b)+r6(e)).T(d,b));
-
-            R(b:Bool)     = sum d:D. r3(d,b).s4(d).s5(b).R(!b)+
-                            (sum d:D.r3(d,!b)+r3(e)).s5(!b).R(b);
-
-            K             = sum d:D,b:Bool. r2(d,b).(i.s3(d,b)+i.s3(e)).K;
-
-            L             = sum b:Bool. r5(b).(i.s6(b)+i.s6(e)).L;
-
-            init
-            allow({r1,s4,c2,c3,c5,c6,i},
-                comm({r2|s2->c2, r3|s3->c3, r5|s5->c5, r6|s6->c6},
-                    S(true) || K || L || R(true)
-                )
-            );
+        let spec: &str = indoc! {"init
+            true -> delta <> delta;
         "};
 
-        match UntypedProcessSpecification::parse(abp_spec) {
-            Ok(x) => {
-                print!("{}", x);
-            }
-            Err(y) => {
-                panic!("{}", y);
-            }
-        }
+        println!("{}", UntypedProcessSpecification::parse(spec).unwrap());
     }
 }

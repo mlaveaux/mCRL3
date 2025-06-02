@@ -9,6 +9,7 @@ use pest::pratt_parser::PrattParser;
 use pest_consume::Node;
 
 use crate::ActFrm;
+use crate::ActFrmOp;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
 use crate::DataExprUnaryOp;
@@ -18,8 +19,10 @@ use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
 use crate::RegFrm;
 use crate::Rule;
-use crate::ast::SortExpression;
 use crate::Sort;
+use crate::StateFrm;
+use crate::syntax_tree::SortExpression;
+use crate::StateFrmOp;
 
 static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -51,7 +54,10 @@ pub fn parse_sortexpr(pairs: Pairs<Rule>) -> ParseResult<SortExpression> {
 
                 Rule::SortExprParens => {
                     // Handle parentheses by recursively parsing the inner expression
-                    let inner = primary.into_inner().next().expect("Expected inner expression in brackets");
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
                     parse_sortexpr(inner.into_inner())
                 }
 
@@ -120,7 +126,10 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
 
             Rule::DataExprBrackets => {
                 // Handle parentheses by recursively parsing the inner expression
-                let inner = primary.into_inner().next().expect("Expected inner expression in brackets");
+                let inner = primary
+                    .into_inner()
+                    .next()
+                    .expect("Expected inner expression in brackets");
                 parse_dataexpr(inner.into_inner())
             }
 
@@ -230,7 +239,10 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
             Rule::ProcExprComm => Ok(Mcrl2Parser::ProcExprComm(Node::new(primary))?),
             Rule::ProcExprBrackets => {
                 // Handle parentheses by recursively parsing the inner expression
-                let inner = primary.into_inner().next().expect("Expected inner expression in brackets");
+                let inner = primary
+                    .into_inner()
+                    .next()
+                    .expect("Expected inner expression in brackets");
                 parse_process_expr(inner.into_inner())
             }
             _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
@@ -253,27 +265,26 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
             }),
             _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
         })
-        .map_prefix(|prefix, expr| {
-            match prefix.as_rule() {
-                Rule::ProcExprSum => Ok(ProcessExpr::Sum {
-                    variables: Mcrl2Parser::ProcExprSum(Node::new(prefix))?,
-                    operand: Box::new(expr?),
-                }),
-                Rule::ProcExprDist => {
-                    let (variables, data_expr) =  Mcrl2Parser::ProcExprDist(Node::new(prefix))?;
+        .map_prefix(|prefix, expr| match prefix.as_rule() {
+            Rule::ProcExprSum => Ok(ProcessExpr::Sum {
+                variables: Mcrl2Parser::ProcExprSum(Node::new(prefix))?,
+                operand: Box::new(expr?),
+            }),
+            Rule::ProcExprDist => {
+                let (variables, data_expr) = Mcrl2Parser::ProcExprDist(Node::new(prefix))?;
 
-                    Ok(ProcessExpr::Dist {
-                        variables,
-                        expr: data_expr,
-                        operand: Box::new(expr?),
-                    })
-                },
-                _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
+                Ok(ProcessExpr::Dist {
+                    variables,
+                    expr: data_expr,
+                    operand: Box::new(expr?),
+                })
             }
+            _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
         })
         .parse(pairs)
 }
 
+/// Defines the operator precedence for action formulas using a Pratt parser.
 static ACTFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
@@ -285,21 +296,48 @@ static ACTFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::ActFrmNegation)) // $right 6
 });
 
+/// Parses a sequence of `Rule` pairs into an `ActFrm` using a Pratt parser defined in [ACTFRM_PRATT_PARSER] for operator precedence.
 pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
     ACTFRM_PRATT_PARSER
         .map_primary(|primary| {
             match primary.as_rule() {
+                Rule::ActFrmTrue => Ok(ActFrm::True),
+                Rule::ActFrmFalse => Ok(ActFrm::False),
+                Rule::MultAct => Ok(ActFrm::MultAct(Mcrl2Parser::MultAct(Node::new(primary))?)),
+                Rule::DataExpr => Ok(ActFrm::DataExprVal(Mcrl2Parser::DataExpr(Node::new(primary))?)),
                 Rule::ActFrmBrackets => {
                     // Handle parentheses by recursively parsing the inner expression
-                    let inner = primary.into_inner().next().expect("Expected inner expression in brackets");
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
                     parse_actfrm(inner.into_inner())
                 }
                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
-        })        
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::ActFrmUnion => Ok(ActFrm::Binary {
+                op: ActFrmOp::Union,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::ActFrmIntersect => Ok(ActFrm::Binary {
+                op: ActFrmOp::Intersect,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::ActFrmImplies => Ok(ActFrm::Binary {
+                op: ActFrmOp::Implies,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        })
         .parse(pairs)
 }
 
+/// Defines the operator precedence for regular expressions using a Pratt parser.
 static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
@@ -308,22 +346,121 @@ static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::postfix(Rule::RegFrmIteration) | Op::postfix(Rule::RegFrmPlus)) // $left 3
 });
 
-// pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
-//     REGFRM_PRATT_PARSER
-//         .map_primary(|primary| {
-//             match primary.as_rule() {
-//                 Rule::ActFrm => parse_regfrm(Node::new(primary))?,
-//                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
-//             }            
-//         })
-//         .map_prefix(|prefix, expr| {
-//             match prefix.as_rule() {
-//                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
-//             }            
-//         })
-//         .parse(pairs)
+/// Parses a sequence of `Rule` pairs into an [RegFrm] using a Pratt parser defined in [REGFRM_PRATT_PARSER] for operator precedence.
+pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
+    REGFRM_PRATT_PARSER
+        .map_primary(|primary| match primary.as_rule() {
+            Rule::ActFrm => Ok(RegFrm::Action(Mcrl2Parser::ActFrm(Node::new(primary))?)),
+            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::RegFrmAlternative => Ok(RegFrm::Choice {
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::RegFrmComposition => Ok(RegFrm::Sequence {
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        })
+        .map_postfix(|expr, postfix| match postfix.as_rule() {
+            Rule::RegFrmIteration => Ok(RegFrm::Iteration(Box::new(expr?))),
+            Rule::RegFrmPlus => Ok(RegFrm::Plus(Box::new(expr?))),
+            _ => unimplemented!("Unexpected rule: {:?}", postfix.as_rule()),
+        })
+        .parse(pairs)
+}
 
-// }
+/// Defines the operator precedence for state formulas using a Pratt parser.
+static STATEFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    // Precedence is defined lowest to highest
+    PrattParser::new()
+        .op(Op::prefix(Rule::StateFrmMu) | Op::prefix(Rule::StateFrmNu)) // $right 1
+        .op(Op::prefix(Rule::StateFrmForall)
+            | Op::prefix(Rule::StateFrmExists)
+            | Op::prefix(Rule::StateFrmInf)
+            | Op::prefix(Rule::StateFrmSup)
+            | Op::prefix(Rule::StateFrmSum)) // $right 2
+        .op(Op::infix(Rule::StateFrmAddition, Assoc::Left)) // $left 3
+        .op(Op::infix(Rule::StateFrmImplication, Assoc::Right)) // $right 4
+        .op(Op::infix(Rule::StateFrmDisjunction, Assoc::Right)) // $right 5
+        .op(Op::infix(Rule::StateFrmConjunction, Assoc::Right)) // $right 6
+        .op(Op::prefix(Rule::StateFrmLeftConstantMultiply) | Op::postfix(Rule::StateFrmRightConstantMultiply)) // $right 7
+        .op(Op::prefix(Rule::StateFrmBox) | Op::prefix(Rule::StateFrmDiamond)) // $right 8
+        .op(Op::prefix(Rule::StateFrmNegation) | Op::prefix(Rule::StateFrmUnaryMinus)) // $right 9
+});
+
+pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
+    STATEFRM_PRATT_PARSER
+        .map_primary(|primary| {
+            match primary.as_rule() {
+                Rule::StateFrmId => Ok(StateFrm::Id(primary.as_str().into())),
+                Rule::StateFrmTrue => Ok(StateFrm::True),
+                Rule::StateFrmFalse => Ok(StateFrm::False),
+                Rule::StateFrmDelay => Mcrl2Parser::StateFrmDelay(Node::new(primary)),
+                Rule::StateFrmYaled => Mcrl2Parser::StateFrmYaled(Node::new(primary)),
+                Rule::StateFrmNegation => Mcrl2Parser::StateFrmNegation(Node::new(primary)),
+                Rule::StateFrmDataValExpr => Mcrl2Parser::StateFrmDataValExpr(Node::new(primary)),
+                Rule::StateFrmBrackets => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
+                    parse_statefrm(inner.into_inner())
+                }
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+            }
+        })
+        .map_prefix(|prefix, expr| match prefix.as_rule() {
+            Rule::StateFrmDataValExprMult => 
+                Ok(StateFrm::DataValExprMult(
+                    Mcrl2Parser::StateFrmDataValExprMult(Node::new(prefix))?,
+                    Box::new(expr?),
+                )),                        
+            Rule::StateFrmDiamond => Ok(StateFrm::Diamond {
+                formula: Mcrl2Parser::StateFrmDiamond(Node::new(prefix))?,
+                expr: Box::new(expr?),
+            }),                       
+            Rule::StateFrmBox => Ok(StateFrm::Box {
+                formula: Mcrl2Parser::StateFrmBox(Node::new(prefix))?,
+                expr: Box::new(expr?),
+            }),
+            _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::StateFrmAddition => Ok(StateFrm::Binary {
+                op: StateFrmOp::Addition,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::StateFrmImplication => Ok(StateFrm::Binary {
+                op: StateFrmOp::Implies,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::StateFrmDisjunction => Ok(StateFrm::Binary {
+                op: StateFrmOp::Disjunction,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::StateFrmConjunction => Ok(StateFrm::Binary {
+                op: StateFrmOp::Conjunction,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        })
+        .map_postfix(|expr, postfix| match postfix.as_rule() {
+            Rule::StateFrmRightConstantMultiply => Ok(StateFrm::DataValExprRightMult(
+                Box::new(expr?),
+                Mcrl2Parser::StateFrmRightConstantMultiply(Node::new(postfix))?,
+            )),
+            _ => unimplemented!("Unexpected binary operator: {:?}", postfix.as_rule()),
+        })
+        .parse(pairs)
+}
 
 static _PBESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -338,9 +475,7 @@ static _PBESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 static _PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
-        .op(Op::prefix(Rule::PresExprInf) 
-            | Op::prefix(Rule::PresExprSup)
-            | Op::prefix(Rule::PresExprSum)) // $right 0
+        .op(Op::prefix(Rule::PresExprInf) | Op::prefix(Rule::PresExprSup) | Op::prefix(Rule::PresExprSum)) // $right 0
         .op(Op::infix(Rule::PresExprAdd, Assoc::Right)) // $right 2
         .op(Op::infix(Rule::PbesExprImplies, Assoc::Right)) // $right 3
         .op(Op::infix(Rule::PbesExprDisj, Assoc::Right)) // $right 4
@@ -348,26 +483,6 @@ static _PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::PresExprLeftConstantMultiply) | Op::postfix(Rule::PresExprRightConstMultiply)) // $right 6
         .op(Op::prefix(Rule::PbesExprNegation)) // $right 7
 });
-
-static _STATEFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
-    // Precedence is defined lowest to highest
-    PrattParser::new()
-        .op(Op::prefix(Rule::StateFrmMu) | Op::prefix(Rule::StateFrmNu)) // $right 1
-        .op(Op::prefix(Rule::StateFrmForall) 
-            | Op::prefix(Rule::StateFrmExists)
-            | Op::prefix(Rule::StateFrmInf)
-            | Op::prefix(Rule::StateFrmSup)
-            | Op::prefix(Rule::StateFrmSum)) // $right 2
-        .op(Op::infix(Rule::StateFrmAddition, Assoc::Left)) // $left 3
-        .op(Op::infix(Rule::StateFrmImplication, Assoc::Right)) // $right 4
-        .op(Op::infix(Rule::StateFrmDisjunction, Assoc::Right)) // $right 5
-        .op(Op::infix(Rule::StateFrmConjunction, Assoc::Right)) // $right 6
-        .op(Op::prefix(Rule::StateFrmLeftConstantMultiply) | Op::postfix(Rule::StateFrmRightConstantMultiply)) // $right 7
-        .op(Op::prefix(Rule::StateFrmBox) | Op::postfix(Rule::StateFrmDiamond)) // $right 8
-        .op(Op::prefix(Rule::StateFrmNegation) | Op::prefix(Rule::StateFrmUnaryMinus)) // $right 9
-});
-
-
 
 #[cfg(test)]
 mod tests {

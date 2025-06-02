@@ -264,7 +264,6 @@ pub enum ProcExprBinaryOp {
     Choice,
     Parallel,
     LeftMerge,
-    Communication,
 }
 
 /// Process expression
@@ -297,11 +296,15 @@ pub enum ProcessExpr {
         operand: Box<ProcessExpr>,
     },
     Allow {
-        actions: Vec<MultiAction>,
+        actions: Vec<MultiActionLabel>,
         operand: Box<ProcessExpr>,
     },
     Block {
         actions: Vec<String>,
+        operand: Box<ProcessExpr>,
+    },
+    Comm {
+        comm: Vec<Comm>,
         operand: Box<ProcessExpr>,
     },
     Condition {
@@ -321,12 +324,59 @@ pub struct CommAction {
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct StateFrmSpec {
+    pub data_specification: UntypedDataSpecification,
+    pub formula: StateFrm,
+}
 
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum StateFrmOp {
+    Addition,
+    Implies,
+    Disjunction,
+    Conjunction,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum StateFrm {
+    True,
+    False,
+    Delay(DataExpr),
+    Yaled(DataExpr),
+    Negation(Box<StateFrm>),
+    DataValExprMult(DataExpr, Box<StateFrm>),
+    DataValExprRightMult(Box<StateFrm>, DataExpr),
+    DataValExpr(DataExpr),
+    Id(String),
+    Minus(Box<DataExpr>),
+    Diamond {
+        formula: RegFrm,
+        expr: Box<StateFrm>,
+    },
+    Box {
+        formula: RegFrm,
+        expr: Box<StateFrm>,
+    },
+    Binary {
+        op: StateFrmOp,
+        lhs: Box<StateFrm>,
+        rhs: Box<StateFrm>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct MultiActionLabel {
+    pub actions: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Action {
+    pub id: String,
+    pub args: Vec<DataExpr>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct MultiAction {
-    pub actions: Vec<String>,
+    pub actions: Vec<Action>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -346,7 +396,7 @@ pub enum ActFrmOp {
 pub enum ActFrm {
     True,
     False,
-    MultAct(Vec<String>),
+    MultAct(MultiAction),
     DataExprVal(DataExpr),
     Negation(Box<ActFrm>),
     Quantifier {
@@ -384,7 +434,7 @@ pub struct Rename {
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct Comm {
-    pub from: MultiAction,
+    pub from: MultiActionLabel,
     pub to: String,
 }
 

@@ -1,6 +1,6 @@
 use std::iter;
 
-use mcrl3_utilities::debug_trace;
+use log::trace;
 use pest::Parser;
 use pest_consume::Error;
 use pest_consume::match_nodes;
@@ -9,24 +9,29 @@ use mcrl3_utilities::MCRL3Error;
 
 use crate::parse_actfrm;
 use crate::parse_process_expr;
+use crate::parse_regfrm;
+use crate::parse_statefrm;
 use crate::ActFrm;
+use crate::Action;
 use crate::Assignment;
 use crate::Comm;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
 use crate::DataExprUpdate;
+use crate::DisplayPair;
 use crate::EqnDecl;
 use crate::EqnSpec;
 use crate::IdDecl;
 use crate::Mcrl2Parser;
 use crate::MultiAction;
-use crate::ProcExprBinaryOp;
+use crate::MultiActionLabel;
 use crate::ProcessExpr;
+use crate::RegFrm;
 use crate::Rename;
 use crate::Rule;
-use crate::Sort;
 use crate::SortExpression;
+use crate::StateFrm;
 use crate::StateFrmSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
@@ -41,9 +46,9 @@ impl UntypedProcessSpecification {
 
         let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec)?;
         let root = result.next().ok_or("Could not parse mCRL2 specification")?;
-        debug_trace!("Parse tree {}", DisplayPair(root.clone()));
+        trace!("Parse tree {}", DisplayPair(root.clone()));
 
-        Ok(Mcrl2Parser::MCRL2Spec(ParseNode::new(root)).unwrap())
+        Ok(Mcrl2Parser::MCRL2Spec(ParseNode::new(root))?)
     }
 }
 
@@ -54,9 +59,9 @@ impl UntypedDataSpecification {
 
         let mut result = Mcrl2Parser::parse(Rule::DataSpec, spec)?;
         let root = result.next().ok_or("Could not parse mCRL2 data specification")?;
-        debug_trace!("Parse tree {}", DisplayPair(root.clone()));
+        trace!("Parse tree {}", DisplayPair(root.clone()));
 
-        Ok(Mcrl2Parser::DataSpec(ParseNode::new(root)).unwrap())
+        Ok(Mcrl2Parser::DataSpec(ParseNode::new(root))?)
     }
 }
 
@@ -66,9 +71,9 @@ impl StateFrmSpec {
 
         let mut result = Mcrl2Parser::parse(Rule::StateFrmSpec, spec)?;
         let root = result.next().ok_or("Could not parse mCRL2 state formula specification")?;
-        debug_trace!("Parse tree {}", DisplayPair(root.clone()));
+        trace!("Parse tree {}", DisplayPair(root.clone()));
 
-        Ok(StateFrmSpec { })
+        Ok(Mcrl2Parser::StateFrmSpec(ParseNode::new(root))?)
     }
 }
 
@@ -182,7 +187,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn DataExpr(expr: ParseNode) -> ParseResult<DataExpr> {
+    pub(crate) fn DataExpr(expr: ParseNode) -> ParseResult<DataExpr> {
         parse_dataexpr(expr.children().as_pairs().clone())
     }
 
@@ -487,15 +492,15 @@ impl Mcrl2Parser {
         );
     }
 
-    fn MultActId(actions: ParseNode) -> ParseResult<MultiAction> {
+    fn MultActId(actions: ParseNode) -> ParseResult<MultiActionLabel> {
         match_nodes!(actions.into_children();
             [Id(action), Id(actions)..] => {
-                return Ok(MultiAction { actions: iter::once(action).chain(actions).collect() });
+                return Ok(MultiActionLabel { actions: iter::once(action).chain(actions).collect() });
             },
         );
     }
 
-    fn MultActIdList(actions: ParseNode) -> ParseResult<Vec<MultiAction>> {
+    fn MultActIdList(actions: ParseNode) -> ParseResult<Vec<MultiActionLabel>> {
         match_nodes!(actions.into_children();
             [MultActId(action), MultActId(actions)..] => {
                 return Ok(iter::once(action).chain(actions).collect());
@@ -503,7 +508,7 @@ impl Mcrl2Parser {
         );
     }
 
-    fn MultActIdSet(actions: ParseNode) -> ParseResult<Vec<MultiAction>> {
+    fn MultActIdSet(actions: ParseNode) -> ParseResult<Vec<MultiActionLabel>> {
         match_nodes!(actions.into_children();
             [MultActIdList(list)] => {
                 return Ok(list);
@@ -548,6 +553,40 @@ impl Mcrl2Parser {
         )
     }
 
+    fn ActionList(actions: ParseNode) -> ParseResult<Vec<Action>> {
+        match_nodes!(actions.into_children();
+            [Action(action), Action(actions)..] => {
+                return Ok(iter::once(action).chain(actions).collect());
+            },
+        );
+    }
+
+    fn Action(action: ParseNode) -> ParseResult<Action> {
+        match_nodes!(action.into_children();
+            [Id(id), DataExprList(args)] => {
+                return Ok(Action { id, args });
+            },
+            [Id(id)] => {
+                return Ok(Action { id, args: Vec::new() });
+            },
+        );
+    }
+
+    fn MultiActTau(_input: ParseNode) -> ParseResult<()> {
+        Ok(())
+    }
+
+    pub(crate) fn MultAct(input: ParseNode) -> ParseResult<MultiAction> {
+        match_nodes!(input.into_children();
+            [MultiActTau(_)] => {
+                return Ok(MultiAction { actions: Vec::new() });
+            },
+            [ActionList(actions)] => {
+                return Ok(MultiAction { actions });
+            },
+        );
+    }
+
     fn CommExpr(action: ParseNode) -> ParseResult<Comm> {
         match_nodes!(action.into_children();
             [Id(id), MultActId(multiact), Id(to)] => {
@@ -555,7 +594,7 @@ impl Mcrl2Parser {
                 actions.extend(multiact.actions);
 
                 return Ok(Comm {
-                    from: MultiAction { actions },
+                    from: MultiActionLabel { actions },
                     to
                 });
             },
@@ -591,11 +630,10 @@ impl Mcrl2Parser {
 
     pub(crate) fn ProcExprComm(input: ParseNode) -> ParseResult<ProcessExpr> {
         match_nodes!(input.into_children();
-            [MultActIdSet(actions), ProcExpr(lhs), ProcExpr(rhs)] => {
-                Ok(ProcessExpr::Binary {
-                    op: ProcExprBinaryOp::Communication,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
+            [CommExprSet(comm), ProcExpr(expr)] => {
+                Ok(ProcessExpr::Comm {
+                    comm,
+                    operand: Box::new(expr),
                 })
             },
         )
@@ -641,27 +679,91 @@ impl Mcrl2Parser {
         )
     }
 
+
+    pub(crate) fn StateFrmDelay(input: ParseNode) -> ParseResult<StateFrm> {
+        match_nodes!(input.into_children();
+            [DataExpr(delay)] => {
+                return Ok(StateFrm::Delay(delay));
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmYaled(input: ParseNode) -> ParseResult<StateFrm> {
+        match_nodes!(input.into_children();
+            [DataExpr(delay)] => {
+                return Ok(StateFrm::Yaled(delay));
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmNegation(input: ParseNode) -> ParseResult<StateFrm> {
+        match_nodes!(input.into_children();
+            [StateFrm(state)] => {
+                return Ok(StateFrm::Negation(Box::new(state)));
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmDataValExprMult(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExpr(expr)] => {
+                return Ok(expr);
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmRightConstantMultiply(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [ DataExpr(expr)] => {
+                return Ok(expr);
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmDataValExpr(input: ParseNode) -> ParseResult<StateFrm> {
+        match_nodes!(input.into_children();
+            [DataExpr(expr)] => {
+                return Ok(StateFrm::DataValExpr(expr));
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmDiamond(input: ParseNode) -> ParseResult<RegFrm> {
+        match_nodes!(input.into_children();
+            [RegFrm(formula)] => {
+                return Ok(formula);
+            },
+        );
+    }
+
+    pub(crate) fn StateFrmBox(input: ParseNode) -> ParseResult<RegFrm> {
+        match_nodes!(input.into_children();
+            [RegFrm(formula)] => {
+                return Ok(formula);
+            },
+        );
+    }
+
+    fn StateFrm(input: ParseNode) -> ParseResult<StateFrm> {
+        parse_statefrm(input.children().as_pairs().clone())
+    }
+
+    fn StateFrmSpec(input: ParseNode) -> ParseResult<StateFrmSpec> {        
+        match_nodes!(input.into_children();
+            [StateFrm(state)] => {
+                return Ok(StateFrmSpec { 
+                    data_specification: UntypedDataSpecification::default(),
+                    formula: state
+                });
+            },
+        );
+    }
+
+    fn RegFrm(input: ParseNode) -> ParseResult<RegFrm> {
+        parse_regfrm(input.children().as_pairs().clone())
+    }
+    
     fn EOI(_input: ParseNode) -> ParseResult<()> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use mcrl3_utilities::test_logger;
-
-    use super::*;
-
-    #[test]
-    fn test_parse_procexpr() {
-        let _ = test_logger();
-
-        use indoc::indoc;
-
-        let spec: &str = indoc! {"init
-            true -> false -> delta <> delta;
-        "};
-
-        println!("{}", UntypedProcessSpecification::parse(spec).unwrap());
     }
 }

@@ -1,3 +1,4 @@
+use mcrl3_utilities::test_logger;
 use test_case::test_case;
 
 use mcrl3_syntax::StateFrmSpec;
@@ -188,6 +189,8 @@ use mcrl3_syntax::UntypedProcessSpecification;
 #[test_case(include_str!("../../../examples/mCRL2/visualisation/carpet/carpet.mcrl2") ; "carpet.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/visualisation/cube/cube.mcrl2") ; "cube.mcrl2")]
 fn test_parse_mcrl2_spec(input: &str) {
+    let _ = test_logger();
+    
     if let Err(y) = UntypedProcessSpecification::parse(input) {
         panic!("{}", y);
     }
@@ -347,6 +350,8 @@ fn test_parse_mcrl2_spec(input: &str) {
 #[test_case(include_str!("../../../examples/mCRL2/software_models/Treiber_stack/Treiber_CAS/properties/Correct release implies correct retrieve.mcf") ; "correct_release_implies_correct_retrieve.mcf")]
 #[test_case(include_str!("../../../examples/mCRL2/software_models/Treiber_stack/Treiber_CAS/properties/Inevitably retrieve when stacksize is 2.mcf") ; "inevitably_retrieve_when_stacksize_is_2.mcf")]
 fn test_parse_mcrl2_modal_formula(input: &str) {
+    let _ = test_logger();
+
     if let Err(y) = StateFrmSpec::parse(input) {
         panic!("{}", y);
     }
@@ -438,6 +443,8 @@ fn test_parse_mcrl2_modal_formula(input: &str) {
 #[test_case(include_str!("../../../examples/REC/mcrl2/tautologyhard.dataspec") ; "tautologyhard.dataspec")]
 #[test_case(include_str!("../../../examples/REC/mcrl2/tricky.dataspec") ; "tricky.dataspec")]
 fn test_parse_mcrl2_dataspec(input: &str) {
+    let _ = test_logger();
+
     if let Err(y) = UntypedDataSpecification::parse(input) {
         panic!("{}", y);
     }

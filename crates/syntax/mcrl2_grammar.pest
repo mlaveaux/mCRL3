@@ -479,7 +479,7 @@ RegFrmPostfix = _{
 
 ActFrm = { ActFrmPrefix* ~ ActFrmPrimary ~ ActFrmPostfix* ~ (ActFrmInfix ~ ActFrmPrefix* ~ ActFrmPrimary ~ ActFrmPostfix*)* }
 
-ActFrmPrimary = {
+ActFrmPrimary = _{
       ActFrmBrackets
     | ActFrmTrue
     | ActFrmFalse
