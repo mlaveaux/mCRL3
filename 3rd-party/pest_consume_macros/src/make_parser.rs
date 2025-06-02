@@ -114,10 +114,7 @@ fn collect_aliases(imp: &mut ItemImpl) -> Result<HashMap<Ident, Vec<AliasSrc>>> 
     let mut alias_map = HashMap::new();
     for function in functions {
         let fn_name = function.sig.ident.clone();
-        let mut alias_attrs = function
-            .attrs
-            .iter()
-            .filter(|attr| attr.path().is_ident("alias"));
+        let mut alias_attrs = function.attrs.iter().filter(|attr| attr.path().is_ident("alias"));
 
         if let Some(attr) = alias_attrs.next() {
             let args: AliasArgs = attr.parse_args()?;
@@ -150,12 +147,10 @@ fn extract_ident_argument(input_arg: &FnArg) -> Result<Ident> {
         FnArg::Receiver(_) => Err(Error::new(input_arg.span(), "this argument should not be `self`")),
         FnArg::Typed(input_arg) => match &*input_arg.pat {
             Pat::Ident(pat) => Ok(pat.ident.clone()),
-            _ => {
-                Err(Error::new(
-                    input_arg.span(),
-                    "this argument should be a plain identifier instead of a pattern",
-                ))
-            }
+            _ => Err(Error::new(
+                input_arg.span(),
+                "this argument should be a plain identifier instead of a pattern",
+            )),
         },
     }
 }

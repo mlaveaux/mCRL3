@@ -234,10 +234,9 @@ impl InnermostRewriter {
                 if transition.destinations.is_empty() {
                     // If there is no destination state there is no pattern match
                     return None;
-                } else {
-                    // Continue matching in the next state
-                    state_index = transition.destinations.first().unwrap().1;
                 }
+
+                state_index = transition.destinations.first().unwrap().1;
             } else {
                 return None;
             }

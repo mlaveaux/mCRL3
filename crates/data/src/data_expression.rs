@@ -81,7 +81,7 @@ mod inner {
         ///     - function symbol                  f -> []
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
         #[mcrl3_ignore]
-        pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'_>>  + use<'_> {
+        pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'_>> + use<'_> {
             let mut result = self.term.arguments();
             if is_data_application(&self.term) {
                 result.next();
@@ -113,7 +113,7 @@ mod inner {
 
         /// Returns the ith argument of a data application.
         #[mcrl3_ignore]
-        pub fn data_arg(&self, index: usize) -> DataExpressionRef<'_> {            
+        pub fn data_arg(&self, index: usize) -> DataExpressionRef<'_> {
             debug_assert!(is_data_application(self), "Term {:?} is not a data application", self);
             debug_assert!(
                 index + 1 < self.get_head_symbol().arity(),
@@ -254,7 +254,7 @@ mod inner {
     impl DataApplication {
         /// Create a new data application with the given head and arguments.
         #[mcrl3_ignore]
-        pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {            
+        pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 let symbol = ds.get_data_application_symbol(arguments.len() + 1).copy();
 
@@ -269,7 +269,11 @@ mod inner {
         ///
         /// arity must be equal to the number of arguments + 1.
         #[mcrl3_ignore]
-        pub fn with_iter<'a, 'b, 'c, 'd, T, I>(head: &'b impl Term<'a, 'b>, arity: usize, arguments: I) -> DataApplication
+        pub fn with_iter<'a, 'b, 'c, 'd, T, I>(
+            head: &'b impl Term<'a, 'b>,
+            arity: usize,
+            arguments: I,
+        ) -> DataApplication
         where
             I: Iterator<Item = T>,
             T: Term<'c, 'd>,
@@ -402,7 +406,6 @@ mod inner {
 pub use inner::*;
 
 impl<'a> DataExpressionRef<'a> {
-
     pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'a>> + use<'a> {
         let mut result = self.term.arguments();
         if is_data_application(&self.term) {
@@ -429,7 +432,6 @@ impl<'a> DataExpressionRef<'a> {
         self.term.arg(index + 1).into()
     }
 }
-
 
 /// Converts an [ATerm] to an untyped data expression.
 pub fn to_untyped_data_expression(t: &ATerm, variables: Option<&AHashSet<String>>) -> DataExpression {

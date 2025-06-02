@@ -207,7 +207,11 @@ impl ATerm {
     }
 
     /// Creates a new term with the given symbol and a head term, along with a list of arguments.
-    pub fn with_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(symbol: &'b impl Symb<'a, 'b>, head: &'d impl Term<'c, 'd>, iter: I) -> ATerm
+    pub fn with_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(
+        symbol: &'b impl Symb<'a, 'b>,
+        head: &'d impl Term<'c, 'd>,
+        iter: I,
+    ) -> ATerm
     where
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,

@@ -4,12 +4,12 @@ use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_utilities::debug_trace;
 
-use crate::utilities::DataPositionIndexed;
 use crate::AnnouncementInnermost;
 use crate::RewriteEngine;
 use crate::RewriteSpecification;
 use crate::RewritingStatistics;
 use crate::set_automaton::SetAutomaton;
+use crate::utilities::DataPositionIndexed;
 
 /// Innermost Adaptive Pattern Matching Automaton (APMA) rewrite engine.
 /// Implements the RewriteEngine trait. An APMA uses a modified SetAutomaton.
@@ -25,7 +25,7 @@ impl RewriteEngine for NaiveRewriter {
         let mut stats = RewritingStatistics::default();
 
         let result = NaiveRewriter::rewrite_aux(&self.apma, t.copy(), &mut stats);
-        
+
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
@@ -43,7 +43,7 @@ impl NaiveRewriter {
 
     /// Function to rewrite a term 't'. The elements of the automaton 'states' and 'tp' are passed
     /// as separate parameters to satisfy the borrow checker.
-     fn rewrite_aux(
+    fn rewrite_aux(
         automaton: &SetAutomaton<AnnouncementInnermost>,
         t: DataExpressionRef<'_>,
         stats: &mut RewritingStatistics,
@@ -88,7 +88,10 @@ impl NaiveRewriter {
             let symbol = u.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match
-            let transition = automaton.transitions().get(&(state_index, symbol.operation_id())).unwrap();
+            let transition = automaton
+                .transitions()
+                .get(&(state_index, symbol.operation_id()))
+                .unwrap();
             for (_announcement, ema) in &transition.announcements {
                 let mut conditions_hold = true;
 
@@ -125,10 +128,9 @@ impl NaiveRewriter {
                 // If there is no destination state there is no pattern match
                 //println!("no match");
                 return None;
-            } else {
-                // Continue matching in the next state
-                state_index = transition.destinations.first().unwrap().1;
             }
+
+            state_index = transition.destinations.first().unwrap().1;
         }
     }
 

@@ -106,7 +106,12 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
-    pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(&self, symbol: &'b impl Symb<'a, 'b>, head: &'d impl Term<'c, 'd>, iter: I) -> ATerm
+    pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(
+        &self,
+        symbol: &'b impl Symb<'a, 'b>,
+        head: &'d impl Term<'c, 'd>,
+        iter: I,
+    ) -> ATerm
     where
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,

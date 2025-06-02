@@ -1,9 +1,9 @@
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::ThreadTermPool;
-use mcrl3_data::is_data_application;
 use mcrl3_data::DataExpression;
 use mcrl3_data::DataExpressionRef;
+use mcrl3_data::is_data_application;
 
 use super::DataPosition;
 
@@ -51,7 +51,10 @@ fn substitute_rec(
         let new_child_index = p[depth];
         let new_child = substitute_rec(tp, &t.arg(new_child_index).into(), new_subterm, p, args, depth + 1);
 
-        debug_assert!(is_data_application(t), "Can only perform data substitution on DataApplications");
+        debug_assert!(
+            is_data_application(t),
+            "Can only perform data substitution on DataApplications"
+        );
 
         let mut write_args = args.write();
         for (index, arg) in t.arguments().enumerate() {
