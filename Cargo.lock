@@ -3805,6 +3805,7 @@ dependencies = [
  "env_logger",
  "hashbrown 0.15.3",
  "log",
+ "pest",
  "rand 0.9.1",
  "regex",
  "rustc-hash 2.1.1",

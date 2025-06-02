@@ -4,7 +4,7 @@
 #![forbid(unsafe_code)]
 
 #[macro_use]
-mod cast;
+mod cast_macro;
 
 mod bitstream;
 mod debug_trace;

@@ -102,10 +102,14 @@ mod tests {
 
     #[test]
     fn test_pausablethread() {
-        let thread = PauseableThread::new("test", || Ok(()), move |_| {
-            // Do nothing.
-            Ok(true)
-        })
+        let thread = PauseableThread::new(
+            "test",
+            || Ok(()),
+            move |_| {
+                // Do nothing.
+                Ok(true)
+            },
+        )
         .unwrap();
 
         thread.stop();

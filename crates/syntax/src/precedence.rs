@@ -319,6 +319,16 @@ pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
             }
         })
         .map_prefix(|prefix, expr| match prefix.as_rule() {
+            Rule::ActFrmExists => Ok(ActFrm::Quantifier {
+                quantifier: Quantifier::Exists,
+                variables: Mcrl2Parser::ActFrmExists(Node::new(prefix))?,
+                body: Box::new(expr?),
+            }),
+            Rule::ActFrmForall => Ok(ActFrm::Quantifier {
+                quantifier: Quantifier::Forall,
+                variables: Mcrl2Parser::ActFrmExists(Node::new(prefix))?,
+                body: Box::new(expr?),
+            }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
