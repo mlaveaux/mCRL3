@@ -141,7 +141,7 @@ impl InnermostRewriter {
                                 debug_trace!(
                                     "rewrite {} => {} using rule {}",
                                     term,
-                                    _annotation.rhs_stack.evaluate(&term),
+                                    annotation.rhs_stack.evaluate(&term),
                                     _announcement.rule
                                 );
 

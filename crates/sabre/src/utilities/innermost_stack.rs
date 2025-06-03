@@ -1,5 +1,8 @@
 use std::fmt;
 
+#[cfg(feature = "mcrl3_debug")]
+use itertools::Itertools;
+
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::ProtectedWriteGuard;
 use mcrl3_data::DataExpressionRef;

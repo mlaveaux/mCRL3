@@ -5,6 +5,7 @@ use mcrl3_data::DataExpressionRef;
 use mcrl3_utilities::debug_trace;
 
 use crate::AnnouncementInnermost;
+use crate::MatchAnnouncement;
 use crate::RewriteEngine;
 use crate::RewriteSpecification;
 use crate::RewritingStatistics;
@@ -64,9 +65,9 @@ impl NaiveRewriter {
 
         match NaiveRewriter::find_match(automaton, &nf, stats) {
             None => nf,
-            Some(ema) => {
+            Some((_announcement, ema)) => {
                 let result = ema.rhs_stack.evaluate(&nf);
-                debug_trace!("rewrote {} to {} using rule {}", nf, result, ema.announcement.rule);
+                debug_trace!("rewrote {} to {} using rule {}", nf, result, _announcement.rule);
                 NaiveRewriter::rewrite_aux(automaton, result.copy(), stats)
             }
         }
@@ -77,7 +78,7 @@ impl NaiveRewriter {
         automaton: &'a SetAutomaton<AnnouncementInnermost>,
         t: &DataExpression,
         stats: &mut RewritingStatistics,
-    ) -> Option<&'a AnnouncementInnermost> {
+    ) -> Option<(&'a MatchAnnouncement, &'a AnnouncementInnermost)> {
         // Start at the initial state
         let mut state_index = 0;
         loop {
@@ -92,7 +93,7 @@ impl NaiveRewriter {
                 .transitions()
                 .get(&(state_index, symbol.operation_id()))
                 .unwrap();
-            for (_announcement, ema) in &transition.announcements {
+            for (announcement, ema) in &transition.announcements {
                 let mut conditions_hold = true;
 
                 // Check conditions if there are any
@@ -119,7 +120,7 @@ impl NaiveRewriter {
 
                 if conditions_hold {
                     // We found a matching pattern
-                    return Some(ema);
+                    return Some((announcement, ema));
                 }
             }
 
