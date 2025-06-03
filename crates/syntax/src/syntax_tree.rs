@@ -317,7 +317,7 @@ pub struct CommAction {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct StateFrmSpec {
+pub struct UntypedStateFrmSpec {
     pub data_specification: UntypedDataSpecification,
     pub formula: StateFrm,
 }
@@ -351,6 +351,12 @@ pub struct StateVarAssignment {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
+pub enum ModalityOperator {
+    Diamond,
+    Box,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum StateFrm {
     True,
     False,
@@ -360,13 +366,10 @@ pub enum StateFrm {
     DataValExprMult(DataExpr, Box<StateFrm>),
     DataValExprRightMult(Box<StateFrm>, DataExpr),
     DataValExpr(DataExpr),
-    Id(String),
-    Minus(Box<DataExpr>),
-    Diamond {
-        formula: RegFrm,
-        expr: Box<StateFrm>,
-    },
-    Box {
+    Id(String, Vec<DataExpr>),
+    Minus(DataExpr),
+    Modality {
+        operator: ModalityOperator,
         formula: RegFrm,
         expr: Box<StateFrm>,
     },

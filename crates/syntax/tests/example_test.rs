@@ -1,7 +1,7 @@
 use mcrl3_utilities::test_logger;
 use test_case::test_case;
 
-use mcrl3_syntax::StateFrmSpec;
+use mcrl3_syntax::UntypedStateFrmSpec;
 use mcrl3_syntax::UntypedDataSpecification;
 use mcrl3_syntax::UntypedProcessSpecification;
 
@@ -352,7 +352,7 @@ fn test_parse_mcrl2_spec(input: &str) {
 fn test_parse_mcrl2_modal_formula(input: &str) {
     let _ = test_logger();
 
-    if let Err(y) = StateFrmSpec::parse(input) {
+    if let Err(y) = UntypedStateFrmSpec::parse(input) {
         panic!("{}", y);
     }
 }

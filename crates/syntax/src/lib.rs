@@ -27,14 +27,14 @@
 //! This crate contains no unsafe code.
 #![forbid(unsafe_code)]
 
-mod grammar;
 mod parse;
+mod consume;
 mod precedence;
 mod syntax_tree;
 mod syntax_tree_display;
 
-pub use grammar::*;
 pub use parse::*;
+pub use consume::*;
 pub use precedence::*;
 pub use syntax_tree::*;
 pub use syntax_tree_display::*;

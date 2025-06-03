@@ -15,7 +15,7 @@ mcrl3_measure-allocs = []
 mcrl3_jemalloc = ["dep:tikv-jemallocator"]
 
 # Enables extra debug options to be enabled. Also enables jemalloc debugging.
-mcrl3_debug = ["tikv-jemallocator/debug"]
+mcrl3_debug = ["tikv-jemallocator?/debug"]
 
 [dependencies]
 ahash.workspace = true

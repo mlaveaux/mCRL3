@@ -33,7 +33,7 @@ Id = @{ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 IdList = { Id ~ ( "," ~ Id )* }
 
 /// Numbers
-Number = { "0|([1-9][0-9]*)" }
+Number = { ASCII_DIGIT+ }
 
 /// Parsing an mCRL2 specification
 MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec)* ~ EOI } 
@@ -277,7 +277,7 @@ RenExprList = { RenExpr ~ ( "," ~ RenExpr )* }
 /// An action renaming set.
 RenExprSet = { "{" ~ RenExprList? ~ "}" }
 
-ProcExpr = { ProcExprPrefix* ~ ProcExprPrimary ~ (ProcExprInfix ~ ProcExprPrefix* ~ ProcExprPrimary)* }
+ProcExpr = { ProcExprPrefix* ~ ProcExprPrimary ~ ProcExprPostfix? ~ (ProcExprInfix ~ ProcExprPrefix* ~ ProcExprPrimary ~ ProcExprPostfix?)* }
 
 /// Single Process expressions
 ProcExprPrimary = _{
@@ -320,7 +320,6 @@ ProcExprInfix = _{
     | ProcExprSeq
     | ProcExprUntil
     | ProcExprSync
-    | ProcExprAt
 }
     ProcExprChoice = { "+" } 
     ProcExprLeftMerge = { "||_" }
@@ -328,9 +327,13 @@ ProcExprInfix = _{
     ProcExprSeq = { "." }
     ProcExprUntil = { "<<" }
     ProcExprSync = { "|" }
+
+ProcExprPostfix = _{
+    ProcExprAt 
+}
     ProcExprAt = { "@" ~ DataExpr }
     
-ProcExprNoIf = { ProcExprPrefix* ~ ProcExprPrimary ~ (ProcExprNoIfInfix ~ ProcExprPrefix* ~ ProcExprPrimary)* }
+ProcExprNoIf = { ProcExprPrefix* ~ ProcExprPrimary ~ ProcExprPostfix? ~ (ProcExprNoIfInfix ~ ProcExprPrefix* ~ ProcExprPrimary ~ ProcExprPostfix?)* }
 
 ProcExprNoIfInfix = _{
     | ProcExprChoice
@@ -339,7 +342,6 @@ ProcExprNoIfInfix = _{
     | ProcExprSeq
     | ProcExprUntil
     | ProcExprSync
-    | ProcExprAt
     | ProcExprIfThen
 }
 
@@ -401,7 +403,6 @@ StateFrmPrimary = _{
     | StateFrmFalse
     | StateFrmDelay
     | StateFrmYaled
-    | StateFrmNegation
     | StateFrmId
     | StateFrmDataValExprMult
     | StateFrmDataValExpr
@@ -426,6 +427,7 @@ StateFrmPrefix = _{
     | StateFrmSum
     | StateFrmDiamond
     | StateFrmBox
+    | StateFrmNegation
 }
     StateFrmMu = { "mu" ~ StateVarDecl ~ "." }                           // Minimal fixed point
     StateFrmNu = { "nu" ~ StateVarDecl ~ "." }                           // Maximal fixed point

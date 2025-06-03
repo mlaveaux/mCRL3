@@ -15,6 +15,7 @@ use crate::DataExprBinaryOp;
 use crate::DataExprUnaryOp;
 use crate::FixedPointOperator;
 use crate::Mcrl2Parser;
+use crate::ModalityOperator;
 use crate::ParseResult;
 use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
@@ -224,7 +225,6 @@ static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::ProcExprIfThen, Assoc::Right)) // $right 5
         .op(Op::infix(Rule::ProcExprUntil, Assoc::Left)) // $left 6
         .op(Op::infix(Rule::ProcExprSeq, Assoc::Right)) // $right 7
-        .op(Op::infix(Rule::ProcExprAt, Assoc::Left)) // $left 8
         .op(Op::infix(Rule::ProcExprComm, Assoc::Left)) // $left 9
 });
 
@@ -410,7 +410,7 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
     STATEFRM_PRATT_PARSER
         .map_primary(|primary| {
             match primary.as_rule() {
-                Rule::StateFrmId => Ok(StateFrm::Id(primary.as_str().into())),
+                Rule::StateFrmId => Mcrl2Parser::StateFrmId(Node::new(primary)),
                 Rule::StateFrmTrue => Ok(StateFrm::True),
                 Rule::StateFrmFalse => Ok(StateFrm::False),
                 Rule::StateFrmDelay => Mcrl2Parser::StateFrmDelay(Node::new(primary)),
@@ -433,11 +433,13 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 Mcrl2Parser::StateFrmDataValExprMult(Node::new(prefix))?,
                 Box::new(expr?),
             )),
-            Rule::StateFrmDiamond => Ok(StateFrm::Diamond {
+            Rule::StateFrmDiamond => Ok(StateFrm::Modality {
+                operator: ModalityOperator::Diamond,
                 formula: Mcrl2Parser::StateFrmDiamond(Node::new(prefix))?,
                 expr: Box::new(expr?),
             }),
-            Rule::StateFrmBox => Ok(StateFrm::Box {
+            Rule::StateFrmBox => Ok(StateFrm::Modality {
+                operator: ModalityOperator::Box,
                 formula: Mcrl2Parser::StateFrmBox(Node::new(prefix))?,
                 expr: Box::new(expr?),
             }),
@@ -461,6 +463,7 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 variable: Mcrl2Parser::StateFrmNu(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
+            Rule::StateFrmNegation => Ok(StateFrm::Negation(Box::new(expr?))),
             _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
