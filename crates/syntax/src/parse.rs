@@ -4,7 +4,7 @@ use pest_consume::Error;
 use pest_derive::Parser;
 use pest::Parser;
 
-use crate::{ParseNode, UntypedDataSpecification, UntypedProcessSpecification, UntypedStateFrmSpec};
+use crate::{DataExprBinaryOp, ParseNode, UntypedDataSpecification, UntypedProcessSpecification, UntypedStateFrmSpec};
 
 #[derive(Parser)]
 #[grammar = "mcrl2_grammar.pest"]
@@ -60,6 +60,10 @@ fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {
     error.renamed_rules(|rule| {
         match rule {
             Rule::DataExprAdd => "+".to_string(),
+            Rule::DataExprWhr => "whr".to_string(),
+            Rule::DataExprConj => format!("{}", DataExprBinaryOp::Conj),
+            Rule::DataExprDisj => format!("{}", DataExprBinaryOp::Disj),
+            Rule::DataExprImpl => format!("{}", DataExprBinaryOp::Implies),
             _ => format!("{:?}", rule),
         }
     })

@@ -4,9 +4,9 @@ use rand::rngs::StdRng;
 use crate::test_logger;
 
 /// Constructs a random number generator that should be used in random tests. Prints its seed to the console for reproducibility.
-pub fn random_test<F>(iterations: usize, test_function: F)
+pub fn random_test<F>(iterations: usize, mut test_function: F)
 where
-    F: Fn(&mut StdRng),
+    F: FnMut(&mut StdRng),
 {
     let _ = test_logger();
 
@@ -19,10 +19,10 @@ where
     }
 }
 
-pub fn random_test_thread<C, F, G>(iterations: usize, num_threads: usize, init_function: G, test_function: F)
+pub fn random_test_threads<C, F, G>(iterations: usize, num_threads: usize, init_function: G, test_function: F)
 where
     C: Send + 'static,
-    F: Fn(&mut StdRng, C) + Copy + Send + Sync + 'static,
+    F: Fn(&mut StdRng, &mut C) + Copy + Send + Sync + 'static,
     G: Fn() -> C,
 {
     let _ = test_logger();
@@ -35,10 +35,10 @@ where
 
     for _ in 0..num_threads {
         let mut rng = StdRng::seed_from_u64(rng.next_u64());
-        let init = init_function();
+        let mut init = init_function();
         threads.push(std::thread::spawn(move || {
             for _ in 0..iterations {
-                test_function(&mut rng, init);
+                test_function(&mut rng, &mut init);
             }
         }));
     }

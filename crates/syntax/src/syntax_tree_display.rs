@@ -9,6 +9,7 @@ use crate::Assignment;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
+use crate::DataExprBinaryOp;
 use crate::EqnDecl;
 use crate::EqnSpec;
 use crate::IdDecl;
@@ -216,6 +217,33 @@ impl fmt::Display for RegFrm {
             RegFrm::Plus(body) => write!(f, "({})+", body),
             RegFrm::Choice { lhs, rhs } => write!(f, "({}) + ({})", lhs, rhs),
             RegFrm::Sequence { lhs, rhs } => write!(f, "({}) . ({})", lhs, rhs),
+        }
+    }
+}
+
+impl fmt::Display for DataExprBinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataExprBinaryOp::At => write!(f, "."),
+            DataExprBinaryOp::Concat => write!(f, "++"),
+            DataExprBinaryOp::Cons => write!(f, "|>"),
+            DataExprBinaryOp::Equal => write!(f, "=="),
+            DataExprBinaryOp::NotEqual => write!(f, "!="),
+            DataExprBinaryOp::LessThan => write!(f, "<"),
+            DataExprBinaryOp::LessEqual => write!(f, "<="),
+            DataExprBinaryOp::GreaterThan => write!(f, ">"),
+            DataExprBinaryOp::GreaterEqual => write!(f, ">="),
+            DataExprBinaryOp::Conj => write!(f, "&&"),
+            DataExprBinaryOp::Disj => write!(f, "||"),
+            DataExprBinaryOp::Add => write!(f, "+"),
+            DataExprBinaryOp::Subtract => write!(f, "-"),
+            DataExprBinaryOp::Div => write!(f, "/"),
+            DataExprBinaryOp::Implies => write!(f, "=>"),
+            DataExprBinaryOp::In => write!(f, "in"),
+            DataExprBinaryOp::IntDiv => write!(f, "div"),
+            DataExprBinaryOp::Mod => write!(f, "mod"),
+            DataExprBinaryOp::Multiply => write!(f, "*"),
+            DataExprBinaryOp::Snoc => write!(f, "<|"),
         }
     }
 }

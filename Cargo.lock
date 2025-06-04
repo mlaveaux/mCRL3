@@ -3779,6 +3779,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "indoc",
+ "itertools 0.14.0",
  "log",
  "mcrl3_utilities",
  "pest",
