@@ -38,7 +38,18 @@ feature-depth = 1
 [advisories]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
-ignore = []
+ignore = ["RUSTSEC-2024-0419", # gtk-rs used in slint, will be phased out upstream in due time
+    "RUSTSEC-2024-0370", # All related to gtk-rs...
+    "RUSTSEC-2024-0420",
+    "RUSTSEC-2024-0415",
+    "RUSTSEC-2024-0429",
+    "RUSTSEC-2024-0418",
+    "RUSTSEC-2024-0412",
+    "RUSTSEC-2024-0416",
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0436", # Used in femtovg, wgpu 24 and slint
+
+]
 
 # This section is considered when running `cargo deny check licenses`
 [licenses]
@@ -53,11 +64,12 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "LicenseRef-Slint-Royalty-free-2.0",
-    "Zlib",,
+    "Zlib",
     "Unicode-3.0",
     "CC0-1.0",
     "NCSA",
     "ISC",
+    "MPL-2.0", # Used in slint dependency
 ]
 # The confidence threshold for detecting a license from license text.
 confidence-threshold = 0.8
@@ -89,7 +101,7 @@ wildcards = "allow"
 # * lowest-version - The path to the lowest versioned duplicate is highlighted
 # * simplest-path - The path to the version with the fewest edges is highlighted
 # * all - Both lowest-version and simplest-path are used
-highlight = "all"
+highlight = "lowest-version"
 # The default lint level for `default` features for crates that are members of
 # the workspace that is being checked. This can be overridden by allowing/denying
 # `default` on a crate-by-crate basis if desired.
@@ -112,7 +124,7 @@ skip = []
 # detection. Unlike skip, it also includes the entire tree of transitive
 # dependencies starting at the specified crate, up to a certain depth, which is
 # by default infinite.
-skip-tree = []
+skip-tree = ["slint"] # slint is a large GUI framework with many dependencies, but these are not exposed to us.
 
 # This section is considered when running `cargo deny check sources`.
 [sources]
