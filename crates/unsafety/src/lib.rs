@@ -4,10 +4,10 @@
 
 mod counting_allocator;
 mod index_edge;
-mod stable_pointer_set;
 mod reference_counter;
+mod stable_pointer_set;
 
 pub use counting_allocator::*;
 pub use index_edge::*;
-pub use stable_pointer_set::*;
 pub use reference_counter::*;
+pub use stable_pointer_set::*;

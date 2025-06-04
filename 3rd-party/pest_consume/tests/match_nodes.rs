@@ -94,7 +94,7 @@ macro_rules! simple_matcher {
                 n.tag.as_deref()
             }
             fn error(self, _message: String) -> Self::Error {
-                
+
             }
         }
     };

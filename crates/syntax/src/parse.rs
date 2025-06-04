@@ -1,10 +1,15 @@
 use log::trace;
-use mcrl3_utilities::{DisplayPair, MCRL3Error};
+use mcrl3_utilities::DisplayPair;
+use mcrl3_utilities::MCRL3Error;
+use pest::Parser;
 use pest_consume::Error;
 use pest_derive::Parser;
-use pest::Parser;
 
-use crate::{DataExprBinaryOp, ParseNode, UntypedDataSpecification, UntypedProcessSpecification, UntypedStateFrmSpec};
+use crate::DataExprBinaryOp;
+use crate::ParseNode;
+use crate::UntypedDataSpecification;
+use crate::UntypedProcessSpecification;
+use crate::UntypedStateFrmSpec;
 
 #[derive(Parser)]
 #[grammar = "mcrl2_grammar.pest"]
@@ -19,9 +24,7 @@ impl UntypedProcessSpecification {
         let root = result.next().ok_or("Could not parse mCRL2 specification")?;
         trace!("Parse tree {}", DisplayPair(root.clone()));
 
-        Mcrl2Parser::MCRL2Spec(ParseNode::new(root)).map_err(|err| {
-            extend_parser_error(err).into()
-        })
+        Mcrl2Parser::MCRL2Spec(ParseNode::new(root)).map_err(|err| extend_parser_error(err).into())
     }
 }
 
@@ -34,9 +37,7 @@ impl UntypedDataSpecification {
         let root = result.next().ok_or("Could not parse mCRL2 data specification")?;
         trace!("Parse tree {}", DisplayPair(root.clone()));
 
-        Mcrl2Parser::DataSpec(ParseNode::new(root)).map_err(|err| {
-            extend_parser_error(err).into()
-        })
+        Mcrl2Parser::DataSpec(ParseNode::new(root)).map_err(|err| extend_parser_error(err).into())
     }
 }
 
@@ -50,21 +51,17 @@ impl UntypedStateFrmSpec {
             .ok_or("Could not parse mCRL2 state formula specification")?;
         trace!("Parse tree {}", DisplayPair(root.clone()));
 
-        Mcrl2Parser::StateFrmSpec(ParseNode::new(root)).map_err(|err| {
-            extend_parser_error(err).into()
-        })
+        Mcrl2Parser::StateFrmSpec(ParseNode::new(root)).map_err(|err| extend_parser_error(err).into())
     }
 }
 
 fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {
-    error.renamed_rules(|rule| {
-        match rule {
-            Rule::DataExprAdd => "+".to_string(),
-            Rule::DataExprWhr => "whr".to_string(),
-            Rule::DataExprConj => format!("{}", DataExprBinaryOp::Conj),
-            Rule::DataExprDisj => format!("{}", DataExprBinaryOp::Disj),
-            Rule::DataExprImpl => format!("{}", DataExprBinaryOp::Implies),
-            _ => format!("{:?}", rule),
-        }
+    error.renamed_rules(|rule| match rule {
+        Rule::DataExprAdd => "+".to_string(),
+        Rule::DataExprWhr => "whr".to_string(),
+        Rule::DataExprConj => format!("{}", DataExprBinaryOp::Conj),
+        Rule::DataExprDisj => format!("{}", DataExprBinaryOp::Disj),
+        Rule::DataExprImpl => format!("{}", DataExprBinaryOp::Implies),
+        _ => format!("{:?}", rule),
     })
 }

@@ -23,11 +23,11 @@ use crate::Rename;
 use crate::Rule;
 use crate::SortExpression;
 use crate::StateFrm;
-use crate::UntypedStateFrmSpec;
 use crate::StateVarAssignment;
 use crate::StateVarDecl;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
+use crate::UntypedStateFrmSpec;
 use crate::VarDecl;
 use crate::parse_actfrm;
 use crate::parse_dataexpr;
@@ -35,7 +35,6 @@ use crate::parse_process_expr;
 use crate::parse_regfrm;
 use crate::parse_sortexpr;
 use crate::parse_statefrm;
-
 
 /// Type alias for Errors resulting parsing.
 pub(crate) type ParseResult<T> = std::result::Result<T, Error<Rule>>;

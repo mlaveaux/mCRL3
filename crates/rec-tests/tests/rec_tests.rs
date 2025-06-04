@@ -124,7 +124,6 @@ fn test_rec_specification_largestack(rec_files: Vec<&str>, expected_result: &str
     rec_test(rec_files, expected_result);
 }
 
-
 // // These REC tests have META data that is not supported by the current implementation.
 // #[test_case(vec![include_str!("../../../examples/REC/rec/add8.rec")], include_str!("snapshot/result_add8.txt") ; "add8")]
 // #[test_case(vec![include_str!("../../../examples/REC/rec/add16.rec")], include_str!("snapshot/result_add16.txt") ; "add16")]

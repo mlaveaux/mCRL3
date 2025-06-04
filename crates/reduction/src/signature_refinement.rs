@@ -464,8 +464,8 @@ mod tests {
     use test_log::test;
 
     use mcrl3_lts::random_lts;
-    use mcrl3_utilities::random_test;
     use mcrl3_utilities::Timing;
+    use mcrl3_utilities::random_test;
 
     #[test]
     fn test_random_strong_bisim_sigref() {
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn test_random_branching_bisim_sigref_naive() {
         random_test(100, |rng| {
-        let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts(rng, 10, 3, 3);
             let mut timing = Timing::new();
 
             let strong_partition = strong_bisim_sigref_naive(&lts, &mut timing);

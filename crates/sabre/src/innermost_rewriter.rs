@@ -315,12 +315,7 @@ mod tests {
         let mut inner = InnermostRewriter::new(&spec);
 
         random_test(100, |rng| {
-            let term = random_term(
-                rng,
-                &[("f".to_string(), 2)],
-                &["a".to_string(), "b".to_string()],
-                5,
-            );
+            let term = random_term(rng, &[("f".to_string(), 2)], &["a".to_string(), "b".to_string()], 5);
             let term = to_untyped_data_expression(&term, None);
 
             assert_eq!(

@@ -1,4 +1,5 @@
-use rand::{RngCore, SeedableRng};
+use rand::RngCore;
+use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use crate::test_logger;
@@ -47,4 +48,3 @@ where
         let _ = thread.join();
     }
 }
-

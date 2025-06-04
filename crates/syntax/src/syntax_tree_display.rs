@@ -164,7 +164,7 @@ impl fmt::Display for SortExpression {
 
 impl fmt::Display for UntypedStateFrmSpec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{}", self.data_specification )?;
+        writeln!(f, "{}", self.data_specification)?;
 
         writeln!(f, "{}", self.formula)
     }
@@ -179,15 +179,21 @@ impl fmt::Display for StateFrm {
                 } else {
                     write!(f, "{}({})", identifier, args.iter().format(", "))
                 }
-            },
-            StateFrm::Negation(formula) => write!(f, "!({})", formula),
-            StateFrm::Modality { operator, formula, expr } => {
-                match operator {
-                    ModalityOperator::Box => write!(f, "[{}]({})", formula, expr),
-                    ModalityOperator::Diamond => write!(f, "<{}>({})", formula, expr),
-                }
             }
-            StateFrm::Quantifier { quantifier, variables, body } => {
+            StateFrm::Negation(formula) => write!(f, "!({})", formula),
+            StateFrm::Modality {
+                operator,
+                formula,
+                expr,
+            } => match operator {
+                ModalityOperator::Box => write!(f, "[{}]({})", formula, expr),
+                ModalityOperator::Diamond => write!(f, "<{}>({})", formula, expr),
+            },
+            StateFrm::Quantifier {
+                quantifier,
+                variables,
+                body,
+            } => {
                 write!(f, "{} {} . ({})", quantifier, variables.iter().format(", "), body)
             }
             StateFrm::Binary { op, lhs, rhs } => {

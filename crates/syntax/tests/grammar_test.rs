@@ -1,5 +1,5 @@
-
-use mcrl3_syntax::{UntypedProcessSpecification, UntypedStateFrmSpec};
+use mcrl3_syntax::UntypedProcessSpecification;
+use mcrl3_syntax::UntypedStateFrmSpec;
 use mcrl3_utilities::test_logger;
 
 use indoc::indoc;

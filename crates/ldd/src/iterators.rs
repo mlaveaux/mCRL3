@@ -95,7 +95,8 @@ mod tests {
 
     use mcrl3_utilities::random_test;
 
-    use crate::test_utility::{from_iter, random_vector_set};
+    use crate::test_utility::from_iter;
+    use crate::test_utility::random_vector_set;
 
     // Test the iterator implementation.
     #[test]

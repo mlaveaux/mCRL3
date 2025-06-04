@@ -243,9 +243,9 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::bf_sharedmutex::BfSharedMutex;
     use rand::prelude::*;
     use std::hint::black_box;
-    use crate::bf_sharedmutex::BfSharedMutex;
 
     use mcrl3_utilities::random_test_threads;
     use mcrl3_utilities::test_threads;
@@ -257,11 +257,15 @@ mod tests {
         let num_iterations = 500;
         let num_threads = 20;
 
-        test_threads(num_threads, || shared_number.clone(), move |number| {
-            for _ in 0..num_iterations {
-                *number.write().unwrap() += 5;
-            }
-        });
+        test_threads(
+            num_threads,
+            || shared_number.clone(),
+            move |number| {
+                for _ in 0..num_iterations {
+                    *number.write().unwrap() += 5;
+                }
+            },
+        );
 
         assert_eq!(*shared_number.write().unwrap(), num_threads * num_iterations * 5 + 5);
     }
@@ -273,18 +277,23 @@ mod tests {
         let num_threads = 20;
         let num_iterations = 5000;
 
-        random_test_threads(num_iterations, num_threads, || shared_vector.clone(), |rng, shared_vector| {
-            if rng.random_bool(0.95) {
-                // Read a random index.
-                let read = shared_vector.read().unwrap();
-                if read.len() > 0 {
-                    let index = rng.random_range(0..read.len());
-                    black_box(assert_eq!(read[index], 5));
+        random_test_threads(
+            num_iterations,
+            num_threads,
+            || shared_vector.clone(),
+            |rng, shared_vector| {
+                if rng.random_bool(0.95) {
+                    // Read a random index.
+                    let read = shared_vector.read().unwrap();
+                    if read.len() > 0 {
+                        let index = rng.random_range(0..read.len());
+                        black_box(assert_eq!(read[index], 5));
+                    }
+                } else {
+                    // Add a new vector element.
+                    shared_vector.write().unwrap().push(5);
                 }
-            } else {
-                // Add a new vector element.
-                shared_vector.write().unwrap().push(5);
-            }
-        });
+            },
+        );
     }
 }

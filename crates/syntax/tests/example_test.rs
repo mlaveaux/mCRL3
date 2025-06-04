@@ -1,9 +1,9 @@
 use mcrl3_utilities::test_logger;
 use test_case::test_case;
 
-use mcrl3_syntax::UntypedStateFrmSpec;
 use mcrl3_syntax::UntypedDataSpecification;
 use mcrl3_syntax::UntypedProcessSpecification;
+use mcrl3_syntax::UntypedStateFrmSpec;
 
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/abp.mcrl2") ; "abp.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp_bw/abp_bw.mcrl2") ; "abp_bw.mcrl2")]
