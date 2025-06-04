@@ -37,7 +37,7 @@ use mcrl3_sabre::SabreRewriter;
 #[test_case(vec![include_str!("../../../examples/REC/rec/tak18.rec"), include_str!("../../../examples/REC/rec/tak.rec")], include_str!("snapshot/result_tak18.txt") ; "tak18")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tricky.rec")], include_str!("snapshot/result_tricky.txt") ; "tricky")]
-fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
+fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
     let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
         let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
@@ -99,7 +99,7 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/order.rec")], include_str!("snapshot/result_order.txt") ; "order")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/permutations6.rec"), include_str!("../../../examples/REC/rec/permutations.rec")], include_str!("snapshot/result_permutations6.txt") ; "permutations6")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/revnat100.rec"), include_str!("../../../examples/REC/rec/revnat.rec")], include_str!("snapshot/result_revnat100.txt") ; "revnat100")]
-fn rec_test_release(rec_files: Vec<&str>, expected_result: &str) {
+fn test_rec_specification_release(rec_files: Vec<&str>, expected_result: &str) {
     rec_test(rec_files, expected_result);
 }
 
@@ -120,7 +120,7 @@ fn rec_test_release(rec_files: Vec<&str>, expected_result: &str) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/fibonacci21.rec"), include_str!("../../../examples/REC/rec/fibonacci.rec")], include_str!("snapshot/result_fibonacci21.txt") ; "fibonacci21")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/hanoi12.rec"), include_str!("../../../examples/REC/rec/hanoi.rec")], include_str!("snapshot/result_hanoi12.txt") ; "hanoi12")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/permutations7.rec"), include_str!("../../../examples/REC/rec/permutations.rec")], include_str!("snapshot/result_permutations7.txt") ; "permutations7")]
-fn rec_test_unix(rec_files: Vec<&str>, expected_result: &str) {
+fn test_rec_specification_largestack(rec_files: Vec<&str>, expected_result: &str) {
     rec_test(rec_files, expected_result);
 }
 

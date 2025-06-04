@@ -3,17 +3,20 @@ pub fn test_logger() -> Result<(), log::SetLoggerError> {
     env_logger::builder().is_test(true).try_init()
 }
 
-pub fn test_threads<F>(num_threads: usize, test_function: F)
+pub fn test_threads<C, F, G>(num_threads: usize, init_function: G, test_function: F)
 where
-    F: Fn() + Copy + Send + Sync + 'static,
+    C: Send + 'static,
+    F: Fn(&mut C) + Copy + Send + Sync + 'static,
+    G: Fn() -> C,
 {
     let _ = test_logger();
 
     let mut threads = vec![];
 
     for _ in 0..num_threads {
+        let mut init = init_function();
         threads.push(std::thread::spawn(move || {
-            test_function();
+            test_function(&mut init);
         }));
     }
 

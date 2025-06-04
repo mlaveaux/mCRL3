@@ -199,7 +199,6 @@ mod tests {
 
     use mcrl3_lts::random_lts;
     use mcrl3_utilities::random_test;
-    use mcrl3_utilities::test_logger;
     use rand::seq::SliceRandom;
     use test_log::test;
 

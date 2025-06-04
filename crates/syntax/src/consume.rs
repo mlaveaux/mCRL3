@@ -200,16 +200,16 @@ impl Mcrl2Parser {
 
     pub(crate) fn ActFrmExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(input.into_children();
-            [VarDecl(variables)..] => {
-                return Ok(variables.collect());
+            [VarsDeclList(variables)] => {
+                return Ok(variables);
             },
         );
     }
 
     pub(crate) fn ActFrmForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(input.into_children();
-            [VarDecl(variables)..] => {
-                return Ok(variables.collect());
+            [VarsDeclList(variables)] => {
+                return Ok(variables);
             },
         );
     }
@@ -475,11 +475,7 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn Number(input: ParseNode) -> ParseResult<DataExpr> {
-        match_nodes!(input.into_children();
-            [number] => {
-                Ok(DataExpr::Number(number.as_str().into()))
-            },
-        )
+        Ok(DataExpr::Number(input.as_str().into()))
     }
 
     fn VarDecl(decl: ParseNode) -> ParseResult<VarDecl> {

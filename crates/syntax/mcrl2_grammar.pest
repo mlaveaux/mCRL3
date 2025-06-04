@@ -462,7 +462,13 @@ StateFrmPostfix = _{
 
 /// Regular formulas.
 /// To guard for the ambiguity of a + b and a+ we use a negative premise
-RegFrm = { ActFrm ~ (RegFrmPostfix ~ !ActFrm)? ~ (RegFrmInfix ~ ActFrm ~ (RegFrmPostfix ~ !ActFrm)?)* }
+RegFrm = { RegFrmPrimary ~ (RegFrmPostfix ~ !ActFrm)? ~ (RegFrmInfix ~ RegFrmPrimary ~ (RegFrmPostfix ~ !ActFrm)?)* }
+
+RegFrmPrimary = _{
+        RegFrmBackets
+    |   ActFrm
+}
+    RegFrmBackets = { "(" ~ RegFrm ~ ")" }
 
 RegFrmInfix = _{
        RegFrmAlternative

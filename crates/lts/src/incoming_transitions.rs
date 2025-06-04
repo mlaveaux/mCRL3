@@ -76,20 +76,17 @@ impl IncomingTransitions {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
-    use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
+    use mcrl3_utilities::random_test;
 
     use crate::random_lts;
 
-    use super::*;
-
     #[test]
     fn test_random_incoming_transitions() {
-        let _ = test_logger();
-        let mut rng = test_rng();
-
-        let lts = random_lts(&mut rng, 10, 3, 3);
-        let _ = IncomingTransitions::new(&lts);
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 3, 3);
+            let _ = IncomingTransitions::new(&lts);
+        });
     }
 }

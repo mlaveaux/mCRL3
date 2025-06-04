@@ -326,7 +326,7 @@ pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
             }),
             Rule::ActFrmForall => Ok(ActFrm::Quantifier {
                 quantifier: Quantifier::Forall,
-                variables: Mcrl2Parser::ActFrmExists(Node::new(prefix))?,
+                variables: Mcrl2Parser::ActFrmForall(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
             Rule::ActFrmNegation => Ok(ActFrm::Negation(Box::new(expr?))),
@@ -367,6 +367,14 @@ pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
     REGFRM_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::ActFrm => Ok(RegFrm::Action(Mcrl2Parser::ActFrm(Node::new(primary))?)),
+            Rule::RegFrmBackets => {
+                // Handle parentheses by recursively parsing the inner expression
+                let inner = primary
+                    .into_inner()
+                    .next()
+                    .expect("Expected inner expression in brackets");
+                parse_regfrm(inner.into_inner())
+            }
             _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {

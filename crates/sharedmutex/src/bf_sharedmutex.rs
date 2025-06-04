@@ -257,9 +257,9 @@ mod tests {
         let num_iterations = 500;
         let num_threads = 20;
 
-        test_threads(num_threads, || {
+        test_threads(num_threads, || shared_number.clone(), move |number| {
             for _ in 0..num_iterations {
-                *shared_number.write().unwrap() += 5;
+                *number.write().unwrap() += 5;
             }
         });
 
@@ -270,11 +270,10 @@ mod tests {
     fn test_random_shared() {
         let shared_vector = BfSharedMutex::new(vec![]);
 
-        let mut threads = vec![];
         let num_threads = 20;
         let num_iterations = 5000;
 
-        random_test_threads(num_iterations, num_threads, |rng| {
+        random_test_threads(num_iterations, num_threads, || shared_vector.clone(), |rng, shared_vector| {
             if rng.random_bool(0.95) {
                 // Read a random index.
                 let read = shared_vector.read().unwrap();

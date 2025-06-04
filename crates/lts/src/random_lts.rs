@@ -43,17 +43,16 @@ pub fn random_lts(
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
+    use super::*;
+
     use test_log::test;
 
-    use super::*;
+    use mcrl3_utilities::random_test;
 
     #[test]
     fn random_lts_test() {
-        let _ = test_logger();
-        let mut rng = test_rng();
-
-        let _lts = random_lts(&mut rng, 10, 3, 3);
+        random_test(100, |rng| {
+            let _lts = random_lts(rng, 10, 3, 3);
+        });
     }
 }
