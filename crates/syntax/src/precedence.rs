@@ -223,8 +223,8 @@ static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::ProcExprSum) | Op::prefix(Rule::ProcExprDist)) // $right 2
         .op(Op::infix(Rule::ProcExprParallel, Assoc::Right)) // $right 3
         .op(Op::infix(Rule::ProcExprLeftMerge, Assoc::Right)) // $right 4
-        .op(Op::infix(Rule::ProcExprIf, Assoc::Right)) // $right 5
-        .op(Op::infix(Rule::ProcExprIfThen, Assoc::Right)) // $right 5
+        .op(Op::prefix(Rule::ProcExprIf)) // $right 5
+        .op(Op::prefix(Rule::ProcExprIfThen)) // $right 5
         .op(Op::infix(Rule::ProcExprUntil, Assoc::Left)) // $left 6
         .op(Op::infix(Rule::ProcExprSeq, Assoc::Right)) // $right 7
         .op(Op::infix(Rule::ProcExprComm, Assoc::Left)) // $left 9
@@ -242,6 +242,11 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
             Rule::ProcExprHide => Ok(Mcrl2Parser::ProcExprHide(Node::new(primary))?),
             Rule::ProcExprRename => Ok(Mcrl2Parser::ProcExprRename(Node::new(primary))?),
             Rule::ProcExprComm => Ok(Mcrl2Parser::ProcExprComm(Node::new(primary))?),
+            Rule::Action => {
+                let action = Mcrl2Parser::Action(Node::new(primary))?;
+
+                Ok(ProcessExpr::Action(action.id, action.args))
+            },
             Rule::ProcExprBrackets => {
                 // Handle parentheses by recursively parsing the inner expression
                 let inner = primary
@@ -268,6 +273,11 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                 lhs: Box::new(lhs?),
                 rhs: Box::new(rhs?),
             }),
+            Rule::ProcExprSeq => Ok(ProcessExpr::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
             _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
         })
         .map_prefix(|prefix, expr| match prefix.as_rule() {
@@ -283,7 +293,25 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                     expr: data_expr,
                     operand: Box::new(expr?),
                 })
-            }
+            },
+            Rule::ProcExprIf => {
+                let condition = Mcrl2Parser::ProcExprIf(Node::new(prefix))?;
+
+                Ok(ProcessExpr::Condition {
+                    condition,
+                    then: Box::new(expr?),
+                    else_: None,
+                })
+            },
+            Rule::ProcExprIfThen => {
+                let (condition, then) = Mcrl2Parser::ProcExprIfThen(Node::new(prefix))?;
+
+                Ok(ProcessExpr::Condition {
+                    condition,
+                    then: Box::new(then),
+                    else_: Some(Box::new(expr?)),
+                })
+            },
             _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
         })
         .parse(pairs)

@@ -18,8 +18,6 @@ pub struct Mcrl2Parser;
 /// Parses the given mCRL2 specification into an AST.
 impl UntypedProcessSpecification {
     pub fn parse(spec: &str) -> Result<UntypedProcessSpecification, MCRL3Error> {
-        pest::set_error_detail(true);
-
         let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec)
             .map_err(|err| extend_parser_error(err))?;
         let root = result.next().expect("Could not parse mCRL2 specification");
@@ -32,8 +30,6 @@ impl UntypedProcessSpecification {
 /// Parses the given mCRL2 specification into an AST.
 impl UntypedDataSpecification {
     pub fn parse(spec: &str) -> Result<UntypedDataSpecification, MCRL3Error> {
-        pest::set_error_detail(true);
-
         let mut result = Mcrl2Parser::parse(Rule::DataSpec, spec)
             .map_err(|err| extend_parser_error(err))?;
         let root = result.next().expect("Could not parse mCRL2 data specification");
@@ -45,8 +41,6 @@ impl UntypedDataSpecification {
 
 impl UntypedStateFrmSpec {
     pub fn parse(spec: &str) -> Result<UntypedStateFrmSpec, MCRL3Error> {
-        pest::set_error_detail(true);
-
         let mut result = Mcrl2Parser::parse(Rule::StateFrmSpec, spec)
             .map_err(|err| extend_parser_error(err))?;
         let root = result

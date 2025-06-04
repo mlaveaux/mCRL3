@@ -1,5 +1,6 @@
 use std::iter;
 
+use pest::error::ErrorVariant;
 use pest_consume::Error;
 use pest_consume::match_nodes;
 
@@ -17,6 +18,7 @@ use crate::IdDecl;
 use crate::Mcrl2Parser;
 use crate::MultiAction;
 use crate::MultiActionLabel;
+use crate::ProcDecl;
 use crate::ProcessExpr;
 use crate::RegFrm;
 use crate::Rename;
@@ -53,6 +55,8 @@ impl Mcrl2Parser {
     pub(crate) fn MCRL2Spec(spec: ParseNode) -> ParseResult<UntypedProcessSpecification> {
         let mut map = Vec::new();
         let mut eqn = Vec::new();
+        let mut proc = Vec::new();
+        let mut init = None;
 
         for child in spec.into_children() {
             match child.as_rule() {
@@ -61,6 +65,19 @@ impl Mcrl2Parser {
                 }
                 Rule::EqnSpec => {
                     eqn.append(&mut Mcrl2Parser::EqnSpec(child)?);
+                }
+                Rule::ProcSpec => {
+                    proc.push(Mcrl2Parser::ProcSpec(child)?);
+                }
+                Rule::Init => {
+                    if init.is_some() {
+                        return Err(Error::new_from_span(
+                            ErrorVariant::CustomError { message: "Multiple init expressions are not allowed".to_string() },
+                            child.as_span(),
+                        ));
+                    }
+
+                    init = Some(Mcrl2Parser::ProcExpr(child)?);
                 }
                 _ => {
                     // Handle other rules if necessary
@@ -75,6 +92,7 @@ impl Mcrl2Parser {
 
         Ok(UntypedProcessSpecification {
             data_specification,
+            init,
             ..Default::default()
         })
     }
@@ -123,6 +141,28 @@ impl Mcrl2Parser {
         }
 
         Ok(ids)
+    }
+
+    fn ProcSpec(spec: ParseNode) -> ParseResult<ProcDecl> {        
+        match_nodes!(spec.into_children();
+            [ProcDecl(decl)] => {
+                return Ok(decl)
+            },
+        );
+    }
+
+    fn ProcDecl(decl: ParseNode) -> ParseResult<ProcDecl> {
+        let span = decl.as_span();     
+        match_nodes!(decl.into_children();
+            [Id(identifier), VarsDeclList(params), ProcExpr(body)] => {
+                return Ok(ProcDecl {
+                    identifier,
+                    params,
+                    body,
+                    span: span.into(),
+                })
+            },
+        );
     }
 
     pub(crate) fn StateFrmExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
@@ -561,6 +601,22 @@ impl Mcrl2Parser {
         )
     }
 
+    pub(crate) fn ProcExprIf(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExpr(condition)] => {
+                Ok(condition)
+            },
+        )
+    }
+
+    pub(crate) fn ProcExprIfThen(input: ParseNode) -> ParseResult<(DataExpr, ProcessExpr)> {
+        match_nodes!(input.into_children();
+            [DataExpr(condition), ProcExpr(expr)] => {
+                Ok((condition, expr))
+            },
+        )
+    }
+
     pub(crate) fn ProcExprAllow(input: ParseNode) -> ParseResult<ProcessExpr> {
         match_nodes!(input.into_children();
             [MultActIdSet(actions), ProcExpr(expr)] => {
@@ -587,17 +643,6 @@ impl Mcrl2Parser {
         match_nodes!(actions.into_children();
             [Action(action), Action(actions)..] => {
                 return Ok(iter::once(action).chain(actions).collect());
-            },
-        );
-    }
-
-    fn Action(action: ParseNode) -> ParseResult<Action> {
-        match_nodes!(action.into_children();
-            [Id(id), DataExprList(args)] => {
-                return Ok(Action { id, args });
-            },
-            [Id(id)] => {
-                return Ok(Action { id, args: Vec::new() });
             },
         );
     }
@@ -665,6 +710,17 @@ impl Mcrl2Parser {
                     comm,
                     operand: Box::new(expr),
                 })
+            },
+        )
+    }
+
+    pub(crate) fn Action(input: ParseNode) -> ParseResult<Action> {
+        match_nodes!(input.into_children();
+            [Id(id), DataExprList(args)] => {
+                Ok(Action { id, args })
+            },
+            [Id(id)] => {
+                Ok(Action { id, args: Vec::new() })
             },
         )
     }

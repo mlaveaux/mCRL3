@@ -150,9 +150,8 @@ pub struct ActDecl {
 /// Process declaration
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct ProcDecl {
-    pub name: String,
+    pub identifier: String,
     pub params: Vec<VarDecl>,
-    pub init: Option<DataExpr>,
     pub body: ProcessExpr,
     pub span: Span,
 }
