@@ -1,5 +1,3 @@
-use hashbrown::Equivalent;
-use hashbrown::HashSet;
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::BuildHasher;
@@ -7,6 +5,12 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 use std::ptr::NonNull;
+
+use allocator_api2::alloc::Allocator;
+use allocator_api2::alloc::Global;
+use allocator_api2::alloc::Layout;
+use hashbrown::Equivalent;
+use hashbrown::HashSet;
 
 #[cfg(debug_assertions)]
 use crate::AtomicRefCounter;
@@ -76,8 +80,8 @@ impl<T> Hash for StablePointer<T> {
     }
 }
 
-unsafe impl<T> Send for StablePointer<T> {}
-unsafe impl<T> Sync for StablePointer<T> {}
+unsafe impl<T: Send> Send for StablePointer<T> {}
+unsafe impl<T: Sync> Sync for StablePointer<T> {}
 
 impl<T> StablePointer<T> {
     /// Returns a copy of the StablePointer.
@@ -94,11 +98,8 @@ impl<T> StablePointer<T> {
 
     /// Creates a new StablePointer from a boxed element.
     fn from_entry(entry: &Entry<T>) -> Self {
-        // SAFETY: The pointer is valid as long as the boxed element is valid.
-        let ptr = NonNull::from(entry.value.as_ref());
-
         Self {
-            ptr,
+            ptr: entry.ptr,
             #[cfg(debug_assertions)]
             reference_counter: entry.reference_counter.clone(),
         }
@@ -128,18 +129,22 @@ impl<T: fmt::Debug> fmt::Debug for StablePointer<T> {
 /// A set that provides stable pointers to its elements.
 ///
 /// Similar to `IndexedSet` but uses pointers instead of indices for direct access to elements.
-/// Elements are stored in stable memory locations, with the hash set maintaining references.
+/// Elements are stored in stable memory locations using a custom allocator, with the hash set maintaining references.
 ///
 /// The set can use a custom hasher type for potentially better performance based on workload characteristics.
-pub struct StablePointerSet<T, S = RandomState>
+/// Uses an allocator for memory management, defaulting to the global allocator.
+pub struct StablePointerSet<T, S = RandomState, A = Global>
 where
     T: Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
 {
     index: HashSet<Entry<T>, S>,
+
+    allocator: A,
 }
 
-impl<T> Default for StablePointerSet<T, RandomState>
+impl<T> Default for StablePointerSet<T, RandomState, Global>
 where
     T: Hash + Eq,
 {
@@ -148,41 +153,90 @@ where
     }
 }
 
-impl<T> StablePointerSet<T, RandomState>
+impl<T> StablePointerSet<T, RandomState, Global>
 where
     T: Hash + Eq,
 {
-    /// Creates an empty StablePointerSet with the default hasher.
+    /// Creates an empty StablePointerSet with the default hasher and global allocator.
     pub fn new() -> Self {
         Self {
             index: hashbrown::HashSet::default(),
+            allocator: Global,
         }
     }
 
-    /// Creates an empty StablePointerSet with the specified capacity and default hasher.
+    /// Creates an empty StablePointerSet with the specified capacity, default hasher, and global allocator.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             index: hashbrown::HashSet::with_capacity_and_hasher(capacity, RandomState::new()),
+            allocator: Global,
         }
     }
 }
 
-impl<T, S> StablePointerSet<T, S>
+impl<T, S> StablePointerSet<T, S, Global>
 where
     T: Hash + Eq,
     S: BuildHasher,
 {
-    /// Creates an empty StablePointerSet with the specified hasher.
+    /// Creates an empty StablePointerSet with the specified hasher and global allocator.
     pub fn with_hasher(hasher: S) -> Self {
         Self {
             index: HashSet::with_hasher(hasher),
+            allocator: Global,
         }
     }
 
-    /// Creates an empty StablePointerSet with the specified capacity and hasher.
+    /// Creates an empty StablePointerSet with the specified capacity, hasher, and global allocator.
     pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
         Self {
             index: HashSet::with_capacity_and_hasher(capacity, hasher),
+            allocator: Global,
+        }
+    }
+}
+
+impl<T, S, A> StablePointerSet<T, S, A>
+where
+    T: Hash + Eq,
+    S: BuildHasher,
+    A: Allocator,
+{
+    /// Creates an empty StablePointerSet with the specified allocator and default hasher.
+    pub fn new_in(allocator: A) -> Self
+    where
+        S: Default,
+    {
+        Self {
+            index: HashSet::with_hasher(S::default()),
+            allocator,
+        }
+    }
+
+    /// Creates an empty StablePointerSet with the specified capacity, allocator, and default hasher.
+    pub fn with_capacity_in(capacity: usize, allocator: A) -> Self
+    where
+        S: Default,
+    {
+        Self {
+            index: HashSet::with_capacity_and_hasher(capacity, S::default()),
+            allocator,
+        }
+    }
+
+    /// Creates an empty StablePointerSet with the specified hasher and allocator.
+    pub fn with_hasher_in(hasher: S, allocator: A) -> Self {
+        Self {
+            index: HashSet::with_hasher(hasher),
+            allocator,
+        }
+    }
+
+    /// Creates an empty StablePointerSet with the specified capacity, hasher, and allocator.
+    pub fn with_capacity_and_hasher_in(capacity: usize, hasher: S, allocator: A) -> Self {
+        Self {
+            index: HashSet::with_capacity_and_hasher(capacity, hasher),
+            allocator,
         }
     }
 
@@ -209,6 +263,8 @@ where
     /// If the set already had this value present, `false` is returned along
     /// with a stable pointer to the existing element.
     pub fn insert(&mut self, value: T) -> (StablePointer<T>, bool) {
+        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
+
         // Check if we already have this value
         let raw_ptr = self.get(&value);
 
@@ -217,12 +273,12 @@ where
             return (ptr, false);
         }
 
-        // Insert new value
-        let boxed = Entry::new(value);
-        let ptr = StablePointer::from_entry(&boxed);
+        // Insert new value using allocator
+        let entry = Entry::new(value, &self.allocator);
+        let ptr = StablePointer::from_entry(&entry);
 
         // First add to storage, then to index
-        let inserted = self.index.insert(boxed);
+        let inserted = self.index.insert(entry);
 
         debug_assert!(inserted, "Value should not already exist in the index");
 
@@ -239,6 +295,8 @@ where
         Q: Hash + Equivalent<T>,
         T: From<&'a Q>,
     {
+        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
+
         // Check if we already have this value
         let raw_ptr = self.get(value);
 
@@ -250,12 +308,12 @@ where
         // Convert the reference to an actual value only if needed
         let value_to_insert = T::from(value);
 
-        // Insert new value
-        let boxed = Entry::new(value_to_insert);
-        let ptr = StablePointer::from_entry(&boxed);
+        // Insert new value using allocator
+        let entry = Entry::new(value_to_insert, &self.allocator);
+        let ptr = StablePointer::from_entry(&entry);
 
         // First add to storage, then to index
-        let inserted = self.index.insert(boxed);
+        let inserted = self.index.insert(entry);
 
         debug_assert!(inserted, "Value should not already exist in the index");
 
@@ -290,7 +348,7 @@ where
 
     /// Returns an iterator over the elements of the set.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.index.iter().map(|boxed| boxed.value.as_ref())
+        self.index.iter().map(|boxed| unsafe { boxed.ptr.as_ref() })
     }
 
     /// Removes an element from the set using its stable pointer. This is very inefficient and requires O(n) time.
@@ -348,14 +406,20 @@ where
             "All pointers must be the last reference to the element"
         );
 
-        self.index.clear();
+        // Manually deallocate all entries before clearing
+        for entry in self.index.drain() {
+            entry.deallocate(&self.allocator);
+        }
+
+        debug_assert!(self.index.is_empty(), "Index should be empty after draining");
     }
 }
 
-impl<T, S> Drop for StablePointerSet<T, S>
+impl<T, S, A> Drop for StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
 {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]
@@ -363,26 +427,65 @@ where
             self.index.iter().all(|x| x.reference_counter.strong_count() == 1),
             "All pointers must be the last reference to the element"
         );
+
+        // Manually deallocate all entries
+        for entry in self.index.drain() {
+            entry.deallocate(&self.allocator);
+        }
     }
 }
 
-/// A helper struct to store the boxed element in the set.
+/// A helper struct to store the allocated element in the set.
 ///
+/// Uses manual allocation instead of Box for custom allocator support.
 /// Optionally stores a reference counter for debugging purposes in debug builds.
 struct Entry<T> {
-    value: Box<T>,
+    /// Pointer to the allocated value
+    ptr: NonNull<T>,
+
+    /// Layout information for deallocation
+    layout: Layout,
 
     #[cfg(debug_assertions)]
     reference_counter: AtomicRefCounter<()>,
 }
 
-impl<T> Entry<T> {
-    fn new(boxed: T) -> Self {
-        Self {
-            value: Box::new(boxed),
+unsafe impl<T: Send> Send for Entry<T> {}
+unsafe impl<T: Sync> Sync for Entry<T> {}
 
+impl<T> Entry<T> {
+    /// Creates a new entry by allocating memory for the value using the provided allocator.
+    fn new(value: T, allocator: &impl Allocator) -> Self {
+        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
+
+        let layout = Layout::new::<T>();
+
+        // Allocate memory for the value
+        let ptr = allocator.allocate(layout).expect("Allocation failed").cast::<T>();
+
+        // Write the value to the allocated memory
+        unsafe {
+            ptr.as_ptr().write(value);
+        }
+
+        Self {
+            ptr,
+            layout,
             #[cfg(debug_assertions)]
             reference_counter: AtomicRefCounter::new(()),
+        }
+    }
+
+    /// Deallocates the memory used by this entry.
+    fn deallocate(self, allocator: &impl Allocator) {
+        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
+
+        unsafe {
+            // Drop the value in place
+            std::ptr::drop_in_place(self.ptr.as_ptr());
+
+            // Deallocate the memory
+            allocator.deallocate(self.ptr.cast(), self.layout);
         }
     }
 }
@@ -391,19 +494,20 @@ impl<T> Deref for Entry<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.value
+        // SAFETY: The pointer is valid as long as the Entry exists
+        unsafe { self.ptr.as_ref() }
     }
 }
 
 impl<T: PartialEq> PartialEq for Entry<T> {
     fn eq(&self, other: &Self) -> bool {
-        *self.value == *other.value
+        **self == **other
     }
 }
 
 impl<T: Hash> Hash for Entry<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
+        (**self).hash(state);
     }
 }
 
@@ -418,13 +522,14 @@ where
     Q: Equivalent<T>,
 {
     fn equivalent(&self, other: &Entry<T>) -> bool {
-        self.0.equivalent(other.value.as_ref())
+        self.0.equivalent(&**other)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use allocator_api2::alloc::System;
     use rustc_hash::FxHasher;
     use std::hash::BuildHasherDefault;
 
@@ -598,10 +703,32 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_hasher() {
-        // Use FxHasher explicitly
-        let mut set: StablePointerSet<i32, BuildHasherDefault<FxHasher>> =
-            StablePointerSet::with_hasher(BuildHasherDefault::<FxHasher>::default());
+    fn test_custom_allocator() {
+        // Test with System allocator
+        let mut set: StablePointerSet<i32, RandomState, System> = StablePointerSet::new_in(System);
+
+        // Insert some values
+        let (ptr1, inserted) = set.insert(42);
+        assert!(inserted);
+        let (ptr2, inserted) = set.insert(100);
+        assert!(inserted);
+
+        // Check that everything works as expected
+        assert_eq!(set.len(), 2);
+        assert_eq!(*ptr1, 42);
+        assert_eq!(*ptr2, 100);
+
+        // Test contains
+        assert!(set.contains(&42));
+        assert!(set.contains(&100));
+        assert!(!set.contains(&200));
+    }
+
+    #[test]
+    fn test_custom_hasher_and_allocator() {
+        // Use both custom hasher and allocator
+        let mut set: StablePointerSet<i32, BuildHasherDefault<FxHasher>, System> =
+            StablePointerSet::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), System);
 
         // Insert some values
         let (ptr1, inserted) = set.insert(42);
