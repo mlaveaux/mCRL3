@@ -171,8 +171,8 @@ pub fn has_tau_loop(lts: &LabelledTransitionSystem) -> bool {
 #[cfg(test)]
 mod tests {
     use mcrl3_lts::random_lts;
+    use mcrl3_utilities::random_test;
     use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
     use test_log::test;
 
     use crate::Partition;
@@ -210,34 +210,35 @@ mod tests {
     #[test]
     fn test_random_tau_scc_decomposition() {
         let _ = test_logger();
-        let mut rng = test_rng();
 
-        let lts = random_lts(&mut rng, 10, 3, 3);
-        let partitioning = tau_scc_decomposition(&lts);
-        let reduction = quotient_lts(&lts, &partitioning, true);
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 3, 3);
+            let partitioning = tau_scc_decomposition(&lts);
+            let reduction = quotient_lts(&lts, &partitioning, true);
 
-        // Check that states in a strongly connected component are reachable from each other.
-        for state_index in lts.iter_states() {
-            let reachable = reachable_states(&lts, state_index, &|_, label, _| lts.is_hidden_label(label));
+            // Check that states in a strongly connected component are reachable from each other.
+            for state_index in lts.iter_states() {
+                let reachable = reachable_states(&lts, state_index, &|_, label, _| lts.is_hidden_label(label));
 
-            // All other states in the same block should be reachable.
-            let block = partitioning.block_number(state_index);
+                // All other states in the same block should be reachable.
+                let block = partitioning.block_number(state_index);
 
-            for other_state_index in lts
-                .iter_states()
-                .filter(|index| state_index != *index && partitioning.block_number(*index) == block)
-            {
-                assert!(
-                    reachable.contains(&other_state_index),
-                    "State {state_index} and {other_state_index} should be connected"
-                );
+                for other_state_index in lts
+                    .iter_states()
+                    .filter(|index| state_index != *index && partitioning.block_number(*index) == block)
+                {
+                    assert!(
+                        reachable.contains(&other_state_index),
+                        "State {state_index} and {other_state_index} should be connected"
+                    );
+                }
             }
-        }
 
-        assert!(
-            reduction.num_of_states() == tau_scc_decomposition(&reduction).num_of_blocks(),
-            "Applying SCC decomposition again should yield the same number of SCC after second application"
-        );
+            assert!(
+                reduction.num_of_states() == tau_scc_decomposition(&reduction).num_of_blocks(),
+                "Applying SCC decomposition again should yield the same number of SCC after second application"
+            );
+        });
     }
 
     #[test]

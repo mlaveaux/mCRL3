@@ -299,11 +299,11 @@ impl AnnouncementInnermost {
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_data::to_untyped_data_expression;
     use test_log::test;
 
     use mcrl3_aterm::random_term;
-    use mcrl3_utilities::test_rng;
+    use mcrl3_data::to_untyped_data_expression;
+    use mcrl3_utilities::random_test;
 
     use crate::InnermostRewriter;
     use crate::RewriteEngine;
@@ -314,20 +314,20 @@ mod tests {
         let spec = RewriteSpecification { rewrite_rules: vec![] };
         let mut inner = InnermostRewriter::new(&spec);
 
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let term = random_term(
+                rng,
+                &[("f".to_string(), 2)],
+                &["a".to_string(), "b".to_string()],
+                5,
+            );
+            let term = to_untyped_data_expression(&term, None);
 
-        let term = random_term(
-            &mut rng,
-            &[("f".to_string(), 2)],
-            &["a".to_string(), "b".to_string()],
-            5,
-        );
-        let term = to_untyped_data_expression(&term, None);
-
-        assert_eq!(
-            inner.rewrite(&term),
-            term.into(),
-            "Should be in normal form for no rewrite rules"
-        );
+            assert_eq!(
+                inner.rewrite(&term),
+                term.into(),
+                "Should be in normal form for no rewrite rules"
+            );
+        });
     }
 }

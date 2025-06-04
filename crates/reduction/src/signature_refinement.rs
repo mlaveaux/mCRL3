@@ -459,23 +459,22 @@ where
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_lts::random_lts;
-    use mcrl3_utilities::Timing;
-    use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
+    use super::*;
+
     use test_log::test;
 
-    use super::*;
+    use mcrl3_lts::random_lts;
+    use mcrl3_utilities::random_test;
+    use mcrl3_utilities::Timing;
 
     #[test]
     fn test_random_strong_bisim_sigref() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 3, 3);
+            let mut timing = Timing::new();
 
-        let lts = random_lts(&mut rng, 10, 3, 3);
-        let mut timing = Timing::new();
-
-        strong_bisim_sigref(&lts, &mut timing);
+            strong_bisim_sigref(&lts, &mut timing);
+        });
     }
 
     fn is_refinement(
@@ -500,27 +499,25 @@ mod tests {
 
     #[test]
     fn test_random_branching_bisim_sigref() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 3, 3);
+            let mut timing = Timing::new();
 
-        let lts = random_lts(&mut rng, 10, 3, 3);
-        let mut timing = Timing::new();
-
-        let strong_partition = strong_bisim_sigref(&lts, &mut timing);
-        let branching_partition = branching_bisim_sigref(&lts, &mut timing);
-        is_refinement(&lts, &strong_partition, &branching_partition);
+            let strong_partition = strong_bisim_sigref(&lts, &mut timing);
+            let branching_partition = branching_bisim_sigref(&lts, &mut timing);
+            is_refinement(&lts, &strong_partition, &branching_partition);
+        });
     }
 
     #[test]
     fn test_random_branching_bisim_sigref_naive() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+        let lts = random_lts(rng, 10, 3, 3);
+            let mut timing = Timing::new();
 
-        let lts = random_lts(&mut rng, 10, 3, 3);
-        let mut timing = Timing::new();
-
-        let strong_partition = strong_bisim_sigref_naive(&lts, &mut timing);
-        let branching_partition = branching_bisim_sigref_naive(&lts, &mut timing);
-        is_refinement(&lts, &strong_partition, &branching_partition);
+            let strong_partition = strong_bisim_sigref_naive(&lts, &mut timing);
+            let branching_partition = branching_bisim_sigref_naive(&lts, &mut timing);
+            is_refinement(&lts, &strong_partition, &branching_partition);
+        });
     }
 }

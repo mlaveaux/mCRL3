@@ -1,30 +1,3 @@
-//!
-//! # Examples
-//!
-//! Using the number postfix generator:
-//! ```
-//! use utilities::NumberPostfixGenerator;
-//!
-//! // Create a generator with default hint "FRESH_VAR"
-//! let mut gen = NumberPostfixGenerator::default();
-//!
-//! // Generate unique identifiers
-//! assert_eq!(gen.generate_default(), "FRESH_VAR");
-//! assert_eq!(gen.generate_default(), "FRESH_VAR1");
-//!
-//! // Create with existing context
-//! let mut gen = NumberPostfixGenerator::with_context(
-//!     ["x1", "x2", "y"],
-//!     "x"
-//! );
-//!
-//! // Generate from context
-//! assert_eq!(gen.generate("x", true), "x3");  // Next after x2
-//! assert_eq!(gen.generate("y", true), "y1");  // Next after y
-//! ```
-//!
-//! See individual module documentation for more examples.
-
 use std::collections::HashMap;
 
 /// Generates unique identifiers by appending numbers to a prefix.

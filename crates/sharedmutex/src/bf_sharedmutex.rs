@@ -245,34 +245,23 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
 mod tests {
     use rand::prelude::*;
     use std::hint::black_box;
-    use std::thread;
-
-    use mcrl3_utilities::test_rng;
-
     use crate::bf_sharedmutex::BfSharedMutex;
+
+    use mcrl3_utilities::random_test_threads;
+    use mcrl3_utilities::test_threads;
 
     // These are just simple tests.
     #[test]
     fn test_random_shared_mutex_exclusive() {
-        let mut threads = vec![];
-
         let shared_number = BfSharedMutex::new(5);
-        let num_threads = 20;
         let num_iterations = 500;
+        let num_threads = 20;
 
-        for _ in 0..num_threads {
-            let shared_number = shared_number.clone();
-            threads.push(thread::spawn(move || {
-                for _ in 0..num_iterations {
-                    *shared_number.write().unwrap() += 5;
-                }
-            }));
-        }
-
-        // Check whether threads have completed succesfully.
-        for thread in threads {
-            thread.join().unwrap();
-        }
+        test_threads(num_threads, || {
+            for _ in 0..num_iterations {
+                *shared_number.write().unwrap() += 5;
+            }
+        });
 
         assert_eq!(*shared_number.write().unwrap(), num_threads * num_iterations * 5 + 5);
     }
@@ -285,30 +274,18 @@ mod tests {
         let num_threads = 20;
         let num_iterations = 5000;
 
-        for _ in 1..num_threads {
-            let shared_vector = shared_vector.clone();
-            threads.push(thread::spawn(move || {
-                let mut rng = test_rng();
-
-                for _ in 0..num_iterations {
-                    if rng.random_bool(0.95) {
-                        // Read a random index.
-                        let read = shared_vector.read().unwrap();
-                        if read.len() > 0 {
-                            let index = rng.random_range(0..read.len());
-                            black_box(assert_eq!(read[index], 5));
-                        }
-                    } else {
-                        // Add a new vector element.
-                        shared_vector.write().unwrap().push(5);
-                    }
+        random_test_threads(num_iterations, num_threads, |rng| {
+            if rng.random_bool(0.95) {
+                // Read a random index.
+                let read = shared_vector.read().unwrap();
+                if read.len() > 0 {
+                    let index = rng.random_range(0..read.len());
+                    black_box(assert_eq!(read[index], 5));
                 }
-            }));
-        }
-
-        // Check whether threads have completed succesfully.
-        for thread in threads {
-            thread.join().unwrap();
-        }
+            } else {
+                // Add a new vector element.
+                shared_vector.write().unwrap().push(5);
+            }
+        });
     }
 }

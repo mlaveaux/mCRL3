@@ -218,6 +218,14 @@ impl Mcrl2Parser {
         parse_dataexpr(expr.children().as_pairs().clone())
     }
 
+    pub(crate) fn DataValExpr(expr: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(expr.into_children();
+            [DataExpr(expr)] => {
+                Ok(expr)
+            },
+        )
+    }
+
     pub(crate) fn DataExprUpdate(expr: ParseNode) -> ParseResult<DataExprUpdate> {
         match_nodes!(expr.into_children();
             [DataExpr(expr), DataExpr(update)] => {

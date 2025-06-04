@@ -428,8 +428,7 @@ mod tests {
     use crate::fmt_node;
     use crate::test_utility::*;
 
-    use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
+    use mcrl3_utilities::random_test;
     use rand::Rng;
     use std::collections::HashSet;
     use std::ops::Sub;
@@ -437,371 +436,360 @@ mod tests {
     // Compare the LDD element_of implementation for random inputs.
     #[test]
     fn test_random_element_of() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let length = 10;
+            let set = random_vector_set(rng, 32, length, 10);
+            let ldd = from_iter(&mut storage, set.iter());
 
-        let length = 10;
-        let set = random_vector_set(&mut rng, 32, length, 10);
-        let ldd = from_iter(&mut storage, set.iter());
+            // All elements in the set should be contained in the ldd.
+            for expected in &set {
+                assert!(
+                    element_of(&storage, expected, &ldd),
+                    "Did not find expected vector in ldd"
+                );
+            }
 
-        // All elements in the set should be contained in the ldd.
-        for expected in &set {
-            assert!(
-                element_of(&storage, expected, &ldd),
-                "Did not find expected vector in ldd"
-            );
-        }
+            // No shorter vectors should be contained in the ldd (try several times).
+            for _ in 0..10 {
+                let len = rng.random_range(0..length);
+                let short_vector = random_vector(rng, len, 10);
+                assert!(
+                    !element_of(&storage, &short_vector, &ldd),
+                    "Found shorter vector in ldd."
+                );
+            }
 
-        // No shorter vectors should be contained in the ldd (try several times).
-        for _ in 0..10 {
-            let len = rng.random_range(0..length);
-            let short_vector = random_vector(&mut rng, len, 10);
-            assert!(
-                !element_of(&storage, &short_vector, &ldd),
-                "Found shorter vector in ldd."
-            );
-        }
+            // No longer vectors should be contained in the ldd.
+            for _ in 0..10 {
+                let len = rng.random_range(length + 1..20);
+                let short_vector = random_vector(rng, len, 10);
+                assert!(!element_of(&storage, &short_vector, &ldd), "Found longer vector in ldd");
+            }
 
-        // No longer vectors should be contained in the ldd.
-        for _ in 0..10 {
-            let len = rng.random_range(length + 1..20);
-            let short_vector = random_vector(&mut rng, len, 10);
-            assert!(!element_of(&storage, &short_vector, &ldd), "Found longer vector in ldd");
-        }
-
-        // Try vectors of correct size with both the set and ldd.
-        for _ in 0..10 {
-            let vector = random_vector(&mut rng, length, 10);
-            assert_eq!(
-                set.contains(&vector),
-                element_of(&storage, &vector, &ldd),
-                "Set contains did not match ldd element_of"
-            );
-        }
+            // Try vectors of correct size with both the set and ldd.
+            for _ in 0..10 {
+                let vector = random_vector(rng, length, 10);
+                assert_eq!(
+                    set.contains(&vector),
+                    element_of(&storage, &vector, &ldd),
+                    "Set contains did not match ldd element_of"
+                );
+            }
+        });
     }
 
     // Compare the HashSet implementation of union with the LDD union implementation for random inputs.
     #[test]
     fn test_random_union() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set_a = random_vector_set(rng, 32, 10, 10);
+            let set_b = random_vector_set(rng, 32, 10, 10);
+            let expected = from_iter(&mut storage, set_a.union(&set_b));
 
-        let set_a = random_vector_set(&mut rng, 32, 10, 10);
-        let set_b = random_vector_set(&mut rng, 32, 10, 10);
-        let expected = from_iter(&mut storage, set_a.union(&set_b));
+            let a = from_iter(&mut storage, set_a.iter());
+            let b = from_iter(&mut storage, set_b.iter());
+            let result = union(&mut storage, &a, &b);
 
-        let a = from_iter(&mut storage, set_a.iter());
-        let b = from_iter(&mut storage, set_b.iter());
-        let result = union(&mut storage, &a, &b);
-
-        assert_eq!(result, expected);
+            assert_eq!(result, expected);
+        });
     }
 
     #[test]
     fn test_random_merge() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set_a = random_vector_set(rng, 32, 10, 10);
+            let set_b = random_vector_set(rng, 32, 10, 10);
 
-        let set_a = random_vector_set(&mut rng, 32, 10, 10);
-        let set_b = random_vector_set(&mut rng, 32, 10, 10);
+            // Compute the interleave explicitly.
+            fn interleave(a: &[u32], b: &[u32]) -> Vec<u32> {
+                let mut result = vec![];
 
-        // Compute the interleave explicitly.
-        fn interleave(a: &[u32], b: &[u32]) -> Vec<u32> {
-            let mut result = vec![];
+                let mut iter = b.iter();
+                for value in a {
+                    result.push(*value);
+                    result.push(*iter.next().unwrap());
+                }
 
-            let mut iter = b.iter();
-            for value in a {
-                result.push(*value);
-                result.push(*iter.next().unwrap());
+                result
             }
 
-            result
-        }
-
-        let mut set_result = HashSet::<Vec<u32>>::new();
-        for a in &set_a {
-            for b in &set_b {
-                set_result.insert(interleave(a, b));
+            let mut set_result = HashSet::<Vec<u32>>::new();
+            for a in &set_a {
+                for b in &set_b {
+                    set_result.insert(interleave(a, b));
+                }
             }
-        }
 
-        let expected = from_iter(&mut storage, set_result.iter());
+            let expected = from_iter(&mut storage, set_result.iter());
 
-        let a = from_iter(&mut storage, set_a.iter());
-        let b = from_iter(&mut storage, set_b.iter());
-        let result: Ldd = merge(&mut storage, &a, &b);
+            let a = from_iter(&mut storage, set_a.iter());
+            let b = from_iter(&mut storage, set_b.iter());
+            let result: Ldd = merge(&mut storage, &a, &b);
 
-        assert_eq!(result, expected);
+            assert_eq!(result, expected);
+        });
     }
 
     // Compare the singleton implementation with a random vector used as input.
     #[test]
     fn test_random_singleton() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+            let vector = random_vector(rng, 10, 10);
 
-        let mut storage = Storage::new();
-        let vector = random_vector(&mut rng, 10, 10);
+            let ldd = singleton(&mut storage, &vector[..]);
 
-        let ldd = singleton(&mut storage, &vector[..]);
-
-        // Check that ldd contains exactly one vector that is equal to the initial vector.
-        let mut it = iter(&storage, &ldd);
-        let result = it.next().unwrap();
-        assert_eq!(vector, result, "Contained vector did not match expected");
-        assert_eq!(it.next(), None, "The ldd should not contain any other vector");
+            // Check that ldd contains exactly one vector that is equal to the initial vector.
+            let mut it = iter(&storage, &ldd);
+            let result = it.next().unwrap();
+            assert_eq!(vector, result, "Contained vector did not match expected");
+            assert_eq!(it.next(), None, "The ldd should not contain any other vector");
+        });
     }
 
     // Test the len function with random inputs.
     #[test]
     fn test_random_len() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
+            let ldd = from_iter(&mut storage, set.iter());
 
-        let set = random_vector_set(&mut rng, 32, 10, 10);
-        let ldd = from_iter(&mut storage, set.iter());
-
-        assert_eq!(set.len(), len(&mut storage, &ldd), "Length did not match expected set");
+            assert_eq!(set.len(), len(&mut storage, &ldd), "Length did not match expected set");
+        });
     }
 
     // Test the minus function with random inputs.
     #[test]
     fn test_random_minus() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set_a = random_vector_set(rng, 32, 10, 10);
+            let set_b = {
+                let mut result = random_vector_set(rng, 32, 10, 10);
 
-        let set_a = random_vector_set(&mut rng, 32, 10, 10);
-        let set_b = {
-            let mut result = random_vector_set(&mut rng, 32, 10, 10);
+                // To ensure some overlap (which is unlikely) we insert some elements of a into b.
+                let mut it = set_a.iter();
+                for _ in 0..16 {
+                    result.insert(it.next().unwrap().clone());
+                }
 
-            // To ensure some overlap (which is unlikely) we insert some elements of a into b.
-            let mut it = set_a.iter();
-            for _ in 0..16 {
-                result.insert(it.next().unwrap().clone());
-            }
+                result
+            };
 
-            result
-        };
+            let expected_result = set_a.sub(&set_b);
 
-        let expected_result = set_a.sub(&set_b);
+            let a = from_iter(&mut storage, set_a.iter());
+            let b = from_iter(&mut storage, set_b.iter());
+            let result = minus(&mut storage, &a, &b);
 
-        let a = from_iter(&mut storage, set_a.iter());
-        let b = from_iter(&mut storage, set_b.iter());
-        let result = minus(&mut storage, &a, &b);
+            let expected = from_iter(&mut storage, expected_result.iter());
 
-        let expected = from_iter(&mut storage, expected_result.iter());
+            println!("{}", fmt_node(&storage, &result));
+            println!("{}", fmt_node(&storage, &expected));
 
-        println!("{}", fmt_node(&storage, &result));
-        println!("{}", fmt_node(&storage, &expected));
-
-        assert_eq!(result, expected);
+            assert_eq!(result, expected);
+        });
     }
 
     // Test the relational product function with read-only inputs.
     #[test]
     fn test_random_readonly_relational_product() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
 
-        let mut storage = Storage::new();
-        let set = random_vector_set(&mut rng, 32, 10, 10);
+            let ldd = from_iter(&mut storage, set.iter());
 
-        let ldd = from_iter(&mut storage, set.iter());
+            let read_proj = random_sorted_vector(rng, 4, 9);
+            let meta = compute_meta(&mut storage, &read_proj, &[]);
 
-        let read_proj = random_sorted_vector(&mut rng, 4, 9);
-        let meta = compute_meta(&mut storage, &read_proj, &[]);
+            let proj_ldd = compute_proj(&mut storage, &read_proj);
+            let relation = project(&mut storage, &ldd, &proj_ldd);
 
-        let proj_ldd = compute_proj(&mut storage, &read_proj);
-        let relation = project(&mut storage, &ldd, &proj_ldd);
+            let result = relational_product(&mut storage, &ldd, &relation, &meta);
+            let read_project = project(&mut storage, &result, &proj_ldd);
 
-        let result = relational_product(&mut storage, &ldd, &relation, &meta);
-        let read_project = project(&mut storage, &result, &proj_ldd);
-
-        // relational_product(R, S, read_proj, []) = { x | project(x, read_proj) = x' and (x', <>) in R and x in S }
-        assert_eq!(read_project, relation);
+            // relational_product(R, S, read_proj, []) = { x | project(x, read_proj) = x' and (x', <>) in R and x in S }
+            assert_eq!(read_project, relation);
+        });
     }
 
     // Test the relational product function with write-only inputs.
     #[test]
     fn test_random_writeonly_relational_product() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
 
-        let mut storage = Storage::new();
-        let set = random_vector_set(&mut rng, 32, 10, 10);
+            let ldd = from_iter(&mut storage, set.iter());
 
-        let ldd = from_iter(&mut storage, set.iter());
+            let write_proj = random_sorted_vector(rng, 4, 9);
+            let meta = compute_meta(&mut storage, &[], &write_proj);
 
-        let write_proj = random_sorted_vector(&mut rng, 4, 9);
-        let meta = compute_meta(&mut storage, &[], &write_proj);
+            let proj_ldd = compute_proj(&mut storage, &write_proj);
+            let relation = project(&mut storage, &ldd, &proj_ldd);
 
-        let proj_ldd = compute_proj(&mut storage, &write_proj);
-        let relation = project(&mut storage, &ldd, &proj_ldd);
+            let result = relational_product(&mut storage, &ldd, &relation, &meta);
+            let write_project = project(&mut storage, &result, &proj_ldd);
 
-        let result = relational_product(&mut storage, &ldd, &relation, &meta);
-        let write_project = project(&mut storage, &result, &proj_ldd);
-
-        // relational_product(R, S, [], write_proj) = { x[write_proj := y'] | (<>, y') in R and x in S }
-        assert_eq!(write_project, relation);
+            // relational_product(R, S, [], write_proj) = { x[write_proj := y'] | (<>, y') in R and x in S }
+            assert_eq!(write_project, relation);
+        });
     }
 
     #[test]
     fn test_random_relational_product() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
+            let relation = random_vector_set(rng, 32, 4, 10);
 
-        let set = random_vector_set(&mut rng, 32, 10, 10);
-        let relation = random_vector_set(&mut rng, 32, 4, 10);
+            // Pick arbitrary read and write parameters in order.
+            let read_proj = random_sorted_vector(rng, 2, 9);
+            let write_proj = random_sorted_vector(rng, 2, 9);
 
-        // Pick arbitrary read and write parameters in order.
-        let read_proj = random_sorted_vector(&mut rng, 2, 9);
-        let write_proj = random_sorted_vector(&mut rng, 2, 9);
+            // The indices of the input vectors do not match the indices in the relation. The input vector is defined for all values, but the relation only
+            // for relevant positions.
+            let (read_rel_proj, write_rel_proj) = {
+                let mut read_rel_proj: Vec<Value> = Vec::new();
+                let mut write_rel_proj: Vec<Value> = Vec::new();
 
-        // The indices of the input vectors do not match the indices in the relation. The input vector is defined for all values, but the relation only
-        // for relevant positions.
-        let (read_rel_proj, write_rel_proj) = {
-            let mut read_rel_proj: Vec<Value> = Vec::new();
-            let mut write_rel_proj: Vec<Value> = Vec::new();
-
-            let mut current = 0;
-            for i in 0..10 {
-                if read_proj.contains(&i) {
-                    read_rel_proj.push(current);
-                    current += 1;
-                }
-
-                if write_proj.contains(&i) {
-                    write_rel_proj.push(current);
-                    current += 1;
-                }
-            }
-
-            (read_rel_proj, write_rel_proj)
-        };
-
-        // Compute LDD result.
-        let ldd = from_iter(&mut storage, set.iter());
-        let rel = from_iter(&mut storage, relation.iter());
-
-        let meta = compute_meta(&mut storage, &read_proj, &write_proj);
-        let result = relational_product(&mut storage, &ldd, &rel, &meta);
-
-        eprintln!("set = {}", fmt_node(&storage, &ldd));
-        eprintln!("relation = {}", fmt_node(&storage, &rel));
-        eprintln!("result = {}", fmt_node(&storage, &result));
-        eprintln!("========");
-
-        eprintln!("meta = {}", fmt_node(&storage, &meta));
-        eprintln!(
-            "read {:?}, write {:?}, read_rel {:?} and write_rel {:?}",
-            read_proj, write_proj, read_rel_proj, write_rel_proj
-        );
-
-        let expected = {
-            let mut expected: HashSet<Vec<Value>> = HashSet::new();
-
-            // Compute relational_product(R, S, read_proj, write_proj) = { x[write_proj := y'] | project(x, read_proj) = x' and (x', y') in R and x in S }
-            for x in set.iter() {
-                'next: for rel in relation.iter() {
-                    let mut value = x.clone(); // The resulting vector.
-                    let x_prime = project_vector(rel, &read_rel_proj);
-                    let y_prime = project_vector(rel, &write_rel_proj);
-
-                    // Ensure that project(x, read_proj) = x'
-                    for (i, r) in read_proj.iter().enumerate() {
-                        if value[*r as usize] != x_prime[i] {
-                            continue 'next;
-                        }
+                let mut current = 0;
+                for i in 0..10 {
+                    if read_proj.contains(&i) {
+                        read_rel_proj.push(current);
+                        current += 1;
                     }
 
-                    // Compute x[write_proj := y']
-                    for (i, w) in write_proj.iter().enumerate() {
-                        value[*w as usize] = y_prime[i];
+                    if write_proj.contains(&i) {
+                        write_rel_proj.push(current);
+                        current += 1;
                     }
-
-                    // Print information about the value that we are testing.
-                    eprintln!("value = {:?}, rel = {:?}", &value, &rel);
-                    eprintln!("x_prime = {:?}, y_prime = {:?}", &x_prime, &y_prime);
-
-                    assert!(
-                        element_of(&storage, &value, &result),
-                        "Result does not contain vector {:?}.",
-                        &value
-                    );
-                    expected.insert(value);
                 }
-            }
 
-            expected
-        };
+                (read_rel_proj, write_rel_proj)
+            };
 
-        // Check the other way around
-        for res in iter(&storage, &result) {
-            assert!(
-                expected.contains(&res),
-                "Result unexpectedly contains vector {:?}.",
-                res
+            // Compute LDD result.
+            let ldd = from_iter(&mut storage, set.iter());
+            let rel = from_iter(&mut storage, relation.iter());
+
+            let meta = compute_meta(&mut storage, &read_proj, &write_proj);
+            let result = relational_product(&mut storage, &ldd, &rel, &meta);
+
+            eprintln!("set = {}", fmt_node(&storage, &ldd));
+            eprintln!("relation = {}", fmt_node(&storage, &rel));
+            eprintln!("result = {}", fmt_node(&storage, &result));
+            eprintln!("========");
+
+            eprintln!("meta = {}", fmt_node(&storage, &meta));
+            eprintln!(
+                "read {:?}, write {:?}, read_rel {:?} and write_rel {:?}",
+                read_proj, write_proj, read_rel_proj, write_rel_proj
             );
-        }
+
+            let expected = {
+                let mut expected: HashSet<Vec<Value>> = HashSet::new();
+
+                // Compute relational_product(R, S, read_proj, write_proj) = { x[write_proj := y'] | project(x, read_proj) = x' and (x', y') in R and x in S }
+                for x in set.iter() {
+                    'next: for rel in relation.iter() {
+                        let mut value = x.clone(); // The resulting vector.
+                        let x_prime = project_vector(rel, &read_rel_proj);
+                        let y_prime = project_vector(rel, &write_rel_proj);
+
+                        // Ensure that project(x, read_proj) = x'
+                        for (i, r) in read_proj.iter().enumerate() {
+                            if value[*r as usize] != x_prime[i] {
+                                continue 'next;
+                            }
+                        }
+
+                        // Compute x[write_proj := y']
+                        for (i, w) in write_proj.iter().enumerate() {
+                            value[*w as usize] = y_prime[i];
+                        }
+
+                        // Print information about the value that we are testing.
+                        eprintln!("value = {:?}, rel = {:?}", &value, &rel);
+                        eprintln!("x_prime = {:?}, y_prime = {:?}", &x_prime, &y_prime);
+
+                        assert!(
+                            element_of(&storage, &value, &result),
+                            "Result does not contain vector {:?}.",
+                            &value
+                        );
+                        expected.insert(value);
+                    }
+                }
+
+                expected
+            };
+
+            // Check the other way around
+            for res in iter(&storage, &result) {
+                assert!(
+                    expected.contains(&res),
+                    "Result unexpectedly contains vector {:?}.",
+                    res
+                );
+            }
+        });
     }
 
     // Test the project function with random inputs.
     #[test]
     fn test_random_project() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
+            let proj = random_sorted_vector(rng, 4, 9);
 
-        let set = random_vector_set(&mut rng, 32, 10, 10);
-        let proj = random_sorted_vector(&mut rng, 4, 9);
+            let ldd = from_iter(&mut storage, set.iter());
+            let proj_ldd = compute_proj(&mut storage, &proj);
+            let result = project(&mut storage, &ldd, &proj_ldd);
 
-        let ldd = from_iter(&mut storage, set.iter());
-        let proj_ldd = compute_proj(&mut storage, &proj);
-        let result = project(&mut storage, &ldd, &proj_ldd);
-
-        // Compute a naive projection on the vector set.
-        let mut expected_result: HashSet<Vec<Value>> = HashSet::new();
-        for element in &set {
-            expected_result.insert(project_vector(element, &proj));
-        }
-        let expected = from_iter(&mut storage, expected_result.iter());
-        assert_eq!(result, expected, "projected result does not match vector projection.");
+            // Compute a naive projection on the vector set.
+            let mut expected_result: HashSet<Vec<Value>> = HashSet::new();
+            for element in &set {
+                expected_result.insert(project_vector(element, &proj));
+            }
+            let expected = from_iter(&mut storage, expected_result.iter());
+            assert_eq!(result, expected, "projected result does not match vector projection.");
+        });
     }
 
     // Test the append function with random inputs.
     #[test]
     fn test_random_append() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
+            let ldd = from_iter(&mut storage, set.iter());
+            let result = append(&mut storage, &ldd, 0);
 
-        let set = random_vector_set(&mut rng, 32, 10, 10);
-        let ldd = from_iter(&mut storage, set.iter());
-        let result = append(&mut storage, &ldd, 0);
+            let mut expected_result: HashSet<Vec<Value>> = HashSet::new();
+            for element in &set {
+                let mut appended = element.to_vec();
+                appended.push(0 as Value);
+                expected_result.insert(appended);
+            }
+            let expected = from_iter(&mut storage, expected_result.iter());
 
-        let mut expected_result: HashSet<Vec<Value>> = HashSet::new();
-        for element in &set {
-            let mut appended = element.to_vec();
-            appended.push(0 as Value);
-            expected_result.insert(appended);
-        }
-        let expected = from_iter(&mut storage, expected_result.iter());
-
-        print_differences(&storage, &result, &expected);
-        assert_eq!(result, expected, "appended result does not match vector append");
+            print_differences(&storage, &result, &expected);
+            assert_eq!(result, expected, "appended result does not match vector append");
+        });
     }
 }

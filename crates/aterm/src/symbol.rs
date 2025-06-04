@@ -247,6 +247,7 @@ impl Eq for Symbol {}
 impl Arbitrary<'_> for Symbol {
     /// GEnerates a random symbol with a name and arity up to and including 3.
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+
         let name = u.arbitrary::<String>()?;
         let arity = u.int_in_range(0..=3)?;
         Ok(Symbol::new(name, arity))

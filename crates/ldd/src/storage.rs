@@ -313,50 +313,53 @@ fn mark_node(nodes: &mut IndexedSet<Node>, stack: &mut Vec<LddIndex>, root: LddI
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
 
     use super::*;
     use crate::operations::singleton;
     use crate::test_utility::*;
 
+    use mcrl3_utilities::random_test;
+    use mcrl3_utilities::test_logger;
+
     #[test]
     fn test_random_garbage_collection_small() {
         let _ = test_logger();
-        let mut rng = test_rng();
 
-        let mut storage = Storage::new();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let _child: Ldd;
-        {
-            // Make sure that this set goes out of scope, but keep a reference to some child ldd.
-            let vector = random_vector(&mut rng, 10, 10);
-            let ldd = singleton(&mut storage, &vector);
+            let _child: Ldd;
+            {
+                // Make sure that this set goes out of scope, but keep a reference to some child ldd.
+                let vector = random_vector(rng, 10, 10);
+                let ldd = singleton(&mut storage, &vector);
 
-            _child = storage.get(&ldd).1;
+                _child = storage.get(&ldd).1;
+                storage.garbage_collect();
+            }
+
             storage.garbage_collect();
-        }
-
-        storage.garbage_collect();
+        });
     }
 
     #[test]
     fn test_random_garbage_collection() {
         let _ = test_logger();
-        let mut rng = test_rng();
 
-        let mut storage = Storage::new();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let _child: Ldd;
-        {
-            // Make sure that this set goes out of scope, but keep a reference to some child ldd.
-            let vector = random_vector_set(&mut rng, 2000, 10, 2);
-            let ldd = from_iter(&mut storage, vector.iter());
+            let _child: Ldd;
+            {
+                // Make sure that this set goes out of scope, but keep a reference to some child ldd.
+                let vector = random_vector_set(rng, 2000, 10, 2);
+                let ldd = from_iter(&mut storage, vector.iter());
 
-            _child = storage.get(&storage.get(&ldd).1).1;
+                _child = storage.get(&storage.get(&ldd).1).1;
+                storage.garbage_collect();
+            }
+
             storage.garbage_collect();
-        }
-
-        storage.garbage_collect();
+        });
     }
 }

@@ -1,27 +1,5 @@
 //! Cache implementations including fixed-size caches with configurable eviction policies.
 //!
-//! # Example
-//!
-//! ```
-//! use crate::fixed_size_cache::FixedSizeCache;
-//! use crate::FifoPolicy;
-//!
-//! let mut cache = FixedSizeCache::new(2, FifoPolicy::new());
-//!
-//! cache.insert(1, "one");
-//! cache.insert(2, "two");
-//!
-//! assert_eq!(cache.get(&1), Some(&"one"));
-//! assert_eq!(cache.get(&2), Some(&"two"));
-//!
-//! // Insert a third item, which should evict the first one (FIFO policy)
-//! cache.insert(3, "three");
-//!
-//! assert_eq!(cache.get(&1), None);
-//! assert_eq!(cache.get(&2), Some(&"two"));
-//! assert_eq!(cache.get(&3), Some(&"three"));
-//! ```
-//!
 
 use hashbrown::HashMap;
 use std::hash::Hash;

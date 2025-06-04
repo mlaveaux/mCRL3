@@ -198,8 +198,8 @@ where
 mod tests {
 
     use mcrl3_lts::random_lts;
+    use mcrl3_utilities::random_test;
     use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
     use rand::seq::SliceRandom;
     use test_log::test;
 
@@ -207,81 +207,78 @@ mod tests {
 
     #[test]
     fn test_random_sort_topological_with_cycles() {
-        let _ = test_logger();
-        let mut rng = test_rng();
-
-        let lts = random_lts(&mut rng, 10, 3, 2);
-        if let Ok(order) = sort_topological(&lts, |_, _| true, false) {
-            assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false))
-        }
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 3, 2);
+            if let Ok(order) = sort_topological(&lts, |_, _| true, false) {
+                assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false))
+            }
+        });
     }
 
     #[test]
     fn test_random_reorder_states() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 3, 2);
 
-        let lts = random_lts(&mut rng, 10, 3, 2);
+            // Generate a random permutation.
+            let mut rng = rand::rng();
+            let order: Vec<usize> = {
+                let mut order: Vec<usize> = (0..lts.num_of_states()).collect();
+                order.shuffle(&mut rng);
+                order
+            };
 
-        // Generate a random permutation.
-        let mut rng = rand::rng();
-        let order: Vec<usize> = {
-            let mut order: Vec<usize> = (0..lts.num_of_states()).collect();
-            order.shuffle(&mut rng);
-            order
-        };
+            let new_lts = reorder_states(&lts, |i| order[i]);
 
-        let new_lts = reorder_states(&lts, |i| order[i]);
+            trace!("{:?}", lts);
+            trace!("{:?}", new_lts);
 
-        trace!("{:?}", lts);
-        trace!("{:?}", new_lts);
+            //assert_eq!(new_lts.num_of_states(), lts.num_of_states());
+            assert_eq!(new_lts.num_of_labels(), lts.num_of_labels());
 
-        //assert_eq!(new_lts.num_of_states(), lts.num_of_states());
-        assert_eq!(new_lts.num_of_labels(), lts.num_of_labels());
-
-        for from in lts.iter_states() {
-            // Check that the states are in the correct order.
-            for &(label, to) in lts.outgoing_transitions(from) {
-                let new_from = order[from];
-                let new_to = order[to];
-                assert!(
-                    new_lts
-                        .outgoing_transitions(new_from)
-                        .any(|trans| *trans == (label, new_to))
-                );
+            for from in lts.iter_states() {
+                // Check that the states are in the correct order.
+                for &(label, to) in lts.outgoing_transitions(from) {
+                    let new_from = order[from];
+                    let new_to = order[to];
+                    assert!(
+                        new_lts
+                            .outgoing_transitions(new_from)
+                            .any(|trans| *trans == (label, new_to))
+                    );
+                }
             }
-        }
+        });
     }
 
     #[test]
     fn test_random_is_valid_permutation() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let lts = random_lts(rng, 10, 15, 2);
 
-        let lts = random_lts(&mut rng, 10, 15, 2);
+            // Generate a valid permutation.
+            let mut rng = rand::rng();
+            let valid_permutation: Vec<usize> = {
+                let mut order: Vec<usize> = (0..lts.num_of_states()).collect();
+                order.shuffle(&mut rng);
+                order
+            };
 
-        // Generate a valid permutation.
-        let mut rng = rand::rng();
-        let valid_permutation: Vec<usize> = {
-            let mut order: Vec<usize> = (0..lts.num_of_states()).collect();
-            order.shuffle(&mut rng);
-            order
-        };
+            assert!(is_valid_permutation(&|i| valid_permutation[i], valid_permutation.len()));
 
-        assert!(is_valid_permutation(&|i| valid_permutation[i], valid_permutation.len()));
+            // Generate an invalid permutation (duplicate entries).
+            let invalid_permutation = [0, 1, 2, 3, 4, 5, 6, 7, 8, 8];
+            assert!(!is_valid_permutation(
+                &|i| invalid_permutation[i],
+                invalid_permutation.len()
+            ));
 
-        // Generate an invalid permutation (duplicate entries).
-        let invalid_permutation = [0, 1, 2, 3, 4, 5, 6, 7, 8, 8];
-        assert!(!is_valid_permutation(
-            &|i| invalid_permutation[i],
-            invalid_permutation.len()
-        ));
-
-        // Generate an invalid permutation (missing entries).
-        let invalid_permutation = [0, 1, 3, 4, 5, 6, 7, 8];
-        assert!(!is_valid_permutation(
-            &|i| invalid_permutation[i],
-            invalid_permutation.len()
-        ));
+            // Generate an invalid permutation (missing entries).
+            let invalid_permutation = [0, 1, 3, 4, 5, 6, 7, 8];
+            assert!(!is_valid_permutation(
+                &|i| invalid_permutation[i],
+                invalid_permutation.len()
+            ));
+        });
     }
 }

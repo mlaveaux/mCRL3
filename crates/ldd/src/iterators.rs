@@ -90,30 +90,30 @@ impl Iterator for Iter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use mcrl3_utilities::test_logger;
-    use mcrl3_utilities::test_rng;
 
     use super::*;
-    use crate::test_utility::*;
+
+    use mcrl3_utilities::random_test;
+
+    use crate::test_utility::{from_iter, random_vector_set};
 
     // Test the iterator implementation.
     #[test]
     fn test_random_iter() {
-        let _ = test_logger();
-        let mut rng = test_rng();
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-        let mut storage = Storage::new();
+            let set = random_vector_set(rng, 32, 10, 10);
+            let ldd = from_iter(&mut storage, set.iter());
 
-        let set = random_vector_set(&mut rng, 32, 10, 10);
-        let ldd = from_iter(&mut storage, set.iter());
+            assert!(
+                iter(&storage, &ldd).count() == set.len(),
+                "Number of iterations does not match the number of elements in the set."
+            );
 
-        assert!(
-            iter(&storage, &ldd).count() == set.len(),
-            "Number of iterations does not match the number of elements in the set."
-        );
-
-        for vector in iter(&storage, &ldd) {
-            assert!(set.contains(&vector), "Found element not in the set.");
-        }
+            for vector in iter(&storage, &ldd) {
+                assert!(set.contains(&vector), "Found element not in the set.");
+            }
+        })
     }
 }

@@ -24,7 +24,7 @@ mod progress;
 mod protection_set;
 mod random_test;
 mod simple_timer;
-mod test_utility;
+mod test_logger;
 mod text_utility;
 mod timing;
 
@@ -45,6 +45,6 @@ pub use progress::*;
 pub use protection_set::*;
 pub use random_test::*;
 pub use simple_timer::*;
-pub use test_utility::*;
+pub use test_logger::*;
 pub use text_utility::*;
 pub use timing::*;
