@@ -66,19 +66,19 @@ SortExpr = {
 
 /// A single sort expression
 SortExprPrimary = _{ 
-        SortExprBool
-    |   SortExprPos                                                  
-    |   SortExprNat                                                  
-    |   SortExprInt                                                  
-    |   SortExprReal                                                
-    |   SortExprList
-    |   SortExprSet
-    |   SortExprBag
-    |   SortExprFSet
-    |   SortExprFBag
-    |   SortExprParens
-    |   SortExprStruct
-    |   Id
+      SortExprBool
+    | SortExprPos                                                  
+    | SortExprNat                                                  
+    | SortExprInt                                                  
+    | SortExprReal                                                
+    | SortExprList
+    | SortExprSet
+    | SortExprBag
+    | SortExprFSet
+    | SortExprFBag
+    | SortExprParens
+    | SortExprStruct
+    | Id
 }
     SortExprBool = { "Bool" ~ !Id }
     SortExprPos  = { "Pos" ~ !Id }
@@ -113,6 +113,9 @@ SortProduct = {
 
 /// Data Expression
 DataExpr = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* ~ (DataExprInfix ~ DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix*)* }
+
+/// Data Expressions without infix operators
+DataExprUnit = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* }
 
 // A data expression prefix
 DataExprPrefix = _{
@@ -331,7 +334,7 @@ ProcExprInfix = _{
 ProcExprPostfix = _{
     ProcExprAt 
 }
-    ProcExprAt = { "@" ~ DataExpr }
+    ProcExprAt = { "@" ~ DataExprUnit }
     
 ProcExprNoIf = { ProcExprPrefix* ~ ProcExprPrimary ~ ProcExprPostfix? ~ (ProcExprNoIfInfix ~ ProcExprPrefix* ~ ProcExprPrimary ~ ProcExprPostfix?)* }
 
@@ -465,8 +468,8 @@ StateFrmPostfix = _{
 RegFrm = { RegFrmPrimary ~ (RegFrmPostfix ~ !ActFrm)? ~ (RegFrmInfix ~ RegFrmPrimary ~ (RegFrmPostfix ~ !ActFrm)?)* }
 
 RegFrmPrimary = _{
-        RegFrmBackets
-    |   ActFrm
+      ActFrm
+    | RegFrmBackets
 }
     RegFrmBackets = { "(" ~ RegFrm ~ ")" }
 
