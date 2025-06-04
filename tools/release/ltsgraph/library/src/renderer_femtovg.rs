@@ -23,17 +23,18 @@ impl FemtovgRenderer {
     }
 
     /// Render the current state of the simulation into the canvas.
+    #[allow(clippy::too_many_arguments)]
     pub fn render<T: Renderer>(
         &mut self,
         canvas: &mut Canvas<T>,
         viewer: &Viewer,
         draw_actions_labels: bool,
         state_radius: f32,
-        view_x: f32,
-        view_y: f32,
+        _view_x: f32,
+        _view_y: f32,
         screen_x: u32,
         screen_y: u32,
-        zoom_level: f32,
+        _zoom_level: f32,
         label_text_size: f32,
     ) -> Result<(), femtovg::ErrorKind> {
         // Clear the canvas with white color
@@ -79,7 +80,7 @@ impl FemtovgRenderer {
                     canvas.stroke_path(&path, &edge_paint);
 
                     let direction = (state_view.position - to_state_view.position).normalize();
-                    let angle = -1.0 * direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
+                    let _angle = -1.0 * direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
 
                     // Draw the edge handle
                     let middle = (to_state_view.position + state_view.position) / 2.0;

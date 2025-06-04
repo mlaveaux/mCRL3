@@ -23,7 +23,7 @@ impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
         Self {
-            symbols: StablePointerSet::with_hasher(FxBuildHasher::default()),
+            symbols: StablePointerSet::with_hasher(FxBuildHasher),
         }
     }
 

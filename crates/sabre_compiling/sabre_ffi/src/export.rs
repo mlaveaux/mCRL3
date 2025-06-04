@@ -6,6 +6,9 @@ use crate::DataExpressionFFI;
 use crate::DataExpressionRefFFI;
 use crate::DataFunctionSymbolRefFFI;
 
+/// # Safety
+/// 
+/// See the documentation in the import module.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn data_expression_arg<'a>(
     term: &DataExpressionRefFFI<'a>,
@@ -20,6 +23,9 @@ pub unsafe extern "C" fn data_expression_arg<'a>(
     }
 }
 
+/// # Safety
+/// 
+/// See the documentation in the import module.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<'a>) -> DataFunctionSymbolRefFFI<'a> {
     unsafe {
@@ -31,6 +37,9 @@ pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<
     }
 }
 
+/// # Safety
+/// 
+/// See the documentation in the import module.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn data_expression_protect(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {
     unsafe {

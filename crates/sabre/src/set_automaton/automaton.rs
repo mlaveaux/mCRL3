@@ -163,6 +163,8 @@ impl<M> SetAutomaton<M> {
                     // Match goals need to be sorted so that we can easily check whether a state with a certain
                     // set of match goals already exists.
                     if let GoalsOrInitial::Goals(goals) = goals_or_initial {
+                        // This code cannot be replaced by the entry since contains_key takes a reference.
+                        #[allow(clippy::map_entry)]
                         if map_goals_state.contains_key(&goals) {
                             // The destination state already exists
                             destinations.push((pos, *map_goals_state.get(&goals).unwrap()))

@@ -309,7 +309,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                                 // Render the texture using femtovg
                                 femtovg_info.renderer.render(
                                     &mut femtovg_info.canvas,
-                                    &viewer,
+                                    viewer,
                                     settings.draw_action_labels,
                                     settings.state_radius,
                                     settings.view_x,

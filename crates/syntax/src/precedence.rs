@@ -36,6 +36,7 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into a `SortExpression` using a Pratt parser for operator precedence.
+#[allow(clippy::result_large_err)]
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> ParseResult<SortExpression> {
     SORT_PRATT_PARSER
         .map_primary(|primary| {
@@ -112,6 +113,7 @@ static DATAEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::postfix(Rule::DataExprUpdate) | Op::postfix(Rule::DataExprApplication)) // ) // $left 13
 });
 
+#[allow(clippy::result_large_err)]
 pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
     DATAEXPR_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
@@ -228,6 +230,7 @@ static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::ProcExprComm, Assoc::Left)) // $left 9
 });
 
+#[allow(clippy::result_large_err)]
 pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
     PROCEXPR_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
@@ -299,6 +302,7 @@ static ACTFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into an `ActFrm` using a Pratt parser defined in [ACTFRM_PRATT_PARSER] for operator precedence.
+#[allow(clippy::result_large_err)]
 pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
     ACTFRM_PRATT_PARSER
         .map_primary(|primary| {
@@ -363,6 +367,7 @@ static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into an [RegFrm] using a Pratt parser defined in [REGFRM_PRATT_PARSER] for operator precedence.
+#[allow(clippy::result_large_err)]
 pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
     REGFRM_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
@@ -415,6 +420,7 @@ static STATEFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::StateFrmNegation) | Op::prefix(Rule::StateFrmUnaryMinus)) // $right 9
 });
 
+#[allow(clippy::result_large_err)]
 pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
     STATEFRM_PRATT_PARSER
         .map_primary(|primary| {

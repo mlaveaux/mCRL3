@@ -21,7 +21,15 @@ pub type SharedProtectionSet = Rc<RefCell<ProtectionSet<LddIndex>>>;
 
 /// Every Ldd points to its root node in the Storage instance for maximal
 /// sharing. These Ldd instances can only be created from the storage.
-#[allow(clippy::mutable_key_type)]
+/// 
+/// # Details
+/// 
+/// Note that the Ldd actually has a interior mutable reference to the protection set.
+/// However, this has no influence on the PartialEq and Hash implementations. As such
+/// we can use the Ldd as a key in hash maps and sets. Use the following clippy lint
+/// to disable the warning about mutable key types:
+/// 
+/// #[allow(clippy::mutable_key_type)]
 pub struct Ldd {
     ldd: LddRef<'static>,  // Reference in the node table.
     root: ProtectionIndex, // Index in the root set.

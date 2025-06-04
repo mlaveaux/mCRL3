@@ -46,6 +46,7 @@ impl SkiaRenderer {
     }
 
     /// Renders the LTS graph to the provided pixmap
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         pixmap: &mut PixmapMut,

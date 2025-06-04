@@ -98,7 +98,7 @@ impl GlobalTermPool {
         let empty_list_symbol = symbol_pool.create("[]", 0, |index| unsafe { SymbolRef::from_index(&index) });
 
         GlobalTermPool {
-            terms: StablePointerSet::with_hasher(FxBuildHasher::default()),
+            terms: StablePointerSet::with_hasher(FxBuildHasher),
             symbol_pool,
             thread_pools: Vec::new(),
             tmp_arguments: Vec::new(),
@@ -473,8 +473,8 @@ pub struct SharedTerm {
     annotation: Option<usize>,
 }
 
-/// Check that the ATermRef is the same size as a usize.
-/// TODO: Only pay the annotation size penalty if the annotation is used.
+// Check that the ATermRef is the same size as a usize.
+// TODO: Only pay the annotation size penalty if the annotation is used.
 // #[cfg(not(debug_assertions))]
 // const _: () = assert!(std::mem::size_of::<SharedTerm>() == std::mem::size_of::<usize>() * 3);
 

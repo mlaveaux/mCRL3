@@ -33,7 +33,7 @@ impl<T: From<ATerm>> ATermList<T> {
 
 impl<T> ATermList<T> {
     /// Constructs a new list from an iterator that is consumed.
-    pub fn from_iter(iter: impl DoubleEndedIterator<Item = T>) -> Self
+    pub fn from_double_iter(iter: impl DoubleEndedIterator<Item = T>) -> Self
     where
         T: Into<ATerm>,
     {
@@ -165,7 +165,7 @@ mod tests {
         use super::*;
         use crate::ATermInt;
 
-        let list = ATermList::from_iter(vec![ATermInt::new(1), ATermInt::new(2), ATermInt::new(3)].into_iter());
+        let list = ATermList::from_double_iter(vec![ATermInt::new(1), ATermInt::new(2), ATermInt::new(3)].into_iter());
         assert_eq!(list.head().value(), 1);
         assert_eq!(list.tail().head().value(), 2);
         assert_eq!(list.tail().tail().head().value(), 3);

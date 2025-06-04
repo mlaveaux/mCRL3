@@ -16,6 +16,7 @@ pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 20];
 pub const READ_RATIOS: [u32; 6] = [1, 10, 100, 1000, 10000, 100000];
 
 /// Execute the benchmarks for a given readers-writer lock implementation.
+#[allow(clippy::too_many_arguments)]
 pub fn benchmark<T, R, W>(
     c: &mut Criterion,
     name: &str,

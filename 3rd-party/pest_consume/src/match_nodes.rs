@@ -190,7 +190,8 @@ where
     }
 
     fn error(self, message: String) -> Self::Error {
-        // TODO: What is this syntax
+        // It is unclear to me how this works, but the reference actually allows us to call something from Node and removing it yields an error.
+        #[allow(clippy::needless_borrow)]
         (&self).error(message)
     }
 }

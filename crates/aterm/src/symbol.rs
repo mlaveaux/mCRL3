@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 
 use arbitrary::Arbitrary;
+use arbitrary::Unstructured;
 use delegate::delegate;
 use mcrl3_unsafety::StablePointer;
 use mcrl3_utilities::ProtectionIndex;
@@ -244,12 +245,24 @@ impl Borrow<SymbolRef<'static>> for Symbol {
 
 impl Eq for Symbol {}
 
-impl Arbitrary<'_> for Symbol {
-    /// GEnerates a random symbol with a name and arity up to and including 3.
-    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+/// Generate a readable string by creating a sequence of ASCII characters
+/// This ensures the generated string is valid UTF-8 and human-readable
+fn readable_string(u: &mut Unstructured<'_>, length: usize) -> arbitrary::Result<String> {
+    let len = u.int_in_range(1..=length)?;
+    let mut s = String::with_capacity(len);
+    for _ in 0..len {
+        let ch = u.int_in_range(b'a'..=b'z')? as char;
+        s.push(ch);
+    }
 
-        let name = u.arbitrary::<String>()?;
-        let arity = u.int_in_range(0..=3)?;
+    Ok(s)
+}
+
+impl Arbitrary<'_> for Symbol {
+    /// Generates a random symbol with a name and arity up to and including 3.
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let name = readable_string(u, 1)?;
+        let arity = u.int_in_range(0..=4)?;
         Ok(Symbol::new(name, arity))
     }
 }
@@ -262,7 +275,7 @@ mod tests {
     fn test_property_symbol_creation() {
         arbtest::arbtest(|u| {
             let symbol = Symbol::arbitrary(u)?;
-            assert!(symbol.arity() <= 10);
+            assert!(symbol.arity() <= 4);
             Ok(())
         });
     }

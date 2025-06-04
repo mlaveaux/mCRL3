@@ -124,6 +124,7 @@ impl<'i, R: RuleType, D> Nodes<'i, R, D> {
     }
 
     /// Returns the only element if there is only one element.
+    #[allow(clippy::result_large_err)]
     pub fn single(mut self) -> Result<Node<'i, R, D>, Error<R>> {
         match (self.pairs.next(), self.pairs.next()) {
             (Some(pair), None) => Ok(Node::new_with_user_data(pair, self.user_data)),

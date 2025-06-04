@@ -30,6 +30,7 @@ edge [dir = forward];
     )?;
 
     // Every node must be printed once, so keep track of already printed ones.
+    #[allow(clippy::mutable_key_type)]
     let mut marked: HashSet<Ldd> = HashSet::new();
 
     // We don't show these nodes in the output since every right most node is 'false' and every bottom node is 'true'.
@@ -72,6 +73,7 @@ fn print(storage: &Storage, ldd: &Ldd, f: &mut fmt::Formatter<'_>) -> fmt::Resul
     Ok(())
 }
 
+#[allow(clippy::mutable_key_type)]
 fn print_node(storage: &Storage, f: &mut impl Write, marked: &mut HashSet<Ldd>, ldd: &Ldd) -> io::Result<()> {
     if marked.contains(ldd) || ldd == storage.empty_set() || ldd == storage.empty_vector() {
         Ok(())

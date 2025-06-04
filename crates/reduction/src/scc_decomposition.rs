@@ -81,6 +81,7 @@ struct StateInfo {
 ///
 /// The `smallest_index`, `stack` and `indices` are updated in each recursive
 /// call to keep track of the current SCC.
+#[allow(clippy::too_many_arguments)]
 fn strongly_connect<F>(
     state_index: usize,
     lts: &LabelledTransitionSystem,
