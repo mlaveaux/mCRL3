@@ -22,6 +22,23 @@ pub struct RecParser;
 type ParseResult<T> = Result<T, Error<Rule>>;
 type ParseNode<'i> = Node<'i, Rule, ()>;
 
+/// Result of parsing a REC specification containing all extracted components
+#[derive(Debug)]
+struct RecSpecResult {
+    /// Name of the specification
+    _name: String,
+    /// List of included files
+    include_files: Vec<String>,
+    /// Constructor symbols with their arities
+    constructors: Vec<(String, usize)>,
+    /// Variable declarations
+    variables: Vec<String>,
+    /// Rewrite rules
+    rewrite_rules: Vec<RewriteRuleSyntax>,
+    /// Terms to evaluate
+    eval_terms: Vec<ATerm>,
+}
+
 /// Load a REC specification from a specified file.
 pub fn load_rec_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MCRL3Error> {
     let contents = fs::read_to_string(file.clone())?;
@@ -55,18 +72,18 @@ fn parse_rec(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificat
     let parse_node = ParseNode::new(root);
 
     // Parse using the consumed-based implementation
-    let (_name, include_files, constructors, variables, rewrite_rules, eval_terms) = RecParser::rec_spec(parse_node)?;
+    let result = RecParser::rec_spec(parse_node)?;
 
-    rewrite_spec.rewrite_rules = rewrite_rules;
-    rewrite_spec.constructors = constructors;
-    rewrite_spec.variables = variables;
+    rewrite_spec.rewrite_rules = result.rewrite_rules;
+    rewrite_spec.constructors = result.constructors;
+    rewrite_spec.variables = result.variables;
 
-    if !eval_terms.is_empty() {
-        terms.extend_from_slice(&eval_terms);
+    if !result.eval_terms.is_empty() {
+        terms.extend_from_slice(&result.eval_terms);
     }
 
     // REC files can import other REC files. Import all referenced by the header.
-    for file in include_files {
+    for file in result.include_files {
         if let Some(p) = &path {
             let include_path = p.parent().unwrap();
             let file_name = PathBuf::from_str(&(file.to_lowercase() + ".rec")).unwrap();
@@ -93,24 +110,29 @@ fn parse_rec(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificat
 
 #[pest_consume::parser]
 impl RecParser {
-    /// Parse a REC specification
-    fn rec_spec(
-        spec: ParseNode,
-    ) -> ParseResult<(
-        String,
-        Vec<String>,
-        Vec<(String, usize)>,
-        Vec<String>,
-        Vec<RewriteRuleSyntax>,
-        Vec<ATerm>,
-    )> {
+    /// Parse a REC specification, returns structured result with all components
+    fn rec_spec(spec: ParseNode) -> ParseResult<RecSpecResult> {
         // Extract all sections of the REC file
         match_nodes!(spec.into_children();
             [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), eval(eval_terms), EOI(_)] => {
-                Ok((name, include_files, constructors, variables, rewrite_rules, eval_terms))
+                Ok(RecSpecResult {
+                    _name: name,
+                    include_files,
+                    constructors,
+                    variables,
+                    rewrite_rules,
+                    eval_terms,
+                })
             },
             [header((name, include_files)), _sorts, cons(constructors), _opns, vars(variables), rules(rewrite_rules), EOI(_)] => {
-                Ok((name, include_files, constructors, variables, rewrite_rules, Vec::new()))
+                Ok(RecSpecResult {
+                    _name: name,
+                    include_files,
+                    constructors,
+                    variables,
+                    rewrite_rules,
+                    eval_terms: Vec::new(),
+                })
             }
         )
     }
