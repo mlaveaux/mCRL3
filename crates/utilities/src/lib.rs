@@ -6,6 +6,7 @@
 #[macro_use]
 mod cast_macro;
 
+mod arbitrary_utility;
 mod bitstream;
 mod debug_trace;
 mod display_pair;
@@ -28,6 +29,7 @@ mod test_logger;
 mod text_utility;
 mod timing;
 
+pub use arbitrary_utility::*;
 pub use bitstream::*;
 pub use display_pair::*;
 pub use error::*;

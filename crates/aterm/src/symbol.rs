@@ -272,7 +272,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_property_symbol_creation() {
+    fn test_arbitrary_symbol_creation() {
         arbtest::arbtest(|u| {
             let symbol = Symbol::arbitrary(u)?;
             assert!(symbol.arity() <= 4);
