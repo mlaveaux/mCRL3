@@ -443,9 +443,6 @@ struct Entry<T> {
     /// Pointer to the allocated value
     ptr: NonNull<T>,
 
-    /// Layout information for deallocation
-    layout: Layout,
-
     #[cfg(debug_assertions)]
     reference_counter: AtomicRefCounter<()>,
 }
@@ -458,9 +455,8 @@ impl<T> Entry<T> {
     fn new(value: T, allocator: &impl Allocator) -> Self {
         debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
 
-        let layout = Layout::new::<T>();
-
         // Allocate memory for the value
+        let layout = Layout::new::<T>();
         let ptr = allocator.allocate(layout).expect("Allocation failed").cast::<T>();
 
         // Write the value to the allocated memory
@@ -470,7 +466,6 @@ impl<T> Entry<T> {
 
         Self {
             ptr,
-            layout,
             #[cfg(debug_assertions)]
             reference_counter: AtomicRefCounter::new(()),
         }
@@ -485,7 +480,8 @@ impl<T> Entry<T> {
             std::ptr::drop_in_place(self.ptr.as_ptr());
 
             // Deallocate the memory
-            allocator.deallocate(self.ptr.cast(), self.layout);
+            let layout = Layout::new::<T>();
+            allocator.deallocate(self.ptr.cast(), layout);
         }
     }
 }
