@@ -89,49 +89,51 @@ impl NaiveRewriter {
             let symbol = u.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match
-            let transition = automaton
+            if let Some(transition) = automaton
                 .transitions()
-                .get(&(state_index, symbol.operation_id()))
-                .unwrap();
-            for (announcement, ema) in &transition.announcements {
-                let mut conditions_hold = true;
+                .get(&(state_index, symbol.operation_id())) {
+                for (announcement, ema) in &transition.announcements {
+                    let mut conditions_hold = true;
 
-                // Check conditions if there are any
-                if !ema.conditions.is_empty() {
-                    conditions_hold = NaiveRewriter::check_conditions(automaton, &t.copy(), ema, stats);
-                }
+                    // Check conditions if there are any
+                    if !ema.conditions.is_empty() {
+                        conditions_hold = NaiveRewriter::check_conditions(automaton, &t.copy(), ema, stats);
+                    }
 
-                // Check equivalence of subterms for non-linear patterns
-                'ec_check: for ec in &ema.equivalence_classes {
-                    if ec.positions.len() > 1 {
-                        let mut iter_pos = ec.positions.iter();
-                        let first_pos = iter_pos.next().unwrap();
-                        let first_term = t.get_data_position(first_pos);
+                    // Check equivalence of subterms for non-linear patterns
+                    'ec_check: for ec in &ema.equivalence_classes {
+                        if ec.positions.len() > 1 {
+                            let mut iter_pos = ec.positions.iter();
+                            let first_pos = iter_pos.next().unwrap();
+                            let first_term = t.get_data_position(first_pos);
 
-                        for other_pos in iter_pos {
-                            let other_term = t.get_data_position(other_pos);
-                            if first_term != other_term {
-                                conditions_hold = false;
-                                break 'ec_check;
+                            for other_pos in iter_pos {
+                                let other_term = t.get_data_position(other_pos);
+                                if first_term != other_term {
+                                    conditions_hold = false;
+                                    break 'ec_check;
+                                }
                             }
                         }
                     }
+
+                    if conditions_hold {
+                        // We found a matching pattern
+                        return Some((announcement, ema));
+                    }
                 }
 
-                if conditions_hold {
-                    // We found a matching pattern
-                    return Some((announcement, ema));
+                // If there is no pattern match we check if the transition has a destination state
+                if transition.destinations.is_empty() {
+                    // If there is no destination state there is no pattern match
+                    return None;
                 }
-            }
 
-            // If there is no pattern match we check if the transition has a destination state
-            if transition.destinations.is_empty() {
-                // If there is no destination state there is no pattern match
-                //println!("no match");
+                state_index = transition.destinations.first().unwrap().1;
+            } else {
+                // If there is no transition for the symbol, there is no match
                 return None;
             }
-
-            state_index = transition.destinations.first().unwrap().1;
         }
     }
 
