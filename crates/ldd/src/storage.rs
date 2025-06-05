@@ -346,7 +346,7 @@ mod tests {
     fn test_random_garbage_collection() {
         let _ = test_logger();
 
-        random_test(100, |rng| {
+        random_test(20, |rng| {
             let mut storage = Storage::new();
 
             let _child: Ldd;

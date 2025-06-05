@@ -1,11 +1,12 @@
-use mcrl3_aterm::ATerm;
-use mcrl3_data::to_untyped_data_expression;
-// use mcrl3_sabre::NaiveRewriter;
+
 use test_case::test_case;
 
+use mcrl3_aterm::ATerm;
 use mcrl3_data::DataExpression;
+use mcrl3_data::to_untyped_data_expression;
 use mcrl3_rec_tests::load_rec_from_strings;
 use mcrl3_sabre::InnermostRewriter;
+use mcrl3_sabre::NaiveRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SabreRewriter;
@@ -53,20 +54,12 @@ fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
     // Test Sabre rewriter
     let mut sa = SabreRewriter::new(&spec);
     let mut inner = InnermostRewriter::new(&spec);
-    // let mut naive = NaiveRewriter::new(&spec);
 
     let mut expected = expected_result.split('\n');
 
     for term in &terms {
         let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
         let expected_result = to_untyped_data_expression(&expected_term, None);
-
-        // let result = naive.rewrite(term);
-        // assert_eq!(
-        //     result,
-        //     expected_result.clone(),
-        //     "The naive rewrite result doesn't match the expected result",
-        // );
 
         let result = inner.rewrite(term);
         assert_eq!(
@@ -79,6 +72,43 @@ fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
         assert_eq!(
             result, expected_result,
             "The sabre rewrite result doesn't match the expected result"
+        );
+    }
+}
+
+#[cfg_attr(miri, ignore)]
+#[test_case(vec![include_str!("../../../examples/REC/rec/check1.rec")], include_str!("snapshot/result_check1.txt") ; "check1")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/check2.rec")], include_str!("snapshot/result_check2.txt") ; "check2")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/logic3.rec")], include_str!("snapshot/result_logic3.txt") ; "logic3")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/searchinconditions.rec")], include_str!("snapshot/result_searchinconditions.txt") ; "searchinconditions")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
+fn test_rec_specification_naive(rec_files: Vec<&str>, expected_result: &str) {
+    let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
+        let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
+        let result = syntax_spec.to_rewrite_spec();
+        (
+            result,
+            syntax_terms
+                .iter()
+                .map(|t| to_untyped_data_expression(t, None))
+                .collect(),
+        )
+    };
+
+    // Test Sabre rewriter
+    let mut naive = NaiveRewriter::new(&spec);
+
+    let mut expected = expected_result.split('\n');
+
+    for term in &terms {
+        let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
+        let expected_result = to_untyped_data_expression(&expected_term, None);
+
+        let result = naive.rewrite(term);
+        assert_eq!(
+            result,
+            expected_result.clone(),
+            "The naive rewrite result doesn't match the expected result",
         );
     }
 }

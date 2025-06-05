@@ -10,6 +10,7 @@ rust-version.workspace = true
 [dependencies]
 mcrl3_utilities.workspace = true
 
+arbitrary.workspace = true
 itertools.workspace = true
 log.workspace = true
 pest_consume.workspace = true
