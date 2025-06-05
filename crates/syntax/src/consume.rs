@@ -67,7 +67,7 @@ impl Mcrl2Parser {
                     eqn.append(&mut Mcrl2Parser::EqnSpec(child)?);
                 }
                 Rule::ProcSpec => {
-                    proc.push(Mcrl2Parser::ProcSpec(child)?);
+                    proc.append(&mut Mcrl2Parser::ProcSpec(child)?);
                 }
                 Rule::Init => {
                     if init.is_some() {
@@ -79,7 +79,7 @@ impl Mcrl2Parser {
                         ));
                     }
 
-                    init = Some(Mcrl2Parser::ProcExpr(child)?);
+                    init = Some(Mcrl2Parser::Init(child)?);
                 }
                 _ => {
                     // Handle other rules if necessary
@@ -145,10 +145,18 @@ impl Mcrl2Parser {
         Ok(ids)
     }
 
-    fn ProcSpec(spec: ParseNode) -> ParseResult<ProcDecl> {
+    fn Init(init: ParseNode) -> ParseResult<ProcessExpr> {
+        match_nodes!(init.into_children();
+            [ProcExpr(expr)] => {
+                return Ok(expr);
+            }
+        );
+    }
+
+    fn ProcSpec(spec: ParseNode) -> ParseResult<Vec<ProcDecl>> {
         match_nodes!(spec.into_children();
-            [ProcDecl(decl)] => {
-                return Ok(decl)
+            [ProcDecl(decls)..] => {
+                return Ok(decls.collect())
             },
         );
     }
@@ -163,6 +171,22 @@ impl Mcrl2Parser {
                     body,
                     span: span.into(),
                 })
+            },
+            [Id(identifier), ProcExpr(body)] => {
+                return Ok(ProcDecl {
+                    identifier,
+                    params: Vec::new(),
+                    body,
+                    span: span.into(),
+                })
+            }
+        );
+    }
+
+    pub(crate) fn ProcExprAt(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExprUnit(expr)] => {
+                return Ok(expr);
             },
         );
     }
@@ -199,46 +223,6 @@ impl Mcrl2Parser {
         );
     }
 
-    fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
-        let span = decl.as_span();
-        match_nodes!(decl.into_children();
-            [IdList(identifiers), SortExpr(sort)] => {
-                let id_decls = identifiers.into_iter().map(|identifier| {
-                    IdDecl { identifier, sort: sort.clone(), span: span.into() }
-                }).collect();
-
-                Ok(id_decls)
-            },
-        )
-    }
-
-    fn EqnSpec(spec: ParseNode) -> ParseResult<Vec<EqnSpec>> {
-        let mut ids = Vec::new();
-
-        match_nodes!(spec.into_children();
-            [VarSpec(variables), EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables, equations: decls.collect() });
-            },
-            [EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect() });
-            },
-        );
-
-        Ok(ids)
-    }
-
-    fn EqnDecl(decl: ParseNode) -> ParseResult<EqnDecl> {
-        let span = decl.as_span();
-        match_nodes!(decl.into_children();
-            [DataExpr(condition), DataExpr(lhs), DataExpr(rhs)] => {
-                Ok(EqnDecl { condition: Some(condition), lhs, rhs, span: span.into() })
-            },
-            [DataExpr(lhs), DataExpr(rhs)] => {
-                Ok(EqnDecl { condition: None, lhs, rhs, span: span.into() })
-            },
-        )
-    }
-
     pub(crate) fn ActFrmExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
@@ -259,6 +243,10 @@ impl Mcrl2Parser {
         parse_dataexpr(expr.children().as_pairs().clone())
     }
 
+    pub(crate) fn DataExprUnit(expr: ParseNode) -> ParseResult<DataExpr> {
+        parse_dataexpr(expr.children().as_pairs().clone())
+    }
+
     pub(crate) fn DataValExpr(expr: ParseNode) -> ParseResult<DataExpr> {
         match_nodes!(expr.into_children();
             [DataExpr(expr)] => {
@@ -270,7 +258,7 @@ impl Mcrl2Parser {
     pub(crate) fn DataExprUpdate(expr: ParseNode) -> ParseResult<DataExprUpdate> {
         match_nodes!(expr.into_children();
             [DataExpr(expr), DataExpr(update)] => {
-                Ok(DataExprUpdate { expr: Box::new(expr), update: Box::new(update) })
+                Ok(DataExprUpdate { expr, update })
             },
         )
     }
@@ -305,7 +293,7 @@ impl Mcrl2Parser {
     pub(crate) fn Assignment(assignment: ParseNode) -> ParseResult<Assignment> {
         match_nodes!(assignment.into_children();
             [Id(identifier), DataExpr(expr)] => {
-                Ok(Assignment { identifier, expr: Box::new(expr) })
+                Ok(Assignment { identifier, expr })
             },
         )
     }
@@ -366,15 +354,15 @@ impl Mcrl2Parser {
         Ok(vars)
     }
 
-    pub fn SortExpr(expr: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExpr(expr: ParseNode) -> ParseResult<SortExpression> {
         parse_sortexpr(expr.children().as_pairs().clone())
     }
 
-    pub fn Id(identifier: ParseNode) -> ParseResult<String> {
+    pub(crate) fn Id(identifier: ParseNode) -> ParseResult<String> {
         Ok(identifier.as_str().to_string())
     }
 
-    pub fn IdList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
+    pub(crate) fn IdList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
         match_nodes!(identifiers.into_children();
             [Id(ids)..] => {
                 return Ok(ids.collect());
@@ -383,42 +371,42 @@ impl Mcrl2Parser {
     }
 
     // Complex sorts
-    pub fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::List,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
-    pub fn SortExprSet(inner: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExprSet(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::Set,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
-    pub fn SortExprBag(inner: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExprBag(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::Bag,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
-    pub fn SortExprFSet(inner: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExprFSet(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::FSet,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
-    pub fn SortExprFBag(inner: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExprFBag(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
             ComplexSort::FBag,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
         ))
     }
 
-    pub fn SortExprStruct(inner: ParseNode) -> ParseResult<SortExpression> {
+    pub(crate) fn SortExprStruct(inner: ParseNode) -> ParseResult<SortExpression> {
         match_nodes!(inner.into_children();
             [ConstrDeclList(inner)] => {
                 return Ok(SortExpression::Struct { inner });
@@ -426,7 +414,7 @@ impl Mcrl2Parser {
         );
     }
 
-    pub fn ConstrDeclList(input: ParseNode) -> ParseResult<Vec<ConstructorDecl>> {
+    pub(crate) fn ConstrDeclList(input: ParseNode) -> ParseResult<Vec<ConstructorDecl>> {
         match_nodes!(input.into_children();
             [ConstrDecl(decl)..] => {
                 return Ok(decl.collect());
@@ -434,7 +422,7 @@ impl Mcrl2Parser {
         );
     }
 
-    pub fn ProjDeclList(input: ParseNode) -> ParseResult<Vec<(Option<String>, SortExpression)>> {
+    pub(crate) fn ProjDeclList(input: ParseNode) -> ParseResult<Vec<(Option<String>, SortExpression)>> {
         match_nodes!(input.into_children();
             [ProjDecl(decl)..] => {
                 return Ok(decl.collect());
@@ -442,7 +430,7 @@ impl Mcrl2Parser {
         );
     }
 
-    pub fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
+    pub(crate) fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
         match_nodes!(input.into_children();
             [Id(name)] => {
                 Ok(ConstructorDecl { name, args: Vec::new(), projection: None })
@@ -456,7 +444,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub fn ProjDecl(input: ParseNode) -> ParseResult<(Option<String>, SortExpression)> {
+    pub(crate) fn ProjDecl(input: ParseNode) -> ParseResult<(Option<String>, SortExpression)> {
         match_nodes!(input.into_children();
             [SortExpr(sort)] => {
                 Ok((None, sort))
@@ -592,6 +580,21 @@ impl Mcrl2Parser {
         parse_process_expr(input.children().as_pairs().clone())
     }
 
+    fn ProcExprNoIf(input: ParseNode) -> ParseResult<ProcessExpr> {
+        parse_process_expr(input.children().as_pairs().clone())
+    }
+
+    pub(crate) fn ProcExprId(input: ParseNode) -> ParseResult<ProcessExpr> {
+        match_nodes!(input.into_children();
+            [Id(identifier)] => {
+                Ok(ProcessExpr::Id(identifier, Vec::new()))
+            },
+            [Id(identifier), AssignmentList(assignments)] => {
+                Ok(ProcessExpr::Id(identifier, assignments))
+            },
+        )
+    }
+
     pub(crate) fn ProcExprBlock(input: ParseNode) -> ParseResult<ProcessExpr> {
         match_nodes!(input.into_children();
             [ActIdSet(actions), ProcExpr(expr)] => {
@@ -613,7 +616,7 @@ impl Mcrl2Parser {
 
     pub(crate) fn ProcExprIfThen(input: ParseNode) -> ParseResult<(DataExpr, ProcessExpr)> {
         match_nodes!(input.into_children();
-            [DataExpr(condition), ProcExpr(expr)] => {
+            [DataExpr(condition), ProcExprNoIf(expr)] => {
                 Ok((condition, expr))
             },
         )
@@ -831,10 +834,6 @@ impl Mcrl2Parser {
         );
     }
 
-    fn StateFrm(input: ParseNode) -> ParseResult<StateFrm> {
-        parse_statefrm(input.children().as_pairs().clone())
-    }
-
     pub(crate) fn StateFrmSpec(input: ParseNode) -> ParseResult<UntypedStateFrmSpec> {
         match_nodes!(input.into_children();
             [StateFrm(state)] => {
@@ -844,6 +843,50 @@ impl Mcrl2Parser {
                 });
             },
         );
+    }
+
+    fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
+        let span = decl.as_span();
+        match_nodes!(decl.into_children();
+            [IdList(identifiers), SortExpr(sort)] => {
+                let id_decls = identifiers.into_iter().map(|identifier| {
+                    IdDecl { identifier, sort: sort.clone(), span: span.into() }
+                }).collect();
+
+                Ok(id_decls)
+            },
+        )
+    }
+
+    fn EqnSpec(spec: ParseNode) -> ParseResult<Vec<EqnSpec>> {
+        let mut ids = Vec::new();
+
+        match_nodes!(spec.into_children();
+            [VarSpec(variables), EqnDecl(decls)..] => {
+                ids.push(EqnSpec { variables, equations: decls.collect() });
+            },
+            [EqnDecl(decls)..] => {
+                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect() });
+            },
+        );
+
+        Ok(ids)
+    }
+
+    fn EqnDecl(decl: ParseNode) -> ParseResult<EqnDecl> {
+        let span = decl.as_span();
+        match_nodes!(decl.into_children();
+            [DataExpr(condition), DataExpr(lhs), DataExpr(rhs)] => {
+                Ok(EqnDecl { condition: Some(condition), lhs, rhs, span: span.into() })
+            },
+            [DataExpr(lhs), DataExpr(rhs)] => {
+                Ok(EqnDecl { condition: None, lhs, rhs, span: span.into() })
+            },
+        )
+    }
+
+    fn StateFrm(input: ParseNode) -> ParseResult<StateFrm> {
+        parse_statefrm(input.children().as_pairs().clone())
     }
 
     fn RegFrm(input: ParseNode) -> ParseResult<RegFrm> {

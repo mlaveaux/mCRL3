@@ -174,7 +174,7 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
         .map_postfix(|expr, postfix| match postfix.as_rule() {
             Rule::DataExprUpdate => Ok(DataExpr::FunctionUpdate {
                 expr: Box::new(expr?),
-                update: Mcrl2Parser::DataExprUpdate(Node::new(postfix))?,
+                update: Box::new(Mcrl2Parser::DataExprUpdate(Node::new(postfix))?),
             }),
             Rule::DataExprApplication => Ok(DataExpr::Application {
                 function: Box::new(expr?),
@@ -227,14 +227,15 @@ static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::ProcExprIfThen)) // $right 5
         .op(Op::infix(Rule::ProcExprUntil, Assoc::Left)) // $left 6
         .op(Op::infix(Rule::ProcExprSeq, Assoc::Right)) // $right 7
-        .op(Op::infix(Rule::ProcExprComm, Assoc::Left)) // $left 9
+        .op(Op::postfix(Rule::ProcExprAt)) // $left 8
+        .op(Op::infix(Rule::ProcExprSync, Assoc::Left)) // $left 9
 });
 
 #[allow(clippy::result_large_err)]
 pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
     PROCEXPR_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
-            Rule::ProcExprId => Ok(ProcessExpr::Id(Mcrl2Parser::Id(Node::new(primary))?)),
+            Rule::ProcExprId => Ok(Mcrl2Parser::ProcExprId(Node::new(primary))?),
             Rule::ProcExprDelta => Ok(ProcessExpr::Delta),
             Rule::ProcExprTau => Ok(ProcessExpr::Tau),
             Rule::ProcExprBlock => Ok(Mcrl2Parser::ProcExprBlock(Node::new(primary))?),
@@ -278,6 +279,11 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                 lhs: Box::new(lhs?),
                 rhs: Box::new(rhs?),
             }),
+            Rule::ProcExprSync => Ok(ProcessExpr::Binary {
+                op: ProcExprBinaryOp::CommMerge,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
             _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
         })
         .map_prefix(|prefix, expr| match prefix.as_rule() {
@@ -311,8 +317,15 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                     then: Box::new(then),
                     else_: Some(Box::new(expr?)),
                 })
-            }
+            },
             _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
+        })
+        .map_postfix(|expr, postfix| match postfix.as_rule() {
+            Rule::ProcExprAt => Ok(ProcessExpr::At {
+                expr: Box::new(expr?),
+                operand: Mcrl2Parser::ProcExprAt(Node::new(postfix))?,
+            }),
+            _ => unimplemented!("Unexpected postfix rule: {:?}", postfix.as_rule()),
         })
         .parse(pairs)
 }

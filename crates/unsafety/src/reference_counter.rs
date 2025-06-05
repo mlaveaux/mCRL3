@@ -71,14 +71,7 @@ impl<T> Clone for AtomicRefCounter<T> {
         debug_assert!(old_count >= 1, "Reference count should be at least 1 before cloning");
         debug_assert!(old_count < usize::MAX, "Reference count overflow");
 
-        let cloned = AtomicRefCounter { ptr: self.ptr };
-
-        debug_assert_eq!(
-            self.strong_count(),
-            old_count + 1,
-            "Reference count should be incremented"
-        );
-        cloned
+        AtomicRefCounter { ptr: self.ptr }
     }
 }
 
