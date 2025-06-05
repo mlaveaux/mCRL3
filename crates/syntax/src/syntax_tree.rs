@@ -1,5 +1,7 @@
 use std::hash::Hash;
 
+use arbitrary::Arbitrary;
+
 /// An mCRL2 specification containing declarations.
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedProcessSpecification {
@@ -39,7 +41,7 @@ pub struct IdDecl {
 }
 
 /// Expression representing a sort (type).
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SortExpression {
     /// Product of two sorts (A # B)
     Product {
@@ -63,7 +65,7 @@ pub enum SortExpression {
 }
 
 /// Constructor declaration
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ConstructorDecl {
     pub name: String,
     pub args: Vec<(Option<String>, SortExpression)>,
@@ -71,7 +73,7 @@ pub struct ConstructorDecl {
 }
 
 /// Built-in simple sorts.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Sort {
     Bool,
     Pos,
@@ -81,7 +83,7 @@ pub enum Sort {
 }
 
 /// Complex (parameterized) sorts.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ComplexSort {
     List,
     Set,
@@ -98,9 +100,7 @@ pub struct Mcrl2Specification {}
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct SortDecl {
     /// Sort identifier
-    pub name: String,
-    /// Sort parameters (if any)
-    pub params: Vec<String>,
+    pub identifier: String,
     /// Sort expression (if structured)
     pub expr: Option<SortExpression>,
     /// Where the sort is defined
@@ -108,7 +108,7 @@ pub struct SortDecl {
 }
 
 /// Variable declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
 pub struct VarDecl {
     pub identifier: String,
     pub sort: SortExpression,
@@ -156,14 +156,14 @@ pub struct ProcDecl {
     pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
 pub enum DataExprUnaryOp {
     Negation,
     Minus,
     Size,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
 pub enum DataExprBinaryOp {
     Conj,
     Disj,
@@ -188,7 +188,7 @@ pub enum DataExprBinaryOp {
 }
 
 /// Data expression
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
 pub enum DataExpr {
     Id(String),
     Number(String), // Is string because the number can be any size.
@@ -231,7 +231,7 @@ pub enum DataExpr {
     },
     FunctionUpdate {
         expr: Box<DataExpr>,
-        update: DataExprUpdate,
+        update: Box<DataExprUpdate>,
     },
     Whr {
         expr: Box<DataExpr>,
@@ -239,16 +239,16 @@ pub enum DataExpr {
     },
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
 pub struct DataExprUpdate {
-    pub expr: Box<DataExpr>,
-    pub update: Box<DataExpr>,
+    pub expr: DataExpr,
+    pub update: DataExpr,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
 pub struct Assignment {
     pub identifier: String,
-    pub expr: Box<DataExpr>,
+    pub expr: DataExpr,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -257,12 +257,13 @@ pub enum ProcExprBinaryOp {
     Choice,
     Parallel,
     LeftMerge,
+    CommMerge,
 }
 
 /// Process expression
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub enum ProcessExpr {
-    Id(String),
+    Id(String, Vec<Assignment>),
     Action(String, Vec<DataExpr>),
     Delta,
     Tau,
@@ -305,6 +306,10 @@ pub enum ProcessExpr {
         then: Box<ProcessExpr>,
         else_: Option<Box<ProcessExpr>>,
     },
+    At {
+        expr: Box<ProcessExpr>,
+        operand: DataExpr,
+    }
 }
 
 /// Communication action
@@ -465,6 +470,12 @@ pub struct Span {
     pub start: usize,
     /// End position in source
     pub end: usize,
+}
+
+impl Arbitrary<'_> for Span {
+    fn arbitrary(_u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        Ok(Span { start: 0, end: 0 })
+    }    
 }
 
 impl From<pest::Span<'_>> for Span {

@@ -128,7 +128,7 @@ fn encode_variablesize_int(mut value: usize, output: &mut [u8]) -> usize {
 /// - The encoded integer uses too many bytes
 fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Result<usize> {
     let mut value = 0usize;
-    let max_bytes = (std::mem::size_of::<usize>() * 8 + 6) / 7;
+    let max_bytes = (std::mem::size_of::<usize>() * 8).div_ceil(7);
 
     for i in 0..max_bytes {
         let byte = reader.read_bits(8)?;

@@ -102,14 +102,13 @@ impl fmt::Display for EqnSpec {
 
 impl fmt::Display for SortDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "sort {}", self.name)?;
-        for (i, decl) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", decl)?;
+        write!(f, "sort {}", self.identifier)?;
+
+        if let Some(expr) = &self.expr {
+            write!(f, " = {}", expr)?;
         }
-        writeln!(f)
+
+        Ok(())
     }
 }
 
