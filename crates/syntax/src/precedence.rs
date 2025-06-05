@@ -246,7 +246,7 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                 let action = Mcrl2Parser::Action(Node::new(primary))?;
 
                 Ok(ProcessExpr::Action(action.id, action.args))
-            },
+            }
             Rule::ProcExprBrackets => {
                 // Handle parentheses by recursively parsing the inner expression
                 let inner = primary
@@ -293,7 +293,7 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                     expr: data_expr,
                     operand: Box::new(expr?),
                 })
-            },
+            }
             Rule::ProcExprIf => {
                 let condition = Mcrl2Parser::ProcExprIf(Node::new(prefix))?;
 
@@ -302,7 +302,7 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                     then: Box::new(expr?),
                     else_: None,
                 })
-            },
+            }
             Rule::ProcExprIfThen => {
                 let (condition, then) = Mcrl2Parser::ProcExprIfThen(Node::new(prefix))?;
 
@@ -311,7 +311,7 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                     then: Box::new(then),
                     else_: Some(Box::new(expr?)),
                 })
-            },
+            }
             _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
         })
         .parse(pairs)

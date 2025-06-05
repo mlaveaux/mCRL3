@@ -72,7 +72,9 @@ impl Mcrl2Parser {
                 Rule::Init => {
                     if init.is_some() {
                         return Err(Error::new_from_span(
-                            ErrorVariant::CustomError { message: "Multiple init expressions are not allowed".to_string() },
+                            ErrorVariant::CustomError {
+                                message: "Multiple init expressions are not allowed".to_string(),
+                            },
                             child.as_span(),
                         ));
                     }
@@ -143,7 +145,7 @@ impl Mcrl2Parser {
         Ok(ids)
     }
 
-    fn ProcSpec(spec: ParseNode) -> ParseResult<ProcDecl> {        
+    fn ProcSpec(spec: ParseNode) -> ParseResult<ProcDecl> {
         match_nodes!(spec.into_children();
             [ProcDecl(decl)] => {
                 return Ok(decl)
@@ -152,7 +154,7 @@ impl Mcrl2Parser {
     }
 
     fn ProcDecl(decl: ParseNode) -> ParseResult<ProcDecl> {
-        let span = decl.as_span();     
+        let span = decl.as_span();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params), ProcExpr(body)] => {
                 return Ok(ProcDecl {
