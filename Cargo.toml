@@ -25,6 +25,7 @@ members = [
 ]
 
 [workspace.dependencies]
+allocator-api2 =  "0.3"
 ahash = "0.8"
 backtrace = "0.3"
 bitstream-io = "4.1"
