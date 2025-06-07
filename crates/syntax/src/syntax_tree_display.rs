@@ -136,7 +136,7 @@ impl fmt::Display for DataExpr {
         match self {
             DataExpr::EmptyBag => write!(f, "{{:}}"),
             DataExpr::Bag(expressions) => write!(f, "{{ {} }}", 
-                expressions.iter().format_with(", ", |e, f| f(&format_args!("({}, {})", e.0, e.1)))),
+                expressions.iter().format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))),
             _ => unimplemented!(),
         }
     }

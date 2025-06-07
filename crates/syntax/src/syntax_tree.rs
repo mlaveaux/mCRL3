@@ -465,6 +465,33 @@ pub struct Comm {
     pub to: String,
 }
 
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct UntypedActionRenameSpec {
+    pub data_spec: UntypedDataSpecification,
+    pub act_decls: Vec<ActDecl>,
+    pub rename_decls: Vec<ActionRenameDecl>,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ActionRenameDecl {
+    pub vars_spec: Vec<VarDecl>,
+    pub rename_rule: ActionRenameRule,  
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ActionRenameRule {
+    pub condition: Option<DataExpr>,
+    pub action: Action,
+    pub rhs: ActionRHS,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum ActionRHS {
+    Tau,
+    Delta,
+    Action(Action)
+}
+
 /// Source location information.
 #[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Span {

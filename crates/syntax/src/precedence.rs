@@ -577,20 +577,3 @@ static _PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::PresExprLeftConstantMultiply) | Op::postfix(Rule::PresExprRightConstMultiply)) // $right 6
         .op(Op::prefix(Rule::PbesExprNegation)) // $right 7
 });
-
-#[cfg(test)]
-mod tests {
-    use pest::Parser;
-
-    use crate::Mcrl2Parser;
-
-    use super::*;
-
-    #[test]
-    fn test_sort_precedence() {
-        let term = "Bool # Int -> Int -> Bool";
-
-        let result = Mcrl2Parser::parse(Rule::SortExpr, term).unwrap();
-        print!("{}", parse_sortexpr(result).unwrap());
-    }
-}

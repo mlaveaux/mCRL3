@@ -1,8 +1,12 @@
+use mcrl3_syntax::parse_sortexpr;
+use mcrl3_syntax::Mcrl2Parser;
+use mcrl3_syntax::Rule;
 use mcrl3_syntax::UntypedProcessSpecification;
 use mcrl3_syntax::UntypedStateFrmSpec;
 use mcrl3_utilities::test_logger;
 
 use indoc::indoc;
+use pest::Parser;
 
 #[test]
 fn test_parse_ifthen() {
@@ -72,4 +76,12 @@ fn test_parse_statefrm() {
     let spec: &str = indoc! {"<b> <a> exists b: Bool . b && !b"};
 
     println!("{}", UntypedStateFrmSpec::parse(spec).unwrap());
+}
+
+#[test]
+fn test_sort_precedence() {
+    let term = "Bool # Int -> Int -> Bool";
+
+    let result = Mcrl2Parser::parse(Rule::SortExpr, term).unwrap();
+    print!("{}", parse_sortexpr(result).unwrap());
 }

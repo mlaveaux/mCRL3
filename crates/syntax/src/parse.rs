@@ -7,6 +7,7 @@ use pest_derive::Parser;
 
 use crate::DataExprBinaryOp;
 use crate::ParseNode;
+use crate::UntypedActionRenameSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
@@ -46,6 +47,18 @@ impl UntypedStateFrmSpec {
         trace!("Parse tree {}", DisplayPair(root.clone()));
 
         Ok(Mcrl2Parser::StateFrmSpec(ParseNode::new(root))?)
+    }
+}
+
+impl UntypedActionRenameSpec { 
+    pub fn parse(spec: &str) -> Result<UntypedActionRenameSpec, MCRL3Error> {
+        let mut result = Mcrl2Parser::parse(Rule::ActionRenameSpec, spec).map_err(extend_parser_error)?;
+        let root = result
+            .next()
+            .expect("Could not parse mCRL2 action rename specification");
+        trace!("Parse tree {}", DisplayPair(root.clone()));
+
+        Ok(Mcrl2Parser::ActionRenameSpec(ParseNode::new(root))?)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::iter;
 
 use itertools::Itertools;
+use mcrl3_utilities::DisplayPair;
 use pest::error::ErrorVariant;
 use pest_consume::Error;
 use pest_consume::match_nodes;
@@ -8,7 +9,9 @@ use pest_consume::match_nodes;
 use crate::ActDecl;
 use crate::ActFrm;
 use crate::Action;
+use crate::ActionRenameDecl;
 use crate::Assignment;
+use crate::BagElement;
 use crate::Comm;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
@@ -25,10 +28,12 @@ use crate::ProcessExpr;
 use crate::RegFrm;
 use crate::Rename;
 use crate::Rule;
+use crate::SortDecl;
 use crate::SortExpression;
 use crate::StateFrm;
 use crate::StateVarAssignment;
 use crate::StateVarDecl;
+use crate::UntypedActionRenameSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
@@ -55,25 +60,38 @@ pub(crate) type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 impl Mcrl2Parser {
     // Although these are not public, they are the main entry points for consuming the parse tree.
     pub(crate) fn MCRL2Spec(spec: ParseNode) -> ParseResult<UntypedProcessSpecification> {
-        let mut actions = Vec::new();
-        let mut map = Vec::new();
-        let mut eqn = Vec::new();
-        let mut proc = Vec::new();
+        let mut act_decls = Vec::new();
+        let mut map_decls = Vec::new();
+        let mut cons_decls = Vec::new();
+        let mut eqn_decls = Vec::new();
+        let mut glob_vars = Vec::new();
+        let mut proc_decls = Vec::new();
+        let mut sort_decls = Vec::new();
+
         let mut init = None;
 
         for child in spec.into_children() {
             match child.as_rule() {
                 Rule::ActSpec => {
-                    actions.extend(Mcrl2Parser::ActSpec(child)?);
+                    act_decls.extend(Mcrl2Parser::ActSpec(child)?);
+                }
+                Rule::ConsSpec => {
+                    cons_decls.append(&mut Mcrl2Parser::MapSpec(child)?);
                 }
                 Rule::MapSpec => {
-                    map.append(&mut Mcrl2Parser::MapSpec(child)?);
+                    map_decls.append(&mut Mcrl2Parser::MapSpec(child)?);
+                }
+                Rule::GlobVarSpec => {
+                    glob_vars.append(&mut Mcrl2Parser::GlobVarSpec(child)?);
                 }
                 Rule::EqnSpec => {
-                    eqn.append(&mut Mcrl2Parser::EqnSpec(child)?);
+                    eqn_decls.append(&mut Mcrl2Parser::EqnSpec(child)?);
                 }
                 Rule::ProcSpec => {
-                    proc.append(&mut Mcrl2Parser::ProcSpec(child)?);
+                    proc_decls.append(&mut Mcrl2Parser::ProcSpec(child)?);
+                }
+                Rule::SortSpec => {
+                    sort_decls.append(&mut Mcrl2Parser::SortSpec(child)?);
                 }
                 Rule::Init => {
                     if init.is_some() {
@@ -88,20 +106,24 @@ impl Mcrl2Parser {
                     init = Some(Mcrl2Parser::Init(child)?);
                 }
                 _ => {
-                    // Handle other rules if necessary
+                    unimplemented!("Unexpected rule: {:?}", child.as_rule());
                 }
             }
         }
 
         let data_specification = UntypedDataSpecification {
-            map_decls: map,
-            ..Default::default()
+            map_decls,
+            cons_decls,
+            eqn_decls,
+            sort_decls,
         };
 
         Ok(UntypedProcessSpecification {
             data_specification,
+            glob_vars,
+            act_decls,
+            proc_decls,
             init,
-            ..Default::default()
         })
     }
 
@@ -124,6 +146,14 @@ impl Mcrl2Parser {
     }
 
     fn SortProduct(sort: ParseNode) -> ParseResult<Vec<SortExpression>> {
+        println!("{}", DisplayPair(sort.as_pair().clone()));
+
+        if sort.as_rule() == Rule::SortProduct {
+            // This is a single sort
+        }
+
+
+
         let mut iter = sort.into_children();
 
         // An expression of the shape SortExprPrimary ~ (SortExprProduct ~ SortExprPrimary)*
@@ -141,32 +171,97 @@ impl Mcrl2Parser {
         Ok(result)
     }    
 
+    fn GlobVarSpec(spec: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(spec.into_children();
+            [VarsDeclList(vars)] => {
+                return Ok(vars);
+            }
+        );
+    }
+
     fn SortExprPrimary(sort: ParseNode) -> ParseResult<SortExpression> {
         parse_sortexpr(sort.children().as_pairs().clone())
     }
 
     pub(crate) fn DataSpec(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
-        let mut map = Vec::new();
-        let mut eqn = Vec::new();
+        let mut map_decls = Vec::new();
+        let mut eqn_decls = Vec::new();
+        let mut cons_decls = Vec::new();
+        let mut sort_decls = Vec::new();
 
         for child in spec.into_children() {
             match child.as_rule() {
+                Rule::ConsSpec => {
+                    cons_decls.append(&mut Mcrl2Parser::ConsSpec(child)?);
+                }
                 Rule::MapSpec => {
-                    map.append(&mut Mcrl2Parser::MapSpec(child)?);
+                    map_decls.append(&mut Mcrl2Parser::MapSpec(child)?);
                 }
                 Rule::EqnSpec => {
-                    eqn.append(&mut Mcrl2Parser::EqnSpec(child)?);
+                    eqn_decls.append(&mut Mcrl2Parser::EqnSpec(child)?);
                 }
+                Rule::SortSpec => {
+                    sort_decls.append(&mut Mcrl2Parser::SortSpec(child)?);
+                },
                 _ => {
-                    // Handle other rules if necessary
+                    unimplemented!("Unexpected rule: {:?}", child.as_rule());
                 }
             }
         }
 
         Ok(UntypedDataSpecification {
-            map_decls: map,
-            eqn_decls: eqn,
-            ..Default::default()
+            map_decls,
+            eqn_decls,
+            cons_decls,
+            sort_decls,
+        })
+    }
+
+    pub fn ActionRenameSpec(spec: ParseNode) -> ParseResult<UntypedActionRenameSpec> {
+        let mut map_decls = Vec::new();
+        let mut eqn_decls = Vec::new();
+        let mut cons_decls = Vec::new();
+        let mut sort_decls = Vec::new();
+        let mut act_decls = Vec::new();
+        let mut rename_decls = Vec::new();
+
+        for child in spec.into_children() {
+            match child.as_rule() {
+                Rule::ConsSpec => {
+                    cons_decls.append(&mut Mcrl2Parser::ConsSpec(child)?);
+                }
+                Rule::MapSpec => {
+                    map_decls.append(&mut Mcrl2Parser::MapSpec(child)?);
+                }
+                Rule::EqnSpec => {
+                    eqn_decls.append(&mut Mcrl2Parser::EqnSpec(child)?);
+                }
+                Rule::SortSpec => {
+                    sort_decls.append(&mut Mcrl2Parser::SortSpec(child)?);
+                },
+                Rule::ActSpec => {
+                    act_decls.append(&mut Mcrl2Parser::ActSpec(child)?);
+                },
+                Rule::ActionRenameRuleSpec => {
+                    rename_decls.push(Mcrl2Parser::ActionRenameRuleSpec(child)?)
+                }
+                _ => {
+                    unimplemented!("Unexpected rule: {:?}", child.as_rule());
+                }
+            }
+        }
+
+        let data_spec = UntypedDataSpecification {
+            map_decls,
+            eqn_decls,
+            cons_decls,
+            sort_decls,
+        };
+
+        Ok(UntypedActionRenameSpec {
+            data_spec,
+            act_decls,
+            rename_decls,
         })
     }
 
@@ -181,14 +276,41 @@ impl Mcrl2Parser {
         );
     }
 
-    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
-        let mut ids = Vec::new();
+    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {        
+        match_nodes!(spec.into_children();
+            [IdsDecl(decl)] => {
+                return Ok(decl);
+            }
+        );
+    }
 
-        for decl in spec.into_children() {
-            ids.append(&mut Mcrl2Parser::IdsDecl(decl)?);
-        }
+    fn SortSpec(spec: ParseNode) -> ParseResult<Vec<SortDecl>> {
+        match_nodes!(spec.into_children();
+            [SortDecl(decls)..] => {
+                return Ok(decls.flatten().collect());
+            }
+        );
+    }
 
-        Ok(ids)
+    fn SortDecl(decl: ParseNode) -> ParseResult<Vec<SortDecl>> {
+        let span = decl.as_span();
+
+        match_nodes!(decl.into_children();
+            [Id(identifier), SortExpr(expr)] => {
+                return Ok(vec![SortDecl { identifier, expr: Some(expr), span: span.into() }]);
+            },
+            [IdsDecl(decl)] => {
+                return Ok(decl.iter().map(|element| SortDecl { identifier: element.identifier.clone(), expr: None, span: span.into() }).collect())
+            }
+        );
+    }
+
+    fn ConsSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
+        match_nodes!(spec.into_children();
+            [IdsDecl(decl)] => {
+                return Ok(decl);
+            }
+        );
     }
 
     fn Init(init: ParseNode) -> ParseResult<ProcessExpr> {
@@ -517,7 +639,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn BagEnumEltList(input: ParseNode) -> ParseResult<Vec<(DataExpr, DataExpr)>> {
+    fn BagEnumEltList(input: ParseNode) -> ParseResult<Vec<BagElement>> {
         match_nodes!(input.into_children();
             [BagEnumElt(elements)..] => {
                 return Ok(elements.collect());
@@ -525,10 +647,10 @@ impl Mcrl2Parser {
         )
     }
 
-    fn BagEnumElt(input: ParseNode) -> ParseResult<(DataExpr, DataExpr)> {
+    fn BagEnumElt(input: ParseNode) -> ParseResult<BagElement> {
         match_nodes!(input.into_children();
-            [DataExpr(expr), DataExpr(amount)] => {
-                return Ok((expr, amount));
+            [DataExpr(expr), DataExpr(multiplicity)] => {
+                return Ok(BagElement { expr, multiplicity });
             },
         )
     }
@@ -977,6 +1099,10 @@ impl Mcrl2Parser {
                 })
             }
         )
+    }
+
+    fn ActionRenameRuleSpec(spec: ParseNode) -> ParseResult<ActionRenameDecl> {
+        unimplemented!();
     }
 
     fn EOI(_input: ParseNode) -> ParseResult<()> {
