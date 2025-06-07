@@ -1,9 +1,11 @@
 use std::iter;
 
+use itertools::Itertools;
 use pest::error::ErrorVariant;
 use pest_consume::Error;
 use pest_consume::match_nodes;
 
+use crate::ActDecl;
 use crate::ActFrm;
 use crate::Action;
 use crate::Assignment;
@@ -53,6 +55,7 @@ pub(crate) type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 impl Mcrl2Parser {
     // Although these are not public, they are the main entry points for consuming the parse tree.
     pub(crate) fn MCRL2Spec(spec: ParseNode) -> ParseResult<UntypedProcessSpecification> {
+        let mut actions = Vec::new();
         let mut map = Vec::new();
         let mut eqn = Vec::new();
         let mut proc = Vec::new();
@@ -60,6 +63,9 @@ impl Mcrl2Parser {
 
         for child in spec.into_children() {
             match child.as_rule() {
+                Rule::ActSpec => {
+                    actions.extend(Mcrl2Parser::ActSpec(child)?);
+                }
                 Rule::MapSpec => {
                     map.append(&mut Mcrl2Parser::MapSpec(child)?);
                 }
@@ -97,6 +103,46 @@ impl Mcrl2Parser {
             init,
             ..Default::default()
         })
+    }
+
+    fn ActSpec(spec: ParseNode) -> ParseResult<Vec<ActDecl>> {
+        match_nodes!(spec.into_children();
+            [ActDecl(decls)..] => {
+                Ok(decls.flatten().collect())
+            },
+        )
+    }
+
+    fn ActDecl(decl: ParseNode) -> ParseResult<Vec<ActDecl>> {
+        let span = decl.as_span();
+        match_nodes!(decl.into_children();
+            [IdList(identifiers), SortProduct(args)] => {
+                Ok(identifiers.iter().map(|name| ActDecl { identifier: name.clone(), args: args.clone(), span: span.into() }).collect())
+            },
+        )
+
+    }
+
+    fn SortProduct(sort: ParseNode) -> ParseResult<Vec<SortExpression>> {
+        let mut iter = sort.into_children();
+
+        // An expression of the shape SortExprPrimary ~ (SortExprProduct ~ SortExprPrimary)*
+        let mut result = vec![Mcrl2Parser::SortExprPrimary(iter.next().unwrap())?];
+
+        for mut chunk in &iter.chunks(2) {
+            if chunk.next().unwrap().as_rule() == Rule::SortExprProduct {
+                let sort = Mcrl2Parser::SortExpr(chunk.next().unwrap())?;
+
+                result.push(sort);
+            }
+         
+        }
+
+        Ok(result)
+    }    
+
+    fn SortExprPrimary(sort: ParseNode) -> ParseResult<SortExpression> {
+        parse_sortexpr(sort.children().as_pairs().clone())
     }
 
     pub(crate) fn DataSpec(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
@@ -789,7 +835,7 @@ impl Mcrl2Parser {
     pub(crate) fn StateFrmNegation(input: ParseNode) -> ParseResult<StateFrm> {
         match_nodes!(input.into_children();
             [StateFrm(state)] => {
-                return Ok(StateFrm::Negation(Box::new(state)));
+                return Ok(StateFrm::Unary { op: crate::StateFrmUnaryOp::Negation, expr: Box::new(state) });
             },
         );
     }

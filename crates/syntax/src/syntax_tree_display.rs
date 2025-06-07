@@ -12,6 +12,7 @@ use crate::DataExpr;
 use crate::DataExprBinaryOp;
 use crate::EqnDecl;
 use crate::EqnSpec;
+use crate::FixedPointOperator;
 use crate::IdDecl;
 use crate::ModalityOperator;
 use crate::MultiAction;
@@ -23,6 +24,9 @@ use crate::SortExpression;
 use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmOp;
+use crate::StateFrmUnaryOp;
+use crate::StateVarAssignment;
+use crate::StateVarDecl;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
@@ -69,13 +73,13 @@ impl fmt::Display for UntypedDataSpecification {
         for decl in &self.sort_decls {
             writeln!(f, "{}", decl)?;
         }
+
         for decl in &self.cons_decls {
             writeln!(f, "{}", decl)?;
         }
 
-        writeln!(f, "map")?;
         for decl in &self.map_decls {
-            writeln!(f, "   {}", decl)?;
+            writeln!(f, "{}", decl)?;
         }
 
         for decl in &self.eqn_decls {
@@ -129,7 +133,12 @@ impl fmt::Display for EqnDecl {
 
 impl fmt::Display for DataExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<DataExpr>")
+        match self {
+            DataExpr::EmptyBag => write!(f, "{{:}}"),
+            DataExpr::Bag(expressions) => write!(f, "{{ {} }}", 
+                expressions.iter().format_with(", ", |e, f| f(&format_args!("({}, {})", e.0, e.1)))),
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -169,9 +178,30 @@ impl fmt::Display for UntypedStateFrmSpec {
     }
 }
 
+impl fmt::Display for StateFrmUnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            StateFrmUnaryOp::Minus => write!(f, "-"),
+            StateFrmUnaryOp::Negation => write!(f, "!")
+        }
+    }
+}
+
+impl fmt::Display for FixedPointOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FixedPointOperator::Greatest => write!(f, "nu"),
+            FixedPointOperator::Least => write!(f, "mu")
+        }
+    }
+}
+
 impl fmt::Display for StateFrm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            StateFrm::True => write!(f, "true"),
+            StateFrm::False => write!(f, "false"),
+            StateFrm::DataValExpr(expr) => write!(f, "val({})", expr),
             StateFrm::Id(identifier, args) => {
                 if args.is_empty() {
                     write!(f, "{}", identifier)
@@ -179,7 +209,7 @@ impl fmt::Display for StateFrm {
                     write!(f, "{}({})", identifier, args.iter().format(", "))
                 }
             }
-            StateFrm::Negation(formula) => write!(f, "!({})", formula),
+            StateFrm::Unary { op, expr } => write!(f, "{}({})", op, expr),
             StateFrm::Modality {
                 operator,
                 formula,
@@ -197,9 +227,31 @@ impl fmt::Display for StateFrm {
             }
             StateFrm::Binary { op, lhs, rhs } => {
                 write!(f, "({}) {} ({})", lhs, op, rhs)
+            },
+            StateFrm::FixedPoint { operator, variable, body } => {
+                write!(f, "{} {} {}", operator, variable, body)
             }
-            _ => write!(f, "<StateFrm>"),
+            StateFrm::Delay(expr) => write!(f, "delay@{}", expr),
+            StateFrm::Yaled(expr) => write!(f, "yaled@{}", expr),
+            StateFrm::DataValExprMult(value, expr) => write!(f, "{} * {}", value, expr),
+            StateFrm::DataValExprRightMult(expr, value) => write!(f, "{} * {}", expr, value)
         }
+    }
+}
+
+impl fmt::Display for StateVarDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.arguments.is_empty() {
+            write!(f, "{}", self.identifier)
+        } else {
+            write!(f, "{}({})", self.identifier, self.arguments.iter().format("," ))
+        }
+    }
+}
+
+impl fmt::Display for StateVarAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} : {} = {}", self.identifier, self.sort, self.expr)
     }
 }
 

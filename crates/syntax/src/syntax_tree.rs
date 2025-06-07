@@ -142,7 +142,7 @@ pub struct GlobVarDecl {
 /// Action declaration
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct ActDecl {
-    pub name: String,
+    pub identifier: String,
     pub args: Vec<SortExpression>,
     pub span: Span,
 }
@@ -327,6 +327,12 @@ pub struct UntypedStateFrmSpec {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
+pub enum StateFrmUnaryOp {
+    Minus,
+    Negation
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum StateFrmOp {
     Addition,
     Implies,
@@ -366,15 +372,17 @@ pub enum StateFrm {
     False,
     Delay(DataExpr),
     Yaled(DataExpr),
-    Negation(Box<StateFrm>),
+    Id(String, Vec<DataExpr>),
     DataValExprMult(DataExpr, Box<StateFrm>),
     DataValExprRightMult(Box<StateFrm>, DataExpr),
     DataValExpr(DataExpr),
-    Id(String, Vec<DataExpr>),
-    Minus(DataExpr),
     Modality {
         operator: ModalityOperator,
         formula: RegFrm,
+        expr: Box<StateFrm>,
+    },
+    Unary {
+        op: StateFrmUnaryOp,
         expr: Box<StateFrm>,
     },
     Binary {
