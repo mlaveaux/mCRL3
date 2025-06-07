@@ -10,8 +10,8 @@ use regex::Regex;
 use streaming_iterator::StreamingIterator;
 use thiserror::Error;
 
-use mcrl3_utilities::LineIterator;
-use mcrl3_utilities::Progress;
+use mcrl3_io::LineIterator;
+use mcrl3_io::Progress;
 
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;

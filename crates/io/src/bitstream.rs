@@ -1,16 +1,27 @@
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
+
 use bitstream_io::BigEndian;
 use bitstream_io::BitRead;
 use bitstream_io::BitReader;
 use bitstream_io::BitWrite;
 use bitstream_io::BitWriter;
-use std::io::Read;
-use std::io::Write;
-use std::io::{self};
+
+use mcrl3_number::encoding_size;
+
+/// Calculate minimum bits needed to represent the value
+/// Use 1 bit if value is 0 to ensure at least 1 bit is written
+pub fn required_bits(value: u64) -> u8 {
+    if value == 0 { 1 } else { 64 - value.leading_zeros() as u8 }
+}
 
 /// Writer for bit-level output operations using an underlying writer.
 pub struct BitStreamWriter<W: Write> {
     writer: BitWriter<W, BigEndian>,
-    integer_buffer: [u8; 10], // For variable-width integers
+
+    /// Buffer For variable-width integers
+    integer_buffer: [u8; encoding_size::<u64>()],
 }
 
 impl<W: Write> BitStreamWriter<W> {
@@ -18,7 +29,7 @@ impl<W: Write> BitStreamWriter<W> {
     pub fn new(writer: W) -> Self {
         Self {
             writer: BitWriter::new(writer),
-            integer_buffer: [0; 10],
+            integer_buffer: [0; encoding_size::<u64>()],
         }
     }
 
@@ -75,7 +86,7 @@ impl<R: Read> BitStreamReader<R> {
     ///
     /// # Preconditions
     /// - number_of_bits must be <= 64
-    pub fn read_bits(&mut self, number_of_bits: u8) -> io::Result<u32> {
+    pub fn read_bits(&mut self, number_of_bits: u8) -> io::Result<u64> {
         assert!(number_of_bits <= 64);
         self.reader.read_var(number_of_bits as u32)
     }
@@ -147,55 +158,95 @@ fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Resu
 
 #[cfg(test)]
 mod tests {
+    use arbitrary::Unstructured;
+    use arbtest::arbitrary::Arbitrary;
+    use log::debug;
+    use mcrl3_utilities::test_logger;
+
     use super::*;
 
-    #[test]
-    fn test_write_read_string() -> io::Result<()> {
-        let mut buffer = Vec::new();
-        {
-            let mut writer = BitStreamWriter::new(&mut buffer);
-            writer.write_string("Hello, World!")?;
-            writer.flush()?;
-        }
+    /// Decide (arbitrarily) what to write into the bitstream.
+    #[derive(Debug)]
+    enum Instruction {
+        String(String),
+        Integer(usize),
+        /// (value, num_of_bits), where num_of_bits must be at most 64.
+        Bits(u64, u8),
+    }
 
-        let mut reader = BitStreamReader::new(&buffer[..]);
-        let result = reader.read_string()?;
-        assert_eq!(result, "Hello, World!");
-        Ok(())
+    impl Arbitrary<'_> for Instruction {
+        fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
+            match u.int_in_range(0..=2)? {
+                0 => Ok(Instruction::String(u.arbitrary()?)),
+                1 => Ok(Instruction::Integer(u.arbitrary()?)),
+                2 => {
+                    let value: u64 = u.arbitrary()?;
+                    Ok(Instruction::Bits(value, required_bits(value)))                    
+                }
+                _ => unreachable!("The range is from 0 to 2")
+            }
+        }
     }
 
     #[test]
-    fn test_variable_int_encoding() -> io::Result<()> {
-        let test_values = vec![0, 127, 128, 16383, 16384, 2097151, 2097152];
+    fn test_arbitrary_bitstream() {
+        let _ = test_logger();
+        
+        arbtest::arbtest(|u| {            
+            let instructions: Vec<Instruction> = u.arbitrary()?;
 
-        for value in test_values {
             let mut buffer = Vec::new();
             {
                 let mut writer = BitStreamWriter::new(&mut buffer);
-                writer.write_integer(value)?;
-                writer.flush()?;
+
+                for inst in &instructions {
+                    debug!("Writing {inst:?}");
+                    match inst {
+                        Instruction::String(string) => {
+                            writer.write_string(string).expect("Failed to write into stream")
+                        }
+                        Instruction::Integer(value) => {
+                            writer.write_integer(*value).expect("Failed to write into stream")
+                        }
+                        Instruction::Bits(value, number_of_bits) => writer
+                            .write_bits(*value, *number_of_bits)
+                            .expect("Failed to write into stream"),
+                    }
+                }
+
+                writer.flush().expect("Failed to write into stream");
             }
 
             let mut reader = BitStreamReader::new(&buffer[..]);
-            let result = reader.read_integer()?;
-            assert_eq!(result, value);
-        }
-        Ok(())
-    }
 
-    #[test]
-    fn test_bitstream() -> io::Result<()> {
-        let mut buffer = Vec::new();
-        {
-            let mut writer = BitStreamWriter::new(&mut buffer);
-            writer.write_bits(0b1010, 4)?;
-            writer.write_bits(0b11111111, 8)?;
-            writer.flush()?;
-        }
+            for inst in &instructions {
+                debug!("Checking {inst:?}");
+                match inst {
+                    Instruction::String(string) => {
+                        debug_assert_eq!(
+                            reader.read_string().expect("Failed to read from stream"),
+                            *string,
+                            "Failed to read back the string"
+                        )
+                    }
+                    Instruction::Integer(value) => {
+                        debug_assert_eq!(
+                            reader.read_integer().expect("Failed to read from stream"),
+                            *value,
+                            "Failed to read back the integer"
+                        )
+                    }
+                    Instruction::Bits(value, number_of_bits) => {
+                        debug_assert_eq!(
+                            reader.read_bits(*number_of_bits).expect("Failed to read from stream"),
+                            *value,
+                            "Failed to read back the bits"
+                        )
+                    }
+                }
+            }
 
-        let mut reader = BitStreamReader::new(&buffer[..]);
-        assert_eq!(reader.read_bits(4)?, 0b1010);
-        assert_eq!(reader.read_bits(8)?, 0b11111111);
-        Ok(())
+            Ok(())
+        });
     }
 }
