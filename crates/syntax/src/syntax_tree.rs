@@ -1,14 +1,15 @@
 use std::hash::Hash;
 
 use arbitrary::Arbitrary;
+use serde::{Deserialize, Serialize};
 
 /// An mCRL2 specification containing declarations.
-#[derive(Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct UntypedProcessSpecification {
     /// Sort declarations
     pub data_specification: UntypedDataSpecification,
     /// Global variables
-    pub glob_vars: Vec<GlobVarDecl>,
+    pub glob_vars: Vec<VarDecl>,
     /// Action declarations
     pub act_decls: Vec<ActDecl>,
     /// Process declarations
@@ -17,7 +18,7 @@ pub struct UntypedProcessSpecification {
     pub init: Option<ProcessExpr>,
 }
 
-#[derive(Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct UntypedDataSpecification {
     /// Sort declarations
     pub sort_decls: Vec<SortDecl>,
@@ -30,7 +31,7 @@ pub struct UntypedDataSpecification {
 }
 
 /// A declaration of an identifier with its sort.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct IdDecl {
     /// Identifier being declared
     pub identifier: String,
@@ -41,7 +42,7 @@ pub struct IdDecl {
 }
 
 /// Expression representing a sort (type).
-#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum SortExpression {
     /// Product of two sorts (A # B)
     Product {
@@ -65,7 +66,7 @@ pub enum SortExpression {
 }
 
 /// Constructor declaration
-#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ConstructorDecl {
     pub name: String,
     pub args: Vec<(Option<String>, SortExpression)>,
@@ -73,7 +74,7 @@ pub struct ConstructorDecl {
 }
 
 /// Built-in simple sorts.
-#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Sort {
     Bool,
     Pos,
@@ -83,7 +84,7 @@ pub enum Sort {
 }
 
 /// Complex (parameterized) sorts.
-#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ComplexSort {
     List,
     Set,
@@ -92,12 +93,8 @@ pub enum ComplexSort {
     Bag,
 }
 
-/// An mCRL2 specification containing all components.
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Mcrl2Specification {}
-
 /// Sort declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct SortDecl {
     /// Sort identifier
     pub identifier: String,
@@ -108,21 +105,21 @@ pub struct SortDecl {
 }
 
 /// Variable declaration
-#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct VarDecl {
     pub identifier: String,
     pub sort: SortExpression,
     pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct EqnSpec {
     pub variables: Vec<VarDecl>,
     pub equations: Vec<EqnDecl>,
 }
 
 /// Equation declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct EqnDecl {
     pub condition: Option<DataExpr>,
     pub lhs: DataExpr,
@@ -130,17 +127,8 @@ pub struct EqnDecl {
     pub span: Span,
 }
 
-/// Global variable declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct GlobVarDecl {
-    pub identifier: String,
-    pub sort: SortExpression,
-    pub init: Option<DataExpr>,
-    pub span: Span,
-}
-
 /// Action declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ActDecl {
     pub identifier: String,
     pub args: Vec<SortExpression>,
@@ -148,7 +136,7 @@ pub struct ActDecl {
 }
 
 /// Process declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ProcDecl {
     pub identifier: String,
     pub params: Vec<VarDecl>,
@@ -156,14 +144,14 @@ pub struct ProcDecl {
     pub span: Span,
 }
 
-#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum DataExprUnaryOp {
     Negation,
     Minus,
     Size,
 }
 
-#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum DataExprBinaryOp {
     Conj,
     Disj,
@@ -188,7 +176,7 @@ pub enum DataExprBinaryOp {
 }
 
 /// Data expression
-#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum DataExpr {
     Id(String),
     Number(String), // Is string because the number can be any size.
@@ -202,7 +190,7 @@ pub enum DataExpr {
     EmptySet,
     Set(Vec<DataExpr>),
     EmptyBag,
-    Bag(Vec<(DataExpr, DataExpr)>),
+    Bag(Vec<BagElement>),
     SetBagComp {
         variable: VarDecl,
         predicate: Box<DataExpr>,
@@ -239,19 +227,25 @@ pub enum DataExpr {
     },
 }
 
-#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct BagElement {
+    pub expr: DataExpr,
+    pub multiplicity: DataExpr,
+}
+
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct DataExprUpdate {
     pub expr: DataExpr,
     pub update: DataExpr,
 }
 
-#[derive(Arbitrary, Debug, Eq, PartialEq, Hash)]
+#[derive(Arbitrary, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Assignment {
     pub identifier: String,
     pub expr: DataExpr,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ProcExprBinaryOp {
     Sequence,
     Choice,
@@ -261,7 +255,7 @@ pub enum ProcExprBinaryOp {
 }
 
 /// Process expression
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ProcessExpr {
     Id(String, Vec<Assignment>),
     Action(String, Vec<DataExpr>),
@@ -313,26 +307,26 @@ pub enum ProcessExpr {
 }
 
 /// Communication action
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct CommAction {
     pub inputs: Vec<String>,
     pub output: String,
     pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct UntypedStateFrmSpec {
     pub data_specification: UntypedDataSpecification,
     pub formula: StateFrm,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum StateFrmUnaryOp {
     Minus,
     Negation
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum StateFrmOp {
     Addition,
     Implies,
@@ -340,33 +334,33 @@ pub enum StateFrmOp {
     Conjunction,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum FixedPointOperator {
     Least,
     Greatest,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StateVarDecl {
     pub identifier: String,
     pub arguments: Vec<StateVarAssignment>,
     pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StateVarAssignment {
     pub identifier: String,
     pub sort: SortExpression,
     pub expr: DataExpr,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ModalityOperator {
     Diamond,
     Box,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum StateFrm {
     True,
     False,
@@ -402,36 +396,36 @@ pub enum StateFrm {
     },
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct MultiActionLabel {
     pub actions: Vec<String>,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Action {
     pub id: String,
     pub args: Vec<DataExpr>,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct MultiAction {
     pub actions: Vec<Action>,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Quantifier {
     Exists,
     Forall,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ActFrmOp {
     Implies,
     Union,
     Intersect,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ActFrm {
     True,
     False,
@@ -450,7 +444,7 @@ pub enum ActFrm {
     },
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum RegFrm {
     Action(ActFrm),
     Iteration(Box<RegFrm>),
@@ -459,20 +453,20 @@ pub enum RegFrm {
     Choice { lhs: Box<RegFrm>, rhs: Box<RegFrm> },
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Rename {
     pub from: String,
     pub to: String,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Comm {
     pub from: MultiActionLabel,
     pub to: String,
 }
 
 /// Source location information.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Span {
     /// Start position in source
     pub start: usize,
