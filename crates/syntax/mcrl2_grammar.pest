@@ -525,8 +525,8 @@ ActFrmPostfix = _{
     ActFrmAt = { "@" ~ DataExpr }
 
 MultAct = {
-        MultiActTau                                              // Tau, hidden action, empty multi-action
-    |   ActionList                                               // Multi-action
+      MultiActTau                                              // Tau, hidden action, empty multi-action
+    | ActionList                                               // Multi-action
 }
     MultiActTau = { "tau" }
 
@@ -558,9 +558,9 @@ ActionRenameRuleSpec = { VarSpec? ~ "rename" ~ ActionRenameRule+ }
 ActionRenameRule = { (DataExpr ~ "->")? ~ Action ~ "=>" ~ ActionRenameRuleRHS ~ ";" }
 
 ActionRenameRuleRHS = {
-        "tau"                                                        // Tau, hidden action, empty multi-action
-    |   "delta"                                                      // Delta, deadlock, inaction
-    |    Action                                                      // Action
+      "tau"                                                        // Tau, hidden action, empty multi-action
+    | "delta"                                                      // Delta, deadlock, inaction
+    |  Action                                                      // Action
 }
 
 FixedPointOperator = { "mu" | "nu" }

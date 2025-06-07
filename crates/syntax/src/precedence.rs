@@ -26,6 +26,7 @@ use crate::Sort;
 use crate::StateFrm;
 use crate::StateFrmOp;
 use crate::syntax_tree::SortExpression;
+use crate::StateFrmUnaryOp;
 
 static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -519,7 +520,7 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 variable: Mcrl2Parser::StateFrmNu(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
-            Rule::StateFrmNegation => Ok(StateFrm::Negation(Box::new(expr?))),
+            Rule::StateFrmNegation => Ok(StateFrm::Unary { op: StateFrmUnaryOp::Negation, expr: Box::new(expr?) }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
