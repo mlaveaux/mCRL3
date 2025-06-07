@@ -6,8 +6,8 @@ use glob::glob;
 /// Discovers test files with specific extensions and prints test cases for them
 pub fn discover_tests() -> Result<(), Box<dyn Error>> {
     // Discover different types of test files
-    discover_files_with_extension("mcf", "examples/mCRL2/**/*.mcf")?;
     discover_files_with_extension("mcrl2", "examples/mCRL2/**/*.mcrl2")?;
+    discover_files_with_extension("mcf", "examples/mCRL2/**/*.mcf")?;
     discover_files_with_extension("dataspec", "examples/REC/**/*.dataspec")?;
 
     Ok(())
@@ -38,8 +38,8 @@ fn discover_files_with_extension(ext_name: &str, pattern: &str) -> Result<(), Bo
                         if !seen_filenames.contains(&sanitized_filename) {
                             // Generate the test case string with normalized path
                             println!(
-                                "#[test_case(include_str!(\"../../../{}\") ; \"{}\")]",
-                                normalized_path, sanitized_filename
+                                "#[test_case(include_str!(\"../../../{}\"), \"snapshot/result_{}\" ; \"{}\")]",
+                                normalized_path, sanitized_filename, sanitized_filename
                             );
 
                             // Add sanitized filename to set of seen filenames
