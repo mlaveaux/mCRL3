@@ -1,5 +1,6 @@
 use std::sync::LazyLock;
 
+use pest::iterators::Pair;
 use pest::iterators::Pairs;
 use pest::pratt_parser::Assoc;
 use pest::pratt_parser::Assoc::Left;
@@ -36,40 +37,43 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::SortExprProduct, Right)) // $left 1
 });
 
+pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpression> {    
+    match primary.as_rule() {
+        Rule::Id => Ok(SortExpression::Reference(Mcrl2Parser::Id(Node::new(primary))?)),
+        Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)),
+
+        Rule::SortExprBool => Ok(SortExpression::Simple(Sort::Bool)),
+        Rule::SortExprInt => Ok(SortExpression::Simple(Sort::Int)),
+        Rule::SortExprPos => Ok(SortExpression::Simple(Sort::Pos)),
+        Rule::SortExprNat => Ok(SortExpression::Simple(Sort::Nat)),
+        Rule::SortExprReal => Ok(SortExpression::Simple(Sort::Real)),
+
+        Rule::SortExprList => Mcrl2Parser::SortExprList(Node::new(primary)),
+        Rule::SortExprSet => Mcrl2Parser::SortExprSet(Node::new(primary)),
+        Rule::SortExprBag => Mcrl2Parser::SortExprBag(Node::new(primary)),
+        Rule::SortExprFSet => Mcrl2Parser::SortExprFSet(Node::new(primary)),
+        Rule::SortExprFBag => Mcrl2Parser::SortExprFBag(Node::new(primary)),
+
+        Rule::SortExprParens => {
+            // Handle parentheses by recursively parsing the inner expression
+            let inner = primary
+                .into_inner()
+                .next()
+                .expect("Expected inner expression in brackets");
+            parse_sortexpr(inner.into_inner())
+        }
+
+        Rule::SortExprStruct => Mcrl2Parser::SortExprStruct(Node::new(primary)),
+        _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+    }
+}
+
 /// Parses a sequence of `Rule` pairs into a `SortExpression` using a Pratt parser for operator precedence.
 #[allow(clippy::result_large_err)]
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> ParseResult<SortExpression> {
     SORT_PRATT_PARSER
         .map_primary(|primary| {
-            match primary.as_rule() {
-                Rule::Id => Ok(SortExpression::Reference(Mcrl2Parser::Id(Node::new(primary))?)),
-                Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)),
-
-                Rule::SortExprBool => Ok(SortExpression::Simple(Sort::Bool)),
-                Rule::SortExprInt => Ok(SortExpression::Simple(Sort::Int)),
-                Rule::SortExprPos => Ok(SortExpression::Simple(Sort::Pos)),
-                Rule::SortExprNat => Ok(SortExpression::Simple(Sort::Nat)),
-                Rule::SortExprReal => Ok(SortExpression::Simple(Sort::Real)),
-
-                Rule::SortExprList => Mcrl2Parser::SortExprList(Node::new(primary)),
-                Rule::SortExprSet => Mcrl2Parser::SortExprSet(Node::new(primary)),
-                Rule::SortExprBag => Mcrl2Parser::SortExprBag(Node::new(primary)),
-                Rule::SortExprFSet => Mcrl2Parser::SortExprFSet(Node::new(primary)),
-                Rule::SortExprFBag => Mcrl2Parser::SortExprFBag(Node::new(primary)),
-
-                Rule::SortExprParens => {
-                    // Handle parentheses by recursively parsing the inner expression
-                    let inner = primary
-                        .into_inner()
-                        .next()
-                        .expect("Expected inner expression in brackets");
-                    parse_sortexpr(inner.into_inner())
-                }
-
-                Rule::SortExprStruct => Mcrl2Parser::SortExprStruct(Node::new(primary)),
-
-                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
-            }
+            parse_sortexpr_primary(primary)
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
             Rule::SortExprFunction => Ok(SortExpression::Function {

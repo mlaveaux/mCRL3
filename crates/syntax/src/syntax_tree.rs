@@ -70,7 +70,7 @@ pub enum SortExpression {
 pub struct ConstructorDecl {
     pub name: String,
     pub args: Vec<(Option<String>, SortExpression)>,
-    pub projection: Option<SortExpression>,
+    pub projection: Option<String>,
 }
 
 /// Built-in simple sorts.

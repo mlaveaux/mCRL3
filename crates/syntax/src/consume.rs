@@ -1,7 +1,6 @@
 use std::iter;
 
 use itertools::Itertools;
-use mcrl3_utilities::DisplayPair;
 use pest::error::ErrorVariant;
 use pest_consume::Error;
 use pest_consume::match_nodes;
@@ -43,6 +42,7 @@ use crate::parse_dataexpr;
 use crate::parse_process_expr;
 use crate::parse_regfrm;
 use crate::parse_sortexpr;
+use crate::parse_sortexpr_primary;
 use crate::parse_statefrm;
 
 /// Type alias for Errors resulting parsing.
@@ -76,7 +76,7 @@ impl Mcrl2Parser {
                     act_decls.extend(Mcrl2Parser::ActSpec(child)?);
                 }
                 Rule::ConsSpec => {
-                    cons_decls.append(&mut Mcrl2Parser::MapSpec(child)?);
+                    cons_decls.append(&mut Mcrl2Parser::ConsSpec(child)?);
                 }
                 Rule::MapSpec => {
                     map_decls.append(&mut Mcrl2Parser::MapSpec(child)?);
@@ -104,6 +104,10 @@ impl Mcrl2Parser {
                     }
 
                     init = Some(Mcrl2Parser::Init(child)?);
+                }
+                Rule::EOI => {
+                    // End of input
+                    break;
                 }
                 _ => {
                     unimplemented!("Unexpected rule: {:?}", child.as_rule());
@@ -138,38 +142,30 @@ impl Mcrl2Parser {
     fn ActDecl(decl: ParseNode) -> ParseResult<Vec<ActDecl>> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
+            [IdList(identifiers)] => {
+                Ok(identifiers.iter().map(|name| ActDecl { identifier: name.clone(), args: Vec::new(), span: span.into() }).collect())
+            },
             [IdList(identifiers), SortProduct(args)] => {
                 Ok(identifiers.iter().map(|name| ActDecl { identifier: name.clone(), args: args.clone(), span: span.into() }).collect())
             },
         )
-
     }
 
     fn SortProduct(sort: ParseNode) -> ParseResult<Vec<SortExpression>> {
-        println!("{}", DisplayPair(sort.as_pair().clone()));
-
-        if sort.as_rule() == Rule::SortProduct {
-            // This is a single sort
-        }
-
-
-
         let mut iter = sort.into_children();
 
         // An expression of the shape SortExprPrimary ~ (SortExprProduct ~ SortExprPrimary)*
-        let mut result = vec![Mcrl2Parser::SortExprPrimary(iter.next().unwrap())?];
+        let mut result = vec![parse_sortexpr_primary(iter.next().unwrap().as_pair().clone())?];
 
         for mut chunk in &iter.chunks(2) {
             if chunk.next().unwrap().as_rule() == Rule::SortExprProduct {
-                let sort = Mcrl2Parser::SortExpr(chunk.next().unwrap())?;
-
+                let sort = parse_sortexpr_primary(chunk.next().unwrap().as_pair().clone())?;
                 result.push(sort);
             }
-         
         }
 
         Ok(result)
-    }    
+    }
 
     fn GlobVarSpec(spec: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(spec.into_children();
@@ -202,7 +198,11 @@ impl Mcrl2Parser {
                 }
                 Rule::SortSpec => {
                     sort_decls.append(&mut Mcrl2Parser::SortSpec(child)?);
-                },
+                }
+                Rule::EOI => {
+                    // End of input
+                    break;
+                }
                 _ => {
                     unimplemented!("Unexpected rule: {:?}", child.as_rule());
                 }
@@ -238,12 +238,14 @@ impl Mcrl2Parser {
                 }
                 Rule::SortSpec => {
                     sort_decls.append(&mut Mcrl2Parser::SortSpec(child)?);
-                },
+                }
                 Rule::ActSpec => {
                     act_decls.append(&mut Mcrl2Parser::ActSpec(child)?);
-                },
-                Rule::ActionRenameRuleSpec => {
-                    rename_decls.push(Mcrl2Parser::ActionRenameRuleSpec(child)?)
+                }
+                Rule::ActionRenameRuleSpec => rename_decls.push(Mcrl2Parser::ActionRenameRuleSpec(child)?),
+                Rule::EOI => {
+                    // End of input
+                    break;
                 }
                 _ => {
                     unimplemented!("Unexpected rule: {:?}", child.as_rule());
@@ -270,16 +272,16 @@ impl Mcrl2Parser {
             [Id(identifier)] => {
                 return Ok(StateFrm::Id(identifier, Vec::new()));
             },
-            [Id(identifier),DataExprList(expressions)] => {
+            [Id(identifier), DataExprList(expressions)] => {
                 return Ok(StateFrm::Id(identifier, expressions));
             },
         );
     }
 
-    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {        
+    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(spec.into_children();
-            [IdsDecl(decl)] => {
-                return Ok(decl);
+            [IdsDecl(decls)..] => {
+                return Ok(decls.flatten().collect());
             }
         );
     }
@@ -299,16 +301,19 @@ impl Mcrl2Parser {
             [Id(identifier), SortExpr(expr)] => {
                 return Ok(vec![SortDecl { identifier, expr: Some(expr), span: span.into() }]);
             },
+            [IdList(ids)] => {
+                return Ok(ids.iter().map(|identifier| SortDecl { identifier: identifier.clone(), expr: None, span: span.into() }).collect())
+            },
             [IdsDecl(decl)] => {
-                return Ok(decl.iter().map(|element| SortDecl { identifier: element.identifier.clone(), expr: None, span: span.into() }).collect())
+                return Ok(decl.iter().map(|element| SortDecl { identifier: element.identifier.clone(), expr: Some(element.sort.clone()), span: span.into() }).collect())
             }
         );
     }
 
     fn ConsSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(spec.into_children();
-            [IdsDecl(decl)] => {
-                return Ok(decl);
+            [IdsDecl(decls)..] => {
+                return Ok(decls.flatten().collect());
             }
         );
     }
@@ -603,10 +608,13 @@ impl Mcrl2Parser {
             [Id(name)] => {
                 Ok(ConstructorDecl { name, args: Vec::new(), projection: None })
             },
+            [Id(name), Id(projection)] => {
+                Ok(ConstructorDecl { name, args: Vec::new(), projection: Some(projection)  })
+            },
             [Id(name), ProjDeclList(args)] => {
                 Ok(ConstructorDecl { name, args, projection: None })
             },
-            [Id(name), ProjDeclList(args), SortExpr(projection)] => {
+            [Id(name), ProjDeclList(args), Id(projection)] => {
                 Ok(ConstructorDecl { name, args, projection: Some(projection) })
             },
         )

@@ -38,7 +38,7 @@ fn discover_files_with_extension(ext_name: &str, pattern: &str) -> Result<(), Bo
                         if !seen_filenames.contains(&sanitized_filename) {
                             // Generate the test case string with normalized path
                             println!(
-                                "#[test_case(include_str!(\"../../../{}\"), \"snapshot/result_{}\" ; \"{}\")]",
+                                "#[test_case(include_str!(\"../../../{}\"), \"tests/snapshot/result_{}\" ; \"{}\")]",
                                 normalized_path, sanitized_filename, sanitized_filename
                             );
 

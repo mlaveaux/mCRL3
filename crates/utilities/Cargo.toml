@@ -20,15 +20,11 @@ mcrl3_debug = ["tikv-jemallocator?/debug"]
 [dependencies]
 ahash.workspace = true
 backtrace.workspace = true
-bitstream-io.workspace = true
 env_logger.workspace = true
 hashbrown.workspace = true
 log.workspace = true
 pest.workspace = true
 rand.workspace = true
-regex.workspace = true
 rustc-hash.workspace = true
-streaming-iterator.workspace = true
-thiserror.workspace = true
 
 tikv-jemallocator = { workspace = true, optional = true }
