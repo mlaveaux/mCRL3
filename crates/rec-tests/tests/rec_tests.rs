@@ -1,4 +1,3 @@
-
 use test_case::test_case;
 
 use mcrl3_aterm::ATerm;
