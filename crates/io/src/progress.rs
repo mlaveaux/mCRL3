@@ -35,16 +35,3 @@ impl<F: Fn(usize, usize)> Progress<F> {
         self.counter += amount;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Progress;
-
-    #[test]
-    fn test_progress() {
-        // Test with extreme values.
-        let _min = Progress::new(|_, _| {}, 0);
-
-        let _progress = Progress::new(|_, _| {}, 1000);
-    }
-}

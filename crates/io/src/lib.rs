@@ -10,7 +10,6 @@ mod progress;
 mod text_utility;
 
 pub use bitstream::*;
-pub use global_allocator::*;
 pub use line_iterator::*;
 pub use parse_numbers::*;
 pub use progress::*;
