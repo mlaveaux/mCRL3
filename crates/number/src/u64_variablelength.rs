@@ -18,10 +18,10 @@ pub const fn encoding_size<T>() -> usize {
 /// This function assumes that the value is stored as little endian.
 ///     - value The input value. Any standard integer type is allowed.
 ///     - output A pointer to a piece of reserved memory. Must have a minimum size dependent on the input size (32 bit = 5 bytes, 64 bit = 10 bytes).
-/// 
+///
 /// # Returns
 /// The number of bytes used in the output.
-/// 
+///
 /// # Details
 /// Implementation taken from <https://techoverflow.net/2013/01/25/efficiently-encoding-variable-length-integers-in-cc/>
 pub fn write_u64_variablelength<W: Write>(
@@ -71,7 +71,7 @@ mod tests {
     fn test_random_integer_encoding() {
         random_test(1000, |rng| {
             let value = rng.random();
-            
+
             let mut stream: [u8; encoding_size::<u64>()] = [0; encoding_size::<u64>()];
             let mut writer = BitWriter::new(&mut stream[0..]);
             write_u64_variablelength(&mut writer, value).unwrap();

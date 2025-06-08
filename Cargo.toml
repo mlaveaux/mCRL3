@@ -94,18 +94,20 @@ criterion = { version = "0.6", features = ["html_reports"] }
 # The workspace libraries.
 mcrl3_aterm = { path = "crates/aterm" }
 mcrl3_data = { path = "crates/data" }
-mcrl3_gui = { path="crates/gui" }
+mcrl3_gui = { path = "crates/gui" }
+mcrl3_io = { path = "crates/io" }
 mcrl3_ldd = { path = "crates/ldd" }
-mcrl3_lts = { path="crates/lts" }
+mcrl3_lts = { path = "crates/lts" }
 mcrl3_macros = { path = "crates/macros" }
-mcrl3_rec-tests = { path="crates/rec-tests" }
-mcrl3_reduction = { path="crates/reduction" }
-mcrl3_sabre = { path="crates/sabre" }
-mcrl3_sabre-compiling = { path="crates/sabre_compiling" }
-mcrl3_sabre-ffi = { path="crates/sabre_compiling/sabre_ffi" }
-mcrl3_sharedmutex = { path="crates/sharedmutex" }
+mcrl3_number = { path = "crates/number" }
+mcrl3_rec-tests = { path = "crates/rec-tests" }
+mcrl3_reduction = { path = "crates/reduction" }
+mcrl3_sabre = { path = "crates/sabre" }
+mcrl3_sabre-compiling = { path = "crates/sabre_compiling" }
+mcrl3_sabre-ffi = { path = "crates/sabre_compiling/sabre_ffi" }
+mcrl3_sharedmutex = { path = "crates/sharedmutex" }
 mcrl3_syntax = { path = "crates/syntax" }
-mcrl3_unsafety = { path="crates/unsafety" }
+mcrl3_unsafety = { path = "crates/unsafety" }
 mcrl3_utilities = { path = "crates/utilities" }
 pest_consume  = { path = "3rd-party/pest_consume" }
 pest_consume_macros  = { path = "3rd-party/pest_consume_macros" }

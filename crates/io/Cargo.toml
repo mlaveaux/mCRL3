@@ -12,4 +12,7 @@ mcrl3_utilities.workspace = true
 arbitrary.workspace = true
 arbtest.workspace = true
 bitstream-io.workspace = true
+log.workspace = true
+regex.workspace = true
 streaming-iterator.workspace = true
+thiserror.workspace = true

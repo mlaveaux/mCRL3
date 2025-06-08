@@ -14,6 +14,8 @@ type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 
 /// Parse a term from a string.
 ///
+/// TODO: Parse integer terms and aterm list as in the old toolset.
+///
 /// Grammar:  f(t_1, ..., t_n) | c
 #[pest_consume::parser]
 impl TermParser {

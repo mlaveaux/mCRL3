@@ -13,7 +13,11 @@ use mcrl3_number::encoding_size;
 /// Calculate minimum bits needed to represent the value
 /// Use 1 bit if value is 0 to ensure at least 1 bit is written
 pub fn required_bits(value: u64) -> u8 {
-    if value == 0 { 1 } else { 64 - value.leading_zeros() as u8 }
+    if value == 0 {
+        1
+    } else {
+        64 - value.leading_zeros() as u8
+    }
 }
 
 /// Writer for bit-level output operations using an underlying writer.
@@ -181,9 +185,9 @@ mod tests {
                 1 => Ok(Instruction::Integer(u.arbitrary()?)),
                 2 => {
                     let value: u64 = u.arbitrary()?;
-                    Ok(Instruction::Bits(value, required_bits(value)))                    
+                    Ok(Instruction::Bits(value, required_bits(value)))
                 }
-                _ => unreachable!("The range is from 0 to 2")
+                _ => unreachable!("The range is from 0 to 2"),
             }
         }
     }
@@ -191,8 +195,8 @@ mod tests {
     #[test]
     fn test_arbitrary_bitstream() {
         let _ = test_logger();
-        
-        arbtest::arbtest(|u| {            
+
+        arbtest::arbtest(|u| {
             let instructions: Vec<Instruction> = u.arbitrary()?;
 
             let mut buffer = Vec::new();
