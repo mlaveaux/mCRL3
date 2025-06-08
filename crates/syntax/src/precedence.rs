@@ -26,8 +26,8 @@ use crate::Rule;
 use crate::Sort;
 use crate::StateFrm;
 use crate::StateFrmOp;
-use crate::syntax_tree::SortExpression;
 use crate::StateFrmUnaryOp;
+use crate::syntax_tree::SortExpression;
 
 static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -37,7 +37,8 @@ static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::SortExprProduct, Right)) // $left 1
 });
 
-pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpression> {    
+#[allow(clippy::result_large_err)]
+pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpression> {
     match primary.as_rule() {
         Rule::Id => Ok(SortExpression::Reference(Mcrl2Parser::Id(Node::new(primary))?)),
         Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)),
@@ -72,9 +73,7 @@ pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpres
 #[allow(clippy::result_large_err)]
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> ParseResult<SortExpression> {
     SORT_PRATT_PARSER
-        .map_primary(|primary| {
-            parse_sortexpr_primary(primary)
-        })
+        .map_primary(|primary| parse_sortexpr_primary(primary))
         .map_infix(|lhs, op, rhs| match op.as_rule() {
             Rule::SortExprFunction => Ok(SortExpression::Function {
                 domain: Box::new(lhs?),
@@ -191,12 +190,14 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
             }),
             _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
         })
-        .map_prefix(|prefix, expr| match prefix.as_rule() {
-            Rule::DataExprForall => Ok(DataExpr::Forall {
+        .map_prefix(|prefix, expr: Result<DataExpr, pest_consume::Error<Rule>>| match prefix.as_rule() {
+            Rule::DataExprForall => Ok(DataExpr::Quantifier {
+                op: Quantifier::Forall,
                 variables: Mcrl2Parser::DataExprForall(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
-            Rule::DataExprExists => Ok(DataExpr::Exists {
+            Rule::DataExprExists => Ok(DataExpr::Quantifier {
+                op: Quantifier::Exists,
                 variables: Mcrl2Parser::DataExprExists(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
@@ -322,7 +323,7 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                     then: Box::new(then),
                     else_: Some(Box::new(expr?)),
                 })
-            },
+            }
             _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
         })
         .map_postfix(|expr, postfix| match postfix.as_rule() {
@@ -524,7 +525,10 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 variable: Mcrl2Parser::StateFrmNu(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
-            Rule::StateFrmNegation => Ok(StateFrm::Unary { op: StateFrmUnaryOp::Negation, expr: Box::new(expr?) }),
+            Rule::StateFrmNegation => Ok(StateFrm::Unary {
+                op: StateFrmUnaryOp::Negation,
+                expr: Box::new(expr?),
+            }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {

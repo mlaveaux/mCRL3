@@ -50,7 +50,7 @@ impl UntypedStateFrmSpec {
     }
 }
 
-impl UntypedActionRenameSpec { 
+impl UntypedActionRenameSpec {
     pub fn parse(spec: &str) -> Result<UntypedActionRenameSpec, MCRL3Error> {
         let mut result = Mcrl2Parser::parse(Rule::ActionRenameSpec, spec).map_err(extend_parser_error)?;
         let root = result

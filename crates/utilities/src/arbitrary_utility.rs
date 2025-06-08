@@ -1,5 +1,5 @@
 //! Utility functions for the Arbitrary trait and various types from that crate.
-//! 
+//!
 
 use rand::Rng;
 

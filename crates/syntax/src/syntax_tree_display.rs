@@ -2,22 +2,31 @@ use std::fmt;
 
 use itertools::Itertools;
 
+use crate::ActDecl;
 use crate::ActFrm;
 use crate::ActFrmOp;
 use crate::Action;
 use crate::Assignment;
+use crate::Comm;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
+use crate::DataExprUnaryOp;
+use crate::DataExprUpdate;
 use crate::EqnDecl;
 use crate::EqnSpec;
 use crate::FixedPointOperator;
 use crate::IdDecl;
 use crate::ModalityOperator;
 use crate::MultiAction;
+use crate::MultiActionLabel;
+use crate::ProcDecl;
+use crate::ProcExprBinaryOp;
+use crate::ProcessExpr;
 use crate::Quantifier;
 use crate::RegFrm;
+use crate::Rename;
 use crate::Sort;
 use crate::SortDecl;
 use crate::SortExpression;
@@ -57,29 +66,75 @@ impl fmt::Display for ComplexSort {
 
 impl fmt::Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} := {:?}", self.identifier, self.expr)
+        write!(f, "{} = {}", self.identifier, self.expr)
     }
 }
 
 impl fmt::Display for UntypedProcessSpecification {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.data_specification)?;
+
+        if !self.act_decls.is_empty() {
+            writeln!(f, "act")?;
+            for act_decl in &self.act_decls {
+                writeln!(f, "   {};", act_decl)?;
+            }
+
+            writeln!(f)?;
+        }
+
+        if !self.proc_decls.is_empty() {
+            write!(f, "proc")?;
+            for proc_decl in &self.proc_decls {
+                writeln!(f, "   {};", proc_decl)?;
+            }
+
+            writeln!(f)?;
+        }
+
+        if !self.glob_vars.is_empty() {
+            write!(f, "glob")?;
+            for var_decl in &self.glob_vars {
+                writeln!(f, "   {};", var_decl)?;
+            }
+
+            writeln!(f)?;
+        }
+
+        if let Some(init) = &self.init {
+            writeln!(f, "init {};", init)?;
+        }
         Ok(())
     }
 }
 
 impl fmt::Display for UntypedDataSpecification {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for decl in &self.sort_decls {
-            writeln!(f, "{}", decl)?;
+        if !self.sort_decls.is_empty() {
+            writeln!(f, "sort")?;
+            for decl in &self.sort_decls {
+                writeln!(f, "   {};", decl)?;
+            }
+
+            writeln!(f)?;
         }
 
-        for decl in &self.cons_decls {
-            writeln!(f, "{}", decl)?;
+        if !self.cons_decls.is_empty() {
+            writeln!(f, "cons")?;
+            for decl in &self.cons_decls {
+                writeln!(f, "   {};", decl)?;
+            }
+            
+            writeln!(f)?;
         }
 
-        for decl in &self.map_decls {
-            writeln!(f, "{}", decl)?;
+        if !self.map_decls.is_empty() {
+            writeln!(f, "map")?;
+            for decl in &self.map_decls {
+                writeln!(f, "   {};", decl)?;
+            }
+
+            writeln!(f)?;
         }
 
         for decl in &self.eqn_decls {
@@ -93,12 +148,12 @@ impl fmt::Display for EqnSpec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "var")?;
         for decl in &self.variables {
-            writeln!(f, "   {}", decl)?;
+            writeln!(f, "   {};", decl)?;
         }
 
         writeln!(f, "eqn")?;
         for decl in &self.equations {
-            writeln!(f, "   {}", decl)?;
+            writeln!(f, "   {};", decl)?;
         }
         Ok(())
     }
@@ -106,13 +161,23 @@ impl fmt::Display for EqnSpec {
 
 impl fmt::Display for SortDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "sort {}", self.identifier)?;
+        write!(f, "{}", self.identifier)?;
 
         if let Some(expr) = &self.expr {
             write!(f, " = {}", expr)?;
         }
 
         Ok(())
+    }
+}
+
+impl fmt::Display for ActDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.args.is_empty() {
+            write!(f, "{}", self.identifier)
+        } else {
+            write!(f, "{}({})", self.identifier, self.args.iter().format(", "))
+        }
     }
 }
 
@@ -125,8 +190,18 @@ impl fmt::Display for VarDecl {
 impl fmt::Display for EqnDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.condition {
-            Some(condition) => write!(f, "{} -> {} = {};", condition, self.lhs, self.rhs),
-            None => write!(f, "{} = {};", self.lhs, self.rhs),
+            Some(condition) => write!(f, "{} -> {} = {}", condition, self.lhs, self.rhs),
+            None => write!(f, "{} = {}", self.lhs, self.rhs),
+        }
+    }
+}
+
+impl fmt::Display for DataExprUnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DataExprUnaryOp::Negation => write!(f, "!"),
+            DataExprUnaryOp::Minus => write!(f, "-"),
+            DataExprUnaryOp::Size => write!(f, "#"),
         }
     }
 }
@@ -134,10 +209,37 @@ impl fmt::Display for EqnDecl {
 impl fmt::Display for DataExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            DataExpr::EmptyList => write!(f, "[]"),
             DataExpr::EmptyBag => write!(f, "{{:}}"),
-            DataExpr::Bag(expressions) => write!(f, "{{ {} }}", 
-                expressions.iter().format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))),
-            _ => unimplemented!(),
+            DataExpr::EmptySet => write!(f, "{{}}"),
+            DataExpr::List(expressions) => write!(f, "[{}]", expressions.iter().format(", ")),
+            DataExpr::Bag(expressions) => write!(
+                f,
+                "{{ {} }}",
+                expressions
+                    .iter()
+                    .format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))
+            ),
+            DataExpr::Set(expressions) => write!(f, "{{{}}}", expressions.iter().format(", ")),
+            DataExpr::Id(identifier) => write!(f, "{}", identifier),
+            DataExpr::Binary { op, lhs, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
+            DataExpr::Unary { op, expr } => write!(f, "({} {})", op, expr),
+            DataExpr::Bool(value) => write!(f, "{}", value),
+            DataExpr::Quantifier { op, variables, body } => {
+                write!(f, "({} {} . {})", op, variables.iter().format(", "), body)
+            }
+            DataExpr::Lambda { variables, body } => write!(f, "(lambda {} . {})", variables.iter().format(", "), body),
+            DataExpr::Application { function, arguments } => {
+                if arguments.is_empty() {
+                    write!(f, "{}", function)
+                } else {
+                    write!(f, "{}({})", function, arguments.iter().format(", "))
+                }
+            }
+            DataExpr::Number(value) => write!(f, "{}", value),
+            DataExpr::FunctionUpdate { expr, update } => write!(f, "{}[{}]", expr, update),
+            DataExpr::SetBagComp { variable, predicate } => write!(f, "{{ {} | {}}}", variable, predicate),
+            DataExpr::Whr { expr, assignments } => write!(f, "{} whr {} end", expr, assignments.iter().format(", ")),
         }
     }
 }
@@ -148,23 +250,24 @@ impl fmt::Display for IdDecl {
     }
 }
 
+impl fmt::Display for DataExprUpdate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.expr, self.update)
+    }
+}
+
 impl fmt::Display for SortExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             SortExpression::Product { lhs, rhs } => write!(f, "({} # {})", lhs, rhs),
             SortExpression::Function { domain, range } => write!(f, "({} -> {})", domain, range),
-            SortExpression::Reference(ident) => write!(f, "\"{}\"", ident),
+            SortExpression::Reference(ident) => write!(f, "{}", ident),
             SortExpression::Simple(sort) => write!(f, "{}", sort),
             SortExpression::Complex(complex, inner) => write!(f, "{}({})", complex, inner),
             SortExpression::Struct { inner } => {
-                write!(f, "{{")?;
-                for (i, decl) in inner.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", decl)?;
-                }
-                write!(f, "}}")
+                write!(f, "struct ")?;
+                write!(f, "{}", inner.iter().format(" | "))?;
+                write!(f, ";")
             }
         }
     }
@@ -182,7 +285,7 @@ impl fmt::Display for StateFrmUnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             StateFrmUnaryOp::Minus => write!(f, "-"),
-            StateFrmUnaryOp::Negation => write!(f, "!")
+            StateFrmUnaryOp::Negation => write!(f, "!"),
         }
     }
 }
@@ -191,7 +294,7 @@ impl fmt::Display for FixedPointOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FixedPointOperator::Greatest => write!(f, "nu"),
-            FixedPointOperator::Least => write!(f, "mu")
+            FixedPointOperator::Least => write!(f, "mu"),
         }
     }
 }
@@ -227,14 +330,18 @@ impl fmt::Display for StateFrm {
             }
             StateFrm::Binary { op, lhs, rhs } => {
                 write!(f, "({}) {} ({})", lhs, op, rhs)
-            },
-            StateFrm::FixedPoint { operator, variable, body } => {
+            }
+            StateFrm::FixedPoint {
+                operator,
+                variable,
+                body,
+            } => {
                 write!(f, "{} {} {}", operator, variable, body)
             }
-            StateFrm::Delay(expr) => write!(f, "delay@{}", expr),
-            StateFrm::Yaled(expr) => write!(f, "yaled@{}", expr),
-            StateFrm::DataValExprMult(value, expr) => write!(f, "{} * {}", value, expr),
-            StateFrm::DataValExprRightMult(expr, value) => write!(f, "{} * {}", expr, value)
+            StateFrm::Delay(expr) => write!(f, "delay@({})", expr),
+            StateFrm::Yaled(expr) => write!(f, "yaled@({})", expr),
+            StateFrm::DataValExprMult(value, expr) => write!(f, "({} * {})", value, expr),
+            StateFrm::DataValExprRightMult(expr, value) => write!(f, "({} * {})", expr, value),
         }
     }
 }
@@ -244,7 +351,7 @@ impl fmt::Display for StateVarDecl {
         if self.arguments.is_empty() {
             write!(f, "{}", self.identifier)
         } else {
-            write!(f, "{}({})", self.identifier, self.arguments.iter().format("," ))
+            write!(f, "{}({})", self.identifier, self.arguments.iter().format(","))
         }
     }
 }
@@ -360,22 +467,145 @@ impl fmt::Display for Quantifier {
 
 impl fmt::Display for ConstructorDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}(", self.name)?;
-        for (i, (name, sort)) in self.args.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
+        if self.args.is_empty() {
+            write!(f, "{}", self.name)
+        } else {
+            write!(f, "{}(", self.name)?;
+            for (i, (name, sort)) in self.args.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                match name {
+                    Some(name) => write!(f, "{} : {}", name, sort)?,
+                    None => write!(f, "{}", sort)?,
+                }
             }
-            match name {
-                Some(name) => write!(f, "{} : {}", name, sort)?,
-                None => write!(f, "{}", sort)?,
+            write!(f, ")")?;
+
+            if let Some(projection) = &self.projection {
+                write!(f, "?{}", projection)?;
             }
-        }
-        write!(f, ")")?;
 
-        if let Some(projection) = &self.projection {
-            write!(f, "?{}", projection)?;
+            Ok(())
         }
+    }
+}
 
-        Ok(())
+impl fmt::Display for ProcDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.params.is_empty() {
+            write!(f, "proc {} = {};", self.identifier, self.body)
+        } else {
+            write!(f, "proc {}({}) = {};", self.identifier, self.params.iter().format(", "), self.body)
+        }
+    }
+}
+
+impl fmt::Display for ProcExprBinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProcExprBinaryOp::Sequence => write!(f, "."),
+            ProcExprBinaryOp::Choice => write!(f, "+"),
+            ProcExprBinaryOp::Parallel => write!(f, "||"),
+            ProcExprBinaryOp::LeftMerge => write!(f, "_||"),
+            ProcExprBinaryOp::CommMerge => write!(f, "|"),
+        }
+    }
+}
+
+impl fmt::Display for ProcessExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProcessExpr::Id(identifier, assignments) => {
+                if assignments.is_empty() {
+                    write!(f, "{}", identifier)
+                } else {
+                    write!(f, "{}({})", identifier, assignments.iter().format(", "))
+                }
+            }
+            ProcessExpr::Action(identifier, data_exprs) => {
+                if data_exprs.is_empty() {
+                    write!(f, "{}", identifier)
+                } else {
+                    write!(f, "{}({})", identifier, data_exprs.iter().format(", "))
+                }
+            }
+            ProcessExpr::Delta => write!(f, "delta"),
+            ProcessExpr::Tau => write!(f, "tau"),
+            ProcessExpr::Sum { variables, operand } => {
+                write!(f, "(sum {} . {})", variables.iter().format(", "), operand)
+            }
+            ProcessExpr::Dist {
+                variables,
+                expr,
+                operand,
+            } => write!(f, "(dist {}[{}] . {})", variables.iter().format(", "), expr, operand),
+            ProcessExpr::Binary { op, lhs, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
+            ProcessExpr::Hide { actions, operand } => {
+                if !actions.is_empty() {
+                    write!(f, "hide({{{}}}, {})", actions.iter().format(", "), operand)
+                } else {
+                    Ok(())
+                }
+            }
+            ProcessExpr::Rename { renames, operand } => {
+                if !renames.is_empty() {
+                    write!(f, "rename({{{}}}, {})", renames.iter().format(", "), operand)
+                } else {
+                    Ok(())
+                }
+            }
+            ProcessExpr::Allow { actions, operand } => {
+                if !actions.is_empty() {
+                    write!(f, "allow({{{}}}, {})", actions.iter().format(", "), operand)
+                } else {
+                    Ok(())
+                }
+            }
+            ProcessExpr::Block { actions, operand } => {
+                if !actions.is_empty() {
+                    write!(f, "block({{{}}}, {})", actions.iter().format(", "), operand)
+                } else {
+                    Ok(())
+                }
+            }
+            ProcessExpr::Comm { comm, operand } => {
+                if !comm.is_empty() {
+                    write!(f, "comm({{{}}}, {})", comm.iter().format(", "), operand)
+                } else {
+                    Ok(())
+                }
+            }
+            ProcessExpr::Condition { condition, then, else_ } => {
+                if let Some(else_) = else_ {
+                    write!(f, "({}) -> ({}) <> ({})", condition, then, else_)
+                } else {
+                    write!(f, "({}) -> ({})", condition, then)
+                }
+            }
+            ProcessExpr::At { expr, operand } => write!(f, "({})@({})", expr, operand),
+        }
+    }
+}
+
+impl fmt::Display for Comm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.from, self.to)
+    }
+}
+
+impl fmt::Display for Rename {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.from, self.to)
+    }
+}
+
+impl fmt::Display for MultiActionLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.actions.is_empty() {
+            write!(f, "tau")
+        } else {
+            write!(f, "{}", self.actions.iter().format("|"))
+        }
     }
 }

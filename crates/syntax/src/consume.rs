@@ -15,6 +15,7 @@ use crate::Comm;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
+use crate::DataExprUnaryOp;
 use crate::DataExprUpdate;
 use crate::EqnDecl;
 use crate::EqnSpec;
@@ -474,7 +475,7 @@ impl Mcrl2Parser {
     pub(crate) fn DataExprSize(expr: ParseNode) -> ParseResult<DataExpr> {
         match_nodes!(expr.into_children();
             [DataExpr(expr)] => {
-                return Ok(DataExpr::Size(Box::new(expr)));
+                return Ok(DataExpr::Unary { op: DataExprUnaryOp::Size, expr: Box::new(expr) });
             },
         )
     }
