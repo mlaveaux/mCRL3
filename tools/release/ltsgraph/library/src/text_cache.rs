@@ -137,6 +137,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_textcache() {
         let mut cache = TextCache::new();
 

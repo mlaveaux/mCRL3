@@ -17,6 +17,9 @@ mcrl3_jemalloc = ["dep:tikv-jemallocator"]
 # Enables extra debug options to be enabled. Also enables jemalloc debugging.
 mcrl3_debug = ["tikv-jemallocator?/debug"]
 
+# Disable logging when miri is enabled since that does not work with isolation mode.
+mcrl3_miri = []
+
 [dependencies]
 ahash.workspace = true
 backtrace.workspace = true

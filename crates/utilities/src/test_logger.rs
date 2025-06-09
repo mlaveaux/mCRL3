@@ -1,6 +1,8 @@
 /// Constructs a logger for tests. This logger will not print anything to the console, but will instead write to a buffer.
-pub fn test_logger() -> Result<(), log::SetLoggerError> {
-    env_logger::builder().is_test(true).try_init()
+pub fn test_logger() {      
+    if cfg!(not(feature = "mcrl3_miri")) {
+        env_logger::builder().is_test(true).try_init().expect("Failed to initialise emv_logger");
+    }
 }
 
 pub fn test_threads<C, F, G>(num_threads: usize, init_function: G, test_function: F)
@@ -9,7 +11,7 @@ where
     F: Fn(&mut C) + Copy + Send + Sync + 'static,
     G: Fn() -> C,
 {
-    let _ = test_logger();
+    test_logger();
 
     let mut threads = vec![];
 

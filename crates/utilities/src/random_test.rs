@@ -9,7 +9,7 @@ pub fn random_test<F>(iterations: usize, mut test_function: F)
 where
     F: FnMut(&mut StdRng),
 {
-    let _ = test_logger();
+    test_logger();
 
     let seed: u64 = rand::random();
     println!("seed: {}", seed);
@@ -26,7 +26,7 @@ where
     F: Fn(&mut StdRng, &mut C) + Copy + Send + Sync + 'static,
     G: Fn() -> C,
 {
-    let _ = test_logger();
+    test_logger();
 
     let mut threads = vec![];
 
