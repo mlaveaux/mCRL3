@@ -31,6 +31,7 @@ fn check_snapshot<T: fmt::Display>(result: &T, snapshot_path: &Path) -> Result<(
     Ok(())
 }
 
+#[cfg_attr(miri, ignore)]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/abp.mcrl2"), "tests/snapshot/result_abp.mcrl2" ; "abp.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp_bw/abp_bw.mcrl2"), "tests/snapshot/result_abp_bw.mcrl2" ; "abp_bw.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/allow/allow.mcrl2"), "tests/snapshot/result_allow.mcrl2" ; "allow.mcrl2")]
@@ -225,6 +226,7 @@ fn test_parse_mcrl2_spec(input: &str, snapshot_file: &str) {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/infinitely_often_enabled_then_infinitely_often_taken.mcf"), "tests/snapshot/result_infinitely_often_enabled_then_infinitely_often_taken.mcf" ; "infinitely_often_enabled_then_infinitely_often_taken.mcf")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/infinitely_often_lost.mcf"), "tests/snapshot/result_infinitely_often_lost.mcf" ; "infinitely_often_lost.mcf")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/infinitely_often_receive_d1.mcf"), "tests/snapshot/result_infinitely_often_receive_d1.mcf" ; "infinitely_often_receive_d1.mcf")]
@@ -389,6 +391,7 @@ fn test_parse_mcrl2_modal_formula(input: &str, snapshot_file: &str) {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[test_case(include_str!("../../../examples/REC/mcrl2/add16.dataspec"), "tests/snapshot/result_add16.dataspec" ; "add16.dataspec")]
 #[test_case(include_str!("../../../examples/REC/mcrl2/add32.dataspec"), "tests/snapshot/result_add32.dataspec" ; "add32.dataspec")]
 #[test_case(include_str!("../../../examples/REC/mcrl2/add8.dataspec"), "tests/snapshot/result_add8.dataspec" ; "add8.dataspec")]

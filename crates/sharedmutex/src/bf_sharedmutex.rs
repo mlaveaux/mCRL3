@@ -252,6 +252,7 @@ mod tests {
 
     // These are just simple tests.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_shared_mutex_exclusive() {
         let shared_number = BfSharedMutex::new(5);
         let num_iterations = 500;
@@ -271,6 +272,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_shared() {
         let shared_vector = BfSharedMutex::new(vec![]);
 

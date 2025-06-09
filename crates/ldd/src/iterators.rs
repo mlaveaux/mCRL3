@@ -100,6 +100,7 @@ mod tests {
 
     // Test the iterator implementation.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_iter() {
         random_test(100, |rng| {
             let mut storage = Storage::new();

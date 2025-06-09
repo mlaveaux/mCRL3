@@ -435,6 +435,7 @@ mod tests {
 
     // Compare the LDD element_of implementation for random inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_element_of() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -482,6 +483,7 @@ mod tests {
 
     // Compare the HashSet implementation of union with the LDD union implementation for random inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_union() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -499,6 +501,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_merge() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -538,6 +541,7 @@ mod tests {
 
     // Compare the singleton implementation with a random vector used as input.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_singleton() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -555,6 +559,7 @@ mod tests {
 
     // Test the len function with random inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_len() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -568,6 +573,7 @@ mod tests {
 
     // Test the minus function with random inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_minus() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -602,6 +608,7 @@ mod tests {
 
     // Test the relational product function with read-only inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_readonly_relational_product() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -625,6 +632,7 @@ mod tests {
 
     // Test the relational product function with write-only inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_writeonly_relational_product() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -647,6 +655,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_relational_product() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -749,6 +758,7 @@ mod tests {
 
     // Test the project function with random inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_project() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
@@ -772,6 +782,7 @@ mod tests {
 
     // Test the append function with random inputs.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_append() {
         random_test(100, |rng| {
             let mut storage = Storage::new();

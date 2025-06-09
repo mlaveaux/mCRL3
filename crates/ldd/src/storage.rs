@@ -343,6 +343,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_random_garbage_collection() {
         let _ = test_logger();
 
