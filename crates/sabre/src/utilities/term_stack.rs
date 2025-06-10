@@ -301,6 +301,7 @@ mod tests {
 
     use ahash::AHashSet;
     use mcrl3_data::DataFunctionSymbol;
+    use mcrl3_utilities::test_logger;
 
     use crate::test_utility::create_rewrite_rule;
 
@@ -355,6 +356,8 @@ mod tests {
 
     #[test]
     fn test_evaluation() {
+        test_logger();
+
         let rhs = DataExpression::from_string_untyped("f(f(a,a),x)", &AHashSet::from([String::from("x")])).unwrap();
         let lhs = DataExpression::from_string("g(b)").unwrap();
 

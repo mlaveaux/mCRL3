@@ -210,8 +210,6 @@ mod tests {
 
     #[test]
     fn test_random_tau_scc_decomposition() {
-        let _ = test_logger();
-
         random_test(100, |rng| {
             let lts = random_lts(rng, 10, 3, 3);
             let partitioning = tau_scc_decomposition(&lts);

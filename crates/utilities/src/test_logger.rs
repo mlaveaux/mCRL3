@@ -1,7 +1,7 @@
 /// Constructs a logger for tests. This logger will not print anything to the console, but will instead write to a buffer.
 pub fn test_logger() {      
     if cfg!(not(feature = "mcrl3_miri")) {
-        env_logger::builder().is_test(true).try_init().expect("Failed to initialise emv_logger");
+        env_logger::builder().is_test(true).try_init().expect("Cannot initialise env_logger twice!");
     }
 }
 

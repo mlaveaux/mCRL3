@@ -84,7 +84,7 @@ impl fmt::Display for UntypedProcessSpecification {
         }
 
         if !self.proc_decls.is_empty() {
-            write!(f, "proc")?;
+            writeln!(f, "proc")?;
             for proc_decl in &self.proc_decls {
                 writeln!(f, "   {};", proc_decl)?;
             }
@@ -93,7 +93,7 @@ impl fmt::Display for UntypedProcessSpecification {
         }
 
         if !self.glob_vars.is_empty() {
-            write!(f, "glob")?;
+            writeln!(f, "glob")?;
             for var_decl in &self.glob_vars {
                 writeln!(f, "   {};", var_decl)?;
             }
@@ -220,7 +220,7 @@ impl fmt::Display for DataExpr {
                     .iter()
                     .format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))
             ),
-            DataExpr::Set(expressions) => write!(f, "{{{}}}", expressions.iter().format(", ")),
+            DataExpr::Set(expressions) => write!(f, "{{ {} }}", expressions.iter().format(", ")),
             DataExpr::Id(identifier) => write!(f, "{}", identifier),
             DataExpr::Binary { op, lhs, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
             DataExpr::Unary { op, expr } => write!(f, "({} {})", op, expr),
@@ -238,7 +238,7 @@ impl fmt::Display for DataExpr {
             }
             DataExpr::Number(value) => write!(f, "{}", value),
             DataExpr::FunctionUpdate { expr, update } => write!(f, "{}[{}]", expr, update),
-            DataExpr::SetBagComp { variable, predicate } => write!(f, "{{ {} | {}}}", variable, predicate),
+            DataExpr::SetBagComp { variable, predicate } => write!(f, "{{ {} | {} }}", variable, predicate),
             DataExpr::Whr { expr, assignments } => write!(f, "{} whr {} end", expr, assignments.iter().format(", ")),
         }
     }
@@ -266,8 +266,7 @@ impl fmt::Display for SortExpression {
             SortExpression::Complex(complex, inner) => write!(f, "{}({})", complex, inner),
             SortExpression::Struct { inner } => {
                 write!(f, "struct ")?;
-                write!(f, "{}", inner.iter().format(" | "))?;
-                write!(f, ";")
+                write!(f, "{}", inner.iter().format(" | "))
             }
         }
     }
@@ -336,7 +335,7 @@ impl fmt::Display for StateFrm {
                 variable,
                 body,
             } => {
-                write!(f, "{} {} {}", operator, variable, body)
+                write!(f, "({} {} . {})", operator, variable, body)
             }
             StateFrm::Delay(expr) => write!(f, "delay@({})", expr),
             StateFrm::Yaled(expr) => write!(f, "yaled@({})", expr),
@@ -379,8 +378,8 @@ impl fmt::Display for RegFrm {
             RegFrm::Action(action) => write!(f, "{}", action),
             RegFrm::Iteration(body) => write!(f, "({})*", body),
             RegFrm::Plus(body) => write!(f, "({})+", body),
-            RegFrm::Choice { lhs, rhs } => write!(f, "({}) + ({})", lhs, rhs),
-            RegFrm::Sequence { lhs, rhs } => write!(f, "({}) . ({})", lhs, rhs),
+            RegFrm::Choice { lhs, rhs } => write!(f, "({} + {})", lhs, rhs),
+            RegFrm::Sequence { lhs, rhs } => write!(f, "({} . {})", lhs, rhs),
         }
     }
 }
@@ -420,8 +419,11 @@ impl fmt::Display for ActFrm {
             ActFrm::MultAct(action) => write!(f, "{}", action),
             ActFrm::Binary { op, lhs, rhs } => {
                 write!(f, "({}) {} ({})", lhs, op, rhs)
-            }
-            _ => write!(f, "<ActFrm>"),
+            },
+            ActFrm::DataExprVal(expr) => write!(f, "val({})", expr),
+            ActFrm::Quantifier { quantifier, variables, body } => write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body),
+            ActFrm::Negation(expr) => write!(f, "(!{})", expr)
+
         }
     }
 }
@@ -494,9 +496,9 @@ impl fmt::Display for ConstructorDecl {
 impl fmt::Display for ProcDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.params.is_empty() {
-            write!(f, "proc {} = {};", self.identifier, self.body)
+            write!(f, "{} = {};", self.identifier, self.body)
         } else {
-            write!(f, "proc {}({}) = {};", self.identifier, self.params.iter().format(", "), self.body)
+            write!(f, "{}({}) = {};", self.identifier, self.params.iter().format(", "), self.body)
         }
     }
 }
@@ -539,7 +541,7 @@ impl fmt::Display for ProcessExpr {
                 variables,
                 expr,
                 operand,
-            } => write!(f, "(dist {}[{}] . {})", variables.iter().format(", "), expr, operand),
+            } => write!(f, "(dist {} [{}] . {})", variables.iter().format(", "), expr, operand),
             ProcessExpr::Binary { op, lhs, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
             ProcessExpr::Hide { actions, operand } => {
                 if !actions.is_empty() {

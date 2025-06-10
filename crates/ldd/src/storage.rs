@@ -319,12 +319,9 @@ mod tests {
     use crate::test_utility::*;
 
     use mcrl3_utilities::random_test;
-    use mcrl3_utilities::test_logger;
 
     #[test]
     fn test_random_garbage_collection_small() {
-        let _ = test_logger();
-
         random_test(100, |rng| {
             let mut storage = Storage::new();
 
@@ -345,8 +342,6 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_random_garbage_collection() {
-        let _ = test_logger();
-
         random_test(20, |rng| {
             let mut storage = Storage::new();
 
