@@ -10,7 +10,8 @@ use std::sync::Arc;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
 
-use crate::Marker;
+use crate::Markable;
+use crate::Transmutable;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
 use crate::aterm::ATermRef;
@@ -109,129 +110,6 @@ impl<C> Drop for Protected<C> {
     }
 }
 
-/// This trait should be used on all objects and containers related to storing unprotected terms.
-pub trait Markable {
-    /// Marks all the ATermRefs to prevent them from being garbage collected.
-    fn mark(&self, marker: &mut Marker);
-
-    /// Should return true iff the given term is contained in the object. Used for runtime checks.
-    fn contains_term(&self, term: &ATermRef<'_>) -> bool;
-
-    /// Returns the number of terms in the instance, used to delay garbage collection.
-    fn len(&self) -> usize;
-
-    /// Returns true iff the container is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl<T: Markable> Markable for Vec<T> {
-    fn mark(&self, marker: &mut Marker) {
-        for value in self {
-            value.mark(marker);
-        }
-    }
-
-    fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        self.iter().any(|v| v.contains_term(term))
-    }
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-
-impl<T: Markable> Markable for GcMutex<T> {
-    fn mark(&self, marker: &mut Marker) {
-        self.write().mark(marker);
-    }
-
-    fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        self.read().contains_term(term)
-    }
-
-    fn len(&self) -> usize {
-        self.read().len()
-    }
-}
-
-impl<T: Markable> Markable for Option<T> {
-    fn mark(&self, marker: &mut Marker) {
-        if let Some(value) = self {
-            value.mark(marker);
-        }
-    }
-
-    fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        if let Some(value) = self {
-            value.contains_term(term)
-        } else {
-            false
-        }
-    }
-
-    fn len(&self) -> usize {
-        if let Some(value) = self { value.len() } else { 0 }
-    }
-}
-
-pub trait Transmutable {
-    type Target<'a>
-    where
-        Self: 'a;
-
-    /// Transmute the lifetime of the object to 'a, which is shorter than the given lifetime.
-    fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a>;
-
-    /// Transmute the lifetime of the object to 'a, which is shorter than the given lifetime.
-    fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a>;
-}
-
-impl Transmutable for ATermRef<'static> {
-    type Target<'a> = ATermRef<'a>;
-
-    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
-        unsafe { transmute::<&Self, &'a ATermRef<'a>>(self) }
-    }
-
-    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
-        unsafe { transmute::<&mut Self, &'a mut ATermRef<'a>>(self) }
-    }
-}
-
-impl<T: Transmutable> Transmutable for Option<T> {
-    type Target<'a>
-        = Option<T>
-    where
-        T: 'a;
-
-    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
-        unsafe { transmute::<&Self, &'a Option<T>>(self) }
-    }
-
-    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
-        unsafe { transmute::<&mut Self, &'a mut Option<T>>(self) }
-    }
-}
-
-impl<T> Transmutable for Vec<T>
-where
-    T: Transmutable,
-{
-    type Target<'a>
-        = Vec<T::Target<'a>>
-    where
-        T: 'a;
-
-    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
-        unsafe { transmute::<&Self, &'a Vec<T::Target<'a>>>(self) }
-    }
-
-    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
-        unsafe { transmute::<&mut Self, &'a mut Vec<T::Target<'a>>>(self) }
-    }
-}
 
 pub struct ProtectedWriteGuard<'a, C: Markable> {
     reference: GcMutexGuard<'a, C>,
