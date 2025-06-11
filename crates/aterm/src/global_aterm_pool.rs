@@ -1,15 +1,29 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
-use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
-use hashbrown::Equivalent;
 use log::info;
+use rustc_hash::FxBuildHasher;
+
 use mcrl3_unsafety::StablePointerSet;
 use mcrl3_utilities::SimpleTimer;
 use mcrl3_utilities::debug_trace;
+use mcrl3_utilities::ProtectionSet;
+
+use crate::ATerm;
+use crate::ATermIndex;
+use crate::ATermRef;
+use crate::Markable;
+use crate::SharedTerm;
+use crate::SharedTermLookup;
+use crate::Symb;
+use crate::Symbol;
+use crate::SymbolIndex;
+use crate::SymbolPool;
+use crate::SymbolRef;
+use crate::Term;
 
 #[cfg(not(feature = "mcrl3_miri"))]
 mod mutex {
@@ -38,20 +52,6 @@ mod mutex {
 
 // Depends on the selection of the feature, the mutex type is either a parking_lot or std mutex.
 pub use mutex::*;
-
-use mcrl3_utilities::ProtectionSet;
-use rustc_hash::FxBuildHasher;
-
-use crate::ATerm;
-use crate::ATermIndex;
-use crate::ATermRef;
-use crate::Markable;
-use crate::Symb;
-use crate::Symbol;
-use crate::SymbolIndex;
-use crate::SymbolPool;
-use crate::SymbolRef;
-use crate::Term;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
 pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
@@ -465,98 +465,62 @@ impl Marker<'_> {
     }
 }
 
-/// The underlying type of terms that are actually shared.
-#[derive(Eq, PartialEq)]
-pub struct SharedTerm {
-    symbol: SymbolRef<'static>,
-    arguments: Vec<ATermRef<'static>>,
-    annotation: Option<usize>,
-}
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
 
-// Check that the ATermRef is the same size as a usize.
-// TODO: Only pay the annotation size penalty if the annotation is used.
-// #[cfg(not(debug_assertions))]
-// const _: () = assert!(std::mem::size_of::<SharedTerm>() == std::mem::size_of::<usize>() * 3);
+    use mcrl3_utilities::random_test;
+    use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+    
+    use crate::{random_term, ATerm, Term};
 
-impl fmt::Debug for SharedTerm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SharedTerm {{ symbol: {:?}, arguments: {:?}, annotation: {:?} }}",
-            self.symbol, self.arguments, self.annotation
-        )
+    #[test]
+    fn test_maximal_sharing() {
+        random_test(100, |rng| {
+            let mut terms = HashMap::new();
+
+            for _ in 0..1000 {
+                let term = random_term(rng, &[("f".into(), 2), ("g".into(), 1)], &["a".to_string()], 10);
+
+                let representation = format!("{}", term);
+                if let Some(entry) = terms.get(&representation) {
+                    assert_eq!(term, *entry, "There is another term with the same representation");
+                } else {
+                    terms.insert(representation, term);
+                }
+            }
+        });
     }
-}
 
-impl Clone for SharedTerm {
-    fn clone(&self) -> Self {
-        SharedTerm {
-            symbol: unsafe { SymbolRef::from_index(self.symbol.shared()) },
-            arguments: self
-                .arguments
-                .iter()
-                .map(|x| unsafe { ATermRef::from_index(x.shared()) })
-                .collect(),
-            annotation: self.annotation,
+    fn test_named_value_return() {
+
+    }
+
+    struct SendTerm(ATerm);
+
+    impl SendTerm {
+        
+        fn get(&self) -> ATerm {
+            self.0.get().protect()
         }
     }
-}
 
-impl SharedTerm {
-    pub fn symbol(&self) -> &SymbolRef<'_> {
-        &self.symbol
-    }
+    unsafe impl Send for SendTerm {}
 
-    pub fn arguments(&self) -> &[ATermRef<'static>] {
-        &self.arguments
-    }
+    #[test]
+    fn test_parallel_iterator() {
+        let mut rng = rand::rng();
 
-    pub fn annotation(&self) -> Option<usize> {
-        self.annotation
-    }
-}
+        let mut terms = Vec::new();
+        terms.resize_with(100, || random_term(&mut rng, &[("f".into(), 2), ("g".into(), 1)], &["a".to_string()], 10));
 
-/// A cheap reference to the elements of a shared term that can be used for
-/// lookup of terms without allocating.
-struct SharedTermLookup<'a> {
-    symbol: SymbolRef<'a>,
-    arguments: &'a [ATermRef<'a>],
-    annotation: Option<usize>,
-}
+        let what: Vec<SendTerm> = terms.into_par_iter().map(|t| {
+            SendTerm(t.arg(0).protect())
+        }).collect();
 
-impl From<&SharedTermLookup<'_>> for SharedTerm {
-    fn from(lookup: &SharedTermLookup<'_>) -> Self {
-        SharedTerm {
-            symbol: unsafe { SymbolRef::from_index(lookup.symbol.shared()) },
-            arguments: lookup
-                .arguments
-                .iter()
-                .map(|x| unsafe { ATermRef::from_index(x.shared()) })
-                .collect(),
-            annotation: lookup.annotation,
-        }
-    }
-}
+        let the: Vec<ATerm> = what.iter().map(|t| t.get()).collect();
 
-impl Equivalent<SharedTerm> for SharedTermLookup<'_> {
-    fn equivalent(&self, other: &SharedTerm) -> bool {
-        self.symbol == other.symbol && self.arguments == other.arguments && self.annotation == other.annotation
-    }
-}
+        println!("{:?}", the);
 
-/// This Hash implement must be the same as for [SharedTerm]
-impl Hash for SharedTermLookup<'_> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.symbol.hash(state);
-        self.arguments.hash(state);
-        self.annotation.hash(state);
-    }
-}
-
-impl Hash for SharedTerm {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.symbol.hash(state);
-        self.arguments.hash(state);
-        self.annotation.hash(state);
     }
 }
