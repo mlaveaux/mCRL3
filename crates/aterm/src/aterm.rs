@@ -187,7 +187,8 @@ pub struct ATerm {
     root: ProtectionIndex,
 
     // ATerm is not Send because it uses thread-local state for its protection
-    // mechanism.
+    // mechanism. However, it can be Sync since terms are immutable, and unlike
+    // `Rc` cloning results in a local protected copy.
     _marker: PhantomUnsend,
 }
 
