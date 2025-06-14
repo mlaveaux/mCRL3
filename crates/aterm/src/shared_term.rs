@@ -3,8 +3,10 @@ use std::hash::Hash;
 
 use hashbrown::Equivalent;
 
-use crate::{ATermRef, Symb, SymbolRef, Term};
-
+use crate::ATermRef;
+use crate::Symb;
+use crate::SymbolRef;
+use crate::Term;
 
 /// The underlying type of terms that are actually shared.
 #[derive(Eq, PartialEq)]

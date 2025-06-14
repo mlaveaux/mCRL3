@@ -4,7 +4,6 @@ use crate::Marker;
 use crate::aterm::ATermRef;
 use crate::gc_mutex::GcMutex;
 
-
 /// This trait should be used on all objects and containers related to storing unprotected terms.
 pub trait Markable {
     /// Marks all the ATermRefs to prevent them from being garbage collected.
@@ -38,7 +37,7 @@ impl<T: Markable> Markable for Vec<T> {
     }
 }
 
-impl<T: Markable> Markable for VecDeque<T> {    
+impl<T: Markable> Markable for VecDeque<T> {
     fn mark(&self, marker: &mut Marker) {
         for value in self {
             value.mark(marker);

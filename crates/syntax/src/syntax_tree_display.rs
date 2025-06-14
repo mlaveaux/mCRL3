@@ -124,7 +124,7 @@ impl fmt::Display for UntypedDataSpecification {
             for decl in &self.cons_decls {
                 writeln!(f, "   {};", decl)?;
             }
-            
+
             writeln!(f)?;
         }
 
@@ -419,11 +419,14 @@ impl fmt::Display for ActFrm {
             ActFrm::MultAct(action) => write!(f, "{}", action),
             ActFrm::Binary { op, lhs, rhs } => {
                 write!(f, "({}) {} ({})", lhs, op, rhs)
-            },
+            }
             ActFrm::DataExprVal(expr) => write!(f, "val({})", expr),
-            ActFrm::Quantifier { quantifier, variables, body } => write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body),
-            ActFrm::Negation(expr) => write!(f, "(!{})", expr)
-
+            ActFrm::Quantifier {
+                quantifier,
+                variables,
+                body,
+            } => write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body),
+            ActFrm::Negation(expr) => write!(f, "(!{})", expr),
         }
     }
 }
@@ -498,7 +501,13 @@ impl fmt::Display for ProcDecl {
         if self.params.is_empty() {
             write!(f, "{} = {};", self.identifier, self.body)
         } else {
-            write!(f, "{}({}) = {};", self.identifier, self.params.iter().format(", "), self.body)
+            write!(
+                f,
+                "{}({}) = {};",
+                self.identifier,
+                self.params.iter().format(", "),
+                self.body
+            )
         }
     }
 }

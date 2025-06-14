@@ -11,9 +11,9 @@ use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
 
 use crate::Markable;
-use crate::Transmutable;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
+use crate::Transmutable;
 use crate::aterm::ATermRef;
 use crate::gc_mutex::GcMutex;
 use crate::gc_mutex::GcMutexGuard;
@@ -109,7 +109,6 @@ impl<C> Drop for Protected<C> {
         });
     }
 }
-
 
 pub struct ProtectedWriteGuard<'a, C: Markable> {
     reference: GcMutexGuard<'a, C>,

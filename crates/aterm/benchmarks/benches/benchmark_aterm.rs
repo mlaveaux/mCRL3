@@ -2,6 +2,7 @@ use core::num;
 use std::array::from_fn;
 use std::collections::VecDeque;
 use std::hint::black_box;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::thread;
 
@@ -46,7 +47,12 @@ where
 
 /// Creates a nested function application f_depth where f_0 = c and f_i = f(f_{i-1}, ..., f_{i-1}).
 /// This version uses dynamic argument creation and ATerm construction.
-fn create_nested_function_dynamic(function_name: &str, leaf_name: &str, number_of_arguments: usize, depth: usize) -> ATerm {
+fn create_nested_function_dynamic(
+    function_name: &str,
+    leaf_name: &str,
+    number_of_arguments: usize,
+    depth: usize,
+) -> ATerm {
     debug_assert!(number_of_arguments > 0, "Number of arguments must be greater than 0");
     debug_assert!(depth > 0, "Depth must be greater than 0");
 
@@ -111,7 +117,7 @@ fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &s
 pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 20];
 
 fn benchmark_shared_creation(c: &mut Criterion) {
-    const SIZE:usize = 400000;
+    const SIZE: usize = 400000;
 
     for num_threads in THREADS {
         c.bench_function(&format!("shared_creation_{}", num_threads), |b| {
@@ -125,31 +131,31 @@ fn benchmark_shared_creation(c: &mut Criterion) {
 }
 
 fn benchmark_shared_inspect(c: &mut Criterion) {
-    const SIZE:usize = 20;
-    const ITERATIONS:usize = 1000;
+    const SIZE: usize = 20;
+    const ITERATIONS: usize = 1000;
 
     for num_threads in THREADS {
         let term = Arc::new(create_nested_function_dynamic("f", "c", 2, SIZE));
 
         c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
             let term = term.clone();
-            
+
             b.iter(|| {
                 benchmark_threads(num_threads, move |_id| {
                     let mut queue: Protected<VecDeque<ATermRef<'static>>> = Protected::new(VecDeque::new());
 
-                    for _ in 0..ITERATIONS / num_threads {                        
+                    for _ in 0..ITERATIONS / num_threads {
                         // Simple breadth-first search to count elements
                         let mut write = queue.write();
-                        write.push(write.protect(&term));
-                        
+                        write.push(write.protect(&term.deref()));
+
                         while let Some(current_term) = write.first() {
                             // Iterate through all arguments of the current term
                             for arg in current_term.arguments() {
                                 write.push(arg);
                             }
                         }
-                        
+
                         write.clear(); // Reuse the queue for next iteration
                     }
                 });
@@ -158,12 +164,12 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
     }
 }
 
-/// Crates a shared term 
+/// Crates a shared term
 fn benchmark_shared_lookup(c: &mut Criterion) {
     env_logger::init();
 
-    const SIZE:usize = 400000;
-    const ITERATIONS:usize = 1000;
+    const SIZE: usize = 400000;
+    const ITERATIONS: usize = 1000;
 
     // Keep one protected instance
     let _term = create_nested_function::<2>("f", "c", SIZE);
@@ -180,7 +186,6 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
         });
     }
 }
-
 
 criterion_group!(
     benches,

@@ -8,9 +8,9 @@ use log::info;
 use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;
+use mcrl3_utilities::ProtectionSet;
 use mcrl3_utilities::SimpleTimer;
 use mcrl3_utilities::debug_trace;
-use mcrl3_utilities::ProtectionSet;
 
 use crate::ATerm;
 use crate::ATermIndex;
@@ -470,9 +470,13 @@ mod tests {
     use std::collections::HashMap;
 
     use mcrl3_utilities::random_test;
-    use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-    
-    use crate::{random_term, ATerm, Term};
+    use rayon::iter::IntoParallelIterator;
+    use rayon::iter::IntoParallelRefIterator;
+    use rayon::iter::ParallelIterator;
+
+    use crate::ATerm;
+    use crate::Term;
+    use crate::random_term;
 
     #[test]
     fn test_maximal_sharing() {
@@ -497,11 +501,11 @@ mod tests {
         let mut rng = rand::rng();
 
         let mut terms = Vec::new();
-        terms.resize_with(100, || random_term(&mut rng, &[("f".into(), 2), ("g".into(), 1)], &["a".to_string()], 10));
+        terms.resize_with(100, || {
+            random_term(&mut rng, &[("f".into(), 2), ("g".into(), 1)], &["a".to_string()], 10)
+        });
 
-        let total: usize = terms.par_iter().fold(|| 0, |value, t| {
-            value + t.iter().count()
-        }).sum();
+        let total: usize = terms.par_iter().fold(|| 0, |value, t| value + t.iter().count()).sum();
 
         println!("{:?}", total);
     }
