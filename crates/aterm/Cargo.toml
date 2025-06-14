@@ -17,6 +17,7 @@ mcrl3_sharedmutex.workspace = true
 mcrl3_unsafety.workspace = true
 mcrl3_utilities.workspace = true
 
+allocator-api2.workspace = true
 ahash.workspace = true
 arbitrary.workspace = true
 arbtest.workspace = true
@@ -29,6 +30,7 @@ pest_consume.workspace = true
 pest_derive.workspace = true
 pest.workspace = true
 rand.workspace = true
+rayon.workspace = true
 rustc-hash.workspace = true
 thiserror.workspace = true
 

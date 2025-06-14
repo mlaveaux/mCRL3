@@ -30,6 +30,11 @@ jobs:
       with:
         submodules: true
 
+    - name: Run aterm Benchmarks
+      run: cargo bench -p benchmarks_aterm
+      env:
+        RUSTC_WRAPPER: sccache
+
     - name: Run ldd Benchmarks
       run: cargo bench -p benchmarks_ldd
       env:
