@@ -115,7 +115,7 @@ external-default-features = "allow"
 allow = []
 
 # List of crates to deny
-deny = []
+deny = ["serde_yml", "iter_tools"]
 
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = []
