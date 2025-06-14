@@ -492,21 +492,6 @@ mod tests {
         });
     }
 
-    fn test_named_value_return() {
-
-    }
-
-    struct SendTerm(ATerm);
-
-    impl SendTerm {
-        
-        fn get(&self) -> ATerm {
-            self.0.get().protect()
-        }
-    }
-
-    unsafe impl Send for SendTerm {}
-
     #[test]
     fn test_parallel_iterator() {
         let mut rng = rand::rng();
@@ -514,13 +499,10 @@ mod tests {
         let mut terms = Vec::new();
         terms.resize_with(100, || random_term(&mut rng, &[("f".into(), 2), ("g".into(), 1)], &["a".to_string()], 10));
 
-        let what: Vec<SendTerm> = terms.into_par_iter().map(|t| {
-            SendTerm(t.arg(0).protect())
-        }).collect();
+        let total: usize = terms.par_iter().fold(|| 0, |value, t| {
+            value + t.iter().count()
+        }).sum();
 
-        let the: Vec<ATerm> = what.iter().map(|t| t.get()).collect();
-
-        println!("{:?}", the);
-
+        println!("{:?}", total);
     }
 }
