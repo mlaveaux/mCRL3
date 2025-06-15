@@ -11,6 +11,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use mcrl3_aterm::ATerm;
 use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::ATermSend;
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::Symbol;
@@ -116,6 +117,7 @@ fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &s
 
 pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 20];
 
+// In these three benchmarks all threads operate on a shared term.
 fn benchmark_shared_creation(c: &mut Criterion) {
     const SIZE: usize = 400000;
 
@@ -123,7 +125,7 @@ fn benchmark_shared_creation(c: &mut Criterion) {
         c.bench_function(&format!("shared_creation_{}", num_threads), |b| {
             b.iter(|| {
                 benchmark_threads(num_threads, |_id| {
-                    black_box(create_nested_function::<2>("f", "c", 2));
+                    black_box(create_nested_function::<2>("f", "c", SIZE));
                 });
             });
         });
@@ -134,22 +136,23 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
     const SIZE: usize = 20;
     const ITERATIONS: usize = 1000;
 
+    let shared_term = Arc::new(ATermSend::from(create_nested_function::<2>("f", "c", SIZE)));
+
     for num_threads in THREADS {
-        let term = Arc::new(create_nested_function_dynamic("f", "c", 2, SIZE));
-
         c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
-            let term = term.clone();
-
             b.iter(|| {
+                let term = shared_term.clone();
+
                 benchmark_threads(num_threads, move |_id| {
                     let mut queue: Protected<VecDeque<ATermRef<'static>>> = Protected::new(VecDeque::new());
 
                     for _ in 0..ITERATIONS / num_threads {
                         // Simple breadth-first search to count elements
                         let mut write = queue.write();
-                        write.push(write.protect(&term.deref()));
+                        let t = write.protect(&term.deref());
+                        write.push(t);
 
-                        while let Some(current_term) = write.first() {
+                        while let Some(current_term) = write.pop() {
                             // Iterate through all arguments of the current term
                             for arg in current_term.arguments() {
                                 write.push(arg);
@@ -164,7 +167,6 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
     }
 }
 
-/// Crates a shared term
 fn benchmark_shared_lookup(c: &mut Criterion) {
     env_logger::init();
 
@@ -174,23 +176,62 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
     // Keep one protected instance
     let _term = create_nested_function::<2>("f", "c", SIZE);
 
-    c.sample_size(10);
-
     for num_threads in THREADS {
         c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
             b.iter(|| {
-                for _ in 0..ITERATIONS / 1 {
-                    black_box(create_nested_function::<2>("f", "c", SIZE));
-                }
+                benchmark_threads(num_threads, move |_id| {
+                    for _ in 0..ITERATIONS / 1 {
+                        black_box(create_nested_function::<2>("f", "c", SIZE));
+                    }
+                });
             })
         });
     }
 }
 
+// In these three benchmarks all threads operate on their own separate term.
+fn benchmark_unique_creation(c: &mut Criterion) {
+    const SIZE: usize = 400000;
+
+    for num_threads in THREADS {
+        c.bench_function(&format!("shared_creation_{}", num_threads), |b| {
+            b.iter(|| {
+                benchmark_threads(num_threads, |id| {
+                    black_box(create_nested_function::<2>("f", &format!("c{}", id), SIZE));
+                });
+            });
+        });
+    }
+}
+
+fn benchmark_unique_lookup(c: &mut Criterion) {
+    env_logger::init();
+
+    const SIZE: usize = 400000;
+    const ITERATIONS: usize = 1000;
+
+    // Keep one protected instance
+
+    for num_threads in THREADS {
+        c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
+            b.iter(|| {
+                benchmark_threads(num_threads, move |_id| {
+                    for _ in 0..ITERATIONS / 1 {
+                        black_box(create_nested_function::<2>("f", "c", SIZE));
+                    }
+                });
+            })
+        });
+    }
+}
+
+
 criterion_group!(
-    benches,
-    benchmark_shared_creation,
-    // benchmark_shared_inspect,
-    benchmark_shared_lookup
+    name = benches;
+    config = Criterion::default().sample_size(10);
+    targets = benchmark_shared_creation,
+        benchmark_unique_creation,
+        benchmark_shared_inspect,
+        benchmark_shared_lookup,
 );
 criterion_main!(benches);

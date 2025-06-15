@@ -270,6 +270,11 @@ impl ThreadTermPool {
         &self.empty_list_symbol
     }
 
+    /// Returns access to the shared protection set.
+    pub(crate) fn get_protection_set(&self) -> &Arc<Mutex<SharedTermProtection>> {
+        &self.protection_set
+    }
+
     /// Returns the index of the protection set.
     fn index(&self) -> usize {
         mutex_unwrap(self.protection_set.lock()).index

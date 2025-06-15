@@ -5,6 +5,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use delegate::delegate;
 
@@ -12,11 +13,13 @@ use mcrl3_unsafety::StablePointer;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
+use parking_lot::Mutex;
 
 use crate::ATermIntRef;
 use crate::Markable;
 use crate::Marker;
 use crate::SharedTerm;
+use crate::SharedTermProtection;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
@@ -341,6 +344,66 @@ impl Ord for ATerm {
 }
 
 impl Eq for ATerm {}
+
+/// A sendable variant of an `ATerm`.
+/// 
+/// # Details
+/// 
+/// Keeps track of an internal reference to the protection set it was protected from to ensure proper cleanup.
+pub struct ATermSend {
+    term: ATermRef<'static>,
+
+    /// The root of the term in the protection set
+    root: ProtectionIndex,
+
+    /// A shared reference to the protection set that this term was created in.
+    protection_set: Arc<Mutex<SharedTermProtection>>,
+}
+
+impl ATermSend {
+
+    /// Takes ownership of an `ATerm` and makes it send.
+    pub fn from(term: ATerm) -> Self {
+        // Copy the information from the term, but forget it since we are taking over the `Drop` responsibility.
+        let root = term.root;
+        let term_ref: ATermRef<'static> = unsafe { ATermRef::from_index(&term.term.shared) };
+
+        std::mem::forget(term);
+
+        Self {
+            term: term_ref,
+            root,
+            protection_set: THREAD_TERM_POOL.with_borrow(|tp| {
+                tp.get_protection_set().clone()
+            })
+        }        
+    }
+}
+
+impl Drop for ATermSend {
+    fn drop(&mut self) {
+        self.protection_set.lock().protection_set.unprotect(self.root);
+    }
+}
+
+impl<'a, 'b> Term<'a, 'b> for ATermSend
+where
+    'b: 'a,
+{
+    delegate! {
+        to self.term {
+            fn protect(&self) -> ATerm;
+            fn arg(&self, index: usize) -> ATermRef<'a>;
+            fn arguments(&self) -> ATermArgs<'a>;
+            fn copy(&self) -> ATermRef<'a>;
+            fn get_head_symbol(&self) -> SymbolRef<'a>;
+            fn iter(&self) -> TermIterator<'a>;
+            fn index(&self) -> usize;
+            fn shared(&self) -> &ATermIndex;
+            fn annotation(&self) -> Option<usize>;
+        }
+    }
+}
 
 /// An iterator over the arguments of a term.
 pub struct ATermArgs<'a> {
