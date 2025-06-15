@@ -1,10 +1,18 @@
 use std::fmt;
 
+use mcrl3_utilities::SafeIndex;
+
+/// A unique type for the labels.
+pub struct LabelTag;
+
+/// A unique type for the labels.
+pub struct StateTag;
+
 /// The index type for a label.
-pub type LabelIndex = usize;
+pub type LabelIndex = SafeIndex<usize, LabelTag>;
 
 /// The index for a state.
-pub type StateIndex = usize;
+pub type StateIndex = SafeIndex<usize, StateTag>;
 
 /// Represents a labelled transition system consisting of states with directed
 /// labelled edges.
@@ -46,11 +54,11 @@ impl LabelledTransitionSystem {
         let mut num_of_transitions = 0;
         for (from, _, to) in transition_iter() {
             // Ensure that the states vector is large enough.
-            while states.len() <= from.max(to) {
+            while states.len() <= *from.max(to) {
                 states.push(State::default());
             }
 
-            states[from].outgoing_end += 1;
+            states[*from].outgoing_end += 1;
             num_of_transitions += 1;
         }
 
@@ -63,10 +71,10 @@ impl LabelledTransitionSystem {
         });
 
         // Place the transitions, and increment the end for every state.
-        let mut transitions = vec![(0, 0); num_of_transitions];
+        let mut transitions = vec![(LabelIndex::new(0), StateIndex::new(0)); num_of_transitions];
         for (from, label, to) in transition_iter() {
-            transitions[states[from].outgoing_end] = (label, to);
-            states[from].outgoing_end += 1;
+            transitions[states[*from].outgoing_end] = (label, to);
+            states[*from].outgoing_end += 1;
         }
 
         // Keep track of which label indexes are hidden labels.
@@ -91,10 +99,10 @@ impl LabelledTransitionSystem {
         for state in &mut states {
             for (label, _) in &mut transitions[state.outgoing_start..state.outgoing_end] {
                 if hidden_indices.binary_search(label).is_ok() {
-                    *label = 0;
+                    *label = LabelIndex::new(0);
                 } else if introduced_tau {
-                    // Remap the zero action to the original first hidden index.
-                    *label += 1;
+                    // Remap all labels to not be the zero hidden action.
+                    *label = LabelIndex::new(**label + 1);
                 }
             }
         }
@@ -115,23 +123,23 @@ impl LabelledTransitionSystem {
     }
 
     /// Returns the set of outgoing transitions for the given state.
-    pub fn outgoing_transitions(&self, state_index: usize) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
-        let state = &self.states[state_index];
+    pub fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
+        let state = &self.states[*state_index];
         self.transitions[state.outgoing_start..state.outgoing_end].iter()
     }
 
     /// Iterate over all state_index in the labelled transition system
     pub fn iter_states(&self) -> impl Iterator<Item = StateIndex> + use<> {
-        0..self.states.len()
+        (0..self.states.len()).map(|index| StateIndex::new(index))
     }
 
     /// Returns the number of states.
-    pub fn num_of_states(&self) -> StateIndex {
+    pub fn num_of_states(&self) -> usize {
         self.states.len()
     }
 
     /// Returns the number of labels.
-    pub fn num_of_labels(&self) -> LabelIndex {
+    pub fn num_of_labels(&self) -> usize {
         self.labels.len()
     }
 
@@ -152,7 +160,7 @@ impl LabelledTransitionSystem {
 
     /// Returns true iff the given label index is a hidden label.
     pub fn is_hidden_label(&self, label_index: LabelIndex) -> bool {
-        label_index == 0
+        label_index.value() == 0
     }
 }
 
@@ -180,7 +188,7 @@ impl fmt::Debug for LabelledTransitionSystem {
 
         for state_index in self.iter_states() {
             for &(label, to) in self.outgoing_transitions(state_index) {
-                let label_name = &self.labels[label];
+                let label_name = &self.labels[label.value()];
 
                 writeln!(f, "{state_index} --[{label_name}]-> {to}")?;
             }

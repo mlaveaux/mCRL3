@@ -15,6 +15,7 @@ use mcrl3_utilities::MCRL3Error;
 
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;
+use crate::StateIndex;
 
 #[derive(Error, Debug)]
 pub enum IOError {
@@ -75,7 +76,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
         ))?
         .extract();
 
-    let initial_state: usize = initial_txt.parse()?;
+    let initial_state = StateIndex::new(initial_txt.parse()?);
     let num_of_transitions: usize = num_of_transitions_txt.parse()?;
     let num_of_states: usize = num_of_states_txt.parse()?;
 
@@ -83,7 +84,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
     let mut labels_index: HashMap<String, LabelIndex> = HashMap::new();
     let mut labels: Vec<String> = Vec::new();
 
-    let mut transitions: Vec<(usize, usize, usize)> = Vec::default();
+    let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::default();
     let mut progress = Progress::new(
         |value, increment| debug!("Reading transitions {}%...", value / increment),
         num_of_transitions,
@@ -94,21 +95,21 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
         let (from_txt, label_txt, to_txt) = read_transition(line)?;
 
         // Parse the from and to states, with the given label.
-        let from: usize = from_txt.parse()?;
-        let to: usize = to_txt.parse()?;
+        let from = StateIndex::new(from_txt.parse()?);
+        let to =  StateIndex::new(to_txt.parse()?);
 
-        let label_index = *labels_index.entry(label_txt.to_string()).or_insert(labels.len());
+        let label_index = *labels_index.entry(label_txt.to_string()).or_insert(LabelIndex::new(labels.len()));
 
-        if label_index >= labels.len() {
-            labels.resize_with(label_index + 1, Default::default);
+        if *label_index >= labels.len() {
+            labels.resize_with(label_index.value() + 1, Default::default);
         }
 
         trace!("Read transition {} --[{}]-> {}", from, label_txt, to);
 
         transitions.push((from, label_index, to));
 
-        if labels[label_index].is_empty() {
-            labels[label_index] = label_txt.to_string();
+        if labels[*label_index].is_empty() {
+            labels[*label_index] = label_txt.to_string();
         }
 
         progress.add(1);
@@ -150,7 +151,7 @@ pub fn write_aut(writer: &mut impl Write, lts: &LabelledTransitionSystem) -> Res
                 if lts.is_hidden_label(*label) {
                     "tau"
                 } else {
-                    &lts.labels()[*label]
+                    &lts.labels()[label.value()]
                 },
                 to
             )?;
@@ -172,7 +173,7 @@ mod tests {
 
         let lts = read_aut(file.as_bytes(), vec![]).unwrap();
 
-        assert_eq!(lts.initial_state_index(), 0);
+        assert_eq!(lts.initial_state_index().value(), 0);
         assert_eq!(lts.num_of_transitions(), 92);
         println!("{}", lts);
     }

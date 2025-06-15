@@ -18,15 +18,15 @@ struct TransitionIndex {
 
 impl IncomingTransitions {
     pub fn new(lts: &LabelledTransitionSystem) -> IncomingTransitions {
-        let mut incoming_transitions: Vec<(LabelIndex, StateIndex)> = vec![(0, 0); lts.num_of_transitions()];
+        let mut incoming_transitions = vec![(LabelIndex::new(0), StateIndex::new(0)); lts.num_of_transitions()];
         let mut state2incoming: Vec<TransitionIndex> = vec![TransitionIndex::default(); lts.num_of_states()];
 
         // Compute the number of incoming (silent) transitions for each state.
         for state_index in lts.iter_states() {
             for (label_index, to) in lts.outgoing_transitions(state_index) {
-                state2incoming[*to].end += 1;
+                state2incoming[to.value()].end += 1;
                 if lts.is_hidden_label(*label_index) {
-                    state2incoming[*to].silent += 1;
+                    state2incoming[to.value()].silent += 1;
                 }
             }
         }
@@ -44,7 +44,7 @@ impl IncomingTransitions {
 
         for state_index in lts.iter_states() {
             for (label_index, to) in lts.outgoing_transitions(state_index) {
-                let index = &mut state2incoming[*to];
+                let index = &mut state2incoming[to.value()];
 
                 if lts.is_hidden_label(*label_index) {
                     // Place at end of incoming transitions.
