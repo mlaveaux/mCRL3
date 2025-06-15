@@ -1898,9 +1898,9 @@ dependencies = [
 
 [[package]]
 name = "femtovg"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e15d51b37323a171a49399d46f0b0a9ec729d1106976f8fa70d68068b15504"
+checksum = "ffdf29af13b81d7562ccd57624242b2ed56edc2c83dad25f13bd74d87e7fa8d9"
 dependencies = [
  "bitflags 2.9.1",
  "bytemuck",
@@ -3530,7 +3530,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
- "femtovg 0.14.0",
+ "femtovg 0.14.1",
  "log",
  "mcrl3_gui",
  "mcrl3_lts",
@@ -3724,7 +3724,7 @@ name = "mcrl3_ltsgraph-lib"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
- "femtovg 0.14.0",
+ "femtovg 0.14.1",
  "glam",
  "log",
  "mcrl3_lts",
@@ -5753,12 +5753,9 @@ dependencies = [
 
 [[package]]
 name = "slab"
-version = "0.4.9"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
-dependencies = [
- "autocfg",
-]
+checksum = "04dc19736151f35336d325007ac991178d504a119863a2fcb3758cdb5e52c50d"
 
 [[package]]
 name = "slint"

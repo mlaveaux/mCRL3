@@ -13,11 +13,11 @@
 
 #![cfg_attr(feature = "mcrl3_miri", feature(reentrant_lock))]
 
-mod aterm;
 mod aterm_builder;
 mod aterm_int;
 mod aterm_list;
 mod aterm_string;
+mod aterm;
 mod gc_mutex;
 mod global_aterm_pool;
 mod markable;
@@ -25,8 +25,8 @@ mod parse_term;
 mod protected;
 mod random_term;
 mod shared_term;
-mod symbol;
 mod symbol_pool;
+mod symbol;
 mod thread_aterm_pool;
 mod transmutable;
 
@@ -42,5 +42,6 @@ pub use protected::*;
 pub use random_term::*;
 pub use shared_term::*;
 pub use symbol_pool::*;
+pub use symbol::*;
 pub use thread_aterm_pool::*;
 pub use transmutable::*;
