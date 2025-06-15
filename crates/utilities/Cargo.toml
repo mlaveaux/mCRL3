@@ -14,6 +14,9 @@ mcrl3_measure-allocs = []
 # the `tikv-jemallocator` crate is supported on that platform.
 mcrl3_jemalloc = ["dep:tikv-jemallocator"]
 
+# Feature to enable mimalloc as the global allocator.
+mcrl3_mimalloc = ["dep:mimalloc"]
+
 # Enables extra debug options to be enabled. Also enables jemalloc debugging.
 mcrl3_debug = ["tikv-jemallocator?/debug"]
 
@@ -30,4 +33,5 @@ pest.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
 
+mimalloc = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }
