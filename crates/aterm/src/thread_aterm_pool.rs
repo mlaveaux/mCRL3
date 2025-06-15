@@ -278,12 +278,12 @@ impl ThreadTermPool {
 
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
-        info!("{:?}", self.protection_set.lock());
+        let write = GLOBAL_TERM_POOL.lock();
 
-        GLOBAL_TERM_POOL
-            .lock()
-            .borrow_mut()
-            .deregister_thread_pool(self.index());
+        info!("{:?}", write.borrow());
+        write.borrow_mut().deregister_thread_pool(self.index());
+
+        info!("{:?}", self.protection_set.lock());
     }
 }
 

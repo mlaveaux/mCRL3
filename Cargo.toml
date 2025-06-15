@@ -26,8 +26,8 @@ members = [
 ]
 
 [workspace.dependencies]
-allocator-api2 =  "0.3"
 ahash = "0.8"
+allocator-api2 =  "0.3"
 backtrace = "0.3"
 bitstream-io = "4.2"
 bumpalo = "3.18"
@@ -40,6 +40,7 @@ html-escape = "0.2"
 itertools = "0.14"
 libloading = "0.8"
 log = "0.4"
+mimalloc = "0.1"
 num = "0.4"
 parking_lot = "0.12"
 pest = "2.8"
@@ -54,19 +55,18 @@ tempfile = "3.20"
 thiserror = "2.0"
 tikv-jemallocator = "0.6"
 toml = "0.8"
-mimalloc = "0.1"
 
 # Used for GUI tools
 cosmic-text = "0.14"
+femtovg = { version = "0.14", features = ["wgpu"] }
 glam = "0.30"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 slint = "1.11"
 slint-build = "1.11"
 tiny-skia = "0.11"
 tokio = { version = "1.45", features = ["rt", "macros"] }
-winapi = { version = "0.3", features = ["consoleapi"] }
-femtovg = { version = "0.14", features = ["wgpu"] }
 wgpu = "24.0"
+winapi = { version = "0.3", features = ["consoleapi"] }
 
 # Used in macros
 proc-macro2 = "1.0"
