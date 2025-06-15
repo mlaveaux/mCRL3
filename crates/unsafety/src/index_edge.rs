@@ -1,3 +1,5 @@
+use std::slice::SliceIndex;
+
 /// An enum used to indicate an edge or a self loop.
 pub enum Edge<T> {
     Regular(T, T),
@@ -7,7 +9,7 @@ pub enum Edge<T> {
 }
 
 /// Index two locations (from, to) of an edge, returns mutable references to it.
-pub fn index_edge<T>(slice: &mut [T], a: usize, b: usize) -> Edge<&mut T> {
+pub fn index_edge<T: PartialEq + PartialOrd<usize> + SliceIndex<[T], Output = T>>(slice: &mut [T], a: T, b: T) -> Edge<&mut T> {
     if a == b {
         assert!(a <= slice.len());
         Edge::Selfloop(slice.get_mut(a).unwrap())
