@@ -2,8 +2,11 @@ use std::time::Instant;
 
 use log::debug;
 use log::trace;
+use mcrl3_lts::LabelIndex;
 use mcrl3_lts::LabelledTransitionSystem;
+use mcrl3_lts::StateIndex;
 
+use crate::BlockIndex;
 use crate::IndexedPartition;
 use crate::Partition;
 use crate::quotient_lts;
@@ -22,7 +25,7 @@ pub fn tau_scc_decomposition(lts: &LabelledTransitionSystem) -> IndexedPartition
 /// Computes the strongly connected component partitioning of the given LTS.
 pub fn scc_decomposition<F>(lts: &LabelledTransitionSystem, filter: &F) -> IndexedPartition
 where
-    F: Fn(usize, usize, usize) -> bool,
+    F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
 {
     let start = Instant::now();
     trace!("{:?}", lts);
@@ -36,7 +39,7 @@ where
     let mut state_info: Vec<Option<StateInfo>> = vec![None; lts.num_of_states()];
 
     let mut smallest_index = 0;
-    let mut next_block_number = 0;
+    let mut next_block_number = BlockIndex::new(0);
 
     // The outer depth first search used to traverse all the states.
     for state_index in lts.iter_states() {
@@ -83,16 +86,16 @@ struct StateInfo {
 /// call to keep track of the current SCC.
 #[allow(clippy::too_many_arguments)]
 fn strongly_connect<F>(
-    state_index: usize,
+    state_index: StateIndex,
     lts: &LabelledTransitionSystem,
     filter: &F,
     partition: &mut IndexedPartition,
     smallest_index: &mut usize,
-    next_block_number: &mut usize,
-    stack: &mut Vec<usize>,
+    next_block_number: &mut BlockIndex,
+    stack: &mut Vec<StateIndex>,
     state_info: &mut Vec<Option<StateInfo>>,
 ) where
-    F: Fn(usize, usize, usize) -> bool,
+    F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
 {
     trace!("Visiting state {state_index}");
 
@@ -119,7 +122,9 @@ fn strongly_connect<F>(
                         .as_ref()
                         .expect("The state must be visited in the recursive call")
                         .index;
-                    let info = state_info[state_index].as_mut().expect("This state was added before");
+                    let info = state_info[state_index.value()]
+                        .as_mut()
+                        .expect("This state was added before");
                     info.lowlink = info.lowlink.min(w_index);
                 }
             } else {
@@ -136,28 +141,32 @@ fn strongly_connect<F>(
                 );
 
                 // v.lowlink := min(v.lowlink, w.lowlink);
-                let w_lowlink = state_info[*to_index]
+                let w_lowlink = state_info[to_index.value()]
                     .as_ref()
                     .expect("The state must be visited in the recursive call")
                     .lowlink;
-                let info = state_info[state_index].as_mut().expect("This state was added before");
+                let info = state_info[state_index.value()]
+                    .as_mut()
+                    .expect("This state was added before");
                 info.lowlink = info.lowlink.min(w_lowlink);
             }
         }
     }
 
-    let info = state_info[state_index].as_ref().expect("This state was added before");
+    let info = state_info[state_index.value()]
+        .as_ref()
+        .expect("This state was added before");
     if info.lowlink == info.index {
         // Start a new strongly connected component.
         while let Some(index) = stack.pop() {
-            let info = state_info[index].as_mut().expect("This state was on the stack");
+            let info = state_info[index.value()].as_mut().expect("This state was on the stack");
             info.on_stack = false;
 
             trace!("Added state {index} to block {}", next_block_number);
             partition.set_block(index, *next_block_number);
 
             if index == state_index || stack.is_empty() {
-                *next_block_number += 1;
+                *next_block_number = BlockIndex::new(next_block_number.value() + 1);
                 break;
             }
         }
@@ -171,9 +180,10 @@ pub fn has_tau_loop(lts: &LabelledTransitionSystem) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use mcrl3_lts::LabelIndex;
+    use mcrl3_lts::StateIndex;
     use mcrl3_lts::random_lts;
     use mcrl3_utilities::random_test;
-    use mcrl3_utilities::test_logger;
     use test_log::test;
 
     use crate::Partition;
@@ -184,8 +194,8 @@ mod tests {
     /// Returns the reachable states from the given state index.
     fn reachable_states(
         lts: &LabelledTransitionSystem,
-        state_index: usize,
-        filter: &impl Fn(usize, usize, usize) -> bool,
+        state_index: StateIndex,
+        filter: &impl Fn(StateIndex, LabelIndex, StateIndex) -> bool,
     ) -> Vec<usize> {
         let mut stack = vec![state_index];
         let mut visited = vec![false; lts.num_of_states()];
@@ -193,8 +203,8 @@ mod tests {
         // Depth first search to find all reachable states.
         while let Some(inner_state_index) = stack.pop() {
             for (_, to_index) in lts.outgoing_transitions(inner_state_index) {
-                if filter(inner_state_index, 0, *to_index) && !visited[*to_index] {
-                    visited[*to_index] = true;
+                if filter(inner_state_index, LabelIndex::new(0), *to_index) && !visited[to_index.value()] {
+                    visited[to_index.value()] = true;
                     stack.push(*to_index);
                 }
             }
@@ -242,10 +252,11 @@ mod tests {
 
     #[test]
     fn test_cycles() {
-        let transitions = [(0, 0, 2), (0, 0, 4), (1, 0, 0), (2, 0, 1), (2, 0, 0)];
+        let transitions = [(0, 0, 2), (0, 0, 4), (1, 0, 0), (2, 0, 1), (2, 0, 0)]
+            .map(|(from, label, to)| (StateIndex::new(from), LabelIndex::new(label), StateIndex::new(to)));
 
         let lts = LabelledTransitionSystem::new(
-            0,
+            StateIndex::new(0),
             None,
             || transitions.iter().cloned(),
             vec!["tau".into(), "a".into()],

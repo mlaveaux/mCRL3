@@ -1,15 +1,23 @@
 use log::debug;
 use log::trace;
+
+use mcrl3_lts::LabelIndex;
 use mcrl3_lts::LabelledTransitionSystem;
+use mcrl3_lts::StateIndex;
 use mcrl3_utilities::MCRL3Error;
 
 /// Returns a topological ordering of the states of the given LTS.
 ///
 /// An error is returned if the LTS contains a cycle.
+///     - filter: Only transitions satisfying the filter are considered part of the graph.
 ///     - reverse: If true, the topological ordering is reversed, i.e. successors before the incoming state.
-pub fn sort_topological<F>(lts: &LabelledTransitionSystem, filter: F, reverse: bool) -> Result<Vec<usize>, MCRL3Error>
+pub fn sort_topological<F>(
+    lts: &LabelledTransitionSystem,
+    filter: F,
+    reverse: bool,
+) -> Result<Vec<StateIndex>, MCRL3Error>
 where
-    F: Fn(usize, usize) -> bool,
+    F: Fn(LabelIndex, StateIndex) -> bool,
 {
     let start = std::time::Instant::now();
     trace!("{:?}", lts);
@@ -44,9 +52,9 @@ where
     trace!("Topological order: {stack:?}");
 
     // Turn the stack into a permutation.
-    let mut reorder = vec![0; lts.num_of_states()];
+    let mut reorder = vec![StateIndex::new(0); lts.num_of_states()];
     for (i, &state_index) in stack.iter().enumerate() {
-        reorder[state_index] = i;
+        reorder[state_index] = StateIndex::new(i);
     }
 
     debug_assert!(
@@ -61,12 +69,12 @@ where
 /// Reorders the states of the given LTS according to the given permutation.
 pub fn reorder_states<P>(lts: &LabelledTransitionSystem, permutation: P) -> LabelledTransitionSystem
 where
-    P: Fn(usize) -> usize,
+    P: Fn(StateIndex) -> StateIndex,
 {
     let start = std::time::Instant::now();
 
     // We know that it is a permutation, so there won't be any duplicated transitions.
-    let mut transitions: Vec<(usize, usize, usize)> = Vec::default();
+    let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::default();
 
     for state_index in lts.iter_states() {
         let new_state_index = permutation(state_index);
@@ -100,14 +108,14 @@ enum Mark {
 fn sort_topological_visit<F>(
     lts: &LabelledTransitionSystem,
     filter: &F,
-    state_index: usize,
-    depth_stack: &mut Vec<usize>,
+    state_index: StateIndex,
+    depth_stack: &mut Vec<StateIndex>,
     marks: &mut [Option<Mark>],
     visited: &mut [bool],
-    stack: &mut Vec<usize>,
+    stack: &mut Vec<StateIndex>,
 ) -> bool
 where
-    F: Fn(usize, usize) -> bool,
+    F: Fn(LabelIndex, StateIndex) -> bool,
 {
     // Perform a depth first search.
     depth_stack.push(state_index);
@@ -145,10 +153,10 @@ where
 /// Returns true if the given permutation is a topological ordering of the states of the given LTS.
 fn is_topologically_sorted<F, P>(lts: &LabelledTransitionSystem, filter: F, permutation: P, reverse: bool) -> bool
 where
-    F: Fn(usize, usize) -> bool,
-    P: Fn(usize) -> usize,
+    F: Fn(LabelIndex, StateIndex) -> bool,
+    P: Fn(StateIndex) -> StateIndex,
 {
-    debug_assert!(is_valid_permutation(&permutation, lts.num_of_states()));
+    debug_assert!(is_valid_permutation(|i| permutation(i), lts.num_of_states()));
 
     // Check that each vertex appears before its successors.
     for state_index in lts.iter_states() {
@@ -171,13 +179,13 @@ where
 }
 
 /// Returns true if the given permutation is a valid permutation.
-fn is_valid_permutation<P>(permutation: &P, max: usize) -> bool
+fn is_valid_permutation<P>(permutation: P, max: usize) -> bool
 where
-    P: Fn(usize) -> usize,
+    P: Fn(StateIndex) -> StateIndex,
 {
     let mut visited = vec![false; max];
 
-    for i in 0..max {
+    for i in (0..max).map(StateIndex::new) {
         // Out of bounds
         if permutation(i) >= max {
             return false;
@@ -221,8 +229,8 @@ mod tests {
 
             // Generate a random permutation.
             let mut rng = rand::rng();
-            let order: Vec<usize> = {
-                let mut order: Vec<usize> = (0..lts.num_of_states()).collect();
+            let order: Vec<StateIndex> = {
+                let mut order: Vec<StateIndex> = (0..lts.num_of_states()).map(StateIndex::new).collect();
                 order.shuffle(&mut rng);
                 order
             };
@@ -257,25 +265,25 @@ mod tests {
 
             // Generate a valid permutation.
             let mut rng = rand::rng();
-            let valid_permutation: Vec<usize> = {
-                let mut order: Vec<usize> = (0..lts.num_of_states()).collect();
+            let valid_permutation: Vec<StateIndex> = {
+                let mut order: Vec<StateIndex> = (0..lts.num_of_states()).map(StateIndex::new).collect();
                 order.shuffle(&mut rng);
                 order
             };
 
-            assert!(is_valid_permutation(&|i| valid_permutation[i], valid_permutation.len()));
+            assert!(is_valid_permutation(|i| valid_permutation[i], valid_permutation.len()));
 
             // Generate an invalid permutation (duplicate entries).
-            let invalid_permutation = [0, 1, 2, 3, 4, 5, 6, 7, 8, 8];
+            let invalid_permutation = [0, 1, 2, 3, 4, 5, 6, 7, 8, 8].map(StateIndex::new);
             assert!(!is_valid_permutation(
-                &|i| invalid_permutation[i],
+                |i| invalid_permutation[i],
                 invalid_permutation.len()
             ));
 
             // Generate an invalid permutation (missing entries).
-            let invalid_permutation = [0, 1, 3, 4, 5, 6, 7, 8];
+            let invalid_permutation = [0, 1, 3, 4, 5, 6, 7, 8].map(StateIndex::new);
             assert!(!is_valid_permutation(
-                &|i| invalid_permutation[i],
+                |i| invalid_permutation[i],
                 invalid_permutation.len()
             ));
         });

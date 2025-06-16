@@ -1,5 +1,14 @@
 use log::debug;
+use mcrl3_lts::LabelIndex;
 use mcrl3_lts::LabelledTransitionSystem;
+use mcrl3_lts::StateIndex;
+use mcrl3_utilities::TagIndex;
+
+/// A zero sized tag for the block.
+pub struct BlockTag {}
+
+/// The index for blocks.
+pub type BlockIndex = TagIndex<usize, BlockTag>;
 
 /// A trait for partition refinement algorithms that expose the block number for
 /// every state. Can be used to compute the quotient labelled transition system.
@@ -8,7 +17,7 @@ use mcrl3_lts::LabelledTransitionSystem;
 /// that each block contains distinct elements
 pub trait Partition {
     /// Returns the block number for the given state.
-    fn block_number(&self, state_index: usize) -> usize;
+    fn block_number(&self, state_index: StateIndex) -> BlockIndex;
 
     /// Returns the number of blocks in the partition.
     fn num_of_blocks(&self) -> usize;
@@ -25,10 +34,13 @@ pub trait Partition {
     fn equal(&self, other: &impl Partition) -> bool {
         // Check that states in the same block, have a single (unique) number in
         // the other partition.
-        for block_index in 0..self.num_of_blocks() {
+        for block_index in (0..self.num_of_blocks()).map(BlockIndex::new) {
             let mut other_block_index = None;
 
-            for state_index in (0..self.len()).filter(|&state_index| self.block_number(state_index) == block_index) {
+            for state_index in (0..self.len())
+                .map(StateIndex::new)
+                .filter(|&state_index| self.block_number(state_index) == block_index)
+            {
                 match other_block_index {
                     None => other_block_index = Some(other.block_number(state_index)),
                     Some(other_block_index) => {
@@ -40,10 +52,13 @@ pub trait Partition {
             }
         }
 
-        for block_index in 0..other.num_of_blocks() {
+        for block_index in (0..other.num_of_blocks()).map(BlockIndex::new) {
             let mut other_block_index = None;
 
-            for state_index in (0..self.len()).filter(|&state_index| other.block_number(state_index) == block_index) {
+            for state_index in (0..self.len())
+                .map(StateIndex::new)
+                .filter(|&state_index| other.block_number(state_index) == block_index)
+            {
                 match other_block_index {
                     None => other_block_index = Some(self.block_number(state_index)),
                     Some(other_block_index) => {
@@ -69,7 +84,7 @@ pub fn quotient_lts(
 ) -> LabelledTransitionSystem {
     let start = std::time::Instant::now();
     // Introduce the transitions based on the block numbers
-    let mut transitions: Vec<(usize, usize, usize)> = Vec::default();
+    let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::default();
 
     for state_index in lts.iter_states() {
         for &(label, to) in lts.outgoing_transitions(state_index) {
@@ -84,7 +99,7 @@ pub fn quotient_lts(
                 );
 
                 // Make sure to keep the outgoing transitions sorted.
-                transitions.push((block, label, to_block));
+                transitions.push((StateIndex::new(block.value()), label, StateIndex::new(to_block.value())));
             }
         }
     }
@@ -94,7 +109,7 @@ pub fn quotient_lts(
     transitions.dedup();
 
     let result = LabelledTransitionSystem::new(
-        partition.block_number(lts.initial_state_index()),
+        StateIndex::new(partition.block_number(lts.initial_state_index()).value()),
         Some(partition.num_of_blocks()),
         || transitions.iter().cloned(),
         lts.labels().into(),

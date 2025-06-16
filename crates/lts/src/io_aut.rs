@@ -96,9 +96,11 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
 
         // Parse the from and to states, with the given label.
         let from = StateIndex::new(from_txt.parse()?);
-        let to =  StateIndex::new(to_txt.parse()?);
+        let to = StateIndex::new(to_txt.parse()?);
 
-        let label_index = *labels_index.entry(label_txt.to_string()).or_insert(LabelIndex::new(labels.len()));
+        let label_index = *labels_index
+            .entry(label_txt.to_string())
+            .or_insert(LabelIndex::new(labels.len()));
 
         if *label_index >= labels.len() {
             labels.resize_with(label_index.value() + 1, Default::default);

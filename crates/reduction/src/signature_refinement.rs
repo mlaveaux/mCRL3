@@ -4,12 +4,15 @@ use bumpalo::Bump;
 use log::debug;
 use log::trace;
 use mcrl3_lts::IncomingTransitions;
+use mcrl3_lts::LabelIndex;
 use mcrl3_lts::LabelledTransitionSystem;
+use mcrl3_lts::StateIndex;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
 use mcrl3_utilities::Timing;
 
+use crate::BlockIndex;
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
 use crate::IndexedPartition;
@@ -195,8 +198,8 @@ fn signature_refinement<F, G, const BRANCHING: bool>(
     mut renumber: G,
 ) -> BlockPartition
 where
-    F: FnMut(usize, &BlockPartition, &[usize], &mut SignatureBuilder),
-    G: FnMut(&[(usize, usize)], &Vec<Signature>) -> Option<usize>,
+    F: FnMut(StateIndex, &BlockPartition, &[BlockIndex], &mut SignatureBuilder),
+    G: FnMut(&[(LabelIndex, BlockIndex)], &Vec<Signature>) -> Option<BlockIndex>,
 {
     trace!("{:?}", lts);
 
@@ -206,12 +209,12 @@ where
     let mut split_builder = BlockPartitionBuilder::default();
 
     // Put all the states in the initial partition { S }.
-    let mut id: FxHashMap<Signature, usize> = FxHashMap::default();
+    let mut id: FxHashMap<Signature, BlockIndex> = FxHashMap::default();
 
     // Assigns the signature to each state.
     let mut partition = BlockPartition::new(lts.num_of_states());
-    let mut state_to_key: Vec<usize> = Vec::new();
-    state_to_key.resize_with(lts.num_of_states(), usize::default);
+    let mut state_to_key: Vec<BlockIndex> = Vec::new();
+    state_to_key.resize_with(lts.num_of_states(), || BlockIndex::new(0));
     let mut key_to_signature: Vec<Signature> = Vec::new();
 
     // Refine partitions until stable.
@@ -220,7 +223,7 @@ where
     let mut states = Vec::new();
 
     // Used to keep track of dirty blocks.
-    let mut worklist = vec![0];
+    let mut worklist = vec![BlockIndex::new(0)];
 
     while let Some(block_index) = worklist.pop() {
         // Clear the current partition to start the next blocks.
@@ -258,7 +261,7 @@ where
                     } else {
                         let result = key_to_signature.len();
                         key_to_signature.push(Signature::new(slice));
-                        result
+                        BlockIndex::new(result)
                     };
 
                     id.insert(Signature::new(slice), number);
@@ -330,7 +333,7 @@ where
 /// current partition, the signatures per state for the next partition.
 fn signature_refinement_naive<F>(lts: &LabelledTransitionSystem, mut signature: F) -> IndexedPartition
 where
-    F: FnMut(usize, &IndexedPartition, &Vec<Signature>, &mut SignatureBuilder),
+    F: FnMut(StateIndex, &IndexedPartition, &Vec<Signature>, &mut SignatureBuilder),
 {
     trace!("{:?}", lts);
 
@@ -339,7 +342,7 @@ where
     let mut builder = SignatureBuilder::default();
 
     // Put all the states in the initial partition { S }.
-    let mut id: FxHashMap<Signature, usize> = FxHashMap::default();
+    let mut id: FxHashMap<Signature, BlockIndex> = FxHashMap::default();
 
     // Assigns the signature to each state.
     let mut partition = IndexedPartition::new(lts.num_of_states());
@@ -369,7 +372,7 @@ where
             trace!("State {state_index} signature {:?}", builder);
 
             // Keep track of the index for every state, either use the arena to allocate space or simply borrow the value.
-            let mut new_id = id.len();
+            let mut new_id = BlockIndex::new(id.len());
             if let Some((signature, index)) = id.get_key_value(&Signature::new(&builder)) {
                 state_to_signature[state_index] = Signature::new(signature.as_slice());
                 new_id = *index;
@@ -408,7 +411,7 @@ where
 /// Returns true iff the given partition is a strong bisimulation partition
 pub fn is_valid_refinement<F, P>(lts: &LabelledTransitionSystem, partition: &P, mut compute_signature: F) -> bool
 where
-    F: FnMut(usize, &P, &mut SignatureBuilder),
+    F: FnMut(StateIndex, &P, &mut SignatureBuilder),
     P: Partition,
 {
     // Check that the partition is indeed stable and as such is a quotient of strong bisimulation
@@ -422,7 +425,7 @@ where
 
         // Compute the flat signature, which has Hash and is more compact.
         compute_signature(state_index, partition, &mut builder);
-        let signature: Vec<(usize, usize)> = builder.clone();
+        let signature: Vec<(LabelIndex, BlockIndex)> = builder.clone();
 
         if let Some(block_signature) = &block_to_signature[block] {
             if signature != *block_signature {

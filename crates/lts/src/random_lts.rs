@@ -2,7 +2,9 @@ use mcrl3_utilities::IndexedSet;
 use rand::Rng;
 use rustc_hash::FxHashSet;
 
-use crate::{LabelIndex, LabelledTransitionSystem, StateIndex};
+use crate::LabelIndex;
+use crate::LabelledTransitionSystem;
+use crate::StateIndex;
 
 /// Generates a monolithic LTS with the desired number of states, labels, out
 /// degree and in degree for all the states.
@@ -29,7 +31,11 @@ pub fn random_lts(
             let label = rng.random_range(0..num_of_labels);
             let to = rng.random_range(0..num_of_states);
 
-            transitions.insert((StateIndex::new(state_index), LabelIndex::new(label as usize), StateIndex::new(to)));
+            transitions.insert((
+                StateIndex::new(state_index),
+                LabelIndex::new(label as usize),
+                StateIndex::new(to),
+            ));
         }
     }
 

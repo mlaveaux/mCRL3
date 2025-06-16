@@ -1,6 +1,9 @@
 use std::fmt;
 
 use mcrl3_lts::IncomingTransitions;
+use mcrl3_lts::StateIndex;
+
+use crate::BlockIndex;
 
 use super::IndexedPartition;
 use super::Partition;
@@ -12,9 +15,9 @@ pub struct BlockPartition {
     elements: Vec<usize>,
     blocks: Vec<Block>,
 
-    // These are only used to provide O(1) marking of elemets.
+    // These are only used to provide O(1) marking of elements.
     /// Stores the block index for each element.
-    element_to_block: Vec<usize>,
+    element_to_block: Vec<BlockIndex>,
 
     /// Stores the offset within the block for every element.
     element_offset: Vec<usize>,
@@ -28,7 +31,7 @@ impl BlockPartition {
 
         let blocks = vec![Block::new(0, num_of_elements)];
         let elements = (0..num_of_elements).collect();
-        let element_to_block = vec![0; num_of_elements];
+        let element_to_block = vec![BlockIndex::new(0); num_of_elements];
         let element_to_block_offset = (0..num_of_elements).collect();
 
         BlockPartition {
@@ -49,12 +52,12 @@ impl BlockPartition {
     /// largest block.
     pub fn partition_marked_with<F>(
         &mut self,
-        block_index: usize,
+        block_index: BlockIndex,
         builder: &mut BlockPartitionBuilder,
         mut partitioner: F,
-    ) -> impl Iterator<Item = usize> + use<F>
+    ) -> impl Iterator<Item = BlockIndex> + use<F>
     where
-        F: FnMut(usize, &BlockPartition) -> usize,
+        F: FnMut(StateIndex, &BlockPartition) -> BlockIndex,
     {
         let block = self.blocks[block_index];
         debug_assert!(
@@ -65,7 +68,7 @@ impl BlockPartition {
         if block.len() == 1 {
             // Block only has one element, so trivially partitioned.
             self.blocks[block_index].unmark_all();
-            return (block_index..=block_index).chain(0..0);
+            return (block_index..=block_index).chain(BlockIndex::new(0)..BlockIndex::new(0));
         }
 
         // Keeps track of the block index for every element in this block by index.
@@ -85,7 +88,7 @@ impl BlockPartition {
 
             builder.index_to_block[element_index] = number;
             if number + 1 > builder.block_sizes.len() {
-                builder.block_sizes.resize(number + 1, 0);
+                builder.block_sizes.resize(number.value() + 1, 0);
             }
 
             builder.block_sizes[number] += 1;
@@ -202,7 +205,7 @@ impl BlockPartition {
 
                 // Update the elements for the new block
                 for element in new_block.iter(&self.elements) {
-                    self.element_to_block[element] = self.blocks.len() - 1;
+                    self.element_to_block[element] = BlockIndex::new(self.blocks.len() - 1);
                 }
             }
         }
@@ -213,7 +216,7 @@ impl BlockPartition {
 
     /// Makes the marked elements closed under the silent closure of incoming
     /// tau-transitions within the current block.
-    pub fn mark_backward_closure(&mut self, block_index: usize, incoming_transitions: &IncomingTransitions) {
+    pub fn mark_backward_closure(&mut self, block_index: BlockIndex, incoming_transitions: &IncomingTransitions) {
         let block = self.blocks[block_index];
         let mut it = block.end - 1;
 
@@ -234,13 +237,13 @@ impl BlockPartition {
     }
 
     /// Swaps the given blocks given by the indices.
-    pub fn swap_blocks(&mut self, left_index: usize, right_index: usize) {
+    pub fn swap_blocks(&mut self, left_index: BlockIndex, right_index: BlockIndex) {
         if left_index == right_index {
             // Nothing to do.
             return;
         }
 
-        self.blocks.swap(left_index, right_index);
+        self.blocks.swap(left_index.value(), right_index.value());
 
         for element in self.block(left_index).iter(&self.elements) {
             self.element_to_block[element] = left_index;
@@ -254,7 +257,7 @@ impl BlockPartition {
     }
 
     /// Marks the given element, such that it is returned by iter_marked.
-    pub fn mark_element(&mut self, element: usize) {
+    pub fn mark_element(&mut self, element: StateIndex) {
         let block_index = self.element_to_block[element];
         let offset = self.element_offset[element];
         let marked_split = self.blocks[block_index].marked_split;
@@ -269,7 +272,7 @@ impl BlockPartition {
     }
 
     /// Returns true iff the given element has already been marked.
-    pub fn is_element_marked(&self, element: usize) -> bool {
+    pub fn is_element_marked(&self, element: StateIndex) -> bool {
         let block_index = self.element_to_block[element];
         let offset = self.element_offset[element];
         let marked_split = self.blocks[block_index].marked_split;
@@ -278,7 +281,7 @@ impl BlockPartition {
     }
 
     /// Return a reference to the given block.
-    pub fn block(&self, block_index: usize) -> &Block {
+    pub fn block(&self, block_index: BlockIndex) -> &Block {
         &self.blocks[block_index]
     }
 
@@ -288,7 +291,7 @@ impl BlockPartition {
     }
 
     /// Returns an iterator over the elements of a given block.
-    pub fn iter_block(&self, block_index: usize) -> BlockIter<'_> {
+    pub fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
         BlockIter {
             elements: &self.elements,
             index: self.blocks[block_index].begin,
@@ -329,7 +332,7 @@ impl BlockPartition {
             // Check that it belongs to the block indicated by element_to_block
             for (current_element, block_index) in self.element_to_block.iter().enumerate() {
                 debug_assert!(
-                    self.blocks[*block_index]
+                    self.blocks[block_index.value()]
                         .iter(&self.elements)
                         .any(|element| element == current_element),
                     "Partition {self:?}, element {current_element} does not belong to block {block_index} as indicated by element_to_block"
@@ -350,13 +353,13 @@ impl BlockPartition {
 #[derive(Default)]
 pub struct BlockPartitionBuilder {
     // Keeps track of the block index for every element in this block by index.
-    index_to_block: Vec<usize>,
+    index_to_block: Vec<BlockIndex>,
 
     /// Keeps track of the size of each block.
     block_sizes: Vec<usize>,
 
     /// Stores the old elements to perform the swaps safely.
-    old_elements: Vec<usize>,
+    old_elements: Vec<StateIndex>,
 }
 
 impl From<BlockPartition> for IndexedPartition {
@@ -367,8 +370,8 @@ impl From<BlockPartition> for IndexedPartition {
 }
 
 impl Partition for BlockPartition {
-    fn block_number(&self, element: usize) -> usize {
-        self.element_to_block[element]
+    fn block_number(&self, element: StateIndex) -> BlockIndex {
+        self.element_to_block[element.value()]
     }
 
     fn num_of_blocks(&self) -> usize {
@@ -546,13 +549,13 @@ pub struct BlockIter<'a> {
 }
 
 impl Iterator for BlockIter<'_> {
-    type Item = usize;
+    type Item = StateIndex;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.end {
             let element = self.elements[self.index];
             self.index += 1;
-            Some(element)
+            Some(StateIndex::new(element))
         } else {
             None
         }
@@ -572,11 +575,11 @@ mod tests {
         partition.split_marked(0, |element| element < 3);
 
         // The new block only has elements that satisfy the predicate.
-        for element in partition.iter_block(1) {
+        for element in partition.iter_block(BlockIndex::new(1)) {
             assert!(element < 3);
         }
 
-        for element in partition.iter_block(0) {
+        for element in partition.iter_block(BlockIndex::new(0)) {
             assert!(element >= 3);
         }
 
@@ -585,11 +588,11 @@ mod tests {
         }
 
         partition.split_marked(0, |element| element < 7);
-        for element in partition.iter_block(2) {
-            assert!((3..7).contains(&element));
+        for element in partition.iter_block(BlockIndex::new(2)) {
+            assert!((3..7).contains(&element.value()));
         }
 
-        for element in partition.iter_block(0) {
+        for element in partition.iter_block(BlockIndex::new(0)) {
             assert!(element >= 7);
         }
 
@@ -603,18 +606,18 @@ mod tests {
         let mut partition = BlockPartition::new(10);
         let mut builder = BlockPartitionBuilder::default();
 
-        let _ = partition.partition_marked_with(0, &mut builder, |element, _| match element {
-            0..=1 => 0,
-            2..=6 => 1,
-            _ => 2,
+        let _ = partition.partition_marked_with(BlockIndex::new(0), &mut builder, |element, _| match element.value() {
+            0..=1 => BlockIndex::new(0),
+            2..=6 => BlockIndex::new(1),
+            _ => BlockIndex::new(2),
         });
 
         partition.mark_element(7);
         partition.mark_element(8);
-        let _ = partition.partition_marked_with(2, &mut builder, |element, _| match element {
-            7 => 0,
-            8 => 1,
-            _ => 2,
+        let _ = partition.partition_marked_with(BlockIndex::new(2), &mut builder, |element, _| match element.value() {
+            7 => BlockIndex::new(0),
+            8 => BlockIndex::new(1),
+            _ => BlockIndex::new(2),
         });
     }
 }

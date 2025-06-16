@@ -1,10 +1,12 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use mcrl3_lts::LabelIndex;
 use mcrl3_lts::LabelledTransitionSystem;
 use mcrl3_lts::StateIndex;
 use rustc_hash::FxHashSet;
 
+use crate::BlockIndex;
 use crate::Partition;
 
 use super::BlockPartition;
@@ -16,30 +18,30 @@ use super::sort_topological;
 use super::tau_scc_decomposition;
 
 /// The builder used to construct the signature.
-pub type SignatureBuilder = Vec<(usize, usize)>;
+pub type SignatureBuilder = Vec<(LabelIndex, BlockIndex)>;
 
 /// The type of a signature. We use sorted vectors to avoid the overhead of hash
 /// sets that might have unused values.
 #[derive(Eq)]
-pub struct Signature(*const [(usize, usize)]);
+pub struct Signature(*const [(LabelIndex, BlockIndex)]);
 
 impl Signature {
-    pub fn new(slice: &[(usize, usize)]) -> Signature {
+    pub fn new(slice: &[(LabelIndex, BlockIndex)]) -> Signature {
         Signature(slice)
     }
 
-    pub fn as_slice(&self) -> &[(usize, usize)] {
+    pub fn as_slice(&self) -> &[(LabelIndex, BlockIndex)] {
         unsafe { &*self.0 }
     }
 }
 
 impl Signature {
     // Check if target is a subset of self, excluding a specific element
-    pub fn is_subset_of(&self, other: &[(usize, usize)], exclude: (usize, usize)) -> bool {
+    pub fn is_subset_of(&self, other: &[(LabelIndex, BlockIndex)], exclude: (LabelIndex, BlockIndex)) -> bool {
         let mut self_iter = self.as_slice().iter();
         let mut other_iter = other.iter().filter(|&&x| x != exclude);
 
-        let mut self_item: Option<&(usize, usize)> = self_iter.next();
+        let mut self_item = self_iter.next();
         let mut other_item = other_iter.next();
 
         while let Some(&o) = other_item {
@@ -115,8 +117,8 @@ pub fn branching_bisim_signature(
     lts: &LabelledTransitionSystem,
     partition: &impl Partition,
     builder: &mut SignatureBuilder,
-    visited: &mut FxHashSet<usize>,
-    stack: &mut Vec<usize>,
+    visited: &mut FxHashSet<StateIndex>,
+    stack: &mut Vec<StateIndex>,
 ) {
     // Clear the builders and the list of visited states.
     builder.clear();
@@ -189,7 +191,7 @@ pub fn branching_bisim_signature_inductive(
     state_index: StateIndex,
     lts: &LabelledTransitionSystem,
     partition: &BlockPartition,
-    state_to_key: &[usize],
+    state_to_key: &[BlockIndex],
     builder: &mut SignatureBuilder,
 ) {
     builder.clear();
@@ -201,7 +203,7 @@ pub fn branching_bisim_signature_inductive(
         if partition.block_number(state_index) == to_block {
             if lts.is_hidden_label(label_index) && partition.is_element_marked(to) {
                 // Inert tau transition, take signature from the outgoing tau-transition.
-                builder.push((num_act, state_to_key[to]));
+                builder.push((LabelIndex::new(num_act), state_to_key[to]));
             } else {
                 builder.push((label_index, to_block));
             }
@@ -232,6 +234,6 @@ pub fn preprocess_branching(lts: &LabelledTransitionSystem) -> (LabelledTransiti
 
     (
         reorder_states(&tau_loop_free_lts, |i| topological_permutation[i]),
-        reorder_partition(scc_partition, |i| topological_permutation[i]),
+        reorder_partition(scc_partition, |i| BlockIndex::new(topological_permutation[i].value())),
     )
 }

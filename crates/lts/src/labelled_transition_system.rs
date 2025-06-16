@@ -1,6 +1,6 @@
 use std::fmt;
 
-use mcrl3_utilities::SafeIndex;
+use mcrl3_utilities::TagIndex;
 
 /// A unique type for the labels.
 pub struct LabelTag;
@@ -9,10 +9,10 @@ pub struct LabelTag;
 pub struct StateTag;
 
 /// The index type for a label.
-pub type LabelIndex = SafeIndex<usize, LabelTag>;
+pub type LabelIndex = TagIndex<usize, LabelTag>;
 
 /// The index for a state.
-pub type StateIndex = SafeIndex<usize, StateTag>;
+pub type StateIndex = TagIndex<usize, StateTag>;
 
 /// Represents a labelled transition system consisting of states with directed
 /// labelled edges.

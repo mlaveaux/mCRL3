@@ -1,12 +1,15 @@
 use std::fmt;
 
+use mcrl3_lts::StateIndex;
+
+use crate::BlockIndex;
 use crate::Partition;
 
 /// Defines a partition based on an explicit indexing of elements to their block
 /// number.
 #[derive(Debug)]
 pub struct IndexedPartition {
-    partition: Vec<usize>,
+    partition: Vec<BlockIndex>,
 
     num_of_blocks: usize,
 }
@@ -15,28 +18,28 @@ impl IndexedPartition {
     /// Create a new partition where all elements are in a single block.
     pub fn new(num_of_elements: usize) -> IndexedPartition {
         IndexedPartition {
-            partition: vec![0; num_of_elements],
+            partition: vec![BlockIndex::new(0); num_of_elements],
             num_of_blocks: 1,
         }
     }
 
     /// Create a new partition with the given partitioning.
-    pub fn with_partition(partition: Vec<usize>, num_of_blocks: usize) -> IndexedPartition {
+    pub fn with_partition(partition: Vec<BlockIndex>, num_of_blocks: usize) -> IndexedPartition {
         IndexedPartition {
             partition,
             num_of_blocks,
         }
     }
 
-    /// Iterates over the elements in the partition.
-    pub fn iter(&self) -> impl Iterator<Item = usize> + '_ {
+    /// Iterates over the blocks in the partition.
+    pub fn iter(&self) -> impl Iterator<Item = BlockIndex> + '_ {
         self.partition.iter().copied()
     }
 
     /// Sets the block number of the given element
-    pub fn set_block(&mut self, element_index: usize, block_number: usize) {
+    pub fn set_block(&mut self, element_index: StateIndex, block_number: BlockIndex) {
         // TODO: This assumes that the blocks are dense, otherwise it overestimates the number of blocks.
-        self.num_of_blocks = self.num_of_blocks.max(block_number + 1);
+        self.num_of_blocks = self.num_of_blocks.max(block_number.value() + 1);
 
         self.partition[element_index] = block_number;
     }
@@ -47,9 +50,9 @@ pub fn combine_partition(left: IndexedPartition, right: &impl Partition) -> Inde
     let mut combined_partition = IndexedPartition::new(left.partition.len());
 
     for (element_index, block) in left.partition.iter().enumerate() {
-        let new_block = right.block_number(*block);
+        let new_block = right.block_number(StateIndex::new(block.value()));
 
-        combined_partition.set_block(element_index, new_block);
+        combined_partition.set_block(StateIndex::new(element_index), new_block);
     }
 
     combined_partition
@@ -58,12 +61,12 @@ pub fn combine_partition(left: IndexedPartition, right: &impl Partition) -> Inde
 /// Reorders the blocks of the given partition according to the given permutation.
 pub fn reorder_partition<P>(partition: IndexedPartition, permutation: P) -> IndexedPartition
 where
-    P: Fn(usize) -> usize,
+    P: Fn(BlockIndex) -> BlockIndex,
 {
     let mut new_partition = IndexedPartition::new(partition.len());
 
     for (element_index, block) in partition.iter().enumerate() {
-        new_partition.set_block(element_index, permutation(block));
+        new_partition.set_block(StateIndex::new(element_index), permutation(block));
     }
 
     new_partition
@@ -110,8 +113,8 @@ impl fmt::Display for IndexedPartition {
 }
 
 impl Partition for IndexedPartition {
-    fn block_number(&self, state_index: usize) -> usize {
-        self.partition[state_index]
+    fn block_number(&self, state_index: StateIndex) -> BlockIndex {
+        self.partition[state_index.value()]
     }
 
     fn num_of_blocks(&self) -> usize {
