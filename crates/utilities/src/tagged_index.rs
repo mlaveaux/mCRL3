@@ -132,38 +132,3 @@ impl<T, Tag> Deref for TagIndex<T, Tag> {
         &self.index
     }
 }
-
-// trait SafeIndexIterator {
-
-//     /// The same as `enumerate` except that the index will be a SafeIndex<T, Tag> instead of a plain index.
-//     fn enumerate_index<Tag>(self) -> SafeIndexEnumerate<Self, Tag>
-//         where
-//             Self: Sized;
-// }
-
-// struct SafeIndexEnumerate<I, Tag> {
-//     iter: I,
-//     count: usize,
-//     marker: PhantomData<fn() -> Tag>,
-// }
-
-// impl<T: Iterator<Item = U>, U> SafeIndexIterator for T 
-//     where
-//         Self: Sized,
-// {
-//     fn enumerate_index<Tag>(self) -> SafeIndexEnumerate<T> {
-//         SafeIndexEnumerate { iter: self, count: 0, marker: PhantomData::default() }   
-//     }
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn test_enumerate_index() {
-//         for (index, val) in (0..100).enumerate() {
-
-//         }
-//     }
-// }
