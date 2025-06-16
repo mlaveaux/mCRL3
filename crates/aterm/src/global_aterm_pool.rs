@@ -470,11 +470,9 @@ mod tests {
     use std::collections::HashMap;
 
     use mcrl3_utilities::random_test;
-    use rayon::iter::IntoParallelIterator;
     use rayon::iter::IntoParallelRefIterator;
     use rayon::iter::ParallelIterator;
 
-    use crate::ATerm;
     use crate::Term;
     use crate::random_term;
 

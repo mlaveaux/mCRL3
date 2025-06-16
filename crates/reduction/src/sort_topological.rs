@@ -156,7 +156,7 @@ where
     F: Fn(LabelIndex, StateIndex) -> bool,
     P: Fn(StateIndex) -> StateIndex,
 {
-    debug_assert!(is_valid_permutation(|i| permutation(i), lts.num_of_states()));
+    debug_assert!(is_valid_permutation(&permutation, lts.num_of_states()));
 
     // Check that each vertex appears before its successors.
     for state_index in lts.iter_states() {

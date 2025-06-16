@@ -1,4 +1,3 @@
-use mcrl3_utilities::IndexedSet;
 use rand::Rng;
 use rustc_hash::FxHashSet;
 
