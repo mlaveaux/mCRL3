@@ -204,6 +204,44 @@ fn benchmark_unique_creation(c: &mut Criterion) {
     }
 }
 
+fn benchmark_unique_inspect(c: &mut Criterion) {
+    const SIZE: usize = 20;
+    const ITERATIONS: usize = 1000;
+
+
+    for num_threads in THREADS {
+        let terms: Arc<Vec<ATermSend>> = Arc::new((0..num_threads).map(|id| {
+            ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE))
+        }).collect());
+
+        c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
+            b.iter(|| {
+                let terms = terms.clone();
+
+                benchmark_threads(num_threads, move |id| {
+                    let mut queue: Protected<VecDeque<ATermRef<'static>>> = Protected::new(VecDeque::new());
+
+                    for _ in 0..ITERATIONS / num_threads {
+                        // Simple breadth-first search to count elements
+                        let mut write = queue.write();
+                        let t = write.protect(&terms[id]);
+                        write.push(t);
+
+                        while let Some(current_term) = write.pop() {
+                            // Iterate through all arguments of the current term
+                            for arg in current_term.arguments() {
+                                write.push(arg);
+                            }
+                        }
+
+                        write.clear(); // Reuse the queue for next iteration
+                    }
+                });
+            });
+        });
+    }
+}
+
 fn benchmark_unique_lookup(c: &mut Criterion) {
     env_logger::init();
 
@@ -232,6 +270,8 @@ criterion_group!(
     targets = benchmark_shared_creation,
         benchmark_unique_creation,
         benchmark_shared_inspect,
+        benchmark_unique_inspect,
         benchmark_shared_lookup,
+        benchmark_unique_lookup,
 );
 criterion_main!(benches);
