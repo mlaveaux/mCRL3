@@ -2,9 +2,7 @@
 pub fn test_logger() {
     if cfg!(not(feature = "mcrl3_miri")) {
         // Ignore double initialisations in tests since nexttest runs them in parallel.
-        let _ = env_logger::builder()
-            .is_test(true)
-            .try_init();
+        let _ = env_logger::builder().is_test(true).try_init();
     }
 }
 

@@ -1,15 +1,17 @@
 use std::fmt;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::ops::{Deref, Index, IndexMut};
+use std::ops::Deref;
+use std::ops::Index;
+use std::ops::IndexMut;
 use std::slice::SliceIndex;
 
 /// An index is an index that can only be compared with equivalent tags. Note that the constructor does
 /// not requires us to provide a tag, and as such anyone can make a tagged index. It is not a proof of a
 /// valid index. This could be extended in the future.
-/// 
+///
 /// Implement all the traits that are typically used for indices, e.g. PartialEq, Eq, PartialOrd, Ord and Hash.
-/// 
+///
 /// Does not implement operations such as addition and subtraction since there are not natural. However, we do implement
 /// Index for various containers for ease of usage. Otherwise, `value()` can be used to obtain the underlying `T`.
 pub struct TagIndex<T, Tag> {

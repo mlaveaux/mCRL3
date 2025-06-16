@@ -52,7 +52,7 @@ impl GraphLayout {
             // Ignore the last state since it cannot repulse with any other state.
             if state_index < self.layout_states.len() {
                 // Use split_at_mut to get two mutable slices at every split point.
-                let (left_layout, right_layout) = self.layout_states.split_at_mut(state_index + 1);
+                let (left_layout, right_layout) = self.layout_states.split_at_mut(state_index.value() + 1);
                 let state_layout = left_layout.last_mut().unwrap();
 
                 // Accumulate repulsion forces between vertices.
@@ -71,7 +71,7 @@ impl GraphLayout {
             // Accumulate forces over all connected edges.
             for (_, to_index) in self.lts.outgoing_transitions(state_index) {
                 // Index an edge in the graph.
-                match index_edge(&mut self.layout_states, state_index, *to_index) {
+                match index_edge(&mut self.layout_states, state_index.value(), to_index.value()) {
                     Edge::Selfloop(_) => {
                         // Handle self loop, but we apply no forces in this case.
                     }

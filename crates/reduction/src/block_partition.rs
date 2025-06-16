@@ -12,7 +12,7 @@ use super::Partition;
 /// the list of elements.
 #[derive(Debug)]
 pub struct BlockPartition {
-    elements: Vec<usize>,
+    elements: Vec<StateIndex>,
     blocks: Vec<Block>,
 
     // These are only used to provide O(1) marking of elements.
@@ -30,7 +30,7 @@ impl BlockPartition {
         debug_assert!(num_of_elements > 0, "Cannot partition the empty set");
 
         let blocks = vec![Block::new(0, num_of_elements)];
-        let elements = (0..num_of_elements).collect();
+        let elements = (0..num_of_elements).map(StateIndex::new).collect();
         let element_to_block = vec![BlockIndex::new(0); num_of_elements];
         let element_to_block_offset = (0..num_of_elements).collect();
 
@@ -68,7 +68,10 @@ impl BlockPartition {
         if block.len() == 1 {
             // Block only has one element, so trivially partitioned.
             self.blocks[block_index].unmark_all();
-            return (block_index..=block_index).chain(BlockIndex::new(0)..BlockIndex::new(0));
+            // Note that all the returned iterators MUST have the same type, but we cannot chain typed_index since Step is an unstable trait.
+            return (block_index.value()..=block_index.value())
+                .chain(0..0)
+                .map(BlockIndex::new);
         }
 
         // Keeps track of the block index for every element in this block by index.
@@ -76,7 +79,7 @@ impl BlockPartition {
         builder.block_sizes.clear();
         builder.old_elements.clear();
 
-        builder.index_to_block.resize(block.len_marked(), 0);
+        builder.index_to_block.resize(block.len_marked(), BlockIndex::new(0));
 
         // O(n log n) Loop through the marked elements in order (to maintain topological sorting)
         builder.old_elements.extend(block.iter_marked(&self.elements));
@@ -87,7 +90,7 @@ impl BlockPartition {
             let number = partitioner(element, self);
 
             builder.index_to_block[element_index] = number;
-            if number + 1 > builder.block_sizes.len() {
+            if number.value() + 1 > builder.block_sizes.len() {
                 builder.block_sizes.resize(number.value() + 1, 0);
             }
 
@@ -139,7 +142,7 @@ impl BlockPartition {
             self.element_to_block[element] = if *offset_block_index == 0 && !block.has_unmarked() {
                 block_index
             } else {
-                new_block_index + *offset_block_index
+                BlockIndex::new(new_block_index + offset_block_index.value())
             };
 
             // Update the offset for this block.
@@ -147,20 +150,23 @@ impl BlockPartition {
         }
 
         // Swap the first block and the maximum sized block.
-        let max_block_index = (block_index..=block_index)
+        let max_block_index = (block_index.value()..=block_index.value())
             .chain(end_of_blocks..self.blocks.len())
+            .map(BlockIndex::new)
             .max_by_key(|block_index| self.block(*block_index).len())
             .unwrap();
         self.swap_blocks(block_index, max_block_index);
 
         self.assert_consistent();
 
-        (block_index..=block_index).chain(end_of_blocks..self.blocks.len())
+        (block_index.value()..=block_index.value())
+            .chain(end_of_blocks..self.blocks.len())
+            .map(BlockIndex::new)
     }
 
     /// Split the given block into two separate block based on the splitter
     /// predicate.
-    pub fn split_marked(&mut self, block_index: usize, mut splitter: impl FnMut(usize) -> bool) {
+    pub fn split_marked(&mut self, block_index: usize, mut splitter: impl FnMut(StateIndex) -> bool) {
         let mut updated_block = self.blocks[block_index];
         let mut new_block: Option<Block> = None;
 
@@ -461,7 +467,7 @@ impl Block {
     }
 
     /// Returns an iterator over the elements in this block.
-    pub fn iter<'a>(&self, elements: &'a Vec<usize>) -> BlockIter<'a> {
+    pub fn iter<'a>(&self, elements: &'a Vec<StateIndex>) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.begin,
@@ -470,7 +476,7 @@ impl Block {
     }
 
     /// Returns an iterator over the marked elements in this block.
-    pub fn iter_marked<'a>(&self, elements: &'a Vec<usize>) -> BlockIter<'a> {
+    pub fn iter_marked<'a>(&self, elements: &'a Vec<StateIndex>) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.marked_split,
@@ -478,7 +484,7 @@ impl Block {
         }
     }
 
-    pub fn iter_unmarked<'a>(&self, elements: &'a Vec<usize>) -> BlockIter<'a> {
+    pub fn iter_unmarked<'a>(&self, elements: &'a Vec<StateIndex>) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.begin,
@@ -543,7 +549,7 @@ impl Block {
 }
 
 pub struct BlockIter<'a> {
-    elements: &'a Vec<usize>,
+    elements: &'a Vec<StateIndex>,
     index: usize,
     end: usize,
 }
@@ -555,7 +561,7 @@ impl Iterator for BlockIter<'_> {
         if self.index < self.end {
             let element = self.elements[self.index];
             self.index += 1;
-            Some(StateIndex::new(element))
+            Some(element)
         } else {
             None
         }
@@ -583,7 +589,7 @@ mod tests {
             assert!(element >= 3);
         }
 
-        for i in 0..10 {
+        for i in (0..10).map(StateIndex::new) {
             partition.mark_element(i);
         }
 
@@ -612,8 +618,8 @@ mod tests {
             _ => BlockIndex::new(2),
         });
 
-        partition.mark_element(7);
-        partition.mark_element(8);
+        partition.mark_element(StateIndex::new(7));
+        partition.mark_element(StateIndex::new(8));
         let _ = partition.partition_marked_with(BlockIndex::new(2), &mut builder, |element, _| match element.value() {
             7 => BlockIndex::new(0),
             8 => BlockIndex::new(1),

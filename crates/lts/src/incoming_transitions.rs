@@ -69,7 +69,10 @@ impl IncomingTransitions {
     }
 
     // Return an iterator over the incoming silent transitions for the given state.
-    pub fn incoming_silent_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
+    pub fn incoming_silent_transitions(
+        &self,
+        state_index: StateIndex,
+    ) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
         self.incoming_transitions[self.state2incoming[state_index].silent..self.state2incoming[state_index].end].iter()
     }
 }

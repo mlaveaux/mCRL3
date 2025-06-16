@@ -346,9 +346,9 @@ impl Ord for ATerm {
 impl Eq for ATerm {}
 
 /// A sendable variant of an `ATerm`.
-/// 
+///
 /// # Details
-/// 
+///
 /// Keeps track of an internal reference to the protection set it was protected from to ensure proper cleanup.
 pub struct ATermSend {
     term: ATermRef<'static>,
@@ -361,7 +361,6 @@ pub struct ATermSend {
 }
 
 impl ATermSend {
-
     /// Takes ownership of an `ATerm` and makes it send.
     pub fn from(term: ATerm) -> Self {
         // Copy the information from the term, but forget it since we are taking over the `Drop` responsibility.
@@ -373,10 +372,8 @@ impl ATermSend {
         Self {
             term: term_ref,
             root,
-            protection_set: THREAD_TERM_POOL.with_borrow(|tp| {
-                tp.get_protection_set().clone()
-            })
-        }        
+            protection_set: THREAD_TERM_POOL.with_borrow(|tp| tp.get_protection_set().clone()),
+        }
     }
 }
 

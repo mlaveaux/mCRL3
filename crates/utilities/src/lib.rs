@@ -20,8 +20,8 @@ mod no_hasher;
 mod number_postfix;
 mod protection_set;
 mod random_test;
-mod safe_index;
 mod simple_timer;
+mod tagged_index;
 mod test_logger;
 mod timing;
 
@@ -38,7 +38,7 @@ pub use no_hasher::*;
 pub use number_postfix::*;
 pub use protection_set::*;
 pub use random_test::*;
-pub use safe_index::*;
 pub use simple_timer::*;
+pub use tagged_index::*;
 pub use test_logger::*;
 pub use timing::*;

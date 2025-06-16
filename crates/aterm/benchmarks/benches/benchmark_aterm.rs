@@ -208,11 +208,12 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
     const SIZE: usize = 20;
     const ITERATIONS: usize = 1000;
 
-
     for num_threads in THREADS {
-        let terms: Arc<Vec<ATermSend>> = Arc::new((0..num_threads).map(|id| {
-            ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE))
-        }).collect());
+        let terms: Arc<Vec<ATermSend>> = Arc::new(
+            (0..num_threads)
+                .map(|id| ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE)))
+                .collect(),
+        );
 
         c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
             b.iter(|| {
@@ -262,7 +263,6 @@ fn benchmark_unique_lookup(c: &mut Criterion) {
         });
     }
 }
-
 
 criterion_group!(
     name = benches;

@@ -4,6 +4,7 @@ use glam::Mat3;
 use glam::Vec3;
 
 use mcrl3_lts::LabelledTransitionSystem;
+use mcrl3_lts::StateIndex;
 
 use crate::graph_layout::GraphLayout;
 
@@ -35,6 +36,8 @@ impl Viewer {
 
         // Add the transition view information
         for (state_index, state_view) in view_states.iter_mut().enumerate() {
+            let state_index = StateIndex::new(state_index);
+
             state_view.outgoing = vec![TransitionView::default(); lts.outgoing_transitions(state_index).count()];
 
             // Compute the offsets for self-loops, put them at equal distance around the state

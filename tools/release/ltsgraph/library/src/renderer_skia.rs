@@ -116,11 +116,11 @@ impl SkiaRenderer {
             // For now we only draw 2D graphs properly
             debug_assert!(state_view.position.z.abs() < 0.01);
 
-            for (transition_index, (label, to)) in self.lts.outgoing_transitions(state_index).enumerate() {
-                let to_state_view = &viewer.state_view()[*to];
+            for (transition_index, &(label, to)) in self.lts.outgoing_transitions(state_index).enumerate() {
+                let to_state_view = &viewer.state_view()[to];
                 let transition_view = &state_view.outgoing[transition_index];
 
-                let label_position = if *to != state_index {
+                let label_position = if to != state_index {
                     // Draw the transition
                     edge_builder.move_to(state_view.position.x, state_view.position.y);
                     edge_builder.line_to(to_state_view.position.x, to_state_view.position.y);
@@ -162,7 +162,7 @@ impl SkiaRenderer {
 
                 // Draw the text label
                 if draw_actions {
-                    let buffer = &self.labels_cache[*label];
+                    let buffer = &self.labels_cache[label];
                     self.text_cache.draw(
                         buffer,
                         pixmap,
@@ -185,7 +185,7 @@ impl SkiaRenderer {
         let mut state_path_builder = tiny_skia::PathBuilder::new();
 
         for (index, state_view) in viewer.state_view().iter().enumerate() {
-            if index != self.lts.initial_state_index() {
+            if index != *self.lts.initial_state_index() {
                 state_path_builder.push_circle(state_view.position.x, state_view.position.y, state_radius);
             } else {
                 // Draw the colored states individually
