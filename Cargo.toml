@@ -61,8 +61,8 @@ cosmic-text = "0.14"
 femtovg = { version = "0.14", features = ["wgpu"] }
 glam = "0.30"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
-slint = "1.11"
-slint-build = "1.11"
+slint = { version = "1.12", features = ["compat-1-2", "std", "accessibility", "backend-winit", "renderer-skia", "unstable-wgpu-24"], default-features = false}
+slint-build = "1.12"
 tiny-skia = "0.11"
 tokio = { version = "1.45", features = ["rt", "macros"] }
 wgpu = "24.0"

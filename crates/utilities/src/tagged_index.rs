@@ -51,7 +51,7 @@ impl<T: Clone, Tag> Clone for TagIndex<T, Tag> {
     fn clone(&self) -> Self {
         Self {
             index: self.index.clone(),
-            marker: self.marker.clone(),
+            marker: self.marker,
         }
     }
 }
@@ -74,7 +74,7 @@ impl<T, Tag> TagIndex<T, Tag> {
     pub fn new(index: T) -> Self {
         Self {
             index,
-            marker: PhantomData::default(),
+            marker: PhantomData,
         }
     }
 }
