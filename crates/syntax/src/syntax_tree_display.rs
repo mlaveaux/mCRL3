@@ -311,24 +311,24 @@ impl fmt::Display for StateFrm {
                     write!(f, "{}({})", identifier, args.iter().format(", "))
                 }
             }
-            StateFrm::Unary { op, expr } => write!(f, "{}({})", op, expr),
+            StateFrm::Unary { op, expr } => write!(f, "({} {})", op, expr),
             StateFrm::Modality {
                 operator,
                 formula,
                 expr,
             } => match operator {
-                ModalityOperator::Box => write!(f, "[{}]({})", formula, expr),
-                ModalityOperator::Diamond => write!(f, "<{}>({})", formula, expr),
+                ModalityOperator::Box => write!(f, "[{}]{}", formula, expr),
+                ModalityOperator::Diamond => write!(f, "<{}>{}", formula, expr),
             },
             StateFrm::Quantifier {
                 quantifier,
                 variables,
                 body,
             } => {
-                write!(f, "{} {} . ({})", quantifier, variables.iter().format(", "), body)
+                write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body)
             }
             StateFrm::Binary { op, lhs, rhs } => {
-                write!(f, "({}) {} ({})", lhs, op, rhs)
+                write!(f, "({} {} {})", lhs, op, rhs)
             }
             StateFrm::FixedPoint {
                 operator,
@@ -618,5 +618,24 @@ impl fmt::Display for MultiActionLabel {
         } else {
             write!(f, "{}", self.actions.iter().format("|"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use arbtest::arbtest;
+
+    use crate::UntypedProcessSpecification;
+
+
+    #[test]
+    fn test_display_ast() {
+        arbtest(|u| {
+            // let ast: UntypedProcessSpecification = u.arbitrary()?;
+
+            
+
+            Ok(())
+        });
     }
 }
