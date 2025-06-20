@@ -7,6 +7,7 @@ use pest_derive::Parser;
 
 use crate::DataExprBinaryOp;
 use crate::ParseNode;
+use crate::StateFrmOp;
 use crate::UntypedActionRenameSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
@@ -95,6 +96,14 @@ fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {
         Rule::RegFrmComposition => "RegFrm . RegFrm".to_string(),
         Rule::RegFrmIteration => "RegFrm*".to_string(),
         Rule::RegFrmPlus => "RegFrm+".to_string(),
+
+        // State formulas
+        Rule::StateFrmAddition => format!("{}", StateFrmOp::Addition),
+        Rule::StateFrmLeftConstantMultiply => "Number * StateFrm".to_string(),
+        Rule::StateFrmImplication => format!("{}", StateFrmOp::Implies),
+        Rule::StateFrmDisjunction => format!("{}", StateFrmOp::Disjunction),
+        Rule::StateFrmConjunction => format!("{}", StateFrmOp::Conjunction),
+        Rule::StateFrmRightConstantMultiply => "StateFrm * Number".to_string(),
         _ => format!("{:?}", rule),
     })
 }
