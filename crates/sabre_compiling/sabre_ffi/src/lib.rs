@@ -45,7 +45,7 @@ impl DataExpressionFFI {
     }
 }
 
-#[repr(C)]
+#[repr(transparent)]
 pub struct DataExpressionRefFFI<'a> {
     index: ATermIndex,
     _marker: PhantomData<&'a ()>,
@@ -109,6 +109,6 @@ impl DataFunctionSymbolRefFFI<'_> {
 impl DataFunctionSymbolRefFFI<'_> {
     /// Returns the operation id of the data function symbol.
     pub fn operation_id(&self) -> usize {
-        self.index.address()
+        self.index.index()
     }
 }

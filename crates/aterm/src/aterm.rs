@@ -13,20 +13,27 @@ use mcrl3_unsafety::StablePointer;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
-use parking_lot::Mutex;
 
+use crate::mutex_unwrap;
 use crate::ATermIntRef;
+use crate::is_int_term;
 use crate::Markable;
 use crate::Marker;
+use crate::Mutex;
 use crate::SharedTerm;
 use crate::SharedTermProtection;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
-use crate::is_int_term;
 
 /// The ATerm trait represents a first-order term in the ATerm library.
 /// It provides methods to manipulate and access the term's properties.
+///  
+/// # Details
+/// 
+/// This trait is rather complicated with two lifetimes, but this is used
+/// to support both the [ATerm], which has no lifetimes, and [ATermRef<'a>]
+/// whose lifetime is bound by `'a`.
 pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection
     fn protect(&self) -> ATerm;
@@ -125,7 +132,7 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
     }
 
     fn index(&self) -> usize {
-        self.shared.address()
+        self.shared.index()
     }
 
     fn shared(&self) -> &ATermIndex {
@@ -379,7 +386,7 @@ impl ATermSend {
 
 impl Drop for ATermSend {
     fn drop(&mut self) {
-        self.protection_set.lock().protection_set.unprotect(self.root);
+        mutex_unwrap(self.protection_set.lock()).protection_set.unprotect(self.root);
     }
 }
 

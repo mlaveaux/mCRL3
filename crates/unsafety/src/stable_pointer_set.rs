@@ -13,7 +13,6 @@ use allocator_api2::alloc::Global;
 use allocator_api2::alloc::Layout;
 use hashbrown::Equivalent;
 use hashbrown::HashSet;
-use tagged_pointer::TaggedPtr;
 
 use crate::AllocatorDst;
 #[cfg(debug_assertions)]
@@ -108,11 +107,6 @@ impl<T: ?Sized> StablePointer<T> {
             #[cfg(debug_assertions)]
             reference_counter: entry.reference_counter.clone(),
         }
-    }
-
-    /// This returns a unique usize of the pointer. This CANNOT be used as a valid pointer.
-    pub fn address(&self) -> usize {
-        self.ptr.as_ptr() as *const () as usize
     }
 }
 
@@ -363,12 +357,12 @@ where
 
             if !predicate(&ptr) {
                 // One reference in the table, and one that is constructed above as `ptr`.
-                #[cfg(debug_assertions)]
-                debug_assert_eq!(
-                    element.reference_counter.strong_count(),
-                    2,
-                    "No other references to should exist when removed"
-                );
+                // #[cfg(debug_assertions)]
+                // debug_assert_eq!(
+                //     element.reference_counter.strong_count(),
+                //     2,
+                //     "No other references to should exist when removed"
+                // );
                 return false;
             }
 

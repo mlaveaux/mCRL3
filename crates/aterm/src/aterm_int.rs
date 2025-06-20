@@ -22,7 +22,7 @@ use crate::Term;
 use crate::TermIterator;
 use crate::Transmutable;
 
-/// Returns true if the term is an ATermInt term.
+/// Returns true if the term is an [ATermInt] term.
 pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == t.get_head_symbol())
 }
@@ -33,7 +33,7 @@ mod inner {
 
     use super::*;
 
-    /// This is a wrapper around the ATerm type that represents an integer.
+    /// This is a wrapper around the ATerm type that stores a single integer as annotation.
     #[mcrl3_term(is_int_term)]
     pub struct ATermInt {
         term: ATerm,

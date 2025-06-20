@@ -93,7 +93,7 @@ impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     }
 
     fn index(&self) -> usize {
-        self.shared.address()
+        self.shared.index()
     }
 
     fn shared(&self) -> &SymbolIndex {

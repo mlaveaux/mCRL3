@@ -101,6 +101,11 @@ impl SharedSymbol {
     pub fn arity(&self) -> usize {
         self.arity
     }
+
+    /// Returns a unique index for this shared symbol
+    pub fn index(&self) -> usize {
+        self as *const Self as *const u8 as usize
+    }
 }
 
 /// A cheap way to look up SharedSymbol

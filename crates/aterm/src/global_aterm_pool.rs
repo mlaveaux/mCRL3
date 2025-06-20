@@ -127,7 +127,11 @@ impl GlobalTermPool {
             annotation: Some(value),
         };
 
-        let (index, inserted) = self.terms.insert_equiv(&shared_term);
+        let (index, inserted) =
+            self.terms
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
+                    SharedTerm::construct(ptr, key)
+                });
         protect(self, &index, inserted)
     }
 
@@ -162,7 +166,11 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) = self.terms.insert_equiv(&shared_term);
+        let (index, inserted) =
+            self.terms
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
+                    SharedTerm::construct(ptr, key)
+                });
         protect(self, &index, inserted)
     }
 
@@ -201,7 +209,11 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) = self.terms.insert_equiv(&shared_term);
+        let (index, inserted) =
+            self.terms
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
+                    SharedTerm::construct(ptr, key)
+                });
         protect(self, &index, inserted)
     }
 
@@ -234,7 +246,11 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) = self.terms.insert_equiv(&shared_term);
+        let (index, inserted) =
+            self.terms
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
+                    SharedTerm::construct(ptr, key)
+                });
         protect(self, &index, inserted)
     }
 
