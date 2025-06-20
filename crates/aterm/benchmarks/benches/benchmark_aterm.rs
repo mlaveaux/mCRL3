@@ -46,49 +46,6 @@ where
     }
 }
 
-/// Creates a nested function application f_depth where f_0 = c and f_i = f(f_{i-1}, ..., f_{i-1}).
-/// This version uses dynamic argument creation and ATerm construction.
-fn create_nested_function_dynamic(
-    function_name: &str,
-    leaf_name: &str,
-    number_of_arguments: usize,
-    depth: usize,
-) -> ATerm {
-    debug_assert!(number_of_arguments > 0, "Number of arguments must be greater than 0");
-    debug_assert!(depth > 0, "Depth must be greater than 0");
-
-    // Create function symbols for the nested function and the leaf constant
-    let f_symbol = Symbol::new(function_name, number_of_arguments);
-    let c_symbol = Symbol::new(leaf_name, 0);
-
-    // Create the leaf term (constant with arity 0)
-    let c_term = ATerm::constant(&c_symbol);
-
-    // Initialize arguments with the constant term
-    let mut arguments: Vec<ATermRef<'_>> = Vec::new();
-    arguments.resize_with(number_of_arguments, || c_term.copy());
-
-    // Create initial function application f(c, c, ..., c)
-    let mut f_term = ATerm::with_args(&f_symbol, &arguments);
-
-    // Build nested structure by repeatedly applying f to previous results
-    for _ in 0..depth {
-        // Update all arguments to point to the current f_term
-        let mut arguments: Vec<ATermRef<'_>> = Vec::new();
-        for arg in &mut arguments {
-            *arg = f_term.copy();
-        }
-
-        // Create new function application f(f_term, f_term, ..., f_term)
-        f_term = ATerm::with_args(&f_symbol, &arguments);
-    }
-
-    debug_assert_eq!(f_term.get_head_symbol().name(), function_name);
-    debug_assert_eq!(f_term.get_head_symbol().arity(), number_of_arguments);
-
-    f_term
-}
-
 /// Optimized version for function symbols with a constant arity.
 /// Creates a nested function application where f_0 = c and f_i = f(f_{i-1}, f_{i-1}).
 fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &str, depth: usize) -> ATerm {
