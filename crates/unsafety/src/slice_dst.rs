@@ -53,7 +53,7 @@ impl<A: Allocator> AllocatorDst for A {
 /// To calculate the layout of a #[repr(C)] structure and the offsets of the fields from its fields’ layouts:
 ///
 /// Copied from the `Layout` documentation.
-pub fn repr_c(fields: &[Layout]) -> Result<Layout, LayoutError> {
+pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutError> {
     let mut layout = Layout::from_size_align(0, 1)?;
     for &field in fields {
         let (new_layout, _offset) = layout.extend(field)?;
