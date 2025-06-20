@@ -1,3 +1,4 @@
+use std::alloc::handle_alloc_error;
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::BuildHasher;
@@ -5,15 +6,19 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 use std::ptr::NonNull;
+use std::ptr::addr_eq;
 
 use allocator_api2::alloc::Allocator;
 use allocator_api2::alloc::Global;
 use allocator_api2::alloc::Layout;
 use hashbrown::Equivalent;
 use hashbrown::HashSet;
+use tagged_pointer::TaggedPtr;
 
+use crate::AllocatorDst;
 #[cfg(debug_assertions)]
 use crate::AtomicRefCounter;
+use crate::SliceDst;
 
 /// A safe wrapper around a raw pointer that allows immutable dereferencing. This remains valid as long as the `StablePointerSet` remains
 /// valid, which is not managed by the borrow checker.
@@ -21,7 +26,7 @@ use crate::AtomicRefCounter;
 /// Comparisons are based on the pointer's address, not the value it points to.
 #[repr(C)]
 #[derive(Clone)]
-pub struct StablePointer<T> {
+pub struct StablePointer<T: ?Sized> {
     /// The raw pointer to the element.
     /// This is a NonNull pointer, which means it is guaranteed to be non-null.
     ptr: NonNull<T>,
@@ -35,7 +40,7 @@ pub struct StablePointer<T> {
 #[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<Option<StablePointer<usize>>>() == std::mem::size_of::<usize>());
 
-impl<T> StablePointer<T> {
+impl<T: ?Sized> StablePointer<T> {
     /// Returns true if this is the last reference to the pointer.
     fn is_last_reference(&self) -> bool {
         #[cfg(debug_assertions)]
@@ -50,40 +55,40 @@ impl<T> StablePointer<T> {
     }
 }
 
-impl<T> PartialEq for StablePointer<T> {
+impl<T: ?Sized> PartialEq for StablePointer<T> {
     fn eq(&self, other: &Self) -> bool {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        self.ptr == other.ptr
+        addr_eq(self.ptr.as_ptr(), other.ptr.as_ptr())
     }
 }
 
-impl<T> Eq for StablePointer<T> {}
+impl<T: ?Sized> Eq for StablePointer<T> {}
 
-impl<T> Ord for StablePointer<T> {
+impl<T: ?Sized> Ord for StablePointer<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        self.ptr.cmp(&(other.ptr))
+        self.ptr.as_ptr().cast::<()>().cmp(&(other.ptr.as_ptr().cast::<()>()))
     }
 }
 
-impl<T> PartialOrd for StablePointer<T> {
+impl<T: ?Sized> PartialOrd for StablePointer<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
-        Some(self.ptr.cmp(&(other.ptr)))
+        Some(self.ptr.as_ptr().cast::<()>().cmp(&(other.ptr.as_ptr().cast::<()>())))
     }
 }
 
-impl<T> Hash for StablePointer<T> {
+impl<T: ?Sized> Hash for StablePointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // SAFETY: This is safe because we are hashing pointers, which is a valid operation.
         self.ptr.hash(state);
     }
 }
 
-unsafe impl<T: Send> Send for StablePointer<T> {}
-unsafe impl<T: Sync> Sync for StablePointer<T> {}
+unsafe impl<T: ?Sized + Send> Send for StablePointer<T> {}
+unsafe impl<T: ?Sized + Sync> Sync for StablePointer<T> {}
 
-impl<T> StablePointer<T> {
+impl<T: ?Sized> StablePointer<T> {
     /// Returns a copy of the StablePointer.
     ///
     /// # Safety
@@ -107,11 +112,11 @@ impl<T> StablePointer<T> {
 
     /// This returns a unique usize of the pointer. This CANNOT be used as a valid pointer.
     pub fn address(&self) -> usize {
-        self.ptr.as_ptr() as usize
+        self.ptr.as_ptr() as *const () as usize
     }
 }
 
-impl<T> Deref for StablePointer<T> {
+impl<T: ?Sized> Deref for StablePointer<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -120,9 +125,9 @@ impl<T> Deref for StablePointer<T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for StablePointer<T> {
+impl<T: fmt::Debug + ?Sized> fmt::Debug for StablePointer<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("StablePointer").field(&**self).finish()
+        f.debug_tuple("StablePointer").field(&*self).finish()
     }
 }
 
@@ -133,18 +138,18 @@ impl<T: fmt::Debug> fmt::Debug for StablePointer<T> {
 ///
 /// The set can use a custom hasher type for potentially better performance based on workload characteristics.
 /// Uses an allocator for memory management, defaulting to the global allocator.
-pub struct StablePointerSet<T, S = RandomState, A = Global>
+pub struct StablePointerSet<T: ?Sized, S = RandomState, A = Global>
 where
     T: Hash + Eq,
     S: BuildHasher,
-    A: Allocator,
+    A: Allocator + AllocatorDst,
 {
     index: HashSet<Entry<T>, S>,
 
     allocator: A,
 }
 
-impl<T> Default for StablePointerSet<T, RandomState, Global>
+impl<T: ?Sized> Default for StablePointerSet<T, RandomState, Global>
 where
     T: Hash + Eq,
 {
@@ -153,7 +158,7 @@ where
     }
 }
 
-impl<T> StablePointerSet<T, RandomState, Global>
+impl<T: ?Sized> StablePointerSet<T, RandomState, Global>
 where
     T: Hash + Eq,
 {
@@ -174,7 +179,7 @@ where
     }
 }
 
-impl<T, S> StablePointerSet<T, S, Global>
+impl<T: ?Sized, S> StablePointerSet<T, S, Global>
 where
     T: Hash + Eq,
     S: BuildHasher,
@@ -196,7 +201,7 @@ where
     }
 }
 
-impl<T, S, A> StablePointerSet<T, S, A>
+impl<T: ?Sized, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
     S: BuildHasher,
@@ -255,36 +260,6 @@ where
         self.index.capacity()
     }
 
-    /// Inserts an element into the set.
-    ///
-    /// If the set did not have this value present, `true` is returned along
-    /// with a stable pointer to the inserted element.
-    ///
-    /// If the set already had this value present, `false` is returned along
-    /// with a stable pointer to the existing element.
-    pub fn insert(&mut self, value: T) -> (StablePointer<T>, bool) {
-        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
-
-        // Check if we already have this value
-        let raw_ptr = self.get(&value);
-
-        if let Some(ptr) = raw_ptr {
-            // We already have this value, return pointer to existing element
-            return (ptr, false);
-        }
-
-        // Insert new value using allocator
-        let entry = Entry::new(value, &self.allocator);
-        let ptr = StablePointer::from_entry(&entry);
-
-        // First add to storage, then to index
-        let inserted = self.index.insert(entry);
-
-        debug_assert!(inserted, "Value should not already exist in the index");
-
-        (ptr, true)
-    }
-
     /// Inserts an element into the set using an equivalent value.
     ///
     /// This version takes a reference to an equivalent value and creates the value to insert
@@ -305,11 +280,17 @@ where
             return (ptr, false);
         }
 
-        // Convert the reference to an actual value only if needed
-        let value_to_insert = T::from(value);
+        // Allocate memory for the value
+        let layout = Layout::new::<T>();
+        let ptr = self.allocator.allocate(layout).expect("Allocation failed").cast::<T>();
+
+        // Write the value to the allocated memory
+        unsafe {
+            ptr.as_ptr().write(value.into());
+        }
 
         // Insert new value using allocator
-        let entry = Entry::new(value_to_insert, &self.allocator);
+        let entry = Entry::new(ptr);
         let ptr = StablePointer::from_entry(&entry);
 
         // First add to storage, then to index
@@ -382,19 +363,26 @@ where
 
             if !predicate(&ptr) {
                 // One reference in the table, and one that is constructed above as `ptr`.
-                // #[cfg(debug_assertions)]
-                // debug_assert_eq!(
-                //     Arc::strong_count(&element.reference_counter),
-                //     2,
-                //     "No other references to should exist when removed"
-                // );
+                #[cfg(debug_assertions)]
+                debug_assert_eq!(
+                    element.reference_counter.strong_count(),
+                    2,
+                    "No other references to should exist when removed"
+                );
                 return false;
             }
 
             true
         });
     }
+}
 
+impl<T: ?Sized + SliceDst, S, A> StablePointerSet<T, S, A>
+where
+    T: Hash + Eq,
+    S: BuildHasher,
+    A: Allocator,
+{
     /// Clears the set, removing all values and invalidating all pointers.
     ///
     /// # Safety
@@ -408,14 +396,96 @@ where
 
         // Manually deallocate all entries before clearing
         for entry in self.index.drain() {
-            entry.deallocate(&self.allocator);
+            self.allocator.deallocate_slice_dst(entry.ptr);
         }
 
         debug_assert!(self.index.is_empty(), "Index should be empty after draining");
     }
+
+    /// Inserts an element into the set using an equivalent value.
+    ///
+    /// This version takes a reference to an equivalent value and creates the value to insert
+    /// only if it doesn't already exist in the set. Returns a stable pointer to the element
+    /// and a boolean indicating whether the element was inserted.
+    pub fn insert_equiv_dst<'a, Q, C>(&mut self, value: &'a Q, length: usize, construct: C) -> (StablePointer<T>, bool)
+    where
+        Q: Hash + Equivalent<T>,
+        C: Fn(*mut T, &'a Q),
+    {
+        // Check if we already have this value
+        let raw_ptr = self.get(value);
+
+        if let Some(ptr) = raw_ptr {
+            // We already have this value, return pointer to existing element
+            return (ptr, false);
+        }
+
+        // Allocate space for the
+        let mut ptr = self
+            .allocator
+            .allocate_slice_dst::<T>(length)
+            .unwrap_or_else(|_| handle_alloc_error(Layout::new::<()>()));
+
+        unsafe {
+            construct(ptr.as_mut(), value);
+        }
+
+        // Insert new value using allocator
+        let entry = Entry::new(ptr);
+        let ptr = StablePointer::from_entry(&entry);
+
+        // First add to storage, then to index
+        let inserted = self.index.insert(entry);
+
+        debug_assert!(inserted, "Value should not already exist in the index");
+
+        (ptr, true)
+    }
 }
 
-impl<T, S, A> Drop for StablePointerSet<T, S, A>
+impl<T, S, A> StablePointerSet<T, S, A>
+where
+    T: Hash + Eq,
+    S: BuildHasher,
+    A: Allocator,
+{
+    /// Inserts an element into the set.
+    ///
+    /// If the set did not have this value present, `true` is returned along
+    /// with a stable pointer to the inserted element.
+    ///
+    /// If the set already had this value present, `false` is returned along
+    /// with a stable pointer to the existing element.
+    pub fn insert(&mut self, value: T) -> (StablePointer<T>, bool) {
+        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
+
+        if let Some(ptr) = self.get(&value) {
+            // We already have this value, return pointer to existing element
+            return (ptr, false);
+        }
+
+        let ptr = self
+            .allocator
+            .allocate(Layout::new::<T>())
+            .unwrap_or_else(|_| handle_alloc_error(Layout::new::<T>()))
+            .cast::<T>();
+
+        unsafe { ptr.write(value); }
+
+        // Insert new value using allocator
+        let entry = Entry::new(ptr);
+        let ptr = StablePointer::from_entry(&entry);
+
+        // First add to storage, then to index
+        let inserted = self.index.insert(entry);
+
+        debug_assert!(inserted, "Value should not already exist in the index");
+
+        (ptr, true)
+    }
+}
+
+impl<T: ?Sized, S, A> Drop for StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
     S: BuildHasher,
@@ -428,10 +498,11 @@ where
             "All pointers must be the last reference to the element"
         );
 
+        // TODO: Fix memory leak.
         // Manually deallocate all entries
-        for entry in self.index.drain() {
-            entry.deallocate(&self.allocator);
-        }
+        // for entry in self.index.drain() {
+        //     entry.deallocate(&self.allocator);
+        // }
     }
 }
 
@@ -439,7 +510,7 @@ where
 ///
 /// Uses manual allocation instead of Box for custom allocator support.
 /// Optionally stores a reference counter for debugging purposes in debug builds.
-struct Entry<T> {
+struct Entry<T: ?Sized> {
     /// Pointer to the allocated value
     ptr: NonNull<T>,
 
@@ -447,46 +518,21 @@ struct Entry<T> {
     reference_counter: AtomicRefCounter<()>,
 }
 
-unsafe impl<T: Send> Send for Entry<T> {}
-unsafe impl<T: Sync> Sync for Entry<T> {}
+unsafe impl<T: ?Sized + Send> Send for Entry<T> {}
+unsafe impl<T: ?Sized + Sync> Sync for Entry<T> {}
 
-impl<T> Entry<T> {
+impl<T: ?Sized> Entry<T> {
     /// Creates a new entry by allocating memory for the value using the provided allocator.
-    fn new(value: T, allocator: &impl Allocator) -> Self {
-        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
-
-        // Allocate memory for the value
-        let layout = Layout::new::<T>();
-        let ptr = allocator.allocate(layout).expect("Allocation failed").cast::<T>();
-
-        // Write the value to the allocated memory
-        unsafe {
-            ptr.as_ptr().write(value);
-        }
-
+    fn new(ptr: NonNull<T>) -> Self {
         Self {
             ptr,
             #[cfg(debug_assertions)]
             reference_counter: AtomicRefCounter::new(()),
         }
     }
-
-    /// Deallocates the memory used by this entry.
-    fn deallocate(self, allocator: &impl Allocator) {
-        debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
-
-        unsafe {
-            // Drop the value in place
-            std::ptr::drop_in_place(self.ptr.as_ptr());
-
-            // Deallocate the memory
-            let layout = Layout::new::<T>();
-            allocator.deallocate(self.ptr.cast(), layout);
-        }
-    }
 }
 
-impl<T> Deref for Entry<T> {
+impl<T: ?Sized> Deref for Entry<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -495,25 +541,25 @@ impl<T> Deref for Entry<T> {
     }
 }
 
-impl<T: PartialEq> PartialEq for Entry<T> {
+impl<T: PartialEq + ?Sized> PartialEq for Entry<T> {
     fn eq(&self, other: &Self) -> bool {
         **self == **other
     }
 }
 
-impl<T: Hash> Hash for Entry<T> {
+impl<T: Hash + ?Sized> Hash for Entry<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (**self).hash(state);
     }
 }
 
-impl<T: Eq> Eq for Entry<T> {}
+impl<T: Eq + ?Sized> Eq for Entry<T> {}
 
 /// A helper struct to look up elements in the set using a reference.
 #[derive(Hash, PartialEq, Eq)]
 struct LookUp<'a, T: ?Sized>(&'a T);
 
-impl<T, Q: ?Sized> Equivalent<Entry<T>> for LookUp<'_, Q>
+impl<T: ?Sized, Q: ?Sized> Equivalent<Entry<T>> for LookUp<'_, Q>
 where
     Q: Equivalent<T>,
 {
@@ -590,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_equiv_ref() {
+    fn test_stable_pointer_set_insert_equiv_ref() {
         #[derive(PartialEq, Eq, Debug)]
         struct TestValue {
             id: i32,
@@ -655,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remove() {
+    fn test_stable_pointer_set_remove() {
         let mut set = StablePointerSet::new();
 
         // Insert values
@@ -673,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn test_retain() {
+    fn test_stable_pointer_set_retain() {
         let mut set = StablePointerSet::new();
 
         // Insert values
@@ -699,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_allocator() {
+    fn test_stable_pointer_set_custom_allocator() {
         // Test with System allocator
         let mut set: StablePointerSet<i32, RandomState, System> = StablePointerSet::new_in(System);
 
@@ -721,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_hasher_and_allocator() {
+    fn test_stable_pointer_set_custom_hasher_and_allocator() {
         // Use both custom hasher and allocator
         let mut set: StablePointerSet<i32, BuildHasherDefault<FxHasher>, System> =
             StablePointerSet::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), System);

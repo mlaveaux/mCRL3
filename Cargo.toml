@@ -27,20 +27,15 @@ members = [
 
 [workspace.dependencies]
 ahash = "0.8"
-allocator-api2 =  "0.3"
-backtrace = "0.3"
 bitstream-io = "4.2"
 bumpalo = "3.18"
 clap = { version = "4.5", features = ["derive"] }
-crossbeam-utils = "0.8"
 delegate = "0.13"
 env_logger = "0.11"
 hashbrown = "0.15"
 html-escape = "0.2"
 itertools = "0.14"
-libloading = "0.8"
 log = "0.4"
-mimalloc = "0.1"
 num = "0.4"
 parking_lot = "0.12"
 pest = "2.8"
@@ -50,11 +45,19 @@ rayon = "1.10"
 regex = "1.11"
 rustc-hash = "2.1"
 smallvec = "1.15"
-streaming-iterator = "0.1"
 tempfile = "3.20"
 thiserror = "2.0"
-tikv-jemallocator = "0.6"
 toml = "0.8"
+
+# Lower lever crates
+allocator-api2 =  "0.3"
+backtrace = "0.3"
+crossbeam-utils = "0.8"
+libloading = "0.8"
+mimalloc = "0.1"
+streaming-iterator = "0.1"
+tagged-pointer = "0.2"
+tikv-jemallocator = "0.6"
 
 # Used for GUI tools
 cosmic-text = "0.14"

@@ -17,8 +17,8 @@ mcrl3_sharedmutex.workspace = true
 mcrl3_unsafety.workspace = true
 mcrl3_utilities.workspace = true
 
-allocator-api2.workspace = true
 ahash.workspace = true
+allocator-api2.workspace = true
 arbitrary.workspace = true
 arbtest.workspace = true
 delegate.workspace = true

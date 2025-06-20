@@ -3751,6 +3751,7 @@ name = "mcrl3_syntax"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "arbtest",
  "env_logger",
  "indoc",
  "itertools 0.14.0",
@@ -3769,6 +3770,7 @@ dependencies = [
  "allocator-api2 0.3.0",
  "hashbrown 0.15.4",
  "rustc-hash 2.1.1",
+ "tagged-pointer",
 ]
 
 [[package]]
@@ -5973,6 +5975,12 @@ dependencies = [
  "toml",
  "version-compare",
 ]
+
+[[package]]
+name = "tagged-pointer"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3538c399a85621c9b74ac21001d7e1dd81867ebd076724f047b1227e722de4a7"
 
 [[package]]
 name = "tar"
