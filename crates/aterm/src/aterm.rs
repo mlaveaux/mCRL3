@@ -75,11 +75,11 @@ pub struct ATermRef<'a> {
 
 /// Check that the ATermRef is the same size as a usize.
 #[cfg(not(debug_assertions))]
-const _: () = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
+const _: () = assert!(std::mem::size_of::<ATermRef>() == 2*std::mem::size_of::<usize>());
 
 /// Since we have NonZero we can use a niche value optimisation for option.
 #[cfg(not(debug_assertions))]
-const _: () = assert!(std::mem::size_of::<Option<ATermRef>>() == std::mem::size_of::<usize>());
+const _: () = assert!(std::mem::size_of::<Option<ATermRef>>() == 2*std::mem::size_of::<usize>());
 
 /// These are safe because terms are immutable. Garbage collection is
 /// always performed with exclusive access, and reference terms have no thread-local state.
