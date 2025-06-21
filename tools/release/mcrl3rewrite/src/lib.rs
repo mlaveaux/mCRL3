@@ -9,13 +9,16 @@ use mcrl3_sabre::InnermostRewriter;
 use mcrl3_sabre::NaiveRewriter;
 use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::SabreRewriter;
+use mcrl3_sabre_compiling::SabreCompilingRewriter;
 use mcrl3_utilities::MCRL3Error;
 
+/// Selects the rewriter to use.
 #[derive(ValueEnum, Debug, Clone)]
 pub enum Rewriter {
     Naive,
     Innermost,
     Sabre,
+    SabreCompiling,
 }
 
 /// Rewrites the given REC specification.
@@ -63,6 +66,19 @@ pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: boo
                 }
             }
             println!("Sabre rewrite took {} ms", now.elapsed().as_millis());
+        },
+        Rewriter::SabreCompiling => {            
+            let mut sa = SabreCompilingRewriter::new(&spec, true, true)?;
+
+            let now = Instant::now();
+            for term in &syntax_terms {
+                let term = to_untyped_data_expression(term, None);
+                let result = sa.rewrite(&term);
+                if output {
+                    println!("{}", result)
+                }
+            }
+            println!("Compiling sabre rewrite took {} ms", now.elapsed().as_millis());
         }
     }
 
