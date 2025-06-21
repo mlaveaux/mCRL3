@@ -56,7 +56,7 @@ pub enum SortExpression {
     Struct {
         inner: Vec<ConstructorDecl>,
     },
-    /// Reference to a named sort
+    /// Reference to a named sort    
     Reference(String),
     /// Built-in simple sort
     Simple(Sort),
