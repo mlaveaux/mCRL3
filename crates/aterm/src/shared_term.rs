@@ -23,7 +23,7 @@ use crate::Term;
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
     annotated: bool,
-    arguments: [TermOrUsize],
+    arguments: [TermOrAnnotation],
 }
 
 impl Drop for SharedTerm {
@@ -53,13 +53,14 @@ impl PartialEq for SharedTerm {
 impl Eq for SharedTerm {}
 
 /// This is used to store the annotation as argument of a term without consuming additional memory for terms that have no annotation.
-union TermOrUsize {
+#[repr(C)]
+union TermOrAnnotation {
     term: ManuallyDrop<ATermRef<'static>>,
     index: usize,
 }
 
 /// Note that the length is stored in the symbol's arity
-impl SliceDst for SharedTerm {
+unsafe impl SliceDst for SharedTerm {
     fn layout_for(len: usize) -> Result<Layout, LayoutError> {
         let header_layout = Layout::new::<SymbolRef<'static>>();
         let annotated_layout = Layout::new::<bool>();
@@ -97,11 +98,11 @@ impl SharedTerm {
     pub fn arguments(&self) -> &[ATermRef<'static>] {
         unsafe {
             if self.annotated {
-                std::mem::transmute::<&[TermOrUsize], &[ATermRef<'static>]>(
+                std::mem::transmute::<&[TermOrAnnotation], &[ATermRef<'static>]>(
                     &self.arguments[0..self.arguments.len() - 1],
                 )
             } else {
-                std::mem::transmute::<&[TermOrUsize], &[ATermRef<'static>]>(&self.arguments)
+                std::mem::transmute::<&[TermOrAnnotation], &[ATermRef<'static>]>(&self.arguments)
             }
         }
     }
@@ -154,18 +155,18 @@ impl SharedTerm {
 
             for (index, argument) in object.arguments.iter().enumerate() {
                 ptr.byte_offset(slice_offset as isize)
-                    .cast::<TermOrUsize>()
+                    .cast::<TermOrAnnotation>()
                     .add(index)
-                    .write(TermOrUsize {
+                    .write(TermOrAnnotation {
                         term: ManuallyDrop::new(ATermRef::from_index(argument.shared())),
                     });
             }
 
             if let Some(value) = object.annotation {
                 ptr.byte_offset(slice_offset as isize)
-                    .cast::<TermOrUsize>()
+                    .cast::<TermOrAnnotation>()
                     .add(object.arguments.len())
-                    .write(TermOrUsize { index: value });
+                    .write(TermOrAnnotation { index: value });
             }
         }
     }
@@ -214,21 +215,21 @@ mod tests {
     #[test]
     fn test_shared_symbol_size() {
         // Cannot be a const assertion since the size depends on the length.
-        // assert_eq!(
-        //     SharedTerm::layout_for(0)
-        //         .expect("The layout should not overflow")
-        //         .size(),
-        //     std::mem::size_of::<SymbolRef>(),
-        //     "A SharedTerm without arguments should be the same size as the Symbol"
-        // );
+        assert_eq!(
+            SharedTerm::layout_for(0)
+                .expect("The layout should not overflow")
+                .size(),
+            2 * std::mem::size_of::<SymbolRef>(),
+            "A SharedTerm without arguments should be the same size as the Symbol"
+        );
 
-        // assert_eq!(
-        //     SharedTerm::layout_for(2)
-        //         .expect("The layout should not overflow")
-        //         .size(),
-        //     std::mem::size_of::<SymbolRef>() + 2 * std::mem::size_of::<ATermRef>(),
-        //     "A SharedTerm with arity two should be the same size as the Symbol and two arguments"
-        // );
+        assert_eq!(
+            SharedTerm::layout_for(2)
+                .expect("The layout should not overflow")
+                .size(),
+            2 * std::mem::size_of::<SymbolRef>() + 2 * std::mem::size_of::<ATermRef>(),
+            "A SharedTerm with arity two should be the same size as the Symbol and two arguments"
+        );
     }
 
     #[test]

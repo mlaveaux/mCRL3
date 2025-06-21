@@ -7,9 +7,9 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 
 use arbitrary::Arbitrary;
-use arbitrary::Unstructured;
 use delegate::delegate;
 use mcrl3_unsafety::StablePointer;
+use mcrl3_utilities::readable_string;
 use mcrl3_utilities::ProtectionIndex;
 
 use crate::SharedSymbol;
@@ -40,6 +40,7 @@ pub trait Symb<'a, 'b> {
 pub type SymbolIndex = StablePointer<SharedSymbol>;
 
 /// A reference to a function symbol in the symbol pool.
+#[repr(transparent)]
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolRef<'a> {
     shared: SymbolIndex,
@@ -244,19 +245,6 @@ impl Borrow<SymbolRef<'static>> for Symbol {
 }
 
 impl Eq for Symbol {}
-
-/// Generate a readable string by creating a sequence of ASCII characters
-/// This ensures the generated string is valid UTF-8 and human-readable
-fn readable_string(u: &mut Unstructured<'_>, length: usize) -> arbitrary::Result<String> {
-    let len = u.int_in_range(1..=length)?;
-    let mut s = String::with_capacity(len);
-    for _ in 0..len {
-        let ch = u.int_in_range(b'a'..=b'z')? as char;
-        s.push(ch);
-    }
-
-    Ok(s)
-}
 
 impl Arbitrary<'_> for Symbol {
     /// Generates a random symbol with a name and arity up to and including 3.
