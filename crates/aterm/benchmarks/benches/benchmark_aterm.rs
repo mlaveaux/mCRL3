@@ -1,4 +1,7 @@
-use core::num;
+//!
+//! This is a copy from the benchmarks in the mCRL2 toolset for comparison purposes. 
+//! 
+
 use std::array::from_fn;
 use std::collections::VecDeque;
 use std::hint::black_box;
@@ -16,6 +19,9 @@ use mcrl3_aterm::Protected;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::Term;
+
+/// Sets the number of threads for all the benchmarks.
+pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 32];
 
 /// Executes a function across multiple threads and measures total execution time.
 /// The main thread executes with id 0, while additional threads get ids 1..number_of_threads-1.
@@ -46,8 +52,8 @@ where
     }
 }
 
-/// Optimized version for function symbols with a constant arity.
-/// Creates a nested function application where f_0 = c and f_i = f(f_{i-1}, f_{i-1}).
+/// Creates a nested function application where f_0 = c and f_i = f(f_{i-1}, f_{i-1}). The parameter `depth` sets `i` and `c` is given by `leaf_name`.
+/// The arity of the function symbols is a constant.
 fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &str, depth: usize) -> ATerm {
     debug_assert!(depth > 0, "Depth must be greater than 0");
 
@@ -71,8 +77,6 @@ fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &s
 
     f_term
 }
-
-pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 20];
 
 // In these three benchmarks all threads operate on a shared term.
 fn benchmark_shared_creation(c: &mut Criterion) {
@@ -151,7 +155,7 @@ fn benchmark_unique_creation(c: &mut Criterion) {
     const SIZE: usize = 400000;
 
     for num_threads in THREADS {
-        c.bench_function(&format!("shared_creation_{}", num_threads), |b| {
+        c.bench_function(&format!("unique_creation_{}", num_threads), |b| {
             b.iter(|| {
                 benchmark_threads(num_threads, |id| {
                     black_box(create_nested_function::<2>("f", &format!("c{}", id), SIZE));
@@ -172,7 +176,7 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
                 .collect(),
         );
 
-        c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
+        c.bench_function(&format!("unique_inspect_{}", num_threads), |b| {
             b.iter(|| {
                 let terms = terms.clone();
 

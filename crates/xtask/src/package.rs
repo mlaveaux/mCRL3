@@ -1,5 +1,5 @@
 //!
-//! Package functionality for creating release distributions
+//! Package command for creating release distributions.
 //!
 
 use duct::cmd;

@@ -1,8 +1,3 @@
-//!
-//! xtask building block operations such as copy, remove, confirm, and more
-//!
-//!
-
 use glob::glob;
 use std::env;
 use std::error::Error;

@@ -1,6 +1,5 @@
 //!
-//! xtask building block operations such as copy, remove, confirm, and more
-//!
+//! `xtask` is a crate that can be used to enable `make`-like commands in cargo. These commands are then implemented in Rust.
 //!
 
 #![forbid(unsafe_code)]
