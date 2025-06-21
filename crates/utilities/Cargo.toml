@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [features]
 # Enables a counting allocator that keeps track of the number of allocations.
-mcrl3_measure-allocs = []
+mcrl3_metrics = []
 
 # Feature to enable jemalloc as the global allocator. This feature only works if 
 # the `tikv-jemallocator` crate is supported on that platform.
@@ -25,6 +25,7 @@ mcrl3_miri = []
 
 [dependencies]
 ahash.workspace = true
+arbitrary.workspace = true
 backtrace.workspace = true
 env_logger.workspace = true
 hashbrown.workspace = true

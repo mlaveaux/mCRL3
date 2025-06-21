@@ -60,7 +60,7 @@ union TermOrAnnotation {
 }
 
 /// Note that the length is stored in the symbol's arity
-unsafe impl SliceDst for SharedTerm {
+impl SliceDst for SharedTerm {
     fn layout_for(len: usize) -> Result<Layout, LayoutError> {
         let header_layout = Layout::new::<SymbolRef<'static>>();
         let annotated_layout = Layout::new::<bool>();

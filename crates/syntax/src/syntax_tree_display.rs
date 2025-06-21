@@ -620,22 +620,3 @@ impl fmt::Display for MultiActionLabel {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use arbtest::arbtest;
-
-    use crate::UntypedProcessSpecification;
-
-
-    #[test]
-    fn test_display_ast() {
-        arbtest(|u| {
-            // let ast: UntypedProcessSpecification = u.arbitrary()?;
-
-            
-
-            Ok(())
-        });
-    }
-}
