@@ -13,6 +13,7 @@ mcrl3_sabre.workspace = true
 mcrl3_sabre-compiling.workspace = true
 mcrl3_unsafety.workspace = true
 mcrl3_utilities.workspace = true
+mcrl3_version.workspace = true
 
 ahash.workspace = true
 clap.workspace = true

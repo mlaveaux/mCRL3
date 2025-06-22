@@ -24,7 +24,6 @@ mod simple_timer;
 mod tagged_index;
 mod test_logger;
 mod timing;
-mod version;
 
 pub use arbitrary_utility::*;
 pub use error::*;
@@ -43,4 +42,3 @@ pub use simple_timer::*;
 pub use tagged_index::*;
 pub use test_logger::*;
 pub use timing::*;
-pub use version::*;
