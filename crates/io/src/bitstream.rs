@@ -48,7 +48,7 @@ impl<W: Write> BitStreamWriter<W> {
 
     /// Writes a string prefixed with its length as a variable-width integer.
     pub fn write_string(&mut self, s: &str) -> io::Result<()> {
-        self.write_integer(s.len())?;
+        self.write_integer(s.len() as u64)?;
         for byte in s.as_bytes() {
             self.writer.write::<8, u64>(*byte as u64)?;
         }
@@ -56,7 +56,7 @@ impl<W: Write> BitStreamWriter<W> {
     }
 
     /// Writes a usize value using variable-width encoding.
-    pub fn write_integer(&mut self, value: usize) -> io::Result<()> {
+    pub fn write_integer(&mut self, value: u64) -> io::Result<()> {
         let nr_bytes = encode_variablesize_int(value, &mut self.integer_buffer);
         for i in 0..nr_bytes {
             self.writer.write::<8, u64>(self.integer_buffer[i] as u64)?;
@@ -99,7 +99,7 @@ impl<R: Read> BitStreamReader<R> {
     pub fn read_string(&mut self) -> io::Result<String> {
         let length = self.read_integer()?;
         self.text_buffer.clear();
-        self.text_buffer.reserve(length + 1);
+        self.text_buffer.reserve((length + 1).try_into().expect("String size exceeds usize!"));
 
         for _ in 0..length {
             let byte = self.reader.read::<8, u64>()? as u8;
@@ -110,7 +110,7 @@ impl<R: Read> BitStreamReader<R> {
     }
 
     /// Reads a variable-width encoded integer.
-    pub fn read_integer(&mut self) -> io::Result<usize> {
+    pub fn read_integer(&mut self) -> io::Result<u64> {
         decode_variablesize_int(self)
     }
 }
@@ -123,7 +123,7 @@ impl<R: Read> BitStreamReader<R> {
 ///
 /// # Returns
 /// The number of bytes written to the output buffer
-fn encode_variablesize_int(mut value: usize, output: &mut [u8]) -> usize {
+fn encode_variablesize_int(mut value: u64, output: &mut [u8]) -> usize {
     let mut output_size = 0;
 
     while value > 127 {
@@ -141,13 +141,13 @@ fn encode_variablesize_int(mut value: usize, output: &mut [u8]) -> usize {
 /// # Errors
 /// - Reading from the underlying reader fails
 /// - The encoded integer uses too many bytes
-fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Result<usize> {
-    let mut value = 0usize;
+fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Result<u64> {
+    let mut value = 0u64;
     let max_bytes = (std::mem::size_of::<usize>() * 8).div_ceil(7);
 
     for i in 0..max_bytes {
         let byte = reader.read_bits(8)?;
-        value |= ((byte & 127) as usize) << (7 * i);
+        value |= ((byte & 127)) << (7 * i);
 
         if byte & 128 == 0 {
             return Ok(value);
@@ -173,7 +173,7 @@ mod tests {
     #[derive(Debug)]
     enum Instruction {
         String(String),
-        Integer(usize),
+        Integer(u64),
         /// (value, num_of_bits), where num_of_bits must be at most 64.
         Bits(u64, u8),
     }

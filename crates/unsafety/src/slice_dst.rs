@@ -30,7 +30,10 @@ unsafe impl<T> SliceDst for T {
     }
 
     fn retype(ptr: NonNull<[()]>) -> NonNull<Self> {
-        todo!()
+        unsafe {
+            let raw_ptr = ptr.as_ptr() as *mut Self;
+            NonNull::new_unchecked(raw_ptr)
+        }
     }
 
     fn length(&self) -> usize {
@@ -38,7 +41,8 @@ unsafe impl<T> SliceDst for T {
     }
 }
 
-/// To calculate the layout of a #[repr(C)] structure and the offsets of the fields from its fields’ layouts:
+
+/// To calculate the layout of a [repr(C)] structure and the offsets of the fields from its fields’ layouts:
 ///
 /// Copied from the `Layout` documentation.
 pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutError> {

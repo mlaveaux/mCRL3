@@ -2,38 +2,38 @@
 
 use std::{marker::PhantomData, ptr::NonNull};
 
-pub struct Thin<T: ?Sized + ErasablePtr> {
+pub struct Thin<T: ?Sized + Erasable> {
     ptr: NonNull<ErasedPtr>,
     marker: PhantomData<fn() -> T>,
 }
 
-impl<T: ?Sized + ErasablePtr> Copy for Thin<T> {}
+impl<T: ?Sized + Erasable> Copy for Thin<T> {}
 
-impl<T: ?Sized + ErasablePtr> Clone for Thin<T> {
+impl<T: ?Sized + Erasable> Clone for Thin<T> {
     fn clone(&self) -> Self {
         Self { ptr: self.ptr.clone(), marker: self.marker.clone() }
     }
 }
 
-impl<T: ?Sized + ErasablePtr> Thin<T> {
+impl<T: ?Sized + Erasable> Thin<T> {
     pub fn new(ptr: NonNull<T>) -> Self {
         unreachable!();
     }
 }
 
-unsafe impl<T> ErasablePtr for T {
-    fn erase(this: Self) -> ErasedPtr {
+unsafe impl<T: Sized> Erasable for T {
+    fn erase(this: NonNull<Self>) -> ErasedPtr {
         todo!()
     }
 
-    unsafe fn unerase(this: ErasedPtr) -> Self {
+    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
         todo!()
     }
 }
 
 const _: () = assert!(std::mem::size_of::<ErasedPtr>() == std::mem::size_of::<usize>());
 
-impl<T: ?Sized + ErasablePtr> Thin<T> {
+impl<T: ?Sized + Erasable> Thin<T> {
     pub fn as_ptr(&self) -> *mut T {
         unreachable!();
     }
@@ -48,24 +48,12 @@ impl<T: ?Sized + ErasablePtr> Thin<T> {
 }
 
 
-
-pub unsafe trait ErasablePtr {
+pub unsafe trait Erasable {
     /// Turn this erasable pointer into an erased pointer.
     ///
     /// To retrieve the original pointer, use `unerase`.
-    fn erase(this: Self) -> ErasedPtr;
+    fn erase(this: NonNull<Self>) -> ErasedPtr;
 
-
-    /// Unerase this erased pointer.
-    ///
-    /// # Safety
-    ///
-    /// The erased pointer must have been created by `erase`.
-    unsafe fn unerase(this: ErasedPtr) -> Self;
-}
-
-
-pub unsafe trait Erasable {
     /// Unerase this erased pointer.
     ///
     /// # Safety
@@ -75,9 +63,7 @@ pub unsafe trait Erasable {
 }
 
 
-
 #[doc(hidden)]
-/// This module is a trick to avoid warnings about private types in public interfaces.
 pub mod priv_in_pub {
     /// This is simply a u8, but with a concrete type to avoid confusion. Must be a type that has size one and alignment one.
     pub struct Erased(u8);

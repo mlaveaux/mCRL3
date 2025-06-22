@@ -12,36 +12,46 @@ use allocator_api2::alloc::{AllocError, Allocator};
 /// Internally stores blocks of `N` elements 
 struct BlockAllocator<T, const N: usize> {
     /// This is the block that contains unoccupied entries.
-    first: Option<Box<Block<T, N>>>,
+    head_block: Option<Box<Block<T, N>>>,
+
+    /// The start of the freelist
+    free: Option<NonNull<Entry<T>>>,
 }
 
 impl<T, const N: usize> BlockAllocator<T, N> {
     pub fn new() -> Self {
         Self {
-            first: None
+            head_block: None,
+            free: None,
         }
     }
 
     /// Similar to the [Allocator] trait, but instead of passing a layout we allocate just an object of type `T`.
     pub fn allocate_object(&mut self) -> Result<NonNull<T>, AllocError> {
-        match &mut self.first {
+        if let Some(free) = self.free {
+
+
+
+            // let result = free.cast::<T>();
+            self.free = Some(free.next)
+
+        }
+
+        match &mut self.head_block {
             Some(block) => {
                 if block.is_full() {
-                    let next_block = block;
-                    // block = Box::new(Block::with_next(next_block));                  
+                    let mut new_block = Box::new(Block::new());
+                    std::mem::swap(block, &mut new_block);   
+                    block.next = Some(new_block);             
                 }
             },
             None => {
-                self.first = Some(Box::new(Block::new()));
+                self.head_block = Some(Box::new(Block::new()));
             }
         }
-
-
-
-
-
-
-        unreachable!()
+        
+        // After this the first block definitely has space
+        self.head_block.
     }
 
     /// Deallocate the given pointer.
@@ -76,16 +86,14 @@ unsafe impl<T, const N: usize> Allocator for AllocBlock<T, N> {
 
 union Entry<T> {
     data: ManuallyDrop<T>,
-    next: *const Entry<T>, 
+    next: NonNull<Entry<T>, 
 }
 
 ///
 struct Block<T, const N: usize> {
     /// 
     data: [Entry<T>; N],
-
     length: usize,
-
     next: Option<Box<Block<T, N>>>,
 }
 
