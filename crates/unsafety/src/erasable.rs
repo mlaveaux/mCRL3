@@ -1,20 +1,49 @@
+//! This is adapted from the `erasable` crate, but actually allows one to pass an `?Sized` type that stores its length inline. For example types implementing the `SliceDst` trait.
+
 use std::{marker::PhantomData, ptr::NonNull};
 
-
-
-/// This is adapted from the `erasable` crate, but actually allows one to pass an `?Sized` type that stores its length inline. For example types implementing the `SliceDst` trait.
 pub struct Thin<T: ?Sized + ErasablePtr> {
     ptr: NonNull<ErasedPtr>,
     marker: PhantomData<fn() -> T>,
+}
+
+impl<T: ?Sized + ErasablePtr> Copy for Thin<T> {}
+
+impl<T: ?Sized + ErasablePtr> Clone for Thin<T> {
+    fn clone(&self) -> Self {
+        Self { ptr: self.ptr.clone(), marker: self.marker.clone() }
+    }
+}
+
+impl<T: ?Sized + ErasablePtr> Thin<T> {
+    pub fn new(ptr: NonNull<T>) -> Self {
+        unreachable!();
+    }
+}
+
+unsafe impl<T> ErasablePtr for T {
+    fn erase(this: Self) -> ErasedPtr {
+        todo!()
+    }
+
+    unsafe fn unerase(this: ErasedPtr) -> Self {
+        todo!()
+    }
 }
 
 const _: () = assert!(std::mem::size_of::<ErasedPtr>() == std::mem::size_of::<usize>());
 
 impl<T: ?Sized + ErasablePtr> Thin<T> {
     pub fn as_ptr(&self) -> *mut T {
-        unsafe { 
-            let result = self.ptr.as_mut().unerase();
-        }
+        unreachable!();
+    }
+
+    pub fn as_nonnull(&self) -> NonNull<T> {
+        unreachable!();
+    }
+
+    pub unsafe fn as_ref(&self) -> &T {
+        unreachable!();
     }
 }
 
@@ -34,6 +63,17 @@ pub unsafe trait ErasablePtr {
     /// The erased pointer must have been created by `erase`.
     unsafe fn unerase(this: ErasedPtr) -> Self;
 }
+
+
+pub unsafe trait Erasable {
+    /// Unerase this erased pointer.
+    ///
+    /// # Safety
+    ///
+    /// The erased pointer must have been created by `erase`.
+    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self>;
+}
+
 
 
 #[doc(hidden)]

@@ -12,7 +12,7 @@ use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
 
 /// This trait should be implemented by dynamic sized types.
-pub trait SliceDst {
+pub unsafe trait SliceDst {
     /// Returns the layout of the slice containing `length` elements for this DST.
     fn layout_for(length: usize) -> Result<Layout, LayoutError>;
 
@@ -21,6 +21,21 @@ pub trait SliceDst {
 
     /// The number of elements in this dynamic sized type. This information is necessary for deallocation.
     fn length(&self) -> usize;
+}
+
+/// Blanket implemented for Sized T.
+unsafe impl<T> SliceDst for T {
+    fn layout_for(_length: usize) -> Result<Layout, LayoutError> {
+        Ok(Layout::new::<T>())
+    }
+
+    fn retype(ptr: NonNull<[()]>) -> NonNull<Self> {
+        todo!()
+    }
+
+    fn length(&self) -> usize {
+        0
+    }
 }
 
 /// To calculate the layout of a #[repr(C)] structure and the offsets of the fields from its fields’ layouts:
@@ -38,7 +53,7 @@ pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutErro
 }
 
 /// A trait that can be used to extend `Allocator` implementations with the ability to allocate (and deallocate) dynamically sized slices that implement `SliceDst`.
-pub trait AllocatorDst {
+pub unsafe trait AllocatorDst {
     /// Allocate an object whose type implements `SliceDst`. The resulting memory is uninitialize.
     fn allocate_slice_dst<T: SliceDst + ?Sized>(&mut self, length: usize) -> Result<NonNull<T>, AllocError>;
 
@@ -46,7 +61,7 @@ pub trait AllocatorDst {
     fn deallocate_slice_dst<T: ?Sized + SliceDst>(&mut self, ptr: NonNull<T>);
 }
 
-impl<A: Allocator> AllocatorDst for A {
+unsafe impl<A: Allocator> AllocatorDst for A {
     fn allocate_slice_dst<T: SliceDst + ?Sized>(&mut self, length: usize) -> Result<NonNull<T>, AllocError> {
         let ptr = self.allocate(T::layout_for(length).unwrap())?;
         // Create a slice of the correct length for proper metadata
@@ -76,7 +91,7 @@ mod tests {
         array: [T],
     }
 
-    impl<T> SliceDst for WithHeader<T> {
+    unsafe impl<T> SliceDst for WithHeader<T> {
         fn layout_for(length: usize) -> Result<Layout, LayoutError> {
             let header_layout = Layout::new::<usize>();
             let array_layout = Layout::array::<T>(length)?;

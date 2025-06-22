@@ -1,4 +1,4 @@
-use std::{alloc::Layout, mem::ManuallyDrop, ptr::NonNull};
+use std::{alloc::Layout, array, mem::ManuallyDrop, ptr::{self, NonNull}, sync::Mutex};
 
 use allocator_api2::alloc::{AllocError, Allocator};
 
@@ -24,52 +24,92 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
     /// Similar to the [Allocator] trait, but instead of passing a layout we allocate just an object of type `T`.
     pub fn allocate_object(&mut self) -> Result<NonNull<T>, AllocError> {
-        // if self.first.is_none() {
-        //     self.first = Some(Block::new());
-        // }
+        match &mut self.first {
+            Some(block) => {
+                if block.is_full() {
+                    let next_block = block;
+                    // block = Box::new(Block::with_next(next_block));                  
+                }
+            },
+            None => {
+                self.first = Some(Box::new(Block::new()));
+            }
+        }
+
+
+
+
+
+
         unreachable!()
     }
 
     /// Deallocate the given pointer.
-    pub fn deallocate_object(&mut self, ptr: NonNull<T>) {
+    pub fn deallocate_object(&mut self, _ptr: NonNull<T>) {
 
     }
 }
 
-// unsafe impl<T, const N: usize> Allocator for BlockAllocator<T, N> {
-//     fn allocate(&self, layout: std::alloc::Layout) -> Result<NonNull<[u8]>, AllocError> {
-//         debug_assert_eq!(layout, Layout::new::<T>(), "The requested layout should match the type T");
+/// A type that can implement `Allocator` using the underlying `BlockAllocator`.
+struct AllocBlock<T, const N: usize> {
+    block_allocator: Mutex<BlockAllocator<T, N>>,
+}
 
-//         let ptr = self.allocate_object()?;
+unsafe impl<T, const N: usize> Allocator for AllocBlock<T, N> {
+    fn allocate(&self, layout: std::alloc::Layout) -> Result<NonNull<[u8]>, AllocError> {
+        debug_assert_eq!(layout, Layout::new::<T>(), "The requested layout should match the type T");
 
-//         // Convert NonNull<T> to NonNull<[u8]> with the correct size
-//         let byte_ptr = ptr.cast::<u8>();
-//         let slice_ptr = NonNull::slice_from_raw_parts(byte_ptr, std::mem::size_of::<T>());
+        let ptr = self.block_allocator.lock().expect("Mutex should not be poisened").allocate_object()?;
+
+        // Convert NonNull<T> to NonNull<[u8]> with the correct size
+        let byte_ptr = ptr.cast::<u8>();
+        let slice_ptr = NonNull::slice_from_raw_parts(byte_ptr, std::mem::size_of::<T>());
         
-//         Ok(slice_ptr)        
-//     }
+        Ok(slice_ptr)        
+    }
 
-//     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-//         debug_assert_eq!(layout, Layout::new::<T>(), "The requested layout should match the type T");
-
-//         // TODO: Implement dealloc.
-//     }
-// }
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        debug_assert_eq!(layout, Layout::new::<T>(), "The requested layout should match the type T");
+        self.block_allocator.lock().expect("Mutex should not be poisened").deallocate_object(ptr.cast::<T>());
+    }
+}
 
 union Entry<T> {
     data: ManuallyDrop<T>,
-
     next: *const Entry<T>, 
 }
 
 ///
 struct Block<T, const N: usize> {
     /// 
-    data: [T; N],
+    data: [Entry<T>; N],
 
     length: usize,
 
     next: Option<Box<Block<T, N>>>,
+}
+
+impl<T, const N: usize> Block<T, N> {
+    fn new() -> Self {
+        Self {
+            data: array::from_fn(|_i| Entry { next: ptr::dangling() }),
+            length: 0,
+            next: None,
+        }
+    }
+
+    fn with_next(next: Box<Block<T, N>>) -> Self {
+        Self {
+            data: array::from_fn(|_i| Entry { next: ptr::dangling() }),
+            length: 0,
+            next: Some(next),
+        }
+    }
+
+    /// Returns true iff this block is full.
+    fn is_full(&self) -> bool {
+        self.length == N
+    }
 }
 
 

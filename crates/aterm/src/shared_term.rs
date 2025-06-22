@@ -3,9 +3,12 @@ use std::alloc::LayoutError;
 use std::fmt;
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
+use std::ptr::slice_from_raw_parts_mut;
 use std::ptr::NonNull;
 
 use hashbrown::Equivalent;
+use mcrl3_unsafety::Erasable;
+use mcrl3_unsafety::ErasedPtr;
 use mcrl3_unsafety::SliceDst;
 use mcrl3_unsafety::repr_c;
 
@@ -60,7 +63,7 @@ union TermOrAnnotation {
 }
 
 /// Note that the length is stored in the symbol's arity
-impl SliceDst for SharedTerm {
+unsafe impl SliceDst for SharedTerm {
     fn layout_for(len: usize) -> Result<Layout, LayoutError> {
         let header_layout = Layout::new::<SymbolRef<'static>>();
         let annotated_layout = Layout::new::<bool>();
@@ -75,6 +78,17 @@ impl SliceDst for SharedTerm {
 
     fn length(&self) -> usize {
         self.symbol().arity()
+    }
+}
+
+unsafe impl Erasable for SharedTerm {
+    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
+        unsafe {
+            let len: usize = SharedTerm::length_for(this.as_ptr().cast::<Self>().as_ref());
+            let raw =
+                NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
+            Self::retype(raw)
+        }
     }
 }
 

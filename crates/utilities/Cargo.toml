@@ -23,3 +23,6 @@ log.workspace = true
 pest.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
+
+[build-dependencies]
+toml.workspace = true

@@ -3787,6 +3787,7 @@ dependencies = [
  "pest",
  "rand 0.9.1",
  "rustc-hash 2.1.1",
+ "toml",
 ]
 
 [[package]]
