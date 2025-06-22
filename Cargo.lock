@@ -620,7 +620,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "benchmarks_aterm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "env_logger",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_ldd"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "mcrl3_ldd",
@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_ltsgraph"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "mcrl3_lts",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_sabre"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "criterion",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_sharedmutex"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "mcrl3_sharedmutex",
@@ -3432,7 +3432,7 @@ checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
 
 [[package]]
 name = "ltsgraph"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "env_logger",
@@ -3452,7 +3452,7 @@ dependencies = [
 
 [[package]]
 name = "ltsinfo"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "env_logger",
@@ -3534,7 +3534,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_aterm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "allocator-api2 0.3.0",
@@ -3561,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_data"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -3575,7 +3575,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_gui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "log",
  "mcrl3_utilities",
@@ -3585,7 +3585,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_io"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arbitrary",
  "arbtest",
@@ -3600,7 +3600,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_ldd"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "log",
@@ -3611,7 +3611,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_lts"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bumpalo",
  "log",
@@ -3627,7 +3627,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_ltsgraph-lib"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cosmic-text",
  "femtovg",
@@ -3641,7 +3641,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_macros"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "delegate",
  "proc-macro2",
@@ -3651,7 +3651,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_number"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bitstream-io 4.2.0",
  "mcrl3_utilities",
@@ -3661,7 +3661,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_rec-tests"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "env_logger",
@@ -3677,7 +3677,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_reduction"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bumpalo",
  "log",
@@ -3690,7 +3690,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_sabre"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "env_logger",
@@ -3709,7 +3709,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_sabre-compiling"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "duct",
@@ -3730,7 +3730,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_sabre-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "mcrl3_aterm",
  "mcrl3_data",
@@ -3739,7 +3739,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_sharedmutex"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "crossbeam-utils",
  "mcrl3_utilities",
@@ -3748,7 +3748,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_syntax"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arbitrary",
  "env_logger",
@@ -3764,10 +3764,11 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_unsafety"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "allocator-api2 0.3.0",
  "hashbrown 0.15.4",
+ "mcrl3_utilities",
  "mimalloc",
  "rustc-hash 2.1.1",
  "tikv-jemallocator",
@@ -3775,7 +3776,7 @@ dependencies = [
 
 [[package]]
 name = "mcrl3_utilities"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "arbitrary",
@@ -3789,8 +3790,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcrl3_version"
+version = "1.0.0"
+
+[[package]]
 name = "mcrl3rewrite"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "clap",
@@ -3803,6 +3808,7 @@ dependencies = [
  "mcrl3_sabre-compiling",
  "mcrl3_unsafety",
  "mcrl3_utilities",
+ "mcrl3_version",
 ]
 
 [[package]]
@@ -7735,7 +7741,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "duct",
  "glob",

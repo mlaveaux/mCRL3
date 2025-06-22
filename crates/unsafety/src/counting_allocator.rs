@@ -3,7 +3,8 @@ use std::alloc::Layout;
 use std::alloc::System;
 use std::fmt;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
@@ -38,17 +39,20 @@ impl fmt::Display for AllocMetrics {
         writeln!(
             f,
             "Current allocations: {} (size: {} bytes)",
-            self.number_of_allocations, BytesFormatter(self.size_of_allocations)
+            self.number_of_allocations,
+            BytesFormatter(self.size_of_allocations)
         )?;
         writeln!(
             f,
             "Total allocations: {} (size: {} bytes)",
-            self.total_number_of_allocations, BytesFormatter(self.total_size_of_allocations)
+            self.total_number_of_allocations,
+            BytesFormatter(self.total_size_of_allocations)
         )?;
         write!(
             f,
             "Peak allocations: {} (size: {} bytes)",
-            self.max_number_of_allocations, BytesFormatter(self.max_size_of_allocations)
+            self.max_number_of_allocations,
+            BytesFormatter(self.max_size_of_allocations)
         )
     }
 }
@@ -102,7 +106,8 @@ impl AllocCounter {
             self.size_of_allocations.fetch_add(layout.size(), Ordering::Relaxed);
 
             self.total_number_of_allocations.fetch_add(1, Ordering::Relaxed);
-            self.total_size_of_allocations.fetch_add(layout.size(), Ordering::Relaxed);
+            self.total_size_of_allocations
+                .fetch_add(layout.size(), Ordering::Relaxed);
 
             // Update max counters using compare-and-swap loops
             let current_allocs = self.number_of_allocations.load(Ordering::Relaxed);

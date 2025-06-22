@@ -20,6 +20,8 @@ mcrl3_mimalloc = ["dep:mimalloc"]
 mcrl3_debug = ["tikv-jemallocator?/debug"]
 
 [dependencies]
+mcrl3_utilities.workspace = true
+
 allocator-api2.workspace = true
 hashbrown.workspace = true
 rustc-hash.workspace = true

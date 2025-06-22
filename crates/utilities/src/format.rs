@@ -1,6 +1,5 @@
 use std::fmt;
 
-
 /// Formats bytes into human-readable format using decimal units (GB, MB, KB, bytes)
 pub struct BytesFormatter(pub usize);
 
@@ -9,7 +8,7 @@ impl fmt::Display for BytesFormatter {
         const KB: usize = 1_000;
         const MB: usize = 1_000_000;
         const GB: usize = 1_000_000_000;
-        
+
         // Choose appropriate unit based on size for best readability
         if self.0 >= GB {
             write!(f, "{:.2} GB", self.0 as f64 / GB as f64)
@@ -26,10 +25,10 @@ impl fmt::Display for BytesFormatter {
 pub struct LargeFormatter<T: ToString>(pub T);
 
 impl<T: ToString> fmt::Display for LargeFormatter<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {        
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let num_str = self.0.to_string();
         let mut result = String::new();
-        
+
         // Process digits in groups of 3 from right to left for readability
         for (i, ch) in num_str.chars().rev().enumerate() {
             if i > 0 && i % 3 == 0 {
@@ -37,14 +36,16 @@ impl<T: ToString> fmt::Display for LargeFormatter<T> {
             }
             result.push(ch);
         }
-        
+
         // Reverse back to original order since we processed right-to-left
         let formatted: String = result.chars().rev().collect();
-        
+
         debug_assert!(!formatted.is_empty(), "Formatted string should not be empty");
-        debug_assert!(formatted.chars().all(|c| c.is_ascii_digit() || c == ' '), 
-                     "Result should only contain digits and spaces");
-        
+        debug_assert!(
+            formatted.chars().all(|c| c.is_ascii_digit() || c == ' '),
+            "Result should only contain digits and spaces"
+        );
+
         write!(f, "{}", formatted)
     }
 }

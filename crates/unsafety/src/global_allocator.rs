@@ -16,7 +16,7 @@ static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// Prints information from the [AllocCounter].
 #[cfg(feature = "mcrl3_metrics")]
 pub fn print_allocator_metrics() {
-    info!("{}",  GLOBAL_ALLOCATOR.get_metrics());   
+    info!("{}", GLOBAL_ALLOCATOR.get_metrics());
 }
 
 #[cfg(not(feature = "mcrl3_metrics"))]
