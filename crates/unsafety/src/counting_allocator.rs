@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
+use mcrl3_utilities::BytesFormatter;
 
 /// An allocator that can be used to count performance metrics
 /// on the allocations performed.
@@ -49,28 +50,6 @@ impl fmt::Display for AllocMetrics {
             "Peak allocations: {} (size: {} bytes)",
             self.max_number_of_allocations, BytesFormatter(self.max_size_of_allocations)
         )
-    }
-}
-
-/// Formats bytes into human-readable format using decimal units (GB, MB, KB, bytes)
-pub struct BytesFormatter(usize);
-
-impl fmt::Display for BytesFormatter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const KB: usize = 1_000;
-        const MB: usize = 1_000_000;
-        const GB: usize = 1_000_000_000;
-        
-        // Choose appropriate unit based on size for best readability
-        if self.0 >= GB {
-            write!(f, "{:.2} GB", self.0 as f64 / GB as f64)
-        } else if self.0 >= MB {
-            write!(f, "{:.2} MB", self.0 as f64 / MB as f64)
-        } else if self.0 >= KB {
-            write!(f, "{:.2} KB", self.0 as f64 / KB as f64)
-        } else {
-            write!(f, "{} bytes", self.0)
-        }
     }
 }
 

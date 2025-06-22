@@ -221,7 +221,7 @@ mod tests {
             SharedTerm::layout_for(0)
                 .expect("The layout should not overflow")
                 .size(),
-            2 * std::mem::size_of::<SymbolRef>(),
+            1 * std::mem::size_of::<usize>(),
             "A SharedTerm without arguments should be the same size as the Symbol"
         );
 
@@ -229,8 +229,8 @@ mod tests {
             SharedTerm::layout_for(2)
                 .expect("The layout should not overflow")
                 .size(),
-            2 * std::mem::size_of::<SymbolRef>() + 2 * std::mem::size_of::<ATermRef>(),
-            "A SharedTerm with arity two should be the same size as the Symbol and two arguments"
+            3 * std::mem::size_of::<usize>(),
+            "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
         );
     }
 

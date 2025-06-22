@@ -1,6 +1,6 @@
 use std::fmt;
 
-// A struct that can be used to pretty print the parse tree obtained from [pest].
+/// A struct that can be used to pretty print the parse tree obtained from the [pest] crate.
 pub struct DisplayPair<'i, R: pest::RuleType>(pub pest::iterators::Pair<'i, R>);
 
 impl<R: pest::RuleType> fmt::Display for DisplayPair<'_, R> {
