@@ -3768,7 +3768,9 @@ version = "0.1.0"
 dependencies = [
  "allocator-api2 0.3.0",
  "hashbrown 0.15.4",
+ "mimalloc",
  "rustc-hash 2.1.1",
+ "tikv-jemallocator",
 ]
 
 [[package]]
@@ -3781,11 +3783,9 @@ dependencies = [
  "env_logger",
  "hashbrown 0.15.4",
  "log",
- "mimalloc",
  "pest",
  "rand 0.9.1",
  "rustc-hash 2.1.1",
- "tikv-jemallocator",
 ]
 
 [[package]]

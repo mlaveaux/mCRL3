@@ -1,6 +1,6 @@
 //!
-//! This is a copy from the benchmarks in the mCRL2 toolset for comparison purposes. 
-//! 
+//! This is a copy from the benchmarks in the mCRL2 toolset for comparison purposes.
+//!
 
 use std::array::from_fn;
 use std::collections::VecDeque;

@@ -66,8 +66,8 @@ pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: boo
                 }
             }
             println!("Sabre rewrite took {} ms", now.elapsed().as_millis());
-        },
-        Rewriter::SabreCompiling => {            
+        }
+        Rewriter::SabreCompiling => {
             let mut sa = SabreCompilingRewriter::new(&spec, true, true)?;
 
             let now = Instant::now();

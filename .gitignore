@@ -24,3 +24,6 @@ artifacts/
 
 # Ignore files created for the release package
 package/
+
+# Ignore while its not yet clear whether the snaphots are correct
+crates/syntax/tests/snapshot

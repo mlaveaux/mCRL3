@@ -4,9 +4,8 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use log::info;
 use mcrl3_rec_tests::load_rec_from_file;
-use mcrl3_utilities::print_allocator_metrics;
+use mcrl3_unsafety::print_allocator_metrics;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3rewrite::Rewriter;
 use mcrl3rewrite::rewrite_rec;
@@ -16,7 +15,7 @@ mod trs_format;
 
 #[derive(clap::Parser, Debug)]
 #[command(name = "Maurice Laveaux", about = "A command line rewriting tool")]
-pub(crate) enum Cli {
+enum Cli {
     Rewrite(RewriteArgs),
     Convert(ConvertArgs),
 }
@@ -68,7 +67,7 @@ fn main() -> Result<ExitCode, MCRL3Error> {
             }
         }
     }
-    
-    info!("{:?}", print_allocator_metrics());
+
+    print_allocator_metrics();
     Ok(ExitCode::SUCCESS)
 }

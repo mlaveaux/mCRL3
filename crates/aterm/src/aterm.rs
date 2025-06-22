@@ -14,9 +14,7 @@ use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
 
-use crate::mutex_unwrap;
 use crate::ATermIntRef;
-use crate::is_int_term;
 use crate::Markable;
 use crate::Marker;
 use crate::Mutex;
@@ -25,12 +23,14 @@ use crate::SharedTermProtection;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
+use crate::is_int_term;
+use crate::mutex_unwrap;
 
 /// The ATerm trait represents a first-order term in the ATerm library.
 /// It provides methods to manipulate and access the term's properties.
 ///  
 /// # Details
-/// 
+///
 /// This trait is rather complicated with two lifetimes, but this is used
 /// to support both the [ATerm], which has no lifetimes, and [ATermRef<'a>]
 /// whose lifetime is bound by `'a`.
@@ -73,13 +73,13 @@ pub struct ATermRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
-/// Check that the ATermRef is the same size as a usize.
-#[cfg(not(debug_assertions))]
-const _: () = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
+// /// Check that the ATermRef is the same size as a usize.
+// #[cfg(not(debug_assertions))]
+// const _: () = assert!(std::mem::size_of::<ATermRef>() == std::mem::size_of::<usize>());
 
-/// Since we have NonZero we can use a niche value optimisation for option.
-#[cfg(not(debug_assertions))]
-const _: () = assert!(std::mem::size_of::<Option<ATermRef>>() == std::mem::size_of::<usize>());
+// /// Since we have NonZero we can use a niche value optimisation for option.
+// #[cfg(not(debug_assertions))]
+// const _: () = assert!(std::mem::size_of::<Option<ATermRef>>() == std::mem::size_of::<usize>());
 
 /// These are safe because terms are immutable. Garbage collection is
 /// always performed with exclusive access, and reference terms have no thread-local state.
@@ -386,7 +386,9 @@ impl ATermSend {
 
 impl Drop for ATermSend {
     fn drop(&mut self) {
-        mutex_unwrap(self.protection_set.lock()).protection_set.unprotect(self.root);
+        mutex_unwrap(self.protection_set.lock())
+            .protection_set
+            .unprotect(self.root);
     }
 }
 

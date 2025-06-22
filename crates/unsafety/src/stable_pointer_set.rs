@@ -121,7 +121,7 @@ impl<T: ?Sized> Deref for StablePointer<T> {
 
 impl<T: fmt::Debug + ?Sized> fmt::Debug for StablePointer<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("StablePointer").field(&*self).finish()
+        f.debug_tuple("StablePointer").field(self).finish()
     }
 }
 
@@ -464,7 +464,9 @@ where
             .unwrap_or_else(|_| handle_alloc_error(Layout::new::<T>()))
             .cast::<T>();
 
-        unsafe { ptr.write(value); }
+        unsafe {
+            ptr.write(value);
+        }
 
         // Insert new value using allocator
         let entry = Entry::new(ptr);

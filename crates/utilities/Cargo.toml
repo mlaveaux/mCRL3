@@ -7,21 +7,11 @@ rust-version.workspace = true
 
 
 [features]
-# Enables a counting allocator that keeps track of the number of allocations.
-mcrl3_metrics = []
-
-# Feature to enable jemalloc as the global allocator. This feature only works if 
-# the `tikv-jemallocator` crate is supported on that platform.
-mcrl3_jemalloc = ["dep:tikv-jemallocator"]
-
-# Feature to enable mimalloc as the global allocator.
-mcrl3_mimalloc = ["dep:mimalloc"]
-
-# Enables extra debug options to be enabled. Also enables jemalloc debugging.
-mcrl3_debug = ["tikv-jemallocator?/debug"]
-
 # Disable logging when miri is enabled since that does not work with isolation mode.
 mcrl3_miri = []
+
+# Enables extra debug options to be enabled. Also enables jemalloc debugging.
+mcrl3_debug = []
 
 [dependencies]
 ahash.workspace = true
@@ -33,6 +23,3 @@ log.workspace = true
 pest.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
-
-mimalloc = { workspace = true, optional = true }
-tikv-jemallocator = { workspace = true, optional = true }

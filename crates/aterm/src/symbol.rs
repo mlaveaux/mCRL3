@@ -9,8 +9,8 @@ use std::ops::Deref;
 use arbitrary::Arbitrary;
 use delegate::delegate;
 use mcrl3_unsafety::StablePointer;
-use mcrl3_utilities::readable_string;
 use mcrl3_utilities::ProtectionIndex;
+use mcrl3_utilities::readable_string;
 
 use crate::SharedSymbol;
 use crate::THREAD_TERM_POOL;

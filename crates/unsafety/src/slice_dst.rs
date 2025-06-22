@@ -1,5 +1,5 @@
 //! Helper functions and structs to deal with dynamic sized types. In particular to deal with the `TermShared`.
-//! 
+//!
 //! This code is adapted from the `slice-dst` crate, but supports the `Allocator` unstable api through the `allocator-api2` crate. Furthermore, removed all code that
 //! we are not using anyway.
 
@@ -10,7 +10,6 @@ use std::ptr::slice_from_raw_parts_mut;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
-
 
 /// This trait should be implemented by dynamic sized types.
 pub trait SliceDst {
@@ -37,7 +36,6 @@ pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutErro
     // Remember to finalize with `pad_to_align`!
     Ok(layout.pad_to_align())
 }
-
 
 /// A trait that can be used to extend `Allocator` implementations with the ability to allocate (and deallocate) dynamically sized slices that implement `SliceDst`.
 pub trait AllocatorDst {

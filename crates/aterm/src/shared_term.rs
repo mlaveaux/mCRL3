@@ -208,7 +208,9 @@ mod tests {
     use allocator_api2::alloc::Global;
     use mcrl3_unsafety::AllocatorDst;
 
-    use crate::{ATerm, Symbol, Term};
+    use crate::ATerm;
+    use crate::Symbol;
+    use crate::Term;
 
     use super::*;
 
