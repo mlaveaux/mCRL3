@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 
 use log::info;
+use mcrl3_utilities::LargeFormatter;
 use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;
@@ -424,25 +425,25 @@ impl fmt::Debug for SharedTermProtection {
             f,
             "Protection set {} has {} roots, max {} and {} insertions",
             self.index,
-            self.protection_set.len(),
-            self.protection_set.maximum_size(),
-            self.protection_set.number_of_insertions()
+            LargeFormatter(self.protection_set.len()),
+            LargeFormatter(self.protection_set.maximum_size()),
+            LargeFormatter(self.protection_set.number_of_insertions())
         )?;
 
         writeln!(
             f,
             "Containers: {} roots, max {} and {} insertions",
-            self.container_protection_set.len(),
-            self.container_protection_set.maximum_size(),
-            self.container_protection_set.number_of_insertions(),
+            LargeFormatter(self.container_protection_set.len()),
+            LargeFormatter(self.container_protection_set.maximum_size()),
+            LargeFormatter(self.container_protection_set.number_of_insertions()),
         )?;
 
         write!(
             f,
             "Symbols: {} roots, max {} and {} insertions",
-            self.symbol_protection_set.len(),
-            self.symbol_protection_set.maximum_size(),
-            self.symbol_protection_set.number_of_insertions(),
+            LargeFormatter(self.symbol_protection_set.len()),
+            LargeFormatter(self.symbol_protection_set.maximum_size()),
+            LargeFormatter(self.symbol_protection_set.number_of_insertions()),
         )
     }
 }

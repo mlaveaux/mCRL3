@@ -23,9 +23,9 @@ impl fmt::Display for BytesFormatter {
     }
 }
 
-pub struct LargeFormatter(pub usize);
+pub struct LargeFormatter<T: ToString>(pub T);
 
-impl fmt::Display for LargeFormatter {
+impl<T: ToString> fmt::Display for LargeFormatter<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {        
         let num_str = self.0.to_string();
         let mut result = String::new();
