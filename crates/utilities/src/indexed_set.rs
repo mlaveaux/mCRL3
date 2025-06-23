@@ -219,6 +219,20 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         (SetIndex(self.generation_counter.create_index(index)), true)
     }
 
+    /// Returns the index for the given element, or None if it does not exist.
+    pub fn index<Q>(&self, key: &Q) -> Option<SetIndex> 
+        where Q: Hash + Equivalent<T>,
+    {
+        let equivalent = IndexValueEquivalent::new(key, &self.hasher, &self.table);
+        
+        if let Some(entry) = self.index.get(&equivalent) {
+            Some(SetIndex(self.generation_counter.recall_index(entry.index)))
+        } else {
+            None
+        }
+
+    }
+
     /// Erases all elements for which f(index, element) returns false. Allows
     /// modifying the given element (as long as the hash/equality does not change).
     pub fn retain_mut<F>(&mut self, mut f: F)
@@ -269,7 +283,9 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     }
 
     /// Returns true iff the set contains the given element.
-    pub fn contains(&self, element: &T) -> bool {
+    pub fn contains<Q>(&self, element: &Q) -> bool 
+        where Q: Hash + Equivalent<T>,
+    {
         // Compute the hash using our hash_builder
         let hash = self.hasher.hash_one(element);
 

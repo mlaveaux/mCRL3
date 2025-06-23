@@ -12,6 +12,7 @@ mcrl3_miri = []
 mcrl3_debug = ["parking_lot/deadlock_detection"]
 
 [dependencies]
+mcrl3_io.workspace = true
 mcrl3_macros.workspace = true
 mcrl3_sharedmutex.workspace = true
 mcrl3_unsafety.workspace = true

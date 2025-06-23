@@ -16,6 +16,7 @@ use crate::ATermIndex;
 use crate::ATermRef;
 use crate::Markable;
 use crate::Marker;
+use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
@@ -25,6 +26,11 @@ use crate::Transmutable;
 /// Returns true if the term is an [ATermInt] term.
 pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == t.get_head_symbol())
+}
+
+/// Returns true if the symbol is an integer.
+pub fn is_int_symbol<'a, 'b>(f: &'b impl Symb<'a, 'b>) -> bool {
+    THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == f.copy())
 }
 
 #[mcrl3_derive_terms]
