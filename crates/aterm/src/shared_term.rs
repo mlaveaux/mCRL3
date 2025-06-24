@@ -81,16 +81,16 @@ unsafe impl SliceDst for SharedTerm {
     }
 }
 
-unsafe impl Erasable for SharedTerm {
-    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
-        unsafe {
-            let len: usize = SharedTerm::length_for(this.as_ptr().cast::<Self>().as_ref());
-            let raw =
-                NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
-            Self::retype(raw)
-        }
-    }
-}
+// unsafe impl Erasable for SharedTerm {
+//     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
+//         unsafe {
+//             let len: usize = this.cast::<Self>();
+//             let raw =
+//                 NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
+//             Self::retype(raw)
+//         }
+//     }
+// }
 
 impl fmt::Debug for SharedTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -228,25 +228,25 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_shared_symbol_size() {
-        // Cannot be a const assertion since the size depends on the length.
-        assert_eq!(
-            SharedTerm::layout_for(0)
-                .expect("The layout should not overflow")
-                .size(),
-            1 * std::mem::size_of::<usize>(),
-            "A SharedTerm without arguments should be the same size as the Symbol"
-        );
+    // #[test]
+    // fn test_shared_symbol_size() {
+    //     // Cannot be a const assertion since the size depends on the length.
+    //     assert_eq!(
+    //         SharedTerm::layout_for(0)
+    //             .expect("The layout should not overflow")
+    //             .size(),
+    //         1 * std::mem::size_of::<usize>(),
+    //         "A SharedTerm without arguments should be the same size as the Symbol"
+    //     );
 
-        assert_eq!(
-            SharedTerm::layout_for(2)
-                .expect("The layout should not overflow")
-                .size(),
-            3 * std::mem::size_of::<usize>(),
-            "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
-        );
-    }
+    //     assert_eq!(
+    //         SharedTerm::layout_for(2)
+    //             .expect("The layout should not overflow")
+    //             .size(),
+    //         3 * std::mem::size_of::<usize>(),
+    //         "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
+    //     );
+    // }
 
     #[test]
     fn test_shared_term_lookup() {

@@ -3544,6 +3544,7 @@ dependencies = [
  "hashbrown 0.15.4",
  "itertools 0.14.0",
  "log",
+ "mcrl3_io",
  "mcrl3_macros",
  "mcrl3_sharedmutex",
  "mcrl3_unsafety",

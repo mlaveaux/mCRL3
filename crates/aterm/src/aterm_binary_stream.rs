@@ -90,13 +90,13 @@ impl<W: Write> BinaryATermOutputStream<W> {
         stream.write_bits(BAF_MAGIC as u64, 16)?;
         stream.write_bits(BAF_VERSION as u64, 16)?;
 
-        let mut function_symbols = HashMap::new();
+        let mut function_symbols = IndexedSet::new();
         // The term with function symbol index 0 indicates the end of the stream
-        function_symbols.insert(Symbol::new("end_of_stream".to_string(), 0), 0);
+        function_symbols.insert(Symbol::new("end_of_stream".to_string(), 0));
 
         Ok(Self {
             stream,
-            function_symbols: IndexedSet::new(),
+            function_symbols,
             function_symbol_index_width: 1,
             terms: IndexedSet::new(),
             term_index_width: 1,
@@ -120,7 +120,8 @@ impl<W: Write> BinaryATermOutputStream<W> {
                             self.stream.write_bits(PacketType::ATermIntOutput as u64, PACKET_BITS)?;
                             self.stream.write_integer(int_term.value() as u64)?;
                         } else {
-                            let symbol_index = self.write_function_symbol(&Symbol::new("int".to_string(), 0))?;
+                            let symbol_index = self.write_function_symbol(&int_term.get_head_symbol())?;
+
                             self.stream.write_bits(PacketType::ATerm as u64, PACKET_BITS)?;
                             self.stream
                                 .write_bits(symbol_index as u64, self.function_symbol_index_width)?;
@@ -165,20 +166,25 @@ impl<W: Write> BinaryATermOutputStream<W> {
         Ok(())
     }
 
+    pub fn flush(&mut self) -> Result<(), std::io::Error> {  
+        // Write the end of stream marker
+        self.stream.write_bits(PacketType::ATerm as u64, PACKET_BITS)?;
+        self.stream.write_bits(0, self.function_symbol_index_width)?;
+        self.stream.flush()
+    }
+
     /// \brief Write a function symbol to the output stream.
     fn write_function_symbol(&mut self, symbol: &SymbolRef<'_>) -> Result<usize, MCRL3Error> {
         let (index, inserted) = self.function_symbols.insert(symbol.protect());
 
         if inserted {
+            self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
             Ok(*index)
         } else {
             // Write the function symbol to the stream
             self.stream.write_bits(PacketType::FunctionSymbol as u64, PACKET_BITS)?;
             self.stream.write_string(&symbol.name())?;
             self.stream.write_integer(symbol.arity() as u64)?;
-
-            self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
-
             Ok(*index)
         }
     }
@@ -186,10 +192,7 @@ impl<W: Write> BinaryATermOutputStream<W> {
 
 impl<W: Write> Drop for BinaryATermOutputStream<W> {
     fn drop(&mut self) {
-        // Write the end of stream marker
-        let _ = self.stream.write_bits(PacketType::ATerm as u64, PACKET_BITS);
-        let _ = self.stream.write_bits(0, self.function_symbol_index_width);
-        let _ = self.stream.flush();
+        self.flush().expect("Panicked while flushing the stream when dropped");
     }
 }
 
@@ -239,12 +242,14 @@ impl<R: Read> BinaryATermInputStream<R> {
             let header = self.stream.read_bits(PACKET_BITS)?;
             let packet = PacketType::from(header as u8);
 
+            println!("{}", header);
+
             match packet {
                 PacketType::FunctionSymbol => {
                     let name = self.stream.read_string()?;
                     let arity = self.stream.read_integer()? as usize;
                     self.function_symbols.push(Symbol::new(name, arity));
-                    self.function_symbol_index_width = ((self.function_symbols.len() as f64).log2().floor() as u8) + 1;
+                    self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
                 }
                 PacketType::ATermIntOutput => {
                     let value = self
@@ -255,6 +260,7 @@ impl<R: Read> BinaryATermInputStream<R> {
                 }
                 PacketType::ATerm | PacketType::ATermOutput => {
                     let symbol_index = self.stream.read_bits(self.function_symbol_index_width)? as usize;
+                    println!("{}", symbol_index);
                     if symbol_index == 0 {
                         // End of stream marker
                         return Ok(None);
@@ -271,10 +277,10 @@ impl<R: Read> BinaryATermInputStream<R> {
 
                         if packet == PacketType::ATermOutput {
                             return Ok(Some(term.into()));
-                        } else {
-                            self.terms.push(term.into());
-                            self.term_index_width = ((self.terms.len() as f64).log2().floor() as u8) + 1;
                         }
+                        
+                        self.terms.push(term.into());
+                        self.term_index_width = bits_for_value(self.terms.len());
                     } else {
                         let mut arguments = Vec::with_capacity(symbol.arity());
                         for _ in 0..symbol.arity() {
@@ -289,7 +295,7 @@ impl<R: Read> BinaryATermInputStream<R> {
                         }
 
                         self.terms.push(term);
-                        self.term_index_width = ((self.terms.len() as f64).log2().floor() as u8) + 1;
+                        self.term_index_width = bits_for_value(self.terms.len());
                     }
                 }
             }
@@ -319,6 +325,8 @@ mod tests {
                 output_stream.put(term).unwrap();
             }
             drop(output_stream);
+
+            println!("{:?}", stream);
 
             let mut input_stream = BinaryATermInputStream::new(&stream[..]).unwrap();
             for term in &input {
