@@ -6,7 +6,7 @@ use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
-use hashbrown::Equivalent;
+use equivalent::Equivalent;
 use mcrl3_unsafety::Erasable;
 use mcrl3_unsafety::ErasedPtr;
 use mcrl3_unsafety::SliceDst;

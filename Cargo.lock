@@ -3282,7 +3282,7 @@ dependencies = [
  "arbitrary",
  "arbtest",
  "delegate",
- "hashbrown 0.15.4",
+ "equivalent",
  "itertools 0.14.0",
  "log",
  "mcrl3_io",

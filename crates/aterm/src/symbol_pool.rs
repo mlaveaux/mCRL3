@@ -1,10 +1,10 @@
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use hashbrown::Equivalent;
+use equivalent::Equivalent;
+use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;
-use rustc_hash::FxBuildHasher;
 
 use crate::Symb;
 use crate::SymbolIndex;
