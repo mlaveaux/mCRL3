@@ -97,7 +97,7 @@ arbtest = "0.3"
 libfuzzer-sys = "0.4"
 
 # Used for benchmarks
-criterion = { version = "0.6", features = ["html_reports"] }
+criterion = "0.6"
 
 # The workspace libraries.
 mcrl3_aterm = { path = "crates/aterm" }
