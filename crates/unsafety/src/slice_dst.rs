@@ -41,7 +41,6 @@ unsafe impl<T> SliceDst for T {
     }
 }
 
-
 /// To calculate the layout of a [repr(C)] structure and the offsets of the fields from its fields’ layouts:
 ///
 /// Copied from the `Layout` documentation.

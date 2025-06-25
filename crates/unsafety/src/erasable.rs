@@ -1,6 +1,7 @@
 //! This is adapted from the `erasable` crate, but actually allows one to pass an `?Sized` type that stores its length inline. For example types implementing the `SliceDst` trait.
 
-use std::{marker::PhantomData, ptr::NonNull};
+use std::marker::PhantomData;
+use std::ptr::NonNull;
 
 pub struct Thin<T: ?Sized + Erasable> {
     ptr: NonNull<ErasedPtr>,
@@ -11,7 +12,10 @@ impl<T: ?Sized + Erasable> Copy for Thin<T> {}
 
 impl<T: ?Sized + Erasable> Clone for Thin<T> {
     fn clone(&self) -> Self {
-        Self { ptr: self.ptr.clone(), marker: self.marker.clone() }
+        Self {
+            ptr: self.ptr.clone(),
+            marker: self.marker.clone(),
+        }
     }
 }
 
@@ -47,7 +51,6 @@ impl<T: ?Sized + Erasable> Thin<T> {
     }
 }
 
-
 pub unsafe trait Erasable {
     /// Turn this erasable pointer into an erased pointer.
     ///
@@ -61,7 +64,6 @@ pub unsafe trait Erasable {
     /// The erased pointer must have been created by `erase`.
     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self>;
 }
-
 
 #[doc(hidden)]
 pub mod priv_in_pub {

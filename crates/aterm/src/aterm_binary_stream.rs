@@ -1,10 +1,24 @@
-use std::collections::{HashMap, VecDeque};
-use std::io::{Error, ErrorKind, Read, Write};
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
 
-use mcrl3_io::{BitStreamReader, BitStreamWriter};
-use mcrl3_utilities::{IndexedSet, MCRL3Error};
+use mcrl3_io::BitStreamReader;
+use mcrl3_io::BitStreamWriter;
+use mcrl3_utilities::IndexedSet;
+use mcrl3_utilities::MCRL3Error;
 
-use crate::{ATerm, ATermInt, ATermIntRef, Symb, Symbol, SymbolRef, Term, is_int_symbol, is_int_term};
+use crate::ATerm;
+use crate::ATermInt;
+use crate::ATermIntRef;
+use crate::Symb;
+use crate::Symbol;
+use crate::SymbolRef;
+use crate::Term;
+use crate::is_int_symbol;
+use crate::is_int_term;
 
 /// The magic value for a binary aterm format stream.
 /// As of version 0x8305 the magic and version are written as 2 bytes not encoded as variable-width integers.
@@ -69,6 +83,7 @@ pub struct BinaryATermOutputStream<W: Write> {
 
     terms: IndexedSet<ATerm>, // Using string representation as key for simplicity
     term_index_width: u8,
+    flushed: bool,
 }
 
 /// Returns the number of bits needed to represent the given value.
@@ -81,7 +96,13 @@ fn bits_for_value(value: usize) -> u8 {
 }
 
 impl<W: Write> BinaryATermOutputStream<W> {
+    /// Creates a new binary ATerm output stream with the given writer.
     ///
+    /// # Arguments
+    /// * `writer` - The underlying writer to write binary data to
+    ///
+    /// # Returns
+    /// A new `BinaryATermOutputStream` instance or an error if header writing fails
     pub fn new(writer: W) -> Result<Self, MCRL3Error> {
         let mut stream = BitStreamWriter::new(writer);
 
@@ -100,6 +121,7 @@ impl<W: Write> BinaryATermOutputStream<W> {
             function_symbol_index_width: 1,
             terms: IndexedSet::new(),
             term_index_width: 1,
+            flushed: false,
         })
     }
 
@@ -166,11 +188,17 @@ impl<W: Write> BinaryATermOutputStream<W> {
         Ok(())
     }
 
-    pub fn flush(&mut self) -> Result<(), std::io::Error> {  
+    /// Flushes any remaining data and writes the end-of-stream marker.
+    ///
+    /// This method should be called when you're done writing terms to ensure
+    /// all data is properly written and the stream is correctly terminated.
+    pub fn flush(&mut self) -> Result<(), std::io::Error> {
         // Write the end of stream marker
         self.stream.write_bits(PacketType::ATerm as u64, PACKET_BITS)?;
         self.stream.write_bits(0, self.function_symbol_index_width)?;
-        self.stream.flush()
+        self.stream.flush()?;
+        self.flushed = true;
+        Ok(())
     }
 
     /// \brief Write a function symbol to the output stream.
@@ -178,21 +206,22 @@ impl<W: Write> BinaryATermOutputStream<W> {
         let (index, inserted) = self.function_symbols.insert(symbol.protect());
 
         if inserted {
-            self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
-            Ok(*index)
-        } else {
             // Write the function symbol to the stream
             self.stream.write_bits(PacketType::FunctionSymbol as u64, PACKET_BITS)?;
             self.stream.write_string(&symbol.name())?;
             self.stream.write_integer(symbol.arity() as u64)?;
-            Ok(*index)
+            self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
         }
+
+        Ok(*index)
     }
 }
 
 impl<W: Write> Drop for BinaryATermOutputStream<W> {
     fn drop(&mut self) {
-        self.flush().expect("Panicked while flushing the stream when dropped");
+        if !self.flushed {
+            self.flush().expect("Panicked while flushing the stream when dropped");
+        }
     }
 }
 
@@ -221,7 +250,8 @@ impl<R: Read> BinaryATermInputStream<R> {
                     "BAF version ({}) incompatible with expected version ({})",
                     version, BAF_VERSION
                 ),
-            ).into());
+            )
+            .into());
         }
 
         let mut function_symbols = Vec::new();
@@ -242,8 +272,6 @@ impl<R: Read> BinaryATermInputStream<R> {
             let header = self.stream.read_bits(PACKET_BITS)?;
             let packet = PacketType::from(header as u8);
 
-            println!("{}", header);
-
             match packet {
                 PacketType::FunctionSymbol => {
                     let name = self.stream.read_string()?;
@@ -252,15 +280,11 @@ impl<R: Read> BinaryATermInputStream<R> {
                     self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
                 }
                 PacketType::ATermIntOutput => {
-                    let value = self
-                        .stream
-                        .read_integer()?
-                        .try_into()?;
+                    let value = self.stream.read_integer()?.try_into()?;
                     return Ok(Some(ATermInt::new(value).into()));
                 }
                 PacketType::ATerm | PacketType::ATermOutput => {
                     let symbol_index = self.stream.read_bits(self.function_symbol_index_width)? as usize;
-                    println!("{}", symbol_index);
                     if symbol_index == 0 {
                         // End of stream marker
                         return Ok(None);
@@ -269,16 +293,13 @@ impl<R: Read> BinaryATermInputStream<R> {
                     let symbol = &self.function_symbols[symbol_index];
 
                     if is_int_symbol(symbol) {
-                        let value = self
-                            .stream
-                            .read_integer()?
-                            .try_into()?;
+                        let value = self.stream.read_integer()?.try_into()?;
                         let term = ATermInt::new(value);
 
                         if packet == PacketType::ATermOutput {
                             return Ok(Some(term.into()));
                         }
-                        
+
                         self.terms.push(term.into());
                         self.term_index_width = bits_for_value(self.terms.len());
                     } else {
@@ -324,13 +345,16 @@ mod tests {
             for term in &input {
                 output_stream.put(term).unwrap();
             }
-            drop(output_stream);
-
-            println!("{:?}", stream);
+            output_stream.flush().expect("Flushing the output to the stream");
+            drop(output_stream); // Explicitly drop to release the mutable borrow
 
             let mut input_stream = BinaryATermInputStream::new(&stream[..]).unwrap();
             for term in &input {
-                debug_assert_eq!(*term, input_stream.get().unwrap().unwrap(), "The read term must match the term that we have written");
+                debug_assert_eq!(
+                    *term,
+                    input_stream.get().unwrap().unwrap(),
+                    "The read term must match the term that we have written"
+                );
             }
         });
     }

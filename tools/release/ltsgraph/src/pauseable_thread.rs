@@ -39,20 +39,20 @@ impl PauseableThread {
         let thread = {
             let shared = shared.clone();
             Builder::new().name(name.to_string()).spawn(move || {
-                let mut init = init_function().unwrap();
+                let mut init = init_function().expect("Initialisation failed!");
 
                 while shared.running.load(std::sync::atomic::Ordering::Relaxed) {
                     // Check if paused is true and wait for it.
                     {
-                        let mut paused = shared.paused.lock().unwrap();
+                        let mut paused = shared.paused.lock().expect("No lock poisoning allowed");
                         while *paused {
-                            paused = shared.cond_var.wait(paused).unwrap();
+                            paused = shared.cond_var.wait(paused).expect("No lock poisoning allowed");
                         }
                     }
 
-                    if !loop_function(&mut init).unwrap() {
+                    if !loop_function(&mut init).expect("Loop function failed!") {
                         // Pause the thread when requested by the loop function.
-                        *shared.paused.lock().unwrap() = true;
+                        *shared.paused.lock().expect("No lock poisoning allowed") = true;
                     }
                 }
             })
@@ -72,16 +72,25 @@ impl PauseableThread {
 
     /// Pause the thread on the next iteration.
     pub fn pause(&self) {
-        *self.shared.paused.lock().unwrap() = true;
+        *self.shared.paused.lock().expect("No lock poisoning allowed") = true;
         // We notify the condvar that the value has changed.
         self.shared.cond_var.notify_one();
     }
 
     /// Resume the thread.
     pub fn resume(&self) {
-        *self.shared.paused.lock().unwrap() = false;
+        *self.shared.paused.lock().expect("No lock poisoning allowed") = false;
         // We notify the condvar that the value has changed.
         self.shared.cond_var.notify_one();
+    }
+
+    /// Joins the thread and returns its result
+    pub fn join(&mut self) -> Result<(), MCRL3Error> {
+        if let Some(handle) = self.handle.take() {
+            handle.join()?;
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -91,7 +100,9 @@ impl Drop for PauseableThread {
 
         // Joining consumes the handle
         if let Some(handle) = self.handle.take() {
-            handle.join().unwrap();
+            let _ = handle
+                .join()
+                .expect("The thread terminated with an error when the handle was dropped!");
         }
     }
 }

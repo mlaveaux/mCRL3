@@ -3,8 +3,8 @@ use std::alloc::LayoutError;
 use std::fmt;
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
-use std::ptr::slice_from_raw_parts_mut;
 use std::ptr::NonNull;
+use std::ptr::slice_from_raw_parts_mut;
 
 use hashbrown::Equivalent;
 use mcrl3_unsafety::Erasable;

@@ -99,7 +99,8 @@ impl<R: Read> BitStreamReader<R> {
     pub fn read_string(&mut self) -> io::Result<String> {
         let length = self.read_integer()?;
         self.text_buffer.clear();
-        self.text_buffer.reserve((length + 1).try_into().expect("String size exceeds usize!"));
+        self.text_buffer
+            .reserve((length + 1).try_into().expect("String size exceeds usize!"));
 
         for _ in 0..length {
             let byte = self.reader.read::<8, u64>()? as u8;
@@ -147,7 +148,7 @@ fn decode_variablesize_int<R: Read>(reader: &mut BitStreamReader<R>) -> io::Resu
 
     for i in 0..max_bytes {
         let byte = reader.read_bits(8)?;
-        value |= ((byte & 127)) << (7 * i);
+        value |= (byte & 127) << (7 * i);
 
         if byte & 128 == 0 {
             return Ok(value);

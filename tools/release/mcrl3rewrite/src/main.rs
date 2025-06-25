@@ -66,7 +66,6 @@ impl Verbosity {
     }
 }
 
-
 #[derive(clap::Args, Debug)]
 #[command(about = "Rewrite mCRL2 data specifications and REC files")]
 struct RewriteArgs {
@@ -93,7 +92,7 @@ struct ConvertArgs {
 
 fn main() -> Result<ExitCode, MCRL3Error> {
     let cli = Cli::parse();
-    
+
     env_logger::Builder::new()
         .filter_level(cli.verbosity.log_level_filter())
         .init();
