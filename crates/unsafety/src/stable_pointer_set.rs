@@ -11,8 +11,8 @@ use std::ptr::addr_eq;
 use allocator_api2::alloc::Allocator;
 use allocator_api2::alloc::Global;
 use allocator_api2::alloc::Layout;
-use hashbrown::Equivalent;
-use hashbrown::HashSet;
+use dashmap::DashSet;
+use equivalent::Equivalent;
 
 use crate::AllocatorDst;
 #[cfg(debug_assertions)]
@@ -135,10 +135,10 @@ impl<T: fmt::Debug + ?Sized> fmt::Debug for StablePointer<T> {
 pub struct StablePointerSet<T: ?Sized, S = RandomState, A = Global>
 where
     T: Hash + Eq,
-    S: BuildHasher,
+    S: BuildHasher + Clone,
     A: Allocator + AllocatorDst,
 {
-    index: HashSet<Entry<T>, S>,
+    index: DashSet<Entry<T>, S>,
 
     allocator: A,
 }
@@ -159,7 +159,7 @@ where
     /// Creates an empty StablePointerSet with the default hasher and global allocator.
     pub fn new() -> Self {
         Self {
-            index: hashbrown::HashSet::default(),
+            index: DashSet::default(),
             allocator: Global,
         }
     }
@@ -167,7 +167,7 @@ where
     /// Creates an empty StablePointerSet with the specified capacity, default hasher, and global allocator.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            index: hashbrown::HashSet::with_capacity_and_hasher(capacity, RandomState::new()),
+            index: DashSet::with_capacity_and_hasher(capacity, RandomState::new()),
             allocator: Global,
         }
     }
@@ -176,12 +176,12 @@ where
 impl<T: ?Sized, S> StablePointerSet<T, S, Global>
 where
     T: Hash + Eq,
-    S: BuildHasher,
+    S: BuildHasher + Clone,
 {
     /// Creates an empty StablePointerSet with the specified hasher and global allocator.
     pub fn with_hasher(hasher: S) -> Self {
         Self {
-            index: HashSet::with_hasher(hasher),
+            index: DashSet::with_hasher(hasher),
             allocator: Global,
         }
     }
@@ -189,7 +189,7 @@ where
     /// Creates an empty StablePointerSet with the specified capacity, hasher, and global allocator.
     pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
         Self {
-            index: HashSet::with_capacity_and_hasher(capacity, hasher),
+            index: DashSet::with_capacity_and_hasher(capacity, hasher),
             allocator: Global,
         }
     }
@@ -198,7 +198,7 @@ where
 impl<T: ?Sized, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
-    S: BuildHasher,
+    S: BuildHasher + Clone,
     A: Allocator,
 {
     /// Creates an empty StablePointerSet with the specified allocator and default hasher.
@@ -207,7 +207,7 @@ where
         S: Default,
     {
         Self {
-            index: HashSet::with_hasher(S::default()),
+            index: DashSet::with_hasher(S::default()),
             allocator,
         }
     }
@@ -218,7 +218,7 @@ where
         S: Default,
     {
         Self {
-            index: HashSet::with_capacity_and_hasher(capacity, S::default()),
+            index: DashSet::with_capacity_and_hasher(capacity, S::default()),
             allocator,
         }
     }
@@ -226,7 +226,7 @@ where
     /// Creates an empty StablePointerSet with the specified hasher and allocator.
     pub fn with_hasher_in(hasher: S, allocator: A) -> Self {
         Self {
-            index: HashSet::with_hasher(hasher),
+            index: DashSet::with_hasher(hasher),
             allocator,
         }
     }
@@ -234,7 +234,7 @@ where
     /// Creates an empty StablePointerSet with the specified capacity, hasher, and allocator.
     pub fn with_capacity_and_hasher_in(capacity: usize, hasher: S, allocator: A) -> Self {
         Self {
-            index: HashSet::with_capacity_and_hasher(capacity, hasher),
+            index: DashSet::with_capacity_and_hasher(capacity, hasher),
             allocator,
         }
     }
@@ -317,7 +317,7 @@ where
         let boxed = self.index.get(&LookUp(value))?;
 
         // SAFETY: The pointer is valid as long as the set is valid.
-        let ptr = StablePointer::from_entry(boxed);
+        let ptr = StablePointer::from_entry(boxed.key());
         Some(ptr)
     }
 
@@ -336,7 +336,7 @@ where
         );
         // SAFETY: This is the last reference to the element, so it is safe to remove it.
         let t = pointer.deref();
-        self.index.remove(&LookUp(t))
+        self.index.remove(&LookUp(t)).is_some()
     }
 
     /// Retains only the elements specified by the predicate, modifying the set in-place.
@@ -374,7 +374,7 @@ where
 impl<T: ?Sized + SliceDst, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
-    S: BuildHasher,
+    S: BuildHasher + Clone,
     A: Allocator,
 {
     /// Clears the set, removing all values and invalidating all pointers.
@@ -389,7 +389,7 @@ where
         );
 
         // Manually deallocate all entries before clearing
-        for entry in self.index.drain() {
+        for entry in self.index.iter() {
             self.allocator.deallocate_slice_dst(entry.ptr);
         }
 
@@ -440,7 +440,7 @@ where
 impl<T, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
-    S: BuildHasher,
+    S: BuildHasher + Clone,
     A: Allocator,
 {
     /// Inserts an element into the set.
@@ -484,7 +484,7 @@ where
 impl<T: ?Sized, S, A> Drop for StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
-    S: BuildHasher,
+    S: BuildHasher + Clone,
     A: Allocator,
 {
     fn drop(&mut self) {

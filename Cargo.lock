@@ -3510,6 +3510,7 @@ version = "1.0.0"
 dependencies = [
  "allocator-api2 0.3.0",
  "dashmap",
+ "equivalent",
  "mcrl3_utilities",
  "mimalloc",
  "rustc-hash 2.1.1",

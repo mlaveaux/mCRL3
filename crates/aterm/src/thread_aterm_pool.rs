@@ -38,6 +38,9 @@ pub struct ThreadTermPool {
     /// The number of times termms have been created before garbage collection is triggered.
     garbage_collection_counter: Cell<usize>,
 
+    /// A vector of terms that are used to store the arguments of a term for loopup.
+    tmp_arguments: RefCell<Vec<ATermRef<'static>>>,
+
     /// Copy of the default terms since thread local access is cheaper.
     int_symbol: SymbolRef<'static>,
     empty_list_symbol: SymbolRef<'static>,
@@ -56,6 +59,7 @@ impl ThreadTermPool {
         Self {
             protection_set,
             garbage_collection_counter: Cell::new(if AGRESSIVE_GC { 1 } else { 1000 }),
+            tmp_arguments: RefCell::new(Vec::new()),
             int_symbol: pool.get_int_symbol().copy(),
             empty_list_symbol: pool.get_empty_list_symbol().copy(),
             list_symbol: pool.get_list_symbol().copy(),
@@ -68,17 +72,25 @@ impl ThreadTermPool {
 
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
-        tp.borrow_mut().create_term(symbol, &empty_args, |tp, index, inserted| {
+        tp.borrow_mut().create_term_array(symbol, &empty_args, |tp, index, inserted| {
             self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
         })
     }
 
     /// Create a term with the given arguments
-    pub fn create_term<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> ATerm {
+    pub fn create_term<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>, args: &'b [impl Term<'a, 'b>]) -> ATerm {
+        let mut arguments = self.tmp_arguments.borrow_mut();
+        arguments.clear();
+        for arg in args {
+            unsafe {
+                arguments.push(ATermRef::from_index(arg.shared()));
+            }
+        }
+        
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
-            .create_term(symbol, arguments, |tp, index, inserted| {
+            .create_term_array(symbol, &arguments, |tp, index, inserted| {
                 self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
             })
     }
@@ -92,15 +104,23 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
-    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T>(&self, symbol: &'b impl Symb<'a, 'b>, iter: I) -> ATerm
+    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T>(&self, symbol: &'b impl Symb<'a, 'b>, args: I) -> ATerm
     where
         I: IntoIterator<Item = T>,
         T: Term<'c, 'd>,
     {
+        let mut arguments = self.tmp_arguments.borrow_mut();
+        arguments.clear();
+        for arg in args {
+            unsafe {
+                arguments.push(ATermRef::from_index(arg.shared()));
+            }
+        }
+        
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
-            .create_term_iter(symbol, iter, |tp, index, inserted| {
+            .create_term_array(symbol, &arguments, |tp, index, inserted| {
                 self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
             })
     }
@@ -110,16 +130,27 @@ impl ThreadTermPool {
         &self,
         symbol: &'b impl Symb<'a, 'b>,
         head: &'d impl Term<'c, 'd>,
-        iter: I,
+        args: I,
     ) -> ATerm
     where
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
-    {
+    {        
+        let mut arguments = self.tmp_arguments.borrow_mut();
+        arguments.clear();
+        unsafe {
+            arguments.push(ATermRef::from_index(head.shared()));
+        }
+        for arg in args {
+            unsafe {
+                arguments.push(ATermRef::from_index(arg.shared()));
+            }
+        }
+
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
-            .create_term_iter_head(symbol, head, iter, |tp, index, inserted| {
+            .create_term_array(symbol, &arguments, |tp, index, inserted| {
                 self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
             })
     }

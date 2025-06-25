@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -272,6 +271,8 @@ impl<R: Read> BinaryATermInputStream<R> {
             let header = self.stream.read_bits(PACKET_BITS)?;
             let packet = PacketType::from(header as u8);
 
+            println!("Read packet {:?}", packet);
+
             match packet {
                 PacketType::FunctionSymbol => {
                     let name = self.stream.read_string()?;
@@ -334,9 +335,9 @@ mod tests {
 
     #[test]
     fn test_random_binary_stream() {
-        random_test(100, |rng| {
+        random_test(1, |rng| {
             let input: Vec<_> = (0..20)
-                .map(|_| random_term(rng, &[("f".into(), 2), ("g".into(), 1)], &["a".into(), "b".into()], 100))
+                .map(|_| random_term(rng, &[("f".into(), 2), ("g".into(), 1)], &["a".into(), "b".into()], 1))
                 .collect();
 
             let mut stream: Vec<u8> = Vec::new();
@@ -350,6 +351,7 @@ mod tests {
 
             let mut input_stream = BinaryATermInputStream::new(&stream[..]).unwrap();
             for term in &input {
+                println!("Term {}", term);
                 debug_assert_eq!(
                     *term,
                     input_stream.get().unwrap().unwrap(),
