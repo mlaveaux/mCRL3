@@ -81,7 +81,7 @@ pub fn benchmark<T, R, W>(
     }
 
     c.bench_function(
-        format!("{} {} {} {}", name, num_threads, num_iterations, read_ratio).as_str(),
+        format!("{name} {num_threads} {num_iterations} {read_ratio}").as_str(),
         |bencher| {
             bencher.iter(|| {
                 info.begin_barrier.wait();

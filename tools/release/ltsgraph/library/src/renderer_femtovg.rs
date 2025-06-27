@@ -80,7 +80,7 @@ impl FemtovgRenderer {
                     canvas.stroke_path(&path, &edge_paint);
 
                     let direction = (state_view.position - to_state_view.position).normalize();
-                    let _angle = -1.0 * direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
+                    let _angle = -direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
 
                     // Draw the edge handle
                     let middle = (to_state_view.position + state_view.position) / 2.0;

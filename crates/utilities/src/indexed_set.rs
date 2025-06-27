@@ -226,11 +226,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     {
         let equivalent = IndexValueEquivalent::new(key, &self.hasher, &self.table);
 
-        if let Some(entry) = self.index.get(&equivalent) {
-            Some(SetIndex(self.generation_counter.recall_index(entry.index)))
-        } else {
-            None
-        }
+        self.index.get(&equivalent).map(|entry| SetIndex(self.generation_counter.recall_index(entry.index)))
     }
 
     /// Erases all elements for which f(index, element) returns false. Allows

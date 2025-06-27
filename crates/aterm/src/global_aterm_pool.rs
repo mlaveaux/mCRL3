@@ -131,7 +131,7 @@ impl GlobalTermPool {
                 });
         protect(self, &index, inserted)
     }
-    
+
     /// Create a term from a head symbol and an iterator over its arguments
     pub fn create_term_array<'a, 'b, 'c, P>(
         &'c mut self,
@@ -144,7 +144,7 @@ impl GlobalTermPool {
     {
         let shared_term = SharedTermLookup {
             symbol: SymbolRef::from_symbol(symbol),
-            arguments: &args,
+            arguments: args,
             annotation: None,
         };
 
@@ -187,7 +187,7 @@ impl GlobalTermPool {
 
     /// Deregisters a thread pool.
     pub(crate) fn deregister_thread_pool(&mut self, index: usize) {
-        info!("Removed thread_local protection set(s) {}", index);
+        info!("Removed thread_local protection set(s) {index}");
         if let Some(entry) = self.thread_pools.get_mut(index) {
             *entry = None;
         }
@@ -279,12 +279,12 @@ impl GlobalTermPool {
             num_of_symbols - self.symbol_pool.len()
         );
 
-        info!("{:?}", self);
+        info!("{self:?}");
 
         // Print information from the protection sets.
         for pool in self.thread_pools.iter().flatten() {
             let pool = pool.lock();
-            info!("{:?}", pool);
+            info!("{pool:?}");
         }
     }
 

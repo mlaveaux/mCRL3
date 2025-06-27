@@ -337,7 +337,7 @@ impl fmt::Display for ConfigurationStack<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Current node: {:?}", self.current_node)?;
         for (i, c) in self.stack.iter().enumerate() {
-            writeln!(f, "Configuration {} ", i)?;
+            writeln!(f, "Configuration {i} ")?;
             writeln!(f, "    State: {:?}", c.state)?;
             writeln!(
                 f,
@@ -375,10 +375,10 @@ impl fmt::Display for SideInfoType<'_> {
                 }
             }
             SideInfoType::DelayedRewriteRule(announcement, _) => {
-                write!(f, "delayed rule: {}", announcement)?;
+                write!(f, "delayed rule: {announcement}")?;
             }
             SideInfoType::EquivalenceAndConditionCheck(announcement, _) => {
-                write!(f, "equivalence {}", announcement)?;
+                write!(f, "equivalence {announcement}")?;
             }
         }
 

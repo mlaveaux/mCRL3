@@ -58,7 +58,7 @@ impl From<u8> for PacketType {
             1 => PacketType::ATerm,
             2 => PacketType::ATermOutput,
             3 => PacketType::ATermIntOutput,
-            _ => panic!("Invalid packet type: {}", value),
+            _ => panic!("Invalid packet type: {value}"),
         }
     }
 }
@@ -207,7 +207,7 @@ impl<W: Write> BinaryATermOutputStream<W> {
         if inserted {
             // Write the function symbol to the stream
             self.stream.write_bits(PacketType::FunctionSymbol as u64, PACKET_BITS)?;
-            self.stream.write_string(&symbol.name())?;
+            self.stream.write_string(symbol.name())?;
             self.stream.write_integer(symbol.arity() as u64)?;
             self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
         }
@@ -246,8 +246,7 @@ impl<R: Read> BinaryATermInputStream<R> {
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 format!(
-                    "BAF version ({}) incompatible with expected version ({})",
-                    version, BAF_VERSION
+                    "BAF version ({version}) incompatible with expected version ({BAF_VERSION})"
                 ),
             )
             .into());
@@ -271,7 +270,7 @@ impl<R: Read> BinaryATermInputStream<R> {
             let header = self.stream.read_bits(PACKET_BITS)?;
             let packet = PacketType::from(header as u8);
 
-            println!("Read packet {:?}", packet);
+            println!("Read packet {packet:?}");
 
             match packet {
                 PacketType::FunctionSymbol => {

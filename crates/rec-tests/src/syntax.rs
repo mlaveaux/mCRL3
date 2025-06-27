@@ -63,11 +63,11 @@ impl fmt::Display for RewriteSpecificationSyntax {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Variables: ")?;
         for variable in &self.variables {
-            writeln!(f, "{}", variable)?;
+            writeln!(f, "{variable}")?;
         }
         writeln!(f, "Rewrite rules: ")?;
         for rule in &self.rewrite_rules {
-            writeln!(f, "{}", rule)?;
+            writeln!(f, "{rule}")?;
         }
         writeln!(f)
     }

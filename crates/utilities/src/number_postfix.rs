@@ -81,7 +81,7 @@ impl NumberPostfixGenerator {
                 } else {
                     *index + 1
                 };
-                format!("{}{}", hint, new_index)
+                format!("{hint}{new_index}")
             }
             None => {
                 if add_to_context {

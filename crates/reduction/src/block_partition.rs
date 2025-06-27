@@ -411,7 +411,7 @@ impl fmt::Display for BlockPartition {
                 if !first {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}", element)?;
+                write!(f, "{element}")?;
                 first = false;
             }
 
@@ -419,7 +419,7 @@ impl fmt::Display for BlockPartition {
                 if !first {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}*", element)?;
+                write!(f, "{element}*")?;
                 first = false;
             }
 

@@ -105,7 +105,7 @@ impl<M> SetAutomaton<M> {
         };
 
         for (index, (symbol, arity)) in symbols.iter().enumerate() {
-            trace!("{}: {} {}", index, symbol, arity);
+            trace!("{index}: {symbol} {arity}");
         }
 
         // The initial state has a match goals for each pattern. For each pattern l there is a match goal
@@ -230,7 +230,7 @@ impl<M> SetAutomaton<M> {
         );
 
         let result = SetAutomaton { states, transitions };
-        debug!("{}", result);
+        debug!("{result}");
 
         result
     }
@@ -460,25 +460,25 @@ impl State {
         );
         trace!("Match goals: {{");
         for mg in &self.match_goals {
-            trace!("\t {}", mg);
+            trace!("\t {mg}");
         }
 
         trace!("}}");
         trace!("Completed: {{");
         for mg in &result.completed {
-            trace!("\t {}", mg);
+            trace!("\t {mg}");
         }
 
         trace!("}}");
         trace!("Unchanged: {{");
         for mg in &result.unchanged {
-            trace!("\t {}", mg);
+            trace!("\t {mg}");
         }
 
         trace!("}}");
         trace!("Reduced: {{");
         for mg in &result.reduced {
-            trace!("\t {}", mg);
+            trace!("\t {mg}");
         }
         trace!("}}");
 
@@ -535,8 +535,7 @@ fn add_symbol(function_symbol: DataFunctionSymbol, arity: usize, symbols: &mut H
     if let Some(x) = symbols.get(&function_symbol) {
         assert_eq!(
             *x, arity,
-            "Function symbol {} occurs with different arities",
-            function_symbol,
+            "Function symbol {function_symbol} occurs with different arities",
         );
     } else {
         symbols.insert(function_symbol, arity);
@@ -579,8 +578,7 @@ fn find_symbols(t: &DataExpressionRef<'_>, symbols: &mut HashMap<DataFunctionSym
         // REC specifications should never contain this so it can be a debug error.
         assert!(
             is_data_function_symbol(&t.data_function_symbol()),
-            "Error in term {}, higher order term rewrite systems are not supported",
-            t
+            "Error in term {t}, higher order term rewrite systems are not supported"
         );
 
         add_symbol(t.data_function_symbol().protect(), t.data_arguments().len(), symbols);
@@ -590,6 +588,6 @@ fn find_symbols(t: &DataExpressionRef<'_>, symbols: &mut HashMap<DataFunctionSym
     } else if is_data_machine_number(t) {
         // Ignore machine numbers during matching?
     } else if !is_data_variable(t) {
-        panic!("Unexpected term {:?}", t);
+        panic!("Unexpected term {t:?}");
     }
 }

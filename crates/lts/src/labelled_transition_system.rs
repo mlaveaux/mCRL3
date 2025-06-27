@@ -182,7 +182,7 @@ impl fmt::Display for LabelledTransitionSystem {
 
 impl fmt::Debug for LabelledTransitionSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self)?;
+        writeln!(f, "{self}")?;
         writeln!(f, "Initial state: {}", self.initial_state)?;
         writeln!(f, "Hidden labels: {:?}", self.hidden_labels)?;
 

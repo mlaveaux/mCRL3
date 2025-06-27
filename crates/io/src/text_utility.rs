@@ -5,7 +5,7 @@ use std::fmt::Write as FmtWrite;
 pub fn indent_text(text: &str, indent: usize) -> String {
     let indent_str = " ".repeat(indent);
     text.lines()
-        .map(|line| format!("{}{}", indent_str, line))
+        .map(|line| format!("{indent_str}{line}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -26,7 +26,7 @@ pub fn wrap_text(text: &str, width: usize) -> String {
             line_length += 1;
         }
 
-        write!(&mut result, "{}", word).unwrap();
+        write!(&mut result, "{word}").unwrap();
         line_length += word.len();
     }
 

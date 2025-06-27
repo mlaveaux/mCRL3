@@ -28,7 +28,7 @@ pub struct Rule {
 impl fmt::Display for RewriteSpecification {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for rule in &self.rewrite_rules {
-            writeln!(f, "{}", rule)?;
+            writeln!(f, "{rule}")?;
         }
         Ok(())
     }

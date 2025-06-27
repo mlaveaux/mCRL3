@@ -90,7 +90,7 @@ impl<C: PartialOrd + Markable> PartialOrd for Protected<C> {
 impl<C: Debug + Markable> Debug for Protected<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let c: &C = &self.container.read();
-        write!(f, "{:?}", c)
+        write!(f, "{c:?}")
     }
 }
 

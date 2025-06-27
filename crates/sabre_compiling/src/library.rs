@@ -27,7 +27,7 @@ fn apply_env(
     for var in variables {
         let value = env.get(*var).ok_or("Missing var")?.as_str().ok_or("Not a string")?;
 
-        info!("Setting environment variable {} = {}", var, value);
+        info!("Setting environment variable {var} = {value}");
         result = result.env(var, value);
     }
 

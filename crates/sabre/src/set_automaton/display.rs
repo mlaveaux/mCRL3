@@ -10,7 +10,7 @@ use super::Transition;
 
 impl<M> fmt::Debug for SetAutomaton<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 
@@ -48,7 +48,7 @@ impl fmt::Display for State {
         writeln!(f, "Label: {}, ", self.label())?;
         writeln!(f, "Match goals: [")?;
         for m in self.match_goals() {
-            writeln!(f, "\t {}", m)?;
+            writeln!(f, "\t {m}")?;
         }
         write!(f, "]")
     }
@@ -59,12 +59,12 @@ impl<M> fmt::Display for SetAutomaton<M> {
         writeln!(f, "States: {{")?;
 
         for (state_index, s) in self.states().iter().enumerate() {
-            writeln!(f, "State {} {{\n{}", state_index, s)?;
+            writeln!(f, "State {state_index} {{\n{s}")?;
 
             writeln!(f, "Transitions: {{")?;
             for ((from, _), tr) in self.transitions() {
                 if state_index == *from {
-                    writeln!(f, "\t {}", tr)?;
+                    writeln!(f, "\t {tr}")?;
                 }
             }
             writeln!(f, "}}")?;
@@ -91,7 +91,7 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
 
         for (i, s) in self.automaton.states().iter().enumerate() {
             let match_goals = s.match_goals().iter().format_with("\\n", |goal, f| {
-                f(&format_args!("{}", html_escape::encode_safe(&format!("{}", goal))))
+                f(&format_args!("{}", html_escape::encode_safe(&format!("{goal}"))))
             });
 
             writeln!(

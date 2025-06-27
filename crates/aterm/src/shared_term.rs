@@ -4,11 +4,8 @@ use std::fmt;
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
-use std::ptr::slice_from_raw_parts_mut;
 
 use equivalent::Equivalent;
-use mcrl3_unsafety::Erasable;
-use mcrl3_unsafety::ErasedPtr;
 use mcrl3_unsafety::SliceDst;
 use mcrl3_unsafety::repr_c;
 

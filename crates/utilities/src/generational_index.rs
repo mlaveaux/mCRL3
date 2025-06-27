@@ -128,7 +128,7 @@ impl GenerationCounter {
         #[cfg(debug_assertions)]
         {
             if self.current_generation[index.index.into()] != index.generation {
-                panic!("Attempting to access an invalid index: {:?}", index);
+                panic!("Attempting to access an invalid index: {index:?}");
             }
         }
 

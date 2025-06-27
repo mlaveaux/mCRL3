@@ -126,7 +126,7 @@ impl SkiaRenderer {
                     edge_builder.line_to(to_state_view.position.x, to_state_view.position.y);
 
                     let direction = (state_view.position - to_state_view.position).normalize();
-                    let angle = -1.0 * direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
+                    let angle = -direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
 
                     // Draw the arrow of the transition
                     if let Some(path) = arrow.clone().transform(

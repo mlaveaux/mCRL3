@@ -104,6 +104,6 @@ fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {
         Rule::StateFrmDisjunction => format!("{}", StateFrmOp::Disjunction),
         Rule::StateFrmConjunction => format!("{}", StateFrmOp::Conjunction),
         Rule::StateFrmRightConstantMultiply => "StateFrm * Number".to_string(),
-        _ => format!("{:?}", rule),
+        _ => format!("{rule:?}"),
     })
 }

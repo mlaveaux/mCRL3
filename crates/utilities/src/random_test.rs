@@ -12,7 +12,7 @@ where
     test_logger();
 
     let seed: u64 = rand::random();
-    println!("seed: {}", seed);
+    println!("seed: {seed}");
     let mut rng = StdRng::seed_from_u64(seed);
 
     for _ in 0..iterations {
@@ -31,7 +31,7 @@ where
     let mut threads = vec![];
 
     let seed: u64 = rand::random();
-    println!("seed: {}", seed);
+    println!("seed: {seed}");
     let mut rng = StdRng::seed_from_u64(seed);
 
     for _ in 0..num_threads {

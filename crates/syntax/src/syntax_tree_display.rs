@@ -54,13 +54,13 @@ pub fn print_location(input: &str, span: &Span) {
 // Display implementations
 impl fmt::Display for Sort {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
 impl fmt::Display for ComplexSort {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -77,7 +77,7 @@ impl fmt::Display for UntypedProcessSpecification {
         if !self.act_decls.is_empty() {
             writeln!(f, "act")?;
             for act_decl in &self.act_decls {
-                writeln!(f, "   {};", act_decl)?;
+                writeln!(f, "   {act_decl};")?;
             }
 
             writeln!(f)?;
@@ -86,7 +86,7 @@ impl fmt::Display for UntypedProcessSpecification {
         if !self.proc_decls.is_empty() {
             writeln!(f, "proc")?;
             for proc_decl in &self.proc_decls {
-                writeln!(f, "   {};", proc_decl)?;
+                writeln!(f, "   {proc_decl};")?;
             }
 
             writeln!(f)?;
@@ -95,14 +95,14 @@ impl fmt::Display for UntypedProcessSpecification {
         if !self.glob_vars.is_empty() {
             writeln!(f, "glob")?;
             for var_decl in &self.glob_vars {
-                writeln!(f, "   {};", var_decl)?;
+                writeln!(f, "   {var_decl};")?;
             }
 
             writeln!(f)?;
         }
 
         if let Some(init) = &self.init {
-            writeln!(f, "init {};", init)?;
+            writeln!(f, "init {init};")?;
         }
         Ok(())
     }
@@ -113,7 +113,7 @@ impl fmt::Display for UntypedDataSpecification {
         if !self.sort_decls.is_empty() {
             writeln!(f, "sort")?;
             for decl in &self.sort_decls {
-                writeln!(f, "   {};", decl)?;
+                writeln!(f, "   {decl};")?;
             }
 
             writeln!(f)?;
@@ -122,7 +122,7 @@ impl fmt::Display for UntypedDataSpecification {
         if !self.cons_decls.is_empty() {
             writeln!(f, "cons")?;
             for decl in &self.cons_decls {
-                writeln!(f, "   {};", decl)?;
+                writeln!(f, "   {decl};")?;
             }
 
             writeln!(f)?;
@@ -131,14 +131,14 @@ impl fmt::Display for UntypedDataSpecification {
         if !self.map_decls.is_empty() {
             writeln!(f, "map")?;
             for decl in &self.map_decls {
-                writeln!(f, "   {};", decl)?;
+                writeln!(f, "   {decl};")?;
             }
 
             writeln!(f)?;
         }
 
         for decl in &self.eqn_decls {
-            writeln!(f, "{}", decl)?;
+            writeln!(f, "{decl}")?;
         }
         Ok(())
     }
@@ -148,12 +148,12 @@ impl fmt::Display for EqnSpec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "var")?;
         for decl in &self.variables {
-            writeln!(f, "   {};", decl)?;
+            writeln!(f, "   {decl};")?;
         }
 
         writeln!(f, "eqn")?;
         for decl in &self.equations {
-            writeln!(f, "   {};", decl)?;
+            writeln!(f, "   {decl};")?;
         }
         Ok(())
     }
@@ -164,7 +164,7 @@ impl fmt::Display for SortDecl {
         write!(f, "{}", self.identifier)?;
 
         if let Some(expr) = &self.expr {
-            write!(f, " = {}", expr)?;
+            write!(f, " = {expr}")?;
         }
 
         Ok(())
@@ -221,24 +221,24 @@ impl fmt::Display for DataExpr {
                     .format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))
             ),
             DataExpr::Set(expressions) => write!(f, "{{ {} }}", expressions.iter().format(", ")),
-            DataExpr::Id(identifier) => write!(f, "{}", identifier),
-            DataExpr::Binary { op, lhs, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
-            DataExpr::Unary { op, expr } => write!(f, "({} {})", op, expr),
-            DataExpr::Bool(value) => write!(f, "{}", value),
+            DataExpr::Id(identifier) => write!(f, "{identifier}"),
+            DataExpr::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            DataExpr::Unary { op, expr } => write!(f, "({op} {expr})"),
+            DataExpr::Bool(value) => write!(f, "{value}"),
             DataExpr::Quantifier { op, variables, body } => {
                 write!(f, "({} {} . {})", op, variables.iter().format(", "), body)
             }
             DataExpr::Lambda { variables, body } => write!(f, "(lambda {} . {})", variables.iter().format(", "), body),
             DataExpr::Application { function, arguments } => {
                 if arguments.is_empty() {
-                    write!(f, "{}", function)
+                    write!(f, "{function}")
                 } else {
                     write!(f, "{}({})", function, arguments.iter().format(", "))
                 }
             }
-            DataExpr::Number(value) => write!(f, "{}", value),
-            DataExpr::FunctionUpdate { expr, update } => write!(f, "{}[{}]", expr, update),
-            DataExpr::SetBagComp { variable, predicate } => write!(f, "{{ {} | {} }}", variable, predicate),
+            DataExpr::Number(value) => write!(f, "{value}"),
+            DataExpr::FunctionUpdate { expr, update } => write!(f, "{expr}[{update}]"),
+            DataExpr::SetBagComp { variable, predicate } => write!(f, "{{ {variable} | {predicate} }}"),
             DataExpr::Whr { expr, assignments } => write!(f, "{} whr {} end", expr, assignments.iter().format(", ")),
         }
     }
@@ -259,11 +259,11 @@ impl fmt::Display for DataExprUpdate {
 impl fmt::Display for SortExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            SortExpression::Product { lhs, rhs } => write!(f, "({} # {})", lhs, rhs),
-            SortExpression::Function { domain, range } => write!(f, "({} -> {})", domain, range),
-            SortExpression::Reference(ident) => write!(f, "{}", ident),
-            SortExpression::Simple(sort) => write!(f, "{}", sort),
-            SortExpression::Complex(complex, inner) => write!(f, "{}({})", complex, inner),
+            SortExpression::Product { lhs, rhs } => write!(f, "({lhs} # {rhs})"),
+            SortExpression::Function { domain, range } => write!(f, "({domain} -> {range})"),
+            SortExpression::Reference(ident) => write!(f, "{ident}"),
+            SortExpression::Simple(sort) => write!(f, "{sort}"),
+            SortExpression::Complex(complex, inner) => write!(f, "{complex}({inner})"),
             SortExpression::Struct { inner } => {
                 write!(f, "struct ")?;
                 write!(f, "{}", inner.iter().format(" | "))
@@ -303,22 +303,22 @@ impl fmt::Display for StateFrm {
         match self {
             StateFrm::True => write!(f, "true"),
             StateFrm::False => write!(f, "false"),
-            StateFrm::DataValExpr(expr) => write!(f, "val({})", expr),
+            StateFrm::DataValExpr(expr) => write!(f, "val({expr})"),
             StateFrm::Id(identifier, args) => {
                 if args.is_empty() {
-                    write!(f, "{}", identifier)
+                    write!(f, "{identifier}")
                 } else {
                     write!(f, "{}({})", identifier, args.iter().format(", "))
                 }
             }
-            StateFrm::Unary { op, expr } => write!(f, "({} {})", op, expr),
+            StateFrm::Unary { op, expr } => write!(f, "({op} {expr})"),
             StateFrm::Modality {
                 operator,
                 formula,
                 expr,
             } => match operator {
-                ModalityOperator::Box => write!(f, "[{}]{}", formula, expr),
-                ModalityOperator::Diamond => write!(f, "<{}>{}", formula, expr),
+                ModalityOperator::Box => write!(f, "[{formula}]{expr}"),
+                ModalityOperator::Diamond => write!(f, "<{formula}>{expr}"),
             },
             StateFrm::Quantifier {
                 quantifier,
@@ -328,19 +328,19 @@ impl fmt::Display for StateFrm {
                 write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body)
             }
             StateFrm::Binary { op, lhs, rhs } => {
-                write!(f, "({} {} {})", lhs, op, rhs)
+                write!(f, "({lhs} {op} {rhs})")
             }
             StateFrm::FixedPoint {
                 operator,
                 variable,
                 body,
             } => {
-                write!(f, "({} {} . {})", operator, variable, body)
+                write!(f, "({operator} {variable} . {body})")
             }
-            StateFrm::Delay(expr) => write!(f, "delay@({})", expr),
-            StateFrm::Yaled(expr) => write!(f, "yaled@({})", expr),
-            StateFrm::DataValExprMult(value, expr) => write!(f, "({} * {})", value, expr),
-            StateFrm::DataValExprRightMult(expr, value) => write!(f, "({} * {})", expr, value),
+            StateFrm::Delay(expr) => write!(f, "delay@({expr})"),
+            StateFrm::Yaled(expr) => write!(f, "yaled@({expr})"),
+            StateFrm::DataValExprMult(value, expr) => write!(f, "({value} * {expr})"),
+            StateFrm::DataValExprRightMult(expr, value) => write!(f, "({expr} * {value})"),
         }
     }
 }
@@ -375,11 +375,11 @@ impl fmt::Display for StateFrmOp {
 impl fmt::Display for RegFrm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RegFrm::Action(action) => write!(f, "{}", action),
-            RegFrm::Iteration(body) => write!(f, "({})*", body),
-            RegFrm::Plus(body) => write!(f, "({})+", body),
-            RegFrm::Choice { lhs, rhs } => write!(f, "({} + {})", lhs, rhs),
-            RegFrm::Sequence { lhs, rhs } => write!(f, "({} . {})", lhs, rhs),
+            RegFrm::Action(action) => write!(f, "{action}"),
+            RegFrm::Iteration(body) => write!(f, "({body})*"),
+            RegFrm::Plus(body) => write!(f, "({body})+"),
+            RegFrm::Choice { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
+            RegFrm::Sequence { lhs, rhs } => write!(f, "({lhs} . {rhs})"),
         }
     }
 }
@@ -416,17 +416,17 @@ impl fmt::Display for ActFrm {
         match self {
             ActFrm::False => write!(f, "false"),
             ActFrm::True => write!(f, "true"),
-            ActFrm::MultAct(action) => write!(f, "{}", action),
+            ActFrm::MultAct(action) => write!(f, "{action}"),
             ActFrm::Binary { op, lhs, rhs } => {
-                write!(f, "({}) {} ({})", lhs, op, rhs)
+                write!(f, "({lhs}) {op} ({rhs})")
             }
-            ActFrm::DataExprVal(expr) => write!(f, "val({})", expr),
+            ActFrm::DataExprVal(expr) => write!(f, "val({expr})"),
             ActFrm::Quantifier {
                 quantifier,
                 variables,
                 body,
             } => write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body),
-            ActFrm::Negation(expr) => write!(f, "(!{})", expr),
+            ActFrm::Negation(expr) => write!(f, "(!{expr})"),
         }
     }
 }
@@ -481,14 +481,14 @@ impl fmt::Display for ConstructorDecl {
                     write!(f, ", ")?;
                 }
                 match name {
-                    Some(name) => write!(f, "{} : {}", name, sort)?,
-                    None => write!(f, "{}", sort)?,
+                    Some(name) => write!(f, "{name} : {sort}")?,
+                    None => write!(f, "{sort}")?,
                 }
             }
             write!(f, ")")?;
 
             if let Some(projection) = &self.projection {
-                write!(f, "?{}", projection)?;
+                write!(f, "?{projection}")?;
             }
 
             Ok(())
@@ -529,14 +529,14 @@ impl fmt::Display for ProcessExpr {
         match self {
             ProcessExpr::Id(identifier, assignments) => {
                 if assignments.is_empty() {
-                    write!(f, "{}", identifier)
+                    write!(f, "{identifier}")
                 } else {
                     write!(f, "{}({})", identifier, assignments.iter().format(", "))
                 }
             }
             ProcessExpr::Action(identifier, data_exprs) => {
                 if data_exprs.is_empty() {
-                    write!(f, "{}", identifier)
+                    write!(f, "{identifier}")
                 } else {
                     write!(f, "{}({})", identifier, data_exprs.iter().format(", "))
                 }
@@ -551,7 +551,7 @@ impl fmt::Display for ProcessExpr {
                 expr,
                 operand,
             } => write!(f, "(dist {} [{}] . {})", variables.iter().format(", "), expr, operand),
-            ProcessExpr::Binary { op, lhs, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
+            ProcessExpr::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             ProcessExpr::Hide { actions, operand } => {
                 if !actions.is_empty() {
                     write!(f, "hide({{{}}}, {})", actions.iter().format(", "), operand)
@@ -589,12 +589,12 @@ impl fmt::Display for ProcessExpr {
             }
             ProcessExpr::Condition { condition, then, else_ } => {
                 if let Some(else_) = else_ {
-                    write!(f, "({}) -> ({}) <> ({})", condition, then, else_)
+                    write!(f, "({condition}) -> ({then}) <> ({else_})")
                 } else {
-                    write!(f, "({}) -> ({})", condition, then)
+                    write!(f, "({condition}) -> ({then})")
                 }
             }
-            ProcessExpr::At { expr, operand } => write!(f, "({})@({})", expr, operand),
+            ProcessExpr::At { expr, operand } => write!(f, "({expr})@({operand})"),
         }
     }
 }

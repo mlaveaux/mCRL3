@@ -20,7 +20,7 @@ where
     F: Fn(LabelIndex, StateIndex) -> bool,
 {
     let start = std::time::Instant::now();
-    trace!("{:?}", lts);
+    trace!("{lts:?}");
 
     // The resulting order of states.
     let mut stack = Vec::new();

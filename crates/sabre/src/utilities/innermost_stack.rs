@@ -123,15 +123,15 @@ impl fmt::Display for InnermostStack {
         writeln!(f, "Terms: [")?;
         for (i, entry) in self.terms.read().iter().enumerate() {
             match entry {
-                Some(term) => writeln!(f, "{}\t{}", i, term)?,
-                None => writeln!(f, "{}\tNone", i)?,
+                Some(term) => writeln!(f, "{i}\t{term}")?,
+                None => writeln!(f, "{i}\tNone")?,
             }
         }
         writeln!(f, "]")?;
 
         writeln!(f, "Configs: [")?;
         for config in self.configs.read().iter() {
-            writeln!(f, "\t{}", config)?;
+            writeln!(f, "\t{config}")?;
         }
         write!(f, "]")
     }

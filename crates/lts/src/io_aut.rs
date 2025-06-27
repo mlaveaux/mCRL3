@@ -91,7 +91,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
     );
 
     while let Some(line) = lines.next() {
-        trace!("{}", line);
+        trace!("{line}");
         let (from_txt, label_txt, to_txt) = read_transition(line)?;
 
         // Parse the from and to states, with the given label.
@@ -106,7 +106,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
             labels.resize_with(label_index.value() + 1, Default::default);
         }
 
-        trace!("Read transition {} --[{}]-> {}", from, label_txt, to);
+        trace!("Read transition {from} --[{label_txt}]-> {to}");
 
         transitions.push((from, label_index, to));
 

@@ -138,7 +138,7 @@ impl<'i, R: RuleType, D> Nodes<'i, R, D> {
 
                 Err(Error::new_from_span(
                     ErrorVariant::CustomError {
-                        message: format!("Expected a single node, instead got: {:?}", node_rules),
+                        message: format!("Expected a single node, instead got: {node_rules:?}"),
                     },
                     self.span,
                 ))

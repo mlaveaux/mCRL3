@@ -46,7 +46,7 @@ impl<T: ToString> fmt::Display for LargeFormatter<T> {
             "Result should only contain digits and spaces"
         );
 
-        write!(f, "{}", formatted)
+        write!(f, "{formatted}")
     }
 }
 

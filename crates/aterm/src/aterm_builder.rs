@@ -184,13 +184,13 @@ impl<I: fmt::Debug, C: fmt::Debug> fmt::Debug for TermBuilder<I, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Terms: [")?;
         for (i, term) in self.terms.iter().enumerate() {
-            writeln!(f, "{}\t{:?}", i, term)?;
+            writeln!(f, "{i}\t{term:?}")?;
         }
         writeln!(f, "]")?;
 
         writeln!(f, "Configs: [")?;
         for config in &self.configs {
-            writeln!(f, "\t{:?}", config)?;
+            writeln!(f, "\t{config:?}")?;
         }
         write!(f, "]")
     }
@@ -199,9 +199,9 @@ impl<I: fmt::Debug, C: fmt::Debug> fmt::Debug for TermBuilder<I, C> {
 impl<I: fmt::Debug, C: fmt::Debug> fmt::Debug for Config<I, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Config::Apply(x, result) => write!(f, "Apply({:?}, {})", x, result),
+            Config::Apply(x, result) => write!(f, "Apply({x:?}, {result})"),
             Config::Construct(symbol, arity, result) => {
-                write!(f, "Construct({:?}, {}, {})", symbol, arity, result)
+                write!(f, "Construct({symbol:?}, {arity}, {result})")
             }
         }
     }

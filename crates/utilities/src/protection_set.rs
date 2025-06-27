@@ -147,8 +147,7 @@ impl<T> ProtectionSet<T> {
 
         debug_assert!(
             matches!(self.roots[index], Entry::Filled(_)),
-            "Index {} is does not point to a filled entry",
-            index
+            "Index {index} is does not point to a filled entry"
         );
 
         self.size -= 1;

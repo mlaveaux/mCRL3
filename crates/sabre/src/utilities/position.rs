@@ -93,10 +93,10 @@ impl fmt::Display for ExplicitPosition {
             let mut first = true;
             for p in &self.indices {
                 if first {
-                    write!(f, "{}", p)?;
+                    write!(f, "{p}")?;
                     first = false;
                 } else {
-                    write!(f, ".{}", p)?;
+                    write!(f, ".{p}")?;
                 }
             }
         }
@@ -107,7 +107,7 @@ impl fmt::Display for ExplicitPosition {
 
 impl fmt::Debug for ExplicitPosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 

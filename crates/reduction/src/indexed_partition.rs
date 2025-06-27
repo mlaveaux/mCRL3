@@ -98,7 +98,7 @@ impl fmt::Display for IndexedPartition {
                     write!(f, "{{")?;
                 }
 
-                write!(f, "{}", element_index)?;
+                write!(f, "{element_index}")?;
                 first_block = false;
             }
 

@@ -28,7 +28,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
     // Generate the automata used for matching
     let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);
 
-    debug!("{:?}", apma);
+    debug!("{apma:?}");
 
     // Debug assertion to verify we have at least one state in the automaton
     debug_assert!(!apma.states().is_empty(), "Automaton must have at least one state");
@@ -54,13 +54,12 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
         writeln!(&mut formatter, "// Position {}", state.label())?;
 
         for goal in state.match_goals() {
-            writeln!(&mut formatter, "// Goal {}", goal,)?;
+            writeln!(&mut formatter, "// Goal {goal}",)?;
         }
 
         writeln!(
             &mut formatter,
-            "fn rewrite_{}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{",
-            index
+            "fn rewrite_{index}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{"
         )?;
 
         // Use the IndentFormatter to properly indent the function body
@@ -92,7 +91,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
                 // Continue on the outgoing transition.
                 for (announcement, _annotation) in &transition.announcements {
                     // Check for conditions and non linear patterns.
-                    writeln!(&mut formatter, "// Announcement {}", announcement)?;
+                    writeln!(&mut formatter, "// Announcement {announcement}")?;
                     //writeln!(&mut formatter, "t.protect()")?;
                 }
 
@@ -183,10 +182,10 @@ impl fmt::Display for UnderscoreFormatter<'_> {
             let mut first = true;
             for p in self.0.indices().iter() {
                 if first {
-                    write!(f, "{}", p)?;
+                    write!(f, "{p}")?;
                     first = false;
                 } else {
-                    write!(f, "_{}", p)?;
+                    write!(f, "_{p}")?;
                 }
             }
         }

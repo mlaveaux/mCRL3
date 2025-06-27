@@ -65,7 +65,7 @@ fn print(storage: &Storage, ldd: &Ldd, f: &mut fmt::Formatter<'_>) -> fmt::Resul
     for vector in iter(storage, ldd) {
         write!(f, "<")?;
         for val in vector {
-            write!(f, "{} ", val)?;
+            write!(f, "{val} ")?;
         }
         writeln!(f, ">")?;
     }
@@ -87,7 +87,7 @@ fn print_node(storage: &Storage, f: &mut impl Write, marked: &mut HashSet<Ldd>, 
                 write!(f, "|")?;
             }
 
-            write!(f, "<{0}> {0}", value)?;
+            write!(f, "<{value}> {value}")?;
             first = false;
         }
         writeln!(f, "\"];")?;

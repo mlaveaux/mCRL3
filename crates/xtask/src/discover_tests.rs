@@ -38,8 +38,7 @@ fn discover_files_with_extension(ext_name: &str, pattern: &str) -> Result<(), Bo
                         if !seen_filenames.contains(&sanitized_filename) {
                             // Generate the test case string with normalized path
                             println!(
-                                "#[test_case(include_str!(\"../../../{}\"), \"tests/snapshot/result_{}\" ; \"{}\")]",
-                                normalized_path, sanitized_filename, sanitized_filename
+                                "#[test_case(include_str!(\"../../../{normalized_path}\"), \"tests/snapshot/result_{sanitized_filename}\" ; \"{sanitized_filename}\")]"
                             );
 
                             // Add sanitized filename to set of seen filenames
@@ -56,7 +55,7 @@ fn discover_files_with_extension(ext_name: &str, pattern: &str) -> Result<(), Bo
     }
 
     // Additional debug assertion for specific file type
-    debug_assert!(!seen_filenames.is_empty(), "No {} test files were discovered", ext_name);
+    debug_assert!(!seen_filenames.is_empty(), "No {ext_name} test files were discovered");
 
     Ok(())
 }

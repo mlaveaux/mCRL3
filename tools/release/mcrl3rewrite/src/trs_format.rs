@@ -99,7 +99,7 @@ impl fmt::Display for TrsFormatter<'_> {
         // Print the list of variables.
         writeln!(f, "(VAR ")?;
         for var in variables {
-            writeln!(f, "\t {} ", var)?;
+            writeln!(f, "\t {var} ")?;
         }
         writeln!(f, ") ")?;
 

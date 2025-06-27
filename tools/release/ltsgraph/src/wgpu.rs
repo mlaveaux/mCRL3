@@ -11,5 +11,5 @@ pub async fn init_wgpu() -> Result<(wgpu::Device, wgpu::Queue), MCRL3Error> {
     adapter
         .request_device(&wgpu::DeviceDescriptor::default(), None)
         .await
-        .map_err(|e| MCRL3Error::from(format!("Failed to create device: {}", e)))
+        .map_err(|e| MCRL3Error::from(format!("Failed to create device: {e}")))
 }

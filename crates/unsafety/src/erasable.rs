@@ -13,8 +13,8 @@ impl<T: ?Sized + Erasable> Copy for Thin<T> {}
 impl<T: ?Sized + Erasable> Clone for Thin<T> {
     fn clone(&self) -> Self {
         Self {
-            ptr: self.ptr.clone(),
-            marker: self.marker.clone(),
+            ptr: self.ptr,
+            marker: self.marker,
         }
     }
 }

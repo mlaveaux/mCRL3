@@ -72,9 +72,10 @@ impl ThreadTermPool {
 
         let tp = GLOBAL_TERM_POOL.lock();
         let empty_args: [ATermRef<'_>; 0] = [];
-        tp.borrow_mut().create_term_array(symbol, &empty_args, |tp, index, inserted| {
-            self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
-        })
+        tp.borrow_mut()
+            .create_term_array(symbol, &empty_args, |tp, index, inserted| {
+                self.protect_inserted(tp, &unsafe { ATermRef::from_index(index) }, inserted)
+            })
     }
 
     /// Create a term with the given arguments
@@ -86,7 +87,7 @@ impl ThreadTermPool {
                 arguments.push(ATermRef::from_index(arg.shared()));
             }
         }
-        
+
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
@@ -116,7 +117,7 @@ impl ThreadTermPool {
                 arguments.push(ATermRef::from_index(arg.shared()));
             }
         }
-        
+
         let tp = GLOBAL_TERM_POOL.lock();
         (*tp)
             .borrow_mut()
@@ -135,7 +136,7 @@ impl ThreadTermPool {
     where
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
-    {        
+    {
         let mut arguments = self.tmp_arguments.borrow_mut();
         arguments.clear();
         unsafe {

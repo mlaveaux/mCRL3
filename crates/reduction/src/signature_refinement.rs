@@ -201,7 +201,7 @@ where
     F: FnMut(StateIndex, &BlockPartition, &[BlockIndex], &mut SignatureBuilder),
     G: FnMut(&[(LabelIndex, BlockIndex)], &Vec<Signature>) -> Option<BlockIndex>,
 {
-    trace!("{:?}", lts);
+    trace!("{lts:?}");
 
     // Avoids reallocations when computing the signature.
     let mut arena = Bump::new();
@@ -272,7 +272,7 @@ where
                     number
                 };
 
-                trace!("State {state_index} signature {:?} index {index}", builder);
+                trace!("State {state_index} signature {builder:?} index {index}");
                 index
             })
         {
@@ -335,7 +335,7 @@ fn signature_refinement_naive<F>(lts: &LabelledTransitionSystem, mut signature: 
 where
     F: FnMut(StateIndex, &IndexedPartition, &Vec<Signature>, &mut SignatureBuilder),
 {
-    trace!("{:?}", lts);
+    trace!("{lts:?}");
 
     // Avoids reallocations when computing the signature.
     let mut arena = Bump::new();
@@ -369,7 +369,7 @@ where
             // Compute the signature of a single state
             signature(state_index, &partition, &state_to_signature, &mut builder);
 
-            trace!("State {state_index} signature {:?}", builder);
+            trace!("State {state_index} signature {builder:?}");
 
             // Keep track of the index for every state, either use the arena to allocate space or simply borrow the value.
             let mut new_id = BlockIndex::new(id.len());

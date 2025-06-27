@@ -35,7 +35,7 @@ impl<R: pest::RuleType> DisplayPair<'_, R> {
             for pair in self.0.clone().into_inner() {
                 DisplayPair(pair).display(f, depth + 1)?;
             }
-            write!(f, "{}]),", indent)?;
+            write!(f, "{indent}]),")?;
         } else {
             write!(f, ")")?;
         }

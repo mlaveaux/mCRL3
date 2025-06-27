@@ -84,7 +84,7 @@ impl MatchGoal {
 
         trace!("=== partition(match_goals = [ ===");
         for mg in &goals {
-            trace!("\t {}", mg);
+            trace!("\t {mg}");
         }
         trace!("]");
 
@@ -153,11 +153,11 @@ impl MatchGoal {
         for (goals, pos) in &partitions {
             trace!("pos {{");
             for mg in pos {
-                trace!("\t {}", mg);
+                trace!("\t {mg}");
             }
             trace!("}} -> {{");
             for mg in goals {
-                trace!("\t {}", mg);
+                trace!("\t {mg}");
             }
             trace!("}}");
         }
@@ -204,7 +204,7 @@ impl fmt::Display for MatchGoal {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", obligation)?;
+            write!(f, "{obligation}")?;
             first = false;
         }
 

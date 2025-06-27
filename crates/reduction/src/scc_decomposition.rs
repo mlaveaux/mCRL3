@@ -28,7 +28,7 @@ where
     F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
 {
     let start = Instant::now();
-    trace!("{:?}", lts);
+    trace!("{lts:?}");
 
     let mut partition = IndexedPartition::new(lts.num_of_states());
 
@@ -162,7 +162,7 @@ fn strongly_connect<F>(
             let info = state_info[index.value()].as_mut().expect("This state was on the stack");
             info.on_stack = false;
 
-            trace!("Added state {index} to block {}", next_block_number);
+            trace!("Added state {index} to block {next_block_number}");
             partition.set_block(index, *next_block_number);
 
             if index == state_index || stack.is_empty() {

@@ -16,7 +16,7 @@ fn write_env(writer: &mut impl Write, variables: &[&'static str]) -> Result<(), 
 
 fn main() -> Result<(), Box<dyn Error>> {
     for (from, to) in env::vars() {
-        println!("{} to {}", from, to);
+        println!("{from} to {to}");
     }
 
     let mut file = File::create("../../target/Compilation.toml")?;

@@ -85,7 +85,7 @@ pub fn benchmark(output_path: impl AsRef<Path>, rewriter: Rewriter) -> Result<()
             let expressions = path.with_extension("expressions");
 
             let benchmark_name = path.file_stem().unwrap().to_string_lossy();
-            println!("Benchmarking {}", benchmark_name);
+            println!("Benchmarking {benchmark_name}");
 
             let mut arguments = vec!["600".to_string(), mcrl2_rewrite_path.to_string_lossy().to_string()];
 
@@ -121,7 +121,7 @@ pub fn benchmark(output_path: impl AsRef<Path>, rewriter: Rewriter) -> Result<()
                                 let (_, [grp1]) = result.extract();
                                 let timing: f32 = grp1.parse()?;
 
-                                println!("Benchmark {} timing {} milliseconds", benchmark_name, timing);
+                                println!("Benchmark {benchmark_name} timing {timing} milliseconds");
 
                                 // Write the output to the file and include a newline.
                                 measurements.timings.push(timing / 1000.0);
@@ -129,8 +129,8 @@ pub fn benchmark(output_path: impl AsRef<Path>, rewriter: Rewriter) -> Result<()
                         }
                     }
                     Err(err) => {
-                        println!("Benchmark {} timed out or crashed", benchmark_name);
-                        println!("Command failed {:?}", err);
+                        println!("Benchmark {benchmark_name} timed out or crashed");
+                        println!("Command failed {err:?}");
                         break;
                     }
                 };
@@ -151,7 +151,7 @@ fn average(values: &[f32]) -> f32 {
 
 /// Prints a float with two decimals, since format specifiers cannot be stacked.
 fn print_float(value: f32) -> String {
-    format!("{:.1}", value)
+    format!("{value:.1}")
 }
 
 /// Prints a table with the results of the benchmark.
@@ -185,16 +185,16 @@ pub fn create_table(json_path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
     let mut first = true;
     for rewriter in &rewriters {
         if first {
-            print!("{: >30}", rewriter);
+            print!("{rewriter: >30}");
             first = false;
         } else {
-            print!("{: >10} |", rewriter);
+            print!("{rewriter: >10} |");
         }
     }
 
     // Print the entries in the table.
     for (benchmark, result) in &results {
-        print!("{: >30}", benchmark);
+        print!("{benchmark: >30}");
 
         for rewriter in &rewriters {
             if let Some(timing) = result.get(rewriter) {

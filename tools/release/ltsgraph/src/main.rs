@@ -461,7 +461,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                     match read_aut(file, vec![]) {
                         Ok(lts) => {
                             let lts = Arc::new(lts);
-                            info!("Loaded lts {}", lts);
+                            info!("Loaded lts {lts}");
 
                             // Create the layout and viewer separately to make the initial state sensible.
                             let layout = GraphLayout::new(lts.clone());
@@ -482,12 +482,12 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                             render_handle.resume();
                         }
                         Err(x) => {
-                            show_error_dialog("Failed to load LTS!", &format!("{}", x));
+                            show_error_dialog("Failed to load LTS!", &format!("{x}"));
                         }
                     }
                 }
                 Err(x) => {
-                    show_error_dialog("Failed to load LTS!", &format!("{}", x));
+                    show_error_dialog("Failed to load LTS!", &format!("{x}"));
                 }
             }
         }

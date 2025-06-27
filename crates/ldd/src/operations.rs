@@ -94,7 +94,7 @@ pub fn project(storage: &mut Storage, set: &LddRef, proj: &LddRef) -> Ldd {
                 }
             }
             x => {
-                panic!("proj has unexpected value {}", x);
+                panic!("proj has unexpected value {x}");
             }
         }
     }
@@ -254,7 +254,7 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         }
                     }
                     x => {
-                        panic!("meta has unexpected value: {}", x);
+                        panic!("meta has unexpected value: {x}");
                     }
                 }
             },

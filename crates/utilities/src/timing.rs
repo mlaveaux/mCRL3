@@ -46,17 +46,17 @@ impl Timing {
     /// Prints all the finished timers.
     pub fn print(&self) {
         for (name, time) in self.results.borrow().iter() {
-            eprintln!("Time {}: {:.3}s", name, time);
+            eprintln!("Time {name}: {time:.3}s");
         }
     }
 
     /// Writes a YAML report of the finished timers to the given writer.
     pub fn print_yaml(&self, tool_name: &str, writer: &mut impl Write) -> io::Result<()> {
-        writeln!(writer, "- tool: {}", tool_name)?;
+        writeln!(writer, "- tool: {tool_name}")?;
         writeln!(writer, "  timing:")?;
 
         for (name, time) in self.results.borrow().iter() {
-            writeln!(writer, "    {}: {:.3}s", name, time)?;
+            writeln!(writer, "    {name}: {time:.3}s")?;
         }
         Ok(())
     }

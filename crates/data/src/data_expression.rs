@@ -73,7 +73,7 @@ mod inner {
             } else if is_data_function_symbol(&self.term) {
                 self.term.copy().into()
             } else {
-                panic!("data_function_symbol not implemented for {}", self);
+                panic!("data_function_symbol not implemented for {self}");
             }
         }
 
@@ -89,7 +89,7 @@ mod inner {
                 result.next();
                 result.next();
             } else {
-                panic!("data_arguments not implemented for {}", self);
+                panic!("data_arguments not implemented for {self}");
             }
 
             result.map(|t| t.into())
@@ -114,11 +114,10 @@ mod inner {
         /// Returns the ith argument of a data application.
         #[mcrl3_ignore]
         pub fn data_arg(&self, index: usize) -> DataExpressionRef<'_> {
-            debug_assert!(is_data_application(self), "Term {:?} is not a data application", self);
+            debug_assert!(is_data_application(self), "Term {self:?} is not a data application");
             debug_assert!(
                 index + 1 < self.get_head_symbol().arity(),
-                "data_arg({index}) is not defined for term {:?}",
-                self
+                "data_arg({index}) is not defined for term {self:?}"
             );
 
             self.term.arg(index + 1).into()
@@ -133,7 +132,7 @@ mod inner {
             } else if is_data_variable(&self.term) {
                 DataVariableRef::from(self.term.copy()).sort().protect()
             } else {
-                panic!("data_sort not implemented for {}", self);
+                panic!("data_sort not implemented for {self}");
             }
         }
     }
@@ -303,8 +302,7 @@ mod inner {
         pub fn data_arg(&self, index: usize) -> DataExpressionRef<'_> {
             debug_assert!(
                 index + 1 < self.get_head_symbol().arity(),
-                "data_arg({index}) is not defined for term {:?}",
-                self
+                "data_arg({index}) is not defined for term {self:?}"
             );
 
             self.term.arg(index + 1).into()
@@ -414,7 +412,7 @@ impl<'a> DataExpressionRef<'a> {
             result.next();
             result.next();
         } else {
-            panic!("data_arguments not implemented for {}", self);
+            panic!("data_arguments not implemented for {self}");
         }
 
         result.map(|t| t.into())
@@ -422,11 +420,10 @@ impl<'a> DataExpressionRef<'a> {
 
     /// Returns the ith argument of a data application.
     pub fn data_arg(&self, index: usize) -> DataExpressionRef<'a> {
-        debug_assert!(is_data_application(self), "Term {:?} is not a data application", self);
+        debug_assert!(is_data_application(self), "Term {self:?} is not a data application");
         debug_assert!(
             index + 1 < self.get_head_symbol().arity(),
-            "data_arg({index}) is not defined for term {:?}",
-            self
+            "data_arg({index}) is not defined for term {self:?}"
         );
 
         self.term.arg(index + 1).into()

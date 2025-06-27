@@ -89,12 +89,12 @@ impl Transmutable for Config<'static> {
 impl fmt::Display for Config<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Config::Rewrite(result) => write!(f, "Rewrite({})", result),
+            Config::Rewrite(result) => write!(f, "Rewrite({result})"),
             Config::Construct(symbol, arity, result) => {
-                write!(f, "Construct({}, {}, {})", symbol, arity, result)
+                write!(f, "Construct({symbol}, {arity}, {result})")
             }
             Config::Term(term, result) => {
-                write!(f, "Term({}, {})", term, result)
+                write!(f, "Term({term}, {result})")
             }
             Config::Return() => write!(f, "Return()"),
         }

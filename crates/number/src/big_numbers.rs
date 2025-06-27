@@ -228,7 +228,7 @@ impl FromStr for BigNatural {
         let mut result = BigNatural::new();
         for c in s.chars() {
             if !c.is_ascii_digit() {
-                return Err(format!("Invalid character in number: {}", c));
+                return Err(format!("Invalid character in number: {c}"));
             }
             let mut carry = (c as usize) - ('0' as usize);
             let mut temp = result.digits.clone();
@@ -259,7 +259,7 @@ impl fmt::Display for BigNatural {
             }
 
             for digit in digits.iter().rev() {
-                write!(f, "{}", digit)?;
+                write!(f, "{digit}")?;
             }
 
             Ok(())

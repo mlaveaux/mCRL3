@@ -68,7 +68,7 @@ impl SabreCompilingRewriter {
                 .as_str()
                 .ok_or("Not a string")?;
 
-            info!("Using local dependency {}", path);
+            info!("Using local dependency {path}");
             dependencies.push(format!(
                 "mcrl3_sabre-ffi = {{ path = '{}' }}",
                 PathBuf::from(path)

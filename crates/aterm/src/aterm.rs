@@ -108,8 +108,7 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
     fn arg(&self, index: usize) -> ATermRef<'a> {
         debug_assert!(
             index < self.get_head_symbol().arity(),
-            "arg({index}) is not defined for term {:?}",
-            self
+            "arg({index}) is not defined for term {self:?}"
         );
 
         self.shared().arguments()[index].borrow().copy()
@@ -160,7 +159,7 @@ impl Markable for ATermRef<'_> {
 
 impl fmt::Display for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -176,7 +175,7 @@ impl fmt::Debug for ATermRef<'_> {
 
             let mut args = self.arguments().peekable();
             while let Some(arg) = args.next() {
-                write!(f, "{:?}", arg)?;
+                write!(f, "{arg:?}")?;
                 if args.peek().is_some() {
                     write!(f, ", ")?;
                 }

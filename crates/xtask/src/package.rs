@@ -48,13 +48,13 @@ pub fn package() -> Result<(), Box<dyn Error>> {
     // Copy each binary with appropriate extension for Windows
     for binary_name in &binary_names {
         let source_path = if cfg!(windows) {
-            target_release_dir.join(format!("{}.exe", binary_name))
+            target_release_dir.join(format!("{binary_name}.exe"))
         } else {
             target_release_dir.join(binary_name)
         };
 
         let dest_path = if cfg!(windows) {
-            package_dir.join(format!("{}.exe", binary_name))
+            package_dir.join(format!("{binary_name}.exe"))
         } else {
             package_dir.join(binary_name)
         };
@@ -62,12 +62,11 @@ pub fn package() -> Result<(), Box<dyn Error>> {
         // Precondition: Binary must exist after successful build
         debug_assert!(
             source_path.exists(),
-            "Binary {} should exist after cargo build --release",
-            binary_name
+            "Binary {binary_name} should exist after cargo build --release"
         );
 
         copy(&source_path, &dest_path)?;
-        println!("Copied {} to package directory", binary_name);
+        println!("Copied {binary_name} to package directory");
     }
 
     println!("=== Package creation completed ===");
@@ -77,7 +76,7 @@ pub fn package() -> Result<(), Box<dyn Error>> {
     debug_assert!(
         binary_names.iter().all(|name| {
             let expected_path = if cfg!(windows) {
-                package_dir.join(format!("{}.exe", name))
+                package_dir.join(format!("{name}.exe"))
             } else {
                 package_dir.join(name)
             };
