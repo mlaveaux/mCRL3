@@ -88,14 +88,13 @@ impl PauseableThread {
     pub fn join(&mut self) -> Result<(), MCRL3Error> {
         if let Some(handle) = self.handle.take() {
             handle.join().map_err(|e| {
-                let error_msg = if let Some(s) = e.downcast_ref::<&'static str>() {
+                if let Some(s) = e.downcast_ref::<&'static str>() {
                     s.to_string()
                 } else if let Some(s) = e.downcast_ref::<String>() {
                     s.clone()
                 } else {
                     "Thread panicked with unknown error".to_string()
-                };
-                error_msg
+                }
             })?;
         }
 
@@ -109,7 +108,7 @@ impl Drop for PauseableThread {
 
         // Joining consumes the handle
         if let Some(handle) = self.handle.take() {
-            let _ = handle
+            handle
                 .join()
                 .expect("The thread terminated with an error when the handle was dropped!");
         }
