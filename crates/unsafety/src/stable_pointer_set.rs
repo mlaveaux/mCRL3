@@ -259,7 +259,7 @@ where
     /// This version takes a reference to an equivalent value and creates the value to insert
     /// only if it doesn't already exist in the set. Returns a stable pointer to the element
     /// and a boolean indicating whether the element was inserted.
-    pub fn insert_equiv<'a, Q>(&mut self, value: &'a Q) -> (StablePointer<T>, bool)
+    pub fn insert_equiv<'a, Q>(&self, value: &'a Q) -> (StablePointer<T>, bool)
     where
         Q: Hash + Equivalent<T>,
         T: From<&'a Q>,
@@ -329,7 +329,7 @@ where
     /// Removes an element from the set using its stable pointer. This is very inefficient and requires O(n) time.
     ///
     /// Returns true if the element was found and removed.
-    pub fn remove(&mut self, pointer: StablePointer<T>) -> bool {
+    pub fn remove(&self, pointer: StablePointer<T>) -> bool {
         debug_assert!(
             pointer.is_last_reference(),
             "Pointer must be the last reference to the element"
@@ -347,7 +347,7 @@ where
     /// # Safety
     ///
     /// It invalidates any StablePointers to removed elements
-    pub fn retain<F>(&mut self, mut predicate: F)
+    pub fn retain<F>(&self, mut predicate: F)
     where
         F: FnMut(&StablePointer<T>) -> bool,
     {
@@ -375,13 +375,13 @@ impl<T: ?Sized + SliceDst, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
     S: BuildHasher + Clone,
-    A: Allocator,
+    A: Allocator + Sync,
 {
     /// Clears the set, removing all values and invalidating all pointers.
     ///
     /// # Safety
     /// This is unsafe because it invalidates all pointers to the elements in the set.
-    pub fn clear(&mut self) {
+    pub fn clear(&self) {
         #[cfg(debug_assertions)]
         debug_assert!(
             self.index.iter().all(|x| x.reference_counter.strong_count() == 1),
@@ -401,7 +401,7 @@ where
     /// This version takes a reference to an equivalent value and creates the value to insert
     /// only if it doesn't already exist in the set. Returns a stable pointer to the element
     /// and a boolean indicating whether the element was inserted.
-    pub fn insert_equiv_dst<'a, Q, C>(&mut self, value: &'a Q, length: usize, construct: C) -> (StablePointer<T>, bool)
+    pub fn insert_equiv_dst<'a, Q, C>(&self, value: &'a Q, length: usize, construct: C) -> (StablePointer<T>, bool)
     where
         Q: Hash + Equivalent<T>,
         C: Fn(*mut T, &'a Q),
@@ -450,7 +450,7 @@ where
     ///
     /// If the set already had this value present, `false` is returned along
     /// with a stable pointer to the existing element.
-    pub fn insert(&mut self, value: T) -> (StablePointer<T>, bool) {
+    pub fn insert(&self, value: T) -> (StablePointer<T>, bool) {
         debug_assert!(std::mem::size_of::<T>() > 0, "Zero-sized types not supported");
 
         if let Some(ptr) = self.get(&value) {
@@ -496,8 +496,8 @@ where
 
         // TODO: Fix memory leak.
         // Manually deallocate all entries
-        // for entry in self.index.drain() {
-        //     entry.deallocate(&self.allocator);
+        // for entry in self.index.iter() {
+        //     self.allocator.deallocate_slice_dst(entry.ptr);
         // }
     }
 }

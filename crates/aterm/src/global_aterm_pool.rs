@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
@@ -6,6 +5,8 @@ use std::sync::LazyLock;
 
 use log::info;
 use mcrl3_utilities::LargeFormatter;
+use parking_lot::RwLock;
+use parking_lot::RwLockReadGuard;
 use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;
@@ -55,14 +56,14 @@ mod mutex {
 pub use mutex::*;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
-pub(crate) static GLOBAL_TERM_POOL: LazyLock<ReentrantMutex<RefCell<GlobalTermPool>>> =
-    LazyLock::new(|| ReentrantMutex::new(RefCell::new(GlobalTermPool::new())));
+pub(crate) static GLOBAL_TERM_POOL: LazyLock<RwLock<GlobalTermPool>> =
+    LazyLock::new(|| RwLock::new(GlobalTermPool::new()));
 
 /// Enables aggressive garbage collection, which is used for testing.
 pub(crate) const AGRESSIVE_GC: bool = false;
 
 /// A type alias for the global term pool guard
-pub(crate) type GlobalTermPoolGuard<'a> = ReentrantMutexGuard<'a, RefCell<GlobalTermPool>>;
+pub(crate) type GlobalTermPoolGuard<'a> = RwLockReadGuard<'a, GlobalTermPool>;
 
 /// The single global (singleton) term pool.
 pub(crate) struct GlobalTermPool {
@@ -90,7 +91,7 @@ pub(crate) struct GlobalTermPool {
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
         // Insert the default symbols.
-        let mut symbol_pool = SymbolPool::new();
+        let symbol_pool = SymbolPool::new();
         let int_symbol = symbol_pool.create("Int", 0, |index| unsafe { SymbolRef::from_index(&index) });
         let list_symbol = symbol_pool.create("List", 2, |index| unsafe { SymbolRef::from_index(&index) });
         let empty_list_symbol = symbol_pool.create("[]", 0, |index| unsafe { SymbolRef::from_index(&index) });
@@ -114,9 +115,9 @@ impl GlobalTermPool {
     }
 
     /// Creates a term storing a single integer value.
-    pub fn create_int<P>(&mut self, value: usize, protect: P) -> ATerm
+    pub fn create_int<P>(&self, value: usize, protect: P) -> (ATerm, bool)
     where
-        P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
+        P: FnOnce(&ATermIndex) -> ATerm,
     {
         let shared_term = SharedTermLookup {
             symbol: unsafe { SymbolRef::from_index(self.int_symbol.shared()) },
@@ -129,18 +130,19 @@ impl GlobalTermPool {
                 .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
                     SharedTerm::construct(ptr, key)
                 });
-        protect(self, &index, inserted)
+
+        (protect(&index), inserted)
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
     pub fn create_term_array<'a, 'b, 'c, P>(
-        &'c mut self,
+        &'c self,
         symbol: &'b impl Symb<'a, 'b>,
         args: &'c [ATermRef<'c>],
         protect: P,
-    ) -> ATerm
+    ) -> (ATerm, bool)
     where
-        P: FnOnce(&mut GlobalTermPool, &ATermIndex, bool) -> ATerm,
+        P: FnOnce(&ATermIndex) -> ATerm,
     {
         let shared_term = SharedTermLookup {
             symbol: SymbolRef::from_symbol(symbol),
@@ -159,11 +161,12 @@ impl GlobalTermPool {
                 .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
                     SharedTerm::construct(ptr, key)
                 });
-        protect(self, &index, inserted)
+
+        (protect(&index), inserted)
     }
 
     /// Create a function symbol
-    pub fn create_symbol<P>(&mut self, name: impl Into<String> + AsRef<str>, arity: usize, protect: P) -> Symbol
+    pub fn create_symbol<P>(&self, name: impl Into<String> + AsRef<str>, arity: usize, protect: P) -> Symbol
     where
         P: FnOnce(SymbolIndex) -> Symbol,
     {

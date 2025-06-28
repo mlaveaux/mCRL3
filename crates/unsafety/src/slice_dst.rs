@@ -58,21 +58,21 @@ pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutErro
 /// A trait that can be used to extend `Allocator` implementations with the ability to allocate (and deallocate) dynamically sized slices that implement `SliceDst`.
 pub unsafe trait AllocatorDst {
     /// Allocate an object whose type implements `SliceDst`. The resulting memory is uninitialize.
-    fn allocate_slice_dst<T: SliceDst + ?Sized>(&mut self, length: usize) -> Result<NonNull<T>, AllocError>;
+    fn allocate_slice_dst<T: SliceDst + ?Sized>(&self, length: usize) -> Result<NonNull<T>, AllocError>;
 
     /// Deallocates an allocation returned by `allocate_slice_dst`.
-    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&mut self, ptr: NonNull<T>);
+    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>);
 }
 
 unsafe impl<A: Allocator> AllocatorDst for A {
-    fn allocate_slice_dst<T: SliceDst + ?Sized>(&mut self, length: usize) -> Result<NonNull<T>, AllocError> {
+    fn allocate_slice_dst<T: SliceDst + ?Sized>(&self, length: usize) -> Result<NonNull<T>, AllocError> {
         let ptr = self.allocate(T::layout_for(length).unwrap())?;
         // Create a slice of the correct length for proper metadata
         let slice_ptr = unsafe { NonNull::new_unchecked(slice_from_raw_parts_mut(ptr.as_ptr() as *mut (), length)) };
         Ok(T::retype(slice_ptr))
     }
 
-    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&mut self, ptr: NonNull<T>) {
+    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>) {
         unsafe {
             self.deallocate(
                 NonNull::new_unchecked(ptr.as_ptr() as *mut u8),

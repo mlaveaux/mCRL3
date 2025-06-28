@@ -141,7 +141,7 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
         c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
             b.iter(|| {
                 benchmark_threads(num_threads, move |_id| {
-                    for _ in 0..ITERATIONS / 1 {
+                    for _ in 0..ITERATIONS / num_threads {
                         black_box(create_nested_function::<2>("f", "c", SIZE));
                     }
                 });
@@ -216,7 +216,7 @@ fn benchmark_unique_lookup(c: &mut Criterion) {
         c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
             b.iter(|| {
                 benchmark_threads(num_threads, move |_id| {
-                    for _ in 0..ITERATIONS / 1 {
+                    for _ in 0..ITERATIONS / num_threads {
                         black_box(create_nested_function::<2>("f", "c", SIZE));
                     }
                 });

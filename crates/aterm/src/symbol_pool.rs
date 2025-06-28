@@ -28,7 +28,7 @@ impl SymbolPool {
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create<N, P, R>(&mut self, name: N, arity: usize, protect: P) -> R
+    pub fn create<N, P, R>(&self, name: N, arity: usize, protect: P) -> R
     where
         N: Into<String> + AsRef<str>,
         P: FnOnce(SymbolIndex) -> R,
