@@ -1,13 +1,14 @@
 use std::fmt;
 
-#[cfg(feature = "mcrl3_debug")]
-use itertools::Itertools;
-
 use mcrl3_aterm::Protected;
 use mcrl3_aterm::ProtectedWriteGuard;
 use mcrl3_data::DataExpressionRef;
 use mcrl3_data::DataFunctionSymbolRef;
 use mcrl3_utilities::debug_trace;
+
+// Only used in debug_trace!
+#[allow(unused_imports)]
+use itertools::Itertools;
 
 use crate::utilities::DataPositionIndexed;
 

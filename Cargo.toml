@@ -16,13 +16,34 @@ split-debuginfo= "packed"
 [workspace]
 resolver = "2"
 members = [
-    "3rd-party/*",
-    "crates/*",
-    "crates/**/benchmarks",
+    "3rd-party/pest_consume",
+    "3rd-party/pest_consume_macros",
+    "crates/aterm",
+    "crates/aterm/benchmarks",
+    "crates/data",
+    "crates/gui",
+    "crates/io",
+    "crates/ldd",
+    "crates/ldd/benchmarks",
+    "crates/lts",
+    "crates/macros",
+    "crates/number",
+    "crates/rec-tests",
+    "crates/reduction",
+    "crates/sabre",
+    "crates/sabre/benchmarks",
+    "crates/sabre_compiling",
     "crates/sabre_compiling/sabre_ffi",
-    "tools/release/*",
-    "tools/**/benchmarks",
-    "tools/**/library"
+    "crates/sharedmutex",
+    "crates/syntax",
+    "crates/unsafety",
+    "crates/utilities",
+    "crates/version",
+    "tools/release/ltsgraph",
+    "tools/release/ltsgraph/library",
+    "tools/release/ltsgraph/benchmarks",
+    "tools/release/ltsinfo",
+    "tools/release/mcrl3rewrite",
 ]
 
 [workspace.dependencies]

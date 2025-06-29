@@ -23,7 +23,7 @@ impl<T> GcMutex<T> {
     pub fn write(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            _guard: GLOBAL_TERM_POOL.read(),
+            _guard: GLOBAL_TERM_POOL.read_recursive(),
         }
     }
 
@@ -31,7 +31,7 @@ impl<T> GcMutex<T> {
     pub fn read(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            _guard: GLOBAL_TERM_POOL.read(),
+            _guard: GLOBAL_TERM_POOL.read_recursive(),
         }
     }
 }

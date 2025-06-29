@@ -285,14 +285,18 @@ where
 
         // Insert new value using allocator
         let entry = Entry::new(ptr);
-        let ptr = StablePointer::from_entry(&entry);
+        let result = StablePointer::from_entry(&entry);
 
         // First add to storage, then to index
         let inserted = self.index.insert(entry);
+        if !inserted {
+            let entry = Entry::new(ptr);
+            let element = self.index.get(&entry).expect("Insertion failed, so entry must be in the set");
+            return (StablePointer::from_entry(&element), false);
+        }
 
-        debug_assert!(inserted, "Value should not already exist in the index");
-
-        (ptr, true)
+        // Insertion succeeded.
+        (result, true)
     }
 
     /// Returns `true` if the set contains a value.
@@ -334,9 +338,14 @@ where
             pointer.is_last_reference(),
             "Pointer must be the last reference to the element"
         );
+
+        
         // SAFETY: This is the last reference to the element, so it is safe to remove it.
         let t = pointer.deref();
-        self.index.remove(&LookUp(t)).is_some()
+        let result = self.index.remove(&LookUp(t)).is_some();
+        
+        // self.allocator.deallocate_slice_dst(pointer.ptr);
+        result        
     }
 
     /// Retains only the elements specified by the predicate, modifying the set in-place.
@@ -414,7 +423,7 @@ where
             return (ptr, false);
         }
 
-        // Allocate space for the
+        // Allocate space for the entry and construct it
         let mut ptr = self
             .allocator
             .allocate_slice_dst::<T>(length)
@@ -424,16 +433,13 @@ where
             construct(ptr.as_mut(), value);
         }
 
-        // Insert new value using allocator
         let entry = Entry::new(ptr);
         let ptr = StablePointer::from_entry(&entry);
 
-        // First add to storage, then to index
+        // Add the result to the storage, it could be at this point that the entry was inserted by another thread. So
+        // the insertion might
         let inserted = self.index.insert(entry);
-
-        debug_assert!(inserted, "Value should not already exist in the index");
-
-        (ptr, true)
+        (ptr, inserted)
     }
 }
 
@@ -573,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_insert_and_get() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
 
         // Insert a value and ensure we get it back
         let (ptr1, inserted) = set.insert(42);
@@ -594,7 +600,7 @@ mod tests {
 
     #[test]
     fn test_contains() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
         set.insert(42);
         set.insert(100);
 
@@ -605,7 +611,7 @@ mod tests {
 
     #[test]
     fn test_get() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
         set.insert(42);
         set.insert(100);
 
@@ -620,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_iteration() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
         set.insert(1);
         set.insert(2);
         set.insert(3);
@@ -660,7 +666,7 @@ mod tests {
             }
         }
 
-        let mut set: StablePointerSet<TestValue> = StablePointerSet::new();
+        let set: StablePointerSet<TestValue> = StablePointerSet::new();
 
         // Insert using equivalent reference (i32 -> TestValue)
         let (ptr1, inserted) = set.insert_equiv(&42);
@@ -685,7 +691,7 @@ mod tests {
 
     #[test]
     fn test_stable_pointer_deref() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
         let (ptr, _) = set.insert(42);
 
         // Test dereferencing
@@ -698,7 +704,7 @@ mod tests {
 
     #[test]
     fn test_stable_pointer_set_remove() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
 
         // Insert values
         let (ptr1, _) = set.insert(42);
@@ -716,7 +722,7 @@ mod tests {
 
     #[test]
     fn test_stable_pointer_set_retain() {
-        let mut set = StablePointerSet::new();
+        let set = StablePointerSet::new();
 
         // Insert values
         set.insert(1);
@@ -743,7 +749,7 @@ mod tests {
     #[test]
     fn test_stable_pointer_set_custom_allocator() {
         // Test with System allocator
-        let mut set: StablePointerSet<i32, RandomState, System> = StablePointerSet::new_in(System);
+        let set: StablePointerSet<i32, RandomState, System> = StablePointerSet::new_in(System);
 
         // Insert some values
         let (ptr1, inserted) = set.insert(42);
@@ -765,7 +771,7 @@ mod tests {
     #[test]
     fn test_stable_pointer_set_custom_hasher_and_allocator() {
         // Use both custom hasher and allocator
-        let mut set: StablePointerSet<i32, BuildHasherDefault<FxHasher>, System> =
+        let set: StablePointerSet<i32, BuildHasherDefault<FxHasher>, System> =
             StablePointerSet::with_hasher_in(BuildHasherDefault::<FxHasher>::default(), System);
 
         // Insert some values

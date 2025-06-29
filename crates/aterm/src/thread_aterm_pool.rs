@@ -6,7 +6,6 @@ use log::info;
 use pest_consume::Parser;
 
 use crate::AGRESSIVE_GC;
-use crate::GlobalTermPool;
 use crate::Markable;
 use crate::Rule;
 use crate::SharedTermProtection;
@@ -70,9 +69,11 @@ impl ThreadTermPool {
         assert!(symbol.arity() == 0, "A constant should not have arity > 0");
 
         let empty_args: [ATermRef<'_>; 0] = [];
-        let (result, inserted) = GLOBAL_TERM_POOL.read().create_term_array(symbol, &empty_args, |index| {
-            self.protect(&unsafe { ATermRef::from_index(index) })
-        });
+        let (result, inserted) = GLOBAL_TERM_POOL
+            .read_recursive()
+            .create_term_array(symbol, &empty_args, |index| {
+                self.protect(&unsafe { ATermRef::from_index(index) })
+            });
 
         if inserted {
             self.trigger_garbage_collection();
@@ -91,9 +92,11 @@ impl ThreadTermPool {
             }
         }
 
-        let (result, inserted) = GLOBAL_TERM_POOL.read().create_term_array(symbol, &arguments, |index| {
-            self.protect(&unsafe { ATermRef::from_index(index) })
-        });
+        let (result, inserted) = GLOBAL_TERM_POOL
+            .read_recursive()
+            .create_term_array(symbol, &arguments, |index| {
+                self.protect(&unsafe { ATermRef::from_index(index) })
+            });
 
         if inserted {
             self.trigger_garbage_collection();
@@ -105,7 +108,7 @@ impl ThreadTermPool {
     /// Create a term with the given index.
     pub fn create_int(&self, value: usize) -> ATerm {
         let (result, inserted) = GLOBAL_TERM_POOL
-            .read()
+            .read_recursive()
             .create_int(value, |index| self.protect(&unsafe { ATermRef::from_index(index) }));
 
         if inserted {
@@ -129,9 +132,11 @@ impl ThreadTermPool {
             }
         }
 
-        let (result, inserted) = GLOBAL_TERM_POOL.read().create_term_array(symbol, &arguments, |index| {
-            self.protect(&unsafe { ATermRef::from_index(index) })
-        });
+        let (result, inserted) = GLOBAL_TERM_POOL
+            .read_recursive()
+            .create_term_array(symbol, &arguments, |index| {
+                self.protect(&unsafe { ATermRef::from_index(index) })
+            });
 
         if inserted {
             self.trigger_garbage_collection();
@@ -162,9 +167,11 @@ impl ThreadTermPool {
             }
         }
 
-        let (result, inserted) = GLOBAL_TERM_POOL.read().create_term_array(symbol, &arguments, |index| {
-            self.protect(&unsafe { ATermRef::from_index(index) })
-        });
+        let (result, inserted) = GLOBAL_TERM_POOL
+            .read_recursive()
+            .create_term_array(symbol, &arguments, |index| {
+                self.protect(&unsafe { ATermRef::from_index(index) })
+            });
 
         if inserted {
             self.trigger_garbage_collection();
@@ -175,9 +182,11 @@ impl ThreadTermPool {
 
     /// Create a function symbol
     pub fn create_symbol(&self, name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
-        GLOBAL_TERM_POOL.read().create_symbol(name, arity, |index| unsafe {
-            self.protect_symbol(&SymbolRef::from_index(&index))
-        })
+        GLOBAL_TERM_POOL
+            .read_recursive()
+            .create_symbol(name, arity, |index| unsafe {
+                self.protect_symbol(&SymbolRef::from_index(&index))
+            })
     }
 
     /// Protect the term by adding its index to the protection set
@@ -204,9 +213,9 @@ impl ThreadTermPool {
     fn trigger_garbage_collection(&self) {
         // If the term was newly inserted, decrease the garbage collection counter and trigger garbage collection if necessary
         let mut value = self.garbage_collection_counter.get();
-        value -= 1;
+        value = value.saturating_sub(1);
 
-        if value == 0 {
+        if value == 0 && !GLOBAL_TERM_POOL.is_locked() {
             // Trigger garbage collection and acquire a new counter value.
             value = GLOBAL_TERM_POOL.write().trigger_garbage_collection();
         }

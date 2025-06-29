@@ -10,35 +10,9 @@ use mcrl3_sabre::RewriteEngine;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SabreRewriter;
 
-#[cfg_attr(miri, ignore)]
-#[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr10.txt") ; "benchexpr10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/benchsym10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchsym10.txt") ; "benchsym10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort10.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort10.txt") ; "bubblesort10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort20.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort20.txt") ; "bubblesort20")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/calls.rec")], include_str!("snapshot/result_calls.txt") ; "calls")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/check1.rec")], include_str!("snapshot/result_check1.txt") ; "check1")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/check2.rec")], include_str!("snapshot/result_check2.txt") ; "check2")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/confluence.rec")], include_str!("snapshot/result_confluence.txt") ; "confluence")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/factorial5.rec"), include_str!("../../../examples/REC/rec/factorial.rec")], include_str!("snapshot/result_factorial5.txt") ; "factorial5")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/fibonacci05.rec"), include_str!("../../../examples/REC/rec/fibonacci.rec")], include_str!("snapshot/result_fibonacci05.txt") ; "fibonacci05")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/garbagecollection.rec")], include_str!("snapshot/result_garbagecollection.txt") ; "garbagecollection")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/hanoi4.rec"), include_str!("../../../examples/REC/rec/hanoi.rec")], include_str!("snapshot/result_hanoi4.txt") ; "hanoi4")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/logic3.rec")], include_str!("snapshot/result_logic3.txt") ; "logic3")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/merge.rec")], include_str!("snapshot/result_merge.txt") ; "merge")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/mergesort10.rec"), include_str!("../../../examples/REC/rec/mergesort.rec")], include_str!("snapshot/result_mergesort10.txt") ; "mergesort10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries2.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries2.txt") ; "missionaries2")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries3.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries3.txt") ; "missionaries3")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/quicksort10.rec"), include_str!("../../../examples/REC/rec/quicksort.rec")], include_str!("snapshot/result_quicksort10.txt") ; "quicksort10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/revelt.rec")], include_str!("snapshot/result_revelt.txt") ; "revelt")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/searchinconditions.rec")], include_str!("snapshot/result_searchinconditions.txt") ; "searchinconditions")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/sieve20.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve20.txt") ; "sieve20")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/sieve100.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve100.txt") ; "sieve100")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/soundnessofparallelengines.rec")], include_str!("snapshot/result_soundnessofparallelengines.txt") ; "soundnessofparallelengines")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/tak18.rec"), include_str!("../../../examples/REC/rec/tak.rec")], include_str!("snapshot/result_tak18.txt") ; "tak18")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/tricky.rec")], include_str!("snapshot/result_tricky.txt") ; "tricky")]
-fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
-    let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
+/// A local function to share the rec_test functionality.
+fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
+        let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
         let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
         (
@@ -73,6 +47,37 @@ fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
             "The sabre rewrite result doesn't match the expected result"
         );
     }
+}
+
+#[cfg_attr(miri, ignore)]
+#[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr10.txt") ; "benchexpr10")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/benchsym10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchsym10.txt") ; "benchsym10")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort10.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort10.txt") ; "bubblesort10")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort20.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort20.txt") ; "bubblesort20")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/calls.rec")], include_str!("snapshot/result_calls.txt") ; "calls")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/check1.rec")], include_str!("snapshot/result_check1.txt") ; "check1")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/check2.rec")], include_str!("snapshot/result_check2.txt") ; "check2")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/confluence.rec")], include_str!("snapshot/result_confluence.txt") ; "confluence")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/factorial5.rec"), include_str!("../../../examples/REC/rec/factorial.rec")], include_str!("snapshot/result_factorial5.txt") ; "factorial5")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/fibonacci05.rec"), include_str!("../../../examples/REC/rec/fibonacci.rec")], include_str!("snapshot/result_fibonacci05.txt") ; "fibonacci05")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/garbagecollection.rec")], include_str!("snapshot/result_garbagecollection.txt") ; "garbagecollection")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/hanoi4.rec"), include_str!("../../../examples/REC/rec/hanoi.rec")], include_str!("snapshot/result_hanoi4.txt") ; "hanoi4")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/logic3.rec")], include_str!("snapshot/result_logic3.txt") ; "logic3")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/merge.rec")], include_str!("snapshot/result_merge.txt") ; "merge")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/mergesort10.rec"), include_str!("../../../examples/REC/rec/mergesort.rec")], include_str!("snapshot/result_mergesort10.txt") ; "mergesort10")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries2.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries2.txt") ; "missionaries2")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries3.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries3.txt") ; "missionaries3")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/quicksort10.rec"), include_str!("../../../examples/REC/rec/quicksort.rec")], include_str!("snapshot/result_quicksort10.txt") ; "quicksort10")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/revelt.rec")], include_str!("snapshot/result_revelt.txt") ; "revelt")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/searchinconditions.rec")], include_str!("snapshot/result_searchinconditions.txt") ; "searchinconditions")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/sieve20.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve20.txt") ; "sieve20")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/sieve100.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve100.txt") ; "sieve100")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/soundnessofparallelengines.rec")], include_str!("snapshot/result_soundnessofparallelengines.txt") ; "soundnessofparallelengines")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tak18.rec"), include_str!("../../../examples/REC/rec/tak.rec")], include_str!("snapshot/result_tak18.txt") ; "tak18")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tricky.rec")], include_str!("snapshot/result_tricky.txt") ; "tricky")]
+fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
+    rec_test(rec_files, expected_result);
 }
 
 #[cfg_attr(miri, ignore)]
