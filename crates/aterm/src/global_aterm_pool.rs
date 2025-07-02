@@ -282,13 +282,18 @@ impl GlobalTermPool {
             num_of_symbols - self.symbol_pool.len()
         );
 
-        info!("{self:?}");
+        info!("{}", self.metrics());
 
         // Print information from the protection sets.
         for pool in self.thread_pools.iter().flatten() {
             let pool = pool.lock();
-            info!("{pool:?}");
+            info!("{}", pool.metrics());
         }
+    }
+
+    /// Returns the metrics of the term pool, can be formatted and written to output.
+    pub fn metrics(&self) -> TermPoolMetrics<'_> {
+        TermPoolMetrics(self)
     }
 
     /// Returns integer function symbol.
@@ -307,13 +312,15 @@ impl GlobalTermPool {
     }
 }
 
-impl fmt::Debug for GlobalTermPool {
+pub struct TermPoolMetrics<'a>(&'a GlobalTermPool);
+
+impl fmt::Display for TermPoolMetrics<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "There are {} terms, and {} symbols",
-            self.terms.len(),
-            self.symbol_pool.len()
+            self.0.terms.len(),
+            self.0.symbol_pool.len()
         )
     }
 }
@@ -329,31 +336,41 @@ pub struct SharedTermProtection {
     pub index: usize,
 }
 
-impl fmt::Debug for SharedTermProtection {
+impl SharedTermProtection {
+    /// Returns the metrics of the term pool, can be formatted and written to output.
+    pub fn metrics(&self) -> ProtectionMetrics<'_> {
+        ProtectionMetrics(self)
+    }
+}
+
+/// A struct that can be used to print the performance of the protection sets.
+pub struct ProtectionMetrics<'a>(&'a SharedTermProtection);
+
+impl fmt::Display for ProtectionMetrics<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "Protection set {} has {} roots, max {} and {} insertions",
-            self.index,
-            LargeFormatter(self.protection_set.len()),
-            LargeFormatter(self.protection_set.maximum_size()),
-            LargeFormatter(self.protection_set.number_of_insertions())
+            self.0.index,
+            LargeFormatter(self.0.protection_set.len()),
+            LargeFormatter(self.0.protection_set.maximum_size()),
+            LargeFormatter(self.0.protection_set.number_of_insertions())
         )?;
 
         writeln!(
             f,
             "Containers: {} roots, max {} and {} insertions",
-            LargeFormatter(self.container_protection_set.len()),
-            LargeFormatter(self.container_protection_set.maximum_size()),
-            LargeFormatter(self.container_protection_set.number_of_insertions()),
+            LargeFormatter(self.0.container_protection_set.len()),
+            LargeFormatter(self.0.container_protection_set.maximum_size()),
+            LargeFormatter(self.0.container_protection_set.number_of_insertions()),
         )?;
 
         write!(
             f,
             "Symbols: {} roots, max {} and {} insertions",
-            LargeFormatter(self.symbol_protection_set.len()),
-            LargeFormatter(self.symbol_protection_set.maximum_size()),
-            LargeFormatter(self.symbol_protection_set.number_of_insertions()),
+            LargeFormatter(self.0.symbol_protection_set.len()),
+            LargeFormatter(self.0.symbol_protection_set.maximum_size()),
+            LargeFormatter(self.0.symbol_protection_set.number_of_insertions()),
         )
     }
 }

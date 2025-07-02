@@ -8,18 +8,11 @@ use super::MatchAnnouncement;
 use super::MatchObligation;
 use super::Transition;
 
-impl<M> fmt::Debug for SetAutomaton<M> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
-/// Implement display for a transition with a term pool
-impl<M> fmt::Display for Transition<M> {
+impl<M> fmt::Debug for Transition<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Transition {{ {}, announce: [{}], dest: [{}] }}",
+            "Transition {{ {}, announce: [{:?}], dest: [{:?}] }}",
             self.symbol,
             self.announcements.iter().map(|(x, _)| { x }).format(", "),
             self.destinations.iter().format_with(", ", |element, f| {
@@ -29,42 +22,40 @@ impl<M> fmt::Display for Transition<M> {
     }
 }
 
-/// Implement display for a match announcement
-impl fmt::Display for MatchAnnouncement {
+impl fmt::Debug for MatchAnnouncement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({})@{}", self.rule, self.position)
     }
 }
 
-impl fmt::Display for MatchObligation {
+impl fmt::Debug for MatchObligation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}@{}", self.pattern, self.position)
     }
 }
 
-/// Implement display for a state with a term pool
-impl fmt::Display for State {
+impl fmt::Debug for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Label: {}, ", self.label())?;
         writeln!(f, "Match goals: [")?;
         for m in self.match_goals() {
-            writeln!(f, "\t {m}")?;
+            writeln!(f, "\t {m:?}")?;
         }
         write!(f, "]")
     }
 }
 
-impl<M> fmt::Display for SetAutomaton<M> {
+impl<M> fmt::Debug for SetAutomaton<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "States: {{")?;
 
         for (state_index, s) in self.states().iter().enumerate() {
-            writeln!(f, "State {state_index} {{\n{s}")?;
+            writeln!(f, "State {state_index} {{\n{s:?}")?;
 
             writeln!(f, "Transitions: {{")?;
             for ((from, _), tr) in self.transitions() {
                 if state_index == *from {
-                    writeln!(f, "\t {tr}")?;
+                    writeln!(f, "\t {tr:?}")?;
                 }
             }
             writeln!(f, "}}")?;
@@ -91,7 +82,7 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
 
         for (i, s) in self.automaton.states().iter().enumerate() {
             let match_goals = s.match_goals().iter().format_with("\\n", |goal, f| {
-                f(&format_args!("{}", html_escape::encode_safe(&format!("{goal}"))))
+                f(&format_args!("{}", html_escape::encode_safe(&format!("{goal:?}"))))
             });
 
             writeln!(

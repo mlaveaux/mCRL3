@@ -118,7 +118,6 @@ pub(crate) struct SideInfo<'a> {
 ///    of positions when the subterms are in normal form. We
 ///    perform the checks and apply the rewrite rule if it
 ///    indeed matches.
-#[derive(Debug)]
 pub(crate) enum SideInfoType<'a> {
     SideBranch(&'a [(DataPosition, usize)]),
     DelayedRewriteRule(&'a MatchAnnouncement, &'a AnnouncementSabre),
@@ -351,7 +350,7 @@ impl fmt::Display for ConfigurationStack<'_> {
 
             for side_branch in &self.side_branch_stack {
                 if i == side_branch.corresponding_configuration {
-                    writeln!(f, "    Side branch: {} ", side_branch.info)?;
+                    writeln!(f, "    Side branch: {:?} ", side_branch.info)?;
                 }
             }
         }
@@ -360,7 +359,7 @@ impl fmt::Display for ConfigurationStack<'_> {
     }
 }
 
-impl fmt::Display for SideInfoType<'_> {
+impl fmt::Debug for SideInfoType<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SideInfoType::SideBranch(tr_slice) => {
@@ -375,10 +374,10 @@ impl fmt::Display for SideInfoType<'_> {
                 }
             }
             SideInfoType::DelayedRewriteRule(announcement, _) => {
-                write!(f, "delayed rule: {announcement}")?;
+                write!(f, "delayed rule: {announcement:?}")?;
             }
             SideInfoType::EquivalenceAndConditionCheck(announcement, _) => {
-                write!(f, "equivalence {announcement}")?;
+                write!(f, "equivalence {announcement:?}")?;
             }
         }
 

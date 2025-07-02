@@ -39,7 +39,7 @@ pub struct SetAutomaton<T> {
     transitions: HashMap<(usize, usize), Transition<T>>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MatchAnnouncement {
     pub rule: Rule,
     pub position: DataPosition,
@@ -53,7 +53,7 @@ pub struct Transition<T> {
     pub destinations: SmallVec<[(DataPosition, usize); 1]>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MatchObligation {
     pub pattern: DataExpression,
     pub position: DataPosition,
@@ -230,7 +230,7 @@ impl<M> SetAutomaton<M> {
         );
 
         let result = SetAutomaton { states, transitions };
-        debug!("{result}");
+        debug!("{result:?}");
 
         result
     }
@@ -272,7 +272,6 @@ pub struct Derivative {
     pub reduced: Vec<MatchGoal>,
 }
 
-#[derive(Debug)]
 pub struct State {
     label: DataPosition,
     match_goals: Vec<MatchGoal>,
@@ -460,25 +459,25 @@ impl State {
         );
         trace!("Match goals: {{");
         for mg in &self.match_goals {
-            trace!("\t {mg}");
+            trace!("\t {mg:?}");
         }
 
         trace!("}}");
         trace!("Completed: {{");
         for mg in &result.completed {
-            trace!("\t {mg}");
+            trace!("\t {mg:?}");
         }
 
         trace!("}}");
         trace!("Unchanged: {{");
         for mg in &result.unchanged {
-            trace!("\t {mg}");
+            trace!("\t {mg:?}");
         }
 
         trace!("}}");
         trace!("Reduced: {{");
         for mg in &result.reduced {
-            trace!("\t {mg}");
+            trace!("\t {mg:?}");
         }
         trace!("}}");
 

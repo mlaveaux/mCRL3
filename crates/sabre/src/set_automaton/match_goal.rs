@@ -11,7 +11,7 @@ use super::MatchObligation;
 
 /// A match goal contains a number of obligations (positions that must still be
 /// matched) and the corresponding rule that can be announced as being a match.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MatchGoal {
     pub obligations: Vec<MatchObligation>,
     pub announcement: MatchAnnouncement,
@@ -84,7 +84,7 @@ impl MatchGoal {
 
         trace!("=== partition(match_goals = [ ===");
         for mg in &goals {
-            trace!("\t {mg}");
+            trace!("\t {mg:?}");
         }
         trace!("]");
 
@@ -157,7 +157,7 @@ impl MatchGoal {
             }
             trace!("}} -> {{");
             for mg in goals {
-                trace!("\t {mg}");
+                trace!("\t {mg:?}");
             }
             trace!("}}");
         }
@@ -197,17 +197,17 @@ impl MatchGoal {
     }
 }
 
-impl fmt::Display for MatchGoal {
+impl fmt::Debug for MatchGoal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut first = true;
         for obligation in &self.obligations {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{obligation}")?;
+            write!(f, "{obligation:?}")?;
             first = false;
         }
 
-        write!(f, " ↪ {}", self.announcement)
+        write!(f, " ↪ {:?}", self.announcement)
     }
 }

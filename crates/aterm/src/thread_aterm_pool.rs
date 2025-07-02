@@ -322,10 +322,10 @@ impl Drop for ThreadTermPool {
     fn drop(&mut self) {
         let mut write = GLOBAL_TERM_POOL.write();
 
-        info!("{:?}", write);
+        info!("{}", write.metrics());
         write.deregister_thread_pool(self.index());
 
-        info!("{:?}", self.protection_set.lock());
+        info!("{}", self.protection_set.lock().metrics());
     }
 }
 
