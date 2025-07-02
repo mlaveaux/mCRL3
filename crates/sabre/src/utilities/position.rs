@@ -87,6 +87,12 @@ pub trait PositionIndexed<'b> {
 
 impl fmt::Display for ExplicitPosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl fmt::Debug for ExplicitPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.indices.is_empty() {
             write!(f, "ε")?;
         } else {
@@ -102,12 +108,6 @@ impl fmt::Display for ExplicitPosition {
         }
 
         Ok(())
-    }
-}
-
-impl fmt::Debug for ExplicitPosition {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 

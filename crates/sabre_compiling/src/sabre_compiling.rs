@@ -90,36 +90,43 @@ impl SabreCompilingRewriter {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use mcrl3_data::to_untyped_data_expression;
-//     use mcrl3_rec_tests::load_rec_from_strings;
-//     use mcrl3_sabre::RewriteEngine;
-//     use mcrl3_utilities::test_logger;
+#[cfg(test)]
+mod tests {
+    use test_log::test;
 
-//     use super::SabreCompilingRewriter;
+    use mcrl3_data::to_untyped_data_expression;
+    use mcrl3_rec_tests::load_rec_from_strings;
+    use mcrl3_sabre::RewriteEngine;
 
-//     #[test]
-//     fn test_compilation() {
-//         let _ = test_logger();
+    use super::SabreCompilingRewriter;
 
-//         let (spec, terms) = load_rec_from_strings(&[
-//             include_str!("../../../examples/REC/rec/factorial6.rec"),
-//             include_str!("../../../examples/REC/rec/factorial.rec"),
-//         ])
-//         .unwrap();
+    #[test]
+    fn test_compilation() {        
+        //   plus : Nat Nat -> Nat   # addition
+        //   times : Nat Nat -> Nat  # product
+        //   fact : Nat -> Nat       # factorial
+        //   plus(d0, N) -> N
+        //   plus(s(N), M) -> s(plus(N, M))
+        //   fibb(d0) -> d0         # corrected by CONVECS
+        //   fibb(s(d0)) -> s(d0)
+        //   fibb(s(s(N))) -> plus(fibb(s(N)), fibb(N))
+        let (spec, terms) = load_rec_from_strings(&[
+            include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial.rec"),
+        ])
+        .unwrap();
 
-//         let spec = spec.to_rewrite_spec();
+        let spec = spec.to_rewrite_spec();
 
-//         let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
+        let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
 
-//         for t in terms {
-//             let data_term = to_untyped_data_expression(&t, None);
-//             assert_eq!(
-//                 rewriter.rewrite(&data_term),
-//                 data_term,
-//                 "The rewritten result does not match the expected result"
-//             );
-//         }
-//     }
-// }
+        for t in terms {
+            let data_term = to_untyped_data_expression(&t, None);
+            assert_eq!(
+                rewriter.rewrite(&data_term),
+                data_term,
+                "The rewritten result does not match the expected result"
+            );
+        }
+    }
+}

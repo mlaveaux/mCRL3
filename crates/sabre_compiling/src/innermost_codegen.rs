@@ -6,11 +6,11 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use indoc::indoc;
-use log::debug;
 use mcrl3_sabre::AnnouncementInnermost;
 use mcrl3_sabre::RewriteSpecification;
 use mcrl3_sabre::SetAutomaton;
 use mcrl3_sabre::utilities::DataPosition;
+use mcrl3_sabre::utilities::TermStack;
 use mcrl3_utilities::MCRL3Error;
 
 use crate::indenter::IndentFormatter;
@@ -27,8 +27,6 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
     // Generate the automata used for matching
     let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);
-
-    debug!("{apma:?}");
 
     // Debug assertion to verify we have at least one state in the automaton
     debug_assert!(!apma.states().is_empty(), "Automaton must have at least one state");
@@ -49,12 +47,13 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 
     // Introduce a match function for every state of the set automaton.
     let mut positions: HashSet<DataPosition> = HashSet::new();
+    let mut term_stacks: Vec<TermStack> = Vec::new();
 
     for (index, state) in apma.states().iter().enumerate() {
         writeln!(&mut formatter, "// Position {}", state.label())?;
 
         for goal in state.match_goals() {
-            writeln!(&mut formatter, "// Goal {goal}",)?;
+            writeln!(&mut formatter, "// Goal {goal:?}")?;
         }
 
         writeln!(
@@ -89,10 +88,12 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
                 writeln!(&mut formatter, "// Symbol {}", transition.symbol)?;
 
                 // Continue on the outgoing transition.
-                for (announcement, _annotation) in &transition.announcements {
+                for (announcement, annotation) in &transition.announcements {
                     // Check for conditions and non linear patterns.
-                    writeln!(&mut formatter, "// Announcement {announcement}")?;
-                    //writeln!(&mut formatter, "t.protect()")?;
+                    writeln!(&mut formatter, "// Announcement {announcement:?}")?;
+
+                    writeln!(&mut formatter, "rewrite_term_stack_{}(t)", term_stacks.len())?;
+                    term_stacks.push(annotation.rhs_stack.clone());
                 }
 
                 if transition.destinations.is_empty() {
@@ -102,11 +103,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
                 for (position, to) in &transition.destinations {
                     positions.insert(position.clone());
 
-                    writeln!(
-                        &mut formatter,
-                        "rewrite_{to}(&get_data_position_{}(t))",
-                        UnderscoreFormatter(position)
-                    )?;
+                    writeln!(&mut formatter, "rewrite_{to}(&t)",)?;
                 }
 
                 drop(case_indent);
@@ -133,10 +130,71 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
         writeln!(&mut formatter)?;
     }
 
-    // Introduce getters for all the positions that must be read from terms.
-    for position in &positions {
+    // Generate position getters
+    generate_termstack_constructors(&mut formatter, &mut positions, &term_stacks)?;
+    generate_position_getters(&mut formatter, &positions)?;
+
+    // Ensure all data is written
+    formatter.flush()?;
+
+    // Post-condition assertion
+    debug_assert!(!positions.is_empty(), "At least one position should be generated");
+
+    Ok(())
+}
+
+/// Generates TermStack-based constructor functions for all rewrite rules
+fn generate_termstack_constructors(
+    formatter: &mut IndentFormatter<File>,
+    positions: &mut HashSet<DataPosition>,
+    term_stacks: &Vec<TermStack>,
+) -> Result<(), MCRL3Error> {
+    writeln!(formatter, "// TermStack-based constructor functions")?;
+
+    for (index, term_stack) in term_stacks.iter().enumerate() {
         writeln!(
-            &mut formatter,
+            formatter,
+            "fn construct_term_stack_{index}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{"
+        )?;
+
+        let indent = formatter.indent();
+
+        writeln!(formatter, "// TermStack {:?}", term_stack)?;
+
+        // Generate variable extraction code
+        for (position, stack_index) in &term_stack.variables {
+            positions.insert(position.clone());
+            writeln!(
+                formatter,
+                "let var_{stack_index} = get_data_position_{}(t);",
+                UnderscoreFormatter(position)
+            )?;
+        }
+
+        // Generate TermStack evaluation code
+        writeln!(formatter, "// TODO: Implement TermStack evaluation")?;
+        writeln!(formatter, "// This would use the innermost_stack configuration")?;
+        writeln!(formatter, "// and the extracted variables to construct the RHS")?;
+        writeln!(formatter, "t.protect() // Placeholder")?;
+
+        drop(indent);
+        writeln!(formatter, "}}")?;
+        writeln!(formatter)?;
+    }
+
+    Ok(())
+}
+
+/// Generates getter functions for all positions that must be read from terms.
+fn generate_position_getters(
+    formatter: &mut IndentFormatter<File>,
+    positions: &HashSet<DataPosition>,
+) -> Result<(), MCRL3Error> {
+    writeln!(formatter, "// Get positions from term")?;
+
+    for position in positions {
+        writeln!(
+            formatter,
             "fn get_data_position_{}<'a>(t: &DataExpressionRefFFI<'a>) -> DataExpressionRefFFI<'a> {{",
             UnderscoreFormatter(position)
         )?;
@@ -145,29 +203,23 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
         let indent = formatter.indent();
 
         if position.is_empty() {
-            writeln!(&mut formatter, "t.copy()")?;
+            writeln!(formatter, "t.copy()")?;
         } else {
-            write!(&mut formatter, "t")?;
+            write!(formatter, "t")?;
 
             for index in position.indices().iter() {
-                write!(&mut formatter, ".data_arg({index})")?;
+                write!(formatter, ".data_arg({index})")?;
             }
 
             // Add newline after the chain of method calls
-            writeln!(&mut formatter)?;
+            writeln!(formatter)?;
         }
 
         // The function indent is automatically decreased
         drop(indent);
-        writeln!(&mut formatter, "}}")?;
-        writeln!(&mut formatter)?;
+        writeln!(formatter, "}}")?;
+        writeln!(formatter)?;
     }
-
-    // Ensure all data is written
-    formatter.flush()?;
-
-    // Post-condition assertion
-    debug_assert!(!positions.is_empty(), "At least one position should be generated");
 
     Ok(())
 }
