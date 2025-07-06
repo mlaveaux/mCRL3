@@ -18,14 +18,21 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
-    steps:
+    steps:    
+    - name: Install Ubuntu Dependencies
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: libfontconfig1-dev, libfreetype6-dev
+        version: 1.0
+      if: matrix.os == 'ubuntu-latest'
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+
     - name: Install nightly rust
       uses: dtolnay/rust-toolchain@nightly
       with:
         components: rust-src, miri
-      
-    - name: Setup sccache
-      uses: mozilla-actions/sccache-action@v0.0.9
       
     - name: Install nextest
       uses: taiki-e/install-action@nextest

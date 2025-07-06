@@ -4,7 +4,17 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
 
-    steps:
+    steps:    
+    - name: Install Ubuntu Dependencies
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: llvm, libfontconfig1-dev, libfreetype6-dev
+        version: 1.0
+      if: matrix.os == 'ubuntu-latest'
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+
     - uses: actions/checkout@v4
 
     - uses: dtolnay/rust-toolchain@nightly
