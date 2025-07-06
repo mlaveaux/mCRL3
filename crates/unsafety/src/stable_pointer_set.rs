@@ -52,6 +52,19 @@ impl<T: ?Sized> StablePointer<T> {
             true
         }
     }
+
+    /// Creates a new StablePointer from a raw pointer.
+    /// 
+    /// # Safety
+    /// 
+    /// The caller must ensure that the pointer is valid and points to a valid T that outlives the StablePointer.
+    pub unsafe fn from_ptr(ptr: NonNull<T>) -> Self {
+        Self {
+            ptr,
+            #[cfg(debug_assertions)]
+            reference_counter: AtomicRefCounter::new(()),
+        }
+    }
 }
 
 impl<T: ?Sized> PartialEq for StablePointer<T> {
