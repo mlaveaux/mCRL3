@@ -72,7 +72,7 @@ pub struct TrsFormatter<'a> {
 }
 
 impl TrsFormatter<'_> {
-    pub fn new(spec: &RewriteSpecification) -> TrsFormatter {
+    pub fn new(spec: &RewriteSpecification) -> TrsFormatter<'_> {
         TrsFormatter { spec }
     }
 }
