@@ -226,6 +226,12 @@ impl PartialEq for Symbol {
     }
 }
 
+impl PartialEq<SymbolRef<'_>> for Symbol {
+    fn eq(&self, other: &SymbolRef<'_>) -> bool {
+        self.copy().eq(other)
+    }
+}
+
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.copy().cmp(&other.copy()))
