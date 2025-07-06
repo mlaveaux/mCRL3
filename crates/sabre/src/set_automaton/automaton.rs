@@ -256,7 +256,7 @@ impl<M> SetAutomaton<M> {
     }
 
     /// Provides a formatter for the .dot file format
-    pub fn to_dot_graph(&self, show_backtransitions: bool, show_final: bool) -> DotFormatter<M> {
+    pub fn to_dot_graph(&self, show_backtransitions: bool, show_final: bool) -> DotFormatter<'_, M> {
         DotFormatter {
             automaton: self,
             show_backtransitions,

@@ -115,7 +115,7 @@ impl<T, S> IndexedSet<T, S> {
     }
 
     /// Returns an iterator over the elements in the set.
-    pub fn iter(&self) -> Iter<T, S> {
+    pub fn iter(&self) -> Iter<'_, T, S> {
         Iter {
             reference: self,
             index: 0,

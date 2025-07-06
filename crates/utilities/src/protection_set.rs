@@ -84,7 +84,7 @@ impl<T> ProtectionSet<T> {
     }
 
     /// Returns an iterator over all root indices in the protection set.
-    pub fn iter(&self) -> ProtSetIter<T> {
+    pub fn iter(&self) -> ProtSetIter<'_, T> {
         ProtSetIter {
             current: 0,
             protection_set: self,
