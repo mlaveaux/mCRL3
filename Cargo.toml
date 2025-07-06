@@ -39,6 +39,7 @@ members = [
     "crates/unsafety",
     "crates/utilities",
     "crates/version",
+    "crates/xtask",
     "tools/release/ltsgraph",
     "tools/release/ltsgraph/library",
     "tools/release/ltsgraph/benchmarks",

@@ -605,6 +605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "benchmarks_ldd"
+version = "1.0.0"
+dependencies = [
+ "criterion",
+ "mcrl3_ldd",
+ "rand 0.9.1",
+]
+
+[[package]]
 name = "benchmarks_ltsgraph"
 version = "1.0.0"
 dependencies = [
