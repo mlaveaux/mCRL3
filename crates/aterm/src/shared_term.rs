@@ -18,7 +18,9 @@ use crate::Term;
 ///
 /// # Details
 ///
-/// Uses a C representation and is a dynamically sized type for compact memory usage. This allows us to avoid storing the length and capacity of an underlying vector. As such this is even more compact than `smallvec`.
+/// Uses a C representation and is a dynamically sized type for compact memory
+/// usage. This allows us to avoid storing the length and capacity of an
+/// underlying vector. As such this is even more compact than `smallvec`.
 #[repr(C)]
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
@@ -36,11 +38,6 @@ impl Drop for SharedTerm {
                 ManuallyDrop::drop(&mut arg.term);
             }
         }
-
-        // Drop the symbol reference
-        unsafe {
-            std::ptr::drop_in_place(&mut self.symbol);
-        }
     }
 }
 
@@ -54,7 +51,7 @@ impl Eq for SharedTerm {}
 
 /// This is used to store the annotation as argument of a term without consuming additional memory for terms that have no annotation.
 #[repr(C)]
-union TermOrAnnotation {
+pub union TermOrAnnotation {
     term: ManuallyDrop<ATermRef<'static>>,
     index: usize,
 }
@@ -277,5 +274,7 @@ mod tests {
                 "The arguments should match the lookup arguments"
             );
         }
+
+        Global.deallocate_slice_dst(ptr);
     }
 }
