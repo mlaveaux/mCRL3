@@ -10,9 +10,9 @@ use parking_lot::RwLockReadGuard;
 use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;
+use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::ProtectionSet;
 use mcrl3_utilities::SimpleTimer;
-use mcrl3_utilities::debug_trace;
 
 use crate::ATerm;
 use crate::ATermIndex;
@@ -56,7 +56,7 @@ mod mutex {
 pub use mutex::*;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
-pub(crate) static GLOBAL_TERM_POOL: LazyLock<RwLock<GlobalTermPool>> =
+pub static GLOBAL_TERM_POOL: LazyLock<RwLock<GlobalTermPool>> =
     LazyLock::new(|| RwLock::new(GlobalTermPool::new()));
 
 /// Enables aggressive garbage collection, which is used for testing.
@@ -66,7 +66,7 @@ pub(crate) const AGRESSIVE_GC: bool = false;
 pub(crate) type GlobalTermPoolGuard<'a> = RwLockReadGuard<'a, GlobalTermPool>;
 
 /// The single global (singleton) term pool.
-pub(crate) struct GlobalTermPool {
+pub struct GlobalTermPool {
     /// Unique table of all terms with stable pointers for references
     terms: StablePointerSet<SharedTerm, FxBuildHasher>,
     /// The symbol pool for managing function symbols.
@@ -81,6 +81,9 @@ pub(crate) struct GlobalTermPool {
     marked_symbols: HashSet<SymbolIndex>,
     /// A stack used to mark terms recursively.
     stack: Vec<ATermIndex>,
+
+    /// Deletion hooks called whenever a term with the given head symbol is deleted.
+    deletion_hooks: Vec<(Symbol, Box<dyn Fn(&ATermIndex) + Sync + Send>)>,
 
     /// Default terms
     int_symbol: SymbolRef<'static>,
@@ -103,6 +106,7 @@ impl GlobalTermPool {
             marked_terms: HashSet::new(),
             marked_symbols: HashSet::new(),
             stack: Vec::new(),
+            deletion_hooks: Vec::new(),
             int_symbol,
             list_symbol,
             empty_list_symbol,
@@ -207,6 +211,13 @@ impl GlobalTermPool {
         self.len()
     }
 
+    /// Register a deletion hook that is called whenever a term is deleted with the given symbol.
+    pub fn register_deletion_hook<F>(&mut self, symbol: SymbolRef<'static>, hook: F) 
+        where F: Fn(&ATermIndex) + Sync + Send + 'static 
+    {
+        self.deletion_hooks.push((symbol.protect(), Box::new(hook)));
+    }
+
     /// Collects garbage terms.
     fn collect_garbage(&mut self) {
         // Clear marking data structures
@@ -258,6 +269,15 @@ impl GlobalTermPool {
         self.terms.retain(|term| {
             if !self.marked_terms.contains(term) {
                 debug_trace!("Dropping term: {:?}", term);
+
+                // Call the deletion hooks for the term
+                for (symbol, hook) in &self.deletion_hooks {
+                    if symbol == term.symbol() {
+                        debug_trace!("Calling deletion hook for term: {:?}", term);
+                        hook(term);
+                    }
+                }
+
                 return false;
             }
 
@@ -417,8 +437,8 @@ mod tests {
     use rayon::iter::IntoParallelRefIterator;
     use rayon::iter::ParallelIterator;
 
-    use crate::Term;
     use crate::random_term;
+    use crate::Term;
 
     #[test]
     fn test_maximal_sharing() {
