@@ -56,8 +56,7 @@ mod mutex {
 pub use mutex::*;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
-pub static GLOBAL_TERM_POOL: LazyLock<RwLock<GlobalTermPool>> =
-    LazyLock::new(|| RwLock::new(GlobalTermPool::new()));
+pub static GLOBAL_TERM_POOL: LazyLock<RwLock<GlobalTermPool>> = LazyLock::new(|| RwLock::new(GlobalTermPool::new()));
 
 /// Enables aggressive garbage collection, which is used for testing.
 pub(crate) const AGRESSIVE_GC: bool = false;
@@ -129,11 +128,12 @@ impl GlobalTermPool {
             annotation: Some(value),
         };
 
-        let (index, inserted) =
+        let (index, inserted) = unsafe {
             self.terms
-                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
                     SharedTerm::construct(ptr, key)
-                });
+                })
+        };
 
         (protect(&index), inserted)
     }
@@ -160,12 +160,12 @@ impl GlobalTermPool {
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) =
+        let (index, inserted) = unsafe {
             self.terms
-                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| unsafe {
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
                     SharedTerm::construct(ptr, key)
-                });
-
+                })
+        };
         (protect(&index), inserted)
     }
 
@@ -212,8 +212,9 @@ impl GlobalTermPool {
     }
 
     /// Register a deletion hook that is called whenever a term is deleted with the given symbol.
-    pub fn register_deletion_hook<F>(&mut self, symbol: SymbolRef<'static>, hook: F) 
-        where F: Fn(&ATermIndex) + Sync + Send + 'static 
+    pub fn register_deletion_hook<F>(&mut self, symbol: SymbolRef<'static>, hook: F)
+    where
+        F: Fn(&ATermIndex) + Sync + Send + 'static,
     {
         self.deletion_hooks.push((symbol.protect(), Box::new(hook)));
     }

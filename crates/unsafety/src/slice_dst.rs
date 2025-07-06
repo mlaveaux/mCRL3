@@ -61,22 +61,22 @@ pub unsafe trait AllocatorDst {
     fn allocate_slice_dst<T: SliceDst + ?Sized>(&self, length: usize) -> Result<NonNull<T>, AllocError>;
 
     /// Deallocates an allocation returned by `allocate_slice_dst`.
-    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>);
+    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>, length: usize);
 }
 
 unsafe impl<A: Allocator> AllocatorDst for A {
     fn allocate_slice_dst<T: SliceDst + ?Sized>(&self, length: usize) -> Result<NonNull<T>, AllocError> {
-        let ptr = self.allocate(T::layout_for(length).unwrap())?;
+        let ptr = self.allocate(T::layout_for(length).expect("Invalid layout for SliceDst"))?;
         // Create a slice of the correct length for proper metadata
         let slice_ptr = unsafe { NonNull::new_unchecked(slice_from_raw_parts_mut(ptr.as_ptr() as *mut (), length)) };
         Ok(T::retype(slice_ptr))
     }
 
-    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>) {
+    fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>, length: usize) {
         unsafe {
             self.deallocate(
                 NonNull::new_unchecked(ptr.as_ptr() as *mut u8),
-                T::layout_for(ptr.as_ref().length()).unwrap(),
+                T::layout_for(length).expect("Invalid layout for SliceDst"),
             );
         }
     }
@@ -116,8 +116,10 @@ mod tests {
 
     #[test]
     fn test_variable_sized_array() {
-        let mut _test = Global
+        let ptr = Global
             .allocate_slice_dst::<WithHeader<usize>>(5)
             .expect("Allocation failed in test");
+
+        Global.deallocate_slice_dst(ptr, 5);
     }
 }

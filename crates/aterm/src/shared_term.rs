@@ -3,9 +3,13 @@ use std::alloc::LayoutError;
 use std::fmt;
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
+use std::ptr;
+use std::ptr::slice_from_raw_parts_mut;
 use std::ptr::NonNull;
 
 use equivalent::Equivalent;
+use mcrl3_unsafety::Erasable;
+use mcrl3_unsafety::ErasedPtr;
 use mcrl3_unsafety::SliceDst;
 use mcrl3_unsafety::repr_c;
 
@@ -75,16 +79,22 @@ unsafe impl SliceDst for SharedTerm {
     }
 }
 
-// unsafe impl Erasable for SharedTerm {
-//     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
-//         unsafe {
-//             let len: usize = this.cast::<Self>();
-//             let raw =
-//                 NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
-//             Self::retype(raw)
-//         }
-//     }
-// }
+unsafe impl Erasable for SharedTerm {
+    fn erase(this: NonNull<Self>) -> ErasedPtr {
+        this.cast()
+    }
+
+    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
+        unsafe {
+            let symbol: SymbolRef = ptr::read(this.as_ptr().cast());
+            let len = symbol.arity();
+
+            let raw =
+                NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
+            Self::retype(raw)
+        }
+    }
+}
 
 impl fmt::Debug for SharedTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -275,6 +285,6 @@ mod tests {
             );
         }
 
-        Global.deallocate_slice_dst(ptr);
+        Global.deallocate_slice_dst(ptr, 2);
     }
 }
