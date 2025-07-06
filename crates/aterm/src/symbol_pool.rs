@@ -89,10 +89,14 @@ impl SymbolPool {
     /// Creates a new prefix counter for the given prefix.
     pub fn create_prefix(&self, prefix: &str) -> Arc<AtomicUsize> {
         // Create a new counter for the prefix if it does not exist
-        self.prefix_to_register_function_map
+        let result = self.prefix_to_register_function_map
             .entry(prefix.to_string())
             .or_insert_with(|| Arc::new(AtomicUsize::new(0)))
-            .clone()
+            .clone();
+
+        // Ensure the counter starts at a sufficiently large index
+        self.get_sufficiently_large_postfix_index(prefix, &result);
+        result
     }
 
     /// Removes a prefix counter from the pool.
@@ -116,6 +120,24 @@ impl SymbolPool {
             if let Some(counter) = self.prefix_to_register_function_map.get(prefix) {
                 if let Ok(number) = potential_number.parse::<usize>() {
                     counter.fetch_max(number + 1, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+
+    /// Traverse all symbols to find the maximum numeric suffix for this prefix
+    fn get_sufficiently_large_postfix_index(&self, prefix: &str, counter: &Arc<AtomicUsize>) {
+        for symbol in self.symbols.iter() {
+            let name = symbol.name();
+            if name.starts_with(prefix) {
+                // Symbol name starts with the prefix, check for numeric suffix
+                let suffix_start = prefix.len();
+                if suffix_start < name.len() {
+                    let suffix = &name[suffix_start..];
+                    if let Ok(number) = suffix.parse::<usize>() {
+                        // There is a numeric suffix, update the counter if it's larger
+                        counter.fetch_max(number, Ordering::Relaxed);
+                    }
                 }
             }
         }

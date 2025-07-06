@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
@@ -209,6 +210,16 @@ impl GlobalTermPool {
         }
 
         self.len()
+    }
+
+    /// Returns a counter for the unique numeric suffix of the given prefix. 
+    pub fn register_prefix(&self, prefix: &str) -> Arc<AtomicUsize>{
+        self.symbol_pool.create_prefix(prefix)
+    }
+
+    /// Removes the registration of a prefix from the symbol pool.
+    pub fn remove_prefix(&self, prefix: &str) {
+        self.symbol_pool.remove_prefix(prefix)
     }
 
     /// Register a deletion hook that is called whenever a term is deleted with the given symbol.
