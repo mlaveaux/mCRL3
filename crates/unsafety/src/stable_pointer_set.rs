@@ -147,7 +147,7 @@ impl<T: fmt::Debug + ?Sized> fmt::Debug for StablePointer<T> {
 /// Uses an allocator for memory management, defaulting to the global allocator.
 pub struct StablePointerSet<T: ?Sized, S = RandomState, A = Global>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
     S: BuildHasher + Clone,
     A: Allocator + AllocatorDst,
 {
@@ -158,7 +158,7 @@ where
 
 impl<T: ?Sized> Default for StablePointerSet<T, RandomState, Global>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
 {
     fn default() -> Self {
         Self::new()
@@ -167,7 +167,7 @@ where
 
 impl<T: ?Sized> StablePointerSet<T, RandomState, Global>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
 {
     /// Creates an empty StablePointerSet with the default hasher and global allocator.
     pub fn new() -> Self {
@@ -188,7 +188,7 @@ where
 
 impl<T: ?Sized, S> StablePointerSet<T, S, Global>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
     S: BuildHasher + Clone,
 {
     /// Creates an empty StablePointerSet with the specified hasher and global allocator.
@@ -210,9 +210,9 @@ where
 
 impl<T: ?Sized, S, A> StablePointerSet<T, S, A>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
     S: BuildHasher + Clone,
-    A: Allocator,
+    A: Allocator + AllocatorDst,
 {
     /// Creates an empty StablePointerSet with the specified allocator and default hasher.
     pub fn new_in(allocator: A) -> Self
@@ -357,7 +357,9 @@ where
         let t = pointer.deref();
         let result = self.index.remove(&LookUp(t)).is_some();
         
-        // self.allocator.deallocate_slice_dst(pointer.ptr);
+        if result {
+            self.allocator.deallocate_slice_dst(pointer.ptr);
+        }
         result        
     }
 
@@ -397,7 +399,7 @@ impl<T: ?Sized + SliceDst, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
     S: BuildHasher + Clone,
-    A: Allocator + Sync,
+    A: Allocator + AllocatorDst + Sync,
 {
     /// Clears the set, removing all values and invalidating all pointers.
     ///
@@ -458,9 +460,9 @@ where
 
 impl<T, S, A> StablePointerSet<T, S, A>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
     S: BuildHasher + Clone,
-    A: Allocator,
+    A: Allocator + AllocatorDst,
 {
     /// Inserts an element into the set.
     ///
@@ -502,9 +504,9 @@ where
 
 impl<T: ?Sized, S, A> Drop for StablePointerSet<T, S, A>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + SliceDst,
     S: BuildHasher + Clone,
-    A: Allocator,
+    A: Allocator + AllocatorDst,
 {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]
@@ -513,11 +515,10 @@ where
             "All pointers must be the last reference to the element"
         );
 
-        // TODO: Fix memory leak.
         // Manually deallocate all entries
-        // for entry in self.index.iter() {
-        //     self.allocator.deallocate_slice_dst(entry.ptr);
-        // }
+        for entry in self.index.iter() {
+            self.allocator.deallocate_slice_dst(entry.ptr);
+        }
     }
 }
 
