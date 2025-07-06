@@ -3,8 +3,10 @@
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
+/// A thin, type-erased pointer. This should mimic the interface of NonNull, but
+/// with the ability to erase the type information.
 pub struct Thin<T: ?Sized + Erasable> {
-    ptr: NonNull<ErasedPtr>,
+    ptr: ErasedPtr,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -21,36 +23,28 @@ impl<T: ?Sized + Erasable> Clone for Thin<T> {
 
 impl<T: ?Sized + Erasable> Thin<T> {
     pub fn new(ptr: NonNull<T>) -> Self {
-        unreachable!();
+        Self {
+            ptr: T::erase(ptr),
+            marker: PhantomData,
+        }
     }
 }
-
-unsafe impl<T: Sized> Erasable for T {
-    fn erase(this: NonNull<Self>) -> ErasedPtr {
-        todo!()
-    }
-
-    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
-        todo!()
-    }
-}
-
-const _: () = assert!(std::mem::size_of::<ErasedPtr>() == std::mem::size_of::<usize>());
 
 impl<T: ?Sized + Erasable> Thin<T> {
     pub fn as_ptr(&self) -> *mut T {
-        unreachable!();
+        unsafe { T::unerase(self.ptr) }.as_ptr()
     }
 
     pub fn as_nonnull(&self) -> NonNull<T> {
-        unreachable!();
+        unsafe { T::unerase(self.ptr) }
     }
 
     pub unsafe fn as_ref(&self) -> &T {
-        unreachable!();
+        unsafe { T::unerase(self.ptr).as_ref() }
     }
 }
 
+/// This is the trait that allows a type to be erased and unerased. 
 pub unsafe trait Erasable {
     /// Turn this erasable pointer into an erased pointer.
     ///
@@ -65,11 +59,26 @@ pub unsafe trait Erasable {
     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self>;
 }
 
-#[doc(hidden)]
-pub mod priv_in_pub {
-    /// This is simply a u8, but with a concrete type to avoid confusion. Must be a type that has size one and alignment one.
-    pub struct Erased(u8);
+
+unsafe impl<T: Sized> Erasable for T {
+    fn erase(this: NonNull<Self>) -> ErasedPtr {
+        // If the type is Sized, we can safely cast it to a pointer.
+        this.cast::<Erased>().cast()
+    }
+
+    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
+        // If the type is Sized, we can safely cast it back to a pointer.
+        this.cast::<Self>()
+    }
 }
+
+/// This is simply a u8, but with a concrete type to avoid confusion. Must be a
+/// type that has size one and alignment one. Can be converted to an extern type
+/// when `extern type` is stabilized.
+pub struct Erased(#[allow(unused)] u8);
+
+/// Static assertion to ensure that `ErasedPtr` is the same size as a `usize`.
+const _: () = assert!(std::mem::size_of::<ErasedPtr>() == std::mem::size_of::<usize>());
 
 /// A thin, type-erased pointer.
 ///
@@ -79,4 +88,4 @@ pub mod priv_in_pub {
 /// The current implementation uses a `struct Erased` with size 0 and align 1.
 /// If you want to offset the pointer, make sure to cast to a `u8` or other known type pointer first.
 /// When `Erased` becomes an extern type, it will properly have unknown size and align.
-pub type ErasedPtr = NonNull<priv_in_pub::Erased>;
+pub type ErasedPtr = NonNull<Erased>;
