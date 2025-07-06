@@ -483,7 +483,8 @@ where
             // SAFETY: We have exclusive access during drop and the pointer is valid
             unsafe { self.drop_and_deallocate_entry(ptr.ptr); }
 
-            panic!("Insertion failed, but the entry should be in the set");
+            // TODO: I suppose this can go wrong with begin_insert(x); insert(x); remove(x); end_insert(x) chain. 
+            return (self.get(value).expect("Insertion failed, but the entry is also not in the set"), false);
         }
         
         (ptr, inserted)
