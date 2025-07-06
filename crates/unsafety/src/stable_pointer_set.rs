@@ -343,7 +343,7 @@ where
         self.index.iter().map(|boxed| unsafe { boxed.ptr.as_ref() })
     }
 
-    /// Removes an element from the set using its stable pointer. This is very inefficient and requires O(n) time.
+    /// Removes an element from the set using its stable pointer.
     ///
     /// Returns true if the element was found and removed.
     pub fn remove(&self, pointer: StablePointer<T>) -> bool {
@@ -354,11 +354,15 @@ where
         
         // SAFETY: This is the last reference to the element, so it is safe to remove it.
         let t = pointer.deref();
-        let result = self.index.remove(&LookUp(t)).is_some();
+        let result = self.index.remove(&LookUp(t));
         
-        if result {
-        }
-        result        
+        if let Some(ptr) = result {
+            // SAFETY: We have exclusive access during drop and the pointer is valid
+            unsafe { self.drop_and_deallocate_entry(ptr.ptr); }
+            true
+        } else {
+            false
+        }        
     }
 
     /// Retains only the elements specified by the predicate, modifying the set in-place.
