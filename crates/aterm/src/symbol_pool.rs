@@ -136,7 +136,7 @@ impl SymbolPool {
                     let suffix = &name[suffix_start..];
                     if let Ok(number) = suffix.parse::<usize>() {
                         // There is a numeric suffix, update the counter if it's larger
-                        counter.fetch_max(number, Ordering::Relaxed);
+                        counter.fetch_max(number + 1, Ordering::Relaxed);
                     }
                 }
             }
@@ -215,7 +215,9 @@ impl Hash for SharedSymbol {
 
 #[cfg(test)]
 mod tests {
-    use crate::Symbol;
+    use std::sync::atomic::Ordering;
+
+    use crate::{Symbol, GLOBAL_TERM_POOL};
 
     #[test]
     fn test_symbol_sharing() {
@@ -226,5 +228,25 @@ mod tests {
 
         // Should be the same object
         assert_eq!(f1, f2);
+    }
+
+    #[test]
+    fn test_prefix_counter() {
+        let _ = mcrl3_utilities::test_logger();
+
+        let symbol = Symbol::new("x69", 0);
+        let symbol = Symbol::new("x_y", 0);
+
+        let value = GLOBAL_TERM_POOL
+            .write()
+            .register_prefix("x");
+
+        assert_eq!(value.load(Ordering::Relaxed), 70);
+
+        let symbol = Symbol::new("x_no_effect", 0);
+        let symbol = Symbol::new("x130", 0);
+
+        
+        assert_eq!(value.load(Ordering::Relaxed), 131);
     }
 }
