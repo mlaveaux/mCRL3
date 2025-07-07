@@ -261,14 +261,14 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         });
 
                         if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                            let path =  if let Some(name_ref) = path.path.get_ident() {
+                            let path =  if let Some(identifier) = path.path.get_ident() {
                                 // Build an identifier with the postfix Ref<'_>
-                                let name_ref = format_ident!("{}Ref", path.path.get_ident().expect("Cannot find identifier in path"));
+                                let name_ref = format_ident!("{}Ref", identifier);
                                 parse_quote!(#name_ref <'_>)
                             } else {
                                 let path_segments = &path.path.segments;
 
-                                let name_ref = format_ident!("{}Ref", path_segments.first().expect("Path should at least have an identifier").ident);
+                                let _name_ref = format_ident!("{}Ref", path_segments.first().expect("Path should at least have an identifier").ident);
                                 // let segments: Vec<syn::PathSegment> = path_segments.iter().skip(1).collect();
                                 // parse_quote!(#name_ref #segments)
                                 unimplemented!()

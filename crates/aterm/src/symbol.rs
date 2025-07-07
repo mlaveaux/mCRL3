@@ -137,7 +137,7 @@ impl Symbol {
     }
 
     /// Returns the root index, i.e., the index in the protection set. See `SharedTermProtection`.
-    pub(crate) fn root(&self) -> ProtectionIndex {
+    pub fn root(&self) -> ProtectionIndex {
         self.root
     }
 

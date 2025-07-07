@@ -18,7 +18,7 @@ impl<T> RecursiveLock<T> {
         self.mutex.write()
     }
 
-    ///
+    /// Acquires a read lock on the mutex, allowing for recursive read locking.
     fn read_recursive<'a>(&'a self) -> Result<RecursiveLockReadGuard<'a, T>, Box<dyn Error + 'a>> {
         if self.recursive_depth.get() == 0 {
             // If we are not already holding a read lock, we acquire one.
