@@ -11,6 +11,34 @@ use std::sync::atomic::Ordering;
 
 use crossbeam_utils::CachePadded;
 
+/// A global shared mutex that can be used to protect global data. This is a
+/// wrapper around `BfSharedMutex` that provides a global instance that can be
+/// used to protect global data.
+///
+/// This can only be cloned to obtain mutable access.
+pub struct GlobalBfSharedMutex<T> {
+    /// The shared mutex that is used to protect the global data.
+    pub shared_mutex: BfSharedMutex<T>,
+}
+
+impl<T> GlobalBfSharedMutex<T> {
+    /// Constructs a new global shared mutex for protecting access to the given object.
+    pub fn new(object: T) -> Self {
+        Self {
+            shared_mutex: BfSharedMutex::new(object),
+        }
+    }
+
+    /// Returns a clone of the global shared mutex, which allows writing and reading.
+    pub fn share(&self) -> BfSharedMutex<T> {
+        self.shared_mutex.clone()
+    }
+}
+
+// Can be Send and Sync, because it cannot be mutated anyway.
+unsafe impl<T: Send> Send for GlobalBfSharedMutex<T> {}
+unsafe impl<T: Send> Sync for GlobalBfSharedMutex<T> {}
+
 /// A shared mutex (readers-writer lock) implementation based on the so-called
 /// busy-forbidden protocol. Instead of a regular Mutex this class is Send and
 /// not Sync, every thread must acquire a clone of the shared mutex and the
@@ -180,10 +208,10 @@ impl<T> BfSharedMutex<T> {
     /// guard has already been produced is undefined behaviour unless the guard was forgotten
     /// with `mem::forget`.
     #[inline]
-    pub unsafe fn create_read_guard_unchecked(&self)  -> BfSharedMutexReadGuard<'_, T> {
+    pub unsafe fn create_read_guard_unchecked(&self) -> BfSharedMutexReadGuard<'_, T> {
         BfSharedMutexReadGuard { mutex: self }
     }
-    
+
     /// Returns a raw pointer to the underlying data.
     ///
     /// This is useful when combined with `mem::forget` to hold a lock without
