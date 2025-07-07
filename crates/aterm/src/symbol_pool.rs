@@ -234,8 +234,8 @@ mod tests {
     fn test_prefix_counter() {
         let _ = mcrl3_utilities::test_logger();
 
-        let symbol = Symbol::new("x69", 0);
-        let symbol = Symbol::new("x_y", 0);
+        let _symbol = Symbol::new("x69", 0);
+        let _symbol2 = Symbol::new("x_y", 0);
 
         let value = GLOBAL_TERM_POOL
             .write()
@@ -243,8 +243,8 @@ mod tests {
 
         assert_eq!(value.load(Ordering::Relaxed), 70);
 
-        let symbol = Symbol::new("x_no_effect", 0);
-        let symbol = Symbol::new("x130", 0);
+        let _symbol3 = Symbol::new("x_no_effect", 0);
+        let _symbol4 = Symbol::new("x130", 0);
 
         
         assert_eq!(value.load(Ordering::Relaxed), 131);
