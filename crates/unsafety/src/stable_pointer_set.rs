@@ -54,9 +54,9 @@ impl<T: ?Sized> StablePointer<T> {
     }
 
     /// Creates a new StablePointer from a raw pointer.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The caller must ensure that the pointer is valid and points to a valid T that outlives the StablePointer.
     pub unsafe fn from_ptr(ptr: NonNull<T>) -> Self {
         Self {
@@ -304,7 +304,10 @@ where
         let inserted = self.index.insert(entry);
         if !inserted {
             let entry = Entry::new(ptr);
-            let element = self.index.get(&entry).expect("Insertion failed, so entry must be in the set");
+            let element = self
+                .index
+                .get(&entry)
+                .expect("Insertion failed, so entry must be in the set");
             return (StablePointer::from_entry(&element), false);
         }
 
@@ -351,18 +354,20 @@ where
             pointer.is_last_reference(),
             "Pointer must be the last reference to the element"
         );
-        
+
         // SAFETY: This is the last reference to the element, so it is safe to remove it.
         let t = pointer.deref();
         let result = self.index.remove(&LookUp(t));
-        
+
         if let Some(ptr) = result {
             // SAFETY: We have exclusive access during drop and the pointer is valid
-            unsafe { self.drop_and_deallocate_entry(ptr.ptr); }
+            unsafe {
+                self.drop_and_deallocate_entry(ptr.ptr);
+            }
             true
         } else {
             false
-        }        
+        }
     }
 
     /// Retains only the elements specified by the predicate, modifying the set in-place.
@@ -384,11 +389,13 @@ where
             if !predicate(&ptr) {
                 // Note that retain can remove disconnect graphs of elements in
                 // one go, so it is not necessarily the case that there is only
-                // one reference to the element. 
-                
+                // one reference to the element.
+
                 // SAFETY: We have exclusive access during drop and the pointer
                 // is valid
-                unsafe { self.drop_and_deallocate_entry(ptr.ptr); }
+                unsafe {
+                    self.drop_and_deallocate_entry(ptr.ptr);
+                }
                 return false;
             }
 
@@ -397,9 +404,9 @@ where
     }
 
     /// Drops the element at the given pointer and deallocates its memory.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// This requires that ptr can be dereferenced, so it must point to a valid element.
     unsafe fn drop_and_deallocate_entry(&self, ptr: NonNull<T>) {
         // SAFETY: We have exclusive access during drop and the pointer is valid
@@ -432,7 +439,9 @@ where
         // Manually deallocate all entries before clearing
         for entry in self.index.iter() {
             // SAFETY: We have exclusive access during drop and the pointer is valid
-            unsafe { self.drop_and_deallocate_entry(entry.ptr); }
+            unsafe {
+                self.drop_and_deallocate_entry(entry.ptr);
+            }
         }
 
         debug_assert!(self.index.is_empty(), "Index should be empty after draining");
@@ -444,12 +453,17 @@ where
     /// value to insert only if it doesn't already exist in the set. Returns a
     /// stable pointer to the element and a boolean indicating whether the
     /// element was inserted.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// construct must fully initialize the value at the given pointer,
     /// otherwise it may lead to undefined behavior.
-    pub unsafe fn insert_equiv_dst<'a, Q, C>(&self, value: &'a Q, length: usize, construct: C) -> (StablePointer<T>, bool)
+    pub unsafe fn insert_equiv_dst<'a, Q, C>(
+        &self,
+        value: &'a Q,
+        length: usize,
+        construct: C,
+    ) -> (StablePointer<T>, bool)
     where
         Q: Hash + Equivalent<T>,
         C: Fn(*mut T, &'a Q),
@@ -479,14 +493,20 @@ where
         if !inserted {
             // Add the result to the storage, it could be at this point that the entry was inserted by another thread. So
             // this insertion might actually fail, in which case we should clean up the created entry and return the old pointer.
-            
-            // SAFETY: We have exclusive access during drop and the pointer is valid
-            unsafe { self.drop_and_deallocate_entry(ptr.ptr); }
 
-            // TODO: I suppose this can go wrong with begin_insert(x); insert(x); remove(x); end_insert(x) chain. 
-            return (self.get(value).expect("Insertion failed, but the entry is also not in the set"), false);
+            // SAFETY: We have exclusive access during drop and the pointer is valid
+            unsafe {
+                self.drop_and_deallocate_entry(ptr.ptr);
+            }
+
+            // TODO: I suppose this can go wrong with begin_insert(x); insert(x); remove(x); end_insert(x) chain.
+            return (
+                self.get(value)
+                    .expect("Insertion failed, but the entry is also not in the set"),
+                false,
+            );
         }
-        
+
         (ptr, inserted)
     }
 }
@@ -549,8 +569,10 @@ where
         );
 
         // Manually drop and deallocate all entries
-        for entry in self.index.iter() {            
-            unsafe { self.drop_and_deallocate_entry(entry.ptr); }
+        for entry in self.index.iter() {
+            unsafe {
+                self.drop_and_deallocate_entry(entry.ptr);
+            }
         }
     }
 }

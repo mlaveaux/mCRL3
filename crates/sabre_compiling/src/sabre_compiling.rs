@@ -101,7 +101,7 @@ impl SabreCompilingRewriter {
 //     use super::SabreCompilingRewriter;
 
 //     #[test]
-//     fn test_compilation() {        
+//     fn test_compilation() {
 //         //   plus : Nat Nat -> Nat   # addition
 //         //   times : Nat Nat -> Nat  # product
 //         //   fact : Nat -> Nat       # factorial

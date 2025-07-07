@@ -12,7 +12,7 @@ use mcrl3_sabre::SabreRewriter;
 
 /// A local function to share the rec_test functionality.
 fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
-        let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
+    let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
         let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
         (

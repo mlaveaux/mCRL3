@@ -11,6 +11,7 @@ rust-version.workspace = true
 mcrl3_utilities.workspace = true
 
 crossbeam-utils.workspace = true
+delegate.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

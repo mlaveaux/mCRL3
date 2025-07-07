@@ -28,7 +28,6 @@ macro_rules! debug_trace {
     }};
 }
 
-
 /// Macro that conditionally uses items only when the mcrl3_debug-trace feature is enabled.
 /// This is useful for importing items that are only needed for debug tracing.
 ///

@@ -44,7 +44,7 @@ impl<T: ?Sized + Erasable> Thin<T> {
     }
 }
 
-/// This is the trait that allows a type to be erased and unerased. 
+/// This is the trait that allows a type to be erased and unerased.
 pub unsafe trait Erasable {
     /// Turn this erasable pointer into an erased pointer.
     ///
@@ -58,7 +58,6 @@ pub unsafe trait Erasable {
     /// The erased pointer must have been created by `erase`.
     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self>;
 }
-
 
 unsafe impl<T: Sized> Erasable for T {
     fn erase(this: NonNull<Self>) -> ErasedPtr {

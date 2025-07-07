@@ -4,8 +4,8 @@ use std::fmt;
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
 use std::ptr;
-use std::ptr::slice_from_raw_parts_mut;
 use std::ptr::NonNull;
+use std::ptr::slice_from_raw_parts_mut;
 
 use equivalent::Equivalent;
 use mcrl3_unsafety::Erasable;
@@ -89,8 +89,7 @@ unsafe impl Erasable for SharedTerm {
             let symbol: SymbolRef = ptr::read(this.as_ptr().cast());
             let len = symbol.arity();
 
-            let raw =
-                NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
+            let raw = NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
             Self::retype(raw)
         }
     }

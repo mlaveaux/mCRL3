@@ -11,9 +11,9 @@ use crate::ATermArgs;
 use crate::ATermIndex;
 use crate::ATermRef;
 use crate::SymbolRef;
-use crate::TermIterator;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
+use crate::TermIterator;
 
 /// Returns true iff the term is a list term.
 pub fn is_list_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
@@ -86,8 +86,9 @@ impl<T> ATermList<T> {
     }
 }
 
-impl<'a, 'b, T> Term<'a, 'b> for ATermList<T> 
-    where 'b: 'a
+impl<'a, 'b, T> Term<'a, 'b> for ATermList<T>
+where
+    'b: 'a,
 {
     delegate! {
         to self.term {
@@ -103,7 +104,6 @@ impl<'a, 'b, T> Term<'a, 'b> for ATermList<T>
         }
     }
 }
-
 
 impl<T> Clone for ATermList<T> {
     fn clone(&self) -> Self {

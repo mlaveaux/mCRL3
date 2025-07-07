@@ -245,9 +245,7 @@ impl<R: Read> BinaryATermInputStream<R> {
         if version != BAF_VERSION as u64 {
             return Err(Error::new(
                 ErrorKind::InvalidData,
-                format!(
-                    "BAF version ({version}) incompatible with expected version ({BAF_VERSION})"
-                ),
+                format!("BAF version ({version}) incompatible with expected version ({BAF_VERSION})"),
             )
             .into());
         }

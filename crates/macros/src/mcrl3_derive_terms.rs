@@ -56,8 +56,11 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
 
                         // Simply the generics from the struct.
                         let generics = object.generics.clone();
-                        
-                        fn create_generics_with_lifetimes(base_generics: &syn::Generics, lifetime_names: &[&str]) -> syn::Generics {
+
+                        fn create_generics_with_lifetimes(
+                            base_generics: &syn::Generics,
+                            lifetime_names: &[&str],
+                        ) -> syn::Generics {
                             let mut generics = base_generics.clone();
                             for &lifetime_name in lifetime_names {
                                 generics.params.push(syn::GenericParam::Lifetime(syn::LifetimeParam {
@@ -75,10 +78,10 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
 
                         // Only 'a prepended for the Ref<'a> struct.
                         let generics_ref = create_generics_with_lifetimes(&object.generics, &["'a"]);
-                        
+
                         // Only 'b prepended for the Ref<'b> struct.
                         let generics_ref_b = create_generics_with_lifetimes(&object.generics, &["'b"]);
-                        
+
                         // Only 'static prepended for the Ref<'static> struct.
                         let generics_static = create_generics_with_lifetimes(&object.generics, &["'static"]);
 
@@ -162,7 +165,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                             #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref #generics_ref {
                                 pub(crate) term: ATermRef<'a>,
-                                _marker: PhantomData #generics_phantom, 
+                                _marker: PhantomData #generics_phantom,
                             }
 
                             impl #generics_ref  #name_ref #generics_ref  {
@@ -261,14 +264,20 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         });
 
                         if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                            let path =  if let Some(identifier) = path.path.get_ident() {
+                            let path = if let Some(identifier) = path.path.get_ident() {
                                 // Build an identifier with the postfix Ref<'_>
                                 let name_ref = format_ident!("{}Ref", identifier);
                                 parse_quote!(#name_ref <'_>)
                             } else {
                                 let path_segments = &path.path.segments;
 
-                                let _name_ref = format_ident!("{}Ref", path_segments.first().expect("Path should at least have an identifier").ident);
+                                let _name_ref = format_ident!(
+                                    "{}Ref",
+                                    path_segments
+                                        .first()
+                                        .expect("Path should at least have an identifier")
+                                        .ident
+                                );
                                 // let segments: Vec<syn::PathSegment> = path_segments.iter().skip(1).collect();
                                 // parse_quote!(#name_ref #segments)
                                 unimplemented!()

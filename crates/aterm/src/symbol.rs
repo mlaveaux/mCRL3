@@ -61,7 +61,7 @@ impl<'a> SymbolRef<'a> {
     pub fn protect(&self) -> Symbol {
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
     }
-    
+
     pub unsafe fn from_index(index: &SymbolIndex) -> SymbolRef<'a> {
         SymbolRef {
             shared: index.copy(),
