@@ -17,8 +17,11 @@ use mcrl3_aterm::ATermIndex;
 use mcrl3_aterm::ATermInt;
 use mcrl3_aterm::ATermList;
 use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::SharedSymbol;
 use mcrl3_aterm::SharedTerm;
 use mcrl3_aterm::Symb;
+use mcrl3_aterm::Symbol;
+use mcrl3_aterm::SymbolIndex;
 use mcrl3_aterm::SymbolRef;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::TermOrAnnotation;
@@ -55,7 +58,7 @@ pub struct function_symbol_t {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_int(term: unprotected_aterm_t) -> bool {
     unsafe {
-        is_int_term(&term_to_aterm_ref(term.ptr))
+        is_int_term(&term_to_aterm_ref(term))
     }
 }
 
@@ -63,7 +66,7 @@ pub unsafe extern "C" fn term_is_int(term: unprotected_aterm_t) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_list(term: unprotected_aterm_t) -> bool {
     unsafe {
-        is_list_term(&term_to_aterm_ref(term.ptr))
+        is_list_term(&term_to_aterm_ref(term))
     }
 }
 
@@ -79,7 +82,7 @@ pub unsafe extern "C" fn term_empty_list() -> unprotected_aterm_t {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_empty_list(term: unprotected_aterm_t) -> bool {
     unsafe {
-        is_empty_list_term(&term_to_aterm_ref(term.ptr))
+        is_empty_list_term(&term_to_aterm_ref(term))
     }
 }
 
@@ -104,19 +107,16 @@ pub unsafe extern "C" fn term_create_int(value: usize) -> aterm_t {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_get_int_value(term: unprotected_aterm_t) -> usize {
     unsafe {
-        let shared_term = term_to_aterm_ref(term.ptr);
-        if is_int_term(&shared_term) {
-            shared_term.annotation().unwrap_or(0)
-        } else {
-            0 // or handle error
-        }
+        let shared_term = term_to_aterm_ref(term);
+        debug_assert!(shared_term.annotation().is_some(), "Term is not an integer term");
+        shared_term.annotation().unwrap_unchecked()
     }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_protect(term: unprotected_aterm_t) -> root_index_t {
     THREAD_TERM_POOL.with_borrow(|tp| {
-        let term = unsafe { tp.protect(&term_to_aterm_ref(term.ptr)) };
+        let term = unsafe { tp.protect(&term_to_aterm_ref(term)) };
         let root = term.root();
         std::mem::forget(term); // Prevent the term from being dropped
         root_index_t { index: *root.deref() }
@@ -155,17 +155,22 @@ pub unsafe extern "C" fn function_symbol_register_prefix(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn function_symbol_deregister_prefix(
     prefix: *const std::ffi::c_char,
-    length: usize,
+    _length: usize,
 ) {
     GLOBAL_TERM_POOL.write().remove_prefix(
         unsafe { CStr::from_ptr(prefix).to_str().expect("Invalid UTF-8 in prefix") },
     );
 }
 
-
+/// Returns true iff the given function symbol is an integer symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn function_symbol_is_int(symbol: function_symbol_t) -> bool {
-    unimplemented!();
+    unsafe {
+        THREAD_TERM_POOL.with_borrow(|tp| {
+            let symbol_ref = function_to_symbol_ref(symbol);
+            *tp.int_symbol() == symbol_ref
+        })
+    }
 }
 
 /// This is a counter that is used to keep track of the number of references to
@@ -218,15 +223,52 @@ pub unsafe extern "C" fn shared_counter_unref(
     }
 }
 
+/// Returns the function symbol of the given term.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_get_function_symbol(term: unprotected_aterm_t) -> function_symbol_t {
-    unimplemented!();
+    unsafe {
+        function_symbol_t {
+            ptr: term_to_aterm_ref(term).shared().symbol().shared().deref() as *const SharedSymbol as *const std::ffi::c_void,
+            root: root_index_t { index: 0 },
+        }
+    }
 }
 
-
+/// Creates a new function symbol with the given name and arity.
+/// 
+/// If check_for_registered_functions is true, it will check if the function symbol is already registered.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn function_symbol_create(name: *const std::ffi::c_char, length: usize, arity: usize, check_for_registered_functions: bool) -> function_symbol_t {
+pub unsafe extern "C" fn function_symbol_create(name: *const std::ffi::c_char, _length: usize, arity: usize, _check_for_registered_functions: bool) -> function_symbol_t {
+    let symbol = Symbol::new(
+        unsafe { CStr::from_ptr(name).to_str().expect("Invalid UTF-8 in symbol name") },
+        arity,
+    );
+
+    let symbol_ref = symbol.shared().deref() as *const SharedSymbol as *const std::ffi::c_void;
+    let index = *symbol.root();
+    std::mem::forget(symbol); // Prevent the symbol from being dropped
+    function_symbol_t { ptr: symbol_ref, root: root_index_t { index }}
+}
+
+/// Protects a function symbol, returning a root index that can be used to unprotect it later.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn function_symbol_protect(symbol: function_symbol_t) -> root_index_t {
+    THREAD_TERM_POOL.with_borrow(|tp| {
+        let symbol_ref = unsafe { function_to_symbol_ref(symbol) };
+        let protected_symbol = tp.protect_symbol(&symbol_ref);
+        let root = protected_symbol.root();
+        std::mem::forget(protected_symbol); // Prevent the symbol from being dropped
+        root_index_t { index: *root.deref() }
+    })
+}
+
+/// Removes the protection of a function symbol.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn function_symbol_unprotect(root: root_index_t) {
     unimplemented!();
+    // THREAD_TERM_POOL.with_borrow(|tp| {
+    //     tp.unprotect_symbol(&SymbolRef::from_index(&SymbolIndex::from_ptr(NonNull::new_unchecked(root.index as *mut SharedSymbol))));
+    // });
 }
 
 type term_deletion_hook_t = extern "C" fn(symbol: unprotected_aterm_t);
@@ -245,24 +287,33 @@ pub unsafe extern "C" fn register_deletion_hook(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn term_pool_is_busy_set() -> bool {
-    unimplemented!();
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn function_symbol_get_arity(symbol: function_symbol_t) -> usize {
     unsafe {
-        let shared_term = term_to_aterm_ref(symbol.ptr);
-        shared_term.get_head_symbol().arity() // Assuming arity gives the length of the term
+        let symbol = function_to_symbol_ref(symbol);
+        symbol.arity()
     }
 }
 
+#[repr(C)]
+pub struct string_view_t {
+    ptr: *const std::ffi::c_char,
+    length: usize,
+}
+
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn function_symbol_get_name(symbol: function_symbol_t) -> *const std::ffi::c_char {
+pub unsafe extern "C" fn function_symbol_get_name(symbol: function_symbol_t) -> string_view_t {
     unsafe {
-        let shared_term = term_to_aterm_ref(symbol.ptr);
-        shared_term.get_head_symbol().name().as_ptr() as *const std::ffi::c_char
+        let symbol = function_to_symbol_ref(symbol);
+        string_view_t {
+            ptr: symbol.name().as_ptr() as *const std::ffi::c_char,
+            length: symbol.name().len(),
+        }
     }
+}
+
+/// A dummy protection set that is used to protect a FFI container.
+struct ProtectedContainer {
+
 }
 
 #[unsafe(no_mangle)]
@@ -283,32 +334,50 @@ pub unsafe extern "C" fn container_unprotect(root: root_index_t) {
     // })
 }
 
+/// Locks the global term pool for shared access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_lock_shared() {
     // Forget the guard to prevent it from being dropped.
-    mem::forget(GLOBAL_TERM_POOL.read());
+    mem::forget(GLOBAL_TERM_POOL.read_recursive());
 }
 
+/// Unlocks the global term pool after shared access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_unlock_shared() {
     unsafe { GLOBAL_TERM_POOL.force_unlock_read() };
 }
 
+/// Locks the global term pool for exclusive access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_lock_exclusive() {
     // Forget the guard to prevent it from being dropped.
     mem::forget(GLOBAL_TERM_POOL.write());
 }
 
+/// Unlocks the global term pool after exclusive access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_unlock_exclusive() {
     unsafe { GLOBAL_TERM_POOL.force_unlock_write() };
 }
 
-/// Can be used during garbage collection to mark a term (and all of its subterms) as being reachable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn term_mark(term: &unprotected_aterm_t) {
-    unimplemented!();
+pub unsafe extern "C" fn term_pool_is_busy_set() -> bool {
+    GLOBAL_TERM_POOL.is_locked()
+}
+
+
+/// Can be used during garbage collection to mark a term (and all of its subterms) as being reachable.
+/// 
+/// # Safety
+/// 
+/// This function should only be called during garbage collection when the global term pool is locked.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn term_mark(term: unprotected_aterm_t) {
+    unsafe {
+        GLOBAL_TERM_POOL
+            .make_write_guard_unchecked()
+            .mark_term(&term_to_aterm_ref(term));
+    }
 }
 
 /// Returns the number of arguments in the term.
@@ -325,7 +394,17 @@ unsafe fn term_len(term: unprotected_aterm_t) -> usize {
 /// Safety: The unprotected_aterm_t must point to a valid term.
 unsafe fn term_to_aterm_ref(term: unprotected_aterm_t) -> ATermRef<'static> {
     unsafe {
-        let wide_ptr = ptr::slice_from_raw_parts(term.ptr as *const TermOrAnnotation, term_len(ptr));
+        let wide_ptr = ptr::slice_from_raw_parts(term.ptr as *const TermOrAnnotation, term_len(term));
         ATermRef::from_index(&ATermIndex::from_ptr(NonNull::new_unchecked(wide_ptr as *mut SharedTerm)))
+    }
+}
+
+
+/// Converts a raw pointer to an `SymbolRef`, must ensure that the raw ptr is valid.
+/// 
+/// Safety: The unprotected_aterm_t must point to a valid term.
+unsafe fn function_to_symbol_ref(symbol: function_symbol_t) -> SymbolRef<'static> {
+    unsafe {
+        SymbolRef::from_index(&SymbolIndex::from_ptr(NonNull::new_unchecked(symbol.ptr as *mut SharedSymbol)))
     }
 }
