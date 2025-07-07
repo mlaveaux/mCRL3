@@ -19,21 +19,22 @@ class shared_counter
 {
 
 public:
-  shared_counter(mcrl3::ffi::prefix_shared_counter_t counter)
+  shared_counter() noexcept = default;
+  shared_counter(mcrl3::ffi::prefix_shared_counter_t counter) noexcept
+      : m_counter(counter)
+  {
+    mcrl3::ffi::shared_counter_add_ref(m_counter);
+  }
+
+  ~shared_counter() noexcept { mcrl3::ffi::shared_counter_unref(m_counter); }
+
+  shared_counter(const shared_counter& other) noexcept
       : m_counter(other.m_counter)
   {
     mcrl3::ffi::shared_counter_add_ref(m_counter);
   }
 
-  ~shared_counter() { mcrl3::ffi::shared_counter_unref(m_counter); }
-
-  shared_counter(const shared_counter& other)
-      : m_counter(other.m_counter)
-  {
-    mcrl3::ffi::shared_counter_add_ref(m_counter);
-  }
-
-  shared_counter& operator=(const shared_counter& other)
+  shared_counter& operator=(const shared_counter& other) noexcept
   {
     if (this != &other)
     {
@@ -43,13 +44,13 @@ public:
     return *this;
   }
 
-  auto operator*() const -> std::size_t { return mcrl3::ffi::shared_counter_get_value(m_counter); }
+  auto operator*() const -> std::size_t { return mcrl3::ffi::shared_counter_value(m_counter); }
 
-  auto operator*() -> decltype(auto) { return mcrl3::ffi::shared_counter_get_value(m_counter); }
+  auto operator*() -> decltype(auto) { return mcrl3::ffi::shared_counter_value(m_counter); }
 
 private:
   mcrl3::ffi::prefix_shared_counter_t m_counter;
-}
+};
 
 }
 
