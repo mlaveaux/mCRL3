@@ -170,6 +170,37 @@ impl<T> BfSharedMutex<T> {
         Ok(BfSharedMutexReadGuard { mutex: self })
     }
 
+    /// Creates a new `BfSharedMutexReadGuard` without checking if the lock is held.
+    ///
+    /// # Safety
+    ///
+    /// This method must only be called if the thread logically holds a read lock.
+    ///
+    /// This function does not increment the read count of the lock. Calling this function when a
+    /// guard has already been produced is undefined behaviour unless the guard was forgotten
+    /// with `mem::forget`.
+    #[inline]
+    pub unsafe fn create_read_guard_unchecked(&self)  -> BfSharedMutexReadGuard<'_, T> {
+        BfSharedMutexReadGuard { mutex: self }
+    }
+    
+    /// Returns a raw pointer to the underlying data.
+    ///
+    /// This is useful when combined with `mem::forget` to hold a lock without
+    /// the need to maintain a `RwLockReadGuard` or `RwLockWriteGuard` object
+    /// alive, for example when dealing with FFI.
+    ///
+    /// # Safety
+    ///
+    /// You must ensure that there are no data races when dereferencing the
+    /// returned pointer, for example if the current thread logically owns a
+    /// `RwLockReadGuard` or `RwLockWriteGuard` but that guard has been discarded
+    /// using `mem::forget`.
+    #[inline]
+    pub fn data_ptr(&self) -> *mut T {
+        self.shared.object.get()
+    }
+
     /// Provide write access to the underlying object, only a single mutable reference to the object exists.
     #[inline]
     pub fn write<'a>(&'a self) -> Result<BfSharedMutexWriteGuard<'a, T>, Box<dyn Error + 'a>> {
@@ -210,6 +241,16 @@ impl<T> BfSharedMutex<T> {
             mutex: self,
             guard: other,
         })
+    }
+
+    /// Check if the shared mutex is locked shared, meaning no other thread has a read lock.
+    pub fn is_locked(&self) -> bool {
+        self.control.busy.load(Ordering::Relaxed)
+    }
+
+    /// Check if the shared mutex is locked exclusively, meaning no other thread has a lock.
+    pub fn is_locked_exclusive(&self) -> bool {
+        self.control.forbidden.load(Ordering::Relaxed)
     }
 
     /// Obtain mutable access to the object without locking, is safe because we have mutable access.
