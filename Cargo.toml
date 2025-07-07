@@ -20,6 +20,7 @@ members = [
     "3rd-party/pest_consume_macros",
     "crates/aterm",
     "crates/aterm/benchmarks",
+    "crates/aterm-ffi",
     "crates/data",
     "crates/gui",
     "crates/io",

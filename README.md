@@ -42,7 +42,6 @@ Another useful technique for profiling is to generate a so-called `flamegraph`, 
 
 Finally, in performance critical situations it can be useful to view the generated assembly, which can be achieved with the `cargo asm --rust --simplify -p <package> [--lib] <path-to-function>` that can be obtained by `cargo install cargo-show-asm`.
 
-
 ## Formatting
 
 All source code should be formatted using `cargo fmt`, which can installed using `rustup component add rustfmt`. Individual source files can then be formatted using `cargo +nightly fmt`.
