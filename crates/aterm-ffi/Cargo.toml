@@ -1,0 +1,13 @@
+[package]
+name = "mcrl3_aterm-ffi"
+description = "Foreign function interface for mcrl3_aterm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+mcrl3_aterm.workspace = true
