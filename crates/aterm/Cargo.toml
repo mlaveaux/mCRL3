@@ -8,8 +8,8 @@ rust-version.workspace = true
 [features]
 # The `mcrl3_miri` feature is used to run miri tests.
 mcrl3_miri = []
-# The `mcrl3_debug` feature is used to enable additional run-time checks, and logging messages.
-mcrl3_debug = ["parking_lot/deadlock_detection", "mcrl3_utilities/mcrl3_debug"]
+# The `mcrl3_debug` feature is used to enable additional run-time checks.
+mcrl3_debug = ["parking_lot/deadlock_detection"]
 
 [dependencies]
 mcrl3_io.workspace = true

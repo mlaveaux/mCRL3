@@ -10,8 +10,8 @@ rust-version.workspace = true
 # Disable logging when miri is enabled since that does not work with isolation mode.
 mcrl3_miri = []
 
-# Enables extra debug options to be enabled. Also enables jemalloc debugging.
-mcrl3_debug = []
+# Enables the debug_trace macro to show additional log messages.
+mcrl3_debug-trace = []
 
 [dependencies]
 ahash.workspace = true

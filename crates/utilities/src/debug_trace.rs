@@ -11,7 +11,7 @@
 /// debug_trace!("Complex calculation result: {:#?}", result);
 /// ```
 #[macro_export]
-#[cfg(feature = "mcrl3_debug")]
+#[cfg(feature = "mcrl3_debug-trace")]
 macro_rules! debug_trace {
     ($($arg:tt)*) => {
         {
@@ -21,9 +21,35 @@ macro_rules! debug_trace {
 }
 
 #[macro_export]
-#[cfg(not(feature = "mcrl3_debug"))]
+#[cfg(not(feature = "mcrl3_debug-trace"))]
 macro_rules! debug_trace {
     ($($arg:tt)*) => {{
         // No-op when mcrl3_debug is not enabled
     }};
+}
+
+
+/// Macro that conditionally uses items only when the mcrl3_debug-trace feature is enabled.
+/// This is useful for importing items that are only needed for debug tracing.
+///
+/// # Examples
+///
+/// ```
+/// debug_use!(std::collections::HashMap);
+/// debug_use!(crate::internal::debug_helper);
+/// ```
+#[macro_export]
+#[cfg(feature = "mcrl3_debug-trace")]
+macro_rules! debug_use {
+    ($($item:tt)*) => {
+        use $($item)*;
+    };
+}
+
+#[macro_export]
+#[cfg(not(feature = "mcrl3_debug-trace"))]
+macro_rules! debug_use {
+    ($($item:tt)*) => {
+        // No-op when mcrl3_debug-trace is not enabled
+    };
 }
