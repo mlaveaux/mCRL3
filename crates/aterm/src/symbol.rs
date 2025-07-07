@@ -57,16 +57,16 @@ const _: () = assert!(std::mem::size_of::<Option<SymbolRef>>() == std::mem::size
 
 /// A reference to a function symbol with a known lifetime.
 impl<'a> SymbolRef<'a> {
-    pub(crate) unsafe fn from_index(index: &SymbolIndex) -> SymbolRef<'a> {
+    /// Protects the symbol from garbage collection, yielding a `Symbol`.
+    pub fn protect(&self) -> Symbol {
+        THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
+    }
+    
+    pub unsafe fn from_index(index: &SymbolIndex) -> SymbolRef<'a> {
         SymbolRef {
             shared: index.copy(),
             marker: PhantomData,
         }
-    }
-
-    /// Protects the symbol from garbage collection, yielding a `Symbol`.
-    pub fn protect(&self) -> Symbol {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
     }
 }
 

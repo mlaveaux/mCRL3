@@ -1,7 +1,6 @@
-//! TODO: We could consider introducing "annotated" terms formally where the last argument is a pointer to the annotation.
-
 use std::borrow::Borrow;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem::transmute;
 use std::ops::Deref;
 

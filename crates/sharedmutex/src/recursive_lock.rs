@@ -1,6 +1,6 @@
-use std::{cell::Cell, error::Error, mem, ops::Deref, sync::atomic::Ordering};
+use std::{cell::Cell, error::Error, mem, ops::Deref};
 
-use crate::{BfSharedMutex, BfSharedMutexReadGuard, BfSharedMutexWriteGuard};
+use crate::{BfSharedMutex, BfSharedMutexWriteGuard};
 
 
 

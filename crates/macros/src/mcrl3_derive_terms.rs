@@ -82,6 +82,13 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         // Only 'static prepended for the Ref<'static> struct.
                         let generics_static = create_generics_with_lifetimes(&object.generics, &["'static"]);
 
+                        // Handle PhantomData generics - use void type if no generics exist
+                        let generics_phantom = if object.generics.params.is_empty() {
+                            quote!(<()>)
+                        } else {
+                            generics.to_token_stream()
+                        };
+
                         // Add a <name>Ref struct that contains the ATermRef<'a> and
                         // the implementation and both protect and borrow. Also add
                         // the conversion from and to an ATerm.
@@ -155,7 +162,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                             #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref #generics_ref {
                                 pub(crate) term: ATermRef<'a>,
-                                _marker: PhantomData #generics, 
+                                _marker: PhantomData #generics_phantom, 
                             }
 
                             impl #generics_ref  #name_ref #generics_ref  {
