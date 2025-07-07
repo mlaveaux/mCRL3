@@ -54,18 +54,46 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
 
                         let name = format_ident!("{}", object.ident);
 
+                        // Simply the generics from the struct.
+                        let generics = object.generics.clone();
+                        
+                        fn create_generics_with_lifetimes(base_generics: &syn::Generics, lifetime_names: &[&str]) -> syn::Generics {
+                            let mut generics = base_generics.clone();
+                            for &lifetime_name in lifetime_names {
+                                generics.params.push(syn::GenericParam::Lifetime(syn::LifetimeParam {
+                                    attrs: vec![],
+                                    lifetime: syn::Lifetime::new(lifetime_name, proc_macro2::Span::call_site()),
+                                    bounds: syn::punctuated::Punctuated::new(),
+                                    colon_token: None,
+                                }));
+                            }
+                            generics
+                        }
+
+                        // The generics from the struct with <'a, 'b> added for the Term trait.
+                        let generics_term = create_generics_with_lifetimes(&object.generics, &["'a", "'b"]);
+
+                        // Only 'a prepended for the Ref<'a> struct.
+                        let generics_ref = create_generics_with_lifetimes(&object.generics, &["'a"]);
+                        
+                        // Only 'b prepended for the Ref<'b> struct.
+                        let generics_ref_b = create_generics_with_lifetimes(&object.generics, &["'b"]);
+                        
+                        // Only 'static prepended for the Ref<'static> struct.
+                        let generics_static = create_generics_with_lifetimes(&object.generics, &["'static"]);
+
                         // Add a <name>Ref struct that contains the ATermRef<'a> and
                         // the implementation and both protect and borrow. Also add
                         // the conversion from and to an ATerm.
                         let name_ref = format_ident!("{}Ref", object.ident);
                         let generated: TokenStream = quote!(
-                            impl #name {
-                                pub fn copy<'a>(&'a self) -> #name_ref<'a> {
+                            impl #generics #name #generics {
+                                pub fn copy #generics_ref(&'a self) -> #name_ref #generics_ref {
                                     self.term.copy().into()
                                 }
                             }
 
-                            impl From<ATerm> for #name {
+                            impl #generics From<ATerm> for #name #generics {
                                 fn from(term: ATerm) -> #name {
                                     #assertion;
                                     #name {
@@ -74,13 +102,13 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl Into<ATerm> for #name {
+                            impl #generics Into<ATerm> for #name #generics{
                                 fn into(self) -> ATerm {
                                     self.term
                                 }
                             }
 
-                            impl Deref for #name {
+                            impl #generics Deref for #name #generics{
                                 type Target = ATerm;
 
                                 fn deref(&self) -> &Self::Target {
@@ -88,13 +116,13 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl Borrow<ATerm> for #name {
+                            impl #generics Borrow<ATerm> for #name #generics{
                                 fn borrow(&self) -> &ATerm {
                                     &self.term
                                 }
                             }
 
-                            impl Markable for #name {
+                            impl #generics Markable for #name #generics{
                                 fn mark(&self, marker: &mut Marker) {
                                     self.term.mark(marker);
                                 }
@@ -108,7 +136,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a, 'b> Term<'a, 'b> for #name where 'b: 'a {
+                            impl #generics_term Term<'a, 'b> for #name #generics where 'b: 'a {
                                 delegate! {
                                     to self.term {
                                         fn protect(&self) -> ATerm;
@@ -125,12 +153,13 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                             }
 
                             #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-                            pub struct #name_ref<'a> {
-                                pub(crate) term: ATermRef<'a>
+                            pub struct #name_ref #generics_ref {
+                                pub(crate) term: ATermRef<'a>,
+                                _marker: PhantomData #generics, 
                             }
 
-                            impl<'a> #name_ref<'a> {
-                                pub fn copy<'b>(&'b self) -> #name_ref<'b> {
+                            impl #generics_ref  #name_ref #generics_ref  {
+                                pub fn copy<'b>(&'b self) -> #name_ref #generics_ref_b{
                                     self.term.copy().into()
                                 }
 
@@ -139,22 +168,23 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a> From<ATermRef<'a>> for #name_ref<'a> {
-                                fn from(term: ATermRef<'a>) -> #name_ref<'a> {
+                            impl #generics_ref  From<ATermRef<'a>> for #name_ref #generics_ref {
+                                fn from(term: ATermRef<'a>) -> #name_ref #generics_ref  {
                                     #assertion;
                                     #name_ref {
-                                        term
+                                        term,
+                                        _marker: PhantomData,
                                     }
                                 }
                             }
 
-                            impl<'a> Into<ATermRef<'a>> for #name_ref<'a> {
+                            impl #generics_ref  Into<ATermRef<'a>> for #name_ref #generics_ref  {
                                 fn into(self) -> ATermRef<'a> {
                                     self.term
                                 }
                             }
 
-                            impl<'a> Term<'a, '_> for #name_ref<'a> {
+                            impl #generics_term Term<'a, '_> for #name_ref #generics_ref  {
                                 delegate! {
                                     to self.term {
                                         fn protect(&self) -> ATerm;
@@ -170,13 +200,13 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a> Borrow<ATermRef<'a>> for #name_ref<'a> {
+                            impl #generics_ref Borrow<ATermRef<'a>> for #name_ref #generics_ref {
                                 fn borrow(&self) -> &ATermRef<'a> {
                                     &self.term
                                 }
                             }
 
-                            impl<'a> Markable for #name_ref<'a> {
+                            impl #generics_ref Markable for #name_ref #generics_ref {
                                 fn mark(&self, marker: &mut Marker) {
                                     self.term.mark(marker);
                                 }
@@ -190,15 +220,15 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl Transmutable for #name_ref<'static> {
-                                type Target<'a> = #name_ref<'a>;
+                            impl Transmutable for #name_ref #generics_static {
+                                type Target #generics_ref = #name_ref #generics_ref;
 
-                                fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
-                                    unsafe { transmute::<&Self, &'a #name_ref<'a>>(self) }
+                                fn transmute_lifetime<'a>(&self) -> &'a Self::Target #generics_ref {
+                                    unsafe { transmute::<&Self, &'a #name_ref #generics_ref>(self) }
                                 }
 
-                                fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
-                                    unsafe { transmute::<&mut Self, &'a mut #name_ref<'a>>(self) }
+                                fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target #generics_ref {
+                                    unsafe { transmute::<&mut Self, &'a mut #name_ref #generics_ref>(self) }
                                 }
                             }
                         );
@@ -212,7 +242,7 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         .iter()
                         .any(|attr| attr.meta.path().is_ident("mcrl3_ignore"))
                     {
-                        // Duplicate the implementation for the ATermRef struct that is generated above.
+                        // Duplicate the implementation for the Ref struct that is generated above.
                         let mut ref_implementation = implementation.clone();
 
                         // Remove ignored functions
@@ -224,9 +254,18 @@ pub(crate) fn mcrl3_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         });
 
                         if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                            // Build an identifier with the postfix Ref<'_>
-                            let name_ref = format_ident!("{}Ref", path.path.get_ident().unwrap());
-                            let path = parse_quote!(#name_ref <'_>);
+                            let path =  if let Some(name_ref) = path.path.get_ident() {
+                                // Build an identifier with the postfix Ref<'_>
+                                let name_ref = format_ident!("{}Ref", path.path.get_ident().expect("Cannot find identifier in path"));
+                                parse_quote!(#name_ref <'_>)
+                            } else {
+                                let path_segments = &path.path.segments;
+
+                                let name_ref = format_ident!("{}Ref", path_segments.first().expect("Path should at least have an identifier").ident);
+                                // let segments: Vec<syn::PathSegment> = path_segments.iter().skip(1).collect();
+                                // parse_quote!(#name_ref #segments)
+                                unimplemented!()
+                            };
 
                             ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
 
