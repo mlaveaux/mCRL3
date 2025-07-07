@@ -328,6 +328,21 @@ impl GlobalTermPool {
         TermPoolMetrics(self)
     }
 
+    /// Marks the given term as being reachable.
+    /// 
+    /// # Safety
+    /// 
+    /// Should only be called during garbage collection.
+    pub unsafe fn mark_term(&mut self, term: &ATermRef<'_>) {
+        // Ensure that the global term pool is locked for writing.
+        let mut marker = Marker {
+            marked_terms: &mut self.marked_terms,
+            marked_symbols: &mut self.marked_symbols,
+            stack: &mut self.stack,
+        };
+        term.mark(&mut marker);
+    }
+
     /// Returns integer function symbol.
     pub(crate) fn get_int_symbol(&self) -> &SymbolRef<'static> {
         &self.int_symbol
