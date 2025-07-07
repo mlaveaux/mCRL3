@@ -4,8 +4,14 @@
 
 use std::marker::PhantomData;
 
+use delegate::delegate;
+
 use crate::ATerm;
+use crate::ATermArgs;
+use crate::ATermIndex;
 use crate::ATermRef;
+use crate::SymbolRef;
+use crate::TermIterator;
 use crate::THREAD_TERM_POOL;
 use crate::Term;
 
@@ -79,6 +85,25 @@ impl<T> ATermList<T> {
         ATermListIter { current: self.clone() }
     }
 }
+
+impl<'a, 'b, T> Term<'a, 'b> for ATermList<T> 
+    where 'b: 'a
+{
+    delegate! {
+        to self.term {
+            fn protect(&self) -> ATerm;
+            fn arg(&'b self, index: usize) -> ATermRef<'a>;
+            fn arguments(&'b self) -> ATermArgs<'a>;
+            fn copy(&'b self) -> ATermRef<'a>;
+            fn get_head_symbol(&'b self) -> SymbolRef<'a>;
+            fn iter(&'b self) -> TermIterator<'a>;
+            fn index(&self) -> usize;
+            fn shared(&self) -> &ATermIndex;
+            fn annotation(&self) -> Option<usize>;
+        }
+    }
+}
+
 
 impl<T> Clone for ATermList<T> {
     fn clone(&self) -> Self {
