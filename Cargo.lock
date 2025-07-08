@@ -3494,6 +3494,7 @@ name = "mcrl3_sharedmutex"
 version = "1.0.0"
 dependencies = [
  "crossbeam-utils",
+ "delegate",
  "mcrl3_utilities",
  "rand 0.9.1",
 ]
