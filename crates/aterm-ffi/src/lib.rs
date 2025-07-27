@@ -1,32 +1,32 @@
 #![allow(non_camel_case_types)]
 
-use std::ffi::c_char;
 use std::ffi::CStr;
+use std::ffi::c_char;
 use std::mem;
 use std::ops::Deref;
 use std::ptr;
 use std::ptr::NonNull;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
-use mcrl3_aterm::is_empty_list_term;
-use mcrl3_aterm::is_int_term;
-use mcrl3_aterm::is_list_term;
 use mcrl3_aterm::ATermIndex;
 use mcrl3_aterm::ATermInt;
 use mcrl3_aterm::ATermList;
 use mcrl3_aterm::ATermRef;
+use mcrl3_aterm::GLOBAL_TERM_POOL;
 use mcrl3_aterm::SharedSymbol;
 use mcrl3_aterm::SharedTerm;
 use mcrl3_aterm::Symb;
 use mcrl3_aterm::Symbol;
 use mcrl3_aterm::SymbolIndex;
 use mcrl3_aterm::SymbolRef;
+use mcrl3_aterm::THREAD_TERM_POOL;
 use mcrl3_aterm::Term;
 use mcrl3_aterm::TermOrAnnotation;
-use mcrl3_aterm::GLOBAL_TERM_POOL;
-use mcrl3_aterm::THREAD_TERM_POOL;
+use mcrl3_aterm::is_empty_list_term;
+use mcrl3_aterm::is_int_term;
+use mcrl3_aterm::is_list_term;
 
 /// The is the underlying shared aterm that is pointed to by the term.
 #[repr(C)]
@@ -57,17 +57,13 @@ pub struct function_symbol_t {
 /// Returns true iff the term is an integer term.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_int(term: unprotected_aterm_t) -> bool {
-    unsafe {
-        is_int_term(&term_to_aterm_ref(term))
-    }
+    unsafe { is_int_term(&term_to_aterm_ref(term)) }
 }
 
 /// Returns true iff the term is a list term.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_list(term: unprotected_aterm_t) -> bool {
-    unsafe {
-        is_list_term(&term_to_aterm_ref(term))
-    }
+    unsafe { is_list_term(&term_to_aterm_ref(term)) }
 }
 
 #[unsafe(no_mangle)]
@@ -81,9 +77,7 @@ pub unsafe extern "C" fn term_empty_list() -> unprotected_aterm_t {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_empty_list(term: unprotected_aterm_t) -> bool {
-    unsafe {
-        is_empty_list_term(&term_to_aterm_ref(term))
-    }
+    unsafe { is_empty_list_term(&term_to_aterm_ref(term)) }
 }
 
 #[unsafe(no_mangle)]
@@ -94,7 +88,7 @@ pub unsafe extern "C" fn term_is_defined(term: unprotected_aterm_t) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_create_int(value: usize) -> aterm_t {
     let term = ATermInt::new(value);
-    
+
     let term_ptr = term.shared().deref() as *const SharedTerm as *const std::ffi::c_void;
     let root = *term.root().deref();
 
@@ -134,32 +128,35 @@ pub unsafe extern "C" fn term_get_argument(term: unprotected_aterm_t, index: usi
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn term_create_appl(symbol: function_symbol_t, arguments: *const unprotected_aterm_t, num_arguments: usize) -> aterm_t {
+pub unsafe extern "C" fn term_create_appl(
+    symbol: function_symbol_t,
+    arguments: *const unprotected_aterm_t,
+    num_arguments: usize,
+) -> aterm_t {
     unimplemented!();
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn function_symbol_register_prefix(
     prefix: *const c_char,
-    _length: usize
+    _length: usize,
 ) -> prefix_shared_counter_t {
-    let result = GLOBAL_TERM_POOL.write().register_prefix(
-        unsafe { CStr::from_ptr(prefix).to_str().expect("Invalid UTF-8 in prefix") },
-    );
+    unimplemented!();
+    // let result = GLOBAL_TERM_POOL.write().expect("Lock poisoned!").register_prefix(
+    //     unsafe { CStr::from_ptr(prefix).to_str().expect("Invalid UTF-8 in prefix") },
+    // );
 
-    prefix_shared_counter_t {
-        ptr: Arc::into_raw(result) as *const std::ffi::c_void,
-    }
+    // prefix_shared_counter_t {
+    //     ptr: Arc::into_raw(result) as *const std::ffi::c_void,
+    // }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn function_symbol_deregister_prefix(
-    prefix: *const std::ffi::c_char,
-    _length: usize,
-) {
-    GLOBAL_TERM_POOL.write().remove_prefix(
-        unsafe { CStr::from_ptr(prefix).to_str().expect("Invalid UTF-8 in prefix") },
-    );
+pub unsafe extern "C" fn function_symbol_deregister_prefix(prefix: *const std::ffi::c_char, _length: usize) {
+    unimplemented!();
+    // GLOBAL_TERM_POOL.write().expect("Lock poisoned!").remove_prefix(
+    //     unsafe { CStr::from_ptr(prefix).to_str().expect("Invalid UTF-8 in prefix") },
+    // );
 }
 
 /// Returns true iff the given function symbol is an integer symbol.
@@ -175,7 +172,7 @@ pub unsafe extern "C" fn function_symbol_is_int(symbol: function_symbol_t) -> bo
 
 /// This is a counter that is used to keep track of the number of references to
 /// a prefix.
-/// 
+///
 /// This is used because Arc is not available in the FFI, so we use a raw
 /// pointer to the counter (which is stable because it is an Arc).
 #[repr(C)]
@@ -184,11 +181,11 @@ pub struct prefix_shared_counter_t {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn shared_counter_value(
-    counter: prefix_shared_counter_t,
-) -> usize{
+pub unsafe extern "C" fn shared_counter_value(counter: prefix_shared_counter_t) -> usize {
     unsafe {
-        counter.ptr.cast::<AtomicUsize>()
+        counter
+            .ptr
+            .cast::<AtomicUsize>()
             .as_ref()
             .expect("Counter pointer is not null")
             .load(Ordering::Relaxed)
@@ -196,14 +193,12 @@ pub unsafe extern "C" fn shared_counter_value(
 }
 
 /// Increases the reference count of the shared counter.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The given counter must be a valid pointer that has not been released.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn shared_counter_add_ref(
-    counter: prefix_shared_counter_t,
-) {
+pub unsafe extern "C" fn shared_counter_add_ref(counter: prefix_shared_counter_t) {
     unsafe {
         // Clone the Arc to increment the reference count, but forgot it to avoid dropping it.
         let result = Arc::from_raw(counter.ptr.cast::<AtomicUsize>());
@@ -214,9 +209,7 @@ pub unsafe extern "C" fn shared_counter_add_ref(
 
 /// Decreases the reference count of the shared counter.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn shared_counter_unref(
-    counter: prefix_shared_counter_t,
-) {
+pub unsafe extern "C" fn shared_counter_unref(counter: prefix_shared_counter_t) {
     unsafe {
         // Construct the Arc and drop it to decrement the reference count.
         Arc::from_raw(counter.ptr.cast::<AtomicUsize>());
@@ -228,17 +221,23 @@ pub unsafe extern "C" fn shared_counter_unref(
 pub unsafe extern "C" fn term_get_function_symbol(term: unprotected_aterm_t) -> function_symbol_t {
     unsafe {
         function_symbol_t {
-            ptr: term_to_aterm_ref(term).shared().symbol().shared().deref() as *const SharedSymbol as *const std::ffi::c_void,
+            ptr: term_to_aterm_ref(term).shared().symbol().shared().deref() as *const SharedSymbol
+                as *const std::ffi::c_void,
             root: root_index_t { index: 0 },
         }
     }
 }
 
 /// Creates a new function symbol with the given name and arity.
-/// 
+///
 /// If check_for_registered_functions is true, it will check if the function symbol is already registered.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn function_symbol_create(name: *const std::ffi::c_char, _length: usize, arity: usize, _check_for_registered_functions: bool) -> function_symbol_t {
+pub unsafe extern "C" fn function_symbol_create(
+    name: *const std::ffi::c_char,
+    _length: usize,
+    arity: usize,
+    _check_for_registered_functions: bool,
+) -> function_symbol_t {
     let symbol = Symbol::new(
         unsafe { CStr::from_ptr(name).to_str().expect("Invalid UTF-8 in symbol name") },
         arity,
@@ -247,7 +246,10 @@ pub unsafe extern "C" fn function_symbol_create(name: *const std::ffi::c_char, _
     let symbol_ref = symbol.shared().deref() as *const SharedSymbol as *const std::ffi::c_void;
     let index = *symbol.root();
     std::mem::forget(symbol); // Prevent the symbol from being dropped
-    function_symbol_t { ptr: symbol_ref, root: root_index_t { index }}
+    function_symbol_t {
+        ptr: symbol_ref,
+        root: root_index_t { index },
+    }
 }
 
 /// Protects a function symbol, returning a root index that can be used to unprotect it later.
@@ -274,10 +276,7 @@ pub unsafe extern "C" fn function_symbol_unprotect(root: root_index_t) {
 type term_deletion_hook_t = extern "C" fn(symbol: unprotected_aterm_t);
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn register_deletion_hook(
-    symbol: &function_symbol_t,
-    deletion_hook: term_deletion_hook_t,
-) {
+pub unsafe extern "C" fn register_deletion_hook(symbol: &function_symbol_t, deletion_hook: term_deletion_hook_t) {
     unimplemented!();
     // GLOBAL_TERM_POOL.write().register_deletion_hook(|term| {
     //     deletion_hook(&unprotected_aterm_t {
@@ -312,9 +311,7 @@ pub unsafe extern "C" fn function_symbol_get_name(symbol: function_symbol_t) -> 
 }
 
 /// A dummy protection set that is used to protect a FFI container.
-struct ProtectedContainer {
-
-}
+struct ProtectedContainer {}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn container_protect() -> root_index_t {
@@ -324,7 +321,7 @@ pub unsafe extern "C" fn container_protect() -> root_index_t {
     //     root_index_t { index: *root.deref() }
     // })
 }
-    
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn container_unprotect(root: root_index_t) {
     unimplemented!();
@@ -338,46 +335,51 @@ pub unsafe extern "C" fn container_unprotect(root: root_index_t) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_lock_shared() {
     // Forget the guard to prevent it from being dropped.
-    mem::forget(GLOBAL_TERM_POOL.read_recursive());
+    unimplemented!();
+    // mem::forget(GLOBAL_TERM_POOL.read_recursive());
 }
 
 /// Unlocks the global term pool after shared access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_unlock_shared() {
-    unsafe { GLOBAL_TERM_POOL.force_unlock_read() };
+    unimplemented!();
+    // unsafe { GLOBAL_TERM_POOL.force_unlock_read() };
 }
 
 /// Locks the global term pool for exclusive access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_lock_exclusive() {
     // Forget the guard to prevent it from being dropped.
-    mem::forget(GLOBAL_TERM_POOL.write());
+    unimplemented!();
+    // mem::forget(GLOBAL_TERM_POOL.write());
 }
 
 /// Unlocks the global term pool after exclusive access.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_unlock_exclusive() {
-    unsafe { GLOBAL_TERM_POOL.force_unlock_write() };
+    unimplemented!();
+    // unsafe { GLOBAL_TERM_POOL.force_unlock_write() };
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_pool_is_busy_set() -> bool {
-    GLOBAL_TERM_POOL.is_locked()
+    unimplemented!();
+    // GLOBAL_TERM_POOL.is_locked()
 }
 
-
 /// Can be used during garbage collection to mark a term (and all of its subterms) as being reachable.
-/// 
+///
 /// # Safety
-/// 
+///
 /// This function should only be called during garbage collection when the global term pool is locked.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_mark(term: unprotected_aterm_t) {
-    unsafe {
-        GLOBAL_TERM_POOL
-            .make_write_guard_unchecked()
-            .mark_term(&term_to_aterm_ref(term));
-    }
+    unimplemented!();
+    // unsafe {
+    //     GLOBAL_TERM_POOL
+    //         .make_write_guard_unchecked()
+    //         .mark_term(&term_to_aterm_ref(term));
+    // }
 }
 
 /// Returns the number of arguments in the term.
@@ -390,21 +392,24 @@ unsafe fn term_len(term: unprotected_aterm_t) -> usize {
 }
 
 /// Converts a raw pointer to an `ATermRef`, must ensure that the raw ptr is valid.
-/// 
+///
 /// Safety: The unprotected_aterm_t must point to a valid term.
 unsafe fn term_to_aterm_ref(term: unprotected_aterm_t) -> ATermRef<'static> {
     unsafe {
         let wide_ptr = ptr::slice_from_raw_parts(term.ptr as *const TermOrAnnotation, term_len(term));
-        ATermRef::from_index(&ATermIndex::from_ptr(NonNull::new_unchecked(wide_ptr as *mut SharedTerm)))
+        ATermRef::from_index(&ATermIndex::from_ptr(NonNull::new_unchecked(
+            wide_ptr as *mut SharedTerm,
+        )))
     }
 }
 
-
 /// Converts a raw pointer to an `SymbolRef`, must ensure that the raw ptr is valid.
-/// 
+///
 /// Safety: The unprotected_aterm_t must point to a valid term.
 unsafe fn function_to_symbol_ref(symbol: function_symbol_t) -> SymbolRef<'static> {
     unsafe {
-        SymbolRef::from_index(&SymbolIndex::from_ptr(NonNull::new_unchecked(symbol.ptr as *mut SharedSymbol)))
+        SymbolRef::from_index(&SymbolIndex::from_ptr(NonNull::new_unchecked(
+            symbol.ptr as *mut SharedSymbol,
+        )))
     }
 }

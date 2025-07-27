@@ -14,17 +14,17 @@ use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::PhantomUnsend;
 use mcrl3_utilities::ProtectionIndex;
 
+use crate::mutex_unwrap;
 use crate::ATermIntRef;
 use crate::Markable;
 use crate::Marker;
-use crate::Mutex;
 use crate::SharedTerm;
 use crate::SharedTermProtection;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::THREAD_TERM_POOL;
 use crate::is_int_term;
-use crate::mutex_unwrap;
+use crate::Mutex;
 
 /// The ATerm trait represents a first-order term in the ATerm library.
 /// It provides methods to manipulate and access the term's properties.

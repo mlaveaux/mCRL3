@@ -1,8 +1,8 @@
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use dashmap::DashMap;
 use equivalent::Equivalent;
@@ -89,7 +89,8 @@ impl SymbolPool {
     /// Creates a new prefix counter for the given prefix.
     pub fn create_prefix(&self, prefix: &str) -> Arc<AtomicUsize> {
         // Create a new counter for the prefix if it does not exist
-        let result = self.prefix_to_register_function_map
+        let result = self
+            .prefix_to_register_function_map
             .entry(prefix.to_string())
             .or_insert_with(|| Arc::new(AtomicUsize::new(0)))
             .clone();
@@ -109,14 +110,15 @@ impl SymbolPool {
     fn update_prefix(&self, name: &str) {
         // Check whether there is a registered prefix p such that name equal pn where n is a number.
         // In that case prevent that pn will be generated as a fresh function name.
-        let start_of_index = name.rfind(|c: char| !c.is_ascii_digit())
+        let start_of_index = name
+            .rfind(|c: char| !c.is_ascii_digit())
             .map(|pos| pos + 1)
             .unwrap_or(0);
 
         if start_of_index < name.len() {
             let potential_number = &name[start_of_index..];
             let prefix = &name[..start_of_index];
-            
+
             if let Some(counter) = self.prefix_to_register_function_map.get(prefix) {
                 if let Ok(number) = potential_number.parse::<usize>() {
                     counter.fetch_max(number + 1, Ordering::Relaxed);
@@ -217,7 +219,9 @@ impl Hash for SharedSymbol {
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use crate::{Symbol, GLOBAL_TERM_POOL};
+    use crate::GLOBAL_TERM_POOL;
+    use crate::Symbol;
+    use crate::THREAD_TERM_POOL;
 
     #[test]
     fn test_symbol_sharing() {
@@ -237,16 +241,14 @@ mod tests {
         let _symbol = Symbol::new("x69", 0);
         let _symbol2 = Symbol::new("x_y", 0);
 
-        let value = GLOBAL_TERM_POOL
-            .write()
-            .register_prefix("x");
+        let value =
+            THREAD_TERM_POOL.with_borrow(|tp| tp.term_pool().write().expect("Lock poisoned!").register_prefix("x"));
 
         assert_eq!(value.load(Ordering::Relaxed), 70);
 
         let _symbol3 = Symbol::new("x_no_effect", 0);
         let _symbol4 = Symbol::new("x130", 0);
 
-        
         assert_eq!(value.load(Ordering::Relaxed), 131);
     }
 }

@@ -1,5 +1,5 @@
-use crate::GLOBAL_TERM_POOL;
 use crate::GlobalTermPoolGuard;
+use crate::THREAD_TERM_POOL;
 use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -23,7 +23,9 @@ impl<T> GcMutex<T> {
     pub fn write(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            _guard: GLOBAL_TERM_POOL.read_recursive(),
+            _guard: THREAD_TERM_POOL.with_borrow(|tp| unsafe {
+                std::mem::transmute(tp.term_pool().read_recursive().expect("Lock poisoned!"))
+            }),
         }
     }
 
@@ -31,7 +33,9 @@ impl<T> GcMutex<T> {
     pub fn read(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            _guard: GLOBAL_TERM_POOL.read_recursive(),
+            _guard: THREAD_TERM_POOL.with_borrow(|tp| unsafe {
+                std::mem::transmute(tp.term_pool().read_recursive().expect("Lock poisoned!"))
+            }),
         }
     }
 }

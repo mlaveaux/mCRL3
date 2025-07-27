@@ -6,6 +6,7 @@ use log::info;
 use pest_consume::Parser;
 
 use crate::AGRESSIVE_GC;
+use crate::GlobalTermPool;
 use crate::Markable;
 use crate::Rule;
 use crate::SharedTermProtection;
@@ -18,8 +19,9 @@ use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
 use crate::global_aterm_pool::GLOBAL_TERM_POOL;
 use crate::global_aterm_pool::Mutex;
-use crate::global_aterm_pool::mutex_unwrap;
+use crate::mutex_unwrap;
 
+use mcrl3_sharedmutex::RecursiveLock;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::ProtectionIndex;
 use mcrl3_utilities::debug_trace;
@@ -40,6 +42,9 @@ pub struct ThreadTermPool {
     /// A vector of terms that are used to store the arguments of a term for loopup.
     tmp_arguments: RefCell<Vec<ATermRef<'static>>>,
 
+    /// A local view for the global term pool.
+    term_pool: RecursiveLock<GlobalTermPool>,
+
     /// Copy of the default terms since thread local access is cheaper.
     int_symbol: SymbolRef<'static>,
     empty_list_symbol: SymbolRef<'static>,
@@ -50,17 +55,25 @@ impl ThreadTermPool {
     /// Creates a new thread-local term pool.
     fn new() -> Self {
         // Register protection sets with global pool
-        let mut pool = GLOBAL_TERM_POOL.write();
+        let term_pool: RecursiveLock<GlobalTermPool> = RecursiveLock::from_mutex(GLOBAL_TERM_POOL.share());
+
+        let mut pool = term_pool.write().expect("Lock poisoned!");
+
         let protection_set = pool.register_thread_term_pool();
+        let int_symbol = pool.get_int_symbol().copy();
+        let empty_list_symbol = pool.get_empty_list_symbol().copy();
+        let list_symbol = pool.get_list_symbol().copy();
+        drop(pool);
 
         // Arbitrary value to trigger garbage collection
         Self {
             protection_set,
             garbage_collection_counter: Cell::new(if AGRESSIVE_GC { 1 } else { 1000 }),
             tmp_arguments: RefCell::new(Vec::new()),
-            int_symbol: pool.get_int_symbol().copy(),
-            empty_list_symbol: pool.get_empty_list_symbol().copy(),
-            list_symbol: pool.get_list_symbol().copy(),
+            int_symbol,
+            empty_list_symbol,
+            list_symbol,
+            term_pool: term_pool,
         }
     }
 
@@ -69,8 +82,10 @@ impl ThreadTermPool {
         assert!(symbol.arity() == 0, "A constant should not have arity > 0");
 
         let empty_args: [ATermRef<'_>; 0] = [];
-        let (result, inserted) = GLOBAL_TERM_POOL
+        let (result, inserted) = self
+            .term_pool
             .read_recursive()
+            .expect("Lock poisoned!")
             .create_term_array(symbol, &empty_args, |index| {
                 self.protect(&unsafe { ATermRef::from_index(index) })
             });
@@ -92,8 +107,10 @@ impl ThreadTermPool {
             }
         }
 
-        let (result, inserted) = GLOBAL_TERM_POOL
+        let (result, inserted) = self
+            .term_pool
             .read_recursive()
+            .expect("Lock poisoned!")
             .create_term_array(symbol, &arguments, |index| {
                 self.protect(&unsafe { ATermRef::from_index(index) })
             });
@@ -107,8 +124,10 @@ impl ThreadTermPool {
 
     /// Create a term with the given index.
     pub fn create_int(&self, value: usize) -> ATerm {
-        let (result, inserted) = GLOBAL_TERM_POOL
+        let (result, inserted) = self
+            .term_pool
             .read_recursive()
+            .expect("Lock poisoned!")
             .create_int(value, |index| self.protect(&unsafe { ATermRef::from_index(index) }));
 
         if inserted {
@@ -132,8 +151,10 @@ impl ThreadTermPool {
             }
         }
 
-        let (result, inserted) = GLOBAL_TERM_POOL
+        let (result, inserted) = self
+            .term_pool
             .read_recursive()
+            .expect("Lock poisoned!")
             .create_term_array(symbol, &arguments, |index| {
                 self.protect(&unsafe { ATermRef::from_index(index) })
             });
@@ -167,8 +188,10 @@ impl ThreadTermPool {
             }
         }
 
-        let (result, inserted) = GLOBAL_TERM_POOL
+        let (result, inserted) = self
+            .term_pool
             .read_recursive()
+            .expect("Lock poisoned!")
             .create_term_array(symbol, &arguments, |index| {
                 self.protect(&unsafe { ATermRef::from_index(index) })
             });
@@ -182,8 +205,9 @@ impl ThreadTermPool {
 
     /// Create a function symbol
     pub fn create_symbol(&self, name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
-        GLOBAL_TERM_POOL
+        self.term_pool
             .read_recursive()
+            .expect("Lock poisoned!")
             .create_symbol(name, arity, |index| unsafe {
                 self.protect_symbol(&SymbolRef::from_index(&index))
             })
@@ -215,9 +239,13 @@ impl ThreadTermPool {
         let mut value = self.garbage_collection_counter.get();
         value = value.saturating_sub(1);
 
-        if value == 0 && !GLOBAL_TERM_POOL.is_locked() {
+        if value == 0 && !self.term_pool.is_locked() {
             // Trigger garbage collection and acquire a new counter value.
-            value = GLOBAL_TERM_POOL.write().trigger_garbage_collection();
+            value = self
+                .term_pool
+                .write()
+                .expect("Lock poisoned!")
+                .trigger_garbage_collection();
         }
 
         self.garbage_collection_counter.set(value);
@@ -312,6 +340,11 @@ impl ThreadTermPool {
         &self.protection_set
     }
 
+    /// Returns a reference to the global term pool.
+    pub(crate) fn term_pool(&self) -> &RecursiveLock<GlobalTermPool> {
+        &self.term_pool
+    }
+
     /// Returns the index of the protection set.
     fn index(&self) -> usize {
         mutex_unwrap(self.protection_set.lock()).index
@@ -320,7 +353,7 @@ impl ThreadTermPool {
 
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
-        let mut write = GLOBAL_TERM_POOL.write();
+        let mut write = self.term_pool.write().expect("Lock poisoned!");
 
         info!("{}", write.metrics());
         write.deregister_thread_pool(self.index());

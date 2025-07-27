@@ -47,6 +47,7 @@ impl<T> RecursiveLock<T> {
         if self.recursive_depth.get() == 0 {
             // If we are not already holding a read lock, we acquire one.
             // Acquire the read guard, but forget it to prevent it from being dropped.
+            self.recursive_depth.set(1);
             mem::forget(self.inner.read());
             Ok(RecursiveLockReadGuard { mutex: self })
         } else {
@@ -88,5 +89,50 @@ impl<T> Drop for RecursiveLockReadGuard<'_, T> {
                 self.mutex.inner.create_read_guard_unchecked();
             }
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_mutex() {
+        let mutex = BfSharedMutex::new(100);
+        let lock = RecursiveLock::from_mutex(mutex);
+        assert_eq!(*lock.read().unwrap(), 100);
+    }
+
+    #[test]
+    fn test_single_recursive_read() {
+        let lock = RecursiveLock::new(42);
+        let guard = lock.read_recursive().unwrap();
+        assert_eq!(*guard, 42);
+        assert_eq!(lock.recursive_depth.get(), 1);
+    }
+
+    #[test]
+    fn test_nested_recursive_reads() {
+        let lock = RecursiveLock::new(42);
+
+        let guard1 = lock.read_recursive().unwrap();
+        assert_eq!(*guard1, 42);
+        assert_eq!(lock.recursive_depth.get(), 1);
+
+        let guard2 = lock.read_recursive().unwrap();
+        assert_eq!(*guard2, 42);
+        assert_eq!(lock.recursive_depth.get(), 2);
+
+        let guard3 = lock.read_recursive().unwrap();
+        assert_eq!(*guard3, 42);
+        assert_eq!(lock.recursive_depth.get(), 3);
+
+        drop(guard3);
+        assert_eq!(lock.recursive_depth.get(), 2);
+
+        drop(guard2);
+        assert_eq!(lock.recursive_depth.get(), 1);
+
+        drop(guard1);
+        assert_eq!(lock.recursive_depth.get(), 0);
     }
 }

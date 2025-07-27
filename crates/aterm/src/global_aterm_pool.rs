@@ -1,19 +1,21 @@
 use std::collections::HashSet;
 use std::fmt;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicUsize;
 
 use log::info;
+use mcrl3_sharedmutex::GlobalBfSharedMutex;
+use mcrl3_sharedmutex::RecursiveLockReadGuard;
 use mcrl3_utilities::LargeFormatter;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;
-use mcrl3_utilities::debug_trace;
 use mcrl3_utilities::ProtectionSet;
 use mcrl3_utilities::SimpleTimer;
+use mcrl3_utilities::debug_trace;
 
 use crate::ATerm;
 use crate::ATermIndex;
@@ -57,13 +59,14 @@ mod mutex {
 pub use mutex::*;
 
 /// This is the global set of protection sets that are managed by the ThreadTermPool
-pub static GLOBAL_TERM_POOL: LazyLock<RwLock<GlobalTermPool>> = LazyLock::new(|| RwLock::new(GlobalTermPool::new()));
+pub static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>> =
+    LazyLock::new(|| GlobalBfSharedMutex::new(GlobalTermPool::new()));
 
 /// Enables aggressive garbage collection, which is used for testing.
 pub(crate) const AGRESSIVE_GC: bool = false;
 
 /// A type alias for the global term pool guard
-pub(crate) type GlobalTermPoolGuard<'a> = RwLockReadGuard<'a, GlobalTermPool>;
+pub(crate) type GlobalTermPoolGuard<'a> = RecursiveLockReadGuard<'a, GlobalTermPool>;
 
 /// The single global (singleton) term pool.
 pub struct GlobalTermPool {
@@ -212,8 +215,8 @@ impl GlobalTermPool {
         self.len()
     }
 
-    /// Returns a counter for the unique numeric suffix of the given prefix. 
-    pub fn register_prefix(&self, prefix: &str) -> Arc<AtomicUsize>{
+    /// Returns a counter for the unique numeric suffix of the given prefix.
+    pub fn register_prefix(&self, prefix: &str) -> Arc<AtomicUsize> {
         self.symbol_pool.create_prefix(prefix)
     }
 
@@ -329,9 +332,9 @@ impl GlobalTermPool {
     }
 
     /// Marks the given term as being reachable.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Should only be called during garbage collection.
     pub unsafe fn mark_term(&mut self, term: &ATermRef<'_>) {
         // Ensure that the global term pool is locked for writing.
@@ -464,8 +467,8 @@ mod tests {
     use rayon::iter::IntoParallelRefIterator;
     use rayon::iter::ParallelIterator;
 
-    use crate::random_term;
     use crate::Term;
+    use crate::random_term;
 
     #[test]
     fn test_maximal_sharing() {
