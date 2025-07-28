@@ -444,7 +444,8 @@ where
             }
         }
 
-        debug_assert!(self.index.is_empty(), "Index should be empty after draining");
+        self.index.clear();
+        debug_assert!(self.index.is_empty(), "Index should be empty after clearing");
     }
 
     /// Inserts an element into the set using an equivalent value.
