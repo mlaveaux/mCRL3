@@ -4,7 +4,7 @@ This is a re-implementation of the core functionality of the [mCRL2](https://mcr
 
 ## Tools
 
-The tools directory contains prototypes to show the viability of this approach. The `mcrl3rewrite` tool can for example be executed using `cargo run --release --bin mcrl3rewrite`. The tools and libraries use the `RUST_LOG` environment variable to set the logging level, which can be set to `trace`, `info`, `debug`, `warn` and `error`. It can even be used to only show crate specific logging output, for example `RUST_LOG=mcrl3_aterm=trace`.
+The tools directory contains prototypes to show the viability of this approach. The `mcrl3rewrite` tool can for example be executed using `cargo run --release --bin mcrl3rewrite`. Compiling the GUI tools, which requires feature `mcrl3-gui`, on Ubuntu requires `libfreetype-dev` and `libfontconfig1-dev` to be installed.
 
 # Contributing
 

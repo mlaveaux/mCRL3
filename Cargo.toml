@@ -66,11 +66,11 @@ parking_lot = "0.12"
 pest = "2.8"
 pest_derive  = "2.8"
 rand = "0.9"
-rayon = "1.10"
+rayon = "1.11"
 regex = "1.11"
 rustc-hash = "2.1"
 smallvec = "1.15"
-tempfile = "3.20"
+tempfile = "3.21"
 thiserror = "2.0"
 toml = "0.9"
 
@@ -89,7 +89,8 @@ cosmic-text = "0.14"
 femtovg = { version = "0.14", features = ["wgpu"] }
 glam = "0.30"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
-slint = { version = "1.12", features = ["compat-1-2", "std", "accessibility", "backend-winit", "renderer-skia", "unstable-wgpu-24"], default-features = false}
+slint = { version = "1.12", features = ["compat-1-2", "std", "accessibility", 
+    "backend-winit", "renderer-skia", "unstable-wgpu-24"], default-features = false}
 slint-build = "1.12"
 tiny-skia = "0.11"
 tokio = { version = "1.46", features = ["rt", "macros"] }
@@ -102,7 +103,7 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 
 # Used for xtask
-duct = "1.0"
+duct = "1.1"
 glob = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
