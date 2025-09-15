@@ -219,7 +219,6 @@ impl Hash for SharedSymbol {
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use crate::GLOBAL_TERM_POOL;
     use crate::Symbol;
     use crate::THREAD_TERM_POOL;
 

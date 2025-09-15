@@ -8,8 +8,6 @@ use log::info;
 use mcrl3_sharedmutex::GlobalBfSharedMutex;
 use mcrl3_sharedmutex::RecursiveLockReadGuard;
 use mcrl3_utilities::LargeFormatter;
-use parking_lot::RwLock;
-use parking_lot::RwLockReadGuard;
 use rustc_hash::FxBuildHasher;
 
 use mcrl3_unsafety::StablePointerSet;

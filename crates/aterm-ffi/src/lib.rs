@@ -14,7 +14,6 @@ use mcrl3_aterm::ATermIndex;
 use mcrl3_aterm::ATermInt;
 use mcrl3_aterm::ATermList;
 use mcrl3_aterm::ATermRef;
-use mcrl3_aterm::GLOBAL_TERM_POOL;
 use mcrl3_aterm::SharedSymbol;
 use mcrl3_aterm::SharedTerm;
 use mcrl3_aterm::Symb;
@@ -118,27 +117,27 @@ pub unsafe extern "C" fn term_protect(term: unprotected_aterm_t) -> root_index_t
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn term_unprotect(root: root_index_t) {
+pub unsafe extern "C" fn term_unprotect(_root: root_index_t) {
     unimplemented!();
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn term_get_argument(term: unprotected_aterm_t, index: usize) -> unprotected_aterm_t {
+pub unsafe extern "C" fn term_get_argument(_term: unprotected_aterm_t, _index: usize) -> unprotected_aterm_t {
     unimplemented!();
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_create_appl(
-    symbol: function_symbol_t,
-    arguments: *const unprotected_aterm_t,
-    num_arguments: usize,
+    _symbol: function_symbol_t,
+    _arguments: *const unprotected_aterm_t,
+    _num_arguments: usize,
 ) -> aterm_t {
     unimplemented!();
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn function_symbol_register_prefix(
-    prefix: *const c_char,
+    _prefix: *const c_char,
     _length: usize,
 ) -> prefix_shared_counter_t {
     unimplemented!();
@@ -152,7 +151,7 @@ pub unsafe extern "C" fn function_symbol_register_prefix(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn function_symbol_deregister_prefix(prefix: *const std::ffi::c_char, _length: usize) {
+pub unsafe extern "C" fn function_symbol_deregister_prefix(_prefix: *const std::ffi::c_char, _length: usize) {
     unimplemented!();
     // GLOBAL_TERM_POOL.write().expect("Lock poisoned!").remove_prefix(
     //     unsafe { CStr::from_ptr(prefix).to_str().expect("Invalid UTF-8 in prefix") },
@@ -266,7 +265,7 @@ pub unsafe extern "C" fn function_symbol_protect(symbol: function_symbol_t) -> r
 
 /// Removes the protection of a function symbol.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn function_symbol_unprotect(root: root_index_t) {
+pub unsafe extern "C" fn function_symbol_unprotect(_root: root_index_t) {
     unimplemented!();
     // THREAD_TERM_POOL.with_borrow(|tp| {
     //     tp.unprotect_symbol(&SymbolRef::from_index(&SymbolIndex::from_ptr(NonNull::new_unchecked(root.index as *mut SharedSymbol))));
@@ -276,7 +275,7 @@ pub unsafe extern "C" fn function_symbol_unprotect(root: root_index_t) {
 type term_deletion_hook_t = extern "C" fn(symbol: unprotected_aterm_t);
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn register_deletion_hook(symbol: &function_symbol_t, deletion_hook: term_deletion_hook_t) {
+pub unsafe extern "C" fn register_deletion_hook(_symbol: &function_symbol_t, _deletion_hook: term_deletion_hook_t) {
     unimplemented!();
     // GLOBAL_TERM_POOL.write().register_deletion_hook(|term| {
     //     deletion_hook(&unprotected_aterm_t {
@@ -311,7 +310,7 @@ pub unsafe extern "C" fn function_symbol_get_name(symbol: function_symbol_t) -> 
 }
 
 /// A dummy protection set that is used to protect a FFI container.
-struct ProtectedContainer {}
+// struct ProtectedContainer {}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn container_protect() -> root_index_t {
@@ -323,7 +322,7 @@ pub unsafe extern "C" fn container_protect() -> root_index_t {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn container_unprotect(root: root_index_t) {
+pub unsafe extern "C" fn container_unprotect(_root: root_index_t) {
     unimplemented!();
     // THREAD_TERM_POOL.with_borrow(|tp| {
     //     let root = tp.protect_container();
@@ -373,7 +372,7 @@ pub unsafe extern "C" fn term_pool_is_busy_set() -> bool {
 ///
 /// This function should only be called during garbage collection when the global term pool is locked.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn term_mark(term: unprotected_aterm_t) {
+pub unsafe extern "C" fn term_mark(_term: unprotected_aterm_t) {
     unimplemented!();
     // unsafe {
     //     GLOBAL_TERM_POOL
