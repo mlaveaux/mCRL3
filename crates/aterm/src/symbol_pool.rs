@@ -31,7 +31,7 @@ impl SymbolPool {
     pub(crate) fn new() -> Self {
         Self {
             symbols: StablePointerSet::with_hasher(FxBuildHasher),
-            prefix_to_register_function_map: DashMap::with_hasher(FxBuildHasher::default()),
+            prefix_to_register_function_map: DashMap::with_hasher(FxBuildHasher),
         }
     }
 

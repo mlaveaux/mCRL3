@@ -44,13 +44,13 @@ enum Verbosity {
     Trace,
 }
 
-impl ToString for Verbosity {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Verbosity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Verbosity::Quiet => "quiet".to_string(),
-            Verbosity::Verbose => "verbose".to_string(),
-            Verbosity::Debug => "debug".to_string(),
-            Verbosity::Trace => "trace".to_string(),
+            Verbosity::Quiet => write!(f, "quiet"),
+            Verbosity::Verbose => write!(f, "verbose"),
+            Verbosity::Debug => write!(f, "debug"),
+            Verbosity::Trace => write!(f, "trace"),
         }
     }
 }

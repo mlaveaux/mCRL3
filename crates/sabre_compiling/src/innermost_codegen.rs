@@ -147,7 +147,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MC
 fn generate_termstack_constructors(
     formatter: &mut IndentFormatter<File>,
     positions: &mut HashSet<DataPosition>,
-    term_stacks: &Vec<TermStack>,
+    term_stacks: &[TermStack],
 ) -> Result<(), MCRL3Error> {
     writeln!(formatter, "// TermStack-based constructor functions")?;
 

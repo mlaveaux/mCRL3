@@ -81,7 +81,7 @@ pub unsafe extern "C" fn term_is_empty_list(term: unprotected_aterm_t) -> bool {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn term_is_defined(term: unprotected_aterm_t) -> bool {
-    term.ptr.is_null() == false
+    !term.ptr.is_null()
 }
 
 #[unsafe(no_mangle)]
