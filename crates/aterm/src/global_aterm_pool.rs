@@ -319,7 +319,7 @@ impl GlobalTermPool {
 
         // Print information from the protection sets.
         for pool in self.thread_pools.iter().flatten() {
-            let pool = pool.lock();
+            let pool = mutex_unwrap(pool.lock());
             info!("{}", pool.metrics());
         }
     }

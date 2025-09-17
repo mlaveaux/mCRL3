@@ -358,7 +358,7 @@ impl Drop for ThreadTermPool {
         info!("{}", write.metrics());
         write.deregister_thread_pool(self.index());
 
-        info!("{}", self.protection_set.lock().metrics());
+        info!("{}", mutex_unwrap(self.protection_set.lock()).metrics());
     }
 }
 
