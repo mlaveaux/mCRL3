@@ -1,7 +1,7 @@
 error[E0597]: `container` does not live long enough
   --> tests/input/aterm_container_lifetime.rs:19:20
    |
-8  |     let mut container: Protected<Vec<ATermRef<'static>>> = Protected::new(Vec::new());
+ 8 |     let mut container: Protected<Vec<ATermRef<'static>>> = Protected::new(Vec::new());
    |         ------------- binding `container` declared here
 ...
 18 |     let t: ATermRef<'static> = {
@@ -15,7 +15,7 @@ error[E0597]: `container` does not live long enough
 error[E0597]: `container` does not live long enough
   --> tests/input/aterm_container_lifetime.rs:26:25
    |
-8  |     let mut container: Protected<Vec<ATermRef<'static>>> = Protected::new(Vec::new());
+ 8 |     let mut container: Protected<Vec<ATermRef<'static>>> = Protected::new(Vec::new());
    |         ------------- binding `container` declared here
 ...
 25 |     let t: ATermRef<'static> = {
