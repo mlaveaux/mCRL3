@@ -6,10 +6,10 @@ pub async fn init_wgpu() -> Result<(wgpu::Device, wgpu::Queue), MCRL3Error> {
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions::default())
         .await
-        .ok_or("Cannot find a suitable adapter")?;
+        .map_err(|e| MCRL3Error::from(format!("Cannot find a suitable adapter: {e}")))?;
 
     adapter
-        .request_device(&wgpu::DeviceDescriptor::default(), None)
+        .request_device(&wgpu::DeviceDescriptor::default())
         .await
         .map_err(|e| MCRL3Error::from(format!("Failed to create device: {e}")))
 }
