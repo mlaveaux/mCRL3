@@ -58,8 +58,7 @@ allow = [
     "Unicode-3.0",
     "CC0-1.0",
     "NCSA",
-    "ISC",
-    "MPL-2.0", # Used in slint dependency
+    "ISC"
 ]
 # The confidence threshold for detecting a license from license text.
 confidence-threshold = 0.8
