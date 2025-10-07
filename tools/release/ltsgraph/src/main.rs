@@ -372,7 +372,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
                                     });
 
                                 // Wait for the buffer to be mapped and the data to be copied.
-                                device.poll(wgpu::PollType::Wait)?;
+                                device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None })?;
                             }
                         }
                     }
