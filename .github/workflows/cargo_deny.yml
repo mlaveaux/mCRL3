@@ -1,5 +1,4 @@
-name: Test Miri
-
+name: Cargo deny
 on:
   push:
     branches: [ main ]

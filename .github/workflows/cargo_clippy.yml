@@ -1,4 +1,4 @@
-name: clippy-action
+name: Cargo Clippy
 on: [push, pull_request]
 jobs:
   clippy:
