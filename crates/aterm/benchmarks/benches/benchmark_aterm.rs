@@ -129,7 +129,7 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
 }
 
 fn benchmark_shared_lookup(c: &mut Criterion) {
-    env_logger::init();
+    let _ = env_logger::try_init();
 
     const SIZE: usize = 400000;
     const ITERATIONS: usize = 1000;
@@ -205,7 +205,7 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
 }
 
 fn benchmark_unique_lookup(c: &mut Criterion) {
-    env_logger::init();
+    let _ = env_logger::try_init();
 
     const SIZE: usize = 400000;
     const ITERATIONS: usize = 1000;
