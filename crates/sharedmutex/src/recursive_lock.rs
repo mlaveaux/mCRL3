@@ -38,14 +38,20 @@ impl<T> RecursiveLock<T> {
             pub fn data_ptr(&self) -> *const T;
             pub fn is_locked(&self) -> bool;
             pub fn is_locked_exclusive(&self) -> bool;
-            pub fn read(&self) -> Result<BfSharedMutexReadGuard<'_, T>, Box<dyn Error + '_>>;
         }
     }
 
+    /// Acquires a write lock on the mutex.
     pub fn write(&self) -> Result<RecursiveLockWriteGuard<'_, T>, Box<dyn Error + '_>> {
-        debug_assert!(self.recursive_depth.get() == 0, "Cannot called write() inside a read section");
+        debug_assert!(self.recursive_depth.get() == 0, "Cannot call write() inside a read section");
         self.recursive_depth.set(1);
         Ok(RecursiveLockWriteGuard { mutex: self, guard: self.inner.write()? })
+    }
+    
+    /// Acquires a read lock on the mutex.
+    pub fn read(&self) -> Result<BfSharedMutexReadGuard<'_, T>, Box<dyn Error + '_>> {
+        debug_assert!(self.recursive_depth.get() == 0, "Cannot call read() inside a read section");
+        self.inner.read()        
     }
 
     /// Acquires a read lock on the mutex, allowing for recursive read locking.
