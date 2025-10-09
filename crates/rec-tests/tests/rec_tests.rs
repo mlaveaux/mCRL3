@@ -1,3 +1,4 @@
+use mcrl3_utilities::test_logger;
 use test_case::test_case;
 
 use mcrl3_aterm::ATerm;
