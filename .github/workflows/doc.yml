@@ -35,7 +35,7 @@ jobs:
       - name: Install Ubuntu Dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: libfontconfig1-dev, libfreetype6-dev
+          packages: grcov, libfontconfig1-dev, libfreetype6-dev
           version: 1.0
         if: matrix.os == 'ubuntu-latest'
 
