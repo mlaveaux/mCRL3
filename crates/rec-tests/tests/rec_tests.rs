@@ -12,6 +12,8 @@ use mcrl3_sabre::SabreRewriter;
 
 /// A local function to share the rec_test functionality.
 fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
+    test_logger();
+
     let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
         let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
@@ -87,6 +89,8 @@ fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/searchinconditions.rec")], include_str!("snapshot/result_searchinconditions.txt") ; "searchinconditions")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
 fn test_rec_specification_naive(rec_files: Vec<&str>, expected_result: &str) {
+    test_logger();
+
     let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
         let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();

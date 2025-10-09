@@ -228,6 +228,7 @@ impl fmt::Display for GenerationalIndex<usize> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(debug_assertions)]
     use super::*;
 
     #[test]

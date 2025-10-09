@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::error::Error;
 use std::mem;
 use std::ops::Deref;
+use std::ops::DerefMut;
 
 use crate::BfSharedMutex;
 use crate::BfSharedMutexReadGuard;
@@ -37,9 +38,14 @@ impl<T> RecursiveLock<T> {
             pub fn data_ptr(&self) -> *const T;
             pub fn is_locked(&self) -> bool;
             pub fn is_locked_exclusive(&self) -> bool;
-            pub fn write(&self) -> Result<BfSharedMutexWriteGuard<'_, T>, Box<dyn Error + '_>>;
             pub fn read(&self) -> Result<BfSharedMutexReadGuard<'_, T>, Box<dyn Error + '_>>;
         }
+    }
+
+    pub fn write(&self) -> Result<RecursiveLockWriteGuard<'_, T>, Box<dyn Error + '_>> {
+        debug_assert!(self.recursive_depth.get() == 0, "Cannot called write() inside a read section");
+        self.recursive_depth.set(1);
+        Ok(RecursiveLockWriteGuard { mutex: self, guard: self.inner.write()? })
     }
 
     /// Acquires a read lock on the mutex, allowing for recursive read locking.
@@ -70,10 +76,6 @@ impl<T> Deref for RecursiveLockReadGuard<'_, T> {
     fn deref(&self) -> &Self::Target {
         // There can only be shared guards, which only provide immutable access to the object.
         unsafe {
-            debug_assert!(
-                !self.mutex.inner.data_ptr().is_null(),
-                "Data pointer should not be null"
-            );
             self.mutex.inner.data_ptr().as_ref().unwrap_unchecked()
         }
     }
@@ -91,6 +93,38 @@ impl<T> Drop for RecursiveLockReadGuard<'_, T> {
         }
     }
 }
+
+
+#[must_use = "Dropping the guard unlocks the recursive lock immediately"]
+pub struct RecursiveLockWriteGuard<'a, T> {
+    mutex: &'a RecursiveLock<T>,
+    guard: BfSharedMutexWriteGuard<'a, T>,
+}
+
+/// Allow dereferences the underlying object.
+impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        // There can only be shared guards, which only provide immutable access to the object.
+        self.guard.deref()
+    }
+}
+
+/// Allow dereferences the underlying object.
+impl<T> DerefMut for RecursiveLockWriteGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        // There can only be shared guards, which only provide immutable access to the object.
+        self.guard.deref_mut()
+    }
+}
+
+impl<T> Drop for RecursiveLockWriteGuard<'_, T> {
+    fn drop(&mut self) {
+        self.mutex.recursive_depth.set(self.mutex.recursive_depth.get() - 1);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
