@@ -2,7 +2,7 @@ use glob::glob;
 use std::env;
 use std::error::Error;
 use std::fs::create_dir_all;
-use std::fs::remove_dir;
+use std::fs::remove_dir_all;
 use std::fs::remove_file;
 use std::path::PathBuf;
 
@@ -26,7 +26,8 @@ fn clean_files(pattern: &str) -> Result<(), Box<dyn Error>> {
 /// Run coverage, pass the given arguments to cargo.
 ///
 pub fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    remove_dir("target/coverage")?;
+    // Ignore errors about missing directory.
+    let _ = remove_dir_all("target/coverage");
     create_dir_all("target/coverage")?;
 
     println!("=== running coverage ===");
