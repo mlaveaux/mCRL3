@@ -7,6 +7,7 @@
 mod cast_macro;
 
 mod arbitrary_utility;
+mod compressed_vec;
 mod debug_trace;
 mod error;
 mod fixed_cache_policy;
@@ -15,6 +16,7 @@ mod format;
 mod generational_index;
 mod helper;
 mod indexed_set;
+mod macros;
 mod no_hasher;
 mod number_postfix;
 mod pest_display_pair;
@@ -26,6 +28,7 @@ mod test_logger;
 mod timing;
 
 pub use arbitrary_utility::*;
+pub use compressed_vec::*;
 pub use error::*;
 pub use fixed_cache_policy::*;
 pub use fixed_size_cache::*;
@@ -33,6 +36,7 @@ pub use format::*;
 pub use generational_index::*;
 pub use helper::*;
 pub use indexed_set::*;
+pub use macros::*;
 pub use no_hasher::*;
 pub use number_postfix::*;
 pub use pest_display_pair::*;
