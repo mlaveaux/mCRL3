@@ -634,6 +634,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "benchmarks_sharedmutex"
+version = "1.0.0"
+dependencies = [
+ "criterion",
+ "mcrl3_sharedmutex",
+ "rand 0.9.2",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -36,6 +36,7 @@ members = [
     "crates/sabre_compiling",
     "crates/sabre_compiling/sabre_ffi",
     "crates/sharedmutex",
+    "crates/sharedmutex/benchmarks",
     "crates/syntax",
     "crates/unsafety",
     "crates/utilities",

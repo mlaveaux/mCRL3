@@ -50,7 +50,7 @@ jobs:
       env:
         RUSTC_WRAPPER: sccache
 
-    - name: Run ltsgraph Benchmarks
+    - name: Run sharedmutex Benchmarks
       run: cargo bench -p benchmarks_sharedmutex
       env:
         RUSTC_WRAPPER: sccache
