@@ -12,6 +12,7 @@ use rustc_hash::FxHashSet;
 
 use mcrl3_utilities::Timing;
 
+use crate::is_tau_hat;
 use crate::BlockIndex;
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
@@ -25,6 +26,11 @@ use crate::branching_bisim_signature_sorted;
 use crate::combine_partition;
 use crate::preprocess_branching;
 use crate::strong_bisim_signature;
+
+/// Returns true if the label is the special tau_hat label for the given LTS.
+fn is_tau_hat(label: LabelIndex, lts: &LabelledTransitionSystem) -> bool {
+    label == lts.num_of_labels()
+}
 
 /// Computes a strong bisimulation partitioning using signature refinement
 pub fn strong_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
@@ -104,11 +110,11 @@ pub fn branching_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timin
         |signature, key_to_signature| {
             // Inductive signatures.
             for (label, key) in signature.iter().rev() {
-                if *label == lts.num_of_labels() && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
+                if is_tau_hat(*label, lts) && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
                     return Some(*key);
                 }
 
-                if *label != lts.num_of_labels() {
+                if !is_tau_hat(*label, lts) {
                     return None;
                 }
             }

@@ -92,6 +92,17 @@ impl Debug for Signature {
     }
 }
 
+
+/// Returns true if the label is the special tau_hat label for the given LTS.
+pub fn is_tau_hat(label: LabelIndex, lts: &LabelledTransitionSystem) -> bool {
+    label == lts.num_of_labels()
+}
+
+/// Returns a special label that is not in the set of labels.
+fn tau_hat(lts: &LabelledTransitionSystem) -> LabelIndex {
+    LabelIndex::new(lts.num_of_labels())
+}
+
 /// Returns the signature for strong bisimulation sig(s, pi) = { (a, pi(t)) | s -a-> t in T }
 pub fn strong_bisim_signature(
     state_index: StateIndex,
@@ -196,14 +207,13 @@ pub fn branching_bisim_signature_inductive(
 ) {
     builder.clear();
 
-    let num_act: usize = lts.num_of_labels(); //this label index does not occur.
     for &(label_index, to) in lts.outgoing_transitions(state_index) {
         let to_block = partition.block_number(to);
 
         if partition.block_number(state_index) == to_block {
             if lts.is_hidden_label(label_index) && partition.is_element_marked(to) {
                 // Inert tau transition, take signature from the outgoing tau-transition.
-                builder.push((LabelIndex::new(num_act), state_to_key[to]));
+                builder.push((tau_hat(lts), state_to_key[to]));
             } else {
                 builder.push((label_index, to_block));
             }
@@ -220,9 +230,10 @@ pub fn branching_bisim_signature_inductive(
 
 /// Perform the preprocessing necessary for branching bisimulation with the
 /// sorted signature see `branching_bisim_signature_sorted`.
-pub fn preprocess_branching(lts: &LabelledTransitionSystem) -> (LabelledTransitionSystem, IndexedPartition) {
-    let scc_partition = tau_scc_decomposition(lts);
-    let tau_loop_free_lts = quotient_lts(lts, &scc_partition, true);
+pub fn preprocess_branching(lts: LabelledTransitionSystem) -> (LabelledTransitionSystem, IndexedPartition) {
+    let scc_partition = tau_scc_decomposition(&lts);
+    let tau_loop_free_lts = quotient_lts(&lts, &scc_partition, true);
+    drop(lts);
 
     // Sort the states according to the topological order of the tau transitions.
     let topological_permutation = sort_topological(
