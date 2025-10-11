@@ -359,6 +359,7 @@ impl Drop for ThreadTermPool {
         write.deregister_thread_pool(self.index());
 
         info!("{}", mutex_unwrap(self.protection_set.lock()).metrics());
+        info!("Acquired {} read locks and {} write locks", self.term_pool.read_recursive_call_count(), self.term_pool.write_call_count())
     }
 }
 

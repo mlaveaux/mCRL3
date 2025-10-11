@@ -14,6 +14,12 @@ pub struct RecursiveLock<T> {
 
     /// The number of times the current thread has read locked the mutex.
     recursive_depth: Cell<usize>,
+
+    /// The number of calls to the write() method.
+    write_calls: Cell<usize>,
+
+    /// The number of calls to the read_recursive() method.
+    read_recursive_calls: Cell<usize>,
 }
 
 impl<T> RecursiveLock<T> {
@@ -22,6 +28,8 @@ impl<T> RecursiveLock<T> {
         RecursiveLock {
             inner: BfSharedMutex::new(data),
             recursive_depth: Cell::new(0),
+            write_calls: Cell::new(0),
+            read_recursive_calls: Cell::new(0),
         }
     }
 
@@ -30,6 +38,8 @@ impl<T> RecursiveLock<T> {
         RecursiveLock {
             inner: mutex,
             recursive_depth: Cell::new(0),
+            write_calls: Cell::new(0),
+            read_recursive_calls: Cell::new(0),
         }
     }
 
@@ -44,6 +54,7 @@ impl<T> RecursiveLock<T> {
     /// Acquires a write lock on the mutex.
     pub fn write(&self) -> Result<RecursiveLockWriteGuard<'_, T>, Box<dyn Error + '_>> {
         debug_assert!(self.recursive_depth.get() == 0, "Cannot call write() inside a read section");
+        self.write_calls.set(self.write_calls.get() + 1);
         self.recursive_depth.set(1);
         Ok(RecursiveLockWriteGuard { mutex: self, guard: self.inner.write()? })
     }
@@ -56,6 +67,7 @@ impl<T> RecursiveLock<T> {
 
     /// Acquires a read lock on the mutex, allowing for recursive read locking.
     pub fn read_recursive<'a>(&'a self) -> Result<RecursiveLockReadGuard<'a, T>, Box<dyn Error + 'a>> {
+        self.read_recursive_calls.set(self.read_recursive_calls.get() + 1);
         if self.recursive_depth.get() == 0 {
             // If we are not already holding a read lock, we acquire one.
             // Acquire the read guard, but forget it to prevent it from being dropped.
@@ -67,6 +79,16 @@ impl<T> RecursiveLock<T> {
             self.recursive_depth.set(self.recursive_depth.get() + 1);
             Ok(RecursiveLockReadGuard { mutex: self })
         }
+    }
+
+    /// Returns the number of times `write()` has been called.
+    pub fn write_call_count(&self) -> usize {
+        self.write_calls.get()
+    }
+
+    /// Returns the number of times `read_recursive()` has been called.
+    pub fn read_recursive_call_count(&self) -> usize {
+        self.read_recursive_calls.get()
     }
 }
 
@@ -174,5 +196,98 @@ mod tests {
 
         drop(guard1);
         assert_eq!(lock.recursive_depth.get(), 0);
+    }
+
+    #[test]
+    fn test_write_call_counter() {
+        let lock = RecursiveLock::new(42);
+        
+        // Initially, the counter should be 0
+        assert_eq!(lock.write_call_count(), 0);
+        
+        // After one write call, counter should be 1
+        {
+            let _guard = lock.write().unwrap();
+            assert_eq!(lock.write_call_count(), 1);
+        }
+        
+        // After another write call, counter should be 2
+        {
+            let _guard = lock.write().unwrap();
+            assert_eq!(lock.write_call_count(), 2);
+        }
+        
+        // Counter should remain 2
+        assert_eq!(lock.write_call_count(), 2);
+    }
+
+    #[test]
+    fn test_read_recursive_call_counter() {
+        let lock = RecursiveLock::new(42);
+        
+        // Initially, the counter should be 0
+        assert_eq!(lock.read_recursive_call_count(), 0);
+        
+        // After one read_recursive call, counter should be 1
+        {
+            let _guard = lock.read_recursive().unwrap();
+            assert_eq!(lock.read_recursive_call_count(), 1);
+        }
+        
+        // After another read_recursive call, counter should be 2
+        {
+            let _guard = lock.read_recursive().unwrap();
+            assert_eq!(lock.read_recursive_call_count(), 2);
+        }
+        
+        // Test nested recursive reads increment the counter
+        {
+            let _guard1 = lock.read_recursive().unwrap();
+            assert_eq!(lock.read_recursive_call_count(), 3);
+            
+            let _guard2 = lock.read_recursive().unwrap();
+            assert_eq!(lock.read_recursive_call_count(), 4);
+        }
+        
+        // Counter should remain 4
+        assert_eq!(lock.read_recursive_call_count(), 4);
+    }
+
+    #[test]
+    fn test_both_counters() {
+        let lock = RecursiveLock::new(42);
+        
+        // Initially, both counters should be 0
+        assert_eq!(lock.write_call_count(), 0);
+        assert_eq!(lock.read_recursive_call_count(), 0);
+        
+        // Call write and check counters
+        {
+            let _guard = lock.write().unwrap();
+            assert_eq!(lock.write_call_count(), 1);
+            assert_eq!(lock.read_recursive_call_count(), 0);
+        }
+        
+        // Call read_recursive and check counters
+        {
+            let _guard = lock.read_recursive().unwrap();
+            assert_eq!(lock.write_call_count(), 1);
+            assert_eq!(lock.read_recursive_call_count(), 1);
+        }
+        
+        // Call write again
+        {
+            let _guard = lock.write().unwrap();
+            assert_eq!(lock.write_call_count(), 2);
+            assert_eq!(lock.read_recursive_call_count(), 1);
+        }
+        
+        // Call read_recursive multiple times
+        {
+            let _guard1 = lock.read_recursive().unwrap();
+            let _guard2 = lock.read_recursive().unwrap();
+            assert_eq!(lock.write_call_count(), 2);
+            assert_eq!(lock.read_recursive_call_count(), 3);
+        }
     }
 }
