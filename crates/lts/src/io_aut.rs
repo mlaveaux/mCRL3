@@ -22,29 +22,32 @@ pub enum IOError {
     #[error("Invalid .aut header {0}")]
     InvalidHeader(&'static str),
 
-    #[error("Invalid transition line")]
-    InvalidTransition(),
+    #[error("Invalid transition {0}")]
+    InvalidTransition(String),
 }
 
+/// Dedicated function to parse the following transition formats:
 ///     `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///     `(<from>: Nat, <label>: Str, <to>: Nat)`
-fn read_transition(input: &str) -> Result<(&str, &str, &str), MCRL3Error> {
-    let start_paren = input.find('(').ok_or(IOError::InvalidTransition())?;
-    let start_comma = input.find(',').ok_or(IOError::InvalidTransition())?;
+/// 
+/// This was generally faster than the regex variant, since that one has to backtrack after
+fn read_transition(input: &str) -> Option<(&str, &str, &str)> {
+    let start_paren = input.find('(')?;
+    let start_comma = input.find(',')?;
 
     // Find the comma in the second part
-    let start_second_comma = input.rfind(',').ok_or(IOError::InvalidTransition())?;
-    let end_paren = input.rfind(')').ok_or(IOError::InvalidTransition())?;
+    let start_second_comma = input.rfind(',')?;
+    let end_paren = input.rfind(')')?;
 
-    let from = &input[start_paren + 1..start_comma].trim();
-    let label = &input[start_comma + 1..start_second_comma].trim();
-    let to = &input[start_second_comma + 1..end_paren].trim();
+    let from = input.get(start_paren + 1..start_comma)?.trim();
+    let label = input.get(start_comma + 1..start_second_comma)?.trim();
+    let to = input.get(start_second_comma + 1..end_paren)?.trim();
     // Handle the special case where it has quotes.
     if label.starts_with('"') && label.ends_with('"') {
-        return Ok((from, &label[1..label.len() - 1], to));
+        return Some((from, &label[1..label.len() - 1], to));
     }
 
-    Ok((from, label, to))
+    Some((from, label, to))
 }
 
 /// Loads a labelled transition system in the Aldebaran format from the given reader.
@@ -92,7 +95,8 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
 
     while let Some(line) = lines.next() {
         trace!("{line}");
-        let (from_txt, label_txt, to_txt) = read_transition(line)?;
+        let (from_txt, label_txt, to_txt) = read_transition(line)
+            .ok_or(IOError::InvalidTransition(line.clone()))?;
 
         // Parse the from and to states, with the given label.
         let from = StateIndex::new(from_txt.parse()?);
