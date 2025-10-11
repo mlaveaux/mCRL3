@@ -16,7 +16,7 @@ pub type StateIndex = TagIndex<usize, StateTag>;
 
 /// Represents a labelled transition system consisting of states with directed
 /// labelled edges.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct LabelledTransitionSystem {
     states: Vec<State>,
     transitions: Vec<(LabelIndex, StateIndex)>,

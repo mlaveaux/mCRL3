@@ -27,40 +27,40 @@ use crate::preprocess_branching;
 use crate::strong_bisim_signature;
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
+pub fn strong_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
-    let incoming = IncomingTransitions::new(lts);
+    let incoming = IncomingTransitions::new(&lts);
     timepre.finish();
 
     let mut time = timing.start("reduction");
     let partition = signature_refinement::<_, _, false>(
-        lts,
+        &lts,
         &incoming,
         |state_index, partition, _, builder| {
-            strong_bisim_signature(state_index, lts, partition, builder);
+            strong_bisim_signature(state_index, &lts, partition, builder);
         },
         |_, _| None,
     );
 
     debug_assert_eq!(
         partition,
-        strong_bisim_sigref_naive(lts, timing),
+        strong_bisim_sigref_naive(lts.clone(), timing).1,
         "The resulting partition is not a valid strong bisimulation partition."
     );
 
     time.finish();
-    partition.into()
+    (lts, partition.into())
 }
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref_naive(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
+pub fn strong_bisim_sigref_naive(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut time = timing.start("reduction");
-    let partition = signature_refinement_naive(lts, |state_index, partition, _, builder| {
-        strong_bisim_signature(state_index, lts, partition, builder);
+    let partition = signature_refinement_naive(&lts, |state_index, partition, _, builder| {
+        strong_bisim_signature(state_index, &lts, partition, builder);
     });
 
     time.finish();
-    partition
+    (lts, partition)
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement

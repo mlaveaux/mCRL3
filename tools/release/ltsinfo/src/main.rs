@@ -53,16 +53,17 @@ fn main() -> Result<ExitCode, MCRL3Error> {
     let mut timing = Timing::new();
     let lts = read_aut(&file, cli.tau.unwrap_or_default())?;
 
-    let partition: IndexedPartition = match cli.equivalence {
-        Equivalence::StrongBisim => strong_bisim_sigref(&lts, &mut timing),
-        Equivalence::StrongBisimNaive => strong_bisim_sigref_naive(&lts, &mut timing),
-        Equivalence::BranchingBisim => branching_bisim_sigref(&lts, &mut timing),
-        Equivalence::BranchingBisimNaive => branching_bisim_sigref_naive(&lts, &mut timing),
+    let (preprocessed_lts, partition) = match cli.equivalence {
+        Equivalence::StrongBisim => strong_bisim_sigref(lts, &mut timing),
+        Equivalence::StrongBisimNaive => strong_bisim_sigref_naive(lts, &mut timing),
+        Equivalence::BranchingBisim => branching_bisim_sigref(lts, &mut timing),
+        Equivalence::BranchingBisimNaive => branching_bisim_sigref_naive(lts, &mut timing),
+        _ => unreachable!(),
     };
 
     let mut quotient_time = timing.start("quotient");
     let quotient_lts = quotient_lts(
-        &lts,
+        &preprocessed_lts,
         &partition,
         matches!(cli.equivalence, Equivalence::BranchingBisim)
             || matches!(cli.equivalence, Equivalence::BranchingBisimNaive),
