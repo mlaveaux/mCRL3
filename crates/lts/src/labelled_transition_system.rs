@@ -123,17 +123,14 @@ impl LabelledTransitionSystem {
     where
         P: Fn(StateIndex) -> StateIndex + Copy,
     {
-        let mut states = bytevec![State::default(); lts.num_of_states()];
+        let mut states = vec![State::default(); lts.num_of_states()];
 
         for state_index in lts.iter_states() {
             // Keep the transitions the same, but
             let new_state_index = permutation(state_index);
-            let state = &lts.states.index(*state_index);
-            states.index_mut(*new_state_index, |entry| {
-                entry.offset = state.outgoing_start.bytes_required() as u8;
-                entry.outgoing_start = state.outgoing_start;
-                entry.outgoing_end = state.outgoing_end;
-            });
+            let state = &lts.states[*state_index];
+            states[*new_state_index].outgoing_start = state.outgoing_start;
+            states[*new_state_index].outgoing_end = state.outgoing_end;
         }
 
         LabelledTransitionSystem {
