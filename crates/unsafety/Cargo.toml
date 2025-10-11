@@ -25,6 +25,7 @@ mcrl3_utilities.workspace = true
 allocator-api2.workspace = true
 dashmap.workspace = true
 equivalent.workspace = true
+log.workspace = true
 rustc-hash.workspace = true
 
 mimalloc = { workspace = true, optional = true }
