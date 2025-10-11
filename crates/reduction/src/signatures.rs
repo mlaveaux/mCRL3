@@ -13,7 +13,6 @@ use super::BlockPartition;
 use super::IndexedPartition;
 use super::quotient_lts;
 use super::reorder_partition;
-use super::reorder_states;
 use super::sort_topological;
 use super::tau_scc_decomposition;
 
@@ -244,7 +243,7 @@ pub fn preprocess_branching(lts: LabelledTransitionSystem) -> (LabelledTransitio
     .expect("After quotienting, the LTS should not contain cycles");
 
     (
-        reorder_states(&tau_loop_free_lts, |i| topological_permutation[i]),
+        LabelledTransitionSystem::new_from_permutation(tau_loop_free_lts, |i| topological_permutation[i]),
         reorder_partition(scc_partition, |i| BlockIndex::new(topological_permutation[i].value())),
     )
 }

@@ -66,35 +66,6 @@ where
     Ok(reorder)
 }
 
-/// Reorders the states of the given LTS according to the given permutation.
-pub fn reorder_states<P>(lts: &LabelledTransitionSystem, permutation: P) -> LabelledTransitionSystem
-where
-    P: Fn(StateIndex) -> StateIndex,
-{
-    let start = std::time::Instant::now();
-
-    // We know that it is a permutation, so there won't be any duplicated transitions.
-    let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::default();
-
-    for state_index in lts.iter_states() {
-        let new_state_index = permutation(state_index);
-
-        for (label, to_index) in lts.outgoing_transitions(state_index) {
-            let new_to_index = permutation(*to_index);
-            transitions.push((new_state_index, *label, new_to_index));
-        }
-    }
-
-    debug!("Time reorder_states: {:.3}s", start.elapsed().as_secs_f64());
-    LabelledTransitionSystem::new(
-        permutation(lts.initial_state_index()),
-        Some(lts.num_of_states()),
-        || transitions.iter().cloned(),
-        lts.labels().into(),
-        lts.hidden_labels().into(),
-    )
-}
-
 // The mark of a state in the depth first search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mark {
@@ -235,7 +206,7 @@ mod tests {
                 order
             };
 
-            let new_lts = reorder_states(&lts, |i| order[i]);
+            let new_lts = LabelledTransitionSystem::new_from_permutation(lts.clone(), |i| order[i]);
 
             trace!("{:?}", lts);
             trace!("{:?}", new_lts);
