@@ -2,13 +2,15 @@ use crate::LabelIndex;
 use crate::LabelledTransitionSystem;
 use crate::StateIndex;
 
-/// A struct containg information related to the incoming transitions for every
-/// state.
+/// Stores the incoming transitions for a given labelled transition system.
 pub struct IncomingTransitions {
     incoming_transitions: Vec<(LabelIndex, StateIndex)>,
     state2incoming: Vec<TransitionIndex>,
 }
 
+/// Stores the offsets at which the transitions for a state can be found.
+/// 
+/// The offsets [begin, end] contain all incoming transitions, and [begin, silent] contain only the silent transitions.
 #[derive(Default, Clone)]
 struct TransitionIndex {
     start: usize,
