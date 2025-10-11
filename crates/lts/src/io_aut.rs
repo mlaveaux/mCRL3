@@ -102,9 +102,13 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
         let from = StateIndex::new(from_txt.parse()?);
         let to = StateIndex::new(to_txt.parse()?);
 
-        let label_index = *labels_index
-            .entry(label_txt.to_string())
-            .or_insert(LabelIndex::new(labels.len()));
+        let label_index = if let Some(&existing_index) = labels_index.get(label_txt) {
+            existing_index
+        } else {
+            let new_index = LabelIndex::new(labels.len());
+            labels_index.insert(label_txt.to_string(), new_index);
+            new_index
+        };
 
         if *label_index >= labels.len() {
             labels.resize_with(label_index.value() + 1, Default::default);
