@@ -219,7 +219,7 @@ where
 
     // Refine partitions until stable.
     let mut iteration = 0usize;
-    let mut num_of_blocks;
+    let mut num_of_blocks = 0;
     let mut states = Vec::new();
 
     // Used to keep track of dirty blocks.
@@ -233,7 +233,6 @@ where
         key_to_signature.clear();
         arena.reset();
 
-        num_of_blocks = partition.num_of_blocks();
         let block = partition.block(block_index);
         debug_assert!(
             block.has_marked(),
@@ -313,9 +312,10 @@ where
         trace!("Iteration {iteration} partition {partition}");
 
         iteration += 1;
-        if num_of_blocks != partition.num_of_blocks() {
+        if num_of_blocks + 1000 <= partition.num_of_blocks() {
             // Only print a message when new blocks have been found.
             debug!("Iteration {iteration}, found {} blocks", partition.num_of_blocks());
+            num_of_blocks = partition.num_of_blocks();
         }
     }
 
