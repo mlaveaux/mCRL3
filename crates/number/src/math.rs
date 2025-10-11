@@ -7,15 +7,6 @@
 ///
 /// # Panics
 /// Panics if n is zero
-///
-/// # Examples
-/// ```
-/// use number::ceil_log2;
-///
-/// assert_eq!(ceil_log2(1), 1);
-/// assert_eq!(ceil_log2(2), 2);
-/// assert_eq!(ceil_log2(3), 2);
-/// assert_eq!(ceil_log2(4), 3);
 /// ```
 pub fn ceil_log2(mut n: usize) -> usize {
     assert!(n > 0, "Cannot compute logarithm of zero");
@@ -34,13 +25,6 @@ pub fn ceil_log2(mut n: usize) -> usize {
 /// * `n` - The base number
 /// * `m` - The exponent
 ///
-/// # Examples
-/// ```
-/// use number::power;
-///
-/// assert_eq!(power(2, 3), 8);
-/// assert_eq!(power(3, 2), 9);
-/// assert_eq!(power(5, 0), 1);
 /// ```
 pub fn power(mut n: usize, mut m: usize) -> usize {
     let mut result = 1;

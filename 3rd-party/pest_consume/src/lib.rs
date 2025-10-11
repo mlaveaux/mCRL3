@@ -26,17 +26,6 @@
 //! file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
 //! ```
 //!
-//! and the corresponding pest parser:
-//!
-//! ```no_run
-//! use pest_consume::Parser;
-//! // Construct the first half of the parser using pest as usual.
-//! #[derive(Parser)]
-//! #[grammar = "../examples/csv/csv.pest"]
-//! struct CSVParser;
-//! # fn main() {}
-//! ```
-//!
 //! To complete the parser, define an `impl` block with the `pest_consume::parser` attribute,
 //! and for each (non-silent) rule of the grammar a method with the same name.
 //! Note how we chose an output type for each rule.

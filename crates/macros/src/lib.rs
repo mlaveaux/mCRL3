@@ -22,6 +22,8 @@ use mcrl3_derive_terms::mcrl3_derive_terms_impl;
 /// # Example
 ///
 /// ```
+/// use mcrl3_macros::mcrl3_derive_terms;
+/// 
 /// #[mcrl3_derive_terms]
 /// mod inner {
 ///
