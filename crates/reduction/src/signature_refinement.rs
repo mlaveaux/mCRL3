@@ -465,7 +465,7 @@ mod tests {
             let lts = random_lts(rng, 10, 3, 3);
             let mut timing = Timing::new();
 
-            strong_bisim_sigref(&lts, &mut timing);
+            strong_bisim_sigref(lts, &mut timing);
         });
     }
 
@@ -496,7 +496,7 @@ mod tests {
             let mut timing = Timing::new();
 
             let (preprocessed_lts, branching_partition) = branching_bisim_sigref(lts, &mut timing);
-            let strong_partition = strong_bisim_sigref(&preprocessed_lts, &mut timing);
+            let strong_partition = strong_bisim_sigref(preprocessed_lts.clone(), &mut timing).1;
             is_refinement(&preprocessed_lts, &strong_partition, &branching_partition);
         });
     }
@@ -508,7 +508,7 @@ mod tests {
             let mut timing = Timing::new();
 
             let (preprocessed_lts, branching_partition) = branching_bisim_sigref_naive(lts, &mut timing);
-            let strong_partition = strong_bisim_sigref_naive(&preprocessed_lts, &mut timing);
+            let strong_partition = strong_bisim_sigref_naive(preprocessed_lts.clone(), &mut timing).1;
             is_refinement(&preprocessed_lts, &strong_partition, &branching_partition);
         });
     }

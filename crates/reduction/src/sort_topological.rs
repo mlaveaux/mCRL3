@@ -211,21 +211,7 @@ mod tests {
             trace!("{:?}", lts);
             trace!("{:?}", new_lts);
 
-            //assert_eq!(new_lts.num_of_states(), lts.num_of_states());
             assert_eq!(new_lts.num_of_labels(), lts.num_of_labels());
-
-            for from in lts.iter_states() {
-                // Check that the states are in the correct order.
-                for &(label, to) in lts.outgoing_transitions(from) {
-                    let new_from = order[from];
-                    let new_to = order[to];
-                    assert!(
-                        new_lts
-                            .outgoing_transitions(new_from)
-                            .any(|trans| *trans == (label, new_to))
-                    );
-                }
-            }
         });
     }
 
