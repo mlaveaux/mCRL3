@@ -36,7 +36,6 @@ pub use format::*;
 pub use generational_index::*;
 pub use helper::*;
 pub use indexed_set::*;
-pub use macros::*;
 pub use no_hasher::*;
 pub use number_postfix::*;
 pub use pest_display_pair::*;
