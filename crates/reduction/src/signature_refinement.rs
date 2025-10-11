@@ -246,7 +246,6 @@ where
                     key
                } else {
                     if let Some((_, index)) = id.get_key_value(&Signature::new(&builder)) {
-                        state_to_key[state_index] = *index;
                         *index
                     } else {
                         let slice = arena.alloc_slice_copy(&builder);
@@ -254,12 +253,12 @@ where
                         id.insert(Signature::new(slice), number);
                         key_to_signature.push(Signature::new(slice));
 
-                        // (branching) Keep track of the signature for every block in the next partition.
-                        state_to_key[state_index] = number;
-
                         number
                     }
                 };
+
+                // (branching) Keep track of the signature for every block in the next partition.
+                state_to_key[state_index] = index;
 
                 trace!("State {state_index} signature {builder:?} index {index}");
                 index
