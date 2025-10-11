@@ -1,4 +1,7 @@
 #[cfg(feature = "mcrl3_metrics")]
+use log::info;
+
+#[cfg(feature = "mcrl3_metrics")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: crate::AllocCounter = crate::AllocCounter::new();
 

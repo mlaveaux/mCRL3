@@ -15,6 +15,7 @@ use mcrl3_reduction::quotient_lts;
 use mcrl3_reduction::strong_bisim_sigref;
 use mcrl3_reduction::strong_bisim_sigref_naive;
 
+use mcrl3_unsafety::print_allocator_metrics;
 use mcrl3_utilities::MCRL3Error;
 use mcrl3_utilities::Timing;
 
@@ -78,5 +79,6 @@ fn main() -> Result<ExitCode, MCRL3Error> {
         timing.print();
     }
 
+    print_allocator_metrics();
     Ok(ExitCode::SUCCESS)
 }
