@@ -176,7 +176,7 @@ pub fn branching_bisim_sigref_naive(lts: LabelledTransitionSystem, timing: &mut 
     );
     time.finish();
 
-    (preprocessed_lts, partition.into())
+    (preprocessed_lts, partition)
 }
 
 /// General signature refinement algorithm that accepts an arbitrary signature

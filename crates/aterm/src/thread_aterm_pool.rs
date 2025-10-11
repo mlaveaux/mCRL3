@@ -73,7 +73,7 @@ impl ThreadTermPool {
             int_symbol,
             empty_list_symbol,
             list_symbol,
-            term_pool: term_pool,
+            term_pool,
         }
     }
 

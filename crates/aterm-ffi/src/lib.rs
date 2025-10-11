@@ -309,7 +309,7 @@ pub unsafe extern "C" fn function_symbol_get_name(symbol: function_symbol_t) -> 
     }
 }
 
-/// A dummy protection set that is used to protect a FFI container.
+// A dummy protection set that is used to protect a FFI container.
 // struct ProtectedContainer {}
 
 #[unsafe(no_mangle)]

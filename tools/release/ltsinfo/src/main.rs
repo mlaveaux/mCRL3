@@ -8,7 +8,6 @@ use clap::ValueEnum;
 
 use mcrl3_lts::read_aut;
 use mcrl3_lts::write_aut;
-use mcrl3_reduction::IndexedPartition;
 use mcrl3_reduction::branching_bisim_sigref;
 use mcrl3_reduction::branching_bisim_sigref_naive;
 use mcrl3_reduction::quotient_lts;
@@ -58,7 +57,6 @@ fn main() -> Result<ExitCode, MCRL3Error> {
         Equivalence::StrongBisimNaive => strong_bisim_sigref_naive(lts, &mut timing),
         Equivalence::BranchingBisim => branching_bisim_sigref(lts, &mut timing),
         Equivalence::BranchingBisimNaive => branching_bisim_sigref_naive(lts, &mut timing),
-        _ => unreachable!(),
     };
 
     let mut quotient_time = timing.start("quotient");

@@ -3494,6 +3494,7 @@ dependencies = [
  "allocator-api2 0.3.1",
  "dashmap",
  "equivalent",
+ "log",
  "mcrl3_utilities",
  "mimalloc",
  "rustc-hash 2.1.1",

@@ -1,6 +1,4 @@
-use std::fmt;
 use std::marker::PhantomData;
-use std::ops::Index;
 
 /// A vector data structure that stores objects in a byte compressed format
 #[derive(Debug, Default, PartialEq, Eq, Clone)]

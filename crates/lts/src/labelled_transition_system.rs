@@ -137,7 +137,7 @@ impl LabelledTransitionSystem {
             initial_state: permutation(lts.initial_state),
             labels: lts.labels,
             hidden_labels: lts.hidden_labels,
-            states: states,
+            states,
             num_of_transitions: lts.transitions.len(),
             transitions: lts.transitions,
         }
