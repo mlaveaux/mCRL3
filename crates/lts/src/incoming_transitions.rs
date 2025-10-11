@@ -9,13 +9,12 @@ pub struct IncomingTransitions {
 }
 
 /// Stores the offsets at which the transitions for a state can be found.
-/// 
+///
 /// The offsets [begin, end] contain all incoming transitions, and [begin, silent] contain only the silent transitions.
 #[derive(Default, Clone)]
 struct TransitionIndex {
     start: usize,
     end: usize,
-    silent: usize,
 }
 
 impl IncomingTransitions {
@@ -25,11 +24,8 @@ impl IncomingTransitions {
 
         // Compute the number of incoming (silent) transitions for each state.
         for state_index in lts.iter_states() {
-            for (label_index, to) in lts.outgoing_transitions(state_index) {
+            for (_label_index, to) in lts.outgoing_transitions(state_index) {
                 state2incoming[to.value()].end += 1;
-                if lts.is_hidden_label(*label_index) {
-                    state2incoming[to.value()].silent += 1;
-                }
             }
         }
 
@@ -38,25 +34,23 @@ impl IncomingTransitions {
         // will be correct.
         state2incoming.iter_mut().fold(0, |count, index| {
             let end = count + index.end;
-            index.start = end - index.silent;
+            index.start = end;
             index.end = end;
-            index.silent = end;
             end
         });
 
         for state_index in lts.iter_states() {
             for (label_index, to) in lts.outgoing_transitions(state_index) {
                 let index = &mut state2incoming[to.value()];
-
-                if lts.is_hidden_label(*label_index) {
-                    // Place at end of incoming transitions.
-                    index.silent -= 1;
-                    incoming_transitions[index.silent] = (*label_index, state_index);
-                } else {
-                    index.start -= 1;
-                    incoming_transitions[index.start] = (*label_index, state_index);
-                }
+                index.start -= 1;
+                incoming_transitions[index.start] = (*label_index, state_index);
             }
+        }
+
+        for state_index in lts.iter_states() {
+            // Sort the incoming transitions such that silent transitions come first.
+            let slice = &mut incoming_transitions[state2incoming[state_index].start..state2incoming[state_index].end];
+            slice.sort_unstable();
         }
 
         IncomingTransitions {
@@ -75,7 +69,10 @@ impl IncomingTransitions {
         &self,
         state_index: StateIndex,
     ) -> impl Iterator<Item = &(LabelIndex, StateIndex)> {
-        self.incoming_transitions[self.state2incoming[state_index].silent..self.state2incoming[state_index].end].iter()
+        // Check for hidden label.
+        self.incoming_transitions[self.state2incoming[state_index].start..self.state2incoming[state_index].end]
+            .iter()
+            .take_while(|(label, _)| *label == 0)
     }
 }
 
