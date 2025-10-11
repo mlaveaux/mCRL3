@@ -1,15 +1,16 @@
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Index;
 
 /// A vector data structure that stores objects in a byte compressed format
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct ByteCompressedVec<T> {
     data: Vec<u8>,
     bytes_per_entry: usize,
     _marker: PhantomData<T>,
 }
 
-impl<T: Entry + fmt::Debug> ByteCompressedVec<T> {
+impl<T: CompressedEntry> ByteCompressedVec<T> {
     pub fn new() -> ByteCompressedVec<T> {
         ByteCompressedVec {
             data: Vec::new(),
@@ -29,7 +30,7 @@ impl<T: Entry + fmt::Debug> ByteCompressedVec<T> {
     }
 
     /// Returns the entry at the given index.
-    pub fn get(&self, index: usize) -> T {
+    pub fn index(&self, index: usize) -> T {
         let start = index * self.bytes_per_entry;
         let end = start + self.bytes_per_entry;
         T::from_bytes(&self.data[start..end])
@@ -67,6 +68,13 @@ impl<T: Entry + fmt::Debug> ByteCompressedVec<T> {
         }
     }
 
+    /// Updates the given entry using a closure.
+    pub fn index_mut<F>(&mut self, index: usize, mut update: F) where F: FnMut(&mut T) {
+        let mut entry = self.index(index);
+        update(&mut entry);
+        self.set(index, entry);
+    }
+
     /// Resizes all entries in the vector to the given length.
     fn resize_entries(&mut self, new_bytes_required: usize) {
         if new_bytes_required > self.bytes_per_entry {
@@ -85,9 +93,44 @@ impl<T: Entry + fmt::Debug> ByteCompressedVec<T> {
             self.data = new_data;
         }
     }
+
+    /// Folds over the elements in the vector using the provided closure.
+    pub fn fold<B, F>(&mut self, init: B, mut f: F) -> B
+    where
+        F: FnMut(B, &mut T) -> B,
+    {
+        let mut accumulator = init;
+        for index in 0..self.len() {
+            let mut element = self.index(index);
+            accumulator = f(accumulator, &mut element);
+            self.set(index, element);
+        }
+        accumulator
+    }
+
+    /// Resizes the vector to the given length, filling new entries with the provided value.
+    pub fn resize_with<F>(&mut self, new_len: usize, mut f: F)
+    where
+        F: FnMut() -> T,
+    {
+        let current_len = self.len();
+        if new_len > current_len {
+            for _ in current_len..new_len {
+                self.push(f());
+            }
+        } else if new_len < current_len {
+            if new_len == 0 {
+                self.data.clear();
+                self.bytes_per_entry = 0;
+            } else {
+                // It could be that the bytes per entry is now less.
+                self.data.truncate(new_len * self.bytes_per_entry);
+            }
+        }
+    }
 }
 
-impl<T: Entry + Clone + fmt::Debug> ByteCompressedVec<T> {
+impl<T: CompressedEntry + Clone> ByteCompressedVec<T> {
     pub fn from_elem(entry: T, n: usize) -> ByteCompressedVec<T> {
         let mut vec = ByteCompressedVec::new();
         for _ in 0..n {
@@ -102,12 +145,12 @@ pub struct ByteCompressedVecIterator<'a, T> {
     current: usize,
 }
 
-impl<T: Entry + fmt::Debug> Iterator for ByteCompressedVecIterator<'_, T> {
+impl<T: CompressedEntry> Iterator for ByteCompressedVecIterator<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current < self.vector.len() {
-            let result = self.vector.get(self.current);
+            let result = self.vector.index(self.current);
             self.current += 1;
             Some(result)
         } else {
@@ -116,7 +159,7 @@ impl<T: Entry + fmt::Debug> Iterator for ByteCompressedVecIterator<'_, T> {
     }
 }
 
-pub trait Entry {
+pub trait CompressedEntry {
     // Returns the entry as a byte vector
     fn to_bytes(&self, bytes: &mut [u8]);
 
@@ -127,7 +170,7 @@ pub trait Entry {
     fn bytes_required(&self) -> usize;
 }
 
-impl Entry for usize {
+impl CompressedEntry for usize {
     fn to_bytes(&self, bytes: &mut [u8]) {
         let array = &self.to_le_bytes();
         for (i, byte) in bytes.iter_mut().enumerate() {
@@ -151,12 +194,12 @@ impl Entry for usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use crate::bytevec;
 
-    use rand::distr::Uniform;
     use rand::Rng;
-    
+    use rand::distr::Uniform;
+
     #[test]
     fn test_index_bytevector() {
         let mut vec = ByteCompressedVec::new();
@@ -166,8 +209,8 @@ mod tests {
         vec.push(1024);
         assert_eq!(vec.len(), 2);
 
-        assert_eq!(vec.get(0), 1);
-        assert_eq!(vec.get(1), 1024);
+        assert_eq!(vec.index(0), 1);
+        assert_eq!(vec.index(1), 1024);
     }
 
     #[test]
