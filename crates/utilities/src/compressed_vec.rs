@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::fmt;
 
 /// A vector data structure that stores objects in a byte compressed format
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -56,6 +57,18 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     /// Returns true if the vector is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Returns metrics about memory usage of this compressed vector
+    pub fn metrics(&self) -> CompressedVecMetrics {
+        let element_count = self.len();
+        let actual_memory = self.data.len() + std::mem::size_of_val(&self.bytes_per_entry) + std::mem::size_of::<PhantomData<T>>();
+        let worst_case_memory = element_count * std::mem::size_of::<T>();
+        
+        CompressedVecMetrics {
+            actual_memory,
+            worst_case_memory,
+        }
     }
 
     /// Returns an iterator over the elements in the vector.
@@ -138,6 +151,44 @@ impl<T: CompressedEntry + Clone> ByteCompressedVec<T> {
     }
 }
 
+
+/// Metrics for tracking memory usage of a ByteCompressedVec
+#[derive(Debug, Clone)]
+pub struct CompressedVecMetrics {
+    /// Actual memory used by the compressed vector (in bytes)
+    pub actual_memory: usize,
+    /// Worst-case memory that would be used by an uncompressed vector (len * sizeof(T))
+    pub worst_case_memory: usize,
+}
+
+impl CompressedVecMetrics {
+    /// Calculate memory savings in bytes
+    pub fn memory_savings(&self) -> usize {
+        self.worst_case_memory.saturating_sub(self.actual_memory)
+    }
+
+    /// Calculate memory savings as a percentage
+    pub fn memory_savings_percent(&self) -> f64 {
+        if self.worst_case_memory == 0 {
+            0.0
+        } else {
+            (self.memory_savings() as f64 / self.worst_case_memory as f64) * 100.0
+        }
+    }
+}
+
+impl fmt::Display for CompressedVecMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Actual memory: {} bytes, Worst-case memory: {} bytes, Savings: {} bytes ({:.1}%)",
+            self.actual_memory,
+            self.worst_case_memory,
+            self.memory_savings(),
+            self.memory_savings_percent(),
+        )
+    }
+}
 pub struct ByteCompressedVecIterator<'a, T> {
     vector: &'a ByteCompressedVec<T>,
     current: usize,
