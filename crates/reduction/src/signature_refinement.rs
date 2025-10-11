@@ -23,14 +23,8 @@ use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
-use crate::combine_partition;
 use crate::preprocess_branching;
 use crate::strong_bisim_signature;
-
-/// Returns true if the label is the special tau_hat label for the given LTS.
-fn is_tau_hat(label: LabelIndex, lts: &LabelledTransitionSystem) -> bool {
-    label == lts.num_of_labels()
-}
 
 /// Computes a strong bisimulation partitioning using signature refinement
 pub fn strong_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
@@ -70,9 +64,9 @@ pub fn strong_bisim_sigref_naive(lts: &LabelledTransitionSystem, timing: &mut Ti
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement
-pub fn branching_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
+pub fn branching_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
-    let (preprocessed_lts, preprocess_partition) = preprocess_branching(lts);
+    let (preprocessed_lts, _preprocess_partition) = preprocess_branching(lts);
     let incoming = IncomingTransitions::new(&preprocessed_lts);
     timepre.finish();
 
@@ -110,11 +104,11 @@ pub fn branching_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timin
         |signature, key_to_signature| {
             // Inductive signatures.
             for (label, key) in signature.iter().rev() {
-                if is_tau_hat(*label, lts) && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
+                if is_tau_hat(*label, &preprocessed_lts) && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
                     return Some(*key);
                 }
 
-                if !is_tau_hat(*label, lts) {
+                if !is_tau_hat(*label, &preprocessed_lts) {
                     return None;
                 }
             }
@@ -140,16 +134,13 @@ pub fn branching_bisim_sigref(lts: &LabelledTransitionSystem, timing: &mut Timin
     time.finish();
 
     // Combine the SCC partition with the branching bisimulation partition.
-    let combined_partition = combine_partition(preprocess_partition, &partition);
-
-    trace!("Final partition {combined_partition}");
-    combined_partition
+    (preprocessed_lts, partition.into())
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
-pub fn branching_bisim_sigref_naive(lts: &LabelledTransitionSystem, timing: &mut Timing) -> IndexedPartition {
+pub fn branching_bisim_sigref_naive(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
-    let (preprocessed_lts, preprocess_partition) = preprocess_branching(lts);
+    let (preprocessed_lts, _preprocess_partition) = preprocess_branching(lts);
     timepre.finish();
 
     let mut time = timing.start("reduction");
@@ -185,11 +176,7 @@ pub fn branching_bisim_sigref_naive(lts: &LabelledTransitionSystem, timing: &mut
     );
     time.finish();
 
-    // Combine the SCC partition with the branching bisimulation partition.
-    let combined_partition = combine_partition(preprocess_partition, &partition);
-
-    trace!("Final partition {combined_partition}");
-    combined_partition
+    (preprocessed_lts, partition.into())
 }
 
 /// General signature refinement algorithm that accepts an arbitrary signature
@@ -509,9 +496,9 @@ mod tests {
             let lts = random_lts(rng, 10, 3, 3);
             let mut timing = Timing::new();
 
-            let strong_partition = strong_bisim_sigref(&lts, &mut timing);
-            let branching_partition = branching_bisim_sigref(&lts, &mut timing);
-            is_refinement(&lts, &strong_partition, &branching_partition);
+            let (preprocessed_lts, branching_partition) = branching_bisim_sigref(lts, &mut timing);
+            let strong_partition = strong_bisim_sigref(&preprocessed_lts, &mut timing);
+            is_refinement(&preprocessed_lts, &strong_partition, &branching_partition);
         });
     }
 
@@ -521,9 +508,9 @@ mod tests {
             let lts = random_lts(rng, 10, 3, 3);
             let mut timing = Timing::new();
 
-            let strong_partition = strong_bisim_sigref_naive(&lts, &mut timing);
-            let branching_partition = branching_bisim_sigref_naive(&lts, &mut timing);
-            is_refinement(&lts, &strong_partition, &branching_partition);
+            let (preprocessed_lts, branching_partition) = branching_bisim_sigref_naive(lts, &mut timing);
+            let strong_partition = strong_bisim_sigref_naive(&preprocessed_lts, &mut timing);
+            is_refinement(&preprocessed_lts, &strong_partition, &branching_partition);
         });
     }
 }
