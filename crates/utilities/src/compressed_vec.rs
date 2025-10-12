@@ -89,7 +89,7 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Updates the given entry using a closure.
-    pub fn index_mut<F>(&mut self, index: usize, mut update: F)
+    pub fn update<F>(&mut self, index: usize, mut update: F)
     where
         F: FnMut(&mut T),
     {
@@ -121,6 +121,17 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
             self.set(index, element);
         }
         accumulator
+    }
+
+    pub fn sort_unstable_range(&mut self, begin: usize, end: usize)
+    where
+        T: Ord,
+    {
+        let mut elements: Vec<T> = self.iter_range(begin, end).collect();
+        elements.sort_unstable();
+        for (i, element) in elements.into_iter().enumerate() {
+            self.set(begin + i, element);
+        }
     }
 
     /// Resizes the vector to the given length, filling new entries with the provided value.
@@ -267,7 +278,7 @@ impl CompressedEntry for usize {
 mod tests {
     use super::*;
 
-    use crate::bytevec;
+    use crate::{bytevec, random_test};
 
     use rand::Rng;
     use rand::distr::Uniform;
@@ -321,15 +332,13 @@ mod tests {
 
     #[test]
     fn test_usize_entry() {
-        let mut rng = rand::rng();
-
-        for _ in 0..100 {
+        random_test(100, |rng| {
             let value = rng.random_range(0..1024);
             assert!(value.bytes_required() <= 2);
 
             let mut bytes = [0; 2];
             value.to_bytes(&mut bytes);
             assert_eq!(usize::from_bytes(&bytes), value);
-        }
+        });
     }
 }
