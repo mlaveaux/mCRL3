@@ -96,16 +96,16 @@ where
             None => {
                 marks[state] = Some(Mark::Temporary);
                 depth_stack.push(state); // Re-add to stack to mark as permanent later
-                for (_, next_state) in lts
+                for transition in lts
                     .outgoing_transitions(state)
-                    .filter(|(label, to)| filter(*label, *to))
+                    .filter(|transition| filter(transition.label, transition.to))
                 {
                     // If it was marked temporary, then a cycle is detected.
-                    if marks[*next_state] == Some(Mark::Temporary) {
+                    if marks[transition.to] == Some(Mark::Temporary) {
                         return false;
                     }
-                    if marks[*next_state].is_none() {
-                        depth_stack.push(*next_state);
+                    if marks[transition.to].is_none() {
+                        depth_stack.push(transition.to);
                     }
                 }
             }
@@ -132,15 +132,15 @@ where
     // Check that each vertex appears before its successors.
     for state_index in lts.iter_states() {
         let state_order = permutation(state_index);
-        for (_, successor) in lts
+        for transition in lts
             .outgoing_transitions(state_index)
-            .filter(|(label, to)| filter(*label, *to))
+            .filter(|transition| filter(transition.label, transition.to))
         {
             if reverse {
-                if state_order <= permutation(*successor) {
+                if state_order <= permutation(transition.to) {
                     return false;
                 }
-            } else if state_order >= permutation(*successor) {
+            } else if state_order >= permutation(transition.to) {
                 return false;
             }
         }

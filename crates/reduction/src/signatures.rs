@@ -110,8 +110,8 @@ pub fn strong_bisim_signature(
 ) {
     builder.clear();
 
-    for (label, to) in lts.outgoing_transitions(state_index) {
-        builder.push((*label, partition.block_number(*to)));
+    for transition in lts.outgoing_transitions(state_index) {
+        builder.push((transition.label, partition.block_number(transition.to)));
     }
 
     // Compute the flat signature, which has Hash and is more compact.
@@ -140,21 +140,21 @@ pub fn branching_bisim_signature(
     while let Some(inner_state_index) = stack.pop() {
         visited.insert(inner_state_index);
 
-        for (label_index, to_index) in lts.outgoing_transitions(inner_state_index) {
-            if lts.is_hidden_label(*label_index) {
-                if partition.block_number(state_index) == partition.block_number(*to_index) {
+        for transition in lts.outgoing_transitions(inner_state_index) {
+            if lts.is_hidden_label(transition.label) {
+                if partition.block_number(state_index) == partition.block_number(transition.to) {
                     // Explore the outgoing state as well, still tau path in same block
-                    if !visited.contains(to_index) {
-                        visited.insert(*to_index);
-                        stack.push(*to_index);
+                    if !visited.contains(&transition.to) {
+                        visited.insert(transition.to);
+                        stack.push(transition.to);
                     }
                 } else {
                     //  pi(s) != pi(t)
-                    builder.push((*label_index, partition.block_number(*to_index)));
+                    builder.push((transition.label, partition.block_number(transition.to)));
                 }
             } else {
                 // (a != tau) This is a visible action only reachable from tau paths with equal signatures.
-                builder.push((*label_index, partition.block_number(*to_index)));
+                builder.push((transition.label, partition.block_number(transition.to)));
             }
         }
     }
@@ -174,19 +174,19 @@ pub fn branching_bisim_signature_sorted(
 ) {
     builder.clear();
 
-    for &(label_index, to) in lts.outgoing_transitions(state_index) {
-        let to_block = partition.block_number(to);
+    for transition in lts.outgoing_transitions(state_index) {
+        let to_block = partition.block_number(transition.to);
 
         if partition.block_number(state_index) == to_block {
-            if lts.is_hidden_label(label_index) {
+            if lts.is_hidden_label(transition.label) {
                 // Inert tau transition, take signature from the outgoing tau-transition.
-                builder.extend(state_to_signature[to].as_slice());
+                builder.extend(state_to_signature[transition.to].as_slice());
             } else {
-                builder.push((label_index, to_block));
+                builder.push((transition.label, to_block));
             }
         } else {
             // Visible action, add to the signature.
-            builder.push((label_index, to_block));
+            builder.push((transition.label, to_block));
         }
     }
 
@@ -205,19 +205,19 @@ pub fn branching_bisim_signature_inductive(
 ) {
     builder.clear();
 
-    for &(label_index, to) in lts.outgoing_transitions(state_index) {
-        let to_block = partition.block_number(to);
+    for transition in lts.outgoing_transitions(state_index) {
+        let to_block = partition.block_number(transition.to);
 
         if partition.block_number(state_index) == to_block {
-            if lts.is_hidden_label(label_index) && partition.is_element_marked(to) {
+            if lts.is_hidden_label(transition.label) && partition.is_element_marked(transition.to) {
                 // Inert tau transition, take signature from the outgoing tau-transition.
-                builder.push((tau_hat(lts), state_to_key[to]));
+                builder.push((tau_hat(lts), state_to_key[transition.to]));
             } else {
-                builder.push((label_index, to_block));
+                builder.push((transition.label, to_block));
             }
         } else {
             // Visible action, add to the signature.
-            builder.push((label_index, to_block));
+            builder.push((transition.label, to_block));
         }
     }
 

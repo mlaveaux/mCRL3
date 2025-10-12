@@ -87,19 +87,19 @@ pub fn quotient_lts(
     let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::default();
 
     for state_index in lts.iter_states() {
-        for &(label, to) in lts.outgoing_transitions(state_index) {
+        for transition in lts.outgoing_transitions(state_index) {
             let block = partition.block_number(state_index);
-            let to_block = partition.block_number(to);
+            let to_block = partition.block_number(transition.to);
 
             // If we eliminate tau loops then check if the 'to' and 'from' end up in the same block
-            if !(eliminate_tau_loops && lts.is_hidden_label(label) && block == to_block) {
+            if !(eliminate_tau_loops && lts.is_hidden_label(transition.label) && block == to_block) {
                 debug_assert!(
                     partition.block_number(state_index) < partition.num_of_blocks(),
                     "Quotienting assumes that the block numbers do not exceed the number of blocks"
                 );
 
                 // Make sure to keep the outgoing transitions sorted.
-                transitions.push((StateIndex::new(block.value()), label, StateIndex::new(to_block.value())));
+                transitions.push((StateIndex::new(block.value()), transition.label, StateIndex::new(to_block.value())));
             }
         }
     }

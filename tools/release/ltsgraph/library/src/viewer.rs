@@ -43,7 +43,7 @@ impl Viewer {
             // Compute the offsets for self-loops, put them at equal distance around the state
             let num_selfloops = lts
                 .outgoing_transitions(state_index)
-                .filter(|(_, to)| *to == state_index)
+                .filter(|transition| transition.to == state_index)
                 .count();
 
             // Keep track of the current self loop index
@@ -52,10 +52,10 @@ impl Viewer {
             // Keep track of the current transition index
             let mut index_transition = 0;
 
-            for (transition_index, (_, to)) in lts.outgoing_transitions(state_index).enumerate() {
+            for (transition_index, transition) in lts.outgoing_transitions(state_index).enumerate() {
                 let transition_view = &mut state_view.outgoing[transition_index];
 
-                if state_index == *to {
+                if state_index == transition.to {
                     // This is a self loop so compute a rotation around the state for its handle
                     let rotation_mat = Mat3::from_euler(
                         glam::EulerRot::XYZ,
@@ -69,15 +69,15 @@ impl Viewer {
                 } else {
                     // Determine whether any of the outgoing edges from the reached state point back
                     let has_backtransition = lts
-                        .outgoing_transitions(*to)
-                        .filter(|(_, other_to)| *other_to == state_index)
+                        .outgoing_transitions(transition.to)
+                        .filter(|transition| transition.to == state_index)
                         .count()
                         > 0;
 
                     // Compute the number of transitions going to the same state
                     let num_transitions = lts
                         .outgoing_transitions(state_index)
-                        .filter(|(_, to)| *to == state_index)
+                        .filter(|transition| transition.to == state_index)
                         .count();
 
                     if has_backtransition {

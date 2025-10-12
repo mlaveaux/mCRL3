@@ -24,8 +24,8 @@ impl IncomingTransitions {
 
         // Compute the number of incoming (silent) transitions for each state.
         for state_index in lts.iter_states() {
-            for (_label_index, to) in lts.outgoing_transitions(state_index) {
-                state2incoming[to.value()].end += 1;
+            for transition in lts.outgoing_transitions(state_index) {
+                state2incoming[transition.to.value()].end += 1;
             }
         }
 
@@ -40,10 +40,10 @@ impl IncomingTransitions {
         });
 
         for state_index in lts.iter_states() {
-            for (label_index, to) in lts.outgoing_transitions(state_index) {
-                let index = &mut state2incoming[to.value()];
+            for transition in lts.outgoing_transitions(state_index) {
+                let index = &mut state2incoming[transition.to.value()];
                 index.start -= 1;
-                incoming_transitions[index.start] = (*label_index, state_index);
+                incoming_transitions[index.start] = (transition.label, state_index);
             }
         }
 

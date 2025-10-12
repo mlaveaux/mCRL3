@@ -111,14 +111,14 @@ fn strongly_connect<F>(
     stack.push(state_index);
 
     // Consider successors of the current state.
-    for (label_index, to_index) in lts.outgoing_transitions(state_index) {
-        if filter(state_index, *label_index, *to_index) {
-            if let Some(meta) = &mut state_info[*to_index] {
+    for transition in lts.outgoing_transitions(state_index) {
+        if filter(state_index, transition.label, transition.to) {
+            if let Some(meta) = &mut state_info[transition.to] {
                 if meta.on_stack {
                     // Successor w is in stack S and hence in the current SCC
                     // If w is not on stack, then (v, w) is an edge pointing to an SCC already found and must be ignored
                     // v.lowlink := min(v.lowlink, w.lowlink);
-                    let w_index = state_info[*to_index]
+                    let w_index = state_info[transition.to]
                         .as_ref()
                         .expect("The state must be visited in the recursive call")
                         .index;
@@ -130,7 +130,7 @@ fn strongly_connect<F>(
             } else {
                 // Successor w has not yet been visited; recurse on it
                 strongly_connect(
-                    *to_index,
+                    transition.to,
                     lts,
                     filter,
                     partition,
@@ -141,7 +141,7 @@ fn strongly_connect<F>(
                 );
 
                 // v.lowlink := min(v.lowlink, w.lowlink);
-                let w_lowlink = state_info[to_index.value()]
+                let w_lowlink = state_info[transition.to.value()]
                     .as_ref()
                     .expect("The state must be visited in the recursive call")
                     .lowlink;
@@ -202,10 +202,10 @@ mod tests {
 
         // Depth first search to find all reachable states.
         while let Some(inner_state_index) = stack.pop() {
-            for (_, to_index) in lts.outgoing_transitions(inner_state_index) {
-                if filter(inner_state_index, LabelIndex::new(0), *to_index) && !visited[to_index.value()] {
-                    visited[to_index.value()] = true;
-                    stack.push(*to_index);
+            for transition in lts.outgoing_transitions(inner_state_index) {
+                if filter(inner_state_index, LabelIndex::new(0), transition.to) && !visited[transition.to.value()] {
+                    visited[transition.to.value()] = true;
+                    stack.push(transition.to);
                 }
             }
         }
