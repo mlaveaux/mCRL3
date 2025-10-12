@@ -285,31 +285,31 @@ where
                 states.extend(partition.iter_block(new_block_index));
 
                 for &state_index in &states {
-                    for &(label_index, incoming_state) in incoming.incoming_transitions(state_index) {
+                    for transition in incoming.incoming_transitions(state_index) {
                         if BRANCHING {
                             // Mark incoming states in other blocks, or visible actions.
-                            if !lts.is_hidden_label(label_index)
-                                || partition.block_number(incoming_state) != partition.block_number(state_index)
+                            if !lts.is_hidden_label(transition.label)
+                                || partition.block_number(transition.to) != partition.block_number(state_index)
                             {
-                                let other_block = partition.block_number(incoming_state);
+                                let other_block = partition.block_number(transition.to);
 
                                 if !partition.block(other_block).has_marked() {
                                     // If block was not already marked then add it to the worklist.
                                     worklist.push(other_block);
                                 }
 
-                                partition.mark_element(incoming_state);
+                                partition.mark_element(transition.to);
                             }
                         } else {
                             // In this case mark all incoming states.
-                            let other_block = partition.block_number(incoming_state);
+                            let other_block = partition.block_number(transition.to);
 
                             if !partition.block(other_block).has_marked() {
                                 // If block was not already marked then add it to the worklist.
                                 worklist.push(other_block);
                             }
 
-                            partition.mark_element(incoming_state);
+                            partition.mark_element(transition.to);
                         }
                     }
                 }

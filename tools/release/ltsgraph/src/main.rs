@@ -461,7 +461,7 @@ async fn main() -> Result<ExitCode, MCRL3Error> {
 
             match File::open(path) {
                 Ok(file) => {
-                    match read_aut(file, vec![]) {
+                    match read_aut(&file, vec![]) {
                         Ok(lts) => {
                             let lts = Arc::new(lts);
                             info!("Loaded lts {lts}");

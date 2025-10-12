@@ -17,6 +17,7 @@ mcrl3_debug-trace = []
 ahash.workspace = true
 arbitrary.workspace = true
 backtrace.workspace = true
+delegate.workspace = true
 env_logger.workspace = true
 hashbrown.workspace = true
 log.workspace = true
