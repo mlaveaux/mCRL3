@@ -79,7 +79,13 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
         ByteCompressedVecIterator {
             vector: self,
             current: 0,
+            end: self.len()
         }
+    }
+
+    /// Returns an iterator over the elements in the vector for the begin, end range.
+    pub fn iter_range(&self, begin: usize, end: usize) -> ByteCompressedVecIterator<'_, T> {
+        ByteCompressedVecIterator { vector: self, current: begin, end }
     }
 
     /// Updates the given entry using a closure.
@@ -208,13 +214,14 @@ impl fmt::Display for CompressedVecMetrics {
 pub struct ByteCompressedVecIterator<'a, T> {
     vector: &'a ByteCompressedVec<T>,
     current: usize,
+    end: usize,
 }
 
 impl<T: CompressedEntry> Iterator for ByteCompressedVecIterator<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current < self.vector.len() {
+        if self.current < self.end {
             let result = self.vector.index(self.current);
             self.current += 1;
             Some(result)
