@@ -1,5 +1,7 @@
-use std::marker::PhantomData;
 use std::fmt;
+use std::marker::PhantomData;
+
+use crate::BytesFormatter;
 
 /// A vector data structure that stores objects in a byte compressed format
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -62,9 +64,10 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     /// Returns metrics about memory usage of this compressed vector
     pub fn metrics(&self) -> CompressedVecMetrics {
         let element_count = self.len();
-        let actual_memory = self.data.len() + std::mem::size_of_val(&self.bytes_per_entry) + std::mem::size_of::<PhantomData<T>>();
+        let actual_memory =
+            self.data.len() + std::mem::size_of_val(&self.bytes_per_entry) + std::mem::size_of::<PhantomData<T>>();
         let worst_case_memory = element_count * std::mem::size_of::<T>();
-        
+
         CompressedVecMetrics {
             actual_memory,
             worst_case_memory,
@@ -80,28 +83,23 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Updates the given entry using a closure.
-    pub fn index_mut<F>(&mut self, index: usize, mut update: F) where F: FnMut(&mut T) {
+    pub fn index_mut<F>(&mut self, index: usize, mut update: F)
+    where
+        F: FnMut(&mut T),
+    {
         let mut entry = self.index(index);
         update(&mut entry);
         self.set(index, entry);
     }
 
-    /// Resizes all entries in the vector to the given length.
-    fn resize_entries(&mut self, new_bytes_required: usize) {
-        if new_bytes_required > self.bytes_per_entry {
-            let mut new_data: Vec<u8> = vec![0; self.len() * new_bytes_required];
-
-            if self.bytes_per_entry > 0 {
-                // Resize all the existing elements because the new entry requires more bytes.
-                for (index, entry) in self.iter().enumerate() {
-                    let start = index * new_bytes_required;
-                    let end = start + new_bytes_required;
-                    entry.to_bytes(&mut new_data[start..end]);
-                }
-            }
-
-            self.bytes_per_entry = new_bytes_required;
-            self.data = new_data;
+    /// Iterate over all elements and adapt the elements using a closure.
+    pub fn map<F>(&mut self, mut f: F) 
+        where F: FnMut(&mut T) 
+    {
+        for index in 0..self.len() {
+            let mut entry = self.index(index);
+            f(&mut entry);
+            self.set(index, entry);          
         }
     }
 
@@ -139,6 +137,26 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
             }
         }
     }
+    
+    /// Resizes all entries in the vector to the given length.
+    fn resize_entries(&mut self, new_bytes_required: usize) {
+        if new_bytes_required > self.bytes_per_entry {
+            let mut new_data: Vec<u8> = vec![0; self.len() * new_bytes_required];
+
+            if self.bytes_per_entry > 0 {
+                // Resize all the existing elements because the new entry requires more bytes.
+                for (index, entry) in self.iter().enumerate() {
+                    let start = index * new_bytes_required;
+                    let end = start + new_bytes_required;
+                    entry.to_bytes(&mut new_data[start..end]);
+                }
+            }
+
+            self.bytes_per_entry = new_bytes_required;
+            self.data = new_data;
+        }
+    }
+
 }
 
 impl<T: CompressedEntry + Clone> ByteCompressedVec<T> {
@@ -150,7 +168,6 @@ impl<T: CompressedEntry + Clone> ByteCompressedVec<T> {
         vec
     }
 }
-
 
 /// Metrics for tracking memory usage of a ByteCompressedVec
 #[derive(Debug, Clone)]
@@ -168,11 +185,11 @@ impl CompressedVecMetrics {
     }
 
     /// Calculate memory savings as a percentage
-    pub fn memory_savings_percent(&self) -> f64 {
+    pub fn used_percentage(&self) -> f64 {
         if self.worst_case_memory == 0 {
             0.0
         } else {
-            (self.memory_savings() as f64 / self.worst_case_memory as f64) * 100.0
+            (self.actual_memory as f64 / self.worst_case_memory as f64) * 100.0
         }
     }
 }
@@ -181,11 +198,10 @@ impl fmt::Display for CompressedVecMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Actual memory: {} bytes, Worst-case memory: {} bytes, Savings: {} bytes ({:.1}%)",
-            self.actual_memory,
-            self.worst_case_memory,
-            self.memory_savings(),
-            self.memory_savings_percent(),
+            "memory: {} ({:.1}%), saving: {} ",
+            BytesFormatter(self.actual_memory),
+            self.used_percentage(),
+            BytesFormatter(self.memory_savings()),
         )
     }
 }
