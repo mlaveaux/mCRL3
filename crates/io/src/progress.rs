@@ -3,8 +3,9 @@
 //! take a fixed number of steps. In particular, avoids writing too many
 //! progress indications.
 //!
- 
-use std::time::{Duration, Instant};
+
+use std::time::Duration;
+use std::time::Instant;
 
 /// The struct that can be initialised to keep track of progress counters.
 pub struct Progress<F: Fn(usize, usize)> {
@@ -61,7 +62,7 @@ impl<F: Fn(usize)> TimeProgress<F> {
     /// messages based on time intervals.
     pub fn add(&mut self, amount: usize) {
         self.counter += amount;
-        
+
         let now = Instant::now();
         if now.duration_since(self.last_update) >= self.interval {
             (self.message)(self.counter);

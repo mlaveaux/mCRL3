@@ -91,7 +91,6 @@ impl Debug for Signature {
     }
 }
 
-
 /// Returns true if the label is the special tau_hat label for the given LTS.
 pub fn is_tau_hat(label: LabelIndex, lts: &LabelledTransitionSystem) -> bool {
     label == lts.num_of_labels()

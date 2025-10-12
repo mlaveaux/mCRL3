@@ -12,7 +12,6 @@ use rustc_hash::FxHashSet;
 
 use mcrl3_utilities::Timing;
 
-use crate::is_tau_hat;
 use crate::BlockIndex;
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
@@ -23,11 +22,15 @@ use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
+use crate::is_tau_hat;
 use crate::preprocess_branching;
 use crate::strong_bisim_signature;
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
+pub fn strong_bisim_sigref(
+    lts: LabelledTransitionSystem,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
     let incoming = IncomingTransitions::new(&lts);
     timepre.finish();
@@ -53,7 +56,10 @@ pub fn strong_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing) -
 }
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref_naive(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
+pub fn strong_bisim_sigref_naive(
+    lts: LabelledTransitionSystem,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut time = timing.start("reduction");
     let partition = signature_refinement_naive(&lts, |state_index, partition, _, builder| {
         strong_bisim_signature(state_index, &lts, partition, builder);
@@ -64,11 +70,16 @@ pub fn strong_bisim_sigref_naive(lts: LabelledTransitionSystem, timing: &mut Tim
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement
-pub fn branching_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
+pub fn branching_bisim_sigref(
+    lts: LabelledTransitionSystem,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
     let (preprocessed_lts, _preprocess_partition) = preprocess_branching(lts);
     let incoming = IncomingTransitions::new(&preprocessed_lts);
     timepre.finish();
+
+    return (preprocessed_lts, _preprocess_partition);
 
     let mut time = timing.start("reduction");
     let mut expected_builder = SignatureBuilder::default();
@@ -104,7 +115,9 @@ pub fn branching_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing
         |signature, key_to_signature| {
             // Inductive signatures.
             for (label, key) in signature.iter().rev() {
-                if is_tau_hat(*label, &preprocessed_lts) && key_to_signature[*key].is_subset_of(signature, (*label, *key)) {
+                if is_tau_hat(*label, &preprocessed_lts)
+                    && key_to_signature[*key].is_subset_of(signature, (*label, *key))
+                {
                     return Some(*key);
                 }
 
@@ -138,7 +151,10 @@ pub fn branching_bisim_sigref(lts: LabelledTransitionSystem, timing: &mut Timing
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
-pub fn branching_bisim_sigref_naive(lts: LabelledTransitionSystem, timing: &mut Timing) -> (LabelledTransitionSystem, IndexedPartition) {
+pub fn branching_bisim_sigref_naive(
+    lts: LabelledTransitionSystem,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
     let (preprocessed_lts, _preprocess_partition) = preprocess_branching(lts);
     timepre.finish();
@@ -240,11 +256,10 @@ where
             partition.partition_marked_with(block_index, &mut split_builder, |state_index, partition| {
                 signature(state_index, partition, &state_to_key, &mut builder);
 
-
                 // Compute the signature of a single state
-               let index = if let Some(key) = renumber(&builder, &key_to_signature) {
+                let index = if let Some(key) = renumber(&builder, &key_to_signature) {
                     key
-               } else {
+                } else {
                     if let Some((_, index)) = id.get_key_value(&Signature::new(&builder)) {
                         *index
                     } else {

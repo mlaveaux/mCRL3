@@ -29,7 +29,7 @@ pub enum IOError {
 /// Dedicated function to parse the following transition formats:
 ///     `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///     `(<from>: Nat, <label>: Str, <to>: Nat)`
-/// 
+///
 /// This was generally faster than the regex variant, since that one has to backtrack after
 fn read_transition(input: &str) -> Option<(&str, &str, &str)> {
     let start_paren = input.find('(')?;
@@ -95,8 +95,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
 
     while let Some(line) = lines.next() {
         trace!("{line}");
-        let (from_txt, label_txt, to_txt) = read_transition(line)
-            .ok_or(IOError::InvalidTransition(line.clone()))?;
+        let (from_txt, label_txt, to_txt) = read_transition(line).ok_or(IOError::InvalidTransition(line.clone()))?;
 
         // Parse the from and to states, with the given label.
         let from = StateIndex::new(from_txt.parse()?);
