@@ -25,6 +25,15 @@ pub struct TagIndex<T, Tag> {
     marker: PhantomData<fn() -> Tag>,
 }
 
+impl<T: Default, Tag> Default for TagIndex<T, Tag> {
+    fn default() -> Self {
+        Self {
+            index: T::default(),
+            marker: PhantomData,
+        }
+    }
+}
+
 impl<T: PartialEq, Tag> Eq for TagIndex<T, Tag> {}
 
 impl<T: PartialEq, Tag> PartialEq for TagIndex<T, Tag> {

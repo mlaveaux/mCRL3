@@ -256,14 +256,14 @@ pub trait CompressedEntry {
 impl CompressedEntry for usize {
     fn to_bytes(&self, bytes: &mut [u8]) {
         let array = &self.to_le_bytes();
-        for (i, byte) in bytes.iter_mut().enumerate() {
+        for (i, byte) in bytes.iter_mut().enumerate().take(usize::BITS as usize / 8) {
             *byte = array[i];
         }
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
         let mut array = [0; 8];
-        for (i, byte) in bytes.iter().enumerate() {
+        for (i, byte) in bytes.iter().enumerate().take(usize::BITS as usize / 8) {
             array[i] = *byte;
         }
         usize::from_le_bytes(array)
