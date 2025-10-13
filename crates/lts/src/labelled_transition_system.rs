@@ -66,8 +66,6 @@ impl LabelledTransitionSystem {
             num_of_transitions += 1;
         }
 
-        println!("What");
-
         // Track the number of transitions before every state.
         states.fold(0, |count, state| {
             let result = count + state.outgoing_end;
