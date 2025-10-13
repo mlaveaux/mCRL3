@@ -16,11 +16,18 @@ pub struct IncomingTransitions {
 /// Stores the offsets at which the transitions for a state can be found.
 ///
 /// The offsets [begin, end] contain all incoming transitions, and [begin, silent] contain only the silent transitions.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 struct TransitionIndex {
     offset: u8,
     start: usize,
     end: usize,
+}
+
+impl TransitionIndex {
+    fn new(start: usize, end: usize) -> TransitionIndex {
+        let offset = start.bytes_required() as u8;
+        TransitionIndex { offset, start, end }
+    }
 }
 
 impl IncomingTransitions {
@@ -31,25 +38,26 @@ impl IncomingTransitions {
         // Compute the number of incoming (silent) transitions for each state.
         for state_index in lts.iter_states() {
             for transition in lts.outgoing_transitions(state_index) {
-                state2incoming.index(transition.to.value()).end += 1;
+                // Updating end does not require shifting the offset.
+                state2incoming.update(transition.to.value(), |incoming| incoming.end += 1);
             }
         }
 
         // Fold the counts in state2incoming. Temporarily mixing up the data
         // structure such that after placing the transitions below the counts
         // will be correct.
-        state2incoming.fold(0, |count, index| {
-            let end = count + index.end;
-            index.start = end;
-            index.end = end;
-            end
+        state2incoming.fold(0, |offset, incoming| {
+            let new_offset = offset + incoming.end;
+            *incoming = TransitionIndex::new(offset, offset);
+            new_offset
         });
 
         for state_index in lts.iter_states() {
             for transition in lts.outgoing_transitions(state_index) {
-                let index = &mut state2incoming.index(transition.to.value());
-                index.start -= 1;
-                incoming_transitions.set(index.start, Transition::new(transition.label, state_index));
+                state2incoming.update(transition.to.value(), |incoming| {
+                    incoming_transitions.set(incoming.end, Transition::new(transition.label, state_index));
+                    incoming.end += 1;
+                });
             }
         }
 
@@ -111,6 +119,7 @@ impl CompressedEntry for TransitionIndex {
 mod tests {
     use super::*;
 
+    use log::trace;
     use mcrl3_utilities::random_test;
 
     use crate::random_lts;
@@ -119,7 +128,17 @@ mod tests {
     fn test_random_incoming_transitions() {
         random_test(100, |rng| {
             let lts = random_lts(rng, 10, 3, 3);
-            let _ = IncomingTransitions::new(&lts);
+            trace!("{:?}", lts);
+            let incoming = IncomingTransitions::new(&lts);
+
+            // Check that for every outgoing transition there is an incoming transition.
+            for state_index in lts.iter_states() {
+                for transition in lts.outgoing_transitions(state_index) {
+                    let found = incoming.incoming_transitions(transition.to)
+                        .any(|incoming| incoming.label == transition.label && incoming.to == state_index);
+                    assert!(found, "Outgoing transition ({state_index}, {transition:?}) should have an incoming transition");
+                }
+            }
         });
     }
 }

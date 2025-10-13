@@ -75,9 +75,11 @@ impl LabelledTransitionSystem {
 
         // Place the transitions, and increment the end for every state.
         let mut transitions = bytevec![Transition::new(LabelIndex::new(0), StateIndex::new(0)); num_of_transitions];
-        for (from, label, to) in transition_iter() {
-            transitions.set(states.index(*from).outgoing_end, Transition::new(label, to));
-            states.update(*from, |entry| entry.outgoing_end += 1);
+        for (from, label, to) in transition_iter() {            
+            states.update(*from, |entry| {
+                transitions.set(entry.outgoing_end, Transition::new(label, to));
+                entry.outgoing_end += 1
+            });
         }
 
         // Keep track of which label indexes are hidden labels.
@@ -133,8 +135,7 @@ impl LabelledTransitionSystem {
             let new_state_index = permutation(state_index);
             let state = lts.states.index(*state_index);
             states.update(*new_state_index, |entry| {
-                entry.outgoing_start = state.outgoing_start;
-                entry.outgoing_end = state.outgoing_end;
+                *entry = state.clone();
             });
         }
 
