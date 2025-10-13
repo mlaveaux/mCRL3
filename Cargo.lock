@@ -3508,6 +3508,7 @@ dependencies = [
  "ahash",
  "arbitrary",
  "backtrace",
+ "delegate",
  "env_logger",
  "hashbrown 0.16.0",
  "log",

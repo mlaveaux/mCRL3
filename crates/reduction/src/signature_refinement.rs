@@ -79,8 +79,6 @@ pub fn branching_bisim_sigref(
     let incoming = IncomingTransitions::new(&preprocessed_lts);
     timepre.finish();
 
-    return (preprocessed_lts, _preprocess_partition);
-
     let mut time = timing.start("reduction");
     let mut expected_builder = SignatureBuilder::default();
     let mut visited = FxHashSet::default();
