@@ -87,7 +87,7 @@ pub fn read_aut(reader: impl Read, mut hidden_labels: Vec<String>) -> Result<Lab
     let mut labels_index: HashMap<String, LabelIndex> = HashMap::new();
     let mut labels: Vec<String> = Vec::new();
 
-    let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::default();
+    let mut transitions: Vec<(StateIndex, LabelIndex, StateIndex)> = Vec::with_capacity(num_of_transitions);
     let mut progress = Progress::new(
         |value, increment| debug!("Reading transitions {}%...", value / increment),
         num_of_transitions,
