@@ -51,6 +51,7 @@ fn main() -> Result<ExitCode, MCRL3Error> {
 
     let mut timing = Timing::new();
     let lts = read_aut(&file, cli.tau.unwrap_or_default())?;
+    print_allocator_metrics();
 
     let (preprocessed_lts, partition) = match cli.equivalence {
         Equivalence::StrongBisim => strong_bisim_sigref(lts, &mut timing),
