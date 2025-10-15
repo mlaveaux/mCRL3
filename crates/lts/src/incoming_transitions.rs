@@ -1,6 +1,6 @@
-use mcrl3_utilities::bytevec;
 use mcrl3_utilities::ByteCompressedVec;
 use mcrl3_utilities::CompressedEntry;
+use mcrl3_utilities::bytevec;
 
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;
@@ -9,111 +9,128 @@ use crate::Transition;
 
 /// Stores the incoming transitions for a given labelled transition system.
 pub struct IncomingTransitions {
-    incoming_transitions: ByteCompressedVec<Transition>,
+    transition_labels: ByteCompressedVec<LabelIndex>,
+    transition_from: ByteCompressedVec<StateIndex>,
     state2incoming: ByteCompressedVec<TransitionIndex>,
 }
 
 /// Stores the offsets at which the transitions for a state can be found.
 ///
-/// The offsets [begin, end] contain all incoming transitions, and [begin, silent] contain only the silent transitions.
+/// The offsets [start, next_start) contain all incoming transitions, and [start, silent_end) contain only the silent transitions.
 #[derive(Default, Clone, Debug)]
 struct TransitionIndex {
-    offset: u8,
     start: usize,
-    end: usize,
 }
 
 impl TransitionIndex {
-    fn new(start: usize, end: usize) -> TransitionIndex {
-        let offset = start.bytes_required() as u8;
-        TransitionIndex { offset, start, end }
+    fn new(start: usize) -> TransitionIndex {
+        TransitionIndex {
+            start,
+        }
     }
 }
 
 impl IncomingTransitions {
     pub fn new(lts: &LabelledTransitionSystem) -> IncomingTransitions {
-        let mut incoming_transitions = bytevec![Transition::new(LabelIndex::new(0), StateIndex::new(0)); lts.num_of_transitions()];
-        let mut state2incoming = bytevec![TransitionIndex::default(); lts.num_of_states()];
+        let num_states = lts.num_of_states();
+        let mut transition_labels =
+            bytevec![LabelIndex::new(0); lts.num_of_transitions()];
+        let mut transition_from =
+            bytevec![StateIndex::new(0); lts.num_of_transitions()];
+        let mut state2incoming = bytevec![TransitionIndex::default(); num_states + 1]; // +1 for sentinel
 
-        // Compute the number of incoming (silent) transitions for each state.
+        // Count the number of incoming transitions for each state
         for state_index in lts.iter_states() {
             for transition in lts.outgoing_transitions(state_index) {
-                // Updating end does not require shifting the offset.
-                state2incoming.update(transition.to.value(), |incoming| incoming.end += 1);
+                state2incoming.update(transition.to.value(), |incoming| incoming.start += 1);
             }
         }
 
-        // Fold the counts in state2incoming. Temporarily mixing up the data
-        // structure such that after placing the transitions below the counts
-        // will be correct.
+        // Compute the start offsets (prefix sum)
         state2incoming.fold(0, |offset, incoming| {
-            let new_offset = offset + incoming.end;
-            *incoming = TransitionIndex::new(offset, offset);
+            let new_offset = offset + incoming.start;
+            *incoming = TransitionIndex::new(offset);
             new_offset
         });
 
+        // Place the transitions
         for state_index in lts.iter_states() {
             for transition in lts.outgoing_transitions(state_index) {
                 state2incoming.update(transition.to.value(), |incoming| {
-                    incoming_transitions.set(incoming.end, Transition::new(transition.label, state_index));
-                    incoming.end += 1;
+                    transition_labels.set(incoming.start, transition.label);
+                    transition_from.set(incoming.start, state_index);
+                    incoming.start += 1;
                 });
             }
         }
 
-        for state_index in lts.iter_states() {
-            // Sort the incoming transitions such that silent transitions come first.
-            let state = state2incoming.index(state_index.value());
-            incoming_transitions.sort_unstable_range(state.start, state.end);
+        // Add sentinel state
+        state2incoming.push(TransitionIndex::new(transition_labels.len()));
+
+        // Sort the incoming transitions such that silent transitions come first.
+        for state_index in 0..num_states {
+            let state = state2incoming.index(state_index);
+            let next_state = state2incoming.index(state_index + 1);
+            
+            // Get the ranges to sort
+            let start = state.start;
+            let end = next_state.start;
+            
+            // Extract, sort, and put back
+            let mut pairs: Vec<_> = (start..end)
+                .map(|i| (transition_labels.index(i), transition_from.index(i)))
+                .collect();
+            pairs.sort_unstable_by_key(|(label, _)| *label);
+            
+            for (i, (label, from)) in pairs.into_iter().enumerate() {
+                transition_labels.set(start + i, label);
+                transition_from.set(start + i, from);
+            }
         }
 
         IncomingTransitions {
-            incoming_transitions,
+            transition_labels,
+            transition_from,
             state2incoming,
         }
     }
 
     /// Returns an iterator over the incoming transitions for the given state.
-    pub fn incoming_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> {
+    pub fn incoming_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_ {
         let state = self.state2incoming.index(state_index.value());
-        self.incoming_transitions.iter_range(state.start,state.end)
+        let next_state = self.state2incoming.index(state_index.value() + 1);
+        (state.start..next_state.start).map(move |i| {
+            Transition::new(self.transition_labels.index(i), self.transition_from.index(i))
+        })
     }
 
     // Return an iterator over the incoming silent transitions for the given state.
-    pub fn incoming_silent_transitions(
-        &self,
-        state_index: StateIndex,
-    ) -> impl Iterator<Item = Transition> {
-        // Check for hidden label.
+    pub fn incoming_silent_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_ {
         let state = self.state2incoming.index(state_index.value());
-        self.incoming_transitions.iter_range(state.start,state.end)
+        let next_state = self.state2incoming.index(state_index.value() + 1);
+        (state.start..next_state.start)
+            .map(move |i| {
+                Transition::new(self.transition_labels.index(i), self.transition_from.index(i))
+            })
             .take_while(|transition| transition.label == 0)
     }
 }
 
 impl CompressedEntry for TransitionIndex {
     fn to_bytes(&self, bytes: &mut [u8]) {
-        bytes[0] = self.offset;
-        self.start.to_bytes(&mut bytes[1..self.offset as usize + 1]);
-        self.end.to_bytes(&mut bytes[self.offset as usize + 1..]);
+        self.start.to_bytes(bytes);
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
-        let offset = bytes[0];
-
         Self {
-            offset,
-            start: usize::from_bytes(&bytes[1..offset as usize + 1]),
-            end: usize::from_bytes(&bytes[offset as usize + 1..]),
+            start: usize::from_bytes(bytes),
         }
     }
 
     fn bytes_required(&self) -> usize {
-        // One for the first offset.
-        1 + self.start.bytes_required() + self.end.bytes_required()
+        self.start.bytes_required()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -134,9 +151,13 @@ mod tests {
             // Check that for every outgoing transition there is an incoming transition.
             for state_index in lts.iter_states() {
                 for transition in lts.outgoing_transitions(state_index) {
-                    let found = incoming.incoming_transitions(transition.to)
+                    let found = incoming
+                        .incoming_transitions(transition.to)
                         .any(|incoming| incoming.label == transition.label && incoming.to == state_index);
-                    assert!(found, "Outgoing transition ({state_index}, {transition:?}) should have an incoming transition");
+                    assert!(
+                        found,
+                        "Outgoing transition ({state_index}, {transition:?}) should have an incoming transition"
+                    );
                 }
             }
         });
