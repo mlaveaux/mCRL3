@@ -23,7 +23,8 @@ pub type StateIndex = TagIndex<usize, StateTag>;
 pub struct LabelledTransitionSystem {
     /// Encodes the states and their outgoing transitions.
     states: ByteCompressedVec<State>,
-    transitions: ByteCompressedVec<Transition>,
+    transition_labels: ByteCompressedVec<LabelIndex>,
+    transition_to: ByteCompressedVec<StateIndex>,
 
     /// Keeps track of the labels for every index, and which of them are hidden.
     labels: Vec<String>,
@@ -62,25 +63,37 @@ impl LabelledTransitionSystem {
                 states.push(State::default());
             }
 
-            states.update(*from, |entry| entry.outgoing_end += 1);
+            states.update(*from, |entry| entry.outgoing_start += 1);
             num_of_transitions += 1;
         }
 
         // Track the number of transitions before every state.
         states.fold(0, |count, state| {
-            let result = count + state.outgoing_end;
-            *state = State::new(count, count);
+            let result = count + state.outgoing_start;
+            *state = State::new(count);
             result
         });
 
         // Place the transitions, and increment the end for every state.
-        let mut transitions = bytevec![Transition::new(LabelIndex::new(0), StateIndex::new(0)); num_of_transitions];
-        for (from, label, to) in transition_iter() {            
+        let mut transition_labels = bytevec![LabelIndex::new(0); num_of_transitions];
+        let mut transition_to = bytevec![StateIndex::new(0); num_of_transitions];
+        for (from, label, to) in transition_iter() {
             states.update(*from, |entry| {
-                transitions.set(entry.outgoing_end, Transition::new(label, to));
-                entry.outgoing_end += 1
+                transition_labels.set(entry.outgoing_start, label);
+                transition_to.set(entry.outgoing_start, to);
+                entry.outgoing_start += 1
             });
         }
+
+        // Reset the offset.
+        states.fold(0, |previous, state| {
+            let result = state.outgoing_start;
+            state.outgoing_start = previous;
+            result
+        });
+
+        // Add the sentinel state.
+        states.push(State::new(transition_labels.len()));
 
         // Keep track of which label indexes are hidden labels.
         let mut hidden_indices: Vec<usize> = Vec::new();
@@ -101,24 +114,26 @@ impl LabelledTransitionSystem {
         };
 
         // Remap all hidden actions to zero.
-        transitions.map(|trans| {
-            if hidden_indices.binary_search(&trans.label.value()).is_ok() {
-                trans.label = LabelIndex::new(0);
+        transition_labels.map(|label| {
+            if hidden_indices.binary_search(&label.value()).is_ok() {
+                *label = LabelIndex::new(0);
             } else if introduced_tau {
                 // Remap all labels to not be the zero hidden action.
-                trans.label = LabelIndex::new(*trans.label + 1);
+                *label = LabelIndex::new(label.value() + 1);
             }
         });
 
         println!("States {}", states.metrics());
-        println!("Transitions {}", transitions.metrics());
+        println!("Transition labels {}", transition_labels.metrics());
+        println!("Transition to {}", transition_to.metrics());
 
         LabelledTransitionSystem {
             initial_state,
             labels,
             hidden_labels,
             states,
-            transitions,
+            transition_labels,
+            transition_to,
         }
     }
 
@@ -144,7 +159,8 @@ impl LabelledTransitionSystem {
             labels: lts.labels,
             hidden_labels: lts.hidden_labels,
             states,
-            transitions: lts.transitions,
+            transition_labels: lts.transition_labels,
+            transition_to: lts.transition_to,
         }
     }
 
@@ -154,19 +170,27 @@ impl LabelledTransitionSystem {
     }
 
     /// Returns the set of outgoing transitions for the given state.
-    pub fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> {
+    pub fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_ {
         let state = &self.states.index(*state_index);
-        self.transitions.iter_range(state.outgoing_start, state.outgoing_end)
+        let next_state = &self.states.index(*state_index + 1);
+        let start = state.outgoing_start;
+        let end = next_state.outgoing_start;
+
+        (start..end).map(move |i| Transition {
+            label: self.transition_labels.index(i),
+            to: self.transition_to.index(i),
+        })
     }
 
     /// Iterate over all state_index in the labelled transition system
     pub fn iter_states(&self) -> impl Iterator<Item = StateIndex> + use<> {
-        (0..self.states.len()).map(StateIndex::new)
+        (0..self.states.len() - 1).map(StateIndex::new)
     }
 
     /// Returns the number of states.
     pub fn num_of_states(&self) -> usize {
-        self.states.len()
+        // Remove the sentinel state.
+        self.states.len() - 1
     }
 
     /// Returns the number of labels.
@@ -176,7 +200,7 @@ impl LabelledTransitionSystem {
 
     /// Returns the number of transitions.
     pub fn num_of_transitions(&self) -> usize {
-        self.transitions.len()
+        self.transition_labels.len()
     }
 
     /// Returns the list of labels.
@@ -198,44 +222,34 @@ impl LabelledTransitionSystem {
 /// A single state in the LTS, containing a vector of outgoing edges.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 struct State {
-    offset: u8,
     outgoing_start: usize,
-    outgoing_end: usize,
 }
 
 impl State {
     /// Constructs a new state
-    fn new(outgoing_start: usize, outgoing_end: usize) -> Self {
-        Self { offset: outgoing_start.bytes_required() as u8, outgoing_start, outgoing_end }
+    fn new(outgoing_start: usize) -> Self {
+        Self { outgoing_start }
     }
 }
 
 impl CompressedEntry for State {
     fn to_bytes(&self, bytes: &mut [u8]) {
-        bytes[0] = self.offset;
-        self.outgoing_start.to_bytes(&mut bytes[1..self.offset as usize + 1]);
-        self.outgoing_end.to_bytes(&mut bytes[self.offset as usize + 1..]);
+        self.outgoing_start.to_bytes(bytes);
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
-        let offset = bytes[0];
-
         Self {
-            offset,
-            outgoing_start: usize::from_bytes(&bytes[1..offset as usize + 1]),
-            outgoing_end: usize::from_bytes(&bytes[offset as usize + 1..]),
+            outgoing_start: usize::from_bytes(bytes),
         }
     }
 
     fn bytes_required(&self) -> usize {
-        // One for the first offset.
-        1 + self.outgoing_start.bytes_required() + self.outgoing_end.bytes_required()
+        self.outgoing_start.bytes_required()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Transition {
-    offset: u8,
     pub label: LabelIndex,
     pub to: StateIndex,
 }
@@ -243,33 +257,9 @@ pub struct Transition {
 impl Transition {
     /// Constructs a new transition.
     pub fn new(label: LabelIndex, to: StateIndex) -> Self {
-        Self { offset: label.bytes_required() as u8, label, to }
+        Self { label, to }
     }
 }
-
-impl CompressedEntry for Transition {
-    fn to_bytes(&self, bytes: &mut [u8]) {
-        bytes[0] = self.offset;
-        self.label.to_bytes(&mut bytes[1..self.offset as usize + 1]);
-        self.to.to_bytes(&mut bytes[self.offset as usize + 1..]);
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Self {
-        let offset = bytes[0];
-
-        Self {
-            offset,
-            label: LabelIndex::from_bytes(&bytes[1..offset as usize + 1]),
-            to: StateIndex::from_bytes(&bytes[offset as usize + 1..]),
-        }
-    }
-
-    fn bytes_required(&self) -> usize {
-        // One for the first offset.
-        1 + self.label.bytes_required() + self.to.bytes_required()
-    }
-}
-
 
 impl fmt::Display for LabelledTransitionSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -297,40 +287,3 @@ impl fmt::Debug for LabelledTransitionSystem {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use mcrl3_utilities::random_test;
-    use rand::Rng;
-
-    #[test]
-    fn random_state_entry() {
-        random_test(100, |rng| {
-            let begin: usize = rng.random::<u64>() as usize;
-            let end: usize = rng.random::<u64>() as usize;
-
-            let state = State::new(begin, end);
-
-            let mut bytes: Vec<u8> = vec![0; state.bytes_required()];
-            state.to_bytes(&mut bytes[..]);
-            assert_eq!(State::from_bytes(&bytes[..]), state);
-        });
-    }
-
-    #[test]
-    fn random_transition_entry() {
-        random_test(100, |rng| {
-            let label: usize = rng.random::<u64>() as usize;
-            let to: usize = rng.random::<u64>() as usize;
-
-            let state = Transition::new(LabelIndex::new(label), StateIndex::new(to));
-
-            let mut bytes: Vec<u8> = vec![0; state.bytes_required()];
-            state.to_bytes(&mut bytes[..]);
-            assert_eq!(Transition::from_bytes(&bytes[..]), state);
-        });
-    }
-}
-
