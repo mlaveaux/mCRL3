@@ -146,13 +146,16 @@ impl LabelledTransitionSystem {
         let mut states = bytevec![State::default(); lts.num_of_states()];
 
         for state_index in lts.iter_states() {
-            // Keep the transitions the same, but
+            // Keep the transitions the same move the state indices around
             let new_state_index = permutation(state_index);
             let state = lts.states.index(*state_index);
             states.update(*new_state_index, |entry| {
                 *entry = state.clone();
             });
         }
+
+        // Add the sentinel state.
+        states.push(State::new(lts.num_of_transitions()));
 
         LabelledTransitionSystem {
             initial_state: permutation(lts.initial_state),
@@ -184,7 +187,7 @@ impl LabelledTransitionSystem {
 
     /// Iterate over all state_index in the labelled transition system
     pub fn iter_states(&self) -> impl Iterator<Item = StateIndex> + use<> {
-        (0..self.states.len() - 1).map(StateIndex::new)
+        (0..self.num_of_states()).map(StateIndex::new)
     }
 
     /// Returns the number of states.
@@ -264,7 +267,7 @@ impl Transition {
 impl fmt::Display for LabelledTransitionSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print some information about the LTS.
-        writeln!(f, "Number of states: {}", self.states.len())?;
+        writeln!(f, "Number of states: {}", self.num_of_states())?;
         writeln!(f, "Number of action labels: {}", self.labels.len())?;
         write!(f, "Number of transitions: {}", self.num_of_transitions())
     }
