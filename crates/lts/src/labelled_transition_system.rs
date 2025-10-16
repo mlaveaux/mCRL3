@@ -38,7 +38,7 @@ impl LabelledTransitionSystem {
     /// Creates a new a labelled transition system with the given transitions, labels, and hidden labels.
     ///
     /// The initial state is the state with the given index.
-    /// num_of_states is the number of states in the LTS, if known. If None then deadlock states without incoming transitions are removed.
+    /// num_of_states is the number of states in the LTS, if known.
     pub fn new<I, F>(
         initial_state: StateIndex,
         num_of_states: Option<usize>,

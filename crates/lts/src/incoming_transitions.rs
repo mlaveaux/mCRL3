@@ -37,7 +37,7 @@ impl IncomingTransitions {
             bytevec![LabelIndex::new(0); lts.num_of_transitions()];
         let mut transition_from =
             bytevec![StateIndex::new(0); lts.num_of_transitions()];
-        let mut state2incoming = bytevec![TransitionIndex::default(); num_states + 1]; // +1 for sentinel
+        let mut state2incoming = bytevec![TransitionIndex::default(); num_states];
 
         // Count the number of incoming transitions for each state
         for state_index in lts.iter_states() {
@@ -63,6 +63,12 @@ impl IncomingTransitions {
                 });
             }
         }
+
+        state2incoming.fold(0, |previous, state| {
+            let result = state.start;
+            state.start = previous;
+            result
+        });
 
         // Add sentinel state
         state2incoming.push(TransitionIndex::new(transition_labels.len()));
@@ -157,6 +163,19 @@ mod tests {
                     assert!(
                         found,
                         "Outgoing transition ({state_index}, {transition:?}) should have an incoming transition"
+                    );
+                }
+            }
+
+            // Check that all incoming transitions belong to some outgoing transition.
+            for state_index in lts.iter_states() {
+                for transition in incoming.incoming_transitions(state_index) {
+                    let found = lts
+                        .outgoing_transitions(transition.to)
+                        .any(|outgoing| outgoing.label == transition.label && outgoing.to == state_index);
+                    assert!(
+                        found,
+                        "Incoming transition ({transition:?}, {state_index}) should have an outgoing transition"
                     );
                 }
             }
