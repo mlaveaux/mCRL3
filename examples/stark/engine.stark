@@ -1,0 +1,194 @@
+param MIN_TEMP = 0;
+param MAX_TEMP = 120;
+param STRESS_INCR = 0.1;
+param LOW = 0;
+param HALF = 1;
+param FULL = 2;
+param OK = 0;
+param HOT = 1;
+param INITIAL_TEMP = 95.0;
+
+param TAU = 100;
+param K = 100;
+param H = 1000;
+
+param TEMP_OFFSET = -1.5;
+param ETA_1 = 0.0;
+param ETA_2 = 0.02;
+param ETA_3 = 0.05;
+param ETA_4 = 0.3;
+
+/*type speed_value = LOW|HALF|FULL;
+type warning_value = OK|HOT;*/
+
+variables {
+  real p1 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  real p2 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  real p3 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  real p4 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  real p5 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  real p6 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  real stress range [0,1] = 0.0;
+  real temp range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+  bool cool = false;
+  int speed = HALF;
+}
+
+
+function temperatureUpdateInOneStep(bool cool, int speed) {
+  if (cool) {
+    return R[-1.2, -0.8];
+  } else {
+    if (speed == LOW ){
+      return R[0.1, 0.3];
+    } else {
+      if (speed == HALF) {
+        return R[0.3, 0.7];
+      } else {
+        return R[0.7, 1.2];
+      }
+    }
+  }
+}
+
+function partialStress (real a){
+  if (a>100) {
+    return 1.0;
+  } else {
+    return 0.0;
+  }
+}
+
+function isStressed (real a1, real a2, real a3, real a4, real a5, real a6) {
+  return partialStress(a1) + partialStress(a2) + partialStress(a3) + partialStress(a4) + partialStress(a5) + partialStress(a6);
+}
+
+function pen_temp (real temperature1, real temperature2) {
+  return abs(temperature1 - temperature2)/abs(MAX_TEMP - MIN_TEMP);
+}
+
+function pen_wrn (int warning) {
+  if (warning == HOT) {
+    return 1.0;
+  } else {
+    return 0.0;
+  }
+}
+
+function get_stress (real stress_value) {
+  return stress_value;
+}
+
+
+component Engine{
+    variables{
+        real ch_temp range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP;
+        int ch_wrn = OK;
+        int ch_speed = HALF;
+        int ch_out = HALF;
+        int ch_in = HALF;
+    }
+    controller {
+        aiState Ctrl {
+            if (ch_temp >= 99.8) {
+                cool' = true;
+                step Cooling;
+            } else {
+            exec Check;
+            }
+        }
+        aiState Check {
+            if (ch_speed == LOW) {
+                speed' = LOW;
+                cool' = false;
+                step Ctrl;
+            } else {
+                speed' = ch_in;
+                cool' = false;
+                step Ctrl;
+            }
+        }
+        aiState Cooling {
+            4#step Check;
+        }
+        aiState IDS {
+            if (temp>101.0 & !cool) {
+                ch_wrn' = HOT;
+                ch_speed' = LOW;
+                ch_out' = FULL;
+                step IDS;
+            } else {
+                ch_wrn' = OK;
+                ch_speed' = HALF;
+                ch_out' = HALF;
+                step IDS;
+            }
+        }
+    }
+    init Ctrl || IDS
+}
+
+environment {
+  let
+    deltaTemp = temperatureUpdateInOneStep(cool, speed)
+  in
+    temp' = temp + deltaTemp;
+    ch_temp' = ch_temp + deltaTemp;
+    p1' = temp;
+    p2' = p1;
+    p3' = p2;
+    p4' = p3;
+    p5' = p4;
+    p6' = p5;
+    if (isStressed(p1,p2,p3,p4,p5,p6) > 3) {
+      stress' = stress + STRESS_INCR;
+    }
+}
+
+
+
+penalty rho_temperature = pen_temp(temp,ch_temp)
+
+penalty rho_warning = pen_wrn(ch_wrn)
+
+penalty rho_stress = pen_stress(stress)
+
+
+
+distance expr_temperature = < rho_temperature;
+
+distance expr_warning = < rho_warning;
+
+distance expr_stress = < rho_stress;
+
+distance min_temperature = \F[TAU,TAU+K-1] expr_temperature;
+
+distance max_temperature = \G[TAU,TAU+K-1] expr_temperature;
+
+distance max_warning = \G[TAU,TAU+K+10] expr_warning;
+
+distance max_stress = \G[TAU,TAU+K+10] expr_stress;
+
+
+
+perturbation fake_temperature = [ch_temp <- temp * TEMP_OFFSET * R[0,1]]@0;
+
+perturbation it_fake_temperature = fake_temperature^K;
+
+
+
+formula phi_1 = \D[min_temperature,it_fake_temperature] >= ETA_1;
+
+formula phi_2 = \D[max_temperature,it_fake_temperature] <= ETA_2;
+
+formula phi_3 = \D[max_warning,it_fake_temperature] <= ETA_3;
+
+formula phi_4 = \D[max_stress,it_fake_temperature] > ETA_4;
+
+formula phi_5 = phi_1 && phi_2;
+
+formula phi_6 = phi_3 && phi_4;
+
+formula phi_7 = !phi_5 || phi_6;
+
+formula phi = \F[0,H] phi_7;

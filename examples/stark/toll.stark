@@ -1,0 +1,109 @@
+param A = 0.25;
+param B = 2.0;
+param N = 0.0;
+param TIMER = 1;
+param INIT_SPEED = 25.0;
+param MAX_SPEED = 40.0;
+param INIT_DISTANCE = 10000.0;
+param H = 350;
+
+function eval_bd(real speed) {
+  return (speed^2 + (A + B) * (A * TIMER^2 + 2 * speed * TIMER)) / (2 * B);
+}
+
+function new_speed (real speed, real acc) {
+  if (accel == N) {
+      return max(0.0, speed - A);
+    } else {
+      return min(MAX_SPEED, max(0.0, speed + acc));
+    }
+}
+
+function new_s_speed (real speed, real acc, real token) {
+  if (token < 0.5) {
+      return new_speed(speed, acc) + R[0,0.5];
+    } else {
+      return new_speed(speed, acc) - R[0,0.5];
+    }
+}
+
+global variables {
+  real p_speed range [0,MAX_SPEED] = INIT_SPEED_V1;
+  real p_distance range [0,INIT_DISTANCE] = INIT_DISTANCE;
+  real braking_distance range [0, INIT_DISTANCE] = eval_bd(INIT_SPEED);
+  real gap range [0, INIT_DISTANCE] = INIT_DISTANCE - eval_bd(INIT_SPEED);
+}
+
+component vehicle {
+  variables{
+    real s_speed range [0,MAX_SPEED] = 25.0;
+    real accel range [-B,A]= N;
+    int timer_V range [0,TIMER] = 0;
+  }
+  controller {
+    state Ctrl {
+      if (s_speed > 0) {
+        if (gap > 0) {
+          accel' = A;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = - B;
+          timer_V' = TIMER;
+          step Decelerate;
+        }
+      } else {
+        if (gap > 0) {
+          accel' = A;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = N;
+          timer_V' = TIMER;
+          step Stop_V1;
+        }
+      }
+    }
+    state Accelerate {
+      if (timer_V > 0) {
+        step Accelerate;
+      } else {
+        exec Ctrl;
+      }
+    }
+    state Decelerate {
+      if (timer_V > 0) {
+        step Decelerate;
+      } else {
+        exec Ctrl;
+      }
+    }
+    state Stop {
+      if (timer_V > 0) {
+        step Stop;
+      } else {
+        timer_V' = TIMER;
+        step Stop;
+      }
+    }
+  }
+  init Ctrl
+}
+
+environment{
+  let
+    travel = max(0.0, accel/2 + p_speed)
+  and
+    token = R[0,1]
+  and
+    new_sens_speed = new_s_speed(p_speed, accel, token)
+  in
+    timer_V' = timer_V - 1;
+    p_speed' = new_speed(p_speed, accel);
+    s_speed' = new_sens_speed;
+    p_distance' = p_distance - travel;
+    if (timer_V - 1 == 0) {
+      braking_distance' = eval_bd(new_sens_speed);
+      gap = p_distance - travel - eval_bd(new_sens_speed);
+    }
+}

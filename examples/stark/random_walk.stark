@@ -1,0 +1,11 @@
+const test = 10;
+
+variables {
+    real x range [0, 100] = 50;
+    real y range [0, 100] = 50;
+}
+
+environment {
+    x' = x + U[-1,0,1];
+    y' = y + U[-1,0,1];
+}
