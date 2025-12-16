@@ -1,0 +1,279 @@
+// JSpearSpecificationLanguage
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" | "\u{000C}" }
+COMMENT    = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+// Identifiers and literals
+DIGIT   = _{ '0'..'9' }
+LETTER  = _{ 'a'..'z' | 'A'..'Z' | "_" }
+
+ID      = @{ LETTER ~ (LETTER | DIGIT)* }
+NEXT_ID = @{ ID ~ "'" }
+INTEGER = @{ DIGIT+ }
+REAL    = @{ ((DIGIT* ~ "." ~ DIGIT+) | (DIGIT+ ~ ".")) ~ (("E" | "e") ~ "-"? ~ DIGIT+)? }
+
+// Entry point
+StarkSpecification = { SOI ~ Element* ~ EOI }
+
+Element = _{
+      DeclarationConstant
+    | DeclarationParameter
+    | DeclarationVariables
+    | DeclarationType
+    | DeclarationEnvironment
+    | DeclarationPenalty
+    | DeclarationFunction
+    | DeclarationComponent
+    | DeclarationPerturbation
+    | DeclarationDistance
+    | DeclarationFormula
+}
+
+// Declarations
+DeclarationFormula = _{ "formula" ~ ID ~ "=" ~ RobtlFormula ~ ";" }
+
+DeclarationDistance = _{ "distance" ~ ID ~ "=" ~ DistanceExpression ~ ";" }
+
+DeclarationPerturbation = _{ "perturbation" ~ ID ~ "=" ~ PerturbationExpression ~ ";" }
+
+// Functions
+DeclarationFunction = _{
+	"function" ~ ID ~ "(" ~ (FunctionArgument ~ ("," ~ FunctionArgument)*)? ~ ")" ~ FunctionBlockStatement
+}
+
+FunctionStatement = _{
+      FunctionReturnStatement
+    | FunctionIfThenElseStatement
+    | FunctionBlockStatement
+    | FunctionLetStatement
+}
+
+FunctionLetStatement = _{ "let" ~ ID ~ "=" ~ Expression ~ "in" ~ FunctionStatement }
+
+FunctionIfThenElseStatement = _{
+	"if" ~ "(" ~ Expression ~ ")" ~ FunctionStatement ~ ("else" ~ FunctionStatement)?
+}
+
+FunctionReturnStatement = _{ "return" ~ Expression ~ ";" }
+
+FunctionBlockStatement = _{ "{" ~ FunctionStatement ~ "}" }
+
+FunctionArgument = _{ Ty ~ ID }
+
+// Components and controllers
+DeclarationComponent = _{
+    "component" ~ ID ~ "{" ~
+    "variables" ~ "{" ~ VariableDeclaration* ~ "}" ~
+    "controller" ~ "{" ~ ControllerStateDeclaration* ~ "}" ~
+    "init" ~ ControllerExpression ~
+    "}"
+}
+
+ControllerStateDeclaration = _{ "aiState" ~ ID ~ ControllerBlockBehaviour }
+
+ControllerBlockBehaviour = _{ "{" ~ ControllerCommand* ~ "}" }
+
+ControllerSequentialBehaviour = _{ ControllerVariableAssignment* ~ ControllerTerminalStatement }
+
+ControllerCommand = _{
+      ControllerStepAtion
+    | ControllerExecAction
+    | ControllerLetAssignment
+    | ControllerVariableAssignment
+    | ControllerIfThenElseBehaviour
+    | ControllerBlockBehaviour
+}
+
+ControllerTerminalStatement = _{
+      ControllerStepAtion
+    | ControllerExecAction
+    | ControllerLetAssignment
+    | ControllerIfThenElseBehaviour
+}
+
+ControllerCaseStatment = _{ "case" ~ "(" ~ Expression ~ ")" ~ ControllerBlockBehaviour }
+
+ControllerExpression = _{ ID ~ ("||" ~ ID)* }
+
+DeclarationPenalty = _{ "penalty" ~ ID ~ "=" ~ Expression }
+
+ControllerLetAssignment = _{ "let" ~ ID ~ "=" ~ Expression ~ "in" ~ ControllerBlockBehaviour }
+
+ControllerVariableAssignment = _{ ("when" ~ Expression)? ~ VarExpression ~ "=" ~ Expression ~ ";" }
+
+ControllerExecAction = _{ "exec" ~ ID ~ ";" }
+
+ControllerStepAtion = _{ (Expression ~ "#")? ~ "step" ~ ID ~ ";" }
+
+ControllerIfThenElseBehaviour = _{ "if" ~ "(" ~ Expression ~ ")" ~ ControllerBlockBehaviour ~ ("else" ~ ControllerBlockBehaviour)? }
+
+// Environment
+DeclarationEnvironment = _{ "environment" ~ EnvironmentBlock }
+
+EnvironmentBlock = _{ "{" ~ EnvironmentCommand* ~ "}" }
+
+EnvironmentCommand = _{
+        EnvironmentLetCommand
+    | EnvironmentIfThenElse
+    | EnvironmentAssignment
+    | EnvironmentBlock
+}
+
+EnvironmentAssignment = _{ VariableAssignment }
+
+EnvironmentIfThenElse = _{ "if" ~ "(" ~ Expression ~ ")" ~ EnvironmentCommand ~ ("else" ~ EnvironmentCommand)? }
+
+EnvironmentLetCommand = _{
+	"let" ~ LocalVariable ~ ("and" ~ LocalVariable)* ~ "in" ~ EnvironmentCommand
+}
+
+VariableAssignment = _{ ("when" ~ Expression)? ~ VarExpression ~ "=" ~ Expression ~ ";" }
+
+VarExpression = _{ NEXT_ID }
+
+LocalVariable = _{ ID ~ "=" ~ Expression }
+
+// Types and variables
+DeclarationType = _{ "type" ~ ID ~ "=" ~ TypeElementDeclaration ~ ("|" ~ TypeElementDeclaration)* ~ ";" }
+
+TypeElementDeclaration = _{ ID }
+
+DeclarationVariables = _{ ("global")? ~ "variables" ~ "{" ~ VariableDeclaration* ~ "}" }
+
+VariableDeclaration = _{ Ty ~ ID ~ ("range" ~ "[" ~ Expression ~ "," ~ Expression ~ "]")? ~ "=" ~ Expression ~ ";" }
+
+Ty = _{
+      "int"
+    | "real"
+    | "bool"
+    | ID
+}
+
+DeclarationParameter = _{ "param" ~ ID ~ "=" ~ Expression ~ ";" }
+
+DeclarationConstant = _{ "const" ~ ID ~ "=" ~ Expression ~ ";" }
+
+// Expressions using prefix-primary-postfix with infix chaining
+Expression = _{ ExpressionPrefix* ~ Primary ~ ExpressionPostfix* ~ (ExpressionInfix ~ ExpressionPrefix* ~ Primary ~ ExpressionPostfix*)* }
+
+// Prefix operators for Expression
+ExpressionPrefix = _{ ExpressionNot | ExpressionUnaryPlus | ExpressionUnaryMinus }
+    ExpressionNot = { "!" }
+    ExpressionUnaryPlus = { "+" }
+    ExpressionUnaryMinus = { "-" }
+
+// Infix operators for Expression
+ExpressionInfix = _{
+      ExpressionPow
+    | ExpressionMult
+    | ExpressionDiv
+    | ExpressionIntDiv
+    | ExpressionAdd
+    | ExpressionSubtract
+    | ExpressionMod
+    | ExpressionLess
+    | ExpressionLeq
+    | ExpressionEq
+    | ExpressionGeq
+    | ExpressionGreater
+    | ExpressionBitAnd
+    | ExpressionAnd
+    | ExpressionBitOr
+    | ExpressionOr
+}
+    ExpressionPow = { "^" }
+    ExpressionMult = { "*" }
+    ExpressionDiv = { "/" }
+    ExpressionIntDiv = { "//" }
+    ExpressionAdd = { "+" }
+    ExpressionSubtract = { "-" }
+    ExpressionMod = { "%" }
+    ExpressionLess = { "<" }
+    ExpressionLeq = { "<=" }
+    ExpressionEq = { "==" }
+    ExpressionGeq = { ">=" }
+    ExpressionGreater = { ">" }
+    ExpressionBitAnd = { "&" }
+    ExpressionAnd = { "&&" }
+    ExpressionBitOr = { "|" }
+    ExpressionOr = { "||" }
+
+// Postfix operators for Expression
+ExpressionPostfix = _{ ExpressionCall | ExpressionAggregate }
+    ExpressionCall = { "(" ~ (Expression ~ ("," ~ Expression)*)? ~ ")" }
+    ExpressionAggregate = { "." ~ ExpressionAggregateOp ~ "(" ~ (Expression)? ~ ")" }
+    ExpressionAggregateOp = { "count" | "min" | "max" | "mean" }
+
+Primary = _{
+      "(" ~ Expression ~ ")"
+    | "false"
+    | "true"
+    | "N" ~ "[" ~ Expression ~ "," ~ Expression ~ "]"
+    | "U" ~ "[" ~ Expression ~ ("," ~ Expression)* ~ "]"
+    | "R" ~ ("[" ~ Expression ~ "," ~ Expression ~ "]")?
+    | "it"
+    | INTEGER
+    | REAL
+    | ID
+}
+
+// Perturbation expressions
+PerturbationExpression = _{ PerturbationSequence }
+
+PerturbationSequence = _{ PerturbationIter ~ (";" ~ PerturbationIter)* }
+
+PerturbationIter = _{ PerturbationPrimary ~ ("^" ~ Expression)? }
+
+PerturbationPrimary = _{
+	  "nil"
+	| "(" ~ PerturbationExpression ~ ")"
+	| "[" ~ PerturbationAssignment ~ ("," ~ PerturbationAssignment)* ~ "]" ~ "@" ~ Expression
+	| ID
+}
+
+PerturbationAssignment = _{ ID ~ "<-" ~ Expression }
+
+// Distance expressions
+DistanceExpression = _{ DistanceExprThreshold }
+
+DistanceExprThreshold = _{ DistanceExprUntil ~ (("<" | "<=" | ">=" | ">") ~ Expression)? }
+
+DistanceExprUntil = _{ DistanceExprPrefix ~ ("\\U" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix)* }
+
+DistanceExprPrefix = _{
+      "F" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
+    | "G" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
+    | DistanceExprPrimary
+}
+
+DistanceExprPrimary = _{
+      "<" ~ ID
+    | ">" ~ ID
+    | "(" ~ DistanceExpression ~ ")"
+    | ID
+    | "min" ~ "(" ~ DistanceExpression ~ "," ~ DistanceExpression ~ ")"
+    | "max" ~ "(" ~ DistanceExpression ~ "," ~ DistanceExpression ~ ")"
+    | Expression ~ "*" ~ DistanceExpression ~ ("+" ~ Expression ~ "*" ~ DistanceExpression)*
+}
+
+// ROBTL formulas
+RobtlFormula = _{ RobtlPrefix* ~ RobtlPrimary ~ (RobtlInfix ~ RobtlPrefix* ~ RobtlPrimary)* }
+
+RobtlPrefix = _{
+      "!"
+    | "G" ~ "[" ~ Expression ~ "," ~ Expression ~ "]"
+    | "F" ~ "[" ~ Expression ~ "," ~ Expression ~ "]"
+}
+
+RobtlInfix = _{
+      "&&"
+    | "||"
+    | "U" ~ "[" ~ Expression ~ "," ~ Expression ~ "]"
+}
+
+RobtlPrimary = _{
+      "true"
+    | "false"
+    | "D" ~ "[" ~ ID ~ "," ~ ID ~ "]" ~ ("<=" | "<" | "==" | ">=" | ">") ~ Expression
+    | ID
+}
