@@ -53,8 +53,8 @@ members = [
 
 [workspace.dependencies]
 ahash = "0.8"
-bitvec = "1.0"
 bitstream-io = "4.9"
+bitvec = "1.0"
 bumpalo = "3.19"
 clap = { version = "4.5", features = ["derive"] }
 dashmap = { version = "7.0.0-rc2", features = ["inline-more"] }
@@ -65,7 +65,9 @@ hashbrown = "0.16"
 html-escape = "0.2"
 itertools = "0.14"
 log = "0.4"
+mt-kahypar = "0.2"
 num = "0.4"
+oxidd = "0.11"
 parking_lot = "0.12"
 pest = "2.8"
 pest_derive  = "2.8"
