@@ -9,6 +9,7 @@ mod ldd_to_bdd;
 mod random_bdd;
 mod reachability;
 mod symbolic_lts;
+mod reorder;
 
 pub use cube_iter::*;
 pub use format::*;
@@ -19,3 +20,4 @@ pub use ldd_to_bdd::*;
 pub use random_bdd::*;
 pub use reachability::*;
 pub use symbolic_lts::*;
+pub use reorder::*;
