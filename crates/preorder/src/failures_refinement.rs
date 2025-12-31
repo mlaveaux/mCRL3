@@ -7,7 +7,6 @@
 //! inclusion. All algorithms come in a variant with and without internal steps. It is possible to generate a counter
 //! transition system in case the inclusion is answered by no.
 
-use std::collections::vec_deque;
 use std::collections::VecDeque;
 
 use log::trace;
@@ -22,6 +21,7 @@ use merc_reduction::Partition;
 use merc_utilities::Timing;
 
 use crate::Antichain;
+use crate::CounterExampleTree;
 use crate::RefinementType;
 
 /// Sets the exploration strategy for the failures refinement algorithm.
@@ -48,7 +48,7 @@ pub enum ExplorationStrategy {
 /// reducing the state space beforehand can lead to significant performance
 /// improvements. However, for quick failing checks the preprocessing could cause
 /// unnecessary overhead.
-pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
+pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree, const COUNTER_EXAMPLE: bool>(
     impl_lts: L,
     spec_lts: L,
     refinement: RefinementType,
@@ -65,7 +65,7 @@ pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
     let (merged_lts, initial_spec) = if preprocess {
         if COUNTER_EXAMPLE {
             // If a counter example is to be generated, we only reduce the
-            // specification LTS such that the trace remains valid.
+            // specification LTS such that the resulting counter example remains valid.
             let reduced_spec = reduce_lts(spec_lts, reduction, timing);
             impl_lts.merge_disjoint(&reduced_spec)
         } else {
@@ -89,17 +89,38 @@ pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
         impl_lts.merge_disjoint(&spec_lts)
     };
 
-    let mut working = VecDeque::from([(merged_lts.initial_state_index(), VecSet::singleton(initial_spec))]);
+    let mut refine_time = timing.start("refinement");
+    let mut counter_example = CE::new();
+    let result = is_refinement_internal(strategy, merged_lts, initial_spec, &mut counter_example);
+
+    refine_time.finish();
+    result
+}
+
+/// The inner loop for checking refinement.
+fn is_refinement_internal<L: LTS, CE: CounterExampleTree>(
+    strategy: ExplorationStrategy,
+    merged_lts: L,
+    initial_spec: StateIndex,
+    counter_example: &mut CE,
+) -> bool {
+    let mut working = VecDeque::from([(
+        merged_lts.initial_state_index(),
+        VecSet::singleton(initial_spec),
+        counter_example.root_index(),
+    )]);
+    let mut antichain = Antichain::new();
 
     // The antichain data structure is used for storing explored states. However, as opposed to a discovered set it
     // allows for pruning additional pairs based on the `antichain` property.
-    let mut antichain = Antichain::new();
 
-    while let Some((impl_state, spec)) = working.pop_front() {
+    while let Some((impl_state, spec, ce)) = working.pop_front() {
         trace!("Checking ({:?}, {:?})", impl_state, spec);
         // pop (impl,spec) from working;
 
         for impl_transition in merged_lts.outgoing_transitions(impl_state) {
+            let new_edge = counter_example.add_edge(impl_transition.label, ce);
+
             // spec' := {s' | exists s in spec. s-e->s'};
             let mut spec_prime = VecSet::new();
             for s in &spec {
@@ -119,14 +140,23 @@ pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
             if antichain.insert(impl_transition.to, spec_prime.clone()) {
                 // if antichain_insert(impl,spec') then
                 match strategy {
-                    ExplorationStrategy::BFS => working.push_back((impl_transition.to, spec_prime.clone())),
-                    ExplorationStrategy::DFS => working.push_front((impl_transition.to, spec_prime.clone())),
+                    ExplorationStrategy::BFS => working.push_back((impl_transition.to, spec_prime.clone(), new_edge)),
+                    ExplorationStrategy::DFS => working.push_front((impl_transition.to, spec_prime.clone(), new_edge)),
                 }
             }
         }
     }
 
     true
+}
+
+///
+struct LtsCache {}
+
+impl LtsCache {
+    fn outgoing_tau_closure(&mut self, lts: &impl LTS, state: StateIndex) -> impl Iterator<Item = StateIndex> + '_ {
+        std::iter::empty()
+    }
 }
 
 #[cfg(test)]
@@ -159,7 +189,7 @@ mod tests {
 
             for preprocess in [false, true] {
                 assert!(
-                    is_failures_refinement::<_, false>(
+                    is_failures_refinement::<_, (), false>(
                         impl_lts.clone(),
                         spec_lts.clone(),
                         RefinementType::Trace,

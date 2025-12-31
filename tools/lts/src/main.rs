@@ -152,6 +152,7 @@ struct RefinesArgs {
     filetype: Option<LtsFormat>,
     
     /// Disables preprocessing of the LTSs before checking refinement.
+    #[arg(long)]
     no_preprocess: bool,
 }
 
