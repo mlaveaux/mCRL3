@@ -7,15 +7,18 @@
 //! inclusion. All algorithms come in a variant with and without internal steps. It is possible to generate a counter
 //! transition system in case the inclusion is answered by no.
 
+use std::collections::vec_deque;
+use std::collections::VecDeque;
+
 use log::trace;
 use merc_collections::VecSet;
-use merc_lts::LTS;
 use merc_lts::StateIndex;
-use merc_reduction::Equivalence;
-use merc_reduction::Partition;
+use merc_lts::LTS;
 use merc_reduction::quotient_lts_block;
 use merc_reduction::reduce_lts;
 use merc_reduction::strong_bisim_sigref;
+use merc_reduction::Equivalence;
+use merc_reduction::Partition;
 use merc_utilities::Timing;
 
 use crate::Antichain;
@@ -27,15 +30,29 @@ pub enum ExplorationStrategy {
     DFS,
 }
 
-/// This function checks using algorithms in the paper mentioned above
-/// whether transition system l1 is included in transition system l2, in the
-/// sense of trace inclusions, failures inclusion and divergence failures
-/// inclusion.
+/// This function checks using algorithms in the paper mentioned above whether
+/// transition system l1 is included in transition system l2.
+///
+/// # Details
+///
+/// The `refinement_type` determines (weak) trace inclusions, failures inclusion
+/// and divergence failures inclusion etc.
+///
+/// The `strategy` parameter determines whether a breadth-first search
+/// or depth-first search is used to explore the state space. Brreadth-first search
+/// is often better suited for finding short counter examples, while depth-first
+/// search often uses less memory.
+///
+/// The `preprocess` flag indicates whether preprocessing should be applied to
+/// the LTSs. The refinement checks often involve product constructions, which
+/// reducing the state space beforehand can lead to significant performance
+/// improvements. However, for quick failing checks the preprocessing could cause
+/// unnecessary overhead.
 pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
     impl_lts: L,
     spec_lts: L,
     refinement: RefinementType,
-    _strategy: ExplorationStrategy,
+    strategy: ExplorationStrategy,
     preprocess: bool,
     timing: &mut Timing,
 ) -> bool {
@@ -72,13 +89,13 @@ pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
         impl_lts.merge_disjoint(&spec_lts)
     };
 
-    let mut working = vec![(merged_lts.initial_state_index(), VecSet::singleton(initial_spec))];
+    let mut working = VecDeque::from([(merged_lts.initial_state_index(), VecSet::singleton(initial_spec))]);
 
     // The antichain data structure is used for storing explored states. However, as opposed to a discovered set it
     // allows for pruning additional pairs based on the `antichain` property.
     let mut antichain = Antichain::new();
 
-    while let Some((impl_state, spec)) = working.pop() {
+    while let Some((impl_state, spec)) = working.pop_front() {
         trace!("Checking ({:?}, {:?})", impl_state, spec);
         // pop (impl,spec) from working;
 
@@ -101,7 +118,10 @@ pub fn is_failures_refinement<L: LTS, const COUNTER_EXAMPLE: bool>(
 
             if antichain.insert(impl_transition.to, spec_prime.clone()) {
                 // if antichain_insert(impl,spec') then
-                working.push((impl_transition.to, spec_prime));
+                match strategy {
+                    ExplorationStrategy::BFS => working.push_back((impl_transition.to, spec_prime.clone())),
+                    ExplorationStrategy::DFS => working.push_front((impl_transition.to, spec_prime.clone())),
+                }
             }
         }
     }
@@ -114,14 +134,14 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_lts::random_lts;
     use merc_lts::write_aut;
-    use merc_reduction::Equivalence;
     use merc_reduction::reduce_lts;
-    use merc_utilities::Timing;
+    use merc_reduction::Equivalence;
     use merc_utilities::random_test;
+    use merc_utilities::Timing;
 
+    use crate::is_failures_refinement;
     use crate::ExplorationStrategy;
     use crate::RefinementType;
-    use crate::is_failures_refinement;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
@@ -137,17 +157,19 @@ mod tests {
             files.dump("spec.aut", |w| write_aut(w, &spec_lts)).unwrap();
             files.dump("impl.aut", |w| write_aut(w, &impl_lts)).unwrap();
 
-            assert!(
-                is_failures_refinement::<_, false>(
-                    impl_lts,
-                    spec_lts,
-                    RefinementType::Trace,
-                    ExplorationStrategy::BFS,
-                    false,
-                    &mut timing
-                ),
-                "Strong bisimulation implies trace refinement."
-            );
+            for preprocess in [false, true] {
+                assert!(
+                    is_failures_refinement::<_, false>(
+                        impl_lts.clone(),
+                        spec_lts.clone(),
+                        RefinementType::Trace,
+                        ExplorationStrategy::BFS,
+                        preprocess,
+                        &mut timing
+                    ),
+                    "Strong bisimulation implies trace refinement."
+                );
+            }
         });
     }
 }
