@@ -150,6 +150,9 @@ struct RefinesArgs {
 
     #[arg(long, help = "Explicitly specify the LTS file format")]
     filetype: Option<LtsFormat>,
+    
+    /// Disables preprocessing of the LTSs before checking refinement.
+    no_preprocess: bool,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -272,7 +275,7 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
     );
 
     let refines = apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| {
-        refines(left, right, args.refinement, timing)
+        refines(left, right, args.refinement, !args.no_preprocess, timing)
     });
 
     if refines {
