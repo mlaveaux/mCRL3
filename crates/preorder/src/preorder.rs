@@ -22,7 +22,7 @@ pub enum RefinementType {
 /// unnecessary overhead.
 pub fn refines<L: LTS>(impl_lts: L, spec_lts: L, preorder: RefinementType, preprocess: bool, timing: &mut Timing) -> bool {
     match preorder {
-        RefinementType::Trace => is_failures_refinement::<L, false>(
+        RefinementType::Trace => is_failures_refinement::<L, (), false>(
             impl_lts,
             spec_lts,
             preorder,
