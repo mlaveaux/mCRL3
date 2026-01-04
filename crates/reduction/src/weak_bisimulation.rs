@@ -19,7 +19,7 @@ use merc_utilities::Timing;
 
 use crate::Equivalence;
 use crate::SimpleBlockPartition;
-use crate::preprocess_branching;
+use crate::tau_loop_elimination_and_reorder;
 use crate::reduce_lts;
 
 /// Type alias because we use bitvec for marking states
@@ -51,7 +51,7 @@ fn weak_bisimulation_impl<L: LTS>(
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
     let mut time_pre = timing.start("preprocessing");
-    let tau_loop_free_lts = preprocess_branching(lts);
+    let tau_loop_free_lts = tau_loop_elimination_and_reorder(lts);
     time_pre.finish();
 
     let mut time_reduction = timing.start("reduction");
@@ -193,7 +193,7 @@ mod tests {
             assert_eq!(result.num_of_states(), expected.num_of_states());
             assert_eq!(result.num_of_transitions(), expected.num_of_transitions());
 
-            files.dump("reduced.aut", |f| write_aut(f, &result)).unwrap();
+            files.dump("result.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
             assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &mut timing));

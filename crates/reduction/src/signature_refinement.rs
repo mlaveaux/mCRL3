@@ -6,10 +6,10 @@ use log::info;
 use log::trace;
 use merc_io::TimeProgress;
 use merc_lts::IncomingTransitions;
-use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
+use merc_lts::LTS;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
@@ -17,22 +17,24 @@ use merc_collections::BlockIndex;
 use merc_collections::IndexedPartition;
 use merc_utilities::Timing;
 
-use crate::BlockPartition;
-use crate::BlockPartitionBuilder;
-use crate::Partition;
-use crate::Signature;
-use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
 use crate::is_tau_hat;
 use crate::longest_tau_path;
-use crate::preprocess_branching;
+use crate::reduce_lts;
 use crate::strong_bisim_signature;
+use crate::tau_loop_elimination_and_reorder;
 use crate::weak_bisim_presignature_sorted;
 use crate::weak_bisim_signature_sorted;
 use crate::weak_bisim_signature_sorted_full;
 use crate::weak_bisim_signature_sorted_taus;
+use crate::BlockPartition;
+use crate::BlockPartitionBuilder;
+use crate::Equivalence;
+use crate::Partition;
+use crate::Signature;
+use crate::SignatureBuilder;
 
 /// Computes a strong bisimulation partitioning using signature refinement
 pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &mut Timing) -> (L, BlockPartition) {
@@ -71,7 +73,7 @@ pub fn branching_bisim_sigref<L: LTS>(
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, BlockPartition) {
     let mut timepre = timing.start("preprocess");
-    let preprocessed_lts = preprocess_branching(lts);
+    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
     let incoming = IncomingTransitions::new(&preprocessed_lts);
     timepre.finish();
 
@@ -138,7 +140,7 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
     let mut timepre = timing.start("preprocess");
-    let preprocessed_lts = preprocess_branching(lts);
+    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
     timepre.finish();
 
     let mut time = timing.start("reduction");
@@ -180,29 +182,64 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
 pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
     lts: L,
+    preprocess: bool,
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
-    let mut timepre = timing.start("preprocess");
-    let preprocessed_lts = preprocess_branching(lts);
+    // Preprocess the LTS if desired.
+    if preprocess {
+        let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
+        weak_bisim_sigref_inductive_naive_impl(lts, timing)
+    } else {
+        weak_bisim_sigref_inductive_naive_impl(lts, timing)
+    }
+}
+
+/// Implementation of [weak bisimulation signature refinement] that deals with  both preprocessed and regular LTSs.
+pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
+    lts: L,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
+    let mut timepre = timing.start("scc_decomposition");
+    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
     timepre.finish();
 
     let mut time = timing.start("reduction");
 
-    let partition = signature_refinement_weak(
-        &preprocessed_lts);
+    let partition = signature_refinement_weak(&preprocessed_lts);
     time.finish();
 
     (preprocessed_lts, partition)
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
-pub fn weak_bisim_sigref_naive<L: LTS>(lts: L, timing: &mut Timing) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
-    let mut timepre = timing.start("preprocess");
-    let preprocessed_lts = preprocess_branching(lts);
+pub fn weak_bisim_sigref_naive<L: LTS>(
+    lts: L,
+    preprocess: bool,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
+    // Preprocess the LTS if desired.
+    if preprocess {
+        let mut preprocess_time = timing.start("preprocess");
+        let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
+        preprocess_time.finish();
+
+        weak_bisim_sigref_naive_impl(lts, timing)
+    } else {
+        weak_bisim_sigref_naive_impl(lts, timing)
+    }
+}
+
+/// Implementation of [weak bisimulation signature refinement] that deals with
+/// both preprocessed and regular LTSs.
+fn weak_bisim_sigref_naive_impl<L: LTS>(
+    lts: L,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
+    let mut timepre = timing.start("scc_decomposition");
+    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
     timepre.finish();
 
     let mut time = timing.start("reduction");
-
     let partition = signature_refinement_naive::<_, _, true>(
         &preprocessed_lts,
         |state_index, partition, state_to_signature, builder| {
@@ -363,11 +400,10 @@ where
     partition
 }
 
-
 /// Weak signature refinement algorithm, doing inductive signatures naively.
 ///
 /// The signature function is called for each state and should fill the
-/// signature builder with the pre_signature of the state. 
+/// signature builder with the pre_signature of the state.
 fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition
 where {
     // Avoids reallocations when computing the signature.
@@ -388,7 +424,7 @@ where {
     state_to_signature.resize_with(lts.num_of_states(), || None);
     let dummy_signature = [(LabelIndex::new(0), BlockIndex::new(0))];
     key_to_taus.push(Signature::new(&dummy_signature)); // Dummy tau signature
-    // Refine partitions until stable.
+                                                        // Refine partitions until stable.
     let mut old_count = 1;
     let mut iteration = 0;
 
@@ -433,8 +469,10 @@ where {
                     if let Some(silent_candidate) = state_to_signature[transition.to] {
                         let tau_sig = &key_to_signature[silent_candidate];
                         let presig = Signature::new(&builder);
-                        
-                        if tau_sig.is_subset_of(presig.as_slice(), (transition.label, BlockIndex::new(silent_candidate))) {
+
+                        if tau_sig
+                            .is_subset_of(presig.as_slice(), (transition.label, BlockIndex::new(silent_candidate)))
+                        {
                             // If it is: use that signature.
                             inductive_key = Some(silent_candidate);
                             break;
@@ -443,12 +481,23 @@ where {
                 }
             }
             if let Some(inductive_key) = inductive_key {
-                trace!("State {state_index} uses inductive key {inductive_key} signature {:?}", key_to_signature[inductive_key].as_slice());
+                trace!(
+                    "State {state_index} uses inductive key {inductive_key} signature {:?}",
+                    key_to_signature[inductive_key].as_slice()
+                );
                 state_to_signature[state_index] = Some(inductive_key);
-                next_partition.set_block(state_index, BlockIndex::new(inductive_key));
+                next_partition.set_block(*state_index, BlockIndex::new(inductive_key));
             } else {
-                // If not: expand the signature completely. 
-                weak_bisim_signature_sorted_full(state_index, lts, &partition, &key_to_taus, &state_to_signature, &key_to_signature, &mut builder);
+                // If not: expand the signature completely.
+                weak_bisim_signature_sorted_full(
+                    state_index,
+                    lts,
+                    &partition,
+                    &key_to_taus,
+                    &state_to_signature,
+                    &key_to_signature,
+                    &mut builder,
+                );
                 trace!("State {state_index} final signature {:?}", builder.as_slice());
 
                 // Keep track of the index for every state
@@ -470,9 +519,8 @@ where {
                     state_to_signature[state_index] = Some(new_id.value());
                 }
 
-                next_partition.set_block(state_index, new_id);
-                };
-
+                next_partition.set_block(*state_index, new_id);
+            };
         }
 
         iteration += 1;
@@ -490,7 +538,7 @@ where {
                 .filter(|&&(label, _state)| label == LabelIndex::new(0))
                 .copied()
                 .collect();
-            
+
             let slice = if filtered.is_empty() {
                 empty_slice
             } else {
@@ -517,9 +565,6 @@ where {
     // );
     partition
 }
-
-
-
 
 /// General signature refinement algorithm that accepts an arbitrary signature
 ///
@@ -697,11 +742,13 @@ where
 mod tests {
     use super::*;
 
+    use merc_io::DumpFiles;
+    use merc_lts::write_aut;
     use test_log::test;
 
     use merc_lts::random_lts;
-    use merc_utilities::Timing;
     use merc_utilities::random_test;
+    use merc_utilities::Timing;
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
     fn equal_partitions(left: &impl Partition, right: &impl Partition) -> bool {
@@ -746,15 +793,43 @@ mod tests {
         true
     }
 
+    /// Checks that the strong bisimulation partition is a refinement of the branching bisimulation partition.
+    fn is_refinement(lts: &impl LTS, strong_partition: &impl Partition, branching_partition: &impl Partition) {
+        for state_index in lts.iter_states() {
+            for other_state_index in lts.iter_states() {
+                if strong_partition.block_number(state_index) == strong_partition.block_number(other_state_index) {
+                    // If the states are together according to strong bisimilarity, then they should also be together according to branching bisimilarity.
+                    assert_eq!(
+                        branching_partition.block_number(state_index),
+                        branching_partition.block_number(other_state_index),
+                        "The strong partition should be a refinement of the branching partition, 
+                        but states {state_index} and {other_state_index} are in different strong blocks"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_strong_bisim_sigref() {
         random_test(100, |rng| {
+            let mut files = DumpFiles::new("test_random_strong_bisim_sigref");
+
             let lts = random_lts(rng, 10, 3, 3);
+            files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
+
             let mut timing = Timing::new();
 
-            let (_result_lts, result_partition) = strong_bisim_sigref(lts.clone(), &mut timing);
-            let (_expected_lts, expected_partition) = strong_bisim_sigref_naive(lts, &mut timing);
+            let (result_lts, result_partition) = strong_bisim_sigref(lts.clone(), &mut timing);
+            let (expected_lts, expected_partition) = strong_bisim_sigref_naive(lts, &mut timing);
+
+            files
+                .dump("result.aut", |writer| write_aut(writer, &result_lts))
+                .unwrap();
+            files
+                .dump("expected.aut", |writer| write_aut(writer, &expected_lts))
+                .unwrap();
 
             // There is no preprocessing so this works.
             assert!(equal_partitions(&result_partition, &expected_partition));
@@ -765,11 +840,22 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_branching_bisim_sigref() {
         random_test(100, |rng| {
+            let mut files = DumpFiles::new("test_random_branching_bisim_sigref");
+
             let lts = random_lts(rng, 10, 3, 3);
+            files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
+
             let mut timing = Timing::new();
 
-            let (_result_lts, result_partition) = branching_bisim_sigref(lts.clone(), &mut timing);
-            let (_expected_lts, expected_partition) = branching_bisim_sigref_naive(lts, &mut timing);
+            let (result_lts, result_partition) = branching_bisim_sigref(lts.clone(), &mut timing);
+            let (expected_lts, expected_partition) = branching_bisim_sigref_naive(lts, &mut timing);
+
+            files
+                .dump("result.aut", |writer| write_aut(writer, &result_lts))
+                .unwrap();
+            files
+                .dump("expected.aut", |writer| write_aut(writer, &expected_lts))
+                .unwrap();
 
             // There is no preprocessing so this works.
             assert!(equal_partitions(&result_partition, &expected_partition));
@@ -780,42 +866,44 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_weak_bisim_sigref() {
         random_test(100, |rng| {
+            let mut files = DumpFiles::new("test_random_weak_bisim_sigref");
+
             let lts = random_lts(rng, 10, 3, 3);
+            files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
+
             let mut timing = Timing::new();
 
-            let (_result_lts, result_partition) = weak_bisim_sigref_naive(lts.clone(), &mut timing);
-            let (_expected_lts, expected_partition) = weak_bisim_sigref_inductive_naive(lts, &mut timing);
+            let (result_lts, result_partition) = weak_bisim_sigref_naive(lts.clone(), false, &mut timing);
+            let (expected_lts, expected_partition) = weak_bisim_sigref_inductive_naive(lts, false, &mut timing);
+
+            files
+                .dump("result.aut", |writer| write_aut(writer, &result_lts))
+                .unwrap();
+            files
+                .dump("expected.aut", |writer| write_aut(writer, &expected_lts))
+                .unwrap();
 
             // There is no preprocessing so this works.
             assert!(equal_partitions(&result_partition, &expected_partition));
         });
     }
 
-    /// Checks that the branching bisimulation partition is a refinement of the strong bisimulation partition.
-    fn is_refinement(lts: &impl LTS, strong_partition: &impl Partition, branching_partition: &impl Partition) {
-        for state_index in lts.iter_states() {
-            for other_state_index in lts.iter_states() {
-                if strong_partition.block_number(state_index) == strong_partition.block_number(other_state_index) {
-                    // If the states are together according to branching bisimilarity, then they should also be together according to strong bisimilarity.
-                    assert_eq!(
-                        branching_partition.block_number(state_index),
-                        branching_partition.block_number(other_state_index),
-                        "The branching partition should be a refinement of the strong partition, 
-                        but states {state_index} and {other_state_index} are in different blocks"
-                    );
-                }
-            }
-        }
-    }
-
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_branching_bisim_sigref_naive() {
         random_test(100, |rng| {
+            let mut files = DumpFiles::new("test_random_branching_bisim_sigref_naive");
+
             let lts = random_lts(rng, 10, 3, 3);
+            files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
+
             let mut timing = Timing::new();
 
             let (preprocessed_lts, branching_partition) = branching_bisim_sigref_naive(lts, &mut timing);
+            files
+                .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
+                .unwrap();
+
             let strong_partition = strong_bisim_sigref_naive(preprocessed_lts.clone(), &mut timing).1;
             is_refinement(&preprocessed_lts, &strong_partition, &branching_partition);
         });
@@ -825,10 +913,18 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_weak_bisim_sigref_naive() {
         random_test(100, |rng| {
+            let mut files = DumpFiles::new("test_random_weak_bisim_sigref_naive");
+
             let lts = random_lts(rng, 10, 3, 3);
+            files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
+
             let mut timing = Timing::new();
 
-            let (preprocessed_lts, weak_partition) = weak_bisim_sigref_naive(lts, &mut timing);
+            let (preprocessed_lts, weak_partition) = weak_bisim_sigref_naive(lts, false, &mut timing);
+            files
+                .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
+                .unwrap();
+
             let branching_partition = branching_bisim_sigref_naive(preprocessed_lts.clone(), &mut timing).1;
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
         });
