@@ -19,6 +19,7 @@ use merc_rewrite::rewrite_rec;
 
 mod trs_format;
 
+use merc_utilities::Timing;
 pub use trs_format::*;
 
 #[derive(clap::Parser, Debug)]
@@ -79,12 +80,14 @@ fn main() -> Result<ExitCode, MercError> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    let timing = Timing::new();
+
     if let Some(command) = cli.commands {
         match command {
             Commands::Rewrite(args) => {
                 if args.specification.extension() == Some(OsStr::new("rec")) {
                     assert!(args.terms.is_none());
-                    rewrite_rec(args.rewriter, &args.specification, args.output)?;
+                    rewrite_rec(args.rewriter, &args.specification, args.output, &timing)?;
                 }
             }
             Commands::Convert(args) => {
@@ -99,6 +102,8 @@ fn main() -> Result<ExitCode, MercError> {
             }
         }
     }
+
+    timing.print();
 
     print_allocator_metrics();
     Ok(ExitCode::SUCCESS)
