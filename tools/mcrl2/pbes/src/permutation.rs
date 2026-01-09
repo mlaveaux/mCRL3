@@ -17,21 +17,18 @@ impl Permutation {
     /// sorts the mapping by domain for a unique representation. The input must be
     /// a valid permutation (so a bijection).
     pub fn from_mapping(mut mapping: Vec<(usize, usize)>) -> Self {
-        // Validate lengths and uniqueness in debug builds.
-        if cfg!(debug_assertions) {
-            let mut seen_domain = HashSet::new();
-            for (d, _) in &mapping {
-                debug_assert!(
-                    seen_domain.insert(*d),
-                    "Invalid permutation mapping: multiple mappings for {}",
-                    d
-                );
-            }
-        }
+        debug_assert!(
+            is_valid_permutation(&mapping),
+            "Input mapping is not a valid permutation: {:?}",
+            mapping
+        );
 
         // Sort by domain for deterministic representation.
         mapping.sort_unstable_by_key(|(d, _)| *d);
-        // debug_assert!(mapping.iter().all(|(from, to)| from != to), "Mapping should not contain identity mappings.");
+        debug_assert!(
+            mapping.iter().all(|(from, to)| from != to),
+            "Mapping should not contain identity mappings."
+        );
         debug_assert!(
             mapping.iter().duplicates().count() == 0,
             "Mapping should not contain duplicate domain entries."
@@ -83,6 +80,10 @@ impl Permutation {
             pairs.push((from, to));
         }
 
+        if !is_valid_permutation(&pairs) {
+            return Err(MercError::from("Input mapping is not a valid permutation."));
+        }
+
         Ok(Permutation::from_mapping(pairs))
     }
 
@@ -122,6 +123,10 @@ impl Permutation {
                 let to = cycle_elements[(i + 1) % len];
                 mapping.push((from, to));
             }
+        }
+
+        if !is_valid_permutation(&mapping) {
+            return Err(MercError::from("Input mapping is not a valid permutation."));
         }
 
         Ok(Permutation::from_mapping(mapping))
@@ -164,6 +169,22 @@ impl Permutation {
     }
 }
 
+/// Checks whether the mapping represents a valid permutation
+#[cfg(debug_assertions)]
+pub fn is_valid_permutation(mapping: &Vec<(usize, usize)>) -> bool {
+    let mut domain = HashSet::with_capacity(mapping.len());
+    let mut image = HashSet::with_capacity(mapping.len());
+
+    for (d, v) in mapping {
+        if !domain.insert(*d) || !image.insert(*v) {
+            // Duplicate found in domain or image
+            return false;
+        }
+    }
+
+    domain == image
+}
+
 /// Display the permutation in cycle notation.
 ///
 /// Cycle notation is a standard way to present permutations, where each cycle
@@ -173,9 +194,9 @@ impl Permutation {
 impl fmt::Display for Permutation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Determine the maximum value in the permutation mapping.
-        let max_value = self.mapping.iter().map(|(d, _)| *d + 1).max().unwrap_or(0);
+        let max_value = self.mapping.iter().map(|(d, e)| *d.max(e)).max().unwrap_or(0);
 
-        let mut visited = vec![false; max_value];
+        let mut visited = vec![false; max_value + 1];
         let mut identity = true;
 
         // The mapping is sorted by domain, so we can iterate over it directly.
@@ -258,6 +279,7 @@ pub fn permutation_group_size(n: usize) -> usize {
 mod tests {
     use merc_utilities::random_test;
     use rand::Rng;
+    use rand::seq::{IteratorRandom, SliceRandom};
 
     use super::*;
 
@@ -295,18 +317,53 @@ mod tests {
         assert_eq!(permutations.len(), permutation_group_size(indices.len()));
     }
 
-    // #[test]
-    // fn test_random_cycle_notation() {
-    //     random_test(100, |rng| {
-    //         let mapping: Vec<(usize, usize)> = (0..rng.random_range(1..10))
-    //             .map(|i| (i, rng.random_range(0..10)))
-    //             .collect();
-    //         let permutation = Permutation::from_mapping(mapping.clone());
+    #[test]
+    fn test_random_cycle_notation() {
+        random_test(100, |rng| {
+            // Pick a random subset size >= 2 to allow a derangement.
+            let m = rng.random_range(2..10);
 
-    //         let cycle_notation = permutation.to_string();
-    //         let parsed_permutation = Permutation::from_cycle_notation(&cycle_notation).unwrap();
+            // Choose a random subset of distinct domain elements.
+            let domain: Vec<usize> = (0..10).choose_multiple(rng, m);
 
-    //         assert_eq!(permutation, parsed_permutation, "Failed on permutation {:?}", permutation);            
-    //     })
-    // }
+            // Create a random derangement of the chosen domain.
+            let mut image = domain.clone();
+            image.shuffle(rng);
+
+            let mapping: Vec<(usize, usize)> = domain.into_iter().zip(image).filter(|(x, y)| x != y).collect();
+            println!("Mapping: {:?}", mapping);
+
+            let permutation = Permutation::from_mapping(mapping.clone());
+
+            let cycle_notation = permutation.to_string();
+            let parsed_permutation = Permutation::from_cycle_notation(&cycle_notation).unwrap();
+
+            assert_eq!(permutation, parsed_permutation, "Failed on permutation {:?}", permutation);            
+        })
+    }
+
+    #[test]
+    fn test_random_mapping_notation() {
+        random_test(100, |rng| {
+            // Pick a random subset size >= 2 to allow a derangement.
+            let m = rng.random_range(2..10);
+
+            // Choose a random subset of distinct domain elements.
+            let domain: Vec<usize> = (0..10).choose_multiple(rng, m);
+
+            // Create a random derangement of the chosen domain.
+            let mut image = domain.clone();
+            image.shuffle(rng);
+
+            let mapping: Vec<(usize, usize)> = domain.into_iter().zip(image).filter(|(x, y)| x != y).collect();
+            println!("Mapping: {:?}", mapping);
+
+            let permutation = Permutation::from_mapping(mapping.clone());
+
+            let mapping_notation = format!("{:?}", permutation);
+            let parsed_permutation = Permutation::from_mapping_notation(&mapping_notation).unwrap();
+
+            assert_eq!(permutation, parsed_permutation, "Failed on permutation {:?}", permutation);            
+        })
+    }
 }
