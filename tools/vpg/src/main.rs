@@ -259,11 +259,9 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             }
 
             for (index, w) in results.iter().enumerate() {
-                println!("W{index}: ");
-
                 for (cube, vertices) in w {
                     println!(
-                        "For product {} the following vertices are in: {}",
+                        "W{index}: For product {} the following vertices are in: {}",
                         FormatConfig(cube),
                         vertices
                             .iter_ones()
@@ -275,13 +273,11 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         } else {
             let solutions = solve_variability_zielonka(&manager_ref, &game, solve_variant, false)?;
             for (index, w) in solutions.iter().enumerate() {
-                println!("W{index}: ");
-
                 for entry in CubeIterAll::new(game.variables(), game.configuration()) {
                     let (config, config_function) = entry?;
 
                     println!(
-                        "For product {} the following vertices are in: {}",
+                        "W{index}: For product {} the following vertices are in: {}",
                         FormatConfig(&config),
                         w.iter() // Do not use iter_vertices because the first one is the initial vertex only
                             .take(if args.full_solution { usize::MAX } else { 1 }) // Take only first if we don't want full solution
