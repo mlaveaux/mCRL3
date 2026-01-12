@@ -1,4 +1,7 @@
 #include "atermpp.h"
+#include "mcrl2/data/substitutions/mutable_map_substitution.h"
+#include "mcrl2/data/replace.h"
+
 #include "mcrl2-sys/cpp/data.h"
 #include "mcrl2-sys/src/data.rs.h"
 
@@ -22,7 +25,7 @@ std::unique_ptr<atermpp::aterm> mcrl2_data_expression_replace_variables(const at
   }
 
   return std::make_unique<atermpp::aterm>(
-      data::replace_variables(atermpp::down_cast<data_expression>(tmp_expr), tmp));
+      replace_variables(atermpp::down_cast<data_expression>(tmp_expr), tmp));
 }
 
 }
