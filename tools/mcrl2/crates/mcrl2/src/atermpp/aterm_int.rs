@@ -1,11 +1,12 @@
 use std::fmt;
 
 use mcrl2_macros::mcrl2_derive_terms;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_is_int;
 
 use crate::ATermRef;
 
 pub fn is_aterm_int(term: &ATermRef<'_>) -> bool {
-    false
+    mcrl2_aterm_is_int(term.get())
 }
 
 #[mcrl2_derive_terms]
