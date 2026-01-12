@@ -49,6 +49,15 @@ impl<T> ATermList<T> {
     pub fn try_tail(&self) -> Option<ATermList<T>> {
         if self.is_empty() { None } else { Some(self.tail()) }
     }
+
+    /// Casts the list to another type. This does not check whether the cast is
+    /// valid.
+    pub fn cast<U>(&self) -> ATermList<U> {
+        ATermList {
+            term: self.term.clone(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<T: From<ATerm>> ATermList<T> {
@@ -166,6 +175,11 @@ impl<T> ATermListRef<'_, T> {
     /// Returns true iff the list is empty.
     pub fn is_empty(&self) -> bool {
         self.term.is_empty_list()
+    }
+
+    /// Protects the list by creating an owned version of it.
+    pub fn protect(&self) -> ATermList<T> {
+        ATermList::new(self.term.protect())
     }
 }
 

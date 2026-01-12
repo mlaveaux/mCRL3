@@ -1,4 +1,5 @@
 use mcrl2_macros::mcrl2_derive_terms;
+use mcrl2_sys::data::ffi::assignment_pair;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_abstraction;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_application;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_data_expression;
@@ -7,9 +8,11 @@ use mcrl2_sys::data::ffi::mcrl2_data_expression_is_machine_number;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_untyped_identifier;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_variable;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_where_clause;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_replace_variables;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_to_string;
 use mcrl2_sys::data::ffi::mcrl2_is_data_sort_expression;
 
+use crate::ATerm;
 use crate::ATermRef;
 
 /// Checks if this term is a data variable.
@@ -79,7 +82,6 @@ mod inner {
     use crate::ATermArgs;
     use crate::ATermIntRef;
     use crate::ATermRef;
-    use crate::ATermString;
     use crate::ATermStringRef;
     use crate::Markable;
     use crate::Todo;
@@ -344,6 +346,23 @@ mod inner {
 }
 
 pub use inner::*;
+
+pub fn substitute_variables(data_expression: &DataExpressionRef, sigma: Vec<(DataExpression, DataExpression)>) -> DataExpression {
+    // Do not into_iter here, as we need to keep sigma alive for the call.
+    let sigma: Vec<assignment_pair> = sigma
+        .iter()
+        .map(|(lhs, rhs)| assignment_pair {
+            lhs: lhs.address(),
+            rhs: rhs.address(),
+        })
+        .collect();
+
+    DataExpression::new(ATerm::from_unique_ptr(mcrl2_data_expression_replace_variables(
+        data_expression.get(),
+        &sigma,
+    )))
+}
+
 
 // Allowed conversions     
 impl From<DataVariable> for DataExpression {

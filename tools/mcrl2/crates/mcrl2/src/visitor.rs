@@ -5,6 +5,7 @@ use crate::DataExpressionRef;
 use crate::DataFunctionSymbolRef;
 use crate::DataMachineNumberRef;
 use crate::DataUntypedIdentifierRef;
+use crate::DataVariable;
 use crate::DataVariableRef;
 use crate::DataWhereClauseRef;
 use crate::PbesAndRef;
@@ -156,6 +157,8 @@ pub trait PbesExpressionVisitor {
 
 /// Replaces data variables in the given data expression according to the
 /// provided substitution function.
+/// 
+/// TODO: This is not yet functional, the replacements actually do not work.
 pub fn data_expression_replace_variables<F>(expr: &DataExpressionRef<'_>, f: &F) -> DataExpression
 where
     F: Fn(&DataVariableRef<'_>) -> DataExpression,
@@ -181,11 +184,12 @@ where
 pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositionalVariableInstantiation> {
     let mut result = Vec::new();
 
-    struct PviChecker<'a> {
+    /// Local struct that is used to collect PVI occurrences.
+    struct PviOccurrences<'a> {
         result: &'a mut Vec<PbesPropositionalVariableInstantiation>,
     }
 
-    impl PbesExpressionVisitor for PviChecker<'_> {
+    impl PbesExpressionVisitor for PviOccurrences<'_> {
         fn visit_propositional_variable_instantiation(
             &mut self,
             inst: &PbesPropositionalVariableInstantiationRef<'_>,
@@ -197,8 +201,30 @@ pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositiona
         }
     }
 
-    let mut checker = PviChecker { result: &mut result };
+    let mut occurrences = PviOccurrences { result: &mut result };
+    occurrences.visit(expr);
+    result
+}
 
-    checker.visit(expr);
+/// Returns all the variables occurring in the given data expression.
+pub fn data_expression_variables(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
+    let mut result = Vec::new();
+
+    /// Local struct that is used to collect PVI occurrences.
+    struct VariableOccurrences<'a> {
+        result: &'a mut Vec<DataVariable>,
+    }
+
+    impl DataExpressionVisitor for VariableOccurrences<'_> {
+        fn visit_variable(&mut self, var: &DataVariableRef<'_>) -> Option<DataExpression> {
+            // Found a propositional variable instantiation, return true.
+            self.result
+                .push(DataVariable::from(var.protect()));
+            None
+        }
+    }
+
+    let mut occurrences = VariableOccurrences { result: &mut result };
+    occurrences.visit(expr);
     result
 }

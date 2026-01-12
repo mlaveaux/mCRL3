@@ -453,7 +453,7 @@ impl fmt::Debug for PropositionalVariable {
 }
 
 /// Replace variables in the given PBES expression according to the given substitution sigma.
-pub fn replace_variables(expr: &PbesExpression, sigma: Vec<(DataExpression, DataExpression)>) -> PbesExpression {
+pub fn substitute_data_expressions(expr: &PbesExpression, sigma: Vec<(DataExpression, DataExpression)>) -> PbesExpression {
     // Do not into_iter here, as we need to keep sigma alive for the call.
     let sigma: Vec<assignment_pair> = sigma
         .iter()
@@ -470,7 +470,7 @@ pub fn replace_variables(expr: &PbesExpression, sigma: Vec<(DataExpression, Data
 }
 
 /// Replaces propositional variables in the given PBES expression according to the given substitution sigma.
-pub fn replace_propositional_variables(expr: &PbesExpression, pi: &Vec<usize>) -> PbesExpression {
+pub fn reorder_propositional_variables(expr: &PbesExpression, pi: &Vec<usize>) -> PbesExpression {
     PbesExpression::new(ATerm::from_unique_ptr(
         mcrl2_pbes_expression_replace_propositional_variables(expr.term.get(), pi),
     ))
