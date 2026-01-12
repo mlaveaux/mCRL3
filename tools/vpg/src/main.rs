@@ -7,9 +7,13 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::Subcommand;
 use duct::cmd;
+use env_logger::fmt::Formatter;
 use itertools::Itertools;
 use log::debug;
 use log::info;
+use log::kv::Key;
+use log::kv::Value;
+use log::kv::VisitSource;
 use merc_vpg::make_vpg_total;
 use merc_vpg::verify_variability_product_zielonka_solution;
 use oxidd::BooleanFunction;
@@ -159,6 +163,18 @@ struct DisplayArgs {
     format: Option<ParityGameFormat>,
 }
 
+struct JsonPrinter<'a> {
+    formatter: &'a mut Formatter,
+}
+
+impl<'a, 'kvs> VisitSource<'kvs> for JsonPrinter<'a> {
+    fn visit_pair(&mut self, key: Key<'kvs>, value: Value<'kvs>) -> Result<(), log::kv::Error> {
+        self.formatter
+            .write_fmt(format_args!(r#""{}": {}"#, key, value))?;
+        Ok(())
+    }
+}
+
 fn main() -> Result<ExitCode, MercError> {
     let cli = Cli::parse();
 
@@ -166,6 +182,16 @@ fn main() -> Result<ExitCode, MercError> {
 
     env_logger::Builder::new()
         .filter_level(cli.verbosity.log_level_filter())
+        .format_key_values(|formatter, source| {
+            if source.count() > 0 {
+                // If there are key-values, format them as a JSON object.
+                formatter.write("\n{ ".as_bytes())?;
+                let mut json_printer = JsonPrinter { formatter };
+                source.visit(&mut json_printer).expect("Visiting log key-values failed");
+                formatter.write(" }".as_bytes())?;
+            }
+            Ok(())
+        })
         .parse_default_env()
         .init();
 

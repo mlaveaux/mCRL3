@@ -59,12 +59,12 @@ bumpalo = "3.19"
 clap = { version = "4.5", features = ["derive"] }
 dashmap = { version = "7.0.0-rc2", features = ["inline-more"] }
 delegate = "0.13"
-env_logger = "0.11"
+env_logger = { version = "0.11", features = ["kv"] }
 equivalent = "1.0"
 hashbrown = "0.16"
 html-escape = "0.2"
 itertools = "0.14"
-log = "0.4"
+log = { version = "0.4", features = ["kv"] }
 mt-kahypar = "0.2"
 num = "0.4"
 oxidd = { version = "0.11", features = ["manager-pointer"] }
