@@ -657,11 +657,15 @@ where
     result
 }
 
+/// A constant representing an undefined index.
+const UNDEFINED_INDEX: usize = usize::MAX;
+
 /// Returns the index of the variable that the control flow graph considers
 fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Check that all the vertices have the same variable assigned for consistency
     cfg.vertices().iter().for_each(|v| {
-        if v.index()
+        if v.index() != UNDEFINED_INDEX // Ignore undefined indices
+            && v.index()
             != cfg
                 .vertices()
                 .first()
@@ -672,8 +676,8 @@ fn variable_index(cfg: &ControlFlowGraph) -> usize {
         }
     });
 
-    if let Some(v) = cfg.vertices().iter().next() {
-        // Simply return the index of the variable
+    if let Some(v) = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_INDEX) {
+        // Simply return the index of the first vertex that is defined.
         return v.index();
     }
 
