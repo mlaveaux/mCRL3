@@ -2,6 +2,7 @@
 /// Authors: Menno Bartels and Maurice Laveaux
 /// To keep consistent with the theory we allow non-snake case names.
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::iter;
 
 use itertools::Itertools;
@@ -19,6 +20,8 @@ use mcrl2::PbesExpression;
 use mcrl2::PbesStategraph;
 use mcrl2::SrfPbes;
 use mcrl2::StategraphEquation;
+use mcrl2::data_expression_variables;
+use mcrl2::pbes_expression_pvi;
 use mcrl2::replace_propositional_variables;
 use mcrl2::replace_variables;
 use merc_io::LargeFormatter;
@@ -259,9 +262,9 @@ impl SymmetryAlgorithm {
 
         info!("Parameter indices in clique: {:?}", control_flow_parameter_indices);
 
-        // Groups the data parameters by their sort.
-        let (mut number_of_permutations, all_data_groups) = if partition_data_sorts {
-            let same_sort_parameters = partition(
+        let data_parameter_partition = if partition_data_sorts {
+            // Groups the data parameters by their sort.
+            partition(
                 self.parameters.iter().enumerate().filter_map(|(index, param)| {
                     if self.all_control_flow_parameters.contains(&index) {
                         // Skip control flow parameters.
@@ -271,53 +274,77 @@ impl SymmetryAlgorithm {
                     }
                 }),
                 |lhs, rhs| lhs.sort() == rhs.sort(),
-            );
+            ) 
 
-            let mut number_of_permutations = 1usize;
-            let mut all_data_groups: Box<dyn CloneIterator<Item = Permutation>> = Box::new(iter::empty()); // Default value is overwritten in first iteration.
-            for group in same_sort_parameters {
-                // Determine the indices of these parameters.
-                let parameter_indices: Vec<usize> = group
-                    .iter()
-                    .map(|param| self.parameters.iter().position(|p| p.name() == param.name()).unwrap())
-                    .collect();
-
-                info!(
-                    "Same sort data parameters: {:?}, indices: {:?}",
-                    group, parameter_indices
-                );
-
-                // Compute the product of the current data group with the already concatenated ones.
-                let number_of_parametes = parameter_indices.len();
-                if number_of_permutations == 1 {
-                    all_data_groups =
-                        Box::new(permutation_group(parameter_indices)) as Box<dyn CloneIterator<Item = Permutation>>;
-                } else {
-                    all_data_groups = Box::new(
-                        all_data_groups
-                            .cartesian_product(permutation_group(parameter_indices))
-                            .map(|(a, b)| a.concat(&b)),
-                    ) as Box<dyn CloneIterator<Item = Permutation>>;
-                }
-
-                number_of_permutations *= permutation_group_size(number_of_parametes);
-            }
-
-            (number_of_permutations, all_data_groups)
         } else {
             // All data parameters in a single group.
-            let parameter_indices: Vec<usize> = (0..self.parameters.len())
-                .filter(|i| !self.all_control_flow_parameters.contains(i))
+            vec![self.parameters.iter().enumerate().filter_map(|(index, param)| {
+                if self.all_control_flow_parameters.contains(&index) {
+                    // Skip control flow parameters.
+                    None
+                } else {
+                    Some(param)
+                }
+            }).collect()]            
+        };
+
+        let data_parameter_partition = if partition_data_updates {
+            let mut parameter_updates = vec![HashSet::new(); self.parameters.len()];
+
+            // Figure out all the PVIs in which the parameter is updated.
+            for equation in self.srf.equations() {
+                for summand in equation.summands() {
+                    for pvi in pbes_expression_pvi(&summand.variable().copy()) {
+                        for (index, param) in self.parameters.iter().enumerate() {
+                            if pvi.parameters().iter().any(|arg| arg == param) {
+                                parameter_updates[index].insert(pvi.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            for _group in &data_parameter_partition {                
+
+            } 
+
+            data_parameter_partition
+        } else {
+            // Do nothing
+            data_parameter_partition
+        };
+
+        // For progress messages keep track of the number of permutations we need to check.
+        let mut number_of_permutations = 1usize;
+
+        let mut all_data_groups: Box<dyn CloneIterator<Item = Permutation>> = Box::new(iter::empty()); // Default value is overwritten in first iteration.
+        for group in data_parameter_partition {
+            // Determine the indices of these parameters.
+            let parameter_indices: Vec<usize> = group
+                .iter()
+                .map(|param| self.parameters.iter().position(|p| p.name() == param.name()).unwrap())
                 .collect();
 
-            info!("All data parameter indices: {:?}", parameter_indices);
+            info!(
+                "Same sort data parameters: {:?}, indices: {:?}",
+                group, parameter_indices
+            );
 
-            let number_of_permutations = permutation_group_size(parameter_indices.len());
-            let all_data_groups =
-                Box::new(permutation_group(parameter_indices.clone())) as Box<dyn CloneIterator<Item = Permutation>>;
+            // Compute the product of the current data group with the already concatenated ones.
+            let number_of_parametes = parameter_indices.len();
+            if number_of_permutations == 1 {
+                all_data_groups =
+                    Box::new(permutation_group(parameter_indices)) as Box<dyn CloneIterator<Item = Permutation>>;
+            } else {
+                all_data_groups = Box::new(
+                    all_data_groups
+                        .cartesian_product(permutation_group(parameter_indices))
+                        .map(|(a, b)| a.concat(&b)),
+                ) as Box<dyn CloneIterator<Item = Permutation>>;
+            }
 
-            (number_of_permutations, all_data_groups)
-        };
+            number_of_permutations *= permutation_group_size(number_of_parametes);
+        }
 
         number_of_permutations *= permutation_group_size(control_flow_parameter_indices.len());
 
@@ -659,6 +686,17 @@ where
 
 /// A constant representing an undefined index.
 const UNDEFINED_INDEX: usize = usize::MAX;
+
+/// Replaces all variables in the expression by omega.
+fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
+    let variables = data_expression_variables(&expression.copy());
+
+    let omega = DataExpression::from(ATerm::with_args(&Symbol::new("OpId", 2), &[ATerm::constant::from("")]))
+
+    let sigma = 
+
+    replace_variables(expr, sigma)
+}
 
 /// Returns the index of the variable that the control flow graph considers
 fn variable_index(cfg: &ControlFlowGraph) -> usize {
