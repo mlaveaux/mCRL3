@@ -1,4 +1,7 @@
+use std::fmt;
 use std::marker::PhantomData;
+
+use itertools::Itertools;
 
 use crate::ATerm;
 use crate::ATermRef;
@@ -39,7 +42,7 @@ impl<T> ATermList<T> {
     /// Obtain the tail, i.e. the remainder, of the list. Will panic if the list
     /// is empty.
     pub fn tail(&self) -> ATermList<T> {
-        self.term.arg(1).into()
+        self.term.arg(1).protect().into()
     }
 
     /// Returns the tail if it exists, or None if the list is empty.
@@ -100,12 +103,6 @@ impl<T> From<ATerm> for ATermList<T> {
     }
 }
 
-impl<'a, T> From<ATermRef<'a>> for ATermList<T> {
-    fn from(value: ATermRef<'a>) -> Self {
-        Self::new(value.protect())
-    }
-}
-
 impl<T: From<ATerm>> IntoIterator for ATermList<T> {
     type IntoIter = ATermListIter<T>;
     type Item = T;
@@ -121,6 +118,12 @@ impl<T: From<ATerm>> IntoIterator for &ATermList<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+impl<T: From<ATerm> + fmt::Debug> fmt::Debug for ATermList<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{:?}]", self.iter().format(", "))
     }
 }
 
@@ -159,6 +162,23 @@ pub struct ATermListRef<'a, T> {
     _marker: PhantomData<T>,
 }
 
+impl<T> ATermListRef<'_, T> {
+    /// Returns true iff the list is empty.
+    pub fn is_empty(&self) -> bool {
+        self.term.is_empty_list()
+    }
+}
+
+impl<'a, T: From<ATerm>> ATermListRef<'a, T> {
+    pub fn head(&self) -> T {
+        self.term.arg(0).protect().into()
+    }
+
+    pub fn tail(&'a self) -> ATermListRef<'a, T> {
+        self.term.arg(1).into()
+    }
+}
+
 impl<'a, T> From<ATermRef<'a>> for ATermListRef<'a, T> {
     fn from(value: ATermRef<'a>) -> Self {
         debug_assert!(value.is_list(), "Term is not a list: {:?}", value);
@@ -168,3 +188,21 @@ impl<'a, T> From<ATermRef<'a>> for ATermListRef<'a, T> {
         }
     }
 }
+
+pub struct ATermListIterRef<'a, T> {
+    current: ATermListRef<'a, T>,
+}
+
+// impl<'a, T: From<ATerm>> Iterator for ATermListIterRef<'a, T> {
+//     type Item = T;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.current.is_empty() {
+//             None
+//         } else {
+//             let head = self.current.head();
+//             self.current = self.current.tail();
+//             Some(head)
+//         }
+//     }
+// }
