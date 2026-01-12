@@ -92,7 +92,7 @@ pub fn solve_variability_zielonka(
         }
     };
 
-    debug!("Performed {} recursive calls", zielonka.recursive_calls);
+    debug!("recursive calls" = zielonka.recursive_calls; "Performed {} recursive calls", zielonka.recursive_calls);
     if cfg!(debug_assertions) {
         zielonka.check_partition(&W0, &W1, &full_V)?;
     }
