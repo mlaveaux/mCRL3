@@ -73,6 +73,10 @@ struct SymmetryArgs {
     /// Partition data parameters based on their updates.
     #[arg(long, default_value_t = false)]
     partition_data_updates: bool,
+
+    /// Print the symmetry in the mapping notation instead of the cycle notation.
+    #[arg(long, default_value_t = false)]
+    mapping_notation: bool,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -125,7 +129,11 @@ fn main() -> Result<ExitCode, MercError> {
                 info!("Found candidate: {}", candidate);
 
                 if algorithm.check_symmetry(&candidate) {
-                    info!("Found symmetry: {}", candidate);
+                    if args.mapping_notation {
+                        info!("Found symmetry: {:?}", candidate);
+                    } else {
+                        info!("Found symmetry: {}", candidate);
+                    }
 
                     if !args.all_symmetries && !candidate.is_identity() {
                         // Only search for the first symmetry

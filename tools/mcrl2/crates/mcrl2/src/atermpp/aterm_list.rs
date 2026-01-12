@@ -204,7 +204,7 @@ impl<'a, T> From<ATermRef<'a>> for ATermListRef<'a, T> {
 }
 
 pub struct ATermListIterRef<'a, T> {
-    current: ATermListRef<'a, T>,
+    _current: ATermListRef<'a, T>,
 }
 
 // impl<'a, T: From<ATerm>> Iterator for ATermListIterRef<'a, T> {

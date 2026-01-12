@@ -170,7 +170,6 @@ impl Permutation {
 }
 
 /// Checks whether the mapping represents a valid permutation
-#[cfg(debug_assertions)]
 pub fn is_valid_permutation(mapping: &Vec<(usize, usize)>) -> bool {
     let mut domain = HashSet::with_capacity(mapping.len());
     let mut image = HashSet::with_capacity(mapping.len());

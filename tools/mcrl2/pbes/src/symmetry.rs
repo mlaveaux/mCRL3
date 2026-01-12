@@ -10,6 +10,7 @@ use log::debug;
 use log::info;
 use log::trace;
 
+use mcrl2::ATerm;
 use mcrl2::ATermString;
 use mcrl2::ControlFlowGraph;
 use mcrl2::ControlFlowGraphVertex;
@@ -20,10 +21,12 @@ use mcrl2::PbesExpression;
 use mcrl2::PbesStategraph;
 use mcrl2::SrfPbes;
 use mcrl2::StategraphEquation;
+use mcrl2::Symbol;
 use mcrl2::data_expression_variables;
 use mcrl2::pbes_expression_pvi;
-use mcrl2::replace_propositional_variables;
-use mcrl2::replace_variables;
+use mcrl2::reorder_propositional_variables;
+use mcrl2::substitute_data_expressions;
+use mcrl2::substitute_variables;
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
@@ -104,9 +107,13 @@ impl SymmetryAlgorithm {
     }
 
     /// Returns compliant permutations.
-    /// 
+    ///
     /// See [clique_candidates] for the parameters.
-    pub fn candidates(&self, partition_data_sorts: bool, partition_data_updates: bool) -> impl Iterator<Item = Permutation> + '_ {
+    pub fn candidates(
+        &self,
+        partition_data_sorts: bool,
+        partition_data_updates: bool,
+    ) -> impl Iterator<Item = Permutation> + '_ {
         let cliques = self.cliques();
 
         for clique in &cliques {
@@ -124,7 +131,8 @@ impl SymmetryAlgorithm {
         let mut number_of_candidates = 1usize;
 
         for clique in &cliques {
-            let (number_of_permutations, candidates) = self.clique_candidates(clique.clone(), partition_data_sorts, partition_data_updates);
+            let (number_of_permutations, candidates) =
+                self.clique_candidates(clique.clone(), partition_data_sorts, partition_data_updates);
             info!(
                 "Maximum number of permutations for clique {:?}: {}",
                 clique,
@@ -274,18 +282,23 @@ impl SymmetryAlgorithm {
                     }
                 }),
                 |lhs, rhs| lhs.sort() == rhs.sort(),
-            ) 
-
+            )
         } else {
             // All data parameters in a single group.
-            vec![self.parameters.iter().enumerate().filter_map(|(index, param)| {
-                if self.all_control_flow_parameters.contains(&index) {
-                    // Skip control flow parameters.
-                    None
-                } else {
-                    Some(param)
-                }
-            }).collect()]            
+            vec![
+                self.parameters
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, param)| {
+                        if self.all_control_flow_parameters.contains(&index) {
+                            // Skip control flow parameters.
+                            None
+                        } else {
+                            Some(param)
+                        }
+                    })
+                    .collect(),
+            ]
         };
 
         let data_parameter_partition = if partition_data_updates {
@@ -295,20 +308,33 @@ impl SymmetryAlgorithm {
             for equation in self.srf.equations() {
                 for summand in equation.summands() {
                     for pvi in pbes_expression_pvi(&summand.variable().copy()) {
-                        for (index, param) in self.parameters.iter().enumerate() {
-                            if pvi.parameters().iter().any(|arg| arg == param) {
-                                parameter_updates[index].insert(pvi.clone());
-                            }
+                        for (index, param) in pvi.arguments().protect().cast::<DataExpression>().iter().enumerate() {
+                            parameter_updates[index].insert(replace_variables_by_omega(&param));
                         }
                     }
                 }
             }
 
-            for _group in &data_parameter_partition {                
+            for (index, param) in self.parameters.iter().enumerate() {
+                debug!(
+                    "Parameter {} is updated with expressions: {}",
+                    param.name(),
+                    parameter_updates[index]
+                        .iter()
+                        .map(|expr| expr.to_string())
+                        .join(", ")
+                );
+            }
 
-            } 
+            let mut update_partition = Vec::new();
+            for group in data_parameter_partition {
+                update_partition.extend(partition(group.iter().cloned(), |lhs, rhs| {
+                    parameter_updates[self.parameters.iter().position(|p| p.name() == lhs.name()).unwrap()]
+                        == parameter_updates[self.parameters.iter().position(|p| p.name() == rhs.name()).unwrap()]
+                }));
+            }
 
-            data_parameter_partition
+            update_partition
         } else {
             // Do nothing
             data_parameter_partition
@@ -326,7 +352,7 @@ impl SymmetryAlgorithm {
                 .collect();
 
             info!(
-                "Same sort data parameters: {:?}, indices: {:?}",
+                "Parameters group: {:?}, indices: {:?}",
                 group, parameter_indices
             );
 
@@ -684,19 +710,27 @@ where
     result
 }
 
-/// A constant representing an undefined index.
-const UNDEFINED_INDEX: usize = usize::MAX;
-
 /// Replaces all variables in the expression by omega.
 fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
     let variables = data_expression_variables(&expression.copy());
 
-    let omega = DataExpression::from(ATerm::with_args(&Symbol::new("OpId", 2), &[ATerm::constant::from("")]))
+    // Generate an omega variable.
+    let omega = DataExpression::from(ATerm::with_args(
+        &Symbol::new("OpId", 2),
+        &[ATerm::constant(&Symbol::new("omega", 0)),
+            ATerm::with_args(&Symbol::new("SortId", 1), &[ATerm::constant(&Symbol::new("@untyped", 0))])],
+    ));
 
-    let sigma = 
+    let sigma = variables
+        .iter()
+        .map(|var| (var.clone().into(), omega.clone()))
+        .collect::<Vec<(DataExpression, DataExpression)>>();
 
-    replace_variables(expr, sigma)
+    substitute_variables(&expression.copy(), sigma)
 }
+
+/// A constant representing an undefined vertex.
+const UNDEFINED_INDEX: usize = usize::MAX;
 
 /// Returns the index of the variable that the control flow graph considers
 fn variable_index(cfg: &ControlFlowGraph) -> usize {
@@ -738,10 +772,10 @@ fn apply_permutation(expression: &PbesExpression, parameters: &Vec<DataVariable>
         })
         .collect();
 
-    let result = replace_variables(expression, sigma);
+    let result = substitute_data_expressions(expression, sigma);
 
     let pi = (0..parameters.len()).map(|i| pi.value(i)).collect::<Vec<usize>>();
-    replace_propositional_variables(&result, &pi)
+    reorder_propositional_variables(&result, &pi)
 }
 
 #[cfg(test)]
