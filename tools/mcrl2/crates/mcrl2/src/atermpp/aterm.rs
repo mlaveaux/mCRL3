@@ -218,8 +218,14 @@ pub struct ATerm {
 
 impl ATerm {
     /// Creates a new ATerm with the given symbol and arguments.
-    pub fn new<'a, 'b>(symbol: &impl Borrow<SymbolRef<'a>>, arguments: &[impl Borrow<ATermRef<'b>>]) -> ATerm {
+    pub fn with_args<'a, 'b>(symbol: &impl Borrow<SymbolRef<'a>>, arguments: &[impl Borrow<ATermRef<'b>>]) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create(symbol, arguments))
+    }
+
+    /// Creates a constant ATerm with the given symbol.
+    pub fn constant<'a>(symbol: &impl Borrow<SymbolRef<'a>>) -> ATerm {
+        let tmp: &[ATermRef<'a>] = &[];
+        THREAD_TERM_POOL.with_borrow(|tp| tp.create(symbol, tmp))
     }
 
     /// Constructs an ATerm from a string by parsing it.

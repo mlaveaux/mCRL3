@@ -19,7 +19,7 @@ pub fn random_term(
     let mut subterms = HashSet::<ATerm>::from_iter(
         constants
             .iter()
-            .map(|name| ATerm::new(&Symbol::new(name, 0), &[] as &[ATerm])),
+            .map(|name| ATerm::with_args(&Symbol::new(name, 0), &[] as &[ATerm])),
     );
 
     let mut result = ATerm::default();
@@ -31,7 +31,7 @@ pub fn random_term(
             arguments.push(subterms.iter().choose(rng).unwrap().clone());
         }
 
-        result = ATerm::new(&Symbol::new(symbol, *arity), &arguments);
+        result = ATerm::with_args(&Symbol::new(symbol, *arity), &arguments);
 
         // Make this term available as another subterm that can be used.
         subterms.insert(result.clone());
