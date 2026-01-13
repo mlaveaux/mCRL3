@@ -148,6 +148,10 @@ struct RefinesArgs {
     /// Specify the specification LTS.
     specification_filename: PathBuf,
 
+    /// If set, outputs a counter-example when refinement does not hold.
+    #[arg(short = 'c', long)]
+    counter_example: bool,
+
     #[arg(long, help = "Explicitly specify the LTS file format")]
     filetype: Option<LtsFormat>,
     
@@ -275,13 +279,20 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
         LargeFormatter(spec_lts.num_of_transitions())
     );
 
-    let refines = apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| {
-        refines(left, right, args.refinement, !args.no_preprocess, timing)
+    let (result, counter_example) = apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| {
+        refines(left, right, args.refinement, !args.no_preprocess, args.counter_example, timing)
     });
 
-    if refines {
+    if result {
         println!("true");
     } else {
+        if let Some(trace) = counter_example {
+            println!("Counter-example trace:");
+            for label in trace {
+                println!("  {}", label);
+            }
+        }
+
         println!("false");
     }
 
