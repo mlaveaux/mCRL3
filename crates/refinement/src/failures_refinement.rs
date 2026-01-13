@@ -98,7 +98,7 @@ pub fn is_failures_refinement<L: LTS>(
         // Construct a counter example tree, and return a trace.
         let mut ce_constructor = CounterExampleConstructor::new();
         let (result, state) = is_refinement_internal(strategy, merged_lts, initial_spec, &mut ce_constructor);
-        debug!("{:?}", ce_constructor);
+        trace!("Counter example tree: {:?}", ce_constructor);
 
         if let Some(state) = state {
             (result, Some(ce_constructor.reconstruct_trace(state)))
