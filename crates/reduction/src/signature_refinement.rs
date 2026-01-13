@@ -408,8 +408,6 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition
 where {
     // Avoids reallocations when computing the signature.
     let mut arena = Bump::new();
-    let mut arena2 = Bump::new();
-
     let mut builder = SignatureBuilder::default();
 
     // Put all the states in the initial partition { S }.
@@ -420,11 +418,11 @@ where {
     let mut next_partition = IndexedPartition::new(lts.num_of_states());
     let mut state_to_signature: Vec<Option<usize>> = Vec::new();
     let mut key_to_signature: Vec<Signature> = Vec::new();
-    let mut key_to_taus: Vec<Signature> = Vec::new();
+    let mut state_to_taus: Vec<Signature> = Vec::new();
+
     state_to_signature.resize_with(lts.num_of_states(), || None);
-    let dummy_signature = [(LabelIndex::new(0), BlockIndex::new(0))];
-    key_to_taus.push(Signature::new(&dummy_signature)); // Dummy tau signature
-                                                        // Refine partitions until stable.
+    state_to_taus.resize_with(lts.num_of_states(), Signature::default);
+
     let mut old_count = 1;
     let mut iteration = 0;
 
@@ -437,6 +435,7 @@ where {
 
     // This is a workaround for a data race in bumpalo for zero-sized slices.
     let empty_slice: &[(LabelIndex, BlockIndex)] = &[];
+    // Refine partitions until stable.
 
     while old_count != id.len() {
         old_count = id.len();
@@ -454,9 +453,23 @@ where {
         let state_to_signature: &'_ mut Vec<Option<usize>> = unsafe { std::mem::transmute(&mut state_to_signature) };
         let id: &'_ mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
         let key_to_signature: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut key_to_signature) };
+        let state_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_taus) };
         // let state_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_taus) };
         // Remove the current signatures.
         arena.reset();
+
+        // Compute for each state its tau signature. This seems innefficient, but for now it works.
+        state_to_taus.resize_with(lts.num_of_states(), || Signature::default());
+        for state in lts.iter_states() {
+            weak_bisim_signature_sorted_taus(state, lts, &partition, &state_to_taus, &mut builder);
+       
+            let slice = if builder.is_empty() {
+                empty_slice
+            } else {
+                arena.alloc_slice_copy(&builder)
+            };
+            state_to_taus[state] = Signature::new(slice);
+        }
 
         for state_index in lts.iter_states() {
             // Compute the Presignature of a single state
@@ -464,19 +477,16 @@ where {
 
             // Inductive step see if presig is a subset of a tau reachable state.
             let mut inductive_key = None;
-            for transition in lts.outgoing_transitions(state_index) {
-                if lts.is_hidden_label(transition.label) {
-                    if let Some(silent_candidate) = state_to_signature[transition.to] {
-                        let tau_sig = &key_to_signature[silent_candidate];
-                        let presig = Signature::new(&builder);
+            for keyvalue in builder.as_slice() {
+                if is_tau_hat(keyvalue.0, lts) {
+                    let tau_sig = &key_to_signature[keyvalue.1];
+                    let presig = Signature::new(&builder);
 
-                        if tau_sig
-                            .is_subset_of(presig.as_slice(), (transition.label, BlockIndex::new(silent_candidate)))
-                        {
-                            // If it is: use that signature.
-                            inductive_key = Some(silent_candidate);
-                            break;
-                        }
+                    if tau_sig
+                        .is_subset_of(presig.as_slice(), (keyvalue.0, BlockIndex::new(*keyvalue.1)))
+                    {
+                        inductive_key = Some(*keyvalue.1);
+                        break;
                     }
                 }
             }
@@ -493,7 +503,7 @@ where {
                     state_index,
                     lts,
                     &partition,
-                    &key_to_taus,
+                    &state_to_taus,
                     &state_to_signature,
                     &key_to_signature,
                     &mut builder,
@@ -515,7 +525,6 @@ where {
                     id.insert(Signature::new(slice), new_id);
                     key_to_signature.push(Signature::new(slice));
 
-                    // (branching) Keep track of the signature for every block in the next partition.
                     state_to_signature[state_index] = Some(new_id.value());
                 }
 
@@ -524,28 +533,6 @@ where {
         }
 
         iteration += 1;
-
-        key_to_taus.clear();
-        let key_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut key_to_taus) };
-        arena2.reset();
-
-        key_to_taus.resize_with(next_partition.num_of_blocks(), || Signature::default());
-        // Set the new Taus
-        for key in 0..key_to_signature.len() {
-            let filtered: Vec<_> = key_to_signature[key]
-                .as_slice()
-                .iter()
-                .filter(|&&(label, _state)| label == LabelIndex::new(0))
-                .copied()
-                .collect();
-
-            let slice = if filtered.is_empty() {
-                empty_slice
-            } else {
-                arena2.alloc_slice_copy(&filtered)
-            };
-            key_to_taus[key] = Signature::new(slice);
-        }
 
         debug_assert!(
             iteration <= lts.num_of_states().max(2),
