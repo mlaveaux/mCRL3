@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt};
 
-use merc_lts::{LabelIndex, StateIndex};
+use merc_lts::LabelIndex;
 use merc_utilities::TagIndex;
 
 /// A unique type for vertices in the counterexample tree.
@@ -9,13 +9,15 @@ pub struct CounterTag {}
 /// The index type for vertices in the counterexample tree.
 pub type CounterIndex = TagIndex<usize, CounterTag>;
 
-/// A class that can be used to store a counter example tree from which a
-/// counter example trace can be extracted.
+/// A generic trait for counterexample tree structures.
+/// 
+/// # Details
+/// 
+/// This is useful such that we can both provide a concrete implementation that
+/// constructs a counterexample tree, but also a placeholder implementation that
+/// does nothing when no counterexample is needed.
 pub trait CounterExampleTree {
     type Index: Clone + Copy;
-
-    /// Creates a new counterexample tree.
-    fn new() -> Self;
 
     /// Returns the index of the root of the counterexample tree.
     fn root_index(&self) -> Self::Index;
@@ -24,9 +26,44 @@ pub trait CounterExampleTree {
     fn add_edge(&mut self, label: LabelIndex, to: Self::Index) -> Self::Index;
 }
 
+/// A class that can be used to store a counter example tree from which a
+/// counter example trace can be extracted.
 pub struct CounterExampleConstructor {
     /// The backward three is stored in a deque. 
     backward_tree: VecDeque<(LabelIndex, CounterIndex)>,
+}
+
+impl CounterExampleConstructor {
+    /// Creates a new counterexample constructor.    
+    pub fn new() -> Self {
+        Self {
+            // Add the root such that index 0 is the root.
+            backward_tree: VecDeque::from([(LabelIndex::default(), TagIndex::default())]),
+        }
+    }
+
+    /// Reconstructs the trace from the counterexample tree given the index
+    /// of the leaf node.
+    pub fn reconstruct_trace(&self, mut index: CounterIndex) -> Vec<LabelIndex> {
+        let mut trace = Vec::new();
+
+        while index != self.root_index() {
+            let (label, parent) = &self.backward_tree[*index];
+            trace.push(*label);
+            index = *parent;
+        }
+
+        trace.reverse();
+        trace
+    }
+}
+
+impl fmt::Debug for CounterExampleConstructor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CounterExampleConstructor")
+            .field("backward_tree", &self.backward_tree)
+            .finish()
+    }
 }
 
 impl CounterExampleTree for CounterExampleConstructor { 
@@ -35,12 +72,6 @@ impl CounterExampleTree for CounterExampleConstructor {
     fn add_edge(&mut self, label: LabelIndex, to: Self::Index) -> Self::Index {
         self.backward_tree.push_back((label, to));
         TagIndex::new(self.backward_tree.len() - 1)
-    }
-    
-    fn new() -> Self {
-        Self {
-            backward_tree: VecDeque::new(),
-        }
     }
     
     fn root_index(&self) -> Self::Index {
@@ -54,11 +85,7 @@ impl CounterExampleTree for () {
     fn add_edge(&mut self, _label: LabelIndex, _to: Self::Index) -> Self::Index {
         // Do nothing
     }
-    
-    fn new() -> Self {
-        ()
-    }
-    
+        
     fn root_index(&self) -> Self::Index {
         ()
     }

@@ -9,8 +9,10 @@
 
 use std::collections::VecDeque;
 
+use log::debug;
 use log::trace;
 use merc_collections::VecSet;
+use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
 use merc_lts::LTS;
 use merc_reduction::quotient_lts_block;
@@ -21,6 +23,7 @@ use merc_reduction::Partition;
 use merc_utilities::Timing;
 
 use crate::Antichain;
+use crate::CounterExampleConstructor;
 use crate::CounterExampleTree;
 use crate::RefinementType;
 
@@ -48,14 +51,15 @@ pub enum ExplorationStrategy {
 /// reducing the state space beforehand can lead to significant performance
 /// improvements. However, for quick failing checks the preprocessing could cause
 /// unnecessary overhead.
-pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree, const COUNTER_EXAMPLE: bool>(
+pub fn is_failures_refinement<L: LTS>(
     impl_lts: L,
     spec_lts: L,
     refinement: RefinementType,
     strategy: ExplorationStrategy,
     preprocess: bool,
+    counter_example: bool,
     timing: &mut Timing,
-) -> bool {
+) -> (bool, Option<Vec<LabelIndex>>) {
     let reduction = match refinement {
         RefinementType::Trace => Equivalence::StrongBisim,
     };
@@ -63,7 +67,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree, const COUNTER_EXAM
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
     // together in case that some states are equivalent. So we do this in all branches.
     let (merged_lts, initial_spec) = if preprocess {
-        if COUNTER_EXAMPLE {
+        if counter_example {
             // If a counter example is to be generated, we only reduce the
             // specification LTS such that the resulting counter example remains valid.
             let reduced_spec = reduce_lts(spec_lts, reduction, timing);
@@ -90,11 +94,25 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree, const COUNTER_EXAM
     };
 
     let mut refine_time = timing.start("refinement");
-    let mut counter_example = CE::new();
-    let result = is_refinement_internal(strategy, merged_lts, initial_spec, &mut counter_example);
+    let (result, ce) = if counter_example {
+        // Construct a counter example tree, and return a trace.
+        let mut ce_constructor = CounterExampleConstructor::new();
+        let (result, state) = is_refinement_internal(strategy, merged_lts, initial_spec, &mut ce_constructor);
+        debug!("{:?}", ce_constructor);
+
+        if let Some(state) = state {
+            (result, Some(ce_constructor.reconstruct_trace(state)))
+        } else {
+            (result, None)
+        }
+    } else {
+        // Run without constructing a counter example.
+        let (result, _) = is_refinement_internal::<_, ()>(strategy, merged_lts, initial_spec, &mut ());
+        (result, None)
+    };
 
     refine_time.finish();
-    result
+    (result, ce)
 }
 
 /// The inner loop for checking refinement.
@@ -103,7 +121,7 @@ fn is_refinement_internal<L: LTS, CE: CounterExampleTree>(
     merged_lts: L,
     initial_spec: StateIndex,
     counter_example: &mut CE,
-) -> bool {
+) -> (bool, Option<CE::Index>) {
     let mut working = VecDeque::from([(
         merged_lts.initial_state_index(),
         VecSet::singleton(initial_spec),
@@ -134,7 +152,7 @@ fn is_refinement_internal<L: LTS, CE: CounterExampleTree>(
             trace!("spec' = {:?}", spec_prime);
             if spec_prime.is_empty() {
                 // if spec' = {} then
-                return false; //    return false;
+                return (false, Some(new_edge));
             }
 
             if antichain.insert(impl_transition.to, spec_prime.clone()) {
@@ -147,7 +165,7 @@ fn is_refinement_internal<L: LTS, CE: CounterExampleTree>(
         }
     }
 
-    true
+    (true, None)
 }
 
 ///
@@ -189,14 +207,16 @@ mod tests {
 
             for preprocess in [false, true] {
                 assert!(
-                    is_failures_refinement::<_, (), false>(
+                    is_failures_refinement(
                         impl_lts.clone(),
                         spec_lts.clone(),
                         RefinementType::Trace,
                         ExplorationStrategy::BFS,
                         preprocess,
+                        false,
                         &mut timing
-                    ),
+                    )
+                    .0,
                     "Strong bisimulation implies trace refinement."
                 );
             }
