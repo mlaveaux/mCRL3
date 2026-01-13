@@ -14,5 +14,7 @@ merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
 clap.workspace = true
+duct.workspace = true
 env_logger.workspace = true
 log.workspace = true
+which.workspace = true

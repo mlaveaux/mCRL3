@@ -7,18 +7,24 @@ use clap::Subcommand;
 
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
+use merc_symbolic::DependencyGraph;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::guess_format_from_extension;
+use merc_symbolic::parse_compacted_dependency_graph;
 use merc_symbolic::reachability;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
+use merc_symbolic::reorder;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_tools::verbosity::VerbosityFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use which::which_in;
+use std::env;
+use std::ffi::OsString;
 
 #[derive(clap::Parser, Debug)]
 #[command(
@@ -44,6 +50,7 @@ struct Cli {
 enum Commands {
     Info(InfoArgs),
     Explore(ExploreArgs),
+    Reorder(ReorderArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -58,6 +65,17 @@ struct ExploreArgs {
     filename: PathBuf,
 
     format: Option<SymFormat>,
+}
+
+#[derive(clap::Args, Debug)]
+#[command(about = "Computes a reordering for a ")]
+struct ReorderArgs {
+
+    #[arg(long, help = "Path to the mCRL2 lpsreach tool")]
+    lpsreach_path: Option<PathBuf>,
+
+    /// The input linear process specification file in the mCRL2 .lps format.
+    filename: PathBuf,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -79,6 +97,7 @@ fn main() -> Result<ExitCode, MercError> {
         match command {
             Commands::Info(args) => handle_info(args, &mut timing)?,
             Commands::Explore(args) => handle_explore(args, &mut timing)?,
+            Commands::Reorder(args) => handle_reorder(args, &mut timing)?,
         }
     }
 
@@ -131,6 +150,27 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
             let _input = read_symbolic_lts(&mut storage, &mut file)?;
         }
     }
+
+    Ok(())
+}
+
+fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
+    // Find lpsreach
+    let lpsreach_path = if let Some(path) = args.lpsreach_path {
+        which_in("lpsreach", Some(path), std::env::current_dir())?
+    } else {
+        which::which("lpsreach")?
+    };
+
+    /// Run lpsreach with the --info flag to get dependency information
+    let proc = duct::cmd!(lpsreach_path, "--info", &args.filename)
+        .run()
+        .map_err(|e| e.to_string())?;
+
+    let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stderr)?);
+
+    let order = reorder(&graph)?;
+    println!("Computed variable order: {:?}", order);
 
     Ok(())
 }
