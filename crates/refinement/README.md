@@ -1,13 +1,17 @@
 # Overview
 
-This crate provides algorithms to check various preorder relations between labelled transition systems (LTSs). The main functionality is checking whether an implementation LTS is refined by a specification LTS with respect to the failures-divergence preorder, which the preorder widely used by the [FDR4](https://cocotec.io/fdr/); the CSP refinement checker.
+This crate provides refinement algorithms to check various preorder relations
+between labelled transition systems (LTSs). The main functionality is checking
+whether an implementation LTS is refined by a specification LTS with respect to
+the failures-divergence refinement, which the preorder relation widely used by
+the [FDR4](https://cocotec.io/fdr/); the CSP refinement checker.
 
 ```rust
 use merc_lts::read_aut;
 use merc_utilities::Timing;
 
-use merc_preorder::refines;
-use merc_preorder::RefinementType;
+use merc_refinement::refines;
+use merc_refinement::RefinementType;
 
 let impl_lts = read_aut(b"des (0,8,6)                                        
 (0,newday,1)
@@ -58,8 +62,11 @@ This crate contains no unsafe code.
 
 ## Minimum Supported Rust Version
 
-We do not maintain an official minimum supported rust version (MSRV), and it may be upgraded at any time when necessary.
+We do not maintain an official minimum supported rust version (MSRV), and it may
+be upgraded at any time when necessary.
 
 ## License
 
-All MERC crates are licensed under the `BSL-1.0` license. See the [LICENSE](https://raw.githubusercontent.com/MERCorg/merc/refs/heads/main/LICENSE) file in the repository root for more information.
+All MERC crates are licensed under the `BSL-1.0` license. See the
+[LICENSE](https://raw.githubusercontent.com/MERCorg/merc/refs/heads/main/LICENSE)
+file in the repository root for more information.

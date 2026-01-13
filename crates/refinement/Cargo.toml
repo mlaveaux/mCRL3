@@ -1,6 +1,6 @@
 [package]
-name = "merc_preorder"
-description = "Algorithms to compare labelled transition systems with respect to various preorders."
+name = "merc_refinement"
+description = "Algorithms to compare labelled transition systems with respect to various refinement relations."
 keywords = ["comparison", "transition-systems"]
 categories = ["algorithms", "science"]
 readme = "README.md"
