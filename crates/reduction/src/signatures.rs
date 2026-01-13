@@ -36,7 +36,7 @@ impl<'a> Signature<'a> {
 }
 
 impl Signature<'_> {
-    // Check if target is a subset of self, excluding a specific element
+    // Check if other is a subset of self, excluding a specific element
     pub fn is_subset_of(&self, other: &[(LabelIndex, BlockIndex)], exclude: (LabelIndex, BlockIndex)) -> bool {
         let mut self_iter = self.as_slice().iter();
         let mut other_iter = other.iter().filter(|&&x| x != exclude);
@@ -272,7 +272,7 @@ pub fn weak_bisim_signature_sorted_full(
     state_index: StateIndex,
     lts: &impl LTS,
     partition: &impl Partition,
-    key_to_taus: &[Signature],
+    state_to_taus: &[Signature],
     state_to_signature: &[Option<usize>],
     key_to_signature: &[Signature],
     builder: &mut SignatureBuilder,
@@ -287,7 +287,7 @@ pub fn weak_bisim_signature_sorted_full(
             builder.extend(key_to_signature[state_to_signature[transition.to].unwrap()].as_slice());
         } else {
             builder.push((transition.label, to_block));
-            for (label_after, color) in key_to_taus[to_block].as_slice() {
+            for (label_after, color) in state_to_taus[transition.to].as_slice() {
                 if lts.is_hidden_label(*label_after) {
                     builder.push((transition.label, *color));
                 }
