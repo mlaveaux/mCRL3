@@ -1,15 +1,17 @@
-//! Authors: Jan Friso Groote, Maurice Laveaux, Wieger Wesselink and Tim A.C. Willemse
-//! This file contains an implementation of
-//! M. Laveaux, J.F. Groote and T.A.C. Willemse
-//! Correct and Efficient Antichain Algorithms for Refinement Checking. Logical Methods in Computer Science 17(1) 2021
+//! Authors: Jan Friso Groote, Maurice Laveaux, Wieger Wesselink and Tim A.C.
+//! Willemse
+//! 
+//! > M. Laveaux, J.F. Groote and T.A.C. Willemse. Correct and Efficient
+//! > Antichain Algorithms for Refinement Checking. Logical Methods in Computer
+//! > Science 17(1) 2021
 //!
-//! There are six algorithms. One for trace inclusion, one for failures inclusion and one for failures-divergence
-//! inclusion. All algorithms come in a variant with and without internal steps. It is possible to generate a counter
-//! transition system in case the inclusion is answered by no.
+//! There are six algorithms. One for trace inclusion, one for failures
+//! inclusion and one for failures-divergence inclusion. All algorithms come in
+//! a variant with and without internal steps. It is possible to generate a
+//! counter transition system in case the inclusion is answered by no.
 
 use std::collections::VecDeque;
 
-use log::debug;
 use log::trace;
 use merc_collections::VecSet;
 use merc_lts::LabelIndex;
@@ -116,6 +118,13 @@ pub fn is_failures_refinement<L: LTS>(
 }
 
 /// The inner loop for checking refinement.
+/// 
+/// # Details
+/// 
+/// This is mostly used internally. The `CE` type parameter indicates the type
+/// of counter example tree that is used to construct counter examples. If no
+/// counter examples are required, this can be set to `()`. Avoiding the cost
+/// for keeping track of counter example information.
 fn is_refinement_internal<L: LTS, CE: CounterExampleTree>(
     strategy: ExplorationStrategy,
     merged_lts: L,
@@ -166,15 +175,6 @@ fn is_refinement_internal<L: LTS, CE: CounterExampleTree>(
     }
 
     (true, None)
-}
-
-///
-struct LtsCache {}
-
-impl LtsCache {
-    fn outgoing_tau_closure(&mut self, lts: &impl LTS, state: StateIndex) -> impl Iterator<Item = StateIndex> + '_ {
-        std::iter::empty()
-    }
 }
 
 #[cfg(test)]
