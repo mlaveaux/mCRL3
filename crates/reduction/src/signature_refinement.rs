@@ -473,17 +473,17 @@ where {
 
         for state_index in lts.iter_states() {
             // Compute the Presignature of a single state
-            weak_bisim_presignature_sorted(state_index, lts, &partition, &state_to_signature, &mut builder);
+            weak_bisim_presignature_sorted(state_index, lts, &partition, &state_to_taus,&state_to_signature, &mut builder);
 
             // Inductive step see if presig is a subset of a tau reachable state.
             let mut inductive_key = None;
             for keyvalue in builder.as_slice() {
                 if is_tau_hat(keyvalue.0, lts) {
-                    let tau_sig = &key_to_signature[keyvalue.1];
+                    let tau_sig = &key_to_signature[keyvalue.1.value()];
                     let presig = Signature::new(&builder);
 
                     if tau_sig
-                        .is_subset_of(presig.as_slice(), (keyvalue.0, BlockIndex::new(*keyvalue.1)))
+                        .is_subset_of(presig.as_slice(), *keyvalue)
                     {
                         inductive_key = Some(*keyvalue.1);
                         break;
@@ -492,7 +492,8 @@ where {
             }
             if let Some(inductive_key) = inductive_key {
                 trace!(
-                    "State {state_index} uses inductive key {inductive_key} signature {:?}",
+                    "State {state_index} with pre {:?} uses inductive key {inductive_key}:{:?}",
+                    builder.as_slice(),
                     key_to_signature[inductive_key].as_slice()
                 );
                 state_to_signature[state_index] = Some(inductive_key);
