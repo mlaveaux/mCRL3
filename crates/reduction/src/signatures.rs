@@ -244,19 +244,22 @@ pub fn weak_bisim_presignature_sorted(
     state_index: StateIndex,
     lts: &impl LTS,
     partition: &impl Partition,
+    state_to_taus: &[Signature],
     state_to_key: &[Option<usize>],
     builder: &mut SignatureBuilder,
 ) {
     builder.clear();
     builder.push((LabelIndex::new(0), partition.block_number(state_index))); // Add the inert tau transition to itself.
     for transition in lts.outgoing_transitions(state_index) {
-        let to_block = partition.block_number(transition.to);
-
         if lts.is_hidden_label(transition.label) {
             // Inert tau transition, take signature from the outgoing tau-transition.
             builder.push((tau_hat(lts), BlockIndex::new(state_to_key[transition.to].unwrap())));
         } else {
-            builder.push((transition.label, to_block));
+            for (label_after, color) in state_to_taus[transition.to].as_slice() {
+                if lts.is_hidden_label(*label_after) {
+                    builder.push((transition.label, *color));
+                }
+            }
         }
     }
 
@@ -341,18 +344,15 @@ pub fn weak_bisim_signature_sorted_taus(
     state_index: StateIndex,
     lts: &impl LTS,
     partition: &impl Partition,
-    state_to_signature: &[Signature],
+    state_to_taus: &[Signature],
     builder: &mut SignatureBuilder,
 ) {
     builder.clear();
     builder.push((LabelIndex::new(0), partition.block_number(state_index))); // Add the inert tau transition to itself.
     for transition in lts.outgoing_transitions(state_index) {
         if lts.is_hidden_label(transition.label) {
-            let to_block = partition.block_number(transition.to);
-
             // Inert tau transition, take signature from the outgoing tau-transition.
-            builder.extend(state_to_signature[transition.to].as_slice());
-            builder.push((transition.label, to_block));
+            builder.extend(state_to_taus[transition.to].as_slice());
         }
     }
     // Compute the flat signature, which has Hash and is more compact.
