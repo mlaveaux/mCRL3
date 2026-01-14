@@ -13,7 +13,7 @@ pub fn iter_right<'a>(storage: &'a Storage, ldd: &Ldd) -> IterRight<'a> {
 
 // Returns an iterator over all vectors contained in the given LDD.
 pub fn iter<'a>(storage: &'a Storage, ldd: &Ldd) -> Iter<'a> {
-    if ldd == storage.empty_set() {
+    if ldd == storage.empty_vector() || ldd == storage.empty_set() {
         Iter {
             storage,
             vector: Vec::new(),
