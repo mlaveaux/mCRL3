@@ -14,28 +14,24 @@ use log::debug;
 use log::info;
 use log::trace;
 use merc_symbolic::FormatConfig;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::util::AllocResult;
-use oxidd::util::OptBool;
 use oxidd::BooleanFunction;
 use oxidd::Edge;
 use oxidd::Function;
 use oxidd::Manager;
 use oxidd::ManagerRef;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::util::AllocResult;
+use oxidd::util::OptBool;
 use oxidd_core::util::EdgeDropGuard;
 
+use merc_symbolic::FormatConfigSet;
 use merc_symbolic::minus;
 use merc_symbolic::minus_edge;
-use merc_symbolic::FormatConfigSet;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
-use crate::combine;
-use crate::compute_reachable;
-use crate::project_variability_parity_games_iter;
-use crate::solve_zielonka;
-use crate::x_and_not_x;
+use crate::PG;
 use crate::Player;
 use crate::Priority;
 use crate::Repeat;
@@ -44,7 +40,11 @@ use crate::Submap;
 use crate::VariabilityParityGame;
 use crate::VariabilityPredecessors;
 use crate::VertexIndex;
-use crate::PG;
+use crate::combine;
+use crate::compute_reachable;
+use crate::project_variability_parity_games_iter;
+use crate::solve_zielonka;
+use crate::x_and_not_x;
 
 /// Variant of the Zielonka algorithm to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -304,12 +304,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
             "{indent}zielonka_family(gamma \\ alpha), |alpha| = {}",
             alpha.number_of_non_empty()
         );
-        let (omega1_0, omega1_1) = self.solve_recursive(
-            gamma
-                .clone()
-                .minus(self.manager_ref, &alpha)?,
-            depth + 1,
-        )?;
+        let (omega1_0, omega1_1) = self.solve_recursive(gamma.clone().minus(self.manager_ref, &alpha)?, depth + 1)?;
 
         let (mut omega1_x, mut omega1_not_x) = x_and_not_x(omega1_0, omega1_1, x);
         if omega1_not_x.is_empty() {
@@ -397,12 +392,8 @@ impl<'a> VariabilityZielonkaSolver<'a> {
             "{indent}zielonka_family_opt(gamma \\ alpha) |alpha| = {}",
             alpha.number_of_non_empty()
         );
-        let (omega1_0, omega1_1) = self.zielonka_family_optimised(
-            gamma
-                .clone()
-                .minus(self.manager_ref, &alpha)?,
-            depth + 1,
-        )?;
+        let (omega1_0, omega1_1) =
+            self.zielonka_family_optimised(gamma.clone().minus(self.manager_ref, &alpha)?, depth + 1)?;
 
         // omega_prime[not_x] restricted to (gamma \ C)
         let C_restricted = minus(
@@ -415,9 +406,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         )?;
 
         let (mut omega1_x, omega1_not_x) = x_and_not_x(omega1_0, omega1_1, x);
-        let omega1_not_x_restricted = omega1_not_x
-            .clone()
-            .minus_function(self.manager_ref, &C_restricted)?;
+        let omega1_not_x_restricted = omega1_not_x.clone().minus_function(self.manager_ref, &C_restricted)?;
 
         // 10.
         if omega1_not_x_restricted.is_empty() {
@@ -447,9 +436,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
                 &C1,
             )?;
 
-            let omega1_not_x_restricted1 = omega1_not_x
-                .clone()
-                .minus_function(self.manager_ref, &C1_restricted)?;
+            let omega1_not_x_restricted1 = omega1_not_x.clone().minus_function(self.manager_ref, &C1_restricted)?;
             trace!("{indent}omega'_notx_restricted: {:?}", omega1_not_x_restricted1);
             let alpha1 = self.attractor(not_x, &gamma, omega1_not_x_restricted1)?;
             trace!("{indent}alpha': {:?}", alpha1);
@@ -641,30 +628,31 @@ impl<'a> VariabilityZielonkaSolver<'a> {
                 lowest = lowest.min(*prio);
             }
         });
-        
+
         (Priority::new(highest), Priority::new(lowest))
     }
 
     /// Checks that the sets W0 and W1 form a  partition w.r.t the submap V, i.e., their union is V and their intersection is empty.
     fn check_partition(&self, W0: &Submap, W1: &Submap, V: &Submap) -> Result<(), MercError> {
-        self.manager_ref.with_manager_shared(|manager| -> Result<(), MercError> {
-            for v in V.iter_vertices(manager) {
-                let tmp = W0[v].or(&W1[v])?;
+        self.manager_ref
+            .with_manager_shared(|manager| -> Result<(), MercError> {
+                for v in V.iter_vertices(manager) {
+                    let tmp = W0[v].or(&W1[v])?;
 
-                // The union of both solutions should be the entire set of vertices.
-                assert!(
-                    tmp == V[v],
-                    "The union of both solutions should be the entire set of vertices, but vertex {v} is missing."
-                );
+                    // The union of both solutions should be the entire set of vertices.
+                    assert!(
+                        tmp == V[v],
+                        "The union of both solutions should be the entire set of vertices, but vertex {v} is missing."
+                    );
 
-                assert!(
-                    !W0[v].and(&W1[v])?.satisfiable(),
-                    "The intersection of both solutions should be empty, but vertex {v} has non-empty intersection."
-                );
-            }
+                    assert!(
+                        !W0[v].and(&W1[v])?.satisfiable(),
+                        "The intersection of both solutions should be empty, but vertex {v} has non-empty intersection."
+                    );
+                }
 
-            Ok(())
-        })?;
+                Ok(())
+            })?;
 
         Ok(())
     }
@@ -675,14 +663,18 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_macros::merc_test;
     use merc_utilities::Timing;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::util::AllocResult;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::util::AllocResult;
 
     use merc_utilities::random_test;
 
+    use crate::PG;
+    use crate::Submap;
+    use crate::VertexIndex;
+    use crate::ZielonkaVariant;
     use crate::project_variability_parity_games_iter;
     use crate::random_variability_parity_game;
     use crate::solve_variability_product_zielonka;
@@ -690,10 +682,6 @@ mod tests {
     use crate::solve_zielonka;
     use crate::verify_variability_product_zielonka_solution;
     use crate::write_vpg;
-    use crate::Submap;
-    use crate::VertexIndex;
-    use crate::ZielonkaVariant;
-    use crate::PG;
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri

@@ -150,6 +150,7 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
     Ok(())
 }
 
+/// Computes a variable reordering for the output of lpsreach.
 fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
     // Find lpsreach
     let lpsreach_path = if let Some(path) = args.lpsreach_path {
