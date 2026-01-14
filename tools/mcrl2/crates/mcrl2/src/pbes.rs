@@ -90,6 +90,11 @@ impl Pbes {
         mcrl2_sys::pbes::ffi::mcrl2_pbes_normalize(self.pbes.pin_mut());
     }
 
+    /// Checks whether the PBES is well-typed.
+    pub fn is_well_typed(&self) -> bool {
+        mcrl2_sys::pbes::ffi::mcrl2_pbes_is_well_typed(&self.pbes)
+    }
+
     /// Creates a new PBES from the given FFI PBES pointer.
     pub(crate) fn new(pbes: UniquePtr<pbes>) -> Self {
         Pbes { pbes }

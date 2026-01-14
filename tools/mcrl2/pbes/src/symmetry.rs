@@ -79,6 +79,7 @@ impl SymmetryAlgorithm {
         let state_graph = {
             let mut pbes = srf.to_pbes();
             pbes.normalize();
+            debug_assert!(pbes.is_well_typed(), "PBES should be well-typed after normalization.");
             PbesStategraph::run(&pbes)?
         };
 

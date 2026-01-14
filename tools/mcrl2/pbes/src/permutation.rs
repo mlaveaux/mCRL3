@@ -26,6 +26,10 @@ impl Permutation {
         // Sort by domain for deterministic representation.
         mapping.sort_unstable_by_key(|(d, _)| *d);
         debug_assert!(
+            mapping.iter().is_sorted(),
+            "Mapping should be sorted by domain."
+        );
+        debug_assert!(
             mapping.iter().all(|(from, to)| from != to),
             "Mapping should not contain identity mappings."
         );
@@ -262,9 +266,12 @@ impl fmt::Debug for Permutation {
 /// - (0 4 3)
 pub fn permutation_group(indices: Vec<usize>) -> impl Iterator<Item = Permutation> + Clone {
     let n = indices.len();
-    let indices2 = indices.clone();
+
+    // Clone the indices for use in the closure.
+    let indices_rhs = indices.clone();
     indices.into_iter().permutations(n).map(move |perm| {
-        let mapping: Vec<(usize, usize)> = indices2.iter().cloned().zip(perm).collect();
+        // Remove identity mappings.
+        let mapping: Vec<(usize, usize)> = indices_rhs.iter().cloned().zip(perm).filter(|(x, y)| x != y).collect();
         Permutation::from_mapping(mapping)
     })
 }
