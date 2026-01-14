@@ -1,5 +1,6 @@
 use merc_ldd::Ldd;
 use merc_ldd::Value;
+use merc_ldd::union;
 use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::ManagerRef;
@@ -90,39 +91,45 @@ pub fn bdd_to_ldd(
     value: Value,
 ) -> Result<Ldd, MercError> {
     // Base cases
-    if manager_ref.with_manager_shared(|manager| *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager))) {
+    if manager_ref.with_manager_shared(|manager| {
+        *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager))
+    }) {
         // TODO: Can this be avoided.
         let empty_set = storage.empty_set().clone();
         let empty_vector = storage.empty_vector().clone();
 
-        return Ok(storage.insert(value, &empty_set, &empty_vector));
-    } 
-    if bdd.satisfiable() {
-        return Ok(storage.empty_vector().clone());
+        return Ok(storage.insert(value, &empty_vector, &empty_set));
     }
-    if bits_dd == storage.empty_set() {
+    if !bdd.satisfiable() {
         return Ok(storage.empty_set().clone());
-    }    
+    }
 
     // TODO: Implement caching
 
     // Read the bits required per layer
     let DataRef(num_bits, bits_down, _bits_right) = storage.get_ref(bits_dd);
 
-    if num_bits == bit + 1 {
+    if num_bits == bit {
         // We reached the last bit for this layer
+        println!("Inserting value {}", value);
         let down = bdd_to_ldd(storage, manager_ref, bdd, &bits_down, 0, 0)?;
-        let right = storage.empty_vector().clone();
+        let right = storage.empty_set().clone();
         Ok(storage.insert(value, &down, &right))
     } else {
         let (high, low) = bdd.cofactors().ok_or("Failed to compute cofactors")?;
 
         // Recurse for high and low cofactors
-        let high = bdd_to_ldd(storage, manager_ref, &high, bits_dd, bit + 1, value | (1 << (num_bits - bit - 1)))?;
+        let high = bdd_to_ldd(
+            storage,
+            manager_ref,
+            &high,
+            bits_dd,
+            bit + 1,
+            value | (1 << (num_bits - bit - 1)),
+        )?;
         let low = bdd_to_ldd(storage, manager_ref, &low, bits_dd, bit + 1, value)?;
 
-        let DataRef(low_value, low_down, _) = storage.get_ref(&low);
-        Ok(storage.insert(low_value, &low_down, &high))
+        Ok(union(storage, &high, &low))
     }
 }
 
@@ -148,14 +155,12 @@ fn compute_highest_rec(storage: &mut Storage, result: &mut [u32], set: &LddRef<'
 
 /// Computes the number of bits required to represent the highest value at each layer.
 fn compute_bits(highest: &[u32]) -> Vec<u32> {
-    highest.iter().map(|&h| u32::BITS - h.leading_zeros()).collect()
+    highest.iter().map(|&h| (u32::BITS - h.leading_zeros()).max(1)).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
-    use merc_ldd::fmt_node;
+    use merc_ldd::LddDisplay;
     use merc_ldd::from_iter;
     use merc_ldd::random_vector_set;
     use merc_ldd::singleton;
@@ -172,7 +177,7 @@ mod tests {
             let set = random_vector_set(rng, 4, 3, 5);
             let mut storage = Storage::new();
             let ldd = from_iter(&mut storage, set.iter());
-            println!("LDD: {}", fmt_node(&storage, &ldd));
+            println!("LDD: {}", LddDisplay::new(&storage, &ldd));
 
             let highest = compute_highest(&mut storage, &ldd);
             println!("Highest: {:?}", highest);
@@ -212,10 +217,12 @@ mod tests {
     fn test_random_ldd_to_bdd() {
         random_test(100, |rng| {
             let set = random_vector_set(rng, 1, 3, 5);
+            
+            // Check that none of 
 
             let mut storage = Storage::new();
             let ldd = from_iter(&mut storage, set.iter());
-            println!("LDD: {}", fmt_node(&storage, &ldd));
+            println!("LDD: {}", LddDisplay::new(&storage, &ldd));
 
             let highest = compute_highest(&mut storage, &ldd);
             let bits = compute_bits(&highest);
@@ -233,7 +240,7 @@ mod tests {
 
             let resulting_ldd = bdd_to_ldd(&mut storage, &manager_ref, &bdd, &bits_dd, 0, 0).unwrap();
 
-            println!("resulting LDD: {}", fmt_node(&storage, &resulting_ldd));
+            println!("resulting LDD: {}", LddDisplay::new(&storage, &resulting_ldd));
             assert_eq!(ldd, resulting_ldd, "Converted LDD does not match original");
         });
     }
