@@ -115,7 +115,7 @@ impl Eq for Ldd {}
 /// lifetimes of return values and instead these should be derived from `self`.
 /// If this is implemented correctly in the internal implementation then the
 /// LddRef can never be misused.
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Hash, PartialEq, Eq)]
 pub struct LddRef<'a> {
     index: LddIndex, // Index in the node table.
     marker: PhantomData<&'a ()>,
@@ -138,6 +138,12 @@ impl<'a> LddRef<'a> {
     /// Returns an LddRef with the same lifetime as itself.
     pub fn borrow(&self) -> LddRef<'_> {
         LddRef::new(self.index())
+    }
+}
+
+impl fmt::Debug for LddRef<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "index: {}", self.index())
     }
 }
 
