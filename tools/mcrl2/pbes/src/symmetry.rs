@@ -11,6 +11,7 @@ use log::info;
 use log::trace;
 
 use mcrl2::ATerm;
+use mcrl2::ATermInt;
 use mcrl2::ATermString;
 use mcrl2::ControlFlowGraph;
 use mcrl2::ControlFlowGraphVertex;
@@ -716,9 +717,14 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
 
     // Generate an omega variable.
     let omega = DataExpression::from(ATerm::with_args(
-        &Symbol::new("OpId", 2),
-        &[ATerm::constant(&Symbol::new("omega", 0)),
-            ATerm::with_args(&Symbol::new("SortId", 1), &[ATerm::constant(&Symbol::new("@untyped", 0))])],
+        &Symbol::new("OpId", 3),
+        &[
+            // Identifier
+            ATerm::constant(&Symbol::new("omega", 0)),
+            // Sort
+            ATerm::with_args(&Symbol::new("SortId", 1), &[ATerm::constant(&Symbol::new("@NoValue", 0))]),
+            // Index
+            ATermInt::with_value(0).into()],
     ));
 
     let sigma = variables

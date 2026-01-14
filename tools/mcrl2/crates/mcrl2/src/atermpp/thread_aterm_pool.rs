@@ -9,6 +9,7 @@ use log::trace;
 
 use mcrl2_sys::atermpp::ffi;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_create;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_create_int;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_from_string;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
@@ -159,6 +160,16 @@ impl ThreadTermPool {
             // ThreadPool is not Sync, so only one has access.
             let protection_set = self.protection_set.write_exclusive();
             let term: *const ffi::_aterm = mcrl2_aterm_create(symbol.get(), &tmp_args);
+            self.protect_with(protection_set, term)
+        }
+    }
+
+    /// Creates an aterm_int from the given value.
+    pub fn create_int(&self, value: u64) -> ATerm {
+        unsafe {
+            // ThreadPool is not Sync, so only one has access.
+            let protection_set = self.protection_set.write_exclusive();
+            let term: *const ffi::_aterm = mcrl2_aterm_create_int(value);
             self.protect_with(protection_set, term)
         }
     }
