@@ -1,13 +1,13 @@
 use std::fmt;
 use std::ops::Index;
 
-use merc_symbolic::minus_edge;
 use merc_symbolic::FormatConfigSet;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
+use merc_symbolic::minus_edge;
 use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::ManagerRef;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
 use oxidd_core::util::EdgeDropGuard;
 
 use merc_utilities::MercError;
@@ -49,7 +49,10 @@ impl Submap {
     }
 
     /// Returns an iterator over the vertices in the submap whose configuration is satisfiable.
-    pub fn iter_vertices<'a, 'id: 'a>(&'a self, manager: &'a <BDDFunction as Function>::Manager<'id>) -> impl Iterator<Item = VertexIndex> + 'a {
+    pub fn iter_vertices<'a, 'id: 'a>(
+        &'a self,
+        manager: &'a <BDDFunction as Function>::Manager<'id>,
+    ) -> impl Iterator<Item = VertexIndex> + 'a {
         let f_edge = self.false_bdd.as_edge(manager);
 
         self.mapping.iter().enumerate().filter_map(move |(i, func)| {
@@ -254,11 +257,11 @@ impl fmt::Debug for Submap {
 #[cfg(test)]
 mod tests {
     use merc_macros::merc_test;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::util::AllocResult;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::util::AllocResult;
 
     use crate::Submap;
     use crate::VertexIndex;
