@@ -13,7 +13,7 @@ where
 
     if let Ok(seed_str) = std::env::var("MERC_SEED") {
         let seed = seed_str.parse::<u64>().expect("MERC_SEED must be a valid u64");
-        println!("seed: {seed} (fixed by MERC_SEED)");
+        println!("seed: {seed} (set by MERC_SEED)");
         let mut rng = StdRng::seed_from_u64(seed);
         for _ in 0..iterations {
             test_function(&mut rng);
@@ -23,21 +23,6 @@ where
 
     let seed: u64 = rand::random();
     println!("random seed: {seed} (use MERC_SEED=<seed> to set fixed seed)");
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    for _ in 0..iterations {
-        test_function(&mut rng);
-    }
-}
-
-/// Can be used to run a random test with a specific seed for reproducibility.
-pub fn random_test_seeded<F>(seed: u64, iterations: usize, mut test_function: F)
-where
-    F: FnMut(&mut StdRng),
-{
-    test_logger();
-
-    println!("seed: {seed}");
     let mut rng = StdRng::seed_from_u64(seed);
 
     for _ in 0..iterations {
