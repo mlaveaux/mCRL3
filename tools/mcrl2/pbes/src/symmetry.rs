@@ -55,12 +55,6 @@ pub struct SymmetryAlgorithm {
     progress: TimeProgress<usize>,
 }
 
-// #[derive(Error, Debug)]
-// enum CompatibleReason {
-//     #[error("Different number of vertices: {0} vs {1}")]
-//     InvalidVertexSets(usize, usize)
-// }
-
 impl SymmetryAlgorithm {
     /// Does the required preprocessing to analyse symmetries in the given PBES.
     pub fn new(pbes: &Pbes, print_srf: bool) -> Result<Self, MercError> {
@@ -72,7 +66,7 @@ impl SymmetryAlgorithm {
             info!("==== SRF PBES ====");
             info!("{}", srf.to_pbes());
         }
-
+        
         let parameters = if let Some(equation) = srf.equations().first() {
             equation.variable().parameters().to_vec()
         } else {
@@ -82,7 +76,12 @@ impl SymmetryAlgorithm {
 
         info!("Unified parameters: {}", parameters.iter().format(", "));
 
-        let state_graph = PbesStategraph::run(&srf.to_pbes())?;
+        let state_graph = {
+            let mut pbes = srf.to_pbes();
+            pbes.normalize();
+            PbesStategraph::run(&pbes)?
+        };
+
         let all_control_flow_parameters = state_graph
             .control_flow_graphs()
             .iter()
