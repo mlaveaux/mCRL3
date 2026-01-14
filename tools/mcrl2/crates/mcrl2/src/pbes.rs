@@ -85,6 +85,12 @@ impl Pbes {
         DataSpecification::new(mcrl2_pbes_data_specification(&self.pbes))
     }
 
+    /// Normalizes the PBES.
+    pub fn normalize(&mut self) {
+        mcrl2_sys::pbes::ffi::mcrl2_pbes_normalize(self.pbes.pin_mut());
+    }
+
+    /// Creates a new PBES from the given FFI PBES pointer.
     pub(crate) fn new(pbes: UniquePtr<pbes>) -> Self {
         Pbes { pbes }
     }

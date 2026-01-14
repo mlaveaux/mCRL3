@@ -77,6 +77,10 @@ struct SymmetryArgs {
     /// Print the symmetry in the mapping notation instead of the cycle notation.
     #[arg(long, default_value_t = false)]
     mapping_notation: bool,
+
+    /// Print the SRF representation of the PBES.
+    #[arg(long, default_value_t = false)]
+    print_srf: bool,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -105,7 +109,7 @@ fn main() -> Result<ExitCode, MercError> {
             PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
         };
 
-        let algorithm = SymmetryAlgorithm::new(&pbes, false)?;
+        let algorithm = SymmetryAlgorithm::new(&pbes, args.print_srf)?;
         if let Some(permutation) = &args.permutation {
             let pi = if permutation.trim_start().starts_with("[") {
                 Permutation::from_mapping_notation(permutation)?
