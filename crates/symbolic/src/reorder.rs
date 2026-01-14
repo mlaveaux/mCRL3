@@ -1,9 +1,18 @@
+use log::trace;
 use merc_utilities::MercError;
-use mt_kahypar::{Context, Hypergraph};
+use mt_kahypar::Context;
+use mt_kahypar::Hypergraph;
+use mt_kahypar::Objective;
 
 /// Computes a variable reordering for symbolic transition relations using the MINCE algorithm.
 pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
-    let context = Context::builder().build()?;
+    trace!("Starting MINCE with {graph:?}");
+
+    let context = Context::builder()
+        .epsilon(0.9)
+        .k(2)
+        .objective(Objective::Cut)
+        .build()?;
 
     let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
     mince(&context, &vertices, graph)
@@ -15,6 +24,8 @@ pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
 ///
 /// The `vertices` are the indices of the subgraph that we are considering
 pub fn mince(context: &Context, vertices: &[usize], graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+    trace!("MINCE called with vertices: {:?}", vertices);
+
     let hypergraph = create_hypergraph(context, vertices, graph)?;
 
     let partition = hypergraph.partition()?;
@@ -41,7 +52,7 @@ pub fn mince(context: &Context, vertices: &[usize], graph: &DependencyGraph) -> 
 
     let mut right = mince(context, &right_vertices, graph)?;
     left.append(&mut right);
-    
+
     // Check that the result is a valid permutation
     if cfg!(debug_assertions) {
         let mut copy = left.clone();
@@ -65,18 +76,31 @@ pub fn create_hypergraph<'a>(
     let mut offset = 0usize;
 
     // Make a hyperedge for every relation
+    // Track unique edges as sorted lists of local vertex indices
+    let mut seen_edges: Vec<Vec<usize>> = Vec::new();
+
     for relation in graph.relations() {
-        // Collect only variables that are in `vertices`, and use their indices
-        let edge_vars: Vec<usize> = relation
+        // Collect only variables that are in `vertices`, and use their local indices
+        let mut edge_vars: Vec<usize> = relation
             .read_vars()
             .chain(relation.write_vars())
             .filter_map(|j| vertices.iter().position(|i| *i == j))
             .collect();
 
+        // Deduplicate within-edge vertices and normalize order
+        edge_vars.sort_unstable();
+        edge_vars.dedup();
+
         if edge_vars.len() <= 1 {
             // Ignore self-loops and empty edges
             continue;
         }
+
+        // Ignore duplicated edges
+        if seen_edges.iter().any(|e| e == &edge_vars) {
+            continue;
+        }
+        seen_edges.push(edge_vars.clone());
 
         hyperedge_indices.push(offset);
 
@@ -99,6 +123,7 @@ pub fn create_hypergraph<'a>(
 }
 
 /// Represents a dependency graph between variables used in symbolic transition relations.
+#[derive(Debug)]
 pub struct DependencyGraph {
     /// The list of relations in the dependency graph.
     relations: Vec<Relation>,
@@ -141,7 +166,8 @@ impl DependencyGraph {
 
 /// A single relation in the dependency graph containing read and write
 /// dependencies onto variables, given by their indices.
-struct Relation {
+#[derive(Debug)]
+pub struct Relation {
     read_vars: Vec<usize>,
     write_vars: Vec<usize>,
 }
