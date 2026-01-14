@@ -1,3 +1,5 @@
+use std::fmt;
+
 use log::trace;
 use merc_utilities::MercError;
 use mt_kahypar::Context;
@@ -9,7 +11,7 @@ pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     trace!("Starting MINCE with {graph:?}");
 
     let context = Context::builder()
-        .epsilon(0.9)
+        .epsilon(0.01)
         .k(2)
         .objective(Objective::Cut)
         .build()?;
@@ -42,7 +44,6 @@ pub fn mince(context: &Context, vertices: &[usize], graph: &DependencyGraph) -> 
         .filter_map(|(i, &v)| if partition[i] == 0 { Some(v) } else { None })
         .collect();
 
-    let mut left = mince(context, &left_vertices, graph)?;
 
     let right_vertices: Vec<usize> = vertices
         .iter()
@@ -50,6 +51,13 @@ pub fn mince(context: &Context, vertices: &[usize], graph: &DependencyGraph) -> 
         .filter_map(|(i, &v)| if partition[i] == 1 { Some(v) } else { None })
         .collect();
 
+    if left_vertices.is_empty() || right_vertices.is_empty() {
+        // Cannot partition further, return as is
+        trace!("MINCE reached base case with vertices: {:?}", vertices);
+        return Ok(vertices.to_vec());
+    }
+
+    let mut left = mince(context, &left_vertices, graph)?;
     let mut right = mince(context, &right_vertices, graph)?;
     left.append(&mut right);
 
@@ -102,8 +110,8 @@ pub fn create_hypergraph<'a>(
         }
         seen_edges.push(edge_vars.clone());
 
+        // Add the edge to the hypergraph
         hyperedge_indices.push(offset);
-
         for j in edge_vars {
             hyperedges.push(j);
             offset += 1;
@@ -123,7 +131,6 @@ pub fn create_hypergraph<'a>(
 }
 
 /// Represents a dependency graph between variables used in symbolic transition relations.
-#[derive(Debug)]
 pub struct DependencyGraph {
     /// The list of relations in the dependency graph.
     relations: Vec<Relation>,
@@ -164,9 +171,18 @@ impl DependencyGraph {
     }
 }
 
+impl fmt::Debug for DependencyGraph {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "DependencyGraph with {} vertices:", self.num_of_vertices)?;
+        for (i, relation) in self.relations.iter().enumerate() {
+            writeln!(f, "  {}: {:?}", i, relation)?;
+        }
+        Ok(())
+    }
+}
+
 /// A single relation in the dependency graph containing read and write
 /// dependencies onto variables, given by their indices.
-#[derive(Debug)]
 pub struct Relation {
     read_vars: Vec<usize>,
     write_vars: Vec<usize>,
@@ -181,6 +197,16 @@ impl Relation {
     /// Returns an iterator over the write variables in this relation.
     pub fn write_vars(&self) -> impl Iterator<Item = usize> + '_ {
         self.write_vars.iter().copied()
+    }
+}
+
+impl fmt::Debug for Relation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} -> {:?}",
+            self.read_vars, self.write_vars
+        )
     }
 }
 
