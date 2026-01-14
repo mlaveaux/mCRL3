@@ -7,7 +7,6 @@ use clap::Subcommand;
 
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
-use merc_symbolic::DependencyGraph;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::guess_format_from_extension;
@@ -23,8 +22,6 @@ use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use which::which_in;
-use std::env;
-use std::ffi::OsString;
 
 #[derive(clap::Parser, Debug)]
 #[command(
@@ -70,7 +67,6 @@ struct ExploreArgs {
 #[derive(clap::Args, Debug)]
 #[command(about = "Computes a reordering for a ")]
 struct ReorderArgs {
-
     #[arg(long, help = "Path to the mCRL2 lpsreach tool")]
     lpsreach_path: Option<PathBuf>,
 
@@ -157,17 +153,18 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
 fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
     // Find lpsreach
     let lpsreach_path = if let Some(path) = args.lpsreach_path {
-        which_in("lpsreach", Some(path), std::env::current_dir())?
+        which_in("lpsreach", Some(path), std::env::current_dir()?)?
     } else {
-        which::which("lpsreach")?
+        which::which("lpsreach").map_err(|_e| "Cannot find lpsreach in PATH")?
     };
 
-    /// Run lpsreach with the --info flag to get dependency information
+    // Run lpsreach with the --info flag to get dependency information
     let proc = duct::cmd!(lpsreach_path, "--info", &args.filename)
+        .stdout_capture()
         .run()
         .map_err(|e| e.to_string())?;
 
-    let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stderr)?);
+    let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
 
     let order = reorder(&graph)?;
     println!("Computed variable order: {:?}", order);

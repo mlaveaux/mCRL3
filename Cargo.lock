@@ -939,6 +939,7 @@ name = "merc-sym"
 version = "1.0.0"
 dependencies = [
  "clap",
+ "duct",
  "env_logger",
  "log",
  "merc_io",
@@ -947,6 +948,7 @@ dependencies = [
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
+ "which",
 ]
 
 [[package]]
