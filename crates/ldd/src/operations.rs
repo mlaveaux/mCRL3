@@ -425,7 +425,7 @@ pub fn height(storage: &Storage, ldd: &LddRef) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fmt_node;
+    use crate::LddDisplay;
     use crate::test_utility::*;
 
     use merc_utilities::random_test;
@@ -599,8 +599,8 @@ mod tests {
 
             let expected = from_iter(&mut storage, expected_result.iter());
 
-            println!("{}", fmt_node(&storage, &result));
-            println!("{}", fmt_node(&storage, &expected));
+            println!("{}", LddDisplay::new(&storage, &result));
+            println!("{}", LddDisplay::new(&storage, &expected));
 
             assert_eq!(result, expected);
         });
@@ -696,12 +696,12 @@ mod tests {
             let meta = compute_meta(&mut storage, &read_proj, &write_proj);
             let result = relational_product(&mut storage, &ldd, &rel, &meta);
 
-            eprintln!("set = {}", fmt_node(&storage, &ldd));
-            eprintln!("relation = {}", fmt_node(&storage, &rel));
-            eprintln!("result = {}", fmt_node(&storage, &result));
+            eprintln!("set = {}", LddDisplay::new(&storage, &ldd));
+            eprintln!("relation = {}", LddDisplay::new(&storage, &rel));
+            eprintln!("result = {}", LddDisplay::new(&storage, &result));
             eprintln!("========");
 
-            eprintln!("meta = {}", fmt_node(&storage, &meta));
+            eprintln!("meta = {}", LddDisplay::new(&storage, &meta));
             eprintln!(
                 "read {:?}, write {:?}, read_rel {:?} and write_rel {:?}",
                 read_proj, write_proj, read_rel_proj, write_rel_proj
