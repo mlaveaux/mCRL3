@@ -22,14 +22,14 @@ pub trait CounterExampleTree {
     /// Returns the index of the root of the counterexample tree.
     fn root_index(&self) -> Self::Index;
 
-    /// Adds a edge to the counterexample tree.
+    /// Adds an edge to the counterexample tree.
     fn add_edge(&mut self, label: LabelIndex, to: Self::Index) -> Self::Index;
 }
 
 /// A class that can be used to store a counter example tree from which a
 /// counter example trace can be extracted.
 pub struct CounterExampleConstructor {
-    /// The backward three is stored in a deque. 
+    /// The backward tree is stored in a deque. 
     backward_tree: VecDeque<(LabelIndex, CounterIndex)>,
 }
 

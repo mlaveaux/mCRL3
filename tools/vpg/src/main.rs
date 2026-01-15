@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::fs::read_to_string;
+use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
@@ -187,7 +188,9 @@ fn main() -> Result<ExitCode, MercError> {
                 // If there are key-values, format them as a JSON object.
                 formatter.write("\n{ ".as_bytes())?;
                 let mut json_printer = JsonPrinter { formatter };
-                source.visit(&mut json_printer).expect("Visiting log key-values failed");
+                if let Err(e) = source.visit(&mut json_printer) {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, e));
+                }
                 formatter.write(" }".as_bytes())?;
             }
             Ok(())
