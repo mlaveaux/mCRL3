@@ -944,6 +944,7 @@ dependencies = [
  "log",
  "merc_io",
  "merc_ldd",
+ "merc_lts",
  "merc_symbolic",
  "merc_tools",
  "merc_unsafety",
@@ -1211,14 +1212,17 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "merc_aterm",
+ "merc_collections",
  "merc_data",
  "merc_io",
  "merc_ldd",
+ "merc_lts",
  "merc_utilities",
  "mt-kahypar",
  "oxidd",
  "oxidd-core",
  "rand",
+ "rustc-hash 2.1.1",
 ]
 
 [[package]]
