@@ -1,13 +1,10 @@
 use log::debug;
 use log::info;
 use log::trace;
-use oxidd::BooleanFunction;
-use oxidd::ManagerRef;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
 
 use merc_collections::IndexedSet;
 use merc_io::TimeProgress;
+use merc_lts::LabelledTransitionSystem;
 use merc_lts::LTS;
 use merc_lts::StateIndex;
 use merc_syntax::ActFrm;
@@ -21,53 +18,39 @@ use merc_syntax::StateFrm;
 use merc_syntax::StateFrmOp;
 use merc_utilities::MercError;
 
-use crate::FeatureTransitionSystem;
 use crate::ModalEquationSystem;
+use crate::ParityGame;
 use crate::Player;
 use crate::Priority;
-use crate::VariabilityParityGame;
 use crate::VertexIndex;
 use crate::compute_reachable;
-use crate::make_vpg_total;
 
 /// Translates a feature transition system into a variability parity game.
 pub fn translate(
-    manager_ref: &BDDManagerRef,
-    fts: &FeatureTransitionSystem,
-    configuration: BDDFunction,
+    lts: &LabelledTransitionSystem<String>,
     formula: &StateFrm,
-) -> Result<VariabilityParityGame, MercError> {
+) -> Result<ParityGame, MercError> {
     // Parses all labels into MultiAction once
     let parsed_labels: Result<Vec<MultiAction>, MercError> =
-        fts.labels().iter().map(|label| MultiAction::parse(label)).collect();
-
-    // Simplify the labels by stripping BDD information
-    let simplified_labels: Vec<MultiAction> = parsed_labels?
-        .iter()
-        .map(strip_feature_configuration_from_multi_action)
-        .collect();
+        lts.labels().iter().map(|label| MultiAction::parse(label)).collect();
+    let labels = parsed_labels?;
 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
+
     let mut algorithm = Translation::new(
-        fts,
-        &simplified_labels,
-        &equation_system,
-        manager_ref.with_manager_shared(|manager| BDDFunction::t(manager)),
+        lts,
+        &labels,
+        &equation_system
     );
 
-    algorithm.translate(fts.initial_state_index(), 0)?;
+    algorithm.translate(lts.initial_state_index(), 0)?;
 
-    // Convert the feature diagram (with names) to a VPG
-    let variables: Vec<BDDFunction> = fts.features().values().cloned().collect();
-
-    let result = VariabilityParityGame::from_edges(
-        manager_ref,
+    let result = ParityGame::from_edges(
         VertexIndex::new(0),
         algorithm.vertices.iter().map(|(p, _)| p).cloned().collect(),
         algorithm.vertices.into_iter().map(|(_, pr)| pr).collect(),
-        configuration,
-        variables,
+        true,
         || algorithm.edges.iter().cloned(),
     );
 
@@ -81,14 +64,7 @@ pub fn translate(
         );
     }
 
-    // Ensure that the result is a total VPG.
-    let total_result = if !result.is_total(manager_ref)? {
-        make_vpg_total(manager_ref, &result)?
-    } else {
-        result
-    };
-
-    Ok(total_result)
+    Ok(result)
 }
 
 /// Is used to distinguish between StateFrm and Equation vertices in the vertex map.
@@ -110,22 +86,19 @@ enum Formula<'a> {
 struct Translation<'a> {
     vertex_map: IndexedSet<(StateIndex, Formula<'a>)>,
     vertices: Vec<(Player, Priority)>,
-    edges: Vec<(VertexIndex, BDDFunction, VertexIndex)>,
+    edges: Vec<(VertexIndex, VertexIndex)>,
 
     // Used for the breadth first search.
     queue: Vec<(StateIndex, Formula<'a>, VertexIndex)>,
 
-    /// The parsed labels of the FTS.
+    /// The parsed labels of the LTS.
     parsed_labels: &'a Vec<MultiAction>,
 
-    /// The feature transition system being translated.
-    fts: &'a FeatureTransitionSystem,
+    /// The labelled transition system being translated.
+    lts: &'a LabelledTransitionSystem<String>,
 
     /// A reference to the modal equation system being translated.
     equation_system: &'a ModalEquationSystem,
-
-    /// The BDD representing the "true" feature configuration.
-    true_bdd: BDDFunction,
 
     /// Use to print progress information.
     progress: TimeProgress<usize>,
@@ -134,10 +107,9 @@ struct Translation<'a> {
 impl<'a> Translation<'a> {
     /// Creates a new translation instance.
     fn new(
-        fts: &'a FeatureTransitionSystem,
+        lts: &'a LabelledTransitionSystem<String>,
         parsed_labels: &'a Vec<MultiAction>,
         equation_system: &'a ModalEquationSystem,
-        true_bdd: BDDFunction,
     ) -> Self {
         let progress: TimeProgress<usize> = TimeProgress::new(
             |num_of_vertices: usize| {
@@ -151,10 +123,9 @@ impl<'a> Translation<'a> {
             vertices: Vec::new(),
             edges: Vec::new(),
             queue: Vec::new(),
-            fts,
+            lts,
             parsed_labels,
             equation_system,
-            true_bdd,
             progress,
         }
     }
@@ -212,8 +183,8 @@ impl<'a> Translation<'a> {
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
-                        self.edges.push((vertex_index, self.true_bdd.clone(), s_psi_1));
-                        self.edges.push((vertex_index, self.true_bdd.clone(), s_psi_2));
+                        self.edges.push((vertex_index, s_psi_1));
+                        self.edges.push((vertex_index, s_psi_2));
                     }
                     StateFrmOp::Disjunction => {
                         // (s, Ψ_1 ∨ Ψ_2) →_P even, (s, Ψ_1) and (s, Ψ_2), 0
@@ -221,8 +192,8 @@ impl<'a> Translation<'a> {
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
-                        self.edges.push((vertex_index, self.true_bdd.clone(), s_psi_1));
-                        self.edges.push((vertex_index, self.true_bdd.clone(), s_psi_2));
+                        self.edges.push((vertex_index, s_psi_1));
+                        self.edges.push((vertex_index, s_psi_2));
                     }
                     _ => {
                         unimplemented!("Cannot translate binary operator in {}", formula);
@@ -237,7 +208,7 @@ impl<'a> Translation<'a> {
 
                 self.vertices[vertex_index] = (Player::Odd, Priority::new(0)); // The priority and owner do not matter here
                 let equation_vertex = self.queue_vertex(s, Formula::Equation(i));
-                self.edges.push((vertex_index, self.true_bdd.clone(), equation_vertex));
+                self.edges.push((vertex_index, equation_vertex));
             }
             StateFrm::Modality {
                 operator,
@@ -249,7 +220,7 @@ impl<'a> Translation<'a> {
                         // (s, [a] Ψ) → odd, (s', Ψ) for all s' with s -a-> s', 0
                         self.vertices[vertex_index] = (Player::Odd, Priority::new(0));
 
-                        for transition in self.fts.outgoing_transitions(s) {
+                        for transition in self.lts.outgoing_transitions(s) {
                             let action = &self.parsed_labels[*transition.label];
 
                             trace!("Matching action {} against formula {}", action, formula);
@@ -259,7 +230,6 @@ impl<'a> Translation<'a> {
 
                                 self.edges.push((
                                     vertex_index,
-                                    self.fts.feature_label(transition.label).clone(),
                                     s_prime_psi,
                                 ));
                             }
@@ -269,7 +239,7 @@ impl<'a> Translation<'a> {
                         // (s, <a> Ψ) → even, (s', Ψ) for all s' with s -a-> s', 0
                         self.vertices[vertex_index] = (Player::Even, Priority::new(0));
 
-                        for transition in self.fts.outgoing_transitions(s) {
+                        for transition in self.lts.outgoing_transitions(s) {
                             let action = &self.parsed_labels[*transition.label];
 
                             if match_regular_formula(formula, action) {
@@ -277,7 +247,6 @@ impl<'a> Translation<'a> {
 
                                 self.edges.push((
                                     vertex_index,
-                                    self.fts.feature_label(transition.label).clone(),
                                     s_prime_psi,
                                 ));
                             }
@@ -302,7 +271,7 @@ impl<'a> Translation<'a> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2) + 1),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index, self.true_bdd.clone(), s_psi));
+                self.edges.push((vertex_index, s_psi));
             }
             FixedPointOperator::Greatest => {
                 // (s, ν X. Ψ) →_P even, (s, Ψ[x := ν X. Ψ]), 2 * (AD(Ψ)/2). In Rust division is already floor.
@@ -311,7 +280,7 @@ impl<'a> Translation<'a> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2)),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index, self.true_bdd.clone(), s_psi));
+                self.edges.push((vertex_index,  s_psi));
             }
         }
     }
@@ -378,33 +347,18 @@ fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use merc_lts::read_aut;
     use merc_macros::merc_test;
     use merc_syntax::UntypedStateFrmSpec;
-
-    use crate::FeatureDiagram;
-    use crate::read_fts;
 
     use super::*;
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_running_example() {
-        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-
-        let fd = FeatureDiagram::from_reader(
-            &manager_ref,
-            include_bytes!("../../../examples/vpg/running_example_fts.fd") as &[u8],
-        )
-        .unwrap();
-        let fts = read_fts(
-            &manager_ref,
-            include_bytes!("../../../examples/vpg/running_example_fts.aut") as &[u8],
-            fd.features().clone(),
-        )
-        .unwrap();
-
+        let lts = read_aut(include_bytes!("../../../examples/lts/abp.aut") as &[u8], Vec::new()).unwrap();
         let formula = UntypedStateFrmSpec::parse(include_str!("../../../examples/vpg/running_example.mcf")).unwrap();
 
-        let _vpg = translate(&manager_ref, &fts, fd.configuration().clone(), &formula.formula).unwrap();
+        let pg = translate(&lts, &formula.formula).unwrap();
     }
 }
