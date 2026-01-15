@@ -33,7 +33,7 @@ pub struct BinaryLddWriter<W: BitStreamWrite> {
 }
 
 impl<W: BitStreamWrite> BinaryLddWriter<W> {
-    pub fn new(mut writer: W, storage: &mut Storage) -> Result<Self, MercError> {
+    pub fn new(storage: &mut Storage, mut writer: W) -> Result<Self, MercError> {
         // Write the header of the binary LDD format.
         writer.write_bits(BLF_MAGIC, 16)?;
         writer.write_bits(BLF_VERSION, 16)?;
@@ -100,7 +100,7 @@ pub struct BinaryLddReader<R: BitStreamRead> {
 
 impl<R: BitStreamRead> BinaryLddReader<R> {
     /// Inserts the header into the stream and initializes the reader.
-    pub fn new(mut reader: R) -> Result<Self, MercError> {
+    pub fn new(storage: &mut Storage, mut reader: R) -> Result<Self, MercError> {
         // Read and verify the header of the binary LDD format.
         let magic = reader.read_bits(16)?;
         if magic != BLF_MAGIC {
@@ -113,10 +113,7 @@ impl<R: BitStreamRead> BinaryLddReader<R> {
         }
 
         // Add the true and false constants
-        let nodes = vec![
-            Storage::default().empty_set().clone(),
-            Storage::default().empty_vector().clone(),
-        ];
+        let nodes = vec![storage.empty_set().clone(), storage.empty_vector().clone()];
         Ok(Self { reader, nodes })
     }
 
@@ -205,13 +202,13 @@ mod tests {
             let mut vector: Vec<u8> = Vec::new();
             let stream = BitStreamWriter::new(&mut vector);
 
-            let mut output_stream = BinaryLddWriter::new(stream, &mut storage).unwrap();
+            let mut output_stream = BinaryLddWriter::new(&mut storage, stream).unwrap();
             for term in &input {
                 output_stream.write_ldd(term, &storage).unwrap();
             }
             drop(output_stream); // Explicitly drop to release the mutable borrow
 
-            let mut input_stream = BinaryLddReader::new(BitStreamReader::new(&vector[..])).unwrap();
+            let mut input_stream = BinaryLddReader::new(&mut storage, BitStreamReader::new(&vector[..])).unwrap();
             for term in &input {
                 debug_assert_eq!(
                     *term,
