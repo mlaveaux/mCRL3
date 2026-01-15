@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -41,8 +42,8 @@ struct RecSpecResult {
 }
 
 /// Load a REC specification from a specified file.
-pub fn load_rec_from_file(file: PathBuf) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
-    let contents = fs::read_to_string(file.clone())?;
+pub fn load_rec_from_file(file: &Path) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
+    let contents = fs::read_to_string(file)?;
     parse_rec(&contents, Some(file))
 }
 
@@ -62,7 +63,7 @@ pub fn load_rec_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSynt
 
 /// Parses a REC specification. REC files can import other REC files.
 /// Returns a RewriteSpec containing all the rewrite rules and a list of terms that need to be rewritten.
-fn parse_rec(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
+fn parse_rec(contents: &str, path: Option<&Path>) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
     // Initialize return result
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
@@ -90,7 +91,7 @@ fn parse_rec(contents: &str, path: Option<PathBuf>) -> Result<(RewriteSpecificat
             let file_name = PathBuf::from_str(&(file.to_lowercase() + ".rec")).unwrap();
             let load_file = include_path.join(file_name);
             let contents = fs::read_to_string(load_file)?;
-            let (include_spec, include_terms) = parse_rec(&contents, path.clone())?;
+            let (include_spec, include_terms) = parse_rec(&contents, path)?;
 
             // Add rewrite rules and terms to the result.
             terms.extend_from_slice(&include_terms);
