@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::path::Path;
 use std::time::Instant;
 
 use clap::ValueEnum;
@@ -20,8 +21,8 @@ pub enum Rewriter {
 }
 
 /// Rewrites the given REC specification.
-pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &str, output: bool) -> Result<(), MercError> {
-    let (syntax_spec, syntax_terms) = load_rec_from_file(filename_specification.into())?;
+pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &Path, output: bool) -> Result<(), MercError> {
+    let (syntax_spec, syntax_terms) = load_rec_from_file(filename_specification)?;
 
     let spec = syntax_spec.to_rewrite_spec();
 

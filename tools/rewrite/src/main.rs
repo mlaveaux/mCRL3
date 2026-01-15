@@ -1,5 +1,7 @@
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -43,8 +45,9 @@ enum Commands {
 struct RewriteArgs {
     rewriter: Rewriter,
 
+    /// The REC specification that contains the rewrite rules.
     #[arg(value_name = "SPEC")]
-    specification: String,
+    specification: PathBuf,
 
     #[arg(help = "File containing the terms to be rewritten.")]
     terms: Option<String>,
@@ -56,8 +59,9 @@ struct RewriteArgs {
 #[derive(clap::Args, Debug)]
 #[command(about = "Convert input rewrite system to the TRS format")]
 struct ConvertArgs {
+    /// The REC specification that contains the rewrite rules.
     #[arg(value_name = "SPEC")]
-    specification: String,
+    specification: PathBuf,
 
     output: String,
 }
@@ -78,15 +82,15 @@ fn main() -> Result<ExitCode, MercError> {
     if let Some(command) = cli.commands {
         match command {
             Commands::Rewrite(args) => {
-                if args.specification.ends_with(".rec") {
+                if args.specification.extension() == Some(OsStr::new("rec")) {
                     assert!(args.terms.is_none());
                     rewrite_rec(args.rewriter, &args.specification, args.output)?;
                 }
             }
             Commands::Convert(args) => {
-                if args.specification.ends_with(".rec") {
+                if args.specification.extension() == Some(OsStr::new("rec")) {
                     // Read the data specification
-                    let (spec_text, _) = load_rec_from_file(args.specification.into())?;
+                    let (spec_text, _) = load_rec_from_file(&args.specification)?;
                     let spec = spec_text.to_rewrite_spec();
 
                     let mut output = File::create(args.output)?;
