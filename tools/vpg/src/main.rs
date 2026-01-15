@@ -15,7 +15,8 @@ use log::info;
 use log::kv::Key;
 use log::kv::Value;
 use log::kv::VisitSource;
-use merc_vpg::make_vpg_total;
+use merc_tools::format_key_values_json;
+use merc_vpg::make_total;
 use merc_vpg::verify_variability_product_zielonka_solution;
 use oxidd::BooleanFunction;
 
@@ -84,6 +85,7 @@ enum Commands {
     Reachable(ReachableArgs),
     Project(ProjectArgs),
     Translate(TranslateArgs),
+    TranslateVpg(TranslateVpgArgs),
     Display(DisplayArgs),
 }
 
@@ -135,9 +137,22 @@ struct ProjectArgs {
     format: Option<ParityGameFormat>,
 }
 
-/// Arguments for translating a feature transition system and a modal formula into a variability parity game
+/// Arguments for translating a labelled transition system and a modal formula into a parity game
 #[derive(clap::Args, Debug)]
 struct TranslateArgs {
+    /// The filename of the labelled transition system
+    labelled_transition_system: String,
+
+    /// The filename of the modal formula
+    formula_filename: String,
+
+    /// The parity game output filename
+    output: String,
+}
+
+/// Arguments for translating a feature transition system and a modal formula into a variability parity game
+#[derive(clap::Args, Debug)]
+struct TranslateVpgArgs {
     /// The filename of the feature diagram
     feature_diagram_filename: String,
 
@@ -164,18 +179,6 @@ struct DisplayArgs {
     format: Option<ParityGameFormat>,
 }
 
-struct JsonPrinter<'a> {
-    formatter: &'a mut Formatter,
-}
-
-impl<'a, 'kvs> VisitSource<'kvs> for JsonPrinter<'a> {
-    fn visit_pair(&mut self, key: Key<'kvs>, value: Value<'kvs>) -> Result<(), log::kv::Error> {
-        self.formatter
-            .write_fmt(format_args!(r#""{}": {}"#, key, value))?;
-        Ok(())
-    }
-}
-
 fn main() -> Result<ExitCode, MercError> {
     let cli = Cli::parse();
 
@@ -183,18 +186,7 @@ fn main() -> Result<ExitCode, MercError> {
 
     env_logger::Builder::new()
         .filter_level(cli.verbosity.log_level_filter())
-        .format_key_values(|formatter, source| {
-            if source.count() > 0 {
-                // If there are key-values, format them as a JSON object.
-                formatter.write("\n{ ".as_bytes())?;
-                let mut json_printer = JsonPrinter { formatter };
-                if let Err(e) = source.visit(&mut json_printer) {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, e));
-                }
-                formatter.write(" }".as_bytes())?;
-            }
-            Ok(())
-        })
+        .format_key_values(|formatter, source| format_key_values_json(formatter, source))
         .parse_default_env()
         .init();
 
@@ -209,6 +201,7 @@ fn main() -> Result<ExitCode, MercError> {
             Commands::Reachable(args) => handle_reachable(&cli, args, &mut timing)?,
             Commands::Project(args) => handle_project(&cli, args, &mut timing)?,
             Commands::Translate(args) => handle_translate(&cli, args)?,
+            Commands::TranslateVpg(args) => handle_translate_vpg(&cli, args)?,
             Commands::Display(args) => handle_display(&cli, args, &mut timing)?,
         }
     }
@@ -270,7 +263,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 
         let game = if !game.is_total(&manager_ref)? {
             info!("Making the VPG total...");
-            make_vpg_total(&manager_ref, &game)?
+            make_total(&manager_ref, &game)?
         } else {
             game
         };
@@ -440,6 +433,49 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
 /// Translates a feature diagram, a feature transition system (FTS), and a modal
 /// formula into a variability parity game.
 fn handle_translate(cli: &Cli, args: &TranslateArgs) -> Result<(), MercError> {
+
+    // Read FTS
+    let mut fts_file = File::open(&args.fts_filename).map_err(|e| {
+        MercError::from(format!(
+            "Could not open feature transition system file '{}': {}",
+            &args.fts_filename, e
+        ))
+    })?;
+    let fts = read_fts(&manager_ref, &mut fts_file, feature_diagram.features().clone())?;
+
+    // Read and validate formula (no actions/data specs supported here)
+    let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
+        MercError::from(format!(
+            "Could not open formula file '{}': {}",
+            &args.formula_filename, e
+        ))
+    })?)?;
+    if !formula_spec.action_declarations.is_empty() {
+        return Err(MercError::from("We do not support formulas with action declarations."));
+    }
+
+    if !formula_spec.data_specification.is_empty() {
+        return Err(MercError::from("The formula must not contain a data specification."));
+    }
+
+    let vpg = translate_vpg(
+        &manager_ref,
+        &fts,
+        feature_diagram.configuration().clone(),
+        &formula_spec.formula,
+    )?;
+    let mut output_file = File::create(&args.output)?;
+    write_vpg(&mut output_file, &vpg)?;
+
+    Ok(())
+}
+
+
+/// Handle the `translate_vpg` subcommand.
+///
+/// Translates a feature diagram, a feature transition system (FTS), and a modal
+/// formula into a variability parity game.
+fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercError> {
     let manager_ref = oxidd::bdd::new_manager(
         cli.oxidd_node_capacity,
         cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
@@ -479,7 +515,7 @@ fn handle_translate(cli: &Cli, args: &TranslateArgs) -> Result<(), MercError> {
         return Err(MercError::from("The formula must not contain a data specification."));
     }
 
-    let vpg = translate(
+    let vpg = translate_vpg(
         &manager_ref,
         &fts,
         feature_diagram.configuration().clone(),
