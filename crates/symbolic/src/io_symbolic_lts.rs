@@ -51,7 +51,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     info!("Reading symbolic LTS in the mCRL2 symbolic format...");
 
     let aterm_stream = BinaryATermReader::new(reader)?;
-    let mut stream = BinaryLddReader::new(aterm_stream)?;
+    let mut stream = BinaryLddReader::new(storage, aterm_stream)?;
 
     if ATermRead::read_aterm(&mut stream)? != Some(symbolic_labelled_transition_system_mark()) {
         return Err("Expected symbolic labelled transition system stream".into());
@@ -75,8 +75,9 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
 
     // Read the action labels.
     let num_of_action_labels = stream.read_integer()?;
+    let mut action_labels = Vec::with_capacity(num_of_action_labels as usize);
     for _ in 0..num_of_action_labels {
-        let _action_label = stream.read_aterm()?;
+        action_labels.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?);
     }
 
     // Read the summand groups.
@@ -107,7 +108,13 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
         )?);
     }
 
-    Ok(SymbolicLts::new(data_spec, states, initial_state, summand_groups))
+    Ok(SymbolicLts::new(
+        data_spec,
+        states,
+        initial_state,
+        summand_groups,
+        action_labels,
+    ))
 }
 
 /// Returns the ATerm mark for symbolic labelled transition systems.

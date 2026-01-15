@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::Read;
 
 use log::info;
@@ -18,7 +19,6 @@ pub fn read_sylvan(storage: &mut Storage, stream: &mut impl Read) -> Result<Sylv
     let mut reader = SylvanReader::new();
 
     let _vector_length = read_u32(stream)?;
-    //println!("Length of vector {}", vector_length);
 
     let _unused = read_u32(stream)?; // This is called 'k' in Sylvan's ldd2bdd.c, but unused.
     let initial_state = reader.read_ldd(storage, stream)?;
@@ -31,6 +31,8 @@ pub fn read_sylvan(storage: &mut Storage, stream: &mut impl Read) -> Result<Sylv
         groups.push(SylvanTransitionGroup::new(
             storage.empty_set().clone(),
             compute_meta(storage, &read_proj, &write_proj),
+            read_proj,
+            write_proj,
         ));
     }
 
@@ -95,18 +97,30 @@ impl SymbolicLTS for SylvanLts {
     fn transition_groups(&self) -> &[impl TransitionGroup] {
         &self.transition_groups
     }
+
+    fn action_labels(&self) -> &[String] {
+        // A Sylvan LTS does not have action labels.
+        &[]
+    }
 }
 
 /// A transition group read from a Sylvan file.
 pub struct SylvanTransitionGroup {
     relation: Ldd,
     meta: Ldd,
+    read_proj: Vec<u32>,
+    write_proj: Vec<u32>,
 }
 
 impl SylvanTransitionGroup {
     /// Creates a new Sylvan transition group.
-    pub fn new(relation: Ldd, meta: Ldd) -> Self {
-        Self { relation, meta }
+    pub fn new(relation: Ldd, meta: Ldd, read_proj: Vec<u32>, write_proj: Vec<u32>) -> Self {
+        Self {
+            relation,
+            meta,
+            read_proj,
+            write_proj,
+        }
     }
 }
 
@@ -115,8 +129,33 @@ impl TransitionGroup for SylvanTransitionGroup {
         &self.relation
     }
 
+    fn summand_count(&self) -> usize {
+        1
+    }
+
+    fn read_indices(&self) -> &[u32] {
+        &self.read_proj
+    }
+
+    fn write_indices(&self) -> &[u32] {
+        &self.write_proj
+    }
+
+    fn action_label_index(&self) -> Option<usize> {
+        None
+    }
+
     fn meta(&self) -> &Ldd {
         &self.meta
+    }
+}
+
+impl fmt::Debug for SylvanTransitionGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SylvanTransitionGroup")
+            .field("read_proj", &self.read_proj)
+            .field("write_proj", &self.write_proj)
+            .finish()
     }
 }
 
