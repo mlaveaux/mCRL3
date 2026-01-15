@@ -42,7 +42,7 @@ pub fn make_vpg_total(
     for vertex in vpg.iter_vertices() {
         let mut all_outgoing = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
         for edge in vpg.outgoing_conf_edges(vertex) {
-            // Add a new edge with a random configuration.
+            // Add the original edge.
             edges.push((vertex, edge.configuration().clone(), edge.to()));
 
             // Keep track of the overall outgoing configuration.
