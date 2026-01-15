@@ -1,6 +1,6 @@
+use itertools::Itertools;
 use std::collections::HashSet;
 use std::fmt;
-use itertools::Itertools;
 
 use crate::Data;
 use crate::Ldd;
@@ -15,10 +15,7 @@ pub struct LddDot<'a> {
 
 impl<'a> LddDot<'a> {
     pub fn new(storage: &'a Storage, ldd: &'a Ldd) -> LddDot<'a> {
-        LddDot {
-            storage,
-            ldd,
-        }
+        LddDot { storage, ldd }
     }
 }
 
@@ -62,17 +59,14 @@ pub struct LddDisplay<'a> {
 
 impl<'a> LddDisplay<'a> {
     pub fn new(storage: &'a Storage, ldd: &'a Ldd) -> LddDisplay<'a> {
-        LddDisplay {
-            storage,
-            ldd,
-        }
+        LddDisplay { storage, ldd }
     }
 }
 
 impl fmt::Display for LddDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{{")?;        
-        for vector in iter(self.storage, &self.ldd) {
+        writeln!(f, "{{")?;
+        for vector in iter(self.storage, self.ldd) {
             writeln!(f, "[{}]", vector.iter().format(" "))?;
         }
         write!(f, "}}")

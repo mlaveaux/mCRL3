@@ -15,15 +15,18 @@ clap = ["dep:clap"]
 
 [dependencies]
 merc_aterm.workspace = true
+merc_collections.workspace = true
 merc_data.workspace = true
 merc_io.workspace = true
 merc_ldd.workspace = true
+merc_lts.workspace = true
 merc_utilities.workspace = true
 
 clap = { workspace = true, optional = true }
 itertools.workspace = true
 log.workspace = true
-oxidd.workspace = true
-oxidd-core.workspace = true
-rand.workspace = true
 mt-kahypar.workspace = true
+oxidd-core.workspace = true
+oxidd.workspace = true
+rand.workspace = true
+rustc-hash.workspace = true
