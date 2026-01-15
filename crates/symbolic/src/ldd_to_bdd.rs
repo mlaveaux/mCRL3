@@ -155,7 +155,10 @@ fn compute_highest_rec(storage: &mut Storage, result: &mut [u32], set: &LddRef<'
 
 /// Computes the number of bits required to represent the highest value at each layer.
 fn compute_bits(highest: &[u32]) -> Vec<u32> {
-    highest.iter().map(|&h| (u32::BITS - h.leading_zeros()).max(1)).collect()
+    highest
+        .iter()
+        .map(|&h| (u32::BITS - h.leading_zeros()).max(1))
+        .collect()
 }
 
 #[cfg(test)]
@@ -217,8 +220,6 @@ mod tests {
     fn test_random_ldd_to_bdd() {
         random_test(100, |rng| {
             let set = random_vector_set(rng, 1, 3, 5);
-            
-            // Check that none of 
 
             let mut storage = Storage::new();
             let ldd = from_iter(&mut storage, set.iter());

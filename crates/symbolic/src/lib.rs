@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod convert;
 mod cube_iter;
 mod format;
 mod io;
@@ -11,6 +12,7 @@ mod reachability;
 mod reorder;
 mod symbolic_lts;
 
+pub use convert::*;
 pub use cube_iter::*;
 pub use format::*;
 pub use io::*;

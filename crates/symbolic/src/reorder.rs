@@ -7,6 +7,12 @@ use mt_kahypar::Hypergraph;
 use mt_kahypar::Objective;
 
 /// Computes a variable reordering for symbolic transition relations using the MINCE algorithm.
+///
+/// # Details
+///
+/// The algorithm is described in the following paper:
+///
+/// > Fadi A. Aloul, Igor L. Markov, Karem A. Sakallah:. MINCE: A Static Global Variable-Ordering Heuristic for SAT Search and BDD Manipulation. J. Univers. Comput. Sci. 10(12): 1562-1596 (2004). [DOI](https://doi.org/10.3217/jucs-010-12-1562)
 pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     trace!("Starting MINCE with {graph:?}");
 
@@ -43,7 +49,6 @@ pub fn mince(context: &Context, vertices: &[usize], graph: &DependencyGraph) -> 
         .enumerate()
         .filter_map(|(i, &v)| if partition[i] == 0 { Some(v) } else { None })
         .collect();
-
 
     let right_vertices: Vec<usize> = vertices
         .iter()
@@ -202,11 +207,7 @@ impl Relation {
 
 impl fmt::Debug for Relation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:?} -> {:?}",
-            self.read_vars, self.write_vars
-        )
+        write!(f, "{:?} -> {:?}", self.read_vars, self.write_vars)
     }
 }
 
