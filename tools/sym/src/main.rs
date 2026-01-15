@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs::File;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -7,8 +8,14 @@ use clap::Subcommand;
 
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
+use merc_ldd::len;
+use merc_lts::LtsFormat;
+use merc_lts::guess_lts_format_from_extension;
+use merc_lts::write_aut;
+use merc_lts::write_bcg;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLTS;
+use merc_symbolic::convert_symbolic_lts;
 use merc_symbolic::guess_format_from_extension;
 use merc_symbolic::parse_compacted_dependency_graph;
 use merc_symbolic::reachability;
@@ -48,6 +55,7 @@ enum Commands {
     Info(InfoArgs),
     Explore(ExploreArgs),
     Reorder(ReorderArgs),
+    Convert(ConvertArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -65,13 +73,27 @@ struct ExploreArgs {
 }
 
 #[derive(clap::Args, Debug)]
-#[command(about = "Computes a reordering for a ")]
+#[command(about = "Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic")]
 struct ReorderArgs {
     #[arg(long, help = "Path to the mCRL2 lpsreach tool")]
     lpsreach_path: Option<PathBuf>,
 
     /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
+}
+
+#[derive(clap::Args, Debug)]
+#[command(about = "Converts a symbolic LTS to a concrete LTS")]
+struct ConvertArgs {
+    /// Sets the output LTS format.
+    #[arg(long)]
+    format: Option<LtsFormat>,
+
+    /// The input symbolic LTS file path.
+    filename: PathBuf,
+
+    /// The output LTS file path.
+    output: PathBuf,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -94,6 +116,7 @@ fn main() -> Result<ExitCode, MercError> {
             Commands::Info(args) => handle_info(args, &mut timing)?,
             Commands::Explore(args) => handle_explore(args, &mut timing)?,
             Commands::Reorder(args) => handle_reorder(args, &mut timing)?,
+            Commands::Convert(args) => handle_convert(args, &mut timing)?,
         }
     }
 
@@ -143,7 +166,8 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
             time_explore.finish();
         }
         SymFormat::Sym => {
-            let _input = read_symbolic_lts(&mut storage, &mut file)?;
+            let lts = read_symbolic_lts(&mut storage, &mut file)?;
+            println!("LTS has {} states", len(&mut storage, lts.states()));
         }
     }
 
@@ -152,23 +176,74 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
 
 /// Computes a variable reordering for the output of lpsreach.
 fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
-    // Find lpsreach
-    let lpsreach_path = if let Some(path) = args.lpsreach_path {
-        which_in("lpsreach", Some(path), std::env::current_dir()?)?
+    if args.filename.extension() == Some(OsStr::new("lps")) {
+        // Find lpsreach
+        let lpsreach_path = if let Some(path) = args.lpsreach_path {
+            which_in("lpsreach", Some(path), std::env::current_dir()?)?
+        } else {
+            which::which("lpsreach").map_err(|_e| "Cannot find lpsreach in PATH")?
+        };
+
+        // Run lpsreach with the --info flag to get dependency information
+        let proc = duct::cmd!(lpsreach_path, "--info", &args.filename)
+            .stdout_capture()
+            .run()
+            .map_err(|e| e.to_string())?;
+
+        let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
+
+        let order = reorder(&graph)?;
+        println!("Computed variable order: {:?}", order);
+    } else if args.filename.extension() == Some(OsStr::new("pbes")) {
+        // Find lpsreach
+        let pbessolvesymbolic = if let Some(path) = args.lpsreach_path {
+            which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?)?
+        } else {
+            which::which("pbessolvesymbolic").map_err(|_e| "Cannot find lpsreach in PATH")?
+        };
+
+        // Run pbessolvesymbolic with the --info flag to get dependency information
+        let proc = duct::cmd!(pbessolvesymbolic, "--info", &args.filename)
+            .stdout_capture()
+            .run()
+            .map_err(|e| e.to_string())?;
+
+        let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
+        let mut order = reorder(&graph)?;
+
+        // Ensure that the first variable is 0 by removing it and keeping the rest
+        order.retain(|&x| x != 0);
+        println!("Computed variable order: 0, {:?}", order);
     } else {
-        which::which("lpsreach").map_err(|_e| "Cannot find lpsreach in PATH")?
-    };
+        return Err("Input file must be either a .lps or .pbes file".into());
+    }
 
-    // Run lpsreach with the --info flag to get dependency information
-    let proc = duct::cmd!(lpsreach_path, "--info", &args.filename)
-        .stdout_capture()
-        .run()
-        .map_err(|e| e.to_string())?;
+    Ok(())
+}
 
-    let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
+/// Converts a symbolic LTS to an explicit LTS.
+fn handle_convert(args: ConvertArgs, _timing: &mut Timing) -> Result<(), MercError> {
+    let mut storage = Storage::new();
 
-    let order = reorder(&graph)?;
-    println!("Computed variable order: {:?}", order);
+    let mut file = File::open(&args.filename)?;
+    let lts = read_symbolic_lts(&mut storage, &mut file)?;
+
+    let explicit_lts = convert_symbolic_lts(&mut storage, &lts)?;
+    let format =
+        guess_lts_format_from_extension(&args.output, args.format).ok_or("Cannot determine output LTS format")?;
+
+    match format {
+        LtsFormat::Lts => {
+            unimplemented!("Writing LTS format is not yet implemented");
+        }
+        LtsFormat::Aut => {
+            let mut output = File::create(&args.output)?;
+            write_aut(&mut output, &explicit_lts)?;
+        }
+        LtsFormat::Bcg => {
+            write_bcg(&explicit_lts, &args.output)?;
+        }
+    }
 
     Ok(())
 }

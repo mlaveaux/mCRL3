@@ -1,3 +1,5 @@
+use std::fmt;
+
 use log::info;
 use merc_io::TimeProgress;
 use merc_ldd::Ldd;
@@ -11,18 +13,33 @@ use merc_utilities::MercError;
 /// A generic trait representing a symbolic LTS
 pub trait SymbolicLTS {
     /// Returns the LDD representing the set of states.
-    fn states(&self) -> &merc_ldd::Ldd;
+    fn states(&self) -> &Ldd;
 
     /// Returns the LDD representing the initial state.
-    fn initial_state(&self) -> &merc_ldd::Ldd;
+    fn initial_state(&self) -> &Ldd;
 
     /// Returns an iterator over the summand groups.
     fn transition_groups(&self) -> &[impl TransitionGroup];
+
+    /// Returns the action labels for the LTS.
+    fn action_labels(&self) -> &[String];
 }
 
-pub trait TransitionGroup {
+pub trait TransitionGroup: fmt::Debug {
     /// Returns the transition relation T' -> U' for this summand group.
     fn relation(&self) -> &Ldd;
+
+    /// Returns the number of summands in the group
+    fn summand_count(&self) -> usize;
+
+    /// Returns the read indices for this summand group.
+    fn read_indices(&self) -> &[u32];
+
+    /// Returns the write indices for this summand group.
+    fn write_indices(&self) -> &[u32];
+
+    /// Returns the action label index for this summand group, if any.
+    fn action_label_index(&self) -> Option<usize>;
 
     /// Returns the meta information for this summand group.
     fn meta(&self) -> &Ldd;

@@ -1,5 +1,6 @@
 use std::fmt;
 
+use merc_aterm::ATerm;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
 use merc_ldd::Ldd;
@@ -21,6 +22,8 @@ pub struct SymbolicLts {
     initial_state: Ldd,
 
     summand_groups: Vec<SummandGroup>,
+
+    action_labels: Vec<String>,
 }
 
 impl SymbolicLts {
@@ -30,12 +33,19 @@ impl SymbolicLts {
         states: Ldd,
         initial_state: Ldd,
         summand_groups: Vec<SummandGroup>,
+        action_labels: Vec<ATerm>,
     ) -> Self {
+        let action_labels = action_labels
+            .into_iter()
+            .map(|aterm| format!("{}", aterm))
+            .collect::<Vec<String>>();
+
         Self {
             data_specification,
             states,
             initial_state,
             summand_groups,
+            action_labels,
         }
     }
 
@@ -46,19 +56,20 @@ impl SymbolicLts {
 }
 
 impl SymbolicLTS for SymbolicLts {
-    /// Returns the LDD representing the set of states.
     fn states(&self) -> &Ldd {
         &self.states
     }
 
-    /// Returns the LDD representing the initial state.
     fn initial_state(&self) -> &Ldd {
         &self.initial_state
     }
 
-    /// Returns an iterator over the summand groups.
     fn transition_groups(&self) -> &[impl TransitionGroup] {
         &self.summand_groups
+    }
+
+    fn action_labels(&self) -> &[String] {
+        &self.action_labels
     }
 }
 
@@ -86,17 +97,34 @@ pub struct SummandGroup {
 
     /// The meta information for this summand group.
     meta: Ldd,
+
+    /// The action label index for this summand group.
+    action_label_index: usize,
 }
 
 impl TransitionGroup for SummandGroup {
-    /// Returns the transition relation T' -> U' for this summand group.
     fn relation(&self) -> &Ldd {
         &self.relation
     }
 
-    /// Returns the meta information for this summand group.
     fn meta(&self) -> &Ldd {
         &self.meta
+    }
+
+    fn read_indices(&self) -> &[u32] {
+        &self.read_parameter_indices
+    }
+
+    fn write_indices(&self) -> &[u32] {
+        &self.write_parameter_indices
+    }
+
+    fn action_label_index(&self) -> Option<usize> {
+        Some(self.action_label_index)
+    }
+
+    fn summand_count(&self) -> usize {
+        1
     }
 }
 
@@ -135,6 +163,7 @@ impl SummandGroup {
             .collect::<Result<Vec<Value>, _>>()?;
 
         let meta = compute_meta(storage, &read_parameter_indices, &write_parameter_indices);
+        let action_label_index = read_parameters.len() + write_parameters.len(); // The action label is the last index
 
         Ok(Self {
             read_parameters,
@@ -143,6 +172,7 @@ impl SummandGroup {
             write_parameter_indices,
             relation,
             meta,
+            action_label_index,
         })
     }
 
@@ -164,11 +194,10 @@ impl SummandGroup {
 
 impl fmt::Debug for SummandGroup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SummandGroup")
-            .field("read_parameters", &self.read_parameters)
-            .field("read_parameter_indices", &self.read_parameter_indices)
-            .field("write_parameters", &self.write_parameters)
-            .field("write_parameter_indices", &self.write_parameter_indices)
-            .finish()
+        write!(
+            f,
+            "{:?} -> {:?}",
+            self.read_parameter_indices, self.write_parameter_indices
+        )
     }
 }
