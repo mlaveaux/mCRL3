@@ -7,3 +7,9 @@
 [submodule "3rd-party/cpptrace"]
 	path = 3rd-party/cpptrace
 	url = https://github.com/jeremy-rifkin/cpptrace.git
+[submodule "3rd-party/mt-kahypar"]
+	path = 3rd-party/mt-kahypar
+	url = https://github.com/kahypar/mt-kahypar
+[submodule "3rd-party/mt-kahypar-sys/mt-kahypar"]
+	path = 3rd-party/mt-kahypar-sys/mt-kahypar
+	url = https://github.com/kahypar/mt-kahypar
