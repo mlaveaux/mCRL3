@@ -4,6 +4,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 
+use log::debug;
 use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
@@ -11,9 +12,9 @@ use merc_lts::StateIndex;
 use rustc_hash::FxHashSet;
 
 use crate::BlockIndex;
+use crate::longest_tau_path;
 use crate::Partition;
 use crate::quotient_lts_naive;
-
 use super::BlockPartition;
 use super::sort_topological;
 use super::tau_scc_decomposition;
@@ -310,6 +311,8 @@ pub fn preprocess_branching<L: LTS>(lts: L) -> LabelledTransitionSystem<L::Label
         true,
     )
     .expect("After quotienting, the LTS should not contain cycles");
+
+    debug!("longest_tau_path" = longest_tau_path(&tau_loop_free_lts); "The longest tau path is {}", longest_tau_path(&tau_loop_free_lts));
 
     LabelledTransitionSystem::new_from_permutation(tau_loop_free_lts, |i| topological_permutation[i])
 }
