@@ -4,9 +4,9 @@
 mod antichain;
 mod counterexample_constructor;
 mod failures_refinement;
-mod preorder;
+mod refinement;
 
 pub use antichain::*;
 pub use counterexample_constructor::*;
 pub use failures_refinement::*;
-pub use preorder::*;
+pub use refinement::*;
