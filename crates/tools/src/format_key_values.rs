@@ -22,7 +22,7 @@ use log::kv::VisitSource;
 ///     .init();
 ///
 /// ```
-pub fn format_key_values_json(formatter: &mut Formatter, source: &(dyn Source + 'static)) -> io::Result<()> {
+pub fn format_key_values_json(formatter: &mut Formatter, source: &dyn Source) -> io::Result<()> {
     if source.count() > 0 {
         // If there are key-values, format them as a JSON object.
         formatter.write("\n{ ".as_bytes())?;
