@@ -9,7 +9,6 @@ use merc_lts::LTS;
 use merc_lts::StateIndex;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
-use merc_syntax::Action;
 use merc_syntax::FixedPointOperator;
 use merc_syntax::ModalityOperator;
 use merc_syntax::MultiAction;

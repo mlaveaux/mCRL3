@@ -365,6 +365,17 @@ pub struct StateVarDecl {
     pub span: Span,
 }
 
+impl StateVarDecl {
+    /// Creates a new state variable declaration.
+    pub fn new(identifier: String, arguments: Vec<StateVarAssignment>) -> Self {
+        StateVarDecl {
+            identifier,
+            arguments,
+            span: Span::default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct StateVarAssignment {
     pub identifier: String,
@@ -651,6 +662,12 @@ pub enum ActionRHS {
 pub struct Span {
     pub start: usize,
     pub end: usize,
+}
+
+impl Default for Span {
+    fn default() -> Self {
+        Span { start: 0, end: 0 }
+    }
 }
 
 impl From<pest::Span<'_>> for Span {

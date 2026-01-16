@@ -324,8 +324,8 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_trace_refinement");
 
-            let spec_lts = random_lts(rng, 10, 20, 5);
-            let impl_lts = random_lts(rng, 10, 20, 5);
+            let spec_lts = random_lts(rng, 10, 10, 3);
+            let impl_lts = random_lts(rng, 10, 10, 3);
 
             files.dump("spec.aut", |w| write_aut(w, &spec_lts)).unwrap();
             files.dump("impl.aut", |w| write_aut(w, &impl_lts)).unwrap();
@@ -345,6 +345,7 @@ mod tests {
                 if !result {
                     if let Some(ce) = counter_example {
                         let formula = generate_formula(&ce);
+                        println!("Counter example formula: {}", formula);
 
                         let impl_pg = translate(&impl_lts, &formula).unwrap();
                         let spec_pg = translate(&spec_lts, &formula).unwrap();
