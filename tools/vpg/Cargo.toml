@@ -10,12 +10,13 @@ rust-version.workspace = true
 merc_metrics = ["oxidd/statistics"]
 
 [dependencies]
+merc_lts.workspace = true
+merc_symbolic.workspace = true
 merc_syntax.workspace = true
 merc_tools.workspace = true
 merc_unsafety.workspace = true
-merc_symbolic.workspace = true
 merc_utilities.workspace = true
-merc_vpg= { workspace = true, features = ["clap"] }
+merc_vpg = { workspace = true, features = ["clap"] }
 
 clap.workspace = true
 duct.workspace = true

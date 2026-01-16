@@ -125,7 +125,7 @@ pub fn solve_variability_product_zielonka<'a>(
 
                 debug!("Solving projection on {}...", FormatConfig(&cube));
 
-                let pg_solution = solve_zielonka(&reachable_pg);
+                let (pg_solution, _) = solve_zielonka(&reachable_pg);
                 let mut new_solution = [
                     bitvec![usize, Lsb0; 0; vpg.num_of_vertices()],
                     bitvec![usize, Lsb0; 0; vpg.num_of_vertices()],
