@@ -40,6 +40,11 @@ pub fn random_lts(
 /// Generates a monolithic LTS with the desired number of states, labels, out
 /// degree and in degree for all the states. Uses the given TransitionLabel type
 /// to generate the transition labels.
+/// 
+/// # Details
+/// 
+/// The number of labels is limited to 26, since only singular alphabetic labels
+/// are used, because those are easier to read and understand.
 pub fn random_lts_monolithic<L: TransitionLabel>(
     rng: &mut impl Rng,
     num_of_states: usize,

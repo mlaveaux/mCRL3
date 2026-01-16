@@ -961,6 +961,7 @@ dependencies = [
  "env_logger",
  "itertools 0.14.0",
  "log",
+ "merc_lts",
  "merc_symbolic",
  "merc_syntax",
  "merc_tools",
@@ -1170,6 +1171,7 @@ dependencies = [
  "merc_reduction",
  "merc_syntax",
  "merc_utilities",
+ "merc_vpg",
  "rand",
  "rustc-hash 2.1.1",
  "test-log",
@@ -1245,6 +1247,7 @@ name = "merc_tools"
 version = "1.0.0"
 dependencies = [
  "clap",
+ "env_logger",
  "log",
  "merc_utilities",
  "winapi",
