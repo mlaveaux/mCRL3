@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use merc_utilities::MercError;
 
 use crate::StateFrm;
@@ -16,15 +18,15 @@ pub fn apply_statefrm(
 }
 
 /// Visits the state formula and calls the given function on each subformula.
-///
-/// The substitution function takes a state formula and returns an optional new
-/// formula. If it returns `Some(new_formula)`, the substitution is applied and
-/// the new formula is returned. If it returns `None`, the substitution is not
-/// applied and the function continues to traverse the formula tree.
-pub fn visit_statefrm(
+/// 
+/// The visitor function takes a state formula and returns a `ControlFlow`. If
+/// it returns `ControlFlow::Break(value)`, the traversal is stopped and the
+/// value is returned. If it returns `ControlFlow::Continue(())`, the traversal
+/// continues.
+pub fn visit_statefrm<T>(
     formula: &StateFrm,
-    mut visitor: impl FnMut(&StateFrm) -> Result<(), MercError>,
-) -> Result<(), MercError> {
+    mut visitor: impl FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
+) -> Result<Option<T>, MercError> {
     visit_statefrm_rec(formula, &mut visitor)
 }
 
@@ -117,10 +119,10 @@ fn apply_statefrm_rec(
 }
 
 /// See [`visit`].
-fn visit_statefrm_rec(
+fn visit_statefrm_rec<T>(
     formula: &StateFrm,
-    function: &mut impl FnMut(&StateFrm) -> Result<(), MercError>,
-) -> Result<(), MercError> {
+    function: &mut impl FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
+) -> Result<Option<T>, MercError> {
     function(formula)?;
 
     match formula {
@@ -157,7 +159,8 @@ fn visit_statefrm_rec(
         | StateFrm::DataValExpr(_) => {}
     }
 
-    Ok(())
+    // The visitor did not break the traversal.
+    Ok(None)
 }
 
 #[cfg(test)]

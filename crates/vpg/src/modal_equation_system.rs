@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::ops::ControlFlow;
 
 use log::debug;
 
+use merc_syntax::apply_statefrm;
+use merc_syntax::visit_statefrm;
 use merc_syntax::FixedPointOperator;
 use merc_syntax::StateFrm;
 use merc_syntax::StateVarDecl;
-use merc_syntax::apply_statefrm;
-use merc_syntax::visit_statefrm;
 
 /// A fixpoint equation system representing a ranked set of fixpoint equations.
 ///
@@ -57,8 +58,11 @@ impl ModalEquationSystem {
     pub fn new(formula: &StateFrm) -> Self {
         let mut equations = Vec::new();
 
+        // Ensure that the formula has an outermost fixpoint operator.
+        let formula = add_placeholder_operator(formula.clone());
+
         // Apply E to extract all equations from the formula
-        apply_e(&mut equations, formula);
+        apply_e(&mut equations, &formula);
 
         // Check that there are no duplicate variable names
         let identifiers: HashSet<&String> = HashSet::from_iter(equations.iter().map(|eq| &eq.variable.identifier));
@@ -140,13 +144,36 @@ impl ModalEquationSystem {
     }
 }
 
-// E(nu X. f) = (nu X = RHS(f)) + E(f)
-// E(mu X. f) = (mu X = RHS(f)) + E(f)
-// E(g) = ... (traverse all the subformulas of g and apply E to them)
+/// If the given formula has no outermost fixpoint operator, adds a placeholder
+/// fixpoint operator around it.
+fn add_placeholder_operator(formula: StateFrm) -> StateFrm {
+    if visit_statefrm(&formula, |f| match f {
+        StateFrm::FixedPoint { .. } => Ok(ControlFlow::Break(())),
+        _ => Ok(ControlFlow::Continue(())),
+    })
+    .expect("No errors expected in visitor.")
+    .is_some()
+    {
+        formula
+    } else {
+        // Introduce a placeholder.
+        StateFrm::FixedPoint {
+            operator: FixedPointOperator::Least,
+            variable: StateVarDecl::new("X".to_string(), Vec::new()),
+            body: Box::new(formula),
+        }
+    }
+}
+
+/// Applies `E` to the given formula, adding equations to the given vector.
+///
+/// E(nu X. f) = (nu X = RHS(f)) + E(f)
+/// E(mu X. f) = (mu X = RHS(f)) + E(f)
+/// E(g) = ... (traverse all the subformulas of g and apply E to them)
 fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
     debug!("Applying E to formula: {}", formula);
 
-    visit_statefrm(formula, |formula| match formula {
+    visit_statefrm::<()>(formula, |formula| match formula {
         StateFrm::FixedPoint {
             operator,
             variable,
@@ -160,9 +187,9 @@ fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
                 rhs: rhs(body),
             });
 
-            Ok(())
+            Ok(ControlFlow::Continue(()))
         }
-        _ => Ok(()),
+        _ => Ok(ControlFlow::Continue(())),
     })
     .expect("No error expected during fixpoint equation system construction");
 }
