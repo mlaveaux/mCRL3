@@ -34,9 +34,19 @@ pub struct VecSet<T> {
 }
 
 impl<T: Ord> VecSet<T> {
+    /// Creates a new, empty VecSet.
     pub fn new() -> Self {
         Self {
             sorted_array: Vec::new(),
+        }
+    }
+
+    /// Creates a VecSet from the given vector without assuming anything of the given vector.
+    pub fn from_vec(mut vec: Vec<T>) -> Self {
+        vec.sort();
+        vec.dedup();
+        Self {
+            sorted_array: vec,
         }
     }
 
@@ -124,6 +134,11 @@ impl<T: Ord> VecSet<T> {
     /// Returns the number of elements in the set.
     pub fn len(&self) -> usize {
         self.sorted_array.len()
+    }
+
+    /// Consumes the set and returns a vector with the elements in sorted order.
+    pub fn to_vec(self) -> Vec<T> {
+        self.sorted_array
     }
 }
 
