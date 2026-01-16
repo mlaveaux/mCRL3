@@ -3,6 +3,7 @@
 mod block_partition;
 mod compare;
 mod indexed_partition;
+mod longest_tau_path;
 mod quotient;
 mod reduce;
 mod scc_decomposition;
@@ -15,6 +16,7 @@ mod weak_bisimulation;
 pub use block_partition::*;
 pub use compare::*;
 pub use indexed_partition::*;
+pub use longest_tau_path::*;
 pub use quotient::*;
 pub use reduce::*;
 pub use scc_decomposition::*;
