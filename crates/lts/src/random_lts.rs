@@ -2,11 +2,11 @@
 
 use rand::Rng;
 
+use crate::product_lts;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilderFast;
 use crate::StateIndex;
 use crate::TransitionLabel;
-use crate::product_lts;
 
 /// Generates a random LTS with the desired number of states, labels and out
 /// degree by composing three smaller random LTSs using the synchronous product.
@@ -23,13 +23,7 @@ pub fn random_lts(
         .collect();
 
     // Synchronize on some of the labels.
-    let synchronized_labels: Vec<String> = (1..num_of_labels.min(3))
-        .map(|i| {
-            char::from_digit(i, 36)
-                .expect("Radix is less than 37, so should not panic")
-                .to_string()
-        })
-        .collect();
+    let synchronized_labels: Vec<String> = (1..num_of_labels.min(3)).map(|i| String::from_index(i as usize)).collect();
 
     components
         .into_iter()
@@ -40,9 +34,9 @@ pub fn random_lts(
 /// Generates a monolithic LTS with the desired number of states, labels, out
 /// degree and in degree for all the states. Uses the given TransitionLabel type
 /// to generate the transition labels.
-/// 
+///
 /// # Details
-/// 
+///
 /// The number of labels is limited to 26, since only singular alphabetic labels
 /// are used, because those are easier to read and understand.
 pub fn random_lts_monolithic<L: TransitionLabel>(
