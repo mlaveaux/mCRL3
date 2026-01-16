@@ -24,7 +24,8 @@ use merc_reduction::Equivalence;
 use merc_reduction::reduce_lts;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
-use merc_tools::verbosity::VerbosityFlag;
+use merc_tools::VerbosityFlag;
+use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -165,6 +166,7 @@ fn main() -> Result<ExitCode, MercError> {
 
     env_logger::Builder::new()
         .filter_level(cli.verbosity.log_level_filter())
+        .format_key_values(|formatter, source| format_key_values_json(formatter, source))
         .parse_default_env()
         .init();
 
@@ -220,6 +222,14 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
         for label in lts.labels() {
             println!("  {}", label);
         }
+
+        // Count the number of silent transitions.
+        lts.iter_states().fold(0, |acc, s| {
+            acc + lts
+                .outgoing_transitions(s)
+                .filter(|t| lts.is_hidden_label(t.label))
+                .count()
+        })
     });
 
     Ok(())
@@ -279,22 +289,22 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
         LargeFormatter(spec_lts.num_of_transitions())
     );
 
-    let (result, counter_example) = apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| {
-        refines(left, right, args.refinement, !args.no_preprocess, args.counter_example, timing)
-    });
+    apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| {
+        let (result, counter_example) = refines(left, right, args.refinement, !args.no_preprocess, args.counter_example, timing);
 
-    if result {
-        println!("true");
-    } else {
-        if let Some(trace) = counter_example {
-            println!("Counter-example trace:");
-            for label in trace {
-                println!("  {}", label);
+        if result {
+            println!("true");
+        } else {
+            if let Some(trace) = counter_example {
+                println!("Counter-example trace:");
+                for label in trace {
+                    println!("  {}", label);
+                }
             }
-        }
 
-        println!("false");
-    }
+            println!("false");
+        }
+    });
 
     Ok(())
 }
