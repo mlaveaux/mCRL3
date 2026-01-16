@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::fs::read_to_string;
-use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
@@ -8,18 +7,17 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::Subcommand;
 use duct::cmd;
-use env_logger::fmt::Formatter;
 use itertools::Itertools;
 use log::debug;
 use log::info;
-use log::kv::Key;
-use log::kv::Value;
-use log::kv::VisitSource;
-use merc_tools::format_key_values_json;
-use merc_vpg::make_total;
-use merc_vpg::verify_variability_product_zielonka_solution;
+use merc_lts::read_aut;
 use oxidd::BooleanFunction;
 
+use merc_tools::format_key_values_json;
+use merc_vpg::make_vpg_total;
+use merc_vpg::translate_vpg;
+use merc_vpg::verify_solution;
+use merc_vpg::verify_variability_product_zielonka_solution;
 use merc_symbolic::CubeIterAll;
 use merc_symbolic::FormatConfig;
 use merc_syntax::UntypedStateFrmSpec;
@@ -200,7 +198,7 @@ fn main() -> Result<ExitCode, MercError> {
             Commands::Solve(args) => handle_solve(&cli, args, &mut timing)?,
             Commands::Reachable(args) => handle_reachable(&cli, args, &mut timing)?,
             Commands::Project(args) => handle_project(&cli, args, &mut timing)?,
-            Commands::Translate(args) => handle_translate(&cli, args)?,
+            Commands::Translate(args) => handle_translate(args)?,
             Commands::TranslateVpg(args) => handle_translate_vpg(&cli, args)?,
             Commands::Display(args) => handle_display(&cli, args, &mut timing)?,
         }
@@ -234,7 +232,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         time_read.finish();
 
         let mut time_solve = timing.start("solve_zielonka");
-        let solution = solve_zielonka(&game);
+        let (solution, strategy) = solve_zielonka(&game);
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -244,6 +242,11 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         } else {
             println!("{}", Player::Odd.solution())
         }
+
+        if args.verify_solution {
+            verify_solution(&game, &solution, &strategy);
+        }
+        
         time_solve.finish();
     } else {
         let solve_variant = args
@@ -263,7 +266,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 
         let game = if !game.is_total(&manager_ref)? {
             info!("Making the VPG total...");
-            make_total(&manager_ref, &game)?
+            make_vpg_total(&manager_ref, &game)?
         } else {
             game
         };
@@ -432,16 +435,18 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
 ///
 /// Translates a feature diagram, a feature transition system (FTS), and a modal
 /// formula into a variability parity game.
-fn handle_translate(cli: &Cli, args: &TranslateArgs) -> Result<(), MercError> {
+fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
 
-    // Read FTS
-    let mut fts_file = File::open(&args.fts_filename).map_err(|e| {
+    // Read LTS
+    let mut lts_file = File::open(&args.labelled_transition_system).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.fts_filename, e
+            &args.labelled_transition_system, e
         ))
     })?;
-    let fts = read_fts(&manager_ref, &mut fts_file, feature_diagram.features().clone())?;
+
+
+    let lts = read_aut(&mut lts_file, Vec::new())?;
 
     // Read and validate formula (no actions/data specs supported here)
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
@@ -458,14 +463,13 @@ fn handle_translate(cli: &Cli, args: &TranslateArgs) -> Result<(), MercError> {
         return Err(MercError::from("The formula must not contain a data specification."));
     }
 
-    let vpg = translate_vpg(
-        &manager_ref,
-        &fts,
-        feature_diagram.configuration().clone(),
+    let vpg = translate(
+        &lts,
         &formula_spec.formula,
     )?;
+
     let mut output_file = File::create(&args.output)?;
-    write_vpg(&mut output_file, &vpg)?;
+    write_pg(&mut output_file, &vpg)?;
 
     Ok(())
 }
