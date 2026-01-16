@@ -15,35 +15,37 @@ use itertools::Itertools;
 use log::debug;
 use log::trace;
 
-use crate::PG;
 use crate::ParityGame;
 use crate::Player;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Repeat;
+use crate::Strategy;
 use crate::VertexIndex;
+use crate::PG;
 
 /// The type for a set of vertices.
 pub type Set = BitVec<usize, Lsb0>;
 
 /// Solves the given parity game using the Zielonka algorithm.
-pub fn solve_zielonka(game: &ParityGame) -> [Set; 2] {
+pub fn solve_zielonka(game: &ParityGame) -> ([Set; 2], [Strategy; 2]) {
     debug_assert!(game.is_total(), "Zielonka solver requires a total parity game");
 
+    // Initial set of vertices V = all vertices
     let mut V = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
     V.set_elements(usize::MAX);
     let full_V = V.clone(); // Used for debugging.
 
     let mut zielonka = ZielonkaSolver::new(game);
 
-    let (W0, W1) = zielonka.zielonka_rec(V, 0);
+    let (W0, S0, W1, S1) = zielonka.zielonka_rec(V, 0);
 
     // Check that the result is a valid partition
     debug!("Performed {} recursive calls", zielonka.recursive_calls);
     if cfg!(debug_assertions) {
         zielonka.check_partition(&W0, &W1, &full_V);
     }
-    [W0, W1]
+    ([W0, W1], [S0, S1])
 }
 
 struct ZielonkaSolver<'a> {
@@ -88,13 +90,13 @@ impl ZielonkaSolver<'_> {
     }
 
     /// Recursively solves the parity game for the given set of vertices V.
-    fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, Set) {
+    fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, Strategy, Set, Strategy) {
         self.recursive_calls += 1;
         let full_V = V.clone(); // Used for debugging
         let indent = Repeat::new(" ", depth);
 
         if !V.any() {
-            return (V.clone(), V);
+            return (V.clone(), Strategy::new(), V.clone(), Strategy::new());
         }
 
         let (highest_prio, lowest_prio) = self.get_highest_lowest_prio(&V);
@@ -120,34 +122,38 @@ impl ZielonkaSolver<'_> {
         );
         trace!("{}Vertices in U: {}", indent, DisplaySet(&U));
 
-        let A = self.attractor(alpha, &V, U);
+        let (A, A_strategy) = self.attractor(alpha, &V, U);
 
         trace!("{}Vertices in A: {}", indent, DisplaySet(&A));
         debug!("{}zielonka(V \\ A) |A| = {}", indent, A.count_ones());
-        let (W1_0, W1_1) = self.zielonka_rec(V.clone().bitand(!A.clone()), depth + 1);
+        let (W1_0, S1_0, W1_1, S1_1) = self.zielonka_rec(V.clone().bitand(!A.clone()), depth + 1);
 
-        let (mut W1_alpha, W1_not_alpha) = x_and_not_x(W1_0, W1_1, alpha);
+        let (mut W1_alpha, S1_alpha, W1_not_alpha, S1_not_alpha) = x_and_not_x_strategy(W1_0, S1_0, W1_1, S1_1, alpha);
 
         if !W1_not_alpha.any() {
             W1_alpha |= A;
-            combine(W1_alpha, W1_not_alpha, alpha)
+            combine_strategy(W1_alpha, S1_alpha, W1_not_alpha, Strategy::new(), alpha)
         } else {
-            let B = self.attractor(not_alpha, &V, W1_not_alpha);
+            let (B, B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
 
             trace!("{}Vertices in B: {}", indent, DisplaySet(&A));
             debug!("{}zielonka(V \\ B)", indent);
-            let (W2_0, W2_1) = self.zielonka_rec(V.bitand(!B.clone()), depth + 1);
+            let (W2_0, S2_0, W2_1, S2_1) = self.zielonka_rec(V.bitand(!B.clone()), depth + 1);
 
-            let (W2_alpha, mut W2_not_alpha) = x_and_not_x(W2_0, W2_1, alpha);
+            let (W2_alpha, S2_alpha, mut W2_not_alpha, mut S2_not_alpha) =
+                x_and_not_x_strategy(W2_0, S2_0, W2_1, S2_1, alpha);
 
             W2_not_alpha |= B;
             self.check_partition(&W2_alpha, &W2_not_alpha, &full_V);
-            combine(W2_alpha, W2_not_alpha, alpha)
+            combine_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
         }
     }
 
     /// Computes the attractor for `alpha` to the set `U` within the vertices `V`.
-    fn attractor(&mut self, alpha: Player, V: &Set, mut A: Set) -> Set {
+    fn attractor(&mut self, alpha: Player, V: &Set, mut A: Set) -> (Set, Strategy) {
+        // 1. strategy := empty
+        let mut strategy = Strategy::new();
+
         // 2. Q = {v \in A}
         self.temp_queue.clear();
         for v in A.iter_ones() {
@@ -169,6 +175,10 @@ impl ZielonkaSolver<'_> {
                     };
 
                     if attracted && !A[*v] {
+                        if self.game.owner(v) == alpha {
+                            strategy.set(v, w);
+                        }
+
                         A.set(*v, true);
                         self.temp_queue.push(v);
                     }
@@ -176,7 +186,7 @@ impl ZielonkaSolver<'_> {
             }
         }
 
-        A
+        (A, strategy)
     }
 
     /// Returns the highest and lowest priority in the given set of vertices V.
@@ -230,6 +240,34 @@ pub fn combine<U>(omega_x: U, omega_not_x: U, player: Player) -> (U, U) {
     }
 }
 
+/// Returns the given pair ordered by player, left is alpha and right is not_alpha.
+pub fn x_and_not_x_strategy<U, V>(
+    omega_0: U,
+    strategy_0: V,
+    omega_1: U,
+    strategy_1: V,
+    player: Player,
+) -> (U, V, U, V) {
+    match player {
+        Player::Even => (omega_0, strategy_0, omega_1, strategy_1),
+        Player::Odd => (omega_1, strategy_1, omega_0, strategy_0),
+    }
+}
+
+/// Combines a pair of submaps ordered by player into a pair even, odd.
+pub fn combine_strategy<U, V>(
+    omega_x: U,
+    strategy_x: V,
+    omega_not_x: U,
+    strategy_not_x: V,
+    player: Player,
+) -> (U, V, U, V) {
+    match player {
+        Player::Even => (omega_x, strategy_x, omega_not_x, strategy_not_x),
+        Player::Odd => (omega_not_x, strategy_not_x, omega_x, strategy_x),
+    }
+}
+
 /// Helper struct to display a set of vertices.
 struct DisplaySet<'a>(&'a Set);
 
@@ -253,7 +291,7 @@ mod tests {
             let pg = random_parity_game(rng, true, 100, 5, 3);
             println!("{:?}", pg);
 
-            solve_zielonka(&pg);
+            let (result, strategy) = solve_zielonka(&pg);
         })
     }
 }
