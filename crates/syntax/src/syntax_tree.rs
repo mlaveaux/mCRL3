@@ -431,9 +431,23 @@ pub struct Action {
     pub args: Vec<DataExpr>,
 }
 
+impl Action {
+    /// Creates a new action from an identifier and a list of arguments.
+    pub fn new(id: String, args: Vec<DataExpr>) -> Self {
+        Action { id, args }
+    }
+}
+
 #[derive(Clone, Debug, Eq)]
 pub struct MultiAction {
     pub actions: Vec<Action>,
+}
+
+impl MultiAction {
+    /// Creates a new multi-action from a list of actions.
+    pub fn new(actions: Vec<Action>) -> Self {
+        MultiAction { actions }
+    }
 }
 
 impl PartialEq for MultiAction {
