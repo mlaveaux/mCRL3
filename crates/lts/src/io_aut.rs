@@ -187,7 +187,7 @@ impl TransitionLabel for String {
     }
 
     fn from_index(i: usize) -> Self {
-        char::from_digit(i as u32, 36)
+        char::from_digit(i as u32 + 10, 36)
             .expect("Radix is less than 37, so should not panic")
             .to_string()
     }
