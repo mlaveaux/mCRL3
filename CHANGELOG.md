@@ -16,6 +16,8 @@ whether two labelled transition systems are related by various pre-order
 relations, which are (weak) trace, failure refinement and failures-divergence
 refinement and impossible futures.
 
+A new tool `merc-sym` can explore a symbolic state space given in Sylvan's binary `.ldd` format, or the mCRL2 symbolic binary `.sym` format. It can also compute orderings using MINCE when the `kahypar` feature is enabled.
+
 See the `README.md` of the individual crates for their own changelogs.
 
 # v1.0 (December 2025)
