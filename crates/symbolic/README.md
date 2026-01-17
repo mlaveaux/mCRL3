@@ -22,7 +22,9 @@ reachability(&mut storage, &lts).expect("Should not fail");
 ```
 
 Furthermore, this crate can also compute variable ordering, for now only using
-the MINCE algorithm for a given dependency graph.
+the MINCE algorithm for a given dependency graph. This requires the `kahypar`
+feature to be enabled, which will compile
+[mt-kahypar](https://github.com/kahypar/mt-kahypar) internally.
 
 ## Safety
 
