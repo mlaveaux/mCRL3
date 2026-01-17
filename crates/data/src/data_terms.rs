@@ -81,14 +81,12 @@ impl DataSymbols {
     }
 
     /// Returns true iff the given term is a data application.
-    pub fn is_data_application<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
-        if let Some(symbol) = self.data_appl.get(term.get_head_symbol().arity()) {
-            return term.get_head_symbol() == **symbol;
-        }
-
-        false
+    pub fn is_data_application<'a, 'b>(&mut self, term: &'b impl Term<'a, 'b>) -> bool {
+        let arity = term.get_head_symbol().arity();
+        term.get_head_symbol() == *self.get_data_application_symbol(arity)
     }
 
+    /// Returns the data application symbol for the given arity, creating it if necessary.
     pub fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
         // It can be that data_applications are created without create_data_application in the mcrl2 ffi.
         while self.data_appl.len() <= arity {
@@ -134,5 +132,5 @@ pub fn is_data_abstraction<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
 }
 
 pub fn is_data_application<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
-    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_application(term))
+    DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
 }

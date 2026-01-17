@@ -72,16 +72,17 @@ pub fn convert_symbolic_lts(
 
     // All states have been explored, so add them to the discovered set immediately.
     let mut discovered: IndexedSet<Vec<u32>, FxBuildHasher> = IndexedSet::new();
-    for (index, state) in iter(storage, lts.states()).enumerate() {
-        debug_assert!(discovered.insert(state).1, "State space contains duplicate states");
-        state_progress.print(index)
+    for state in iter(storage, lts.states()) {
+        let (_, inserted) = discovered.insert(state);
+        debug_assert!(inserted, "State space contains duplicate states");
+        state_progress.print(discovered.len())
     }
 
     // Total number of states for progress reporting.
     let progress = TimeProgress::new(
         move |(number_of_states, number_of_transitions)| {
             info!(
-                "Explored {} states, and {} transitions ({}%)",
+                "Explored {} states and {} transitions ({}%)",
                 LargeFormatter(number_of_states),
                 LargeFormatter(number_of_transitions),
                 number_of_states * 100 / total_number_of_states
@@ -94,7 +95,7 @@ pub fn convert_symbolic_lts(
 
     // Avoid reallocations.
     let mut target = vec![0u32; height(storage, lts.states())];
-    for state in iter(storage, lts.states()) {
+    for (index, state) in iter(storage, lts.states()).enumerate() {
         // Insert the state if necessary, this avoids cloning when already present.
         let state_index = discovered
             .index(&state)
@@ -137,7 +138,7 @@ pub fn convert_symbolic_lts(
             }
         }
 
-        progress.print((discovered.len(), builder.num_of_transitions()));
+        progress.print((index, builder.num_of_transitions()));
     }
 
     Ok(builder.finish(StateIndex::new(0)))
