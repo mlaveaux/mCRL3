@@ -11,6 +11,9 @@ rust-version.workspace = true
 version.workspace = true
 
 [features]
+# Enable kahypar support to enable the MINCE algorithm, only works on Linux and macOS.
+kahypar = ["dep:mt-kahypar"]
+# Derive additional traits for clap.
 clap = ["dep:clap"]
 
 [dependencies]
@@ -25,7 +28,7 @@ merc_utilities.workspace = true
 clap = { workspace = true, optional = true }
 itertools.workspace = true
 log.workspace = true
-mt-kahypar.workspace = true
+mt-kahypar = { workspace = true, optional = true }
 oxidd-core.workspace = true
 oxidd.workspace = true
 rand.workspace = true
