@@ -134,7 +134,7 @@ pub fn bdd_to_ldd(
 }
 
 /// Computes the highest value for every layer in the LDD
-fn compute_highest(storage: &mut Storage, ldd: &LddRef<'_>) -> Vec<u32> {
+pub fn compute_highest(storage: &mut Storage, ldd: &LddRef<'_>) -> Vec<u32> {
     let mut result = vec![0; height(storage, ldd)];
     compute_highest_rec(storage, &mut result, ldd, 0);
     result
@@ -153,11 +153,17 @@ fn compute_highest_rec(storage: &mut Storage, result: &mut [u32], set: &LddRef<'
     result[depth] = result[depth].max(value);
 }
 
+/// Calculate minimum bits needed to represent the value
+/// Use 1 bit if value is 0 to ensure at least 1 bit is written
+pub fn required_bits(value: u32) -> u32 {
+    (u32::BITS - value.leading_zeros()).max(1)
+}
+
 /// Computes the number of bits required to represent the highest value at each layer.
-fn compute_bits(highest: &[u32]) -> Vec<u32> {
+pub fn compute_bits(highest: &[u32]) -> Vec<u32> {
     highest
         .iter()
-        .map(|&h| (u32::BITS - h.leading_zeros()).max(1))
+        .map(|&h| required_bits(h) as u32)
         .collect()
 }
 
@@ -201,11 +207,7 @@ mod tests {
             println!("Bits: {:?}", bits);
 
             for (i, b) in bits.iter().enumerate() {
-                let expected_bits = if highest[i] == 0 {
-                    0
-                } else {
-                    u32::BITS - highest[i].leading_zeros()
-                };
+                let expected_bits = required_bits(highest[i]);
                 assert_eq!(
                     *b, expected_bits,
                     "The number of bits for depth {} is {}, but expected {}",
