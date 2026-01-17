@@ -1,5 +1,6 @@
 use log::debug;
 use log::info;
+use log::trace;
 use merc_ldd::height;
 use rustc_hash::FxBuildHasher;
 
@@ -33,56 +34,50 @@ pub fn convert_symbolic_lts(
         }
     }
 
-    // Total number of states for progress reporting.
-    let total_number_of_states = len(storage, lts.states());
-
-    let mut builder = LtsBuilder::new(lts.action_labels().to_vec(), Vec::new());
-    let mut discovered: IndexedSet<Vec<u32>, FxBuildHasher> = IndexedSet::new();
-    discovered.insert(
-        iter(storage, lts.initial_state())
-            .next()
-            .ok_or("The initial state should contain exactly one cube")?,
-    );
-
     // Compute for every read and write index its position in the transition vector.
     let mut read_positions = Vec::new();
     let mut write_positions = Vec::new();
-    for transition in lts.transition_groups() {
-        // Concatenate all the indices, sort them, and find their position in the sorted positions
-        let mut indices: Vec<u32> = transition
-            .read_indices()
-            .iter()
-            .chain(transition.write_indices().iter())
-            .cloned()
-            .collect();
-        indices.sort_unstable();
-        indices.dedup();
 
-        // The resulting vectors map from the index in the transition group to the position in the
-        // transition vector.
-        read_positions.push(
-            transition
-                .read_indices()
-                .iter()
-                .map(|i| indices.iter().position(|x| x == i).unwrap())
-                .collect::<Vec<usize>>(),
-        );
-        write_positions.push(
-            transition
-                .write_indices()
-                .iter()
-                .map(|i| indices.iter().position(|x| x == i).unwrap())
-                .collect::<Vec<usize>>(),
-        );
+    for group in lts.transition_groups() {
+        let (rpos, wpos) = compute_positions(group);
+
+        read_positions.push(rpos);
+        write_positions.push(wpos);
     }
 
     for (group_index, group) in lts.transition_groups().iter().enumerate() {
         debug!("Transition group {}: {:?}", group_index, group,);
 
-        debug!("  Read indices: {:?}", read_positions[group_index],);
-        debug!("  Write indices: {:?}", write_positions[group_index],);
+        debug!("  Read indices: {:?}", read_positions[group_index]);
+        debug!("  Write indices: {:?}", write_positions[group_index]);
     }
 
+    // Total number of states for progress reporting.
+    let total_number_of_states = len(storage, lts.states());
+    info!(
+        "Converting symbolic LTS to explicit LTS with {} states",
+        LargeFormatter(total_number_of_states)
+    );
+
+    let state_progress = TimeProgress::new(
+        move |number_of_states| {
+            info!(
+                "Added {} states to discovered ({}%)",
+                LargeFormatter(number_of_states),
+                number_of_states * 100 / total_number_of_states
+            );
+        },
+        1,
+    );
+
+    // All states have been explored, so add them to the discovered set immediately.
+    let mut discovered: IndexedSet<Vec<u32>, FxBuildHasher> = IndexedSet::new();
+    for (index, state) in iter(storage, lts.states()).enumerate() {
+        debug_assert!(discovered.insert(state).1, "State space contains duplicate states");
+        state_progress.print(index)
+    }
+
+    // Total number of states for progress reporting.
     let progress = TimeProgress::new(
         move |(number_of_states, number_of_transitions)| {
             info!(
@@ -95,21 +90,15 @@ pub fn convert_symbolic_lts(
         1,
     );
 
-    info!(
-        "Converting symbolic LTS to explicit LTS with {} states",
-        LargeFormatter(total_number_of_states)
-    );
+    let mut builder = LtsBuilder::new(lts.action_labels().to_vec(), Vec::new());
 
-    // TODO: We assume that the states are fully explored.
-
+    // Avoid reallocations.
     let mut target = vec![0u32; height(storage, lts.states())];
     for state in iter(storage, lts.states()) {
         // Insert the state if necessary, this avoids cloning when already present.
-        let state_index = if let Some(index) = discovered.index(&state) {
-            index
-        } else {
-            discovered.insert(state.clone()).0
-        };
+        let state_index = discovered
+            .index(&state)
+            .ok_or("Found state that was not in the state set")?;
 
         // Apply every transition group to this state.
         for (group_index, group) in lts.transition_groups().iter().enumerate() {
@@ -124,6 +113,7 @@ pub fn convert_symbolic_lts(
 
                 // Apply the transition writes to the state vector.
                 target.clone_from_slice(&state);
+                trace!("transition {:?}", transition);
                 for (index, i) in group.write_indices().iter().enumerate() {
                     target[*i as usize] = transition[write_positions[group_index][index]];
                 }
@@ -134,13 +124,15 @@ pub fn convert_symbolic_lts(
                     .ok_or("Transition vector should at least have the action label")?]
                     as usize];
 
-                // Insert the target state if necessary, this avoids cloning when already present.
-                let target_index = if let Some(index) = discovered.index(&target) {
-                    index
-                } else {
-                    discovered.insert(target.clone()).0
-                };
+                trace!(
+                    " Found transition in {group_index} from {:?} to {:?} with label {:?}",
+                    state, target, label
+                );
 
+                // Insert the target state if necessary, this avoids cloning when already present.
+                let target_index = discovered
+                    .index(&target)
+                    .ok_or("Found state that was not in the state set")?;
                 builder.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index));
             }
         }
@@ -149,4 +141,67 @@ pub fn convert_symbolic_lts(
     }
 
     Ok(builder.finish(StateIndex::new(0)))
+}
+
+/// Computes the positions of the read and write indices in the transition vector.
+fn compute_positions(group: &impl TransitionGroup) -> (Vec<usize>, Vec<usize>) {
+    // Ensure indices are non-decreasing; merge relies on sorted inputs.
+    debug_assert!(group.read_indices().windows(2).all(|w| w[0] <= w[1]), "read_indices must be sorted");
+    debug_assert!(group.write_indices().windows(2).all(|w| w[0] <= w[1]), "write_indices must be sorted");
+
+    let mut rpos = Vec::with_capacity(group.read_indices().len());
+    let mut wpos = Vec::with_capacity(group.write_indices().len());
+
+    let mut ri = 0usize;
+    let mut wi = 0usize;
+    let mut index = 0usize;
+
+    while ri < group.read_indices().len() && wi < group.write_indices().len() {
+        if group.read_indices()[ri] <= group.write_indices()[wi] {
+            rpos.push(index);
+            ri += 1;
+        } else {
+            wpos.push(index);
+            wi += 1;
+        }
+        index += 1;
+    }
+
+    while ri < group.read_indices().len() {
+        rpos.push(index);
+        ri += 1;
+        index += 1;
+    }
+
+    while wi < group.write_indices().len() {
+        wpos.push(index);
+        wi += 1;
+        index += 1;
+    }
+    (rpos, wpos)
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_ldd::Storage;
+    use merc_lts::LTS;
+    use merc_utilities::test_logger;
+
+    use crate::convert_symbolic_lts;
+    use crate::read_symbolic_lts;
+
+    #[test]
+    fn test_convert_symbolic_lts() {
+        test_logger();
+
+        let input = include_bytes!("../../../examples/lts/abp.sym");
+
+        let mut storage = Storage::new();
+        let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
+
+        let lts = convert_symbolic_lts(&mut storage, &symbolic_lts).unwrap();
+
+        debug_assert_eq!(lts.num_of_states(), 74);
+        debug_assert_eq!(lts.num_of_transitions(), 92);
+    }
 }

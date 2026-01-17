@@ -1,6 +1,5 @@
 use std::fmt;
 
-
 /// Represents a dependency graph between variables used in symbolic transition relations.
 pub struct DependencyGraph {
     /// The list of relations in the dependency graph.

@@ -14,6 +14,8 @@ use merc_ldd::height;
 use merc_utilities::MercError;
 use oxidd_core::util::EdgeDropGuard;
 
+/// Converts an LDD representing a set of vectors into a BDD representing the
+/// same set by bitblasting the vector elements.
 pub fn ldd_to_bdd_simple(
     storage: &mut Storage,
     manager_ref: &BDDManagerRef,
@@ -61,7 +63,7 @@ pub fn ldd_to_bdd(
     // Skip bits_value variables for current bits
     let mut down = ldd_to_bdd(storage, manager_ref, &down, &bits_down, first_variable + bits_value)?;
 
-    // Encode current value per bit, starting from least significant bit since its computed bottom up.
+    // Encode current value per bit, starting from least significant bit since it's computed bottom up.
     for i in 0..bits_value {
         let bit = bits_value - i - 1;
         if value & (1 << i) != 0 {
@@ -94,7 +96,7 @@ pub fn bdd_to_ldd(
     if manager_ref.with_manager_shared(|manager| {
         *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager))
     }) {
-        // TODO: Can this be avoided.
+        // TODO: Can this be avoided?
         let empty_set = storage.empty_set().clone();
         let empty_vector = storage.empty_vector().clone();
 
@@ -111,7 +113,6 @@ pub fn bdd_to_ldd(
 
     if num_bits == bit {
         // We reached the last bit for this layer
-        println!("Inserting value {}", value);
         let down = bdd_to_ldd(storage, manager_ref, bdd, &bits_down, 0, 0)?;
         let right = storage.empty_set().clone();
         Ok(storage.insert(value, &down, &right))
@@ -161,10 +162,7 @@ pub fn required_bits(value: u32) -> u32 {
 
 /// Computes the number of bits required to represent the highest value at each layer.
 pub fn compute_bits(highest: &[u32]) -> Vec<u32> {
-    highest
-        .iter()
-        .map(|&h| required_bits(h) as u32)
-        .collect()
+    highest.iter().map(|&h| required_bits(h) as u32).collect()
 }
 
 #[cfg(test)]

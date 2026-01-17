@@ -1,5 +1,6 @@
 use std::io::Read;
 
+use log::debug;
 use log::info;
 use merc_aterm::ATerm;
 use merc_aterm::ATermList;
@@ -12,6 +13,7 @@ use merc_data::DataVariable;
 use merc_io::BitStreamRead;
 use merc_ldd::BinaryLddReader;
 use merc_ldd::Storage;
+use merc_lts::MultiAction;
 use merc_utilities::MercError;
 
 use crate::SummandGroup;
@@ -65,19 +67,27 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let states = stream.read_ldd(storage)?;
 
     // Read the values for the process parameters.
-    for _parameter in &process_parameters {
+    let mut parameter_values: Vec<Vec<ATerm>> = Vec::with_capacity(process_parameters.len());
+    for parameter in &process_parameters {
         let num_of_entries = stream.read_integer()?;
+        debug!("Parameter {:?} has {} entries", parameter, num_of_entries);
 
-        for _ in 0..num_of_entries {
-            let _value = stream.read_aterm()?;
-        }
+        let mut values = Vec::with_capacity(num_of_entries as usize);
+        for i in 0..num_of_entries {
+            let value = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
+            debug!("  {i}:  {:?}", value);
+            values.push(value);
+        }        
+
+        parameter_values.push(values);
     }
 
     // Read the action labels.
     let num_of_action_labels = stream.read_integer()?;
     let mut action_labels = Vec::with_capacity(num_of_action_labels as usize);
     for _ in 0..num_of_action_labels {
-        action_labels.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?);
+        let action_label = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
+        action_labels.push(MultiAction::from_mcrl2_aterm(action_label)?);
     }
 
     // Read the summand groups.
@@ -114,6 +124,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
         initial_state,
         summand_groups,
         action_labels,
+        parameter_values
     ))
 }
 

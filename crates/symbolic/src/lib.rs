@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 mod convert;
-mod dependency_graph;
 mod cube_iter;
+mod dependency_graph;
 mod format;
 mod io;
 mod io_sylvan;
@@ -14,8 +14,8 @@ mod reorder;
 mod symbolic_lts;
 
 pub use convert::*;
-pub use dependency_graph::*;
 pub use cube_iter::*;
+pub use dependency_graph::*;
 pub use format::*;
 pub use io::*;
 pub use io_sylvan::*;

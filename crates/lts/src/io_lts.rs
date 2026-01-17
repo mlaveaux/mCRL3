@@ -6,6 +6,7 @@ use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
 
+use log::debug;
 use log::info;
 use merc_aterm::ATerm;
 use merc_aterm::ATermInt;
@@ -32,6 +33,7 @@ use crate::StateIndex;
 pub fn read_lts(
     reader: impl Read,
     hidden_labels: Vec<String>,
+    read_state_labels: bool,
 ) -> Result<LabelledTransitionSystem<MultiAction>, MercError> {
     info!("Reading LTS in .lts format...");
 
@@ -59,6 +61,8 @@ pub fn read_lts(
         },
         1,
     );
+
+    let mut state_labels = Vec::new();
 
     loop {
         let term = reader.read_aterm()?;
@@ -91,7 +95,11 @@ pub fn read_lts(
                 } else if t == probabilistic_transition_mark() {
                     return Err("Probabilistic transitions are not supported yet.".into());
                 } else if is_list_term(&t) {
-                    // State labels can be ignored for the reduction algorithm.
+                    if read_state_labels {
+                        let t: ATermList<ATerm> = t.into();
+                        debug!("Read state label: {:?}", t.to_vec());
+                        state_labels.push(t);
+                    }
                 } else if t == initial_state_marker() {
                     let length = ATermInt::from(reader.read_aterm()?.ok_or("Missing initial state length")?).value();
                     if length != 1 {
@@ -101,7 +109,7 @@ pub fn read_lts(
                     initial_state = Some(StateIndex::new(
                         ATermInt::from(reader.read_aterm()?.ok_or("Missing initial state index")?).value(),
                     ));
-                    println!("Initial state: {:?}", initial_state);
+                    debug!("Initial state: {:?}", initial_state);
                 } else {
                     return Err(format!("Unexpected term in LTS stream: {}", t).into());
                 }
@@ -234,7 +242,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
     fn test_read_lts() {
-        let lts = read_lts(include_bytes!("../../../examples/lts/abp.lts").as_ref(), vec![]).unwrap();
+        let lts = read_lts(include_bytes!("../../../examples/lts/abp.lts").as_ref(), vec![], true).unwrap();
 
         assert_eq!(lts.num_of_states(), 74);
         assert_eq!(lts.num_of_transitions(), 92);
@@ -250,7 +258,7 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             write_lts(&mut buffer, &lts).unwrap();
 
-            let result_lts = read_lts(&buffer[0..], vec![]).unwrap();
+            let result_lts = read_lts(&buffer[0..], vec![], false).unwrap();
 
             crate::check_equivalent(&lts, &result_lts);
         })
