@@ -11,6 +11,7 @@ use itertools::Itertools;
 use log::debug;
 use log::info;
 use merc_lts::read_aut;
+use merc_vpg::Projected;
 use oxidd::BooleanFunction;
 
 use merc_tools::format_key_values_json;
@@ -404,7 +405,7 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
     let output_path = Path::new(&args.output);
 
     for result in project_variability_parity_games_iter(&vpg, timing) {
-        let ((cube, _bdd, pg), _) = result?;
+        let (Projected { bits, bdd: _, game }, _) = result?;
 
         let extension = output_path.extension().ok_or("Missing extension on output file")?;
         let new_path = output_path
@@ -414,17 +415,17 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
                     .file_stem()
                     .ok_or("Missing filename on output")?
                     .to_string_lossy(),
-                FormatConfig(&cube)
+                FormatConfig(&bits)
             ))
             .with_extension(extension);
 
         let mut output_file = File::create(new_path)?;
 
         if args.reachable {
-            let (reachable_pg, _projection) = compute_reachable(&pg);
+            let (reachable_pg, _projection) = compute_reachable(&game);
             write_pg(&mut output_file, &reachable_pg)?;
         } else {
-            write_pg(&mut output_file, &pg)?;
+            write_pg(&mut output_file, &game)?;
         }
     }
 

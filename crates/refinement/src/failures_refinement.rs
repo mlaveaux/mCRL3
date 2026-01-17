@@ -239,6 +239,12 @@ impl ClosureCache {
     }
 }
 
+impl Default for ClosureCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Returns the tau closure for a set of states in the given LTS.
 ///
 /// # Details

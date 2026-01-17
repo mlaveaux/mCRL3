@@ -79,6 +79,12 @@ impl CounterExampleTree for CounterExampleConstructor {
     }   
 }
 
+impl Default for CounterExampleConstructor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CounterExampleTree for () {
     type Index = ();
 
@@ -86,7 +92,5 @@ impl CounterExampleTree for () {
         // Do nothing
     }
         
-    fn root_index(&self) -> Self::Index {
-        ()
-    }
+    fn root_index(&self) -> Self::Index {}
 }

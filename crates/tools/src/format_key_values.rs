@@ -25,12 +25,12 @@ use log::kv::VisitSource;
 pub fn format_key_values_json(formatter: &mut Formatter, source: &dyn Source) -> io::Result<()> {
     if source.count() > 0 {
         // If there are key-values, format them as a JSON object.
-        formatter.write("\n{ ".as_bytes())?;
+        formatter.write_all("\n{ ".as_bytes())?;
         let mut json_printer = JsonPrinter { formatter };
         if let Err(e) = source.visit(&mut json_printer) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, e));
         }
-        formatter.write(" }".as_bytes())?;
+        formatter.write_all(" }".as_bytes())?;
     }
 
     Ok(())

@@ -36,11 +36,18 @@ pub fn project_variability_parity_game(
     ))
 }
 
+/// A projected configuration of a variability parity game.
+pub struct Projected {
+    pub bits: Vec<OptBool>,
+    pub bdd: BDDFunction,
+    pub game: ParityGame,
+}
+
 /// Projects all configurations of a variability parity game into standard parity games.
 pub fn project_variability_parity_games_iter<'a>(
     vpg: &'a VariabilityParityGame,
     timing: &'a Timing,
-) -> impl Iterator<Item = Result<((Vec<OptBool>, BDDFunction, ParityGame), &'a Timing), MercError>> {
+) -> impl Iterator<Item = Result<(Projected, &'a Timing), MercError>> {
     CubeIterAll::new(vpg.variables(), vpg.configuration()).map(move |cube| {
         let (cube, bdd) = cube?;
 
@@ -48,6 +55,6 @@ pub fn project_variability_parity_games_iter<'a>(
         let pg = project_variability_parity_game(vpg, &bdd)?;
         time_proj.finish();
 
-        Ok(((cube, bdd, pg), timing))
+        Ok((Projected { bits: cube, bdd, game: pg }, timing))
     })
 }
