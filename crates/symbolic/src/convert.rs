@@ -154,14 +154,8 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
 /// Computes the positions of the read and write indices in the transition vector.
 fn compute_positions(group: &impl TransitionGroup) -> (Vec<usize>, Vec<usize>) {
     // Ensure indices are non-decreasing; merge relies on sorted inputs.
-    debug_assert!(
-        group.read_indices().windows(2).all(|w| w[0] <= w[1]),
-        "read_indices must be sorted"
-    );
-    debug_assert!(
-        group.write_indices().windows(2).all(|w| w[0] <= w[1]),
-        "write_indices must be sorted"
-    );
+    debug_assert!(group.read_indices().is_sorted(), "read_indices must be sorted");
+    debug_assert!(group.write_indices().is_sorted(), "write_indices must be sorted");
 
     let mut rpos = Vec::with_capacity(group.read_indices().len());
     let mut wpos = Vec::with_capacity(group.write_indices().len());

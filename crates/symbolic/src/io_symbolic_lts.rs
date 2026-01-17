@@ -118,6 +118,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
         )?);
     }
 
+    info!("Finished reading symbolic LTS.");
     Ok(SymbolicLts::new(
         data_spec,
         states,
