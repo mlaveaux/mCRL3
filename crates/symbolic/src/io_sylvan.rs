@@ -129,10 +129,6 @@ impl TransitionGroup for SylvanTransitionGroup {
         &self.relation
     }
 
-    fn summand_count(&self) -> usize {
-        1
-    }
-
     fn read_indices(&self) -> &[u32] {
         &self.read_proj
     }

@@ -122,10 +122,6 @@ impl TransitionGroup for SummandGroup {
     fn action_label_index(&self) -> Option<usize> {
         Some(self.action_label_index)
     }
-
-    fn summand_count(&self) -> usize {
-        1
-    }
 }
 
 impl SummandGroup {
