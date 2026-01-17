@@ -1,1 +1,0 @@
-// This crate only builds mt-kahypar C++ library.
