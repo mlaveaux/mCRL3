@@ -9,7 +9,6 @@ use std::ops::Index;
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
 use bitvec::vec::BitVec;
-use clap::ValueEnum;
 use log::debug;
 use log::info;
 use log::trace;
