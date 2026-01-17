@@ -28,9 +28,6 @@ pub fn convert_symbolic_lts(
     lts: &impl SymbolicLTS,
 ) -> Result<LabelledTransitionSystem<String>, MercError> {
     for group in lts.transition_groups() {
-        if group.summand_count() > 1 {
-            return Err("Cannot convert a symbolic LTS with non-trivial transition groups".into());
-        }
         if group.action_label_index().is_none() {
             return Err("Cannot convert a symbolic LTS with transition groups without action labels".into());
         }
