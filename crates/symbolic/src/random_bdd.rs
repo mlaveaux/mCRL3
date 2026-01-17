@@ -59,13 +59,3 @@ pub fn random_bdd(
     let bitvectors = random_bitvectors(rng, variables.len(), 100);
     from_iter(manager_ref, variables, bitvectors.iter())
 }
-
-/// Create the given number of variables in the BDD manager.
-pub fn create_variables(manager_ref: &BDDManagerRef, num_vars: u32) -> Result<Vec<BDDFunction>, MercError> {
-    Ok(manager_ref.with_manager_exclusive(|manager| {
-        manager
-            .add_vars(num_vars)
-            .map(|i| BDDFunction::var(manager, i))
-            .collect::<Result<Vec<_>, _>>()
-    })?)
-}

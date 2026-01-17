@@ -67,7 +67,7 @@ impl Iterator for CubeIter<'_> {
 pub struct CubeIterAll<'a> {
     bdd: &'a BDDFunction,
     // The variables used in the BDD.
-    variables: &'a Vec<BDDFunction>,
+    variables: &'a [BDDFunction],
     // The last cube generated.
     cube: Vec<OptBool>,
     // Whether to stop the iteration.
@@ -76,7 +76,7 @@ pub struct CubeIterAll<'a> {
 
 impl<'a> CubeIterAll<'a> {
     /// Creates a new cube iterator that iterates over the single cube
-    pub fn new(variables: &'a Vec<BDDFunction>, bdd: &'a BDDFunction) -> CubeIterAll<'a> {
+    pub fn new(variables: &'a [BDDFunction], bdd: &'a BDDFunction) -> CubeIterAll<'a> {
         let cube = Vec::from_iter((0..variables.len()).map(|_| OptBool::False));
         Self {
             bdd,
@@ -157,13 +157,15 @@ mod tests {
 
     use merc_utilities::MercError;
     use merc_utilities::random_test;
+    use oxidd::BooleanFunction;
+    use oxidd::Manager;
+    use oxidd::ManagerRef;
     use oxidd::bdd::BDDFunction;
     use oxidd::util::OptBool;
 
     use crate::CubeIter;
     use crate::CubeIterAll;
     use crate::FormatConfig;
-    use crate::create_variables;
     use crate::from_iter;
     use crate::random_bitvectors;
 
@@ -175,14 +177,20 @@ mod tests {
             let set = random_bitvectors(rng, 5, 20);
             println!("Set: {:?}", set.iter().format_with(", ", |v, f| f(&FormatConfig(v))));
 
-            let variables = create_variables(&manager_ref, 5).unwrap();
+            let variables = manager_ref
+                .with_manager_exclusive(|manager| -> Result<Vec<BDDFunction>, MercError> {
+                    Ok(manager
+                        .add_vars(5)
+                        .map(|i| BDDFunction::var(manager, i))
+                        .collect::<Result<Vec<BDDFunction>, _>>()?)
+                })
+                .expect("Failed to create variables");
 
             let bdd = from_iter(&manager_ref, &variables, set.iter()).unwrap();
 
             // Check that the cube iterator yields all the expected cubes
-            let result: Result<Vec<(Vec<OptBool>, BDDFunction)>, MercError> =
-                CubeIterAll::new(&variables, &bdd).collect();
-            let cubes: Vec<(Vec<OptBool>, BDDFunction)> = result.unwrap();
+            let result: Result<Vec<(Vec<OptBool>, BDDFunction)>, _> = CubeIterAll::new(&variables, &bdd).collect();
+            let cubes = result.unwrap();
             let mut seen = HashSet::new();
             for (bits, _) in &cubes {
                 println!("Cube: {}", FormatConfig(&bits));
@@ -209,7 +217,14 @@ mod tests {
             let set = random_bitvectors(rng, 5, 20);
             println!("Set: {:?}", set.iter().format_with(", ", |v, f| f(&FormatConfig(v))));
 
-            let variables = create_variables(&manager_ref, 5).unwrap();
+            let variables = manager_ref
+                .with_manager_exclusive(|manager| -> Result<Vec<BDDFunction>, MercError> {
+                    Ok(manager
+                        .add_vars(5)
+                        .map(|i| BDDFunction::var(manager, i))
+                        .collect::<Result<Vec<BDDFunction>, _>>()?)
+                })
+                .expect("Failed to create variables");
 
             let bdd = from_iter(&manager_ref, &variables, set.iter()).unwrap();
 
