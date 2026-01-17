@@ -15,9 +15,9 @@ use crate::StateIndex;
 use crate::TransitionLabel;
 
 /// A trait for building labelled transition systems incrementally.
-/// 
+///
 /// # Details
-/// 
+///
 /// Depending on the implementation this can be done in a memory efficient way,
 /// or in a way that is optimized for speed. Alternatively, the resulting LTS is
 /// immediatly written to disk. The builder accumulates transitions using
@@ -28,7 +28,7 @@ pub trait LtsBuilder<L: TransitionLabel> {
     /// The result type of the builder once finalized.
     type LTS;
 
-    /// Adds a transition to the builder. For efficiently reasons, we can use
+    /// Adds a transition to the builder. For efficiency reasons, we can use
     /// another type `Q` for the label.
     fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
     where

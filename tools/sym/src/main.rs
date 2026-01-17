@@ -199,7 +199,7 @@ fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercErr
         let pbessolvesymbolic = if let Some(path) = args.mcrl2_tool_path {
             which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?)?
         } else {
-            which::which("pbessolvesymbolic").map_err(|_e| "Cannot find lpsreach in PATH")?
+            which::which("pbessolvesymbolic").map_err(|_e| "Cannot find pbessolvesymbolic in PATH")?
         };
 
         // Run pbessolvesymbolic with the --info flag to get dependency information

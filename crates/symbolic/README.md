@@ -18,7 +18,7 @@ use merc_symbolic::reachability;
 let mut storage = Storage::new();
 let lts = read_sylvan(&mut storage, &File::open("../../examples/ldd/anderson.4.ldd").expect("File could not be opened"));
 
-reachability(&mut storage, &lts)?;
+reachability(&mut storage, &lts).expect("Should not fail");
 ```
 
 Furthermore, this crate can also compute variable ordering, for now only using
