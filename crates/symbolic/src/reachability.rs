@@ -29,9 +29,6 @@ pub trait TransitionGroup: fmt::Debug {
     /// Returns the transition relation T' -> U' for this summand group.
     fn relation(&self) -> &Ldd;
 
-    /// Returns the number of summands in the group
-    fn summand_count(&self) -> usize;
-
     /// Returns the read indices for this summand group.
     fn read_indices(&self) -> &[u32];
 
