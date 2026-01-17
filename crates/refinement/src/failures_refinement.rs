@@ -304,7 +304,8 @@ mod tests {
     fn generate_formula<L: TransitionLabel>(counter_example: &Vec<L>) -> StateFrm {
         let mut expr = StateFrm::True;
 
-        for label in counter_example {
+        // We build the formula bottom up.
+        for label in counter_example.iter().rev() {
             expr = StateFrm::Modality {
                 operator: ModalityOperator::Diamond,
                 formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
