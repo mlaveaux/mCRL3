@@ -47,7 +47,7 @@ mod inner {
     use merc_io::TimeProgress;
 
     use crate::LabelIndex;
-    use crate::LtsBuilder;
+    use crate::LtsBuilderMem;
     use crate::StateIndex;
     use crate::TransitionLabel;
 

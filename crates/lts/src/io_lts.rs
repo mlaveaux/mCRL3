@@ -25,6 +25,7 @@ use merc_utilities::MercError;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
+use crate::LtsBuilderMem;
 use crate::LtsBuilder;
 use crate::MultiAction;
 use crate::StateIndex;
@@ -53,7 +54,7 @@ pub fn read_lts(
 
     // The initial state is not known yet.
     let mut initial_state: Option<StateIndex> = None;
-    let mut builder = LtsBuilder::new(Vec::new(), hidden_labels);
+    let mut builder = LtsBuilderMem::new(Vec::new(), hidden_labels);
 
     let progress = TimeProgress::new(
         |num_of_transitions| {
@@ -79,7 +80,7 @@ pub fn read_lts(
                             StateIndex::new(from.value()),
                             multi_action,
                             StateIndex::new(to.value()),
-                        );
+                        )?;
                     } else {
                         // New multi-action found, add it to the builder.
                         let multi_action = MultiAction::from_mcrl2_aterm(label.clone())?;
@@ -88,7 +89,7 @@ pub fn read_lts(
                             StateIndex::new(from.value()),
                             &multi_action,
                             StateIndex::new(to.value()),
-                        );
+                        )?;
                     }
 
                     progress.print(builder.num_of_transitions());
@@ -119,7 +120,7 @@ pub fn read_lts(
     }
     info!("Finished reading LTS.");
 
-    Ok(builder.finish(initial_state.ok_or("Missing initial state")?))
+    builder.finish(initial_state.ok_or("Missing initial state")?)
 }
 
 /// Write a labelled transition system in binary 'lts' format to the given

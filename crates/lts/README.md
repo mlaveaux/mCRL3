@@ -47,6 +47,10 @@ variable must be set to the installation path of CADP at compilation and run tim
 
 ### Current
 
+Added LTS builders that stream their output to disk, this is achieved by adding
+a general `LtsBuilder` trait, with a streaming implementation for AUT outputs
+in `AutStream`.
+
 Added support for reading and writing LTSs in the BCG format from the
 [CADP](https://cadp.inria.fr/man/bcg.html) toolset. This requires CADP to be
 installed on the system and the `CADP` environment variable to be set, and it is

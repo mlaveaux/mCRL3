@@ -106,6 +106,7 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::random_lts;
+    use crate::write_aut;
 
     #[test]
     fn test_random_incoming_transitions() {
@@ -113,7 +114,7 @@ mod tests {
             let mut files = DumpFiles::new("test_random_incoming_transitions");
 
             let lts = random_lts(rng, 10, 3, 3);
-            files.dump("input.aut", |f| crate::write_aut(f, &lts)).unwrap();
+            files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
             let incoming = IncomingTransitions::new(&lts);
 
             // Check that for every outgoing transition there is an incoming transition.

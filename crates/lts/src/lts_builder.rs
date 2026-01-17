@@ -7,23 +7,54 @@ use std::hash::Hash;
 
 use merc_collections::ByteCompressedVec;
 use merc_collections::CompressedEntry;
+use merc_utilities::MercError;
 
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
+/// A trait for building labelled transition systems incrementally.
+/// 
+/// # Details
+/// 
+/// Depending on the implementation this can be done in a memory efficient way,
+/// or in a way that is optimized for speed. Alternatively, the resulting LTS is
+/// immediatly written to disk. The builder accumulates transitions using
+/// `add_transition`, and once all transitions have been added, the labelled
+/// transition system can be constructed with `finish`. An initial state can
+/// also be specified during finalization.
+pub trait LtsBuilder<L: TransitionLabel> {
+    /// The result type of the builder once finalized.
+    type LTS;
+
+    /// Adds a transition to the builder. For efficiently reasons, we can use
+    /// another type `Q` for the label.
+    fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash;
+
+    /// Finalizes the builder and returns the constructed labelled transition system.
+    fn finish(&mut self, initial_state: StateIndex) -> Result<Self::LTS, MercError>;
+
+    /// Returns the number of transitions added to the builder.
+    fn num_of_transitions(&self) -> usize;
+
+    /// Returns the number of states added to the builder.
+    fn num_of_states(&self) -> usize;
+}
+
 /// This struct helps in building a labelled transition system by accumulating
-/// transitions efficiently.
+/// transitions in a memory efficient way.
 ///
 /// # Details
+/// 
+/// Transitions can be added with `add_transition`, and once all transitions
+/// have been added, the labelled transition system can be constructed with
+/// `finish`. An initial state can also be specified during finalization.
 ///
-/// When labels are added via `add_transition`, they are mapped to `LabelIndex`
-/// values internally. The mapping is maintained in a `HashMap<String,
-/// LabelIndex>`, and new labels are assigned the next available index.
-/// Alternatively, labels can be added directly using `add_transition_index` an
-///
-pub struct LtsBuilder<L> {
+pub struct LtsBuilderMem<L> {
     transition_from: ByteCompressedVec<StateIndex>,
     transition_labels: ByteCompressedVec<LabelIndex>,
     transition_to: ByteCompressedVec<StateIndex>,
@@ -36,7 +67,7 @@ pub struct LtsBuilder<L> {
     num_of_states: usize,
 }
 
-impl<L: TransitionLabel> LtsBuilder<L> {
+impl<L: TransitionLabel> LtsBuilderMem<L> {
     /// Initializes a new empty builder.
     pub fn new(labels: Vec<L>, hidden_labels: Vec<String>) -> Self {
         Self::with_capacity(labels, hidden_labels, 0, 0, 0)
@@ -86,9 +117,27 @@ impl<L: TransitionLabel> LtsBuilder<L> {
         }
     }
 
-    /// Adds a transition to the builder. For efficiently reasons, we can use
-    /// another type `Q` for the label.
-    pub fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex)
+    /// Ensures that the builder has at least the given number of states.
+    pub fn require_num_of_states(&mut self, num_of_states: usize) {
+        if num_of_states > self.num_of_states {
+            self.num_of_states = num_of_states;
+        }
+    }
+
+    /// Returns an iterator over all transitions as (from, label, to) tuples.
+    fn iter(&self) -> impl Iterator<Item = (StateIndex, LabelIndex, StateIndex)> {
+        self.transition_from
+            .iter()
+            .zip(self.transition_labels.iter())
+            .zip(self.transition_to.iter())
+            .map(|((from, label), to)| (from, label, to))
+    }
+}
+
+impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderMem<L> {
+    type LTS = LabelledTransitionSystem<L>;
+
+    fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
     where
         L: Borrow<Q>,
         Q: ?Sized + ToOwned<Owned = L> + Eq + Hash,
@@ -108,46 +157,29 @@ impl<L: TransitionLabel> LtsBuilder<L> {
 
         // Update the number of states.
         self.num_of_states = self.num_of_states.max(from.value() + 1).max(to.value() + 1);
+        Ok(())
     }
 
-    /// Finalizes the builder and returns the constructed labelled transition system.
-    pub fn finish(&mut self, initial_state: StateIndex) -> LabelledTransitionSystem<L> {
-        LabelledTransitionSystem::new(
+    fn finish(&mut self, initial_state: StateIndex) -> Result<Self::LTS, MercError> {
+        Ok(LabelledTransitionSystem::new(
             initial_state,
             Some(self.num_of_states),
             || self.iter(),
             self.labels.clone(),
-        )
+        ))
     }
 
-    /// Returns the number of transitions added to the builder.
-    pub fn num_of_transitions(&self) -> usize {
+    fn num_of_transitions(&self) -> usize {
         self.transition_from.len()
     }
 
-    /// Returns the number of states added to the builder.
-    pub fn num_of_states(&self) -> usize {
+    fn num_of_states(&self) -> usize {
         self.num_of_states
     }
 
-    /// Ensures that the builder has at least the given number of states.
-    pub fn require_num_of_states(&mut self, num_of_states: usize) {
-        if num_of_states > self.num_of_states {
-            self.num_of_states = num_of_states;
-        }
-    }
-
-    /// Returns an iterator over all transitions as (from, label, to) tuples.
-    pub fn iter(&self) -> impl Iterator<Item = (StateIndex, LabelIndex, StateIndex)> {
-        self.transition_from
-            .iter()
-            .zip(self.transition_labels.iter())
-            .zip(self.transition_to.iter())
-            .map(|((from, label), to)| (from, label, to))
-    }
 }
 
-impl<Label: TransitionLabel> fmt::Debug for LtsBuilder<Label> {
+impl<Label: TransitionLabel> fmt::Debug for LtsBuilderMem<Label> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Transitions:")?;
         for (from, label, to) in self.iter() {
