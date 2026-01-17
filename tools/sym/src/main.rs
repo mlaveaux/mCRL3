@@ -75,8 +75,8 @@ struct ExploreArgs {
 #[derive(clap::Args, Debug)]
 #[command(about = "Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic")]
 struct ReorderArgs {
-    #[arg(long, help = "Path to the mCRL2 lpsreach tool")]
-    lpsreach_path: Option<PathBuf>,
+    #[arg(long, help = "Path to the mCRL2 tools (lpsreach or pbessolvesymbolic)")]
+    mcrl2_tool_path: Option<PathBuf>,
 
     /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
@@ -178,7 +178,7 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
 fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
     if args.filename.extension() == Some(OsStr::new("lps")) {
         // Find lpsreach
-        let lpsreach_path = if let Some(path) = args.lpsreach_path {
+        let lpsreach_path = if let Some(path) = args.mcrl2_tool_path {
             which_in("lpsreach", Some(path), std::env::current_dir()?)?
         } else {
             which::which("lpsreach").map_err(|_e| "Cannot find lpsreach in PATH")?
@@ -195,8 +195,8 @@ fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercErr
         let order = reorder(&graph)?;
         println!("Computed variable order: {:?}", order);
     } else if args.filename.extension() == Some(OsStr::new("pbes")) {
-        // Find lpsreach
-        let pbessolvesymbolic = if let Some(path) = args.lpsreach_path {
+        // Find pbessolvesymbolic
+        let pbessolvesymbolic = if let Some(path) = args.mcrl2_tool_path {
             which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?)?
         } else {
             which::which("pbessolvesymbolic").map_err(|_e| "Cannot find lpsreach in PATH")?
