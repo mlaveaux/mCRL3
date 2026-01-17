@@ -26,13 +26,14 @@ An example for using the `LtsBuilder` to create a simple LTS is shown below:
 ```rust
 use merc_lts::LTS;
 use merc_lts::LtsBuilder;
+use merc_lts::LtsBuilderMem;
 use merc_lts::StateIndex;
 
-let mut builder = LtsBuilder::new(vec!["a".to_string(), "b".to_string()], vec![]);
+let mut builder = LtsBuilderMem::new(vec!["a".to_string(), "b".to_string()], vec![]);
 builder.add_transition(StateIndex::new(0), "a", StateIndex::new(1));
 builder.add_transition(StateIndex::new(1), "b", StateIndex::new(1));
 
-let lts = builder.finish(StateIndex::new(0));
+let lts = builder.finish(StateIndex::new(0)).expect("Should not fail");
 assert_eq!(lts.num_of_states(), 2);
 assert_eq!(lts.num_of_transitions(), 2);
 ```
