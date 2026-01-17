@@ -36,7 +36,7 @@ impl<W: Write, L> AutStream<W, L> {
         // usize. This avoids overwriting transition bytes when the final header
         // is longer.
         let max_usize_digits = (usize::BITS as f64 * LOG10_2).ceil() as usize;
-        let header_len = format!("des ({0:<1$}, {0:<1$}, {0:<1$})\n", "", max_usize_digits).len();
+        let header_len = format!("des ({0:<1$}, {0:<1$}, {0:<1$})\n", " ", max_usize_digits).len();
         writer.write_all(" ".repeat(header_len).as_bytes()).unwrap();
 
         Self {

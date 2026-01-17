@@ -24,7 +24,6 @@ use merc_data::DataExpression;
 use merc_data::DataVariable;
 use merc_data::DataVariableRef;
 use merc_data::SortExpression;
-use merc_data::is_data_application;
 use merc_data::is_data_variable;
 use merc_macros::merc_derive_terms;
 use merc_macros::merc_term;
@@ -127,12 +126,7 @@ impl MultiAction {
                     .map(|arg| {
                         (
                             arg.to_string(),
-                            if is_data_application(&arg) {
-                                // TODO: extract the actual product sort.
-                                "@no_value".to_string()
-                            } else {
-                                arg.data_sort().to_string()
-                            },
+                            "".to_string(),
                         )
                     })
                     .collect();
