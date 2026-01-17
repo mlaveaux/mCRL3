@@ -123,7 +123,10 @@ fn visit_statefrm_rec<T>(
     formula: &StateFrm,
     function: &mut impl FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
 ) -> Result<Option<T>, MercError> {
-    function(formula)?;
+    if let ControlFlow::Break(result) = function(formula)? {
+        // The visitor requested to break the traversal.
+        return Ok(Some(result));
+    }
 
     match formula {
         StateFrm::Binary { lhs, rhs, .. } => {
