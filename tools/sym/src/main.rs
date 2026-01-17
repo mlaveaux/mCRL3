@@ -9,9 +9,10 @@ use clap::Subcommand;
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
 use merc_ldd::len;
+use merc_lts::AutStream;
+use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
 use merc_lts::guess_lts_format_from_extension;
-use merc_lts::write_aut;
 use merc_lts::write_bcg;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLTS;
@@ -85,8 +86,7 @@ struct ReorderArgs {
 #[derive(clap::Args, Debug)]
 #[command(about = "Converts a symbolic LTS to a concrete LTS")]
 struct ConvertArgs {
-    /// Sets the output LTS format.
-    #[arg(long)]
+    #[arg(long, help = "Sets the output LTS format.")]
     format: Option<LtsFormat>,
 
     /// The input symbolic LTS file path.
@@ -228,7 +228,6 @@ fn handle_convert(args: ConvertArgs, _timing: &mut Timing) -> Result<(), MercErr
     let mut file = File::open(&args.filename)?;
     let lts = read_symbolic_lts(&mut storage, &mut file)?;
 
-    let explicit_lts = convert_symbolic_lts(&mut storage, &lts)?;
     let format =
         guess_lts_format_from_extension(&args.output, args.format).ok_or("Cannot determine output LTS format")?;
 
@@ -238,9 +237,11 @@ fn handle_convert(args: ConvertArgs, _timing: &mut Timing) -> Result<(), MercErr
         }
         LtsFormat::Aut => {
             let mut output = File::create(&args.output)?;
-            write_aut(&mut output, &explicit_lts)?;
+            let mut stream = AutStream::new(&mut output);
+            convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
         }
         LtsFormat::Bcg => {
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
             write_bcg(&explicit_lts, &args.output)?;
         }
     }

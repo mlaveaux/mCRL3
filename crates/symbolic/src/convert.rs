@@ -2,6 +2,7 @@ use log::debug;
 use log::info;
 use log::trace;
 use merc_ldd::height;
+use merc_lts::LtsBuilder;
 use rustc_hash::FxBuildHasher;
 
 use merc_collections::IndexedSet;
@@ -10,8 +11,6 @@ use merc_io::TimeProgress;
 use merc_ldd::Storage;
 use merc_ldd::iterators::iter;
 use merc_ldd::len;
-use merc_lts::LabelledTransitionSystem;
-use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
 
@@ -24,10 +23,11 @@ use crate::TransitionGroup;
 ///
 /// This basically applies the symbolic transitions to every state in the state
 /// space, and constructs the explicit LTS.
-pub fn convert_symbolic_lts(
+pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
     storage: &mut Storage,
+    output: &mut B,
     lts: &impl SymbolicLTS,
-) -> Result<LabelledTransitionSystem<String>, MercError> {
+) -> Result<B::LTS, MercError> {
     for group in lts.transition_groups() {
         if group.action_label_index().is_none() {
             return Err("Cannot convert a symbolic LTS with transition groups without action labels".into());
@@ -91,8 +91,6 @@ pub fn convert_symbolic_lts(
         1,
     );
 
-    let mut builder = LtsBuilder::new(lts.action_labels().to_vec(), Vec::new());
-
     // Avoid reallocations.
     let mut target = vec![0u32; height(storage, lts.states())];
     for (index, state) in iter(storage, lts.states()).enumerate() {
@@ -134,21 +132,27 @@ pub fn convert_symbolic_lts(
                 let target_index = discovered
                     .index(&target)
                     .ok_or("Found state that was not in the state set")?;
-                builder.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index));
+                output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
             }
         }
 
-        progress.print((index, builder.num_of_transitions()));
+        progress.print((index, output.num_of_transitions()));
     }
 
-    Ok(builder.finish(StateIndex::new(0)))
+    output.finish(StateIndex::new(0))
 }
 
 /// Computes the positions of the read and write indices in the transition vector.
 fn compute_positions(group: &impl TransitionGroup) -> (Vec<usize>, Vec<usize>) {
     // Ensure indices are non-decreasing; merge relies on sorted inputs.
-    debug_assert!(group.read_indices().windows(2).all(|w| w[0] <= w[1]), "read_indices must be sorted");
-    debug_assert!(group.write_indices().windows(2).all(|w| w[0] <= w[1]), "write_indices must be sorted");
+    debug_assert!(
+        group.read_indices().windows(2).all(|w| w[0] <= w[1]),
+        "read_indices must be sorted"
+    );
+    debug_assert!(
+        group.write_indices().windows(2).all(|w| w[0] <= w[1]),
+        "write_indices must be sorted"
+    );
 
     let mut rpos = Vec::with_capacity(group.read_indices().len());
     let mut wpos = Vec::with_capacity(group.write_indices().len());
@@ -186,6 +190,7 @@ fn compute_positions(group: &impl TransitionGroup) -> (Vec<usize>, Vec<usize>) {
 mod tests {
     use merc_ldd::Storage;
     use merc_lts::LTS;
+    use merc_lts::LtsBuilderMem;
     use merc_utilities::test_logger;
 
     use crate::convert_symbolic_lts;
@@ -200,7 +205,8 @@ mod tests {
         let mut storage = Storage::new();
         let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
 
-        let lts = convert_symbolic_lts(&mut storage, &symbolic_lts).unwrap();
+        let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+        let lts = convert_symbolic_lts(&mut storage, &mut builder, &symbolic_lts).unwrap();
 
         debug_assert_eq!(lts.num_of_states(), 74);
         debug_assert_eq!(lts.num_of_transitions(), 92);

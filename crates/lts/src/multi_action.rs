@@ -124,12 +124,17 @@ impl MultiAction {
                 let arguments = action
                     .arguments()
                     .iter()
-                    .map(|arg| (arg.to_string(), if is_data_application(&arg) {
-                        // TODO: extract the actual product sort.
-                        "@no_value".to_string()
-                    } else {
-                        arg.data_sort().to_string()
-                    }))
+                    .map(|arg| {
+                        (
+                            arg.to_string(),
+                            if is_data_application(&arg) {
+                                // TODO: extract the actual product sort.
+                                "@no_value".to_string()
+                            } else {
+                                arg.data_sort().to_string()
+                            },
+                        )
+                    })
                     .collect();
 
                 actions.insert(Action {

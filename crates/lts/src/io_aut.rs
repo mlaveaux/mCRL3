@@ -17,6 +17,7 @@ use merc_utilities::debug_trace;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
+use crate::LtsBuilderMem;
 use crate::LtsBuilder;
 use crate::StateIndex;
 use crate::TransitionLabel;
@@ -65,7 +66,7 @@ pub fn read_aut(reader: impl Read, hidden_labels: Vec<String>) -> Result<Labelle
     let num_of_transitions: usize = num_of_transitions_txt.parse()?;
     let num_of_states: usize = num_of_states_txt.parse()?;
 
-    let mut builder = LtsBuilder::with_capacity(Vec::new(), hidden_labels, num_of_states, 16, num_of_transitions);
+    let mut builder = LtsBuilderMem::with_capacity(Vec::new(), hidden_labels, num_of_states, 16, num_of_transitions);
     let progress = TimeProgress::new(
         move |read: usize| {
             info!(
@@ -86,15 +87,14 @@ pub fn read_aut(reader: impl Read, hidden_labels: Vec<String>) -> Result<Labelle
         let to = StateIndex::new(to_txt.parse()?);
 
         debug_trace!("Read transition {from} --[{label_txt}]-> {to}");
-
-        builder.add_transition(from, label_txt, to);
+        builder.add_transition(from, label_txt, to)?;
 
         progress.print(builder.num_of_transitions());
     }
 
     info!("Finished reading LTS");
 
-    Ok(builder.finish(initial_state))
+    builder.finish(initial_state)
 }
 
 /// Write a labelled transition system in plain text in Aldebaran format to the
@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)]
+    #[cfg_attr(miri, ignore)] // Test is too slow under Miri
     fn test_random_aut_io() {
         random_test(100, |rng| {
             let lts = random_lts_monolithic::<String>(rng, 100, 3, 20);
