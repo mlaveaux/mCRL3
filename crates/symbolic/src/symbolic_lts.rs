@@ -7,6 +7,7 @@ use merc_ldd::Ldd;
 use merc_ldd::Storage;
 use merc_ldd::Value;
 use merc_ldd::compute_meta;
+use merc_lts::MultiAction;
 use merc_utilities::MercError;
 
 use crate::SymbolicLTS;
@@ -24,16 +25,23 @@ pub struct SymbolicLts {
     summand_groups: Vec<SummandGroup>,
 
     action_labels: Vec<String>,
+
+    parameter_values: Vec<Vec<ATerm>>,
 }
 
 impl SymbolicLts {
     /// Creates a new symbolic LTS.
+    /// 
+    /// `parameter_values` contains, for each process parameter, the list of
+    /// possible values it can take. Their indices correspond to the values stored
+    /// in the LDDs.
     pub fn new(
         data_specification: DataSpecification,
         states: Ldd,
         initial_state: Ldd,
         summand_groups: Vec<SummandGroup>,
-        action_labels: Vec<ATerm>,
+        action_labels: Vec<MultiAction>,
+        parameter_values: Vec<Vec<ATerm>>
     ) -> Self {
         let action_labels = action_labels
             .into_iter()
@@ -46,12 +54,18 @@ impl SymbolicLts {
             initial_state,
             summand_groups,
             action_labels,
+            parameter_values,
         }
     }
 
     /// Returns the data specification of the LTS.
     pub fn data_specification(&self) -> &DataSpecification {
         &self.data_specification
+    }
+
+    /// Returns the parameter values of the LTS.
+    pub fn parameter_values(&self) -> &Vec<Vec<ATerm>> {
+        &self.parameter_values
     }
 }
 

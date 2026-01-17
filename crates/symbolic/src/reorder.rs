@@ -11,7 +11,7 @@ pub fn reorder(_graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
 #[cfg(feature = "kahypar")]
 mod inner {
     use super::*;
-    
+
     use log::trace;
 
     use mt_kahypar::Context;
@@ -27,7 +27,7 @@ mod inner {
     /// > Fadi A. Aloul, Igor L. Markov, Karem A. Sakallah:. MINCE: A Static Global Variable-Ordering Heuristic for SAT Search and BDD Manipulation. J. Univers. Comput. Sci. 10(12): 1562-1596 (2004). [DOI](https://doi.org/10.3217/jucs-010-12-1562)
 
     #[cfg(feature = "kahypar")]
-    pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {    
+    pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
         trace!("Starting MINCE with {graph:?}");
 
         let context = Context::builder()

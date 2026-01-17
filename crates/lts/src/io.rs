@@ -154,7 +154,7 @@ pub fn read_explicit_lts(
         }
         LtsFormat::Lts => {
             let file = File::open(path)?;
-            GenericLts::Lts(read_lts(&file, hidden_labels)?)
+            GenericLts::Lts(read_lts(&file, hidden_labels, false)?)
         }
         LtsFormat::Bcg => GenericLts::Bcg(read_bcg(path, hidden_labels)?),
     };
