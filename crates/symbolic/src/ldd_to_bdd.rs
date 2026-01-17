@@ -4,6 +4,7 @@ use merc_ldd::union;
 use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::ManagerRef;
+use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
@@ -15,21 +16,7 @@ use merc_utilities::MercError;
 use oxidd_core::util::EdgeDropGuard;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
-/// same set by bitblasting the vector elements.
-pub fn ldd_to_bdd_simple(
-    storage: &mut Storage,
-    manager_ref: &BDDManagerRef,
-    ldd: &LddRef<'_>,
-) -> Result<BDDFunction, MercError> {
-    let highest = compute_highest(storage, ldd);
-    let bits = compute_bits(&highest);
-    let bits_dd = merc_ldd::singleton(storage, &bits);
-
-    ldd_to_bdd(storage, manager_ref, ldd, &bits_dd, 0)
-}
-
-/// Converts an LDD representing a set of vectors into a BDD representing the
-/// same set by bitblasting the vector elements.
+/// same set by bitblasting the vector elements using the given variables as bits.
 ///
 /// # Details
 ///
@@ -44,7 +31,7 @@ pub fn ldd_to_bdd(
     manager_ref: &BDDManagerRef,
     ldd: &LddRef<'_>,
     bits: &LddRef<'_>,
-    first_variable: u32,
+    vars: &[VarNo],
 ) -> Result<BDDFunction, MercError> {
     // Base cases
     if **storage.empty_set() == *ldd {
@@ -54,32 +41,44 @@ pub fn ldd_to_bdd(
         return Ok(manager_ref.with_manager_shared(|manager| BDDFunction::t(manager)));
     }
 
-    // TODO: Implement caching
     let DataRef(value, down, right) = storage.get_ref(ldd);
-    let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits); // Is singleton so right is ignored.
+    let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits);
 
-    let right = ldd_to_bdd(storage, manager_ref, &right, bits, first_variable)?;
+    // Right branch does not consume variables at this layer
+    let right_bdd = ldd_to_bdd(storage, manager_ref, &right, bits, vars)?;
 
-    // Skip bits_value variables for current bits
-    let mut down = ldd_to_bdd(storage, manager_ref, &down, &bits_down, first_variable + bits_value)?;
+    // Ensure we have enough variables for this layer
+    let needed = bits_value as usize;
+    if vars.len() < needed {
+        return Err(format!(
+            "Insufficient variables: need {needed}, have {} for current layer",
+            vars.len()
+        )
+        .into());
+    }
 
-    // Encode current value per bit, starting from least significant bit since it's computed bottom up.
+    // Recurse on down with the remaining variables after consuming this layer
+    let mut down_bdd = ldd_to_bdd(storage, manager_ref, &down, &bits_down, &vars[needed..])?;
+
+    // Encode current value using the variables for this layer (MSB to LSB)
+    // Current layer variables: vars[0..bits_value]
     for i in 0..bits_value {
-        let bit = bits_value - i - 1;
+        let bit = bits_value - i - 1; // MSB first
+        let var_no = vars[bit as usize];
         if value & (1 << i) != 0 {
             // bit is 1
-            down = manager_ref.with_manager_shared(|manager| {
-                BDDFunction::var(manager, first_variable + bit)?.ite(&down, &BDDFunction::f(manager))
+            down_bdd = manager_ref.with_manager_shared(|manager| {
+                BDDFunction::var(manager, var_no)?.ite(&down_bdd, &BDDFunction::f(manager))
             })?;
         } else {
             // bit is 0
-            down = manager_ref.with_manager_shared(|manager| {
-                BDDFunction::var(manager, first_variable + bit)?.ite(&BDDFunction::f(manager), &down)
+            down_bdd = manager_ref.with_manager_shared(|manager| {
+                BDDFunction::var(manager, var_no)?.ite(&BDDFunction::f(manager), &down_bdd)
             })?;
         }
     }
 
-    Ok(down.or(&right)?)
+    Ok(down_bdd.or(&right_bdd)?)
 }
 
 /// Converts a BDD representing a set of bitblasted vectors back into an LDD
@@ -160,6 +159,11 @@ pub fn required_bits(value: u32) -> u32 {
     (u32::BITS - value.leading_zeros()).max(1)
 }
 
+/// Calculate minimum bits needed to represent the value
+pub fn required_bits_64(value: u64) -> u32 {
+    (u64::BITS - value.leading_zeros()).max(1)
+}
+
 /// Computes the number of bits required to represent the highest value at each layer.
 pub fn compute_bits(highest: &[u32]) -> Vec<u32> {
     highest.iter().map(|&h| required_bits(h)).collect()
@@ -172,9 +176,9 @@ mod tests {
     use merc_ldd::random_vector_set;
     use merc_ldd::singleton;
     use merc_utilities::random_test;
+    use oxidd::Manager;
 
     use crate::FormatConfigSet;
-    use crate::create_variables;
 
     use super::*;
 
@@ -234,9 +238,9 @@ mod tests {
             let total_bits: u32 = bits.iter().sum();
             println!("Total bits: {}", total_bits);
             println!("Bits per layer: {:?}", bits);
-            let _variables = create_variables(&manager_ref, total_bits).unwrap();
+            let vars = manager_ref.with_manager_exclusive(|manager| manager.add_vars(total_bits).collect::<Vec<_>>());
 
-            let bdd = ldd_to_bdd(&mut storage, &manager_ref, &ldd, &bits_dd, 0).unwrap();
+            let bdd = ldd_to_bdd(&mut storage, &manager_ref, &ldd, &bits_dd, &vars).unwrap();
             println!("resulting BDD: {}", FormatConfigSet(&bdd));
 
             let resulting_ldd = bdd_to_ldd(&mut storage, &manager_ref, &bdd, &bits_dd, 0, 0).unwrap();
