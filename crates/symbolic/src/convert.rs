@@ -139,7 +139,16 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
         progress.print((index, output.num_of_transitions()));
     }
 
-    output.finish(StateIndex::new(0))
+    // Find the initial state.
+    let initial_state = iter(storage, lts.initial_state())
+        .next()
+        .ok_or("Symbolic LTS has no initial state")?;
+
+    let initial_state_index = discovered
+            .index(&initial_state)
+            .ok_or("Initial state was not found in the discovered state set")?;
+
+    output.finish(StateIndex::new(*initial_state_index))
 }
 
 /// Computes the positions of the read and write indices in the transition vector.
