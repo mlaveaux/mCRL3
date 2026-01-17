@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::f64::consts::LOG10_2;
 use std::hash::Hash;
 use std::io::BufWriter;
 use std::io::Seek;
@@ -31,7 +32,12 @@ impl<W: Write, L> AutStream<W, L> {
     pub fn new(writer: W) -> Self {
         let mut writer = BufWriter::new(writer);
         // Write a placeholder for the header, which will be filled in later.
-        writeln!(writer, "des (0, 0, 0)").unwrap();
+        // Reserve enough space for the header using the number of bits of
+        // usize. This avoids overwriting transition bytes when the final header
+        // is longer.
+        let max_usize_digits = (usize::BITS as f64 * LOG10_2).ceil() as usize;
+        let header_len = format!("des ({0:<1$}, {0:<1$}, {0:<1$})\n", "", max_usize_digits).len();
+        writer.write_all(" ".repeat(header_len).as_bytes()).unwrap();
 
         Self {
             writer,
