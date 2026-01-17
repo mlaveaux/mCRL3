@@ -658,16 +658,10 @@ pub enum ActionRHS {
 }
 
 /// Source location information, spanning from start to end in the source text.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Default, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
-}
-
-impl Default for Span {
-    fn default() -> Self {
-        Span { start: 0, end: 0 }
-    }
 }
 
 impl From<pest::Span<'_>> for Span {

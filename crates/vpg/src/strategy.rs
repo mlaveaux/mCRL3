@@ -31,6 +31,12 @@ impl Strategy {
     }
 }
 
+impl Default for Strategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl fmt::Debug for Strategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Strategy {{")?;

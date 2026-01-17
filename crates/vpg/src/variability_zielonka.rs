@@ -31,19 +31,20 @@ use merc_symbolic::minus_edge;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use crate::combine;
+use crate::compute_reachable;
 use crate::PG;
 use crate::Player;
 use crate::Priority;
+use crate::project_variability_parity_games_iter;
+use crate::Projected;
 use crate::Repeat;
 use crate::Set;
+use crate::solve_zielonka;
 use crate::Submap;
 use crate::VariabilityParityGame;
 use crate::VariabilityPredecessors;
 use crate::VertexIndex;
-use crate::combine;
-use crate::compute_reachable;
-use crate::project_variability_parity_games_iter;
-use crate::solve_zielonka;
 use crate::x_and_not_x;
 
 /// Variant of the Zielonka algorithm to use.
@@ -118,19 +119,19 @@ pub fn solve_variability_product_zielonka<'a>(
 ) -> impl Iterator<Item = Result<(Vec<OptBool>, BDDFunction, [Set; 2]), MercError>> + 'a {
     project_variability_parity_games_iter(vpg, timing).map(|result| {
         match result {
-            Ok(((cube, bdd, pg), timing)) => {
+            Ok((Projected { bits, bdd, game }, timing)) => {
                 let mut reachable_time = timing.start("reachable");
-                let (reachable_pg, projection) = compute_reachable(&pg);
+                let (reachable_pg, projection) = compute_reachable(&game);
                 reachable_time.finish();
 
-                debug!("Solving projection on {}...", FormatConfig(&cube));
+                debug!("Solving projection on {}...", FormatConfig(&bits));
 
                 let (pg_solution, _) = solve_zielonka(&reachable_pg);
                 let mut new_solution = [
                     bitvec![usize, Lsb0; 0; vpg.num_of_vertices()],
                     bitvec![usize, Lsb0; 0; vpg.num_of_vertices()],
                 ];
-                for v in pg.iter_vertices() {
+                for v in game.iter_vertices() {
                     if let Some(proj_v) = projection[*v] {
                         // Vertex is reachable in the projection, set its solution
                         if pg_solution[0][proj_v] {
@@ -142,7 +143,7 @@ pub fn solve_variability_product_zielonka<'a>(
                     }
                 }
 
-                Ok((cube, bdd, new_solution))
+                Ok((bits, bdd, new_solution))
             }
             Err(result) => Err(result),
         }
