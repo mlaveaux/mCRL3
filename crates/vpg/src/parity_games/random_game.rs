@@ -1,8 +1,10 @@
+use oxidd::BooleanFunction;
+use oxidd::Manager;
+use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use rand::Rng;
 
-use merc_symbolic::create_variables;
 use merc_symbolic::random_bdd;
 use merc_utilities::MercError;
 
@@ -68,8 +70,18 @@ pub fn random_variability_parity_game(
 ) -> Result<VariabilityParityGame, MercError> {
     let pg = random_parity_game(rng, make_total, num_of_vertices, num_of_priorities, outdegree);
 
+    // Check for existing variables.
+    if manager_ref.with_manager_shared(|manager| manager.num_vars()) != 0 {
+        return Err("BDD manager must not contain any variables yet".into());
+    }
+
     // Create random feature variables.
-    let variables: Vec<BDDFunction> = create_variables(manager_ref, number_of_variables)?;
+    let variables = manager_ref.with_manager_exclusive(|manager| -> Result<Vec<BDDFunction>, MercError> {
+        Ok(manager
+            .add_vars(number_of_variables)
+            .map(|i| BDDFunction::var(manager, i))
+            .collect::<Result<Vec<_>, _>>()?)
+    })?;
 
     // Overall configuration is the conjunction of all features (i.e., all features enabled).
     let configuration = random_bdd(manager_ref, rng, &variables)?;
