@@ -1,19 +1,17 @@
 # Readme 
 
-This is an experiment of mixing Rust code with the mCRL2 toolset directly. First
-the submodules must initialised to obtain the 3rd-party libraries, as shown
-below. Furthermore, we need a C++ compiler to build the mCRL2 toolset. This can
-be Visual Studio on Windows, AppleClang on MacOS or either GCC or Clang on
-Linux. In the latter case it uses whatever compiler is provided by the `CC` and
-`CXX` environment variables.
+This is an experiment of mixing Rust code with the mCRL2 toolset directly. We
+need a C++ compiler to build the `mCRL2-sys` crate. This can be Visual Studio on
+Windows, AppleClang on MacOS or either GCC or Clang on Linux. In the latter case
+it uses whatever compiler is provided by the `CC` and `CXX` environment
+variables.
 
-    git submodule update --init --recursive
-    cargo build
+```bash
+cargo build
+```
 
 By default this will build in dev or debug mode, and a release build can be
-obtained by passing --release. Note that it is necessary to run `git submodule update --init` 
-after switching branches or pulling from the remote whenever any
-of the modules have been changed.
+obtained by passing `--release`.
 
 # Overview
 
@@ -38,7 +36,9 @@ for Rust projects, including ones that build internal `C` libraries. From a fres
 `cargo clean` it can generate the necessary file by running the following command
 from this directory:
 
-    bear -- cargo build
+```bash
+bear -- cargo build
+```
 
 It is also convenient to open the current directory directly in `vscode` since
 opening the root directory can make it confused by the different workspaces.
