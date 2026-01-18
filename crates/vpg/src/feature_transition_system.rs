@@ -23,11 +23,16 @@ use merc_syntax::DataExpr;
 use merc_syntax::MultiAction;
 use merc_utilities::MercError;
 
-/// Reads a .aut file as feature transition system by using the associated feature diagram.
+/// Reads a .aut file as feature transition system by using the associated
+/// feature diagram.
 ///
 /// # Details
 ///
-/// The action labels of a feature transition system are annotated with a special `BDD` struct that is defined as `struct BDD = node(var, true, false) | tt | ff`.
+/// The action labels of a feature transition system are annotated with a
+/// special `BDD` struct that is defined as `struct BDD = node(var, true, false)
+/// | tt | ff`. The `features` map contains the mapping from variable names to
+/// their corresponding BDD variable, which *must* be defined in the BDD
+/// manager.
 pub fn read_fts(
     manager_ref: &BDDManagerRef,
     reader: impl Read,
@@ -139,7 +144,7 @@ impl FeatureDiagram {
         let variables = manager_ref.with_manager_exclusive(|manager| -> Result<Vec<BDDFunction>, MercError> {
             Ok(manager
                 .add_named_vars(variable_names.iter())
-                .map_err(|e| format!("{}", e))?
+                .map_err(|e| format!("Failed to create variables: {e}"))?
                 .map(|i| BDDFunction::var(manager, i))
                 .collect::<Result<Vec<_>, _>>()?)
         })?;

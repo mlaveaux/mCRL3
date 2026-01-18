@@ -1,6 +1,5 @@
 use merc_utilities::MercError;
 use oxidd::BooleanFunction;
-use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
