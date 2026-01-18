@@ -6,9 +6,9 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-merc_collections.workspace = true
 mcrl2-macros.workspace = true
 mcrl2-sys.workspace = true
+merc_collections.workspace = true
 merc_tools.workspace = true
 merc_utilities.workspace = true
 
@@ -18,4 +18,7 @@ rand.workspace = true
 
 [features]
 # Enables the compiling rewriter option for mCRL2.
-mcrl2_jittyc = []
+jittyc = []
+
+# Enables the C++ trace option for mCRL2.
+cpptrace = ["mcrl2-sys/cpptrace"]
