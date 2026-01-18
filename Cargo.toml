@@ -19,8 +19,6 @@ split-debuginfo= "packed"
 [workspace]
 resolver = "3"
 members = [
-    "3rd-party/pest_consume_macros",
-    "3rd-party/pest_consume",
     "crates/aterm",
     "crates/aterm/benchmarks",
     "crates/collections",
@@ -111,7 +109,7 @@ tempfile = "3.24"
 # Used for benchmarks
 criterion = "0.8"
 
-# Used for FFI
+# Used for the cadp FFI
 bindgen = "0.72"
 
 # The workspace crates.
@@ -136,5 +134,5 @@ merc_utilities = { version = "1.0", path = "crates/utilities" }
 merc_vpg = { path = "crates/vpg", features = ["clap"] }
 
 # Vendored libraries
-merc_pest_consume  = { version = "2.0.0", path = "3rd-party/pest_consume" }
-merc_pest_consume_macros  = { version = "2.0.0", path = "3rd-party/pest_consume_macros" }
+merc_pest_consume = { git = "https://github.com/MERCorg/pest_consume" }
+merc_pest_consume_macros = { git = "https://github.com/MERCorg/pest_consume" }
