@@ -11,7 +11,9 @@ mod ldd_to_bdd;
 mod random_bdd;
 mod reachability;
 mod reorder;
+mod sigref;
 mod symbolic_lts;
+mod symbolic_lts_bdd;
 
 pub use convert::*;
 pub use cube_iter::*;
@@ -24,4 +26,6 @@ pub use ldd_to_bdd::*;
 pub use random_bdd::*;
 pub use reachability::*;
 pub use reorder::*;
+pub use sigref::*;
 pub use symbolic_lts::*;
+pub use symbolic_lts_bdd::*;

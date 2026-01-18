@@ -14,6 +14,11 @@ use merc_lts::write_bcg;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
+use merc_lts::guess_lts_format_from_extension;
+use merc_lts::write_bcg;
+use merc_symbolic::SymFormat;
+use merc_symbolic::SymbolicLTS;
+use merc_symbolic::SymbolicLtsBdd;
 use merc_symbolic::convert_symbolic_lts;
 use merc_symbolic::guess_format_from_extension;
 use merc_symbolic::parse_compacted_dependency_graph;
@@ -21,15 +26,16 @@ use merc_symbolic::reachability;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
 use merc_symbolic::reorder;
-use merc_symbolic::SymFormat;
-use merc_symbolic::SymbolicLTS;
-use merc_tools::VerbosityFlag;
+use merc_symbolic::sigref_symbolic;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use which::which_in;
+
+/// Default node capacity for the Oxidd decision diagram manager.
+const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
 
 /// A command line tool for symbolic labelled transition systems
 #[derive(clap::Parser, Debug)]
@@ -44,6 +50,15 @@ struct Cli {
     #[command(subcommand)]
     commands: Option<Commands>,
 
+    #[arg(long, global = true, default_value_t = 1)]
+    oxidd_workers: u32,
+
+    #[arg(long, global = true, default_value_t = DEFAULT_OXIDD_NODE_CAPACITY)]
+    oxidd_node_capacity: usize,
+
+    #[arg(long, global = true)]
+    oxidd_cache_capacity: Option<usize>,
+
     #[arg(long, global = true)]
     timings: bool,
 }
@@ -55,6 +70,7 @@ enum Commands {
     Explore(ExploreArgs),
     Reorder(ReorderArgs),
     Convert(ConvertArgs),
+    Reduce(ReduceArgs),
 }
 
 /// Print information related to the given symbolic LTS
@@ -62,6 +78,10 @@ enum Commands {
 #[command()]
 struct InfoArgs {
     filename: PathBuf,
+
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
+    format: Option<SymFormat>,
 }
 
 /// Explore the given symbolic LTS
@@ -70,6 +90,8 @@ struct InfoArgs {
 struct ExploreArgs {
     filename: PathBuf,
 
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
     format: Option<SymFormat>,
 }
 
@@ -89,15 +111,30 @@ struct ReorderArgs {
 #[derive(clap::Args, Debug)]
 #[command()]
 struct ConvertArgs {
-    /// Set the output LTS format
+    /// Sets the input symbolic LTS format.
     #[arg(long)]
-    format: Option<LtsFormat>,
+    format: Option<SymFormat>,
 
     /// The input symbolic LTS file path.
     filename: PathBuf,
 
+    /// Sets the output LTS format.
+    #[arg(long)]
+    output_format: Option<LtsFormat>,
+
     /// The output LTS file path.
     output: PathBuf,
+}
+
+#[derive(clap::Args, Debug)]
+#[command(about = "Applied reductions to a symbolic LTS")]
+struct ReduceArgs {
+    /// The input symbolic LTS file path.
+    filename: PathBuf,
+
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
+    format: Option<LtsFormat>,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -115,12 +152,13 @@ fn main() -> Result<ExitCode, MercError> {
 
     let mut timing = Timing::new();
 
-    if let Some(command) = cli.commands {
+    if let Some(command) = &cli.commands {
         match command {
             Commands::Info(args) => handle_info(args, &mut timing)?,
             Commands::Explore(args) => handle_explore(args, &mut timing)?,
             Commands::Reorder(args) => handle_reorder(args, &mut timing)?,
             Commands::Convert(args) => handle_convert(args, &mut timing)?,
+            Commands::Reduce(args) => handle_reduce(&cli, args, &mut timing)?,
         }
     }
 
@@ -133,25 +171,43 @@ fn main() -> Result<ExitCode, MercError> {
 }
 
 /// Reads the given symbolic LTS and prints information about it.
-fn handle_info(args: InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
+fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
-    let lts = timing.measure("read_symbolic_lts", || -> Result<_, MercError> {
-        read_symbolic_lts(&mut storage, File::open(&args.filename)?)
-    })?;
+    let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
 
-    println!("Symbolic LTS information:");
-    println!(
-        "  Number of states: {}",
-        LargeFormatter(merc_ldd::len(&mut storage, lts.states()))
-    );
-    println!("  Number of summand groups: {}", lts.transition_groups().len());
+    match format {
+        SymFormat::Sylvan => {
+            let mut time_read = timing.start("read_symbolic_lts");
+            let lts = read_sylvan(&mut storage, &mut File::open(&args.filename)?)?;
+            time_read.finish();
+
+            println!("Symbolic LTS information:");
+            println!(
+                "  Number of states: {}",
+                LargeFormatter(merc_ldd::len(&mut storage, lts.states()))
+            );
+            println!("  Number of summand groups: {}", lts.transition_groups().len());
+        }
+        SymFormat::Sym => {
+            let mut time_read = timing.start("read_symbolic_lts");
+            let lts = read_symbolic_lts(&mut storage, &mut File::open(&args.filename)?)?;
+            time_read.finish();
+
+            println!("Symbolic LTS information:");
+            println!(
+                "  Number of states: {}",
+                LargeFormatter(merc_ldd::len(&mut storage, lts.states()))
+            );
+            println!("  Number of summand groups: {}", lts.transition_groups().len());
+        }
+    }
 
     Ok(())
 }
 
 /// Explores the given symbolic LTS.
-fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercError> {
+fn handle_explore(args: &ExploreArgs, _timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
     let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
@@ -161,7 +217,9 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
 
     match format {
         SymFormat::Sylvan => {
-            let lts = timing.measure("read_symbolic_lts", || read_sylvan(&mut storage, &mut file))?;
+            let mut time_read = timing.start("read_symbolic_lts");
+            let lts = read_sylvan(&mut storage, &mut file)?;
+            time_read.finish();
 
             timing.measure("explore", || -> Result<(), MercError> {
                 println!("LTS has {} states", reachability(&mut storage, &lts)?);
@@ -179,10 +237,10 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
 }
 
 /// Computes a variable reordering for the output of lpsreach.
-fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
+fn handle_reorder(args: &ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {
     if args.filename.extension() == Some(OsStr::new("lps")) {
         // Find lpsreach
-        let lpsreach_path = if let Some(path) = args.mcrl2_tool_path {
+        let lpsreach_path = if let Some(path) = &args.mcrl2_tool_path {
             which_in("lpsreach", Some(path), std::env::current_dir()?)?
         } else {
             which::which("lpsreach").map_err(|_e| "Cannot find lpsreach in PATH")?
@@ -200,7 +258,7 @@ fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercErr
         println!("Computed variable order: {:?}", order);
     } else if args.filename.extension() == Some(OsStr::new("pbes")) {
         // Find pbessolvesymbolic
-        let pbessolvesymbolic = if let Some(path) = args.mcrl2_tool_path {
+        let pbessolvesymbolic = if let Some(path) = &args.mcrl2_tool_path {
             which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?)?
         } else {
             which::which("pbessolvesymbolic").map_err(|_e| "Cannot find pbessolvesymbolic in PATH")?
@@ -226,16 +284,22 @@ fn handle_reorder(args: ReorderArgs, _timing: &mut Timing) -> Result<(), MercErr
 }
 
 /// Converts a symbolic LTS to an explicit LTS.
-fn handle_convert(args: ConvertArgs, _timing: &mut Timing) -> Result<(), MercError> {
+fn handle_convert(args: &ConvertArgs, _timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
+
+    let format =
+        guess_format_from_extension(&args.output, args.format).ok_or("Cannot determine input symbolic LTS format")?;
+    if format != SymFormat::Sym {
+        return Err("Currently only the .sym format is supported for conversion".into());
+    }
 
     let mut file = File::open(&args.filename)?;
     let lts = read_symbolic_lts(&mut storage, &mut file)?;
 
-    let format =
-        guess_lts_format_from_extension(&args.output, args.format).ok_or("Cannot determine output LTS format")?;
+    let output_format = guess_lts_format_from_extension(&args.output, args.output_format)
+        .ok_or("Cannot determine output LTS format")?;
 
-    match format {
+    match output_format {
         LtsFormat::Lts => {
             unimplemented!("Writing LTS format is not yet implemented");
         }
@@ -247,9 +311,35 @@ fn handle_convert(args: ConvertArgs, _timing: &mut Timing) -> Result<(), MercErr
         LtsFormat::Bcg => {
             let explicit_lts =
                 convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
+            let explicit_lts =
+                convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
             write_bcg(&explicit_lts, &args.output)?;
         }
     }
+
+    Ok(())
+}
+
+/// Applies reductions to a symbolic LTS.
+fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError> {
+    let mut storage = Storage::new();
+
+    let manager_ref = oxidd::bdd::new_manager(
+        cli.oxidd_node_capacity,
+        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
+        cli.oxidd_workers,
+    );
+
+    let mut file = File::open(&args.filename)?;
+    let lts = read_symbolic_lts(&mut storage, &mut file)?;
+
+    let mut convert_time = timing.start("convert_bdd");
+    let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)?;
+    convert_time.finish();
+
+    let mut reduction_time = timing.start("reduction");
+    sigref_symbolic(&manager_ref, &lts_bdd)?;
+    reduction_time.finish();
 
     Ok(())
 }
