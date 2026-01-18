@@ -8,7 +8,7 @@
 compile_commands.json
 .cache
 
-# Confiruation files for rustc
+# Configuration files for rustc
 .cargo
 
 # will have the code coverage report
