@@ -1,0 +1,249 @@
+use std::ops::Range;
+
+use log::debug;
+use log::info;
+use oxidd::BooleanFunction;
+use oxidd::Manager;
+use oxidd::ManagerRef;
+use oxidd::VarNo;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+
+use merc_ldd::Storage;
+use merc_ldd::singleton;
+use merc_utilities::MercError;
+use oxidd::error::DuplicateVarName;
+
+use crate::SymbolicLTS;
+use crate::TransitionGroup;
+use crate::compute_bits;
+use crate::compute_highest;
+use crate::ldd_to_bdd;
+use crate::required_bits;
+
+/// A symbolic LTS that uses BDDs for the symbolic representation, instead of
+/// LDDs as done in [crate::SymbolicLts].
+pub struct SymbolicLtsBdd {
+    /// The BDD representing the set of states.
+    states: BDDFunction,
+
+    /// The transition groups representing the disjunctive transition relation.
+    transition_groups: Vec<SummandGroupBdd>,
+
+    /// The set of BDD variables used to represent the state variables.
+    state_variables: BDDFunction,
+
+    /// The set of BDD variables used to represent the next state variables (or primed variables).
+    next_state_variables: BDDFunction,
+}
+
+pub struct SummandGroupBdd {
+    /// The BDD representing the transition relation for this summand group.
+    relation: BDDFunction,
+}
+
+impl SummandGroupBdd {
+    /// Creates a new summand group with the given transition relation.
+    pub fn new(relation: BDDFunction) -> Self {
+        Self { relation }
+    }
+
+    /// Returns the BDD representing the transition relation for this summand group.
+    pub fn relation(&self) -> &BDDFunction {
+        &self.relation
+    }
+}
+
+impl SymbolicLtsBdd {
+    /// Converts a symbolic LTS using LDDs into a symbolic LTS using BDDs.
+    pub fn from_symbolic_lts(
+        storage: &mut Storage,
+        manager_ref: &BDDManagerRef,
+        lts: &impl SymbolicLTS,
+    ) -> Result<Self, MercError> {
+        info!("Converting symbolic LTS from LDD to BDD representation...");
+
+        // Detemine the highest values for every layer in the LDD representing the states
+        let state_bits = compute_bits(&compute_highest(storage, lts.states()));
+        debug!("Determined bits for states: {:?}", state_bits);
+
+        let mut action_label_highest = 0u32;
+        for group in lts.transition_groups() {
+            let highest = compute_highest(storage, group.relation());
+            action_label_highest =
+                action_label_highest.max(highest[group.action_label_index().ok_or("Action label index not found")?]);
+        }
+
+        let action_label_bits = required_bits(action_label_highest);
+        debug!(
+            "Highest action label: {}, bits: {}",
+            action_label_highest, action_label_bits
+        );
+
+        // Create the state variables, with interleaved primed variables for write parameters
+        let mut vars = Vec::new();
+
+        // Keep track of the bits per state variable.
+        let mut state_variables_bits: Vec<Vec<VarNo>> = Vec::new();
+        let mut next_state_variables_bits: Vec<Vec<VarNo>> = Vec::new();
+        for (i, &bits) in state_bits.iter().enumerate() {
+            let mut state_var_bits = Vec::new();
+            let mut next_state_var_bits = Vec::new();
+            for k in 0..bits {
+                // Add variable for the state variable
+                state_var_bits.push(vars.len() as VarNo);
+                vars.push(format!("s_{}_{}", i, k));
+
+                // Add a primed version for the write parameters
+                next_state_var_bits.push(vars.len() as VarNo);
+                vars.push(format!("s'_{}_{}", i, k));
+            }
+            state_variables_bits.push(state_var_bits);
+            next_state_variables_bits.push(next_state_var_bits);
+        }
+
+        // Create action label variables
+        let mut action_labels_vars = Vec::new();
+        for k in 0..action_label_bits {
+            action_labels_vars.push(vars.len() as VarNo);
+            vars.push(format!("a_{}", k));
+        }
+
+        // Check for existing variables.
+        if manager_ref.with_manager_shared(|manager| manager.num_vars()) != 0 {
+            return Err("BDD manager must not contain any variables yet".into());
+        }
+
+        // Create variables in the BDD manager
+        let number_of_vars = vars.len();
+        let variables = manager_ref
+            .with_manager_exclusive(|manager| -> Result<Range<VarNo>, DuplicateVarName> {
+                manager.add_named_vars(vars)
+            })
+            .map_err(|e| format!("Failed to create variables: {e}"))?;
+
+        assert!(variables.clone().is_sorted(), "Variables must be added in sorted order");
+        assert!(
+            variables.len() == number_of_vars,
+            "Number of created variables does not match"
+        );
+
+        // Convert the states to a BDD representation.
+        let bits_dd = singleton(storage, &state_bits);
+        let all_state_variables_bits: Vec<VarNo> = state_variables_bits.iter().flatten().cloned().collect();
+        let states = ldd_to_bdd(storage, manager_ref, lts.states(), &bits_dd, &all_state_variables_bits)?;
+
+        let mut transition_groups = Vec::new();
+        for group in lts.transition_groups() {
+            // Determine the number of bits used for each layer.
+            let mut bits = Vec::new();
+
+            // Determine all the variables used in this relation.
+            let mut variables = Vec::new();
+
+            for (i, state_var_bits) in state_variables_bits.iter().enumerate() {
+                if group.read_indices().contains(&(i as u32)) {
+                    // The transition group reads this state variable
+                    bits.push(state_bits[i]);
+                    variables.extend(state_var_bits.iter());
+                }
+
+                if group.write_indices().contains(&(i as u32)) {
+                    // The transition group writes this state variable
+                    bits.push(state_bits[i]);
+                    variables.extend(next_state_variables_bits[i].iter());
+                }
+            }
+
+            // Append action label bits (between read and write segments) if present
+            if let Some(_action_index) = group.action_label_index() {
+                // TODO: This currently assumes that action label bits are at the end.
+                variables.extend(action_labels_vars.iter());
+            }
+
+            debug!("Transition group {:?} uses variables: {:?}", group, variables);
+
+            let bits_dd = singleton(storage, &bits);
+            let relation_bdd = ldd_to_bdd(storage, manager_ref, group.relation(), &bits_dd, &variables)?;
+
+            transition_groups.push(SummandGroupBdd::new(relation_bdd));
+        }
+
+        // Compute the BDDs representing the state variables and next state variables.
+        let state_variables = compute_vars_bdd(manager_ref, &all_state_variables_bits)?;
+
+        let next_state_variables = compute_vars_bdd(
+            manager_ref,
+            &next_state_variables_bits
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<VarNo>>(),
+        )?;
+
+        info!("Finished converting representation.");
+        Ok(Self {
+            states,
+            transition_groups,
+            state_variables,
+            next_state_variables,
+        })
+    }
+
+    /// Returns the BDD representing the set of states.
+    pub fn states(&self) -> &BDDFunction {
+        &self.states
+    }
+
+    /// Returns the BDD variables used to represent the state variables.
+    pub fn state_variables(&self) -> &BDDFunction {
+        &self.state_variables
+    }
+
+    /// Returns the BDD variables used to represent the state variables.
+    pub fn next_state_variables(&self) -> &BDDFunction {
+        &self.next_state_variables
+    }
+
+    /// Returns the transition groups representing the disjunctive transition relation.
+    pub fn transition_groups(&self) -> &Vec<SummandGroupBdd> {
+        &self.transition_groups
+    }
+}
+
+/// Creates BDD variables for the given variable numbers.
+fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<BDDFunction, MercError> {
+    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, MercError> {
+        let mut result: BDDFunction = BDDFunction::f(manager);
+
+        for var in vars {
+            let var = BDDFunction::var(manager, *var)?;
+            result = result.or(&var)?;
+        }
+
+        Ok(result)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_ldd::Storage;
+    use merc_utilities::test_logger;
+
+    use crate::SymbolicLtsBdd;
+    use crate::read_symbolic_lts;
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_symbolic_lts_bdd() {
+        test_logger();
+
+        let input = include_bytes!("../../../examples/lts/abp.sym");
+
+        let mut storage = Storage::new();
+        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
+        let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
+
+        SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
+    }
+}
