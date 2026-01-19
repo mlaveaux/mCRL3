@@ -119,7 +119,7 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
         if self.bytes_per_entry == 0 {
             0
         } else {
-            debug_assert!(self.data.len() % self.bytes_per_entry == 0);
+            debug_assert!(self.data.len().is_multiple_of(self.bytes_per_entry));
             self.data.len() / self.bytes_per_entry
         }
     }

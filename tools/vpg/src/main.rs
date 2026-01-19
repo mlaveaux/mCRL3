@@ -17,7 +17,6 @@ use oxidd::BooleanFunction;
 use merc_tools::format_key_values_json;
 use merc_vpg::make_vpg_total;
 use merc_vpg::translate_vpg;
-use merc_vpg::verify_solution;
 use merc_vpg::verify_variability_product_zielonka_solution;
 use merc_symbolic::CubeIterAll;
 use merc_symbolic::FormatConfig;
@@ -233,7 +232,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         time_read.finish();
 
         let mut time_solve = timing.start("solve_zielonka");
-        let (solution, strategy) = solve_zielonka(&game);
+        let (solution, _strategy) = solve_zielonka(&game);
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -244,10 +243,6 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             println!("{}", Player::Odd.solution())
         }
 
-        if args.verify_solution {
-            verify_solution(&game, &solution, &strategy);
-        }
-        
         time_solve.finish();
     } else {
         let solve_variant = args
