@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use clap::Subcommand;
+use log::debug;
 use log::info;
 
 use mcrl2::Pbes;
@@ -130,7 +131,7 @@ fn main() -> Result<ExitCode, MercError> {
             }
         } else {
             for candidate in algorithm.candidates(args.partition_data_sorts, args.partition_data_updates) {
-                info!("Found candidate: {}", candidate);
+                debug!("Found candidate: {}", candidate);
 
                 if algorithm.check_symmetry(&candidate) {
                     if args.mapping_notation {

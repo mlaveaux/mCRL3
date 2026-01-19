@@ -735,11 +735,14 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
     substitute_variables(&expression.copy(), sigma)
 }
 
+/// A constant representing an undefined vertex.
+const UNDEFINED_VERTEX: usize = usize::MAX;
+
 /// Returns the index of the variable that the control flow graph considers
 fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Check that all the vertices have the same variable assigned for consistency
     cfg.vertices().iter().for_each(|v| {
-        if v.index()
+        if v.index() != UNDEFINED_VERTEX && v.index()
             != cfg
                 .vertices()
                 .first()
@@ -749,9 +752,9 @@ fn variable_index(cfg: &ControlFlowGraph) -> usize {
             panic!("Inconsistent variable indices in control flow graph.");
         }
     });
-
-    if let Some(v) = cfg.vertices().iter().next() {
-        // Simply return the index of the variable
+    
+    if let Some(v) = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_VERTEX) {
+        // Return the first non-undefined index
         return v.index();
     }
 
