@@ -13,18 +13,42 @@ pub enum CounterExample<L: TransitionLabel> {
 }
 
 /// Generates a formula that characterizes the counter example trace.
-pub fn generate_formula<L: TransitionLabel>(counter_example: &Vec<L>) -> StateFrm {
+pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {
     let mut expr = StateFrm::True;
 
-    // We build the formula bottom up.
-    for label in counter_example.iter().rev() {
-        expr = StateFrm::Modality {
-            operator: ModalityOperator::Diamond,
-            formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
-                label.to_string(),
-                Vec::new(),
-            )]))),
-            expr: Box::new(expr),
+    match counter_example {
+        CounterExample::Trace(trace) => {
+            // We build the formula bottom up.
+            for label in trace.iter().rev() {
+                expr = StateFrm::Modality {
+                    operator: ModalityOperator::Diamond,
+                    formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
+                        label.to_string(),
+                        Vec::new(),
+                    )]))),
+                    expr: Box::new(expr),
+                }
+            }
+        }
+        CounterExample::WeakTrace(trace) => {
+            // Build the formula tau*
+            let tau_star = RegFrm::Iteration(Box::new(RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![])))));
+
+            // We build the formula bottom up: tau* . label ...
+            for label in trace.iter().rev() {
+                expr = StateFrm::Modality {
+                    operator: ModalityOperator::Diamond,
+                    formula: tau_star.clone(),
+                    expr: Box::new(StateFrm::Modality {
+                        operator: ModalityOperator::Diamond,
+                        formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
+                            label.to_string(),
+                            Vec::new(),
+                        )]))),
+                        expr: Box::new(expr),
+                    }),
+                }
+            }
         }
     }
 

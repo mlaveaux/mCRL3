@@ -25,6 +25,7 @@ use merc_reduction::Partition;
 use merc_utilities::Timing;
 
 use crate::Antichain;
+use crate::CounterExample;
 use crate::CounterExampleConstructor;
 use crate::CounterExampleTree;
 use crate::RefinementType;
@@ -61,7 +62,7 @@ pub fn is_failures_refinement<L: LTS>(
     preprocess: bool,
     counter_example: bool,
     timing: &mut Timing,
-) -> (bool, Option<Vec<L::Label>>) {
+) -> (bool, Option<CounterExample<L::Label>>) {
     let reduction = match refinement {
         RefinementType::Trace => Equivalence::StrongBisim,
         RefinementType::Weaktrace => Equivalence::BranchingBisim,
@@ -109,11 +110,24 @@ pub fn is_failures_refinement<L: LTS>(
             (
                 result,
                 Some(
-                    ce_constructor
-                        .reconstruct_trace(state)
-                        .iter()
-                        .map(|l| merged_lts.labels()[*l].clone())
-                        .collect(),
+                    if refinement == RefinementType::Trace {
+                        CounterExample::Trace(
+                            ce_constructor
+                                .reconstruct_trace(state)
+                                .iter()
+                                .map(|l| merged_lts.labels()[*l].clone())
+                                .collect(),
+                        )
+                    } else {
+                        // The resulting trace is a weak trace.
+                        CounterExample::WeakTrace(
+                            ce_constructor
+                                .reconstruct_trace(state)
+                                .iter()
+                                .map(|l| merged_lts.labels()[*l].clone())
+                                .collect(),
+                        )
+                    },
                 ),
             )
         } else {

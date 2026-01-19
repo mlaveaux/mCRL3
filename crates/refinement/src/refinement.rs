@@ -1,6 +1,7 @@
 use merc_lts::LTS;
 use merc_utilities::Timing;
 
+use crate::CounterExample;
 use crate::is_failures_refinement;
 use crate::ExplorationStrategy;
 
@@ -28,7 +29,7 @@ pub fn refines<L: LTS>(
     preprocess: bool,
     counter_example: bool,
     timing: &mut Timing,
-) -> (bool, Option<Vec<L::Label>>) {
+) -> (bool, Option<CounterExample<L::Label>>) {
     is_failures_refinement(
         impl_lts,
         spec_lts,
