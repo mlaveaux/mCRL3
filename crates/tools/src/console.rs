@@ -28,7 +28,7 @@ pub struct Console {
 }
 
 /// Initialises the console. On Windows this either attaches to the
-pub fn init() -> Result<Console, MercError> {
+pub fn init_console() -> Result<Console, MercError> {
     #[cfg(windows)]
     unsafe {
         // SAFETY: Only unsafe because we use the winapi crate to call Windows API functions.

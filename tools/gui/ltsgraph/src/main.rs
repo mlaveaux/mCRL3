@@ -39,8 +39,8 @@ use merc_ltsgraph_lib::FemtovgRenderer;
 use merc_ltsgraph_lib::GraphLayout;
 use merc_ltsgraph_lib::SkiaRenderer;
 use merc_ltsgraph_lib::Viewer;
-use merc_tools::console;
-use merc_tools::verbosity::VerbosityFlag;
+use merc_tools::init_console;
+use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -133,7 +133,7 @@ impl GuiSettings {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<ExitCode, MercError> {
     // Attach the standard output to the command line.
-    let _console = console::init()?;
+    let _console = init_console()?;
 
     let cli = Cli::parse();
 
