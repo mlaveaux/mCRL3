@@ -12,19 +12,19 @@ pub enum RefinementType {
 }
 
 /// Checks whether `impl_lts` refines `spec_lts` according to the given
-/// `preorder`.
+/// `refinement`.
 ///
 /// # Details
 ///
 /// The `preprocess` flag indicates whether preprocessing should be applied to
-/// the LTSs. The refinement checks often involve product constructions, which
+/// the LTSs. The refinement checks often involve product constructions, and
 /// reducing the state space beforehand can lead to significant performance
 /// improvements. However, for quick failing checks the preprocessing could cause
 /// unnecessary overhead.
 pub fn refines<L: LTS>(
     impl_lts: L,
     spec_lts: L,
-    preorder: RefinementType,
+    refinement: RefinementType,
     preprocess: bool,
     counter_example: bool,
     timing: &mut Timing,
@@ -32,7 +32,7 @@ pub fn refines<L: LTS>(
     is_failures_refinement(
         impl_lts,
         spec_lts,
-        preorder,
+        refinement,
         ExplorationStrategy::BFS,
         preprocess,
         counter_example,

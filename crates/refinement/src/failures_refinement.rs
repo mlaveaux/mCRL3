@@ -44,12 +44,12 @@ pub enum ExplorationStrategy {
 /// and divergence failures inclusion etc.
 ///
 /// The `strategy` parameter determines whether a breadth-first search
-/// or depth-first search is used to explore the state space. Brreadth-first search
+/// or depth-first search is used to explore the state space. Breadth-first search
 /// is often better suited for finding short counter examples, while depth-first
 /// search often uses less memory.
 ///
 /// The `preprocess` flag indicates whether preprocessing should be applied to
-/// the LTSs. The refinement checks often involve product constructions, which
+/// the LTSs. The refinement checks often involve product constructions, and
 /// reducing the state space beforehand can lead to significant performance
 /// improvements. However, for quick failing checks the preprocessing could cause
 /// unnecessary overhead.
@@ -260,6 +260,7 @@ fn tau_closure<L: LTS>(
     cache: &mut ClosureCache,
 ) -> Vec<StateIndex> {
     debug_assert_eq!(cache.working.len(), 0, "Closure cache not cleared before use.");
+    debug_assert_eq!(cache.visited.len(), 0, "Closure cache not cleared before use.");
 
     if extend {
         cache.working.extend(states.iter().cloned());
@@ -277,10 +278,14 @@ fn tau_closure<L: LTS>(
         for t in lts.outgoing_transitions(s) {
             if lts.is_hidden_label(t.label) && !cache.visited.contains(&t.to) {
                 cache.working.push(t.to);
+                cache.visited.insert(t.to);
                 states.push(t.to);
             }
         }
     }
+
+    // Clear the cache for the next use, the working set is empty by now.
+    cache.visited.clear();
 
     states
 }
@@ -306,7 +311,7 @@ mod tests {
     use crate::ExplorationStrategy;
     use crate::RefinementType;
 
-    /// Generates a formula that characterises the counter example trace.
+    /// Generates a formula that characterizes the counter example trace.
     fn generate_formula<L: TransitionLabel>(counter_example: &Vec<L>) -> StateFrm {
         let mut expr = StateFrm::True;
 
