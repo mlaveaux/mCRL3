@@ -73,7 +73,7 @@ pub fn is_failures_refinement<L: LTS>(
         if counter_example {
             // If a counter example is to be generated, we only reduce the
             // specification LTS such that the resulting counter example remains valid.
-            let reduced_spec = reduce_lts(spec_lts, reduction, timing);
+            let reduced_spec = reduce_lts(spec_lts, reduction, true, timing);
             impl_lts.merge_disjoint(&reduced_spec)
         } else {
             let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
@@ -296,39 +296,15 @@ mod tests {
     use merc_lts::random_lts;
     use merc_lts::TransitionLabel;
     use merc_lts::write_aut;
-    use merc_syntax::ActFrm;
-    use merc_syntax::Action;
-    use merc_syntax::ModalityOperator;
-    use merc_syntax::MultiAction;
-    use merc_syntax::RegFrm;
-    use merc_syntax::StateFrm;
     use merc_utilities::random_test;
     use merc_utilities::Timing;
     use merc_vpg::solve_zielonka;
     use merc_vpg::translate;
 
+    use crate::generate_formula;
     use crate::is_failures_refinement;
     use crate::ExplorationStrategy;
     use crate::RefinementType;
-
-    /// Generates a formula that characterizes the counter example trace.
-    fn generate_formula<L: TransitionLabel>(counter_example: &Vec<L>) -> StateFrm {
-        let mut expr = StateFrm::True;
-
-        // We build the formula bottom up.
-        for label in counter_example.iter().rev() {
-            expr = StateFrm::Modality {
-                operator: ModalityOperator::Diamond,
-                formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
-                    label.to_string(),
-                    Vec::new(),
-                )]))),
-                expr: Box::new(expr),
-            }
-        }
-
-        expr
-    }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.

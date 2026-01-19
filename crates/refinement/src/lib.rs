@@ -3,10 +3,12 @@
 
 mod antichain;
 mod counterexample_constructor;
+mod counterexample_formula;
 mod failures_refinement;
 mod refinement;
 
 pub use antichain::*;
 pub use counterexample_constructor::*;
+pub use counterexample_formula::*;
 pub use failures_refinement::*;
 pub use refinement::*;

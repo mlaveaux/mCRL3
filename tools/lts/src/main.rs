@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::stdout;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -9,23 +10,24 @@ use clap::Subcommand;
 use log::info;
 
 use merc_io::LargeFormatter;
-use merc_lts::GenericLts;
-use merc_lts::LTS;
-use merc_lts::LtsFormat;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
-use merc_refinement::RefinementType;
-use merc_refinement::refines;
-use merc_reduction::Equivalence;
+use merc_lts::GenericLts;
+use merc_lts::LtsFormat;
+use merc_lts::LTS;
 use merc_reduction::reduce_lts;
+use merc_reduction::Equivalence;
+use merc_refinement::generate_formula;
+use merc_refinement::refines;
+use merc_refinement::RefinementType;
+use merc_tools::format_key_values_json;
+use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
-use merc_tools::VerbosityFlag;
-use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -62,43 +64,49 @@ enum Commands {
 #[derive(clap::Args, Debug)]
 #[command(about = "Prints information related to the given LTS")]
 struct InfoArgs {
+    /// Specify the input LTS.
     filename: String,
-    filetype: Option<LtsFormat>,
 
-    #[arg(
-        short,
-        long,
-        help = "List of actions that should be considered tau actions",
-        value_delimiter = ','
-    )]
+    /// Explicitly specify the LTS file format
+    #[arg(long)]
+    format: Option<LtsFormat>,
+
+    /// List of actions that should be considered tau actions
+    #[arg(short, long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
 }
 
+/// Reduces the given LTS modulo an equivalent relation.
 #[derive(clap::Args, Debug)]
-#[command(about = "Reduces the given LTS modulo an equivalent relation")]
+#[command()]
 struct ReduceArgs {
+    /// Selects the equivalence to reduce the LTS modulo.
     equivalence: Equivalence,
 
     /// Specify the input LTS.
     filename: PathBuf,
 
-    #[arg(long, help = "Explicitly specify the LTS file format")]
+    /// Explicitly specify the LTS file format
+    #[arg(long)]
     filetype: Option<LtsFormat>,
 
+    /// Specify the output LTS, if not given, output to stdout.
+    #[arg(long)]
     output: Option<PathBuf>,
 
-    #[arg(
-        short,
-        long,
-        help = "List of actions that should be considered tau actions",
-        value_delimiter = ','
-    )]
+    /// List of actions that should be considered tau actions
+    #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
+
+    /// Disables preprocessing of the LTS before reducing.
+    #[arg(long)]
+    no_preprocess: bool,
 }
 
 #[derive(clap::Args, Debug)]
 #[command(about = "Compares two LTS modulo an equivalent relation")]
 struct CompareArgs {
+    /// Selects the equivalence to compare the LTSs modulo.
     equivalence: Equivalence,
 
     /// Specify the input LTS.
@@ -107,39 +115,38 @@ struct CompareArgs {
     /// Specify the input LTS.
     right_filename: PathBuf,
 
-    #[arg(long, help = "Explicitly specify the LTS file format")]
-    filetype: Option<LtsFormat>,
+    /// Explicitly specify the LTS file format
+    #[arg(long)]
+    format: Option<LtsFormat>,
 
-    #[arg(
-        short,
-        long,
-        help = "List of actions that should be considered tau actions",
-        value_delimiter = ','
-    )]
+    /// List of actions that should be considered tau actions
+    #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
+
+    /// Disables preprocessing of the LTSs before checking equivalence.
+    #[arg(long)]
+    no_preprocess: bool,
 }
 
 #[derive(clap::Args, Debug)]
 #[command(about = "Converts an LTS from one format to another")]
 struct ConvertArgs {
-    #[arg(long, help = "Explicitly specify the LTS input file format")]
-    input_filetype: Option<LtsFormat>,
+    /// Explicitly specify the LTS input file format
+    #[arg(long)]
+    format: Option<LtsFormat>,
 
     /// Specify the input LTS.
     filename: PathBuf,
 
-    #[arg(long, help = "Explicitly specify the LTS output file format")]
-    output_filetype: Option<LtsFormat>,
+    /// Explicitly specify the LTS output file format
+    #[arg(long)]
+    output_format: Option<LtsFormat>,
 
     /// Specify the output LTS.
     output: Option<PathBuf>,
 
-    #[arg(
-        short,
-        long,
-        help = "List of actions that should be considered tau actions",
-        value_delimiter = ','
-    )]
+    /// List of actions that should be considered tau actions
+    #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
 }
 
@@ -159,11 +166,12 @@ struct RefinesArgs {
 
     /// If set, outputs a counter-example when refinement does not hold.
     #[arg(short = 'c', long)]
-    counter_example: bool,
+    counter_example: Option<PathBuf>,
 
-    #[arg(long, help = "Explicitly specify the LTS file format")]
-    filetype: Option<LtsFormat>,
-    
+    /// Explicitly specify the LTS file format
+    #[arg(long)]
+    format: Option<LtsFormat>,
+
     /// Disables preprocessing of the LTSs before checking refinement.
     #[arg(long)]
     no_preprocess: bool,
@@ -217,7 +225,7 @@ fn main() -> Result<ExitCode, MercError> {
 fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
 
-    let format = guess_lts_format_from_extension(path, args.filetype).ok_or("Unknown LTS file format.")?;
+    let format = guess_lts_format_from_extension(path, args.format).ok_or("Unknown LTS file format.")?;
     let lts = read_explicit_lts(path, format, args.tau.clone().unwrap_or_default(), timing)?;
     println!(
         "LTS has {} states and {} transitions.",
@@ -261,7 +269,7 @@ fn handle_reduce(args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError
     );
 
     apply_lts!(lts, timing, |lts, timing| -> Result<(), MercError> {
-        let reduced_lts = reduce_lts(lts, args.equivalence, timing);
+        let reduced_lts = reduce_lts(lts, args.equivalence, !args.no_preprocess, timing);
 
         info!(
             "Reduced LTS has {} states and {} transitions.",
@@ -286,7 +294,7 @@ fn handle_reduce(args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError
 fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), MercError> {
     let impl_path = Path::new(&args.implementation_filename);
     let spec_path = Path::new(&args.specification_filename);
-    let format = guess_lts_format_from_extension(impl_path, args.filetype).ok_or("Unknown LTS file format.")?;
+    let format = guess_lts_format_from_extension(impl_path, args.format).ok_or("Unknown LTS file format.")?;
 
     let impl_lts = read_explicit_lts(impl_path, format, Vec::new(), timing)?;
     let spec_lts = read_explicit_lts(spec_path, format, Vec::new(), timing)?;
@@ -302,22 +310,34 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
         LargeFormatter(spec_lts.num_of_transitions())
     );
 
-    apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| {
-        let (result, counter_example) = refines(left, right, args.refinement, !args.no_preprocess, args.counter_example, timing);
+    apply_lts_pair!(impl_lts, spec_lts, timing, |left, right, timing| -> Result<(), MercError> {
+        let (result, counter_example) = refines(
+            left,
+            right,
+            args.refinement,
+            !args.no_preprocess,
+            args.counter_example.is_some(),
+            timing,
+        );
 
         if result {
             println!("true");
         } else {
-            if let Some(trace) = counter_example {
-                println!("Counter-example trace:");
-                for label in trace {
-                    println!("  {}", label);
+            if let Some(counter_example) = counter_example {
+                if let Some(path) = &args.counter_example {
+                    // Generate a counterexample formula and output it to the given path.
+                    let mut writer = File::create(path)?;
+                    writeln!(&mut writer, "{}", generate_formula(&counter_example))?;
+                } else {
+                    panic!("Counter example path not provided.");
                 }
             }
 
             println!("false");
         }
-    });
+
+        Ok(())
+    })?;
 
     Ok(())
 }
@@ -325,7 +345,7 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
 /// Compares two LTSs for equivalence modulo any of the available equivalences.
 fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercError> {
     let format =
-        guess_lts_format_from_extension(&args.left_filename, args.filetype).ok_or("Unknown LTS file format.")?;
+        guess_lts_format_from_extension(&args.left_filename, args.format).ok_or("Unknown LTS file format.")?;
 
     info!("Assuming format {:?} for both LTSs.", format);
     let left_lts = read_explicit_lts(
@@ -353,7 +373,7 @@ fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercErr
     );
 
     let equivalent = apply_lts_pair!(left_lts, right_lts, timing, |left, right, timing| {
-        merc_reduction::compare_lts(args.equivalence, left, right, timing)
+        merc_reduction::compare_lts(args.equivalence, left, right, !args.no_preprocess, timing)
     });
 
     if equivalent {
@@ -368,12 +388,12 @@ fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercErr
 /// Converts an LTS from one format to another, does not do any reduction, see [handle_reduce] for that.
 fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercError> {
     let format =
-        guess_lts_format_from_extension(&args.filename, args.input_filetype).ok_or("Unknown LTS file format.")?;
+        guess_lts_format_from_extension(&args.filename, args.format).ok_or("Unknown LTS file format.")?;
     let input_lts = read_explicit_lts(&args.filename, format, args.tau.clone().unwrap_or_default(), timing)?;
 
     let output_format = if let Some(output) = &args.output {
-        guess_lts_format_from_extension(output, args.output_filetype).ok_or("Unknown LTS file format.")?
-    } else if let Some(format) = args.output_filetype {
+        guess_lts_format_from_extension(output, args.output_format).ok_or("Unknown LTS file format.")?
+    } else if let Some(format) = args.output_format {
         format
     } else {
         return Err("Either output path or output file format must be specified.".into());
