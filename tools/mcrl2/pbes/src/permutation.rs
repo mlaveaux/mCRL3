@@ -25,10 +25,7 @@ impl Permutation {
 
         // Sort by domain for deterministic representation.
         mapping.sort_unstable_by_key(|(d, _)| *d);
-        debug_assert!(
-            mapping.iter().is_sorted(),
-            "Mapping should be sorted by domain."
-        );
+        debug_assert!(mapping.iter().is_sorted(), "Mapping should be sorted by domain.");
         debug_assert!(
             mapping.iter().all(|(from, to)| from != to),
             "Mapping should not contain identity mappings."
@@ -285,7 +282,8 @@ pub fn permutation_group_size(n: usize) -> usize {
 mod tests {
     use merc_utilities::random_test;
     use rand::Rng;
-    use rand::seq::{IteratorRandom, SliceRandom};
+    use rand::seq::IteratorRandom;
+    use rand::seq::SliceRandom;
 
     use super::*;
 
@@ -344,7 +342,11 @@ mod tests {
             let cycle_notation = permutation.to_string();
             let parsed_permutation = Permutation::from_cycle_notation(&cycle_notation).unwrap();
 
-            assert_eq!(permutation, parsed_permutation, "Failed on permutation {:?}", permutation);            
+            assert_eq!(
+                permutation, parsed_permutation,
+                "Failed on permutation {:?}",
+                permutation
+            );
         })
     }
 
@@ -369,7 +371,11 @@ mod tests {
             let mapping_notation = format!("{:?}", permutation);
             let parsed_permutation = Permutation::from_mapping_notation(&mapping_notation).unwrap();
 
-            assert_eq!(permutation, parsed_permutation, "Failed on permutation {:?}", permutation);            
+            assert_eq!(
+                permutation, parsed_permutation,
+                "Failed on permutation {:?}",
+                permutation
+            );
         })
     }
 }

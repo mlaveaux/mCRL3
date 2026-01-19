@@ -67,7 +67,7 @@ impl SymmetryAlgorithm {
             info!("==== SRF PBES ====");
             info!("{}", srf.to_pbes());
         }
-        
+
         let parameters = if let Some(equation) = srf.equations().first() {
             equation.variable().parameters().to_vec()
         } else {
@@ -286,7 +286,8 @@ impl SymmetryAlgorithm {
                 |lhs, rhs| lhs.sort() == rhs.sort(),
             )
         } else {
-            let groups: Vec<&DataVariable> = self.parameters
+            let groups: Vec<&DataVariable> = self
+                .parameters
                 .iter()
                 .enumerate()
                 .filter_map(|(index, param)| {
@@ -326,10 +327,7 @@ impl SymmetryAlgorithm {
                 debug!(
                     "Parameter {} is updated with expressions: {}",
                     param.name(),
-                    parameter_updates[index]
-                        .iter()
-                        .map(|expr| expr.to_string())
-                        .join(", ")
+                    parameter_updates[index].iter().map(|expr| expr.to_string()).join(", ")
                 );
             }
 
@@ -350,7 +348,8 @@ impl SymmetryAlgorithm {
         // For progress messages keep track of the number of permutations we need to check.
         let mut number_of_permutations = 1usize;
 
-        let mut all_data_groups: Box<dyn CloneIterator<Item = Permutation>> = Box::new(iter::empty()); // Default value is overwritten in first iteration.
+        let mut all_data_groups: Box<dyn CloneIterator<Item = Permutation>> =
+            Box::new(iter::once(Permutation::from_mapping(Vec::new()))); // Default value is overwritten in first iteration.
         for group in data_parameter_partition {
             // Determine the indices of these parameters.
             let parameter_indices: Vec<usize> = group
@@ -358,10 +357,7 @@ impl SymmetryAlgorithm {
                 .map(|param| self.parameters.iter().position(|p| p.name() == param.name()).unwrap())
                 .collect();
 
-            info!(
-                "Data parameters group: {:?}, indices: {:?}",
-                group, parameter_indices
-            );
+            info!("Data parameters group: {:?}, indices: {:?}", group, parameter_indices);
 
             // Compute the product of the current data group with the already concatenated ones.
             let number_of_parametes = parameter_indices.len();
@@ -733,9 +729,13 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
             // Identifier
             ATerm::constant(&Symbol::new("omega", 0)),
             // Sort
-            ATerm::with_args(&Symbol::new("SortId", 1), &[ATerm::constant(&Symbol::new("@NoValue", 0))]),
+            ATerm::with_args(
+                &Symbol::new("SortId", 1),
+                &[ATerm::constant(&Symbol::new("@NoValue", 0))],
+            ),
             // Index
-            ATermInt::with_value(0).into()],
+            ATermInt::with_value(0).into(),
+        ],
     ));
 
     let sigma = variables
@@ -753,17 +753,18 @@ const UNDEFINED_VERTEX: usize = usize::MAX;
 fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Check that all the vertices have the same variable assigned for consistency
     cfg.vertices().iter().for_each(|v| {
-        if v.index() != UNDEFINED_VERTEX && v.index()
-            != cfg
-                .vertices()
-                .first()
-                .expect("There is at least one vertex in a CFG")
-                .index()
+        if v.index() != UNDEFINED_VERTEX
+            && v.index()
+                != cfg
+                    .vertices()
+                    .first()
+                    .expect("There is at least one vertex in a CFG")
+                    .index()
         {
             panic!("Inconsistent variable indices in control flow graph.");
         }
     });
-    
+
     if let Some(v) = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_VERTEX) {
         // Return the first non-undefined index
         return v.index();
