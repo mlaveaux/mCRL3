@@ -224,12 +224,12 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
         }
 
         // Count the number of silent transitions.
-        lts.iter_states().fold(0, |acc, s| {
+        println!("Silent transitions: {}", lts.iter_states().fold(0, |acc, s| {
             acc + lts
                 .outgoing_transitions(s)
                 .filter(|t| lts.is_hidden_label(t.label))
                 .count()
-        })
+        }));
     });
 
     Ok(())
