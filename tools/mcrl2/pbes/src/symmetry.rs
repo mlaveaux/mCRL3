@@ -151,7 +151,8 @@ impl SymmetryAlgorithm {
                 ) as Box<dyn CloneIterator<Item = (Permutation, Permutation)>>;
             }
 
-            number_of_candidates *= number_of_permutations;
+            // If the number overflows we probably don't really care.
+            number_of_candidates = number_of_candidates.saturating_mul(number_of_permutations);
         }
 
         info!(
@@ -285,21 +286,26 @@ impl SymmetryAlgorithm {
                 |lhs, rhs| lhs.sort() == rhs.sort(),
             )
         } else {
-            // All data parameters in a single group.
-            vec![
-                self.parameters
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, param)| {
-                        if self.all_control_flow_parameters.contains(&index) {
-                            // Skip control flow parameters.
-                            None
-                        } else {
-                            Some(param)
-                        }
-                    })
-                    .collect(),
-            ]
+            let groups: Vec<&DataVariable> = self.parameters
+                .iter()
+                .enumerate()
+                .filter_map(|(index, param)| {
+                    if self.all_control_flow_parameters.contains(&index) {
+                        // Skip control flow parameters.
+                        None
+                    } else {
+                        Some(param)
+                    }
+                })
+                .collect();
+
+            if groups.is_empty() {
+                // No data parameters.
+                Vec::new()
+            } else {
+                // All data parameters in a single group.
+                vec![groups]
+            }
         };
 
         let data_parameter_partition = if partition_data_updates {
@@ -353,7 +359,7 @@ impl SymmetryAlgorithm {
                 .collect();
 
             info!(
-                "Parameters group: {:?}, indices: {:?}",
+                "Data parameters group: {:?}, indices: {:?}",
                 group, parameter_indices
             );
 
@@ -696,6 +702,8 @@ where
     let mut result: Vec<Vec<T>> = Vec::new();
 
     for element in elements {
+        // See if the element can be added to an existing group, by taking the first element of
+        // each group as representative.
         if let Some(group) = result.iter_mut().find(|g: &&mut Vec<_>| {
             if let Some(first) = g.first() {
                 predicate(first, &element)
@@ -703,11 +711,14 @@ where
                 false
             }
         }) {
+            // Add to existing group
             group.push(element.clone());
         } else {
+            // Create new group
             result.push(vec![element.clone()]);
         }
     }
+
     result
 }
 
