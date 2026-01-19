@@ -3404,6 +3404,7 @@ name = "merc_tools"
 version = "1.0.0"
 dependencies = [
  "clap",
+ "env_logger",
  "log",
  "merc_utilities",
  "winapi",
