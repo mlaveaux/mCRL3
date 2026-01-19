@@ -70,7 +70,7 @@ struct SymmetryArgs {
     /// Partition data parameters into their sorts before considering their permutation groups.
     #[arg(long, default_value_t = false)]
     partition_data_sorts: bool,
-    
+
     /// Partition data parameters based on their updates.
     #[arg(long, default_value_t = false)]
     partition_data_updates: bool,
@@ -133,6 +133,11 @@ fn main() -> Result<ExitCode, MercError> {
             for candidate in algorithm.candidates(args.partition_data_sorts, args.partition_data_updates) {
                 debug!("Found candidate: {}", candidate);
 
+                if candidate.is_identity() {
+                    // Skip the identity permutation
+                    continue;
+                }
+
                 if algorithm.check_symmetry(&candidate) {
                     if args.mapping_notation {
                         info!("Found symmetry: {:?}", candidate);
@@ -140,7 +145,7 @@ fn main() -> Result<ExitCode, MercError> {
                         info!("Found symmetry: {}", candidate);
                     }
 
-                    if !args.all_symmetries && !candidate.is_identity() {
+                    if !args.all_symmetries {
                         // Only search for the first symmetry
                         info!("Stopping search after first non-trivial symmetry.");
                         break;
