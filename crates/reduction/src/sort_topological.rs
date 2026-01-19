@@ -8,11 +8,12 @@ use merc_lts::StateIndex;
 use merc_utilities::MercError;
 use merc_utilities::is_valid_permutation;
 
-/// Returns a topological ordering of the states of the given LTS.
+/// Returns a topological ordering of the states of the given LTS, ensuring that `s` occurs before
+/// `t` if there is a transition from `s` to `t` that satisfies the filter.
 ///
 /// An error is returned if the LTS contains a cycle.
 ///     - filter: Only transitions satisfying the filter are considered part of the graph.
-///     - reverse: If true, the topological ordering is reversed, i.e. successors before the incoming state.
+///     - reverse: If true, the topological ordering is reversed, i.e. `t` before the state `s`.
 pub fn sort_topological<F, L>(lts: &L, filter: F, reverse: bool) -> Result<Vec<StateIndex>, MercError>
 where
     F: Fn(LabelIndex, StateIndex) -> bool,
