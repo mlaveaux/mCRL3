@@ -1,6 +1,6 @@
 # Overview
 
-A thread-safe library to manipulate first-order terms. An first-order term is
+A thread-safe library to manipulate first-order terms. A first-order term is
 defined by the following grammar:
 
 ```plain
