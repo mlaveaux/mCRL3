@@ -162,7 +162,7 @@ pub fn required_bits(value: u32) -> u32 {
 
 /// Computes the number of bits required to represent the highest value at each layer.
 pub fn compute_bits(highest: &[u32]) -> Vec<u32> {
-    highest.iter().map(|&h| required_bits(h) as u32).collect()
+    highest.iter().map(|&h| required_bits(h)).collect()
 }
 
 #[cfg(test)]

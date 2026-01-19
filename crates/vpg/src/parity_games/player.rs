@@ -23,7 +23,7 @@ impl Player {
 
     /// Constructs a player from a priority.
     pub fn from_priority(priority: &Priority) -> Self {
-        if priority.value() % 2 == 0 {
+        if priority.value().is_multiple_of(2) {
             Player::Even
         } else {
             Player::Odd
