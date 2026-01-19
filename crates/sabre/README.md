@@ -8,7 +8,7 @@ but different sorts.
 
 ## Usage
 
-Typically one parses the rewrite rules from a file writting the mCRL2 language,
+Typically one parses the rewrite rules from a file writing the mCRL2 language,
 or the Rewrite Engine Competition (REC) format, but it can also be constructed
 programmatically for demonstration purposes, or for testing.
 
