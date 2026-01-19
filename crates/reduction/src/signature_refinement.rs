@@ -26,6 +26,7 @@ use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
 use crate::is_tau_hat;
+use crate::longest_tau_path;
 use crate::preprocess_branching;
 use crate::strong_bisim_signature;
 use crate::weak_bisim_signature_sorted;
@@ -71,6 +72,8 @@ pub fn branching_bisim_sigref<L: LTS>(
     let preprocessed_lts = preprocess_branching(lts);
     let incoming = IncomingTransitions::new(&preprocessed_lts);
     timepre.finish();
+
+    debug!("longest_tau_path" = longest_tau_path(&preprocessed_lts); "The longest tau path is {}", longest_tau_path(&preprocessed_lts));
 
     let mut time = timing.start("reduction");
     let mut expected_builder = SignatureBuilder::default();

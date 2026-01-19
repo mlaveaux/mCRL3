@@ -64,6 +64,14 @@ enum Commands {
 struct InfoArgs {
     filename: String,
     filetype: Option<LtsFormat>,
+
+    #[arg(
+        short,
+        long,
+        help = "List of actions that should be considered tau actions",
+        value_delimiter = ','
+    )]
+    tau: Option<Vec<String>>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -210,7 +218,7 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
 
     let format = guess_lts_format_from_extension(path, args.filetype).ok_or("Unknown LTS file format.")?;
-    let lts = read_explicit_lts(path, format, Vec::new(), timing)?;
+    let lts = read_explicit_lts(path, format, args.tau.clone().unwrap_or_default(), timing)?;
     println!(
         "LTS has {} states and {} transitions.",
         LargeFormatter(lts.num_of_states()),
@@ -232,6 +240,9 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
 
         // Count the number of silent transitions.
         println!("Silent transitions: {}", num_of_silent_transitions);
+
+        // Structured output.
+        println!("{{\"num_of_silent_transitions\": {}}}", num_of_silent_transitions);
     });
 
     Ok(())
@@ -381,7 +392,7 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
                 return Err("Conversion from AUT to AUT is not useful.".into());
             }
             _ => {
-                return Err(format!("Conversion to {output_format:?}LTS format is not yet implemented.").into());
+                return Err(format!("Conversion to {output_format:?} format is not yet implemented.").into());
             }
         },
         GenericLts::Lts(lts) => match output_format {
