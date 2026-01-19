@@ -14,10 +14,11 @@ use log::kv::VisitSource;
 /// Can be used to configure `env_logger` to format log key-values as JSON.
 ///
 /// ```rust
+/// use merc_tools::format_key_values_json;
 ///
 /// env_logger::Builder::new()
 ///     .format_key_values(|formatter, source| {
-///         format_key_values_json(formatter, source)?;
+///         Ok(format_key_values_json(formatter, source)?)
 ///     })
 ///     .init();
 ///
