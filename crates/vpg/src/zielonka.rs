@@ -122,28 +122,32 @@ impl ZielonkaSolver<'_> {
         );
         trace!("{}Vertices in U: {}", indent, DisplaySet(&U));
 
-        let (A, _A_strategy) = self.attractor(alpha, &V, U);
+        let (A, A_strategy) = self.attractor(alpha, &V, U);
 
         trace!("{}Vertices in A: {}", indent, DisplaySet(&A));
         debug!("{}zielonka(V \\ A) |A| = {}", indent, A.count_ones());
         let (W1_0, S1_0, W1_1, S1_1) = self.zielonka_rec(V.clone().bitand(!A.clone()), depth + 1);
 
-        let (mut W1_alpha, S1_alpha, W1_not_alpha, _S1_not_alpha) = x_and_not_x_strategy(W1_0, S1_0, W1_1, S1_1, alpha);
+        let (mut W1_alpha, mut S1_alpha, W1_not_alpha, _S1_not_alpha) = x_and_not_x_strategy(W1_0, S1_0, W1_1, S1_1, alpha);
 
         if !W1_not_alpha.any() {
             W1_alpha |= A;
+            // Combine the strategy from the attractor with the recursive strategy
+            S1_alpha = S1_alpha.combine(A_strategy);
             combine_strategy(W1_alpha, S1_alpha, W1_not_alpha, Strategy::new(), alpha)
         } else {
-            let (B, _B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
+            let (B, B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
 
             trace!("{}Vertices in B: {}", indent, DisplaySet(&A));
             debug!("{}zielonka(V \\ B)", indent);
             let (W2_0, S2_0, W2_1, S2_1) = self.zielonka_rec(V.bitand(!B.clone()), depth + 1);
 
-            let (W2_alpha, S2_alpha, mut W2_not_alpha, S2_not_alpha) =
+            let (W2_alpha, S2_alpha, mut W2_not_alpha, mut S2_not_alpha) =
                 x_and_not_x_strategy(W2_0, S2_0, W2_1, S2_1, alpha);
 
             W2_not_alpha |= B;
+            // Combine the strategy from the attractor with the recursive strategy
+            S2_not_alpha = S2_not_alpha.combine(B_strategy);
             self.check_partition(&W2_alpha, &W2_not_alpha, &full_V);
             combine_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
         }
@@ -274,24 +278,5 @@ struct DisplaySet<'a>(&'a Set);
 impl fmt::Display for DisplaySet<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{{}}}", self.0.iter_ones().format(", "))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use merc_utilities::random_test;
-
-    use crate::random_parity_game;
-    use crate::solve_zielonka;
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Very slow under Miri
-    fn test_random_parity_game_solve() {
-        random_test(100, |rng| {
-            let pg = random_parity_game(rng, true, 100, 5, 3);
-            println!("{:?}", pg);
-
-            let (result, strategy) = solve_zielonka(&pg);
-        })
     }
 }

@@ -29,6 +29,21 @@ impl Strategy {
     pub fn get(&self, from: VertexIndex) -> Option<&VertexIndex> {
         self.mapping.get(&from)
     }
+
+    /// Combines two strategies, preferring mappings from the second strategy.
+    pub fn combine(mut self, extension: Strategy) -> Strategy {
+        // Add all mappings from the extension strategy to the base strategy
+        for (&from, &to) in extension.iter() {
+            self.set(from, to);
+        }
+        self
+    }
+
+
+    /// Returns an iterator over all (from, to) pairs in the strategy.
+    pub fn iter(&self) -> impl Iterator<Item = (&VertexIndex, &VertexIndex)> {
+        self.mapping.iter()
+    }
 }
 
 impl Default for Strategy {
