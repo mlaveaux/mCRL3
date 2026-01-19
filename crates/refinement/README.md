@@ -32,9 +32,10 @@ let spec_lts = read_aut(b"des (0,5,4)
 (3,lindyhop,0)
 " as &[u8], Vec::new()).unwrap();
 
-// Note that this is trace refinement, not weak trace.
-let result = refines(impl_lts, spec_lts, RefinementType::Trace, &mut Timing::new());
+// Note that this is strong trace refinement, and we request no counter example.
+let (result, counter_example) = refines(impl_lts, spec_lts, RefinementType::Trace, true, false, &mut Timing::new());
 assert!(!result);
+assert!(counter_example.is_none());
 ```
 
 ## Changelog
