@@ -16,9 +16,10 @@ use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_utilities::Timing;
 
-use crate::BlockIndex;
+use crate::Equivalence;
 use crate::SimpleBlockPartition;
 use crate::preprocess_branching;
+use crate::reduce_lts;
 
 /// Type alias because we use bitvec for marking states
 type BitArray = BitVec<u64, Lsb0>;
