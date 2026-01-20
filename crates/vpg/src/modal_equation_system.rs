@@ -58,8 +58,10 @@ impl ModalEquationSystem {
     pub fn new(formula: &StateFrm) -> Self {
         let mut equations = Vec::new();
 
+        let mut identifier_generator = FreshStateVarGenerator::new(formula);
+
         // Ensure that the formula has an outermost fixpoint operator.
-        let formula = add_placeholder_operator(formula.clone());
+        let formula = add_placeholder_operator(formula.clone(), &mut identifier_generator);
 
         // Apply E to extract all equations from the formula
         apply_e(&mut equations, &formula);
@@ -146,20 +148,15 @@ impl ModalEquationSystem {
 
 /// If the given formula has no outermost fixpoint operator, adds a placeholder
 /// fixpoint operator around it.
-fn add_placeholder_operator(formula: StateFrm) -> StateFrm {
-    if visit_statefrm(&formula, |f| match f {
-        StateFrm::FixedPoint { .. } => Ok(ControlFlow::Break(())),
-        _ => Ok(ControlFlow::Continue(())),
-    })
-    .expect("No errors expected in visitor.")
-    .is_some()
-    {
+fn add_placeholder_operator(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
+    if matches!(formula, StateFrm::FixedPoint { .. }) {
+        // The outer operator is already a fixpoint
         formula
     } else {
         // Introduce a placeholder.
         StateFrm::FixedPoint {
             operator: FixedPointOperator::Least,
-            variable: StateVarDecl::new("X".to_string(), Vec::new()),
+            variable: StateVarDecl::new(identifier_generator.generate("X"), Vec::new()),
             body: Box::new(formula),
         }
     }
@@ -215,6 +212,46 @@ fn rhs(formula: &StateFrm) -> StateFrm {
         _ => Ok(None),
     })
     .expect("No error expected during RHS extraction")
+}
+
+/// A generator for fresh state variable names.
+struct FreshStateVarGenerator {
+    used: HashSet<String>,
+}
+
+impl FreshStateVarGenerator {
+    /// Creates a new fresh state variable generator.
+    /// 
+    /// # Details
+    /// 
+    /// Traverses the given formula to collect all used variable names.
+    pub fn new(formula: &StateFrm) -> Self {
+        let mut used = HashSet::new();
+        visit_statefrm::<()>(formula, |subformula| {
+            if let StateFrm::FixedPoint { variable, .. } = subformula {
+                used.insert(variable.identifier.clone());
+            }
+
+            Ok(ControlFlow::Continue(()))
+        }).expect("No error expected during visiting");
+
+        FreshStateVarGenerator {
+            used,
+        }
+    }
+
+    /// Generates a fresh state variable name based on the given base.
+    pub fn generate(&mut self, base: &str) -> String {
+        let mut index = 0;
+        loop {
+            let candidate = format!("{}{}", base, index);
+            if !self.used.contains(&candidate) {
+                self.used.insert(candidate.clone());
+                return candidate;
+            }
+            index += 1;
+        }
+    }
 }
 
 impl fmt::Display for ModalEquationSystem {
