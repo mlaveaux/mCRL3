@@ -3,9 +3,10 @@ use std::fmt;
 
 use itertools::Itertools;
 
+use merc_collections::Graph;
 use merc_utilities::TagIndex;
 
-use crate::Player;
+use crate::{Player};
 
 /// A strong type for the vertices.
 pub struct VertexTag;
@@ -234,6 +235,10 @@ impl PG for ParityGame {
         self.priority[*vertex]
     }
 
+    fn highest_priority(&self) -> Priority {
+        self.priority.iter().fold(Priority::new(0), |max, p| max.max(*p))
+    }
+
     fn is_total(&self) -> bool {
         for v in self.iter_vertices() {
             if self.outgoing_edges(v).next().is_none() {
@@ -242,7 +247,7 @@ impl PG for ParityGame {
         }
 
         true
-    }    
+    }
 }
 
 impl fmt::Debug for ParityGame {
@@ -282,6 +287,9 @@ pub trait PG {
     /// Returns the number of edges in the parity game.
     fn num_of_edges(&self) -> usize;
 
+    /// Returns the highest priority in the parity game.
+    fn highest_priority(&self) -> Priority;
+
     /// Returns an iterator over all vertices in the parity game.
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
 
@@ -298,11 +306,32 @@ pub trait PG {
     fn is_total(&self) -> bool;
 }
 
+/// A wrapper to view a parity game as a graph.
+pub struct AsGraph<'a, G: PG>(pub &'a G);
+
+/// Every parity game is also a graph.
+impl<G: PG> Graph for AsGraph<'_, G> {
+    type VertexIndex = VertexIndex;
+    type LabelIndex = ();
+
+    fn num_of_vertices(&self) -> usize {
+        self.0.num_of_vertices()
+    }
+
+    fn iter_vertices(&self) -> impl Iterator<Item = Self::VertexIndex> {
+        self.0.iter_vertices()
+    }
+
+    fn outgoing_edges(&self, vertex: <Self as Graph>::VertexIndex) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
+        self.0.outgoing_edges(vertex).map(|to| ((), to))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
 
-    use crate::{PG, random_parity_game};
+    use crate::{random_parity_game, PG};
 
     #[test]
     fn test_random_parity_game_make_total() {

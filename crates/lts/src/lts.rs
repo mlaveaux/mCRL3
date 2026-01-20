@@ -5,6 +5,7 @@
 use std::fmt;
 use std::hash::Hash;
 
+use merc_collections::Graph;
 use merc_utilities::TagIndex;
 
 use crate::LabelledTransitionSystem;
@@ -66,6 +67,27 @@ where
         self,
         other: &L,
     ) -> (LabelledTransitionSystem<Self::Label>, StateIndex);
+}
+
+/// A wrapper struct to treat an LTS as a graph.
+pub struct AsGraph<'a, L: LTS>(pub &'a L);
+
+/// A labelled transition system is also a graph.
+impl<L: LTS> Graph for AsGraph<'_, L> {
+    type VertexIndex = StateIndex;
+    type LabelIndex = LabelIndex;
+
+    fn num_of_vertices(&self) -> usize {
+        self.0.num_of_states()
+    }
+
+    fn iter_vertices(&self) -> impl Iterator<Item = Self::VertexIndex> {
+        self.0.iter_states()
+    }
+
+    fn outgoing_edges(&self, vertex: Self::VertexIndex) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
+        self.0.outgoing_transitions(vertex).map(|t| (t.label, t.to))
+    }
 }
 
 /// A common trait for all transition labels. For various algorithms on LTSs we

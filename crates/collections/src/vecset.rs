@@ -45,9 +45,7 @@ impl<T: Ord> VecSet<T> {
     pub fn from_vec(mut vec: Vec<T>) -> Self {
         vec.sort();
         vec.dedup();
-        Self {
-            sorted_array: vec,
-        }
+        Self { sorted_array: vec }
     }
 
     /// Returns the capacity of the set.
