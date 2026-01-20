@@ -21,7 +21,12 @@ pub enum Rewriter {
 }
 
 /// Rewrites the given REC specification.
-pub fn rewrite_rec(rewriter: Rewriter, filename_specification: &Path, output: bool, timing: &Timing) -> Result<(), MercError> {
+pub fn rewrite_rec(
+    rewriter: Rewriter,
+    filename_specification: &Path,
+    output: bool,
+    timing: &Timing,
+) -> Result<(), MercError> {
     let (syntax_spec, syntax_terms) = load_rec_from_file(filename_specification)?;
 
     let spec = syntax_spec.to_rewrite_spec();

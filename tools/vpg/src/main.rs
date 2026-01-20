@@ -1,5 +1,5 @@
-use std::fs::read_to_string;
 use std::fs::File;
+use std::fs::read_to_string;
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
@@ -11,20 +11,26 @@ use itertools::Itertools;
 use log::debug;
 use log::info;
 use merc_lts::read_aut;
-use merc_vpg::verify_solution;
 use merc_vpg::Projected;
+use merc_vpg::verify_solution;
 use oxidd::BooleanFunction;
 
 use merc_symbolic::CubeIterAll;
 use merc_symbolic::FormatConfig;
 use merc_syntax::UntypedStateFrmSpec;
-use merc_tools::format_key_values_json;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use merc_vpg::FeatureDiagram;
+use merc_vpg::ParityGameFormat;
+use merc_vpg::PgDot;
+use merc_vpg::Player;
+use merc_vpg::VpgDot;
+use merc_vpg::ZielonkaVariant;
 use merc_vpg::compute_reachable;
 use merc_vpg::guess_format_from_extension;
 use merc_vpg::make_vpg_total;
@@ -40,12 +46,6 @@ use merc_vpg::translate_vpg;
 use merc_vpg::verify_variability_product_zielonka_solution;
 use merc_vpg::write_pg;
 use merc_vpg::write_vpg;
-use merc_vpg::FeatureDiagram;
-use merc_vpg::ParityGameFormat;
-use merc_vpg::PgDot;
-use merc_vpg::Player;
-use merc_vpg::VpgDot;
-use merc_vpg::ZielonkaVariant;
 
 /// Default node capacity for the Oxidd decision diagram manager. The choice
 /// for this value is fairly arbitrary.

@@ -242,6 +242,7 @@ impl PG for VariabilityParityGame {
             fn priority(&self, vertex: VertexIndex) -> Priority;
             fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_;
             fn is_total(&self) -> bool;
+            fn highest_priority(&self) -> Priority;
         }
     }
 }

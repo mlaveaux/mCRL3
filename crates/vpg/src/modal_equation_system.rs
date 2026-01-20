@@ -4,11 +4,11 @@ use std::ops::ControlFlow;
 
 use log::debug;
 
-use merc_syntax::apply_statefrm;
-use merc_syntax::visit_statefrm;
 use merc_syntax::FixedPointOperator;
 use merc_syntax::StateFrm;
 use merc_syntax::StateVarDecl;
+use merc_syntax::apply_statefrm;
+use merc_syntax::visit_statefrm;
 
 /// A fixpoint equation system representing a ranked set of fixpoint equations.
 ///

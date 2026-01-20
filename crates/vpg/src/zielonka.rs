@@ -15,13 +15,13 @@ use itertools::Itertools;
 use log::debug;
 use log::trace;
 
+use crate::PG;
 use crate::Player;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Repeat;
 use crate::Strategy;
 use crate::VertexIndex;
-use crate::PG;
 
 /// The type for a set of vertices.
 pub type Set = BitVec<usize, Lsb0>;
@@ -127,7 +127,8 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         debug!("{}zielonka(V \\ A) |A| = {}", indent, A.count_ones());
         let (W1_0, S1_0, W1_1, S1_1) = self.zielonka_rec(V.clone().bitand(!A.clone()), depth + 1);
 
-        let (mut W1_alpha, mut S1_alpha, W1_not_alpha, _S1_not_alpha) = x_and_not_x_strategy(W1_0, S1_0, W1_1, S1_1, alpha);
+        let (mut W1_alpha, mut S1_alpha, W1_not_alpha, _S1_not_alpha) =
+            x_and_not_x_strategy(W1_0, S1_0, W1_1, S1_1, alpha);
 
         if !W1_not_alpha.any() {
             W1_alpha |= A;

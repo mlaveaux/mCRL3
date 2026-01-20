@@ -10,7 +10,7 @@ use crate::sort_topological;
 
 /// Computes the strongly connected tau component partitioning of the given LTS.
 pub fn tau_scc_decomposition(lts: &impl LTS) -> IndexedPartition {
-    scc_decomposition(&AsGraph(lts), &|_, label_index, _| lts.is_hidden_label(label_index))
+    scc_decomposition(&AsGraph(lts), |_, label_index, _| lts.is_hidden_label(label_index))
 }
 
 /// Returns true iff the labelled transition system has tau-loops.

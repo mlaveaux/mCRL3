@@ -23,9 +23,9 @@ use merc_symbolic::reachability;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
 use merc_symbolic::reorder;
+use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
-use merc_tools::VerbosityFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -247,7 +247,8 @@ fn handle_convert(args: ConvertArgs, _timing: &mut Timing) -> Result<(), MercErr
             convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
         }
         LtsFormat::Bcg => {
-            let explicit_lts = convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
+            let explicit_lts =
+                convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
             write_bcg(&explicit_lts, &args.output)?;
         }
     }

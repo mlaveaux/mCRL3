@@ -6,7 +6,7 @@ use itertools::Itertools;
 use merc_collections::Graph;
 use merc_utilities::TagIndex;
 
-use crate::{Player};
+use crate::Player;
 
 /// A strong type for the vertices.
 pub struct VertexTag;
@@ -240,13 +240,8 @@ impl PG for ParityGame {
     }
 
     fn is_total(&self) -> bool {
-        for v in self.iter_vertices() {
-            if self.outgoing_edges(v).next().is_none() {
-                return false;
-            }
-        }
-
-        true
+        /// The parity game is total if every vertex has at least one outgoing edge.
+        self.iter_vertices().all(|v| self.outgoing_edges(v).next().is_some())
     }
 }
 
@@ -322,7 +317,10 @@ impl<G: PG> Graph for AsGraph<'_, G> {
         self.0.iter_vertices()
     }
 
-    fn outgoing_edges(&self, vertex: <Self as Graph>::VertexIndex) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
+    fn outgoing_edges(
+        &self,
+        vertex: <Self as Graph>::VertexIndex,
+    ) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
         self.0.outgoing_edges(vertex).map(|to| ((), to))
     }
 }
@@ -331,7 +329,8 @@ impl<G: PG> Graph for AsGraph<'_, G> {
 mod tests {
     use merc_utilities::random_test;
 
-    use crate::{random_parity_game, PG};
+    use crate::PG;
+    use crate::random_parity_game;
 
     #[test]
     fn test_random_parity_game_make_total() {

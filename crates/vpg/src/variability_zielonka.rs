@@ -30,20 +30,20 @@ use merc_symbolic::minus_edge;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
-use crate::combine;
-use crate::compute_reachable;
 use crate::PG;
 use crate::Player;
 use crate::Priority;
-use crate::project_variability_parity_games_iter;
 use crate::Projected;
 use crate::Repeat;
 use crate::Set;
-use crate::solve_zielonka;
 use crate::Submap;
 use crate::VariabilityParityGame;
 use crate::VariabilityPredecessors;
 use crate::VertexIndex;
+use crate::combine;
+use crate::compute_reachable;
+use crate::project_variability_parity_games_iter;
+use crate::solve_zielonka;
 use crate::x_and_not_x;
 
 /// Variant of the Zielonka algorithm to use.

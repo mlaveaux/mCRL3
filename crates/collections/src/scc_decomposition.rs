@@ -8,7 +8,7 @@ use crate::IndexedPartition;
 use merc_io::LargeFormatter;
 
 /// Computes the strongly connected component partitioning of the given LTS.
-pub fn scc_decomposition<F, G>(graph: &G, filter: &F) -> IndexedPartition
+pub fn scc_decomposition<F, G>(graph: &G, filter: F) -> IndexedPartition
 where
     F: Fn(G::VertexIndex, G::LabelIndex, G::VertexIndex) -> bool,
     G: Graph,
@@ -33,7 +33,7 @@ where
             strongly_connect(
                 state_index,
                 graph,
-                filter,
+                &filter,
                 &mut partition,
                 &mut smallest_index,
                 &mut next_block_number,

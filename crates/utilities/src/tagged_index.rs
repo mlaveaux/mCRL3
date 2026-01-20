@@ -18,9 +18,7 @@ pub trait MercIndex: Copy + PartialEq {
 impl MercIndex for () {
     type Target = ();
 
-    fn index(&self) -> Self::Target {
-        ()
-    }
+    fn index(&self) -> Self::Target {}
 }
 
 /// An index is an index that can only be compared with equivalent tags. Note that the constructor does

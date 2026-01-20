@@ -55,6 +55,13 @@ pub fn project_variability_parity_games_iter<'a>(
         let pg = project_variability_parity_game(vpg, &bdd)?;
         time_proj.finish();
 
-        Ok((Projected { bits: cube, bdd, game: pg }, timing))
+        Ok((
+            Projected {
+                bits: cube,
+                bdd,
+                game: pg,
+            },
+            timing,
+        ))
     })
 }

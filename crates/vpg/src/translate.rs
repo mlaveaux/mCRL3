@@ -4,8 +4,8 @@ use log::trace;
 
 use merc_collections::IndexedSet;
 use merc_io::TimeProgress;
-use merc_lts::LabelledTransitionSystem;
 use merc_lts::LTS;
+use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
@@ -25,10 +25,7 @@ use crate::VertexIndex;
 use crate::compute_reachable;
 
 /// Translates a labelled transition system into a variability parity game.
-pub fn translate(
-    lts: &LabelledTransitionSystem<String>,
-    formula: &StateFrm,
-) -> Result<ParityGame, MercError> {
+pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> Result<ParityGame, MercError> {
     // Parses all labels into MultiAction once
     let parsed_labels: Result<Vec<MultiAction>, MercError> =
         lts.labels().iter().map(|label| MultiAction::parse(label)).collect();
@@ -37,11 +34,7 @@ pub fn translate(
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
 
-    let mut algorithm = Translation::new(
-        lts,
-        &labels,
-        &equation_system
-    );
+    let mut algorithm = Translation::new(lts, &labels, &equation_system);
 
     algorithm.translate(lts.initial_state_index(), 0)?;
 
@@ -227,10 +220,7 @@ impl<'a> Translation<'a> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((
-                                    vertex_index,
-                                    s_prime_psi,
-                                ));
+                                self.edges.push((vertex_index, s_prime_psi));
                             }
                         }
                     }
@@ -244,10 +234,7 @@ impl<'a> Translation<'a> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((
-                                    vertex_index,
-                                    s_prime_psi,
-                                ));
+                                self.edges.push((vertex_index, s_prime_psi));
                             }
                         }
                     }
@@ -279,7 +266,7 @@ impl<'a> Translation<'a> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2)),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index,  s_psi));
+                self.edges.push((vertex_index, s_psi));
             }
         }
     }
