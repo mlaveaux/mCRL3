@@ -4,3 +4,13 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "monthly"
+    allow:
+      - update-types: version-update:semver-major
+    groups:
+      - name: "crate-dependencies"
+        patterns:
+          - "*"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
