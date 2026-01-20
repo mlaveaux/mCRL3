@@ -4,7 +4,6 @@ use merc_collections::ByteCompressedVec;
 use merc_collections::bytevec;
 
 use crate::PG;
-use crate::ParityGame;
 use crate::VertexIndex;
 
 /// Stores the predecessors for a given parity game.
@@ -15,7 +14,7 @@ pub struct Predecessors {
 
 impl Predecessors {
     /// Creates the predecessors structure for the given parity game.
-    pub fn new(game: &ParityGame) -> Self {
+    pub fn new(game: &impl PG) -> Self {
         let mut edges_from = bytevec![VertexIndex::new(0); game.num_of_edges()];
         let mut state2incoming = bytevec![0; game.num_of_vertices()];
 

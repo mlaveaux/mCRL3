@@ -181,17 +181,6 @@ impl ParityGame {
         }
     }
 
-    /// Returns true iff the parity game is total, checks all vertices have at least one outgoing edge.
-    pub fn is_total(&self) -> bool {
-        for v in self.iter_vertices() {
-            if self.outgoing_edges(v).next().is_none() {
-                return false;
-            }
-        }
-
-        true
-    }
-
     /// Returns the vertices array.
     pub(crate) fn vertices(&self) -> &Vec<usize> {
         &self.vertices
@@ -244,6 +233,16 @@ impl PG for ParityGame {
     fn priority(&self, vertex: VertexIndex) -> Priority {
         self.priority[*vertex]
     }
+
+    fn is_total(&self) -> bool {
+        for v in self.iter_vertices() {
+            if self.outgoing_edges(v).next().is_none() {
+                return false;
+            }
+        }
+
+        true
+    }    
 }
 
 impl fmt::Debug for ParityGame {
@@ -294,13 +293,16 @@ pub trait PG {
 
     /// Returns the priority of the given vertex.
     fn priority(&self, vertex: VertexIndex) -> Priority;
+
+    /// Returns true iff the parity game is total, checks all vertices have at least one outgoing edge.
+    fn is_total(&self) -> bool;
 }
 
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
 
-    use crate::random_parity_game;
+    use crate::{PG, random_parity_game};
 
     #[test]
     fn test_random_parity_game_make_total() {

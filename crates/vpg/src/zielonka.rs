@@ -15,7 +15,6 @@ use itertools::Itertools;
 use log::debug;
 use log::trace;
 
-use crate::ParityGame;
 use crate::Player;
 use crate::Predecessors;
 use crate::Priority;
@@ -28,7 +27,7 @@ use crate::PG;
 pub type Set = BitVec<usize, Lsb0>;
 
 /// Solves the given parity game using the Zielonka algorithm.
-pub fn solve_zielonka(game: &ParityGame) -> ([Set; 2], [Strategy; 2]) {
+pub fn solve_zielonka(game: &impl PG) -> ([Set; 2], [Strategy; 2]) {
     debug_assert!(game.is_total(), "Zielonka solver requires a total parity game");
 
     // Initial set of vertices V = all vertices
@@ -43,13 +42,13 @@ pub fn solve_zielonka(game: &ParityGame) -> ([Set; 2], [Strategy; 2]) {
     // Check that the result is a valid partition
     debug!("Performed {} recursive calls", zielonka.recursive_calls);
     if cfg!(debug_assertions) {
-        zielonka.check_partition(&W0, &W1, &full_V);
+        check_partition(&W0, &W1, &full_V);
     }
     ([W0, W1], [S0, S1])
 }
 
-struct ZielonkaSolver<'a> {
-    game: &'a ParityGame,
+struct ZielonkaSolver<'a, G: PG> {
+    game: &'a G,
 
     /// Reused temporary queue for attractor computation.
     temp_queue: Vec<VertexIndex>,
@@ -64,9 +63,9 @@ struct ZielonkaSolver<'a> {
     recursive_calls: usize,
 }
 
-impl ZielonkaSolver<'_> {
+impl<G: PG> ZielonkaSolver<'_, G> {
     /// Creates a new Zielonka solver for the given parity game.
-    fn new<'a>(game: &'a ParityGame) -> ZielonkaSolver<'a> {
+    fn new<'a>(game: &'a G) -> ZielonkaSolver<'a, G> {
         // Keep track of the vertices for each priority
         let mut priority_vertices = Vec::new();
 
@@ -148,7 +147,7 @@ impl ZielonkaSolver<'_> {
             W2_not_alpha |= B;
             // Combine the strategy from the attractor with the recursive strategy
             S2_not_alpha = S2_not_alpha.combine(B_strategy);
-            self.check_partition(&W2_alpha, &W2_not_alpha, &full_V);
+            check_partition(&W2_alpha, &W2_not_alpha, &full_V);
             combine_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
         }
     }
@@ -206,25 +205,25 @@ impl ZielonkaSolver<'_> {
 
         (Priority::new(highest), Priority::new(lowest))
     }
+}
 
-    /// Checks that the given solutions are a valid partition of the vertices in V
-    fn check_partition(&self, W0: &Set, W1: &Set, V: &Set) {
-        let intersection = W0.clone() & W1;
-        if intersection.any() {
-            panic!(
-                "The winning sets are not disjoint. Vertices in both sets: {}",
-                intersection
-            );
-        }
+/// Checks that the given solutions are a valid partition of the vertices in V
+pub fn check_partition(W0: &Set, W1: &Set, V: &Set) {
+    let intersection = W0.clone() & W1;
+    if intersection.any() {
+        panic!(
+            "The winning sets are not disjoint. Vertices in both sets: {}",
+            intersection
+        );
+    }
 
-        let both = W0.clone() | W1;
-        if both != *V {
-            let missing = V.clone() & !both;
-            panic!(
-                "The winning sets do not cover all vertices. Missing vertices: {}",
-                missing
-            );
-        }
+    let both = W0.clone() | W1;
+    if both != *V {
+        let missing = V.clone() & !both;
+        panic!(
+            "The winning sets do not cover all vertices. Missing vertices: {}",
+            missing
+        );
     }
 }
 
