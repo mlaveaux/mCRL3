@@ -2,14 +2,14 @@
 
 use log::debug;
 use log::trace;
+
+use merc_collections::BlockIndex;
+use merc_collections::IndexedPartition;
 use merc_io::LargeFormatter;
 use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
 
-use crate::BlockIndex;
-use crate::IndexedPartition;
-use crate::Partition;
 use crate::sort_topological;
 
 /// Computes the strongly connected tau component partitioning of the given LTS.
@@ -157,7 +157,7 @@ fn strongly_connect<F>(
             info.on_stack = false;
 
             trace!("Added state {index} to block {next_block_number}");
-            partition.set_block(index, *next_block_number);
+            partition.set_block(*index, *next_block_number);
 
             if index == state_index || stack.is_empty() {
                 *next_block_number = BlockIndex::new(next_block_number.value() + 1);

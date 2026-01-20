@@ -4,13 +4,13 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 
+use merc_collections::BlockIndex;
 use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
 use rustc_hash::FxHashSet;
 
-use crate::BlockIndex;
 use crate::Partition;
 use crate::quotient_lts_naive;
 use super::BlockPartition;
@@ -298,6 +298,13 @@ pub fn weak_bisim_signature_sorted_taus(
 /// Perform the preprocessing necessary for branching bisimulation with the
 /// sorted signature [branching_bisim_signature_sorted] and
 /// [branching_bisim_signature_inductive].
+/// 
+/// # Details
+/// 
+/// Computes the tau-SCC decomposition of the LTS, quotients the LTS modulo the
+/// tau-SCCs, and then sorts the states according to a reverse topological order
+/// of the tau transitions, i.e., if there is a tau-transition from state s to
+/// state t, then t appears before s in the ordering.
 pub fn preprocess_branching<L: LTS>(lts: L) -> LabelledTransitionSystem<L::Label> {
     let scc_partition = tau_scc_decomposition(&lts);
     let tau_loop_free_lts = quotient_lts_naive(&lts, &scc_partition, true);

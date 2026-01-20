@@ -3,11 +3,11 @@
 use std::fmt;
 
 use itertools::Itertools;
-
 use log::trace;
+
+use merc_collections::BlockIndex;
 use merc_lts::StateIndex;
 
-use crate::BlockIndex;
 use crate::Partition;
 
 /// A partition that explicitly stores a list of blocks and their indexing into

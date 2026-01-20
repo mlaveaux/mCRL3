@@ -14,11 +14,11 @@ use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
 use merc_utilities::Timing;
+use merc_collections::BlockIndex;
+use merc_collections::IndexedPartition;
 
-use crate::BlockIndex;
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
-use crate::IndexedPartition;
 use crate::Partition;
 use crate::Signature;
 use crate::SignatureBuilder;
@@ -442,7 +442,7 @@ where
                 state_to_signature[state_index] = Signature::new(slice);
             }
 
-            next_partition.set_block(state_index, new_id);
+            next_partition.set_block(*state_index, new_id);
         }
 
         iteration += 1;
@@ -502,7 +502,7 @@ where
 
     for (block_index, signature) in block_to_signature
         .iter()
-        .map(|signature| signature.as_ref().unwrap())
+        .map(|signature: &Option<SignatureBuilder>| signature.as_ref().expect("Signature should be defined"))
         .enumerate()
     {
         if let Some(other_block_index) = signature_to_block.get(&Signature::new(signature)) {
