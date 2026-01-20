@@ -25,8 +25,29 @@ use crate::reduce_lts;
 type BitArray = BitVec<u64, Lsb0>;
 
 /// Apply weak bisimulation reduction
+///
+/// # Details
+///
+/// The `preprocess` flag indicates whether to preprocess the LTS using
+/// branching bisimulation.
 pub fn weak_bisimulation<L: LTS>(
     lts: L,
+    preprocess: bool,
+    timing: &mut Timing,
+) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
+    // Preprocess the LTS if desired.
+    if preprocess {
+        let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
+        weak_bisimulation_impl(lts, Variant::Parallel, timing)
+    } else {
+        weak_bisimulation_impl(lts, Variant::Parallel, timing)
+    }
+}
+
+/// Core weak bisimulation algorithm implementation.
+fn weak_bisimulation_impl<L: LTS>(
+    lts: L,
+    variant: Variant,
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
     let mut time_pre = timing.start("preprocessing");
