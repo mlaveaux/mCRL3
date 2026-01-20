@@ -13,9 +13,9 @@ use merc_lts::StateIndex;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
-use merc_utilities::Timing;
 use merc_collections::BlockIndex;
 use merc_collections::IndexedPartition;
+use merc_utilities::Timing;
 
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;

@@ -123,12 +123,7 @@ impl MultiAction {
                 let arguments = action
                     .arguments()
                     .iter()
-                    .map(|arg| {
-                        (
-                            arg.to_string(),
-                            "".to_string(),
-                        )
-                    })
+                    .map(|arg| (arg.to_string(), "".to_string()))
                     .collect();
 
                 actions.insert(Action {

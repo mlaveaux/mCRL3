@@ -11,11 +11,11 @@ use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
 use rustc_hash::FxHashSet;
 
-use crate::Partition;
-use crate::quotient_lts_naive;
 use super::BlockPartition;
 use super::sort_topological;
 use super::tau_scc_decomposition;
+use crate::Partition;
+use crate::quotient_lts_naive;
 
 /// The builder used to construct the signature.
 pub type SignatureBuilder = Vec<(LabelIndex, BlockIndex)>;
@@ -298,9 +298,9 @@ pub fn weak_bisim_signature_sorted_taus(
 /// Perform the preprocessing necessary for branching bisimulation with the
 /// sorted signature [branching_bisim_signature_sorted] and
 /// [branching_bisim_signature_inductive].
-/// 
+///
 /// # Details
-/// 
+///
 /// Computes the tau-SCC decomposition of the LTS, quotients the LTS modulo the
 /// tau-SCCs, and then sorts the states according to a reverse topological order
 /// of the tau transitions, i.e., if there is a tau-transition from state s to

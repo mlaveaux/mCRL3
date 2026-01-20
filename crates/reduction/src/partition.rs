@@ -1,7 +1,6 @@
-use merc_collections::{BlockIndex, IndexedPartition};
+use merc_collections::BlockIndex;
+use merc_collections::IndexedPartition;
 use merc_lts::StateIndex;
-
-
 
 /// A trait for partition refinement algorithms that expose the block number for
 /// every state. Can be used to compute the quotient labelled transition system.

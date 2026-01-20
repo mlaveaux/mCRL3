@@ -74,7 +74,7 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
             "des ({}, {}, {})",
             initial_state, self.number_of_transitions, self.number_of_states
         )?;
-        
+
         // Flush the updated header
         self.writer.flush()?;
         Ok(())
@@ -89,7 +89,6 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
     fn num_of_states(&self) -> usize {
         self.number_of_states
     }
-
 }
 
 #[cfg(test)]
@@ -117,7 +116,9 @@ mod tests {
                 // Write all the transitions to the stream.
                 for state_index in lts.iter_states() {
                     for transition in lts.outgoing_transitions(state_index) {
-                        stream.add_transition(state_index, &lts.labels()[transition.label.value()], transition.to).unwrap();
+                        stream
+                            .add_transition(state_index, &lts.labels()[transition.label.value()], transition.to)
+                            .unwrap();
                     }
                 }
 

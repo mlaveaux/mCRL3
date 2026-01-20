@@ -2,11 +2,11 @@
 
 use rand::Rng;
 
-use crate::product_lts;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilderFast;
 use crate::StateIndex;
 use crate::TransitionLabel;
+use crate::product_lts;
 
 /// Generates a random LTS with the desired number of states, labels and out
 /// degree by composing three smaller random LTSs using the synchronous product.
@@ -23,7 +23,9 @@ pub fn random_lts(
         .collect();
 
     // Synchronize on some of the labels.
-    let synchronized_labels: Vec<String> = (1..num_of_labels.min(3)).map(|i| String::from_index(i as usize)).collect();
+    let synchronized_labels: Vec<String> = (1..num_of_labels.min(3))
+        .map(|i| String::from_index(i as usize))
+        .collect();
 
     components
         .into_iter()

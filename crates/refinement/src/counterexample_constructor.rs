@@ -1,4 +1,5 @@
-use std::{collections::VecDeque, fmt};
+use std::collections::VecDeque;
+use std::fmt;
 
 use merc_lts::LabelIndex;
 use merc_utilities::TagIndex;
@@ -10,9 +11,9 @@ pub struct CounterTag {}
 pub type CounterIndex = TagIndex<usize, CounterTag>;
 
 /// A generic trait for counterexample tree structures.
-/// 
+///
 /// # Details
-/// 
+///
 /// This is useful such that we can both provide a concrete implementation that
 /// constructs a counterexample tree, but also a placeholder implementation that
 /// does nothing when no counterexample is needed.
@@ -29,7 +30,7 @@ pub trait CounterExampleTree {
 /// A class that can be used to store a counter example tree from which a
 /// counter example trace can be extracted.
 pub struct CounterExampleConstructor {
-    /// The backward tree is stored in a deque. 
+    /// The backward tree is stored in a deque.
     backward_tree: VecDeque<(LabelIndex, CounterIndex)>,
 }
 
@@ -66,17 +67,17 @@ impl fmt::Debug for CounterExampleConstructor {
     }
 }
 
-impl CounterExampleTree for CounterExampleConstructor { 
+impl CounterExampleTree for CounterExampleConstructor {
     type Index = CounterIndex;
 
     fn add_edge(&mut self, label: LabelIndex, to: Self::Index) -> Self::Index {
         self.backward_tree.push_back((label, to));
         TagIndex::new(self.backward_tree.len() - 1)
     }
-    
+
     fn root_index(&self) -> Self::Index {
         TagIndex::new(0)
-    }   
+    }
 }
 
 impl Default for CounterExampleConstructor {
@@ -91,6 +92,6 @@ impl CounterExampleTree for () {
     fn add_edge(&mut self, _label: LabelIndex, _to: Self::Index) -> Self::Index {
         // Do nothing
     }
-        
+
     fn root_index(&self) -> Self::Index {}
 }

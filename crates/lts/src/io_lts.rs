@@ -25,8 +25,8 @@ use merc_utilities::MercError;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
-use crate::LtsBuilderMem;
 use crate::LtsBuilder;
+use crate::LtsBuilderMem;
 use crate::MultiAction;
 use crate::StateIndex;
 

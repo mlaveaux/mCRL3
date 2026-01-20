@@ -1,6 +1,3 @@
-use std::fmt;
-use std::ops::Deref;
-
 use merc_utilities::MercIndex;
 
 /// A general trait for graph structures.

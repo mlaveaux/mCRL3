@@ -49,7 +49,7 @@ pub trait LtsBuilder<L: TransitionLabel> {
 /// transitions in a memory efficient way.
 ///
 /// # Details
-/// 
+///
 /// Transitions can be added with `add_transition`, and once all transitions
 /// have been added, the labelled transition system can be constructed with
 /// `finish`. An initial state can also be specified during finalization.
@@ -176,7 +176,6 @@ impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderMem<L> {
     fn num_of_states(&self) -> usize {
         self.num_of_states
     }
-
 }
 
 impl<Label: TransitionLabel> fmt::Debug for LtsBuilderMem<Label> {

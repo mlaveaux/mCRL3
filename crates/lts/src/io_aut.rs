@@ -17,8 +17,8 @@ use merc_utilities::debug_trace;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
-use crate::LtsBuilderMem;
 use crate::LtsBuilder;
+use crate::LtsBuilderMem;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
