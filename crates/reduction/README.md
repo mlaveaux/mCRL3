@@ -32,7 +32,7 @@ let lts = read_aut(b"des(0, 6, 7)
 
 let mut timings = Timing::new();
 assert_eq!(lts.num_of_states(), 7); // The original has 7 states
-let reduced = reduce_lts(lts, Equivalence::StrongBisim, &mut timings);
+let reduced = reduce_lts(lts, Equivalence::StrongBisim, false, &mut timings);
 assert_eq!(reduced.num_of_states(), 3);
 ```
 
