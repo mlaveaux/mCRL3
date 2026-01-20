@@ -42,6 +42,11 @@ assert!(counter_example.is_none());
 
 ### Current
 
+Added various refinement algorithms, which can return counter examples when the
+refinement does not hold. These counter examples can be various shapes, but can
+also be translated to modal mu-calculus formulas. In the future we could also
+support translations to other formalisms, such as LTL and CTL when applicable.
+
 Added the `clap` feature to conditionally enable the `clap` dependency to derive
 some convenience traits.
 

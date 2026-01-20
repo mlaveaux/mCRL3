@@ -38,6 +38,16 @@ let solution = solve_zielonka(&parity_game);
 
 ### Current
 
+Added strategy computations to the regular Zielonka solver, which can also be
+checked for correctness using the `verify_solution` function.
+
+Extended the translation of modal equation systems to deal with regular formulas
+and various edge cases.
+
+Added translation for modal mu-calculus formulas and labelled transition systems
+to regular parity games, was only implemented for feature transition systems and
+variability parity games.
+
 Added the `clap` feature to conditionally enable the `clap` dependency to derive
 some convenience traits.
 

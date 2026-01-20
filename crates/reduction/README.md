@@ -40,6 +40,10 @@ assert_eq!(reduced.num_of_states(), 3);
 
 ### Current
 
+Added various weak bisimulation algorithms, both using signatures and
+Kanellakis-Smolka inspired ones, which can now also use branching bisimulation
+as a preprocessing step.
+
 Added the `clap` feature to conditionally enable the `clap` dependency to derive
 some convenience traits.
 
