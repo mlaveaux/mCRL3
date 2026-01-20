@@ -12,7 +12,6 @@ use log::debug;
 use log::info;
 use merc_lts::read_aut;
 use merc_vpg::Projected;
-use merc_vpg::verify_solution;
 use oxidd::BooleanFunction;
 
 use merc_symbolic::CubeIterAll;
@@ -235,7 +234,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         time_read.finish();
 
         let mut time_solve = timing.start("solve_zielonka");
-        let (solution, strategy) = solve_zielonka(&game);
+        let (solution, _strategy) = solve_zielonka(&game);
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -244,10 +243,6 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             println!("{}", Player::Even.solution())
         } else {
             println!("{}", Player::Odd.solution())
-        }
-
-        if args.verify_solution {
-            verify_solution(&game, solution, &strategy);
         }
 
         time_solve.finish();

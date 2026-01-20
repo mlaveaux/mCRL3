@@ -240,7 +240,7 @@ impl PG for ParityGame {
     }
 
     fn is_total(&self) -> bool {
-        /// The parity game is total if every vertex has at least one outgoing edge.
+        // The parity game is total if every vertex has at least one outgoing edge.
         self.iter_vertices().all(|v| self.outgoing_edges(v).next().is_some())
     }
 }

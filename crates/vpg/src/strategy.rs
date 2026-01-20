@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::PG;
 use crate::Player;
 use crate::VertexIndex;
+use crate::PG;
 
 /// Keeps track of a strategy for a player in a parity game.
 ///
@@ -51,16 +51,14 @@ impl Strategy {
     /// given player.
     pub fn check_consistent(&self, pg: &impl PG, player: Player) {
         for vertex in pg.iter_vertices() {
-            if let Some(_) = self.get(vertex) {
-                if pg.owner(vertex) != player {
-                    panic!(
-                        "Strategy is defined for vertex {:?} owned by {:?}, \
-                         but should only be defined for vertices owned by {:?}",
-                        vertex,
-                        pg.owner(vertex),
-                        player
-                    );
-                }
+            if self.get(vertex).is_some() && pg.owner(vertex) != player {
+                panic!(
+                    "Strategy is defined for vertex {:?} owned by {:?}, \
+                        but should only be defined for vertices owned by {:?}",
+                    vertex,
+                    pg.owner(vertex),
+                    player
+                );
             }
         }
     }

@@ -9,6 +9,7 @@ use bitvec::order::Lsb0;
 use bitvec::vec::BitVec;
 use log::info;
 use log::trace;
+use merc_collections::BlockIndex;
 use merc_io::TimeProgress;
 use merc_lts::IncomingTransitions;
 use merc_lts::LTS;
@@ -38,16 +39,15 @@ pub fn weak_bisimulation<L: LTS>(
     // Preprocess the LTS if desired.
     if preprocess {
         let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
-        weak_bisimulation_impl(lts, Variant::Parallel, timing)
+        weak_bisimulation_impl(lts, timing)
     } else {
-        weak_bisimulation_impl(lts, Variant::Parallel, timing)
+        weak_bisimulation_impl(lts, timing)
     }
 }
 
 /// Core weak bisimulation algorithm implementation.
 fn weak_bisimulation_impl<L: LTS>(
     lts: L,
-    variant: Variant,
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
     let mut time_pre = timing.start("preprocessing");
@@ -187,8 +187,8 @@ mod tests {
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
-            let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, &mut timing);
-            let expected = reduce_lts(lts, Equivalence::WeakBisimSigref, &mut timing);
+            let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &mut timing);
+            let expected = reduce_lts(lts, Equivalence::WeakBisimSigref, false, &mut timing);
 
             assert_eq!(result.num_of_states(), expected.num_of_states());
             assert_eq!(result.num_of_transitions(), expected.num_of_transitions());
@@ -196,7 +196,7 @@ mod tests {
             files.dump("reduced.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
-            assert!(compare_lts(Equivalence::StrongBisim, result, expected, &mut timing));
+            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &mut timing));
         })
     }
 }
