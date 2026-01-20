@@ -59,34 +59,40 @@ enum Commands {
     Convert(ConvertArgs),
 }
 
+/// Print information related to the given symbolic LTS
 #[derive(clap::Args, Debug)]
-#[command(about = "Prints information related to the given symbolic LTS")]
+#[command()]
 struct InfoArgs {
     filename: PathBuf,
 }
 
+/// Explore the given symbolic LTS
 #[derive(clap::Args, Debug)]
-#[command(about = "Explores the given symbolic LTS")]
+#[command()]
 struct ExploreArgs {
     filename: PathBuf,
 
     format: Option<SymFormat>,
 }
 
+/// Compute a reordering for a dependency graph given by lpsreach or pbessolvesymbolic
 #[derive(clap::Args, Debug)]
-#[command(about = "Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic")]
+#[command()]
 struct ReorderArgs {
-    #[arg(long, help = "Path to the mCRL2 tools (lpsreach or pbessolvesymbolic)")]
+    /// Path to the mCRL2 tools (lpsreach or pbessolvesymbolic).
+    #[arg(long)]
     mcrl2_tool_path: Option<PathBuf>,
 
     /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
 }
 
+/// Convert a symbolic LTS to a concrete LTS
 #[derive(clap::Args, Debug)]
-#[command(about = "Converts a symbolic LTS to a concrete LTS")]
+#[command()]
 struct ConvertArgs {
-    #[arg(long, help = "Sets the output LTS format.")]
+    /// Set the output LTS format
+    #[arg(long)]
     format: Option<LtsFormat>,
 
     /// The input symbolic LTS file path.

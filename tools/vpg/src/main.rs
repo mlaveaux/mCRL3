@@ -1,5 +1,5 @@
-use std::fs::File;
 use std::fs::read_to_string;
+use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
@@ -11,30 +11,23 @@ use itertools::Itertools;
 use log::debug;
 use log::info;
 use merc_lts::read_aut;
+use merc_vpg::verify_solution;
 use merc_vpg::Projected;
 use oxidd::BooleanFunction;
 
-use merc_tools::format_key_values_json;
-use merc_vpg::make_vpg_total;
-use merc_vpg::translate_vpg;
-use merc_vpg::verify_variability_product_zielonka_solution;
 use merc_symbolic::CubeIterAll;
 use merc_symbolic::FormatConfig;
 use merc_syntax::UntypedStateFrmSpec;
+use merc_tools::format_key_values_json;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use merc_vpg::FeatureDiagram;
-use merc_vpg::ParityGameFormat;
-use merc_vpg::PgDot;
-use merc_vpg::Player;
-use merc_vpg::VpgDot;
-use merc_vpg::ZielonkaVariant;
 use merc_vpg::compute_reachable;
 use merc_vpg::guess_format_from_extension;
+use merc_vpg::make_vpg_total;
 use merc_vpg::project_variability_parity_games_iter;
 use merc_vpg::read_fts;
 use merc_vpg::read_pg;
@@ -43,10 +36,19 @@ use merc_vpg::solve_variability_product_zielonka;
 use merc_vpg::solve_variability_zielonka;
 use merc_vpg::solve_zielonka;
 use merc_vpg::translate;
+use merc_vpg::translate_vpg;
+use merc_vpg::verify_variability_product_zielonka_solution;
 use merc_vpg::write_pg;
 use merc_vpg::write_vpg;
+use merc_vpg::FeatureDiagram;
+use merc_vpg::ParityGameFormat;
+use merc_vpg::PgDot;
+use merc_vpg::Player;
+use merc_vpg::VpgDot;
+use merc_vpg::ZielonkaVariant;
 
-/// Default node capacity for the Oxidd decision diagram manager.
+/// Default node capacity for the Oxidd decision diagram manager. The choice
+/// for this value is fairly arbitrary.
 const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
 
 #[derive(clap::Parser, Debug)]
@@ -87,20 +89,20 @@ enum Commands {
     Display(DisplayArgs),
 }
 
-/// Arguments for solving a parity game
+/// Solve a parity game
 #[derive(clap::Args, Debug)]
 struct SolveArgs {
     filename: String,
 
-    /// The parity game file format
+    /// The input parity game file format
     #[arg(long)]
     format: Option<ParityGameFormat>,
 
-    /// For variability parity games there are several ways for solving.
+    /// Sets the solving variant used for variability parity games
     #[arg(long)]
     solve_variant: Option<ZielonkaVariant>,
 
-    /// Whether to output the solution for every single vertex, not just in the initial vertex.
+    /// Output the solution for every single vertex instead of only the initial vertex.
     #[arg(long, default_value_t = false)]
     full_solution: bool,
 
@@ -109,7 +111,7 @@ struct SolveArgs {
     verify_solution: bool,
 }
 
-/// Arguments for computing the reachable part of a parity game
+/// Compute the reachable part of a parity game
 #[derive(clap::Args, Debug)]
 struct ReachableArgs {
     filename: String,
@@ -120,7 +122,7 @@ struct ReachableArgs {
     format: Option<ParityGameFormat>,
 }
 
-/// Arguments for projecting a variability parity game
+/// Project a variability parity game to a set of parity games
 #[derive(clap::Args, Debug)]
 struct ProjectArgs {
     filename: String,
@@ -135,7 +137,7 @@ struct ProjectArgs {
     format: Option<ParityGameFormat>,
 }
 
-/// Arguments for translating a labelled transition system and a modal formula into a parity game
+/// Translate a labelled transition system and a modal formula into a parity game
 #[derive(clap::Args, Debug)]
 struct TranslateArgs {
     /// The filename of the labelled transition system
@@ -148,7 +150,7 @@ struct TranslateArgs {
     output: String,
 }
 
-/// Arguments for translating a feature transition system and a modal formula into a variability parity game
+/// Translate a feature transition system and a modal formula into a variability parity game
 #[derive(clap::Args, Debug)]
 struct TranslateVpgArgs {
     /// The filename of the feature diagram
@@ -164,7 +166,7 @@ struct TranslateVpgArgs {
     output: String,
 }
 
-/// Arguments for displaying a (variability) parity game
+/// Display a (variability) parity game
 #[derive(clap::Args, Debug)]
 struct DisplayArgs {
     filename: String,
@@ -223,7 +225,8 @@ fn main() -> Result<ExitCode, MercError> {
 fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
     let mut file = File::open(path)?;
-    let format = guess_format_from_extension(path, args.format).ok_or("Unknown parity game file format.")?;
+    let format = guess_format_from_extension(path, args.format)
+        .ok_or_else(|| format!("Unknown parity game file format for '{}", path.display()))?;
 
     if format == ParityGameFormat::PG {
         // Read and solve a standard parity game.
@@ -232,7 +235,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         time_read.finish();
 
         let mut time_solve = timing.start("solve_zielonka");
-        let (solution, _strategy) = solve_zielonka(&game);
+        let (solution, strategy) = solve_zielonka(&game);
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -241,6 +244,10 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             println!("{}", Player::Even.solution())
         } else {
             println!("{}", Player::Odd.solution())
+        }
+
+        if args.verify_solution {
+            verify_solution(&game, solution, &strategy);
         }
 
         time_solve.finish();
@@ -325,10 +332,10 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 /// Also logs the vertex index mapping to aid inspection.
 fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
+    let format = guess_format_from_extension(path, args.format)
+        .ok_or_else(|| format!("Unknown parity game file format for '{}", path.display()))?;
+
     let mut file = File::open(path)?;
-
-    let format = guess_format_from_extension(path, args.format).ok_or("Unknown parity game file format.")?;
-
     match format {
         ParityGameFormat::PG => {
             let mut time_read = timing.start("read_pg");
@@ -377,9 +384,10 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
 /// Compute all the projects of a variability parity game and write them to output.
 fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
-    let mut file = File::open(path)?;
-    let format = guess_format_from_extension(path, args.format).ok_or("Unknown parity game file format.")?;
+    let format = guess_format_from_extension(path, args.format)
+        .ok_or_else(|| format!("Unknown parity game file format for '{}'.", path.display()))?;
 
+    let mut file = File::open(path)?;
     if format != ParityGameFormat::VPG {
         return Err(MercError::from(
             "The project command only works for variability parity games.",
@@ -432,7 +440,6 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
 /// Translates a feature diagram, a feature transition system (FTS), and a modal
 /// formula into a variability parity game.
 fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
-
     // Read LTS
     let mut lts_file = File::open(&args.labelled_transition_system).map_err(|e| {
         MercError::from(format!(
@@ -440,7 +447,6 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
             &args.labelled_transition_system, e
         ))
     })?;
-
 
     let lts = read_aut(&mut lts_file, Vec::new())?;
 
@@ -459,17 +465,13 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
         return Err(MercError::from("The formula must not contain a data specification."));
     }
 
-    let vpg = translate(
-        &lts,
-        &formula_spec.formula,
-    )?;
+    let vpg = translate(&lts, &formula_spec.formula)?;
 
     let mut output_file = File::create(&args.output)?;
     write_pg(&mut output_file, &vpg)?;
 
     Ok(())
 }
-
 
 /// Handle the `translate_vpg` subcommand.
 ///
@@ -534,7 +536,8 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
 fn handle_display(cli: &Cli, args: &DisplayArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
     let mut file = File::open(path)?;
-    let format = guess_format_from_extension(path, args.format).ok_or("Unknown parity game file format.")?;
+    let format = guess_format_from_extension(path, args.format)
+        .ok_or_else(|| format!("Unknown parity game file format for '{}'.", path.display()))?;
 
     if format == ParityGameFormat::PG {
         // Read and display a standard parity game.

@@ -241,6 +241,7 @@ impl PG for VariabilityParityGame {
             fn owner(&self, vertex: VertexIndex) -> Player;
             fn priority(&self, vertex: VertexIndex) -> Priority;
             fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_;
+            fn is_total(&self) -> bool;
         }
     }
 }
