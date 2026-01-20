@@ -2,10 +2,13 @@
 
 use std::fmt;
 
-use merc_lts::StateIndex;
+use merc_utilities::TagIndex;
 
-use crate::BlockIndex;
-use crate::Partition;
+/// A zero sized tag for the block.
+pub struct BlockTag {}
+
+/// The index for blocks.
+pub type BlockIndex = TagIndex<usize, BlockTag>;
 
 /// Defines a partition based on an explicit indexing of elements to their block
 /// number.
@@ -39,25 +42,32 @@ impl IndexedPartition {
     }
 
     /// Sets the block number of the given element
-    pub fn set_block(&mut self, element_index: StateIndex, block_number: BlockIndex) {
+    pub fn set_block(&mut self, element_index: usize, block_number: BlockIndex) {
         // TODO: This assumes that the blocks are dense, otherwise it overestimates the number of blocks.
         self.num_of_blocks = self.num_of_blocks.max(block_number.value() + 1);
 
         self.partition[element_index] = block_number;
     }
-}
 
-/// Combines two partitions into a new partition.
-pub fn combine_partition(left: IndexedPartition, right: &impl Partition) -> IndexedPartition {
-    let mut combined_partition = IndexedPartition::new(left.partition.len());
-
-    for (element_index, block) in left.partition.iter().enumerate() {
-        let new_block = right.block_number(StateIndex::new(block.value()));
-
-        combined_partition.set_block(StateIndex::new(element_index), new_block);
+    /// Returns the number of blocks in the partition.
+    pub fn len(&self) -> usize {
+        self.partition.len()
     }
 
-    combined_partition
+    /// Returns whether the partition is empty.
+    pub fn is_empty(&self) -> bool {
+        self.partition.is_empty()
+    }
+
+    /// Returns the number of blocks in the partition.
+    pub fn num_of_blocks(&self) -> usize {
+        self.num_of_blocks
+    }
+
+    /// Returns the underlying partition vector.
+    pub fn partition(&self) -> &Vec<BlockIndex> {
+        &self.partition
+    }
 }
 
 /// Reorders the blocks of the given partition according to the given permutation.
@@ -65,10 +75,10 @@ pub fn reorder_partition<P>(partition: IndexedPartition, permutation: P) -> Inde
 where
     P: Fn(BlockIndex) -> BlockIndex,
 {
-    let mut new_partition = IndexedPartition::new(partition.len());
+    let mut new_partition = IndexedPartition::new(partition.partition.len());
 
     for (element_index, block) in partition.iter().enumerate() {
-        new_partition.set_block(StateIndex::new(element_index), permutation(block));
+        new_partition.set_block(element_index, permutation(block));
     }
 
     new_partition
@@ -105,19 +115,5 @@ impl fmt::Display for IndexedPartition {
         }
 
         write!(f, " }}")
-    }
-}
-
-impl Partition for IndexedPartition {
-    fn block_number(&self, state_index: StateIndex) -> BlockIndex {
-        self.partition[state_index.value()]
-    }
-
-    fn num_of_blocks(&self) -> usize {
-        self.num_of_blocks
-    }
-
-    fn len(&self) -> usize {
-        self.partition.len()
     }
 }

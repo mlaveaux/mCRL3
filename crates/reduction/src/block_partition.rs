@@ -4,11 +4,11 @@ use std::fmt;
 
 use itertools::Itertools;
 
+use merc_collections::BlockIndex;
 use merc_lts::IncomingTransitions;
 use merc_lts::StateIndex;
 
 use super::Partition;
-use crate::BlockIndex;
 
 /// A partition that explicitly stores a list of blocks and their indexing into
 /// the list of elements.

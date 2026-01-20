@@ -27,10 +27,10 @@ pub enum Equivalence {
 }
 
 /// Reduces the given LTS modulo the given equivalence using signature refinement
-pub fn reduce_lts<L: LTS>(lts: L, equivalence: Equivalence, timing: &mut Timing) -> LabelledTransitionSystem<L::Label> {
+pub fn reduce_lts<L: LTS>(lts: L, equivalence: Equivalence, preprocess: bool, timing: &mut Timing) -> LabelledTransitionSystem<L::Label> {
     let (result, mut timer) = match equivalence {
         Equivalence::WeakBisim => {
-            let (lts, partition) = weak_bisimulation(lts, timing);
+            let (lts, partition) = weak_bisimulation(lts, preprocess, timing);
             let quotient_time = timing.start("quotient");
             (quotient_lts_naive(&lts, &partition, true), quotient_time)
         }

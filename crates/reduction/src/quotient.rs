@@ -1,39 +1,13 @@
 #![forbid(unsafe_code)]
 
+use merc_collections::BlockIndex;
 use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
-use merc_utilities::TagIndex;
 
 use crate::BlockPartition;
-
-/// A zero sized tag for the block.
-pub struct BlockTag {}
-
-/// The index for blocks.
-pub type BlockIndex = TagIndex<usize, BlockTag>;
-
-/// A trait for partition refinement algorithms that expose the block number for
-/// every state. Can be used to compute the quotient labelled transition system.
-///
-/// The invariants are that the union of all blocks is the original set, and
-/// that each block contains distinct elements
-pub trait Partition {
-    /// Returns the block number for the given state.
-    fn block_number(&self, state_index: StateIndex) -> BlockIndex;
-
-    /// Returns the number of blocks in the partition.
-    fn num_of_blocks(&self) -> usize;
-
-    /// Returns the number of elements in the partition.
-    fn len(&self) -> usize;
-
-    /// Returns whether the partition is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
+use crate::Partition;
 
 /// Returns a new LTS based on the given partition.
 ///

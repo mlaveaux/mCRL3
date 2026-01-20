@@ -13,7 +13,7 @@ use crate::weak_bisim_sigref_naive;
 use crate::weak_bisimulation;
 
 // Compare two LTSs for equivalence using the given algorithm.
-pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, timing: &mut Timing) -> bool {
+pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preprocess: bool, timing: &mut Timing) -> bool {
     let mut time_merge = timing.start("merge lts");
     let (merged, rhs_initial) = left.merge_disjoint(&right);
     drop(right); // No longer needed.
@@ -22,7 +22,7 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, timing: 
     // Reduce the merged LTS modulo the given equivalence and return the partition
     match equivalence {
         Equivalence::WeakBisim => {
-            let (lts, partition) = weak_bisimulation(merged, timing);
+            let (lts, partition) = weak_bisimulation(merged, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigref => {
