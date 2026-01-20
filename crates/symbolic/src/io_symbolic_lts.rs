@@ -77,7 +77,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
             let value = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
             debug!("  {i}:  {:?}", value);
             values.push(value);
-        }        
+        }
 
         parameter_values.push(values);
     }
@@ -124,7 +124,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
         initial_state,
         summand_groups,
         action_labels,
-        parameter_values
+        parameter_values,
     ))
 }
 

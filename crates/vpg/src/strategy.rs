@@ -1,13 +1,13 @@
 use std::{collections::HashMap, fmt};
 
-use crate::VertexIndex;
+use crate::{PG, Player, VertexIndex};
 
 /// Keeps track of a strategy for a player in a parity game.
-/// 
+///
 /// # Details
-/// 
+///
 /// A strategy is a partial function from vertices owned by a player to one of
-/// their successors. 
+/// their successors.
 pub struct Strategy {
     mapping: HashMap<VertexIndex, VertexIndex>,
 }
@@ -39,10 +39,27 @@ impl Strategy {
         self
     }
 
-
     /// Returns an iterator over all (from, to) pairs in the strategy.
     pub fn iter(&self) -> impl Iterator<Item = (&VertexIndex, &VertexIndex)> {
         self.mapping.iter()
+    }
+
+    /// Checks that the strategy is only defined for the vertices owned by the
+    /// given player.
+    pub fn check_consistent(&self, pg: &impl PG, player: Player) {
+        for vertex in pg.iter_vertices() {
+            if let Some(_) = self.get(vertex) {
+                if pg.owner(vertex) != player {
+                    panic!(
+                        "Strategy is defined for vertex {:?} owned by {:?}, \
+                         but should only be defined for vertices owned by {:?}",
+                        vertex,
+                        pg.owner(vertex),
+                        player
+                    );
+                }
+            }
+        }
     }
 }
 

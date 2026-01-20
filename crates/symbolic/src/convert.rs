@@ -145,8 +145,8 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
         .ok_or("Symbolic LTS has no initial state")?;
 
     let initial_state_index = discovered
-            .index(&initial_state)
-            .ok_or("Initial state was not found in the discovered state set")?;
+        .index(&initial_state)
+        .ok_or("Initial state was not found in the discovered state set")?;
 
     output.finish(StateIndex::new(*initial_state_index))
 }

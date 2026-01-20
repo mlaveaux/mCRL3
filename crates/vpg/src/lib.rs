@@ -12,6 +12,7 @@ mod submap;
 mod translate;
 mod variability_translate;
 mod variability_zielonka;
+mod verify;
 mod zielonka;
 
 pub use feature_transition_system::*;
@@ -21,9 +22,9 @@ pub use project::*;
 pub use reachability::*;
 pub use repeat::*;
 pub use strategy::*;
-pub use scc_decomposition::*;
 pub use submap::*;
 pub use translate::*;
 pub use variability_translate::*;
 pub use variability_zielonka::*;
+pub use verify::*;
 pub use zielonka::*;

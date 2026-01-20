@@ -15,13 +15,13 @@ use std::collections::VecDeque;
 
 use log::trace;
 use merc_collections::VecSet;
-use merc_lts::StateIndex;
 use merc_lts::LTS;
+use merc_lts::StateIndex;
+use merc_reduction::Equivalence;
+use merc_reduction::Partition;
 use merc_reduction::quotient_lts_block;
 use merc_reduction::reduce_lts;
 use merc_reduction::strong_bisim_sigref;
-use merc_reduction::Equivalence;
-use merc_reduction::Partition;
 use merc_utilities::Timing;
 
 use crate::Antichain;
@@ -109,26 +109,24 @@ pub fn is_failures_refinement<L: LTS>(
             // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
             (
                 result,
-                Some(
-                    if refinement == RefinementType::Trace {
-                        CounterExample::Trace(
-                            ce_constructor
-                                .reconstruct_trace(state)
-                                .iter()
-                                .map(|l| merged_lts.labels()[*l].clone())
-                                .collect(),
-                        )
-                    } else {
-                        // The resulting trace is a weak trace.
-                        CounterExample::WeakTrace(
-                            ce_constructor
-                                .reconstruct_trace(state)
-                                .iter()
-                                .map(|l| merged_lts.labels()[*l].clone())
-                                .collect(),
-                        )
-                    },
-                ),
+                Some(if refinement == RefinementType::Trace {
+                    CounterExample::Trace(
+                        ce_constructor
+                            .reconstruct_trace(state)
+                            .iter()
+                            .map(|l| merged_lts.labels()[*l].clone())
+                            .collect(),
+                    )
+                } else {
+                    // The resulting trace is a weak trace.
+                    CounterExample::WeakTrace(
+                        ce_constructor
+                            .reconstruct_trace(state)
+                            .iter()
+                            .map(|l| merged_lts.labels()[*l].clone())
+                            .collect(),
+                    )
+                }),
             )
         } else {
             (result, None)
@@ -307,18 +305,18 @@ fn tau_closure<L: LTS>(
 #[cfg(test)]
 mod tests {
     use merc_io::DumpFiles;
-    use merc_lts::random_lts;
     use merc_lts::TransitionLabel;
+    use merc_lts::random_lts;
     use merc_lts::write_aut;
-    use merc_utilities::random_test;
     use merc_utilities::Timing;
+    use merc_utilities::random_test;
     use merc_vpg::solve_zielonka;
     use merc_vpg::translate;
 
-    use crate::generate_formula;
-    use crate::is_failures_refinement;
     use crate::ExplorationStrategy;
     use crate::RefinementType;
+    use crate::generate_formula;
+    use crate::is_failures_refinement;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
@@ -355,7 +353,10 @@ mod tests {
                         let (impl_solution, _) = solve_zielonka(&impl_pg);
                         let (spec_solution, _) = solve_zielonka(&spec_pg);
 
-                        assert!(impl_solution[0] != spec_solution[0], "Refinement returned false, but the counter example is not distinguishing.");
+                        assert!(
+                            impl_solution[0] != spec_solution[0],
+                            "Refinement returned false, but the counter example is not distinguishing."
+                        );
                     } else {
                         panic!("Expected a counter example.");
                     }

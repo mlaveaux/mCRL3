@@ -18,7 +18,7 @@ pub fn apply_statefrm(
 }
 
 /// Visits the state formula and calls the given function on each subformula.
-/// 
+///
 /// The visitor function takes a state formula and returns a `ControlFlow`. If
 /// it returns `ControlFlow::Break(value)`, the traversal is stopped and the
 /// value is returned. If it returns `ControlFlow::Continue(())`, the traversal

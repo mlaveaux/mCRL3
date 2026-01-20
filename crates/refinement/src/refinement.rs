@@ -2,8 +2,8 @@ use merc_lts::LTS;
 use merc_utilities::Timing;
 
 use crate::CounterExample;
-use crate::is_failures_refinement;
 use crate::ExplorationStrategy;
+use crate::is_failures_refinement;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]

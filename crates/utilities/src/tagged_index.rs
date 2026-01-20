@@ -6,6 +6,23 @@ use std::ops::Index;
 use std::ops::IndexMut;
 use std::slice::SliceIndex;
 
+/// A trait for index types.
+pub trait MercIndex: Copy + PartialEq {
+    /// The underlying target type.
+    type Target;
+
+    /// Returns the underlying index.
+    fn index(&self) -> Self::Target;
+}
+
+impl MercIndex for () {
+    type Target = ();
+
+    fn index(&self) -> Self::Target {
+        ()
+    }
+}
+
 /// An index is an index that can only be compared with equivalent tags. Note that the constructor does
 /// not requires us to provide a tag, and as such anyone can make a tagged index. It is not a proof of a
 /// valid index. This could be extended in the future.
@@ -19,6 +36,14 @@ pub struct TagIndex<T, Tag> {
 
     /// Ensures that the Tag is used by the struct
     marker: PhantomData<fn() -> Tag>,
+}
+
+impl<T: Copy + fmt::Display + PartialEq, Tag> MercIndex for TagIndex<T, Tag> {
+    type Target = T;
+
+    fn index(&self) -> Self::Target {
+        self.index
+    }
 }
 
 impl<T: Default, Tag> Default for TagIndex<T, Tag> {

@@ -31,7 +31,7 @@ pub struct SymbolicLts {
 
 impl SymbolicLts {
     /// Creates a new symbolic LTS.
-    /// 
+    ///
     /// `parameter_values` contains, for each process parameter, the list of
     /// possible values it can take. Their indices correspond to the values stored
     /// in the LDDs.
@@ -41,7 +41,7 @@ impl SymbolicLts {
         initial_state: Ldd,
         summand_groups: Vec<SummandGroup>,
         action_labels: Vec<MultiAction>,
-        parameter_values: Vec<Vec<ATerm>>
+        parameter_values: Vec<Vec<ATerm>>,
     ) -> Self {
         let action_labels = action_labels
             .into_iter()
