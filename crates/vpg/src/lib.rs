@@ -21,6 +21,7 @@ pub use project::*;
 pub use reachability::*;
 pub use repeat::*;
 pub use strategy::*;
+pub use scc_decomposition::*;
 pub use submap::*;
 pub use translate::*;
 pub use variability_translate::*;
