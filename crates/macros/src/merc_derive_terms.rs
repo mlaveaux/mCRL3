@@ -36,7 +36,7 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                         // Add the expected derive macros to the input struct.
                         object
                             .attrs
-                            .push(parse_quote!(#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]));
+                            .push(parse_quote!(#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]));
 
                         // ALL structs in this module must contain the term.
                         assert!(
@@ -151,6 +151,12 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
+                            impl ::std::fmt::Debug for #name #generics {
+                                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                                    write!(f, "{:?}", self.term)
+                                }
+                            }
+
                             impl #generics_term Term<'a, 'b> for #name #generics where 'b: 'a {
                                 delegate! {
                                     to self.term {
@@ -167,7 +173,7 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
-                            #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+                            #[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
                             pub struct #name_ref #generics_ref {
                                 pub(crate) term: ATermRef<'a>,
                                 _marker: ::std::marker::PhantomData #generics_phantom,
@@ -183,7 +189,7 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
-                            impl #generics_ref  From<ATermRef<'a>> for #name_ref #generics_ref {
+                            impl #generics_ref ::std::convert::From<ATermRef<'a>> for #name_ref #generics_ref {
                                 fn from(term: ATermRef<'a>) -> #name_ref #generics_ref  {
                                     #assertion;
                                     #name_ref {
@@ -193,9 +199,15 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
-                            impl #generics_ref  Into<ATermRef<'a>> for #name_ref #generics_ref  {
+                            impl #generics_ref ::std::convert::Into<ATermRef<'a>> for #name_ref #generics_ref  {
                                 fn into(self) -> ATermRef<'a> {
                                     self.term
+                                }
+                            }
+
+                            impl #generics_ref ::std::fmt::Debug for #name_ref #generics_ref {
+                                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                                    write!(f, "{:?}", self.term)
                                 }
                             }
 
