@@ -1,6 +1,6 @@
 use std::fmt;
 
-use merc_aterm::ATerm;
+use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
 use merc_ldd::Ldd;
@@ -26,7 +26,7 @@ pub struct SymbolicLts {
 
     action_labels: Vec<String>,
 
-    parameter_values: Vec<Vec<ATerm>>,
+    parameter_values: Vec<Vec<DataExpression>>,
 }
 
 impl SymbolicLts {
@@ -41,7 +41,7 @@ impl SymbolicLts {
         initial_state: Ldd,
         summand_groups: Vec<SummandGroup>,
         action_labels: Vec<MultiAction>,
-        parameter_values: Vec<Vec<ATerm>>,
+        parameter_values: Vec<Vec<DataExpression>>,
     ) -> Self {
         let action_labels = action_labels
             .into_iter()
@@ -64,7 +64,7 @@ impl SymbolicLts {
     }
 
     /// Returns the parameter values of the LTS.
-    pub fn parameter_values(&self) -> &Vec<Vec<ATerm>> {
+    pub fn parameter_values(&self) -> &Vec<Vec<DataExpression>> {
         &self.parameter_values
     }
 }
