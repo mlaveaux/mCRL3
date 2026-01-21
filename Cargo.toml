@@ -66,6 +66,7 @@ log = { version = "0.4", features = ["kv"] }
 mt-kahypar = "0.2"
 num = "0.4"
 oxidd = { version = "0.11", features = ["manager-pointer"] }
+oxidd-dump = "0.6"
 oxidd-core = "0.11"
 parking_lot = "0.12"
 pest = "2.8"

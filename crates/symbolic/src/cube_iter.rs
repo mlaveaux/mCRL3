@@ -166,7 +166,7 @@ mod tests {
     use crate::CubeIter;
     use crate::CubeIterAll;
     use crate::FormatConfig;
-    use crate::from_iter;
+    use crate::bdd_from_iter;
     use crate::random_bitvectors;
 
     #[test]
@@ -186,7 +186,7 @@ mod tests {
                 })
                 .expect("Failed to create variables");
 
-            let bdd = from_iter(&manager_ref, &variables, set.iter()).unwrap();
+            let bdd = bdd_from_iter(&manager_ref, &variables, set.iter()).unwrap();
 
             // Check that the cube iterator yields all the expected cubes
             let result: Result<Vec<(Vec<OptBool>, BDDFunction)>, _> = CubeIterAll::new(&variables, &bdd).collect();
@@ -226,7 +226,7 @@ mod tests {
                 })
                 .expect("Failed to create variables");
 
-            let bdd = from_iter(&manager_ref, &variables, set.iter()).unwrap();
+            let bdd = bdd_from_iter(&manager_ref, &variables, set.iter()).unwrap();
 
             // Check that it does not yield duplicates.
             let mut seen = HashSet::new();

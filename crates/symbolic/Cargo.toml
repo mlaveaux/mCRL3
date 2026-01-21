@@ -30,6 +30,7 @@ itertools.workspace = true
 log.workspace = true
 mt-kahypar = { workspace = true, optional = true }
 oxidd-core.workspace = true
+oxidd-dump.workspace = true
 oxidd.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
