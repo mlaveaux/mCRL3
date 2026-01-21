@@ -1227,6 +1227,7 @@ dependencies = [
  "mt-kahypar",
  "oxidd",
  "oxidd-core",
+ "oxidd-dump",
  "rand",
  "rustc-hash 2.1.1",
 ]
