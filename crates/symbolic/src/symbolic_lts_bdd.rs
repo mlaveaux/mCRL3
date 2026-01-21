@@ -8,11 +8,11 @@ use oxidd::ManagerRef;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
 
 use merc_ldd::Storage;
 use merc_ldd::singleton;
 use merc_utilities::MercError;
-use oxidd::error::DuplicateVarName;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
@@ -30,8 +30,11 @@ pub struct SymbolicLtsBdd {
     /// The transition groups representing the disjunctive transition relation.
     transition_groups: Vec<SummandGroupBdd>,
 
+    /// The variable numbers used to represent the
+    state_variables: Vec<VarNo>,
+
     /// The set of BDD variables used to represent the state variables.
-    state_variables: BDDFunction,
+    state_variables_bdd: BDDFunction,
 
     /// The set of BDD variables used to represent the next state variables (or primed variables).
     next_state_variables: BDDFunction,
@@ -65,7 +68,7 @@ impl SymbolicLtsBdd {
 
         // Detemine the highest values for every layer in the LDD representing the states
         let state_bits = compute_bits(&compute_highest(storage, lts.states()));
-        debug!("Determined bits for states: {:?}", state_bits);
+        debug!("Determined number of bits for state variables: {:?}", state_bits);
 
         let mut action_label_highest = 0u32;
         for group in lts.transition_groups() {
@@ -161,7 +164,12 @@ impl SymbolicLtsBdd {
                 variables.extend(action_labels_vars.iter());
             }
 
-            debug!("Transition group {:?} uses variables: {:?}", group, variables);
+            // Append action label bits
+            bits.push(action_label_bits);
+            debug!(
+                "Transition group {:?} uses number of bits {:?}, and variables: {:?}",
+                group, bits, variables
+            );
 
             let bits_dd = singleton(storage, &bits);
             let relation_bdd = ldd_to_bdd(storage, manager_ref, group.relation(), &bits_dd, &variables)?;
@@ -170,22 +178,23 @@ impl SymbolicLtsBdd {
         }
 
         // Compute the BDDs representing the state variables and next state variables.
-        let state_variables = compute_vars_bdd(manager_ref, &all_state_variables_bits)?;
+        let all_next_state_variables_bits = next_state_variables_bits
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<VarNo>>();
 
-        let next_state_variables = compute_vars_bdd(
-            manager_ref,
-            &next_state_variables_bits
-                .iter()
-                .flatten()
-                .cloned()
-                .collect::<Vec<VarNo>>(),
-        )?;
+        debug!("State bits {all_state_variables_bits:?}, and next state bits {all_next_state_variables_bits:?}");
 
-        info!("Finished converting representation.");
+        let state_variables_bdd = compute_vars_bdd(manager_ref, &all_state_variables_bits)?;
+        let next_state_variables = compute_vars_bdd(manager_ref, &all_next_state_variables_bits)?;
+
+        info!("Finished conversion.");
         Ok(Self {
             states,
             transition_groups,
-            state_variables,
+            state_variables: all_state_variables_bits,
+            state_variables_bdd,
             next_state_variables,
         })
     }
@@ -196,8 +205,13 @@ impl SymbolicLtsBdd {
     }
 
     /// Returns the BDD variables used to represent the state variables.
-    pub fn state_variables(&self) -> &BDDFunction {
+    pub fn state_variables(&self) -> &Vec<VarNo> {
         &self.state_variables
+    }
+
+    /// Returns the BDD variables used to represent the state variables.
+    pub fn state_variables_bdd(&self) -> &BDDFunction {
+        &self.state_variables_bdd
     }
 
     /// Returns the BDD variables used to represent the state variables.
@@ -211,14 +225,14 @@ impl SymbolicLtsBdd {
     }
 }
 
-/// Creates BDD variables for the given variable numbers.
+/// Creates BDD of variables for the given variable numbers.
 fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<BDDFunction, MercError> {
     manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, MercError> {
-        let mut result: BDDFunction = BDDFunction::f(manager);
+        let mut result: BDDFunction = BDDFunction::t(manager);
 
         for var in vars {
             let var = BDDFunction::var(manager, *var)?;
-            result = result.or(&var)?;
+            result = result.and(&var)?;
         }
 
         Ok(result)
