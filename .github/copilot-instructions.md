@@ -1,4 +1,4 @@
-This is a Rust based repository that demonstrates efficient, correct and safe implementations of algorithms and data structures.
+This is a Rust-based repository that demonstrates efficient, correct, and safe implementations of algorithms and data structures.
 
 ## Development Workflows
 
@@ -40,12 +40,12 @@ cargo +nightly fmt
 ### Parsing & Grammar
 
 - **`pest`/`pest_derive`**: PEG parser generator
-- **`pest_consume`**: Vendored in `3rd-party/pest_consume/` - parser combinator framework built on pest
+- **`pest_consume`**: Vendored in `3rd-party/pest_consume/` - parser-combinator framework built on pest
 - Grammar files use `.pest` extension (see `crates/syntax/mcrl2_grammar.pest`, `crates/aterm/term_grammar.pest`)
 
 ### Data Structures
 
-- **`hashbrown`**: Fast HashMap implementation (basis for std HashMap)
+- **`hashbrown`**: Fast HashMap implementation (basis for std::collections::HashMap)
 - **`dashmap`**: Concurrent HashMap
 - **`smallvec`**: Stack-allocated vectors for small sizes
 - **`bitvec`**: Bit manipulation and bit vectors
@@ -58,13 +58,13 @@ cargo +nightly fmt
 
 ### CLI & I/O
 
-- **`clap`** (with derive): Command-line argument parsing
+- **`clap`** (derive feature): Command-line argument parsing
 - **`bitstream-io`**: Binary I/O for LTS file formats
 - **`env_logger`/`log`**: Logging infrastructure
 
 ### Development & Testing
 
-- **`criterion`**: Micro-benchmarking framework (see `crates/*/benchmarks/`)
+- **`criterion`**: Microbenchmarking framework (see `crates/*/benchmarks/`)
 - **`test-case`/`test-log`**: Parameterized tests and test logging
 - **`arbtest`/`arbitrary`**: Property-based testing and fuzzing
 - **`trybuild`**: Compile-fail tests for proc macros (see `crates/macros/tests/`)
@@ -74,5 +74,5 @@ cargo +nightly fmt
 - **`duct`**: Shell command execution (used in xtask)
 - **`proc-macro2`/`quote`/`syn`**: Proc macro development (see `crates/macros/`)
 - **`regex`**: Regular expressions (benchmarking, parsing)
-- **`serde`/`serde_json`**: Serialization (benchmark results, configs)
+- **`serde`/`serde_json`**: Serialization (benchmark results, configurations)
 
