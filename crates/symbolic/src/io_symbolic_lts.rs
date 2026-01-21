@@ -8,6 +8,7 @@ use merc_aterm::ATermRead;
 use merc_aterm::ATermStreamable;
 use merc_aterm::BinaryATermReader;
 use merc_aterm::Symbol;
+use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
 use merc_io::BitStreamRead;
@@ -67,16 +68,18 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let states = stream.read_ldd(storage)?;
 
     // Read the values for the process parameters.
-    let mut parameter_values: Vec<Vec<ATerm>> = Vec::with_capacity(process_parameters.len());
+    let mut parameter_values: Vec<Vec<DataExpression>> = Vec::with_capacity(process_parameters.len());
     for parameter in &process_parameters {
         let num_of_entries = stream.read_integer()?;
-        debug!("Parameter {:?} has {} entries", parameter, num_of_entries);
+        debug!("Parameter {} has {} entries", parameter, num_of_entries);
 
         let mut values = Vec::with_capacity(num_of_entries as usize);
         for i in 0..num_of_entries {
             let value = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
-            debug!("  {i}:  {:?}", value);
-            values.push(value);
+
+            let expr: DataExpression = value.into();
+            debug!("  {i}:  {}", expr);
+            values.push(expr);
         }
 
         parameter_values.push(values);
