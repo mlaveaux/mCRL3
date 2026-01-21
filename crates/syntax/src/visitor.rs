@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use merc_utilities::MercError;
 
-use crate::StateFrm;
+use crate::{RegFrm, StateFrm};
 
 /// Applies the given function recursively to the state formula.
 ///
@@ -10,10 +10,12 @@ use crate::StateFrm;
 /// formula. If it returns `Some(new_formula)`, the substitution is applied and
 /// the new formula is returned. If it returns `None`, the substitution is not
 /// applied and the function continues to traverse the formula tree.
-pub fn apply_statefrm(
+pub fn apply_statefrm<F>(
     formula: StateFrm,
-    mut function: impl FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>,
-) -> Result<StateFrm, MercError> {
+    mut function: F,
+) -> Result<StateFrm, MercError> 
+    where F: FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>
+{
     apply_statefrm_rec(formula, &mut function)
 }
 
@@ -31,10 +33,12 @@ pub fn visit_statefrm<T>(
 }
 
 /// See [`apply`].
-fn apply_statefrm_rec(
+fn apply_statefrm_rec<F>(
     formula: StateFrm,
-    apply: &mut impl FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>,
-) -> Result<StateFrm, MercError> {
+    apply: &mut F,
+) -> Result<StateFrm, MercError> 
+    where F: FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>
+{
     if let Some(formula) = apply(&formula)? {
         // A substitution was made, return the new formula.
         return Ok(formula);
@@ -164,6 +168,58 @@ fn visit_statefrm_rec<T>(
 
     // The visitor did not break the traversal.
     Ok(None)
+}
+
+/// Applies the given function recursively to the regular formula. / The
+///substitution function takes a regular formula and returns an optional new
+/// formula. If it returns `Some(new_formula)`, the substitution is applied and
+/// the new formula is returned. If it returns `None`, the substitution is not
+/// applied and the function continues to traverse the formula tree.
+pub fn apply_regular_formula<F>(
+    formula: RegFrm,
+    mut function: F,
+) -> Result<RegFrm, MercError> 
+    where F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>
+{
+    apply_regular_formula_rec(formula, &mut function)
+}
+
+/// See [apply_regular_formula].
+fn apply_regular_formula_rec<F>(formula: RegFrm, apply: &mut F) -> Result<RegFrm, MercError> 
+    where F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>
+{
+    if let Some(formula) = apply(&formula)? {
+        // A substitution was made, return the new formula.
+        return Ok(formula);
+    }
+
+    match formula {
+        RegFrm::Iteration(reg_frm) => {
+            let new_reg_frm = apply_regular_formula_rec(*reg_frm, apply)?;
+            Ok(RegFrm::Iteration(Box::new(new_reg_frm)))
+        }
+        RegFrm::Plus(reg_frm) => {
+            let new_reg_frm = apply_regular_formula_rec(*reg_frm, apply)?;
+            Ok(RegFrm::Plus(Box::new(new_reg_frm)))
+        }
+        RegFrm::Sequence { lhs, rhs } => {
+            let new_lhs = apply_regular_formula_rec(*lhs, apply)?;
+            let new_rhs = apply_regular_formula_rec(*rhs, apply)?;
+            Ok(RegFrm::Sequence {
+                lhs: Box::new(new_lhs),
+                rhs: Box::new(new_rhs),
+            })
+        }
+        RegFrm::Choice { lhs, rhs } => {
+            let new_lhs = apply_regular_formula_rec(*lhs, apply)?;
+            let new_rhs = apply_regular_formula_rec(*rhs, apply)?;
+            Ok(RegFrm::Choice {
+                lhs: Box::new(new_lhs),
+                rhs: Box::new(new_rhs),
+            })
+        }
+        _ => Ok(formula),
+    }
 }
 
 #[cfg(test)]
