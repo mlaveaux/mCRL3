@@ -587,6 +587,8 @@ where
     let empty_slice: &[(LabelIndex, BlockIndex)] = &[];
 
     while old_count != id.len() {
+        trace!("Iteration {} ({} blocks)", iteration, id.len());
+
         old_count = id.len();
         progress.print((iteration, old_count));
         swap(&mut partition, &mut next_partition);
@@ -608,7 +610,7 @@ where
             for state_index in lts.iter_states() {
                 weak_bisim_signature_sorted_taus(state_index, lts, &partition, state_to_signature, &mut builder);
 
-                trace!("State {state_index} signature {:?}", builder);
+                trace!("State {state_index} weak signature {:?}", builder);
 
                 // Keep track of the index for every state, either use the arena to allocate space or simply borrow the value.
                 let slice = if builder.is_empty() {
