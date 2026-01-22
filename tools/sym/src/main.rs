@@ -79,8 +79,7 @@ enum Commands {
 struct InfoArgs {
     filename: PathBuf,
 
-    /// Sets the input symbolic LTS format.
-    #[arg(long)]
+    #[arg(long, help = "Sets the input symbolic LTS format.")]
     format: Option<SymFormat>,
 }
 
@@ -90,8 +89,7 @@ struct InfoArgs {
 struct ExploreArgs {
     filename: PathBuf,
 
-    /// Sets the input symbolic LTS format.
-    #[arg(long)]
+    #[arg(long, help = "Sets the input symbolic LTS format.")]
     format: Option<SymFormat>,
 }
 
@@ -103,7 +101,7 @@ struct ReorderArgs {
     #[arg(long)]
     mcrl2_tool_path: Option<PathBuf>,
 
-    /// The input linear process specification file in the mCRL2 .lps format.
+    #[arg(help = "The input linear process specification file in the mCRL2 .lps format.")]
     filename: PathBuf,
 }
 
@@ -111,33 +109,29 @@ struct ReorderArgs {
 #[derive(clap::Args, Debug)]
 #[command()]
 struct ConvertArgs {
-    /// Sets the input symbolic LTS format.
-    #[arg(long)]
+    #[arg(long, help = "Sets the input symbolic LTS format.")]
     format: Option<SymFormat>,
 
-    /// The input symbolic LTS file path.
+    #[arg(help = "The input symbolic LTS file path.")]
     filename: PathBuf,
 
-    /// Sets the output LTS format.
-    #[arg(long)]
+    #[arg(long, help = "Sets the output LTS format.")]
     output_format: Option<LtsFormat>,
 
-    /// The output LTS file path.
+    #[arg(help = "The output LTS file path.")]
     output: PathBuf,
 }
 
 #[derive(clap::Args, Debug)]
 #[command(about = "Applied reductions to a symbolic LTS")]
 struct ReduceArgs {
-    /// The input symbolic LTS file path.
+    #[arg(help = "The input symbolic LTS file path.")]
     filename: PathBuf,
 
-    /// Sets the input symbolic LTS format.
-    #[arg(long)]
+    #[arg(long, help = "Sets the input symbolic LTS format.")]
     format: Option<LtsFormat>,
 
-    /// Visualize the reduction steps in oxidd-vis.
-    #[arg(long)]
+    #[arg(long, help = "Visualize the reduction steps in oxidd-vis.")]
     visualize: bool,
 }
 
