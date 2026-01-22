@@ -71,7 +71,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let mut parameter_values: Vec<Vec<DataExpression>> = Vec::with_capacity(process_parameters.len());
     for parameter in &process_parameters {
         let num_of_entries = stream.read_integer()?;
-        debug!("Parameter {} has {} entries", parameter, num_of_entries);
+        debug!("Parameter {}: {} has {} entries", parameter_values.len(), parameter, num_of_entries);
 
         let mut values = Vec::with_capacity(num_of_entries as usize);
         for i in 0..num_of_entries {
@@ -90,7 +90,10 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let mut action_labels = Vec::with_capacity(num_of_action_labels as usize);
     for _ in 0..num_of_action_labels {
         let action_label = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
-        action_labels.push(MultiAction::from_mcrl2_aterm(action_label)?);
+        let action = MultiAction::from_mcrl2_aterm(action_label)?;
+
+        debug!("Action {}: {}", action_labels.len(), action);
+        action_labels.push(action);
     }
 
     // Read the summand groups.

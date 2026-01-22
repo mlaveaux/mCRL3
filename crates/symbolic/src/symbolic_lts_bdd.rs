@@ -2,6 +2,7 @@ use std::ops::Range;
 
 use log::debug;
 use log::info;
+use merc_ldd::Value;
 use oxidd::BooleanFunction;
 use oxidd::Manager;
 use oxidd::ManagerRef;
@@ -30,14 +31,20 @@ pub struct SymbolicLtsBdd {
     /// The transition groups representing the disjunctive transition relation.
     transition_groups: Vec<SummandGroupBdd>,
 
-    /// The variable numbers used to represent the
-    state_variables: Vec<VarNo>,
+    /// The number of bits used for each state variable.
+    state_variable_bits: Vec<Value>,
+
+    /// The variable numbers used to represent the state variables.
+    state_variable_indices: Vec<VarNo>,
+
+    /// The BDDs representing each state variable.
+    state_variables: Vec<BDDFunction>,
 
     /// The set of BDD variables used to represent the state variables.
     state_variables_bdd: BDDFunction,
 
     /// The set of BDD variables used to represent the next state variables (or primed variables).
-    next_state_variables: BDDFunction,
+    next_state_variables_bdd: BDDFunction,
 }
 
 pub struct SummandGroupBdd {
@@ -59,6 +66,12 @@ impl SummandGroupBdd {
 
 impl SymbolicLtsBdd {
     /// Converts a symbolic LTS using LDDs into a symbolic LTS using BDDs.
+    /// 
+    /// # Details
+    /// 
+    /// The resulting BDD is assumed to only be valid for the reachable states
+    /// of the LDD symbolic LTS, as unreachable states may not be representable
+    /// with the number of bits assigned to each state variable.
     pub fn from_symbolic_lts(
         storage: &mut Storage,
         manager_ref: &BDDManagerRef,
@@ -186,16 +199,18 @@ impl SymbolicLtsBdd {
 
         debug!("State bits {all_state_variables_bits:?}, and next state bits {all_next_state_variables_bits:?}");
 
-        let state_variables_bdd = compute_vars_bdd(manager_ref, &all_state_variables_bits)?;
-        let next_state_variables = compute_vars_bdd(manager_ref, &all_next_state_variables_bits)?;
+        let (state_variables, state_variables_bdd) = compute_vars_bdd(manager_ref, &all_state_variables_bits)?;
+        let (_next_state_variables, next_state_variables_bdd) = compute_vars_bdd(manager_ref, &all_next_state_variables_bits)?;
 
         info!("Finished conversion.");
         Ok(Self {
             states,
             transition_groups,
-            state_variables: all_state_variables_bits,
+            state_variable_bits: state_bits,
+            state_variable_indices: all_state_variables_bits,
             state_variables_bdd,
-            next_state_variables,
+            state_variables,
+            next_state_variables_bdd,
         })
     }
 
@@ -204,8 +219,17 @@ impl SymbolicLtsBdd {
         &self.states
     }
 
+    /// Returns the number of bits used for each state variable.
+    pub fn state_variable_bits(&self) -> &Vec<Value> {
+        &self.state_variable_bits
+    }
+
     /// Returns the BDD variables used to represent the state variables.
-    pub fn state_variables(&self) -> &Vec<VarNo> {
+    pub fn state_variable_indices(&self) -> &[VarNo] {
+        &self.state_variable_indices
+    }
+
+    pub fn state_variables(&self) -> &[BDDFunction] {
         &self.state_variables
     }
 
@@ -216,7 +240,7 @@ impl SymbolicLtsBdd {
 
     /// Returns the BDD variables used to represent the state variables.
     pub fn next_state_variables(&self) -> &BDDFunction {
-        &self.next_state_variables
+        &self.next_state_variables_bdd
     }
 
     /// Returns the transition groups representing the disjunctive transition relation.
@@ -226,22 +250,25 @@ impl SymbolicLtsBdd {
 }
 
 /// Creates BDD of variables for the given variable numbers.
-fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<BDDFunction, MercError> {
-    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, MercError> {
-        let mut result: BDDFunction = BDDFunction::t(manager);
+fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<(Vec<BDDFunction>, BDDFunction), MercError> {
+    manager_ref.with_manager_shared(|manager| -> Result<_, MercError> {
+        let mut vector = Vec::new();
+        let mut bdd: BDDFunction = BDDFunction::t(manager);
 
         for var in vars {
             let var = BDDFunction::var(manager, *var)?;
-            result = result.and(&var)?;
+            vector.push(var.clone());
+            bdd = bdd.and(&var)?;
         }
 
-        Ok(result)
+        Ok((vector, bdd))
     })
 }
 
 #[cfg(test)]
 mod tests {
     use merc_ldd::Storage;
+    use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
     use crate::SymbolicLtsBdd;
@@ -259,5 +286,14 @@ mod tests {
         let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
 
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
+    }
+
+    
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_symbolic_lts_bdd() {
+        random_test(100, |rng| {
+            
+        })
     }
 }

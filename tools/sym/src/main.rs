@@ -135,6 +135,10 @@ struct ReduceArgs {
     /// Sets the input symbolic LTS format.
     #[arg(long)]
     format: Option<LtsFormat>,
+
+    /// Visualize the reduction steps in oxidd-vis.
+    #[arg(long)]
+    visualize: bool,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -288,7 +292,7 @@ fn handle_convert(args: &ConvertArgs, _timing: &mut Timing) -> Result<(), MercEr
     let mut storage = Storage::new();
 
     let format =
-        guess_format_from_extension(&args.output, args.format).ok_or("Cannot determine input symbolic LTS format")?;
+        guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
     if format != SymFormat::Sym {
         return Err("Currently only the .sym format is supported for conversion".into());
     }
@@ -338,7 +342,7 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &mut Timing) -> Result<()
     convert_time.finish();
 
     let mut reduction_time = timing.start("reduction");
-    sigref_symbolic(&manager_ref, &lts_bdd)?;
+    sigref_symbolic(&manager_ref, &lts_bdd, args.visualize)?;
     reduction_time.finish();
 
     Ok(())

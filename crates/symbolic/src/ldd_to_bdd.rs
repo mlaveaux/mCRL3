@@ -223,7 +223,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_ldd_to_bdd() {
         random_test(100, |rng| {
-            let set = random_vector_set(rng, 1, 3, 5);
+            let set = random_vector_set(rng, 2, 3, 5);
 
             let mut storage = Storage::new();
             let ldd = from_iter(&mut storage, set.iter());
