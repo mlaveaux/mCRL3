@@ -62,8 +62,9 @@ enum ViewerType {
     Gpu,
 }
 
+/// A GUI tool to view labelled transition systems.
 #[derive(Parser, Debug)]
-#[command(name = "Maurice Laveaux", about = "A lts viewing tool")]
+#[command(name = "Maurice Laveaux")]
 pub struct Cli {
     #[arg(
         long,
@@ -84,7 +85,7 @@ pub struct Cli {
     #[arg(long)]
     lts_format: Option<LtsFormat>,
 
-    #[arg(default_value_t = ViewerType::Cpu, value_enum)]
+    #[arg(long, default_value_t = ViewerType::Cpu, value_enum)]
     viewer: ViewerType,
 }
 
