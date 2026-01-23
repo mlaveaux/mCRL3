@@ -280,3 +280,22 @@ impl fmt::Display for DisplaySet<'_> {
         write!(f, "{{{}}}", self.0.iter_ones().format(", "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use merc_utilities::random_test;
+
+    use crate::{random_parity_game, verify_solution};
+
+
+    #[test]
+    fn test_random_zielonka_solver() {
+        random_test(100, |rng| {
+            let game = random_parity_game(rng, true, 100, 6, 3);
+
+            let (solution, strategy) = super::solve_zielonka(&game);
+
+            verify_solution(&game, &solution, &strategy);
+        });
+    }
+}
