@@ -42,12 +42,12 @@ pub fn reduce_lts<L: LTS>(
             (quotient_lts_naive(&lts, &partition, true), quotient_time)
         }
         Equivalence::WeakBisimSigref => {
-            let (lts, partition) = weak_bisim_sigref_inductive_naive(lts, timing);
+            let (lts, partition) = weak_bisim_sigref_inductive_naive(lts, preprocess, timing);
             let quotient_time = timing.start("quotient");
             (quotient_lts_naive(&lts, &partition, true), quotient_time)
         }
         Equivalence::WeakBisimSigrefNaive => {
-            let (lts, partition) = weak_bisim_sigref_naive(lts, timing);
+            let (lts, partition) = weak_bisim_sigref_naive(lts, preprocess, timing);
             let quotient_time = timing.start("quotient");
             (quotient_lts_naive(&lts, &partition, true), quotient_time)
         }

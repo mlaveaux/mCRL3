@@ -38,7 +38,10 @@ pub fn weak_bisimulation<L: LTS>(
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
+        let mut time_pre = timing.start("preprocess");
         let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
+        time_pre.finish();
+
         weak_bisimulation_impl(lts, timing)
     } else {
         weak_bisimulation_impl(lts, timing)
@@ -50,7 +53,7 @@ fn weak_bisimulation_impl<L: LTS>(
     lts: L,
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
-    let mut time_pre = timing.start("preprocessing");
+    let mut time_pre = timing.start("scc_decomposition");
     let tau_loop_free_lts = tau_loop_elimination_and_reorder(lts);
     time_pre.finish();
 

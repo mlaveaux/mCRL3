@@ -72,7 +72,7 @@ pub fn branching_bisim_sigref<L: LTS>(
     lts: L,
     timing: &mut Timing,
 ) -> (LabelledTransitionSystem<L::Label>, BlockPartition) {
-    let mut timepre = timing.start("preprocess");
+    let mut timepre = timing.start("scc_decomposition");
     let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
     let incoming = IncomingTransitions::new(&preprocessed_lts);
     timepre.finish();

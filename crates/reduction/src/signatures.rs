@@ -370,7 +370,7 @@ pub fn weak_bisim_signature_sorted_taus(
 /// tau-SCCs, and then sorts the states according to a reverse topological order
 /// of the tau transitions, i.e., if there is a tau-transition from state s to
 /// state t, then t appears before s in the ordering.
-pub fn preprocess_branching<L: LTS>(lts: L) -> LabelledTransitionSystem<L::Label> {
+pub fn tau_loop_elimination_and_reorder<L: LTS>(lts: L) -> LabelledTransitionSystem<L::Label> {
     let scc_partition = tau_scc_decomposition(&lts);
     let tau_loop_free_lts = quotient_lts_naive(&lts, &scc_partition, true);
     drop(lts);
