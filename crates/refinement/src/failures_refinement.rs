@@ -303,7 +303,6 @@ fn tau_closure<L: LTS>(
 #[cfg(test)]
 mod tests {
     use merc_io::DumpFiles;
-    use merc_lts::TransitionLabel;
     use merc_lts::random_lts;
     use merc_lts::write_aut;
     use merc_utilities::Timing;

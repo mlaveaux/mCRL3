@@ -7,12 +7,12 @@ use std::path::Path;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
-use crate::LTS;
-use crate::LabelledTransitionSystem;
-use crate::MultiAction;
 use crate::read_aut;
 use crate::read_bcg;
 use crate::read_lts;
+use crate::LabelledTransitionSystem;
+use crate::MultiAction;
+use crate::LTS;
 
 /// Convenience macro to call `GenericLts::apply` with the same function for both variants.
 /// Useful with generic functions that can be monomorphized for both label types.
@@ -145,20 +145,19 @@ pub fn read_explicit_lts(
     hidden_labels: Vec<String>,
     timing: &mut Timing,
 ) -> Result<GenericLts, MercError> {
-    let mut time_read = timing.start("read_explicit_lts");
+    timing.measure("read_explicit_lts", || {
+        let result = match format {
+            LtsFormat::Aut => {
+                let file = File::open(path)?;
+                GenericLts::Aut(read_aut(&file, hidden_labels)?)
+            }
+            LtsFormat::Lts => {
+                let file = File::open(path)?;
+                GenericLts::Lts(read_lts(&file, hidden_labels, false)?)
+            }
+            LtsFormat::Bcg => GenericLts::Bcg(read_bcg(path, hidden_labels)?),
+        };
 
-    let result = match format {
-        LtsFormat::Aut => {
-            let file = File::open(path)?;
-            GenericLts::Aut(read_aut(&file, hidden_labels)?)
-        }
-        LtsFormat::Lts => {
-            let file = File::open(path)?;
-            GenericLts::Lts(read_lts(&file, hidden_labels, false)?)
-        }
-        LtsFormat::Bcg => GenericLts::Bcg(read_bcg(path, hidden_labels)?),
-    };
-
-    time_read.finish();
-    Ok(result)
+        Ok(result)
+    })
 }

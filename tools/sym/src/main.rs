@@ -7,15 +7,13 @@ use clap::Parser;
 use clap::Subcommand;
 
 use merc_io::LargeFormatter;
-use merc_ldd::Storage;
 use merc_ldd::len;
+use merc_ldd::Storage;
+use merc_lts::guess_lts_format_from_extension;
+use merc_lts::write_bcg;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
-use merc_lts::guess_lts_format_from_extension;
-use merc_lts::write_bcg;
-use merc_symbolic::SymFormat;
-use merc_symbolic::SymbolicLTS;
 use merc_symbolic::convert_symbolic_lts;
 use merc_symbolic::guess_format_from_extension;
 use merc_symbolic::parse_compacted_dependency_graph;
@@ -23,6 +21,8 @@ use merc_symbolic::reachability;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
 use merc_symbolic::reorder;
+use merc_symbolic::SymFormat;
+use merc_symbolic::SymbolicLTS;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -138,9 +138,9 @@ fn main() -> Result<ExitCode, MercError> {
 fn handle_info(args: InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
-    let mut time_read = timing.start("read_symbolic_lts");
-    let lts = read_symbolic_lts(&mut storage, File::open(&args.filename)?)?;
-    time_read.finish();
+    let lts = timing.measure("read_symbolic_lts", || -> Result<_, MercError> {
+        read_symbolic_lts(&mut storage, File::open(&args.filename)?)
+    })?;
 
     println!("Symbolic LTS information:");
     println!(
@@ -163,16 +163,16 @@ fn handle_explore(args: ExploreArgs, _timing: &mut Timing) -> Result<(), MercErr
 
     match format {
         SymFormat::Sylvan => {
-            let mut time_read = timing.start("read_lts");
-            let lts = read_sylvan(&mut storage, &mut file)?;
-            time_read.finish();
+            let lts = timing.measure("read_symbolic_lts", || read_sylvan(&mut storage, &mut file))?;
 
-            let mut time_explore = timing.start("explore");
-            println!("LTS has {} states", reachability(&mut storage, &lts)?);
-            time_explore.finish();
+            timing.measure("explore", || -> Result<(), MercError> {
+                println!("LTS has {} states", reachability(&mut storage, &lts)?);
+                Ok(())
+            })?;
         }
         SymFormat::Sym => {
-            let lts = read_symbolic_lts(&mut storage, &mut file)?;
+            let lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, &mut file))?;
+
             println!("LTS has {} states", len(&mut storage, lts.states()));
         }
     }
