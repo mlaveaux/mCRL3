@@ -229,12 +229,9 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 
     if format == ParityGameFormat::PG {
         // Read and solve a standard parity game.
-        let mut time_read = timing.start("read_pg");
-        let game = read_pg(&mut file)?;
-        time_read.finish();
+        let game = timing.measure("read_pg", || read_pg(&mut file))?;
 
-        let mut time_solve = timing.start("solve_zielonka");
-        let (solution, _strategy) = solve_zielonka(&game);
+        let (solution, _strategy) = timing.measure("solve_zielonka", || solve_zielonka(&game));
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -244,8 +241,6 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         } else {
             println!("{}", Player::Odd.solution())
         }
-
-        time_solve.finish();
     } else {
         let solve_variant = args
             .solve_variant
@@ -258,9 +253,9 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             cli.oxidd_workers,
         );
 
-        let mut time_read = timing.start("read_vpg");
-        let game = read_vpg(&manager_ref, &mut file)?;
-        time_read.finish();
+        let game = timing.measure("read_vpg", || -> Result<_, MercError> {
+            read_vpg(&manager_ref, &mut file)
+        })?;
 
         let game = if !game.is_total(&manager_ref)? {
             info!("Making the VPG total...");
@@ -269,53 +264,55 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             game
         };
 
-        let mut time_solve = timing.start("solve_variability_zielonka");
-        if solve_variant == ZielonkaVariant::Product {
-            // Since we want to print W0, W1 separately, we need to store the results temporarily.
-            let mut results = [Vec::new(), Vec::new()];
-            for result in solve_variability_product_zielonka(&game, timing) {
-                let (cube, _bdd, solution) = result?;
+        timing.measure("solve_variability_zielonka", || -> Result<_, MercError> {
+            if solve_variant == ZielonkaVariant::Product {
+                // Since we want to print W0, W1 separately, we need to store the results temporarily.
+                let mut results = [Vec::new(), Vec::new()];
+                for result in solve_variability_product_zielonka(&game, timing) {
+                    let (cube, _bdd, solution) = result?;
 
-                for (index, w) in solution.iter().enumerate() {
-                    results[index].push((cube.clone(), w.clone()));
+                    for (index, w) in solution.iter().enumerate() {
+                        results[index].push((cube.clone(), w.clone()));
+                    }
+                }
+
+                for (index, w) in results.iter().enumerate() {
+                    for (cube, vertices) in w {
+                        println!(
+                            "W{index}: For product {} the following vertices are in: {}",
+                            FormatConfig(cube),
+                            vertices
+                                .iter_ones()
+                                .filter(|v| if args.full_solution { true } else { *v == 0 })
+                                .format(", ")
+                        );
+                    }
+                }
+            } else {
+                let solutions = solve_variability_zielonka(&manager_ref, &game, solve_variant, false)?;
+                for (index, w) in solutions.iter().enumerate() {
+                    for entry in CubeIterAll::new(game.variables(), game.configuration()) {
+                        let (config, config_function) = entry?;
+
+                        println!(
+                            "W{index}: For product {} the following vertices are in: {}",
+                            FormatConfig(&config),
+                            w.iter() // Do not use iter_vertices because the first one is the initial vertex only
+                                .take(if args.full_solution { usize::MAX } else { 1 }) // Take only first if we don't want full solution
+                                .filter(|(_v, config)| { config.and(&config_function).unwrap().satisfiable() })
+                                .map(|(v, _)| v)
+                                .format(", ")
+                        );
+                    }
+                }
+
+                if args.verify_solution {
+                    verify_variability_product_zielonka_solution(&game, &solutions, timing)?;
                 }
             }
 
-            for (index, w) in results.iter().enumerate() {
-                for (cube, vertices) in w {
-                    println!(
-                        "W{index}: For product {} the following vertices are in: {}",
-                        FormatConfig(cube),
-                        vertices
-                            .iter_ones()
-                            .filter(|v| if args.full_solution { true } else { *v == 0 })
-                            .format(", ")
-                    );
-                }
-            }
-        } else {
-            let solutions = solve_variability_zielonka(&manager_ref, &game, solve_variant, false)?;
-            for (index, w) in solutions.iter().enumerate() {
-                for entry in CubeIterAll::new(game.variables(), game.configuration()) {
-                    let (config, config_function) = entry?;
-
-                    println!(
-                        "W{index}: For product {} the following vertices are in: {}",
-                        FormatConfig(&config),
-                        w.iter() // Do not use iter_vertices because the first one is the initial vertex only
-                            .take(if args.full_solution { usize::MAX } else { 1 }) // Take only first if we don't want full solution
-                            .filter(|(_v, config)| { config.and(&config_function).unwrap().satisfiable() })
-                            .map(|(v, _)| v)
-                            .format(", ")
-                    );
-                }
-            }
-
-            if args.verify_solution {
-                verify_variability_product_zielonka_solution(&game, &solutions, timing)?;
-            }
-        }
-        time_solve.finish();
+            Ok(())
+        })?;
     }
 
     Ok(())
@@ -333,13 +330,9 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
     let mut file = File::open(path)?;
     match format {
         ParityGameFormat::PG => {
-            let mut time_read = timing.start("read_pg");
-            let game = read_pg(&mut file)?;
-            time_read.finish();
+            let game = timing.measure("read_pg", || read_pg(&mut file))?;
 
-            let mut time_reachable = timing.start("compute_reachable");
-            let (reachable_game, mapping) = compute_reachable(&game);
-            time_reachable.finish();
+            let (reachable_game, mapping) = timing.measure("compute_reachable", || compute_reachable(&game));
 
             for (old_index, new_index) in mapping.iter().enumerate() {
                 debug!("{} -> {:?}", old_index, new_index);
@@ -355,13 +348,8 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
                 cli.oxidd_workers,
             );
 
-            let mut time_read = timing.start("read_vpg");
-            let game = read_vpg(&manager_ref, &mut file)?;
-            time_read.finish();
-
-            let mut time_reachable = timing.start("compute_reachable_vpg");
-            let (reachable_game, mapping) = compute_reachable(&game);
-            time_reachable.finish();
+            let game = timing.measure("read_vpg", || read_vpg(&manager_ref, &mut file))?;
+            let (reachable_game, mapping) = timing.measure("compute_reachable_vpg", || compute_reachable(&game));
 
             for (old_index, new_index) in mapping.iter().enumerate() {
                 debug!("{} -> {:?}", old_index, new_index);
@@ -395,11 +383,8 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
         cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
         cli.oxidd_workers,
     );
-
-    let mut time_read = timing.start("read_vpg");
-    let vpg = read_vpg(&manager_ref, &mut file)?;
-    time_read.finish();
-
+    
+    let vpg = timing.measure("read_vpg", || read_vpg(&manager_ref, &mut file))?;
     let output_path = Path::new(&args.output);
 
     for result in project_variability_parity_games_iter(&vpg, timing) {
@@ -536,9 +521,7 @@ fn handle_display(cli: &Cli, args: &DisplayArgs, timing: &mut Timing) -> Result<
 
     if format == ParityGameFormat::PG {
         // Read and display a standard parity game.
-        let mut time_read = timing.start("read_pg");
-        let game = read_pg(&mut file)?;
-        time_read.finish();
+        let game = timing.measure("read_pg", || read_pg(&mut file))?;
 
         let mut output_file = File::create(&args.output)?;
         write!(&mut output_file, "{}", PgDot::new(&game))?;
@@ -550,9 +533,7 @@ fn handle_display(cli: &Cli, args: &DisplayArgs, timing: &mut Timing) -> Result<
             cli.oxidd_workers,
         );
 
-        let mut time_read = timing.start("read_vpg");
-        let game = read_vpg(&manager_ref, &mut file)?;
-        time_read.finish();
+        let game = timing.measure("read_vpg", || read_vpg(&manager_ref, &mut file))?;
 
         let mut output_file = File::create(&args.output)?;
         write!(&mut output_file, "{}", VpgDot::new(&game))?;
