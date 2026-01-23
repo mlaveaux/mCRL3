@@ -9,8 +9,6 @@ use clap::Subcommand;
 use merc_io::LargeFormatter;
 use merc_ldd::len;
 use merc_ldd::Storage;
-use merc_lts::guess_lts_format_from_extension;
-use merc_lts::write_bcg;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
@@ -23,10 +21,12 @@ use merc_symbolic::convert_symbolic_lts;
 use merc_symbolic::guess_format_from_extension;
 use merc_symbolic::parse_compacted_dependency_graph;
 use merc_symbolic::reachability;
+use merc_symbolic::reachability_bdd;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
 use merc_symbolic::reorder;
 use merc_symbolic::sigref_symbolic;
+use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
@@ -66,72 +66,89 @@ struct Cli {
 /// Defines the subcommands for this tool.
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Prints information related to the given symbolic LTS
     Info(InfoArgs),
+
+    /// Explores the given symbolic LTS
     Explore(ExploreArgs),
+
+    /// Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic
     Reorder(ReorderArgs),
+
+    /// Converts a symbolic LTS to a concrete LTS
     Convert(ConvertArgs),
+
+    /// Applied reductions to a symbolic LTS
     Reduce(ReduceArgs),
 }
 
 /// Print information related to the given symbolic LTS
 #[derive(clap::Args, Debug)]
-#[command()]
 struct InfoArgs {
     filename: PathBuf,
 
-    #[arg(long, help = "Sets the input symbolic LTS format.")]
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
     format: Option<SymFormat>,
 }
 
 /// Explore the given symbolic LTS
 #[derive(clap::Args, Debug)]
-#[command()]
 struct ExploreArgs {
     filename: PathBuf,
 
-    #[arg(long, help = "Sets the input symbolic LTS format.")]
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
     format: Option<SymFormat>,
+
+    /// Use BDD based exploration by converting the symbolic LTS
+    #[arg(long)]
+    use_bdd: bool,
+
+    /// Visualize intermediate BDDs using oxidd-vis.
+    #[arg(long)]
+    visualize: bool,
 }
 
-/// Compute a reordering for a dependency graph given by lpsreach or pbessolvesymbolic
 #[derive(clap::Args, Debug)]
-#[command()]
 struct ReorderArgs {
-    /// Path to the mCRL2 tools (lpsreach or pbessolvesymbolic).
+    /// Path to the mCRL2 tools (lpsreach or pbessolvesymbolic)
     #[arg(long)]
     mcrl2_tool_path: Option<PathBuf>,
 
-    #[arg(help = "The input linear process specification file in the mCRL2 .lps format.")]
+    /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
 }
 
 /// Convert a symbolic LTS to a concrete LTS
 #[derive(clap::Args, Debug)]
-#[command()]
 struct ConvertArgs {
-    #[arg(long, help = "Sets the input symbolic LTS format.")]
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
     format: Option<SymFormat>,
 
-    #[arg(help = "The input symbolic LTS file path.")]
+    /// The input symbolic LTS file path.
     filename: PathBuf,
 
-    #[arg(long, help = "Sets the output LTS format.")]
+    /// Sets the output LTS format.
+    #[arg(long)]
     output_format: Option<LtsFormat>,
 
-    #[arg(help = "The output LTS file path.")]
+    /// The output LTS file path.
     output: PathBuf,
 }
 
 #[derive(clap::Args, Debug)]
-#[command(about = "Applied reductions to a symbolic LTS")]
 struct ReduceArgs {
-    #[arg(help = "The input symbolic LTS file path.")]
+    /// The input symbolic LTS file path.
     filename: PathBuf,
 
-    #[arg(long, help = "Sets the input symbolic LTS format.")]
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
     format: Option<LtsFormat>,
 
-    #[arg(long, help = "Visualize the reduction steps in oxidd-vis.")]
+    /// Visualize the reduction steps in oxidd-vis.
+    #[arg(long)]
     visualize: bool,
 }
 
@@ -153,7 +170,7 @@ fn main() -> Result<ExitCode, MercError> {
     if let Some(command) = &cli.commands {
         match command {
             Commands::Info(args) => handle_info(args, &mut timing)?,
-            Commands::Explore(args) => handle_explore(args, &mut timing)?,
+            Commands::Explore(args) => handle_explore(&cli, args, &mut timing)?,
             Commands::Reorder(args) => handle_reorder(args, &mut timing)?,
             Commands::Convert(args) => handle_convert(args, &mut timing)?,
             Commands::Reduce(args) => handle_reduce(&cli, args, &mut timing)?,
@@ -205,32 +222,56 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
 }
 
 /// Explores the given symbolic LTS.
-fn handle_explore(args: &ExploreArgs, _timing: &mut Timing) -> Result<(), MercError> {
+fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
     let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
 
     let mut file = File::open(&args.filename)?;
-    let timing = Timing::new();
-
     match format {
         SymFormat::Sylvan => {
             let mut time_read = timing.start("read_symbolic_lts");
             let lts = read_sylvan(&mut storage, &mut file)?;
             time_read.finish();
 
-            timing.measure("explore", || -> Result<(), MercError> {
-                println!("LTS has {} states", reachability(&mut storage, &lts)?);
-                Ok(())
-            })?;
+            explore_impl(&mut storage, cli, args, &lts, timing)?;
         }
         SymFormat::Sym => {
-            let lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, &mut file))?;
+            let lts = read_symbolic_lts(&mut storage, &mut file)?;
 
-            println!("LTS has {} states", len(&mut storage, lts.states()));
+            explore_impl(&mut storage, cli, args, &lts, timing)?;
         }
     }
 
+    Ok(())
+}
+
+fn explore_impl(
+    storage: &mut Storage,
+    cli: &Cli,
+    args: &ExploreArgs,
+    lts: &impl SymbolicLTS,
+    timing: &mut Timing,
+) -> Result<(), MercError> {
+    if args.use_bdd {
+        let manager_ref = oxidd::bdd::new_manager(
+            cli.oxidd_node_capacity,
+            cli.oxidd_cache_capacity.unwrap_or(DEFAULT_OXIDD_NODE_CAPACITY),
+            cli.oxidd_workers,
+        );
+
+        let mut convert_time = timing.start("convert_bdd");
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(storage, &manager_ref, lts)?;
+        convert_time.finish();
+
+        let mut explore_time = timing.start("explore_bdd");
+        println!("LTS has {} states", reachability_bdd(&manager_ref, &lts_bdd, args.visualize)?);
+        explore_time.finish();
+    } else {
+        let mut explore_time = timing.start("explore");
+        println!("LTS has {} states", reachability(storage, lts)?);
+        explore_time.finish();
+    }
     Ok(())
 }
 
