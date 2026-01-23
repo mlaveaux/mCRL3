@@ -37,98 +37,90 @@ use crate::Signature;
 use crate::SignatureBuilder;
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &mut Timing) -> (L, BlockPartition) {
-    let mut timepre = timing.start("preprocess");
-    let incoming = IncomingTransitions::new(&lts);
-    timepre.finish();
+pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (L, BlockPartition) {
+    let incoming = timing.measure("preprocess", || IncomingTransitions::new(&lts));
 
-    let mut time = timing.start("reduction");
-    let partition = signature_refinement::<_, _, false>(
-        &lts,
-        &incoming,
-        |state_index, partition, _, builder| {
-            strong_bisim_signature(state_index, &lts, partition, builder);
-        },
-        |_, _| None,
-    );
-    time.finish();
+    let partition = timing.measure("reduction", || {
+        signature_refinement::<_, _, false>(
+            &lts,
+            &incoming,
+            |state_index, partition, _, builder| {
+                strong_bisim_signature(state_index, &lts, partition, builder);
+            },
+            |_, _| None,
+        )
+    });
 
     (lts, partition)
 }
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &mut Timing) -> (L, IndexedPartition) {
-    let mut time = timing.start("reduction");
-    let partition = signature_refinement_naive::<_, _, false>(&lts, |state_index, partition, _, builder| {
-        strong_bisim_signature(state_index, &lts, partition, builder);
+pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition) {
+    let partition = timing.measure("reduction", || {
+        signature_refinement_naive::<_, _, false>(&lts, |state_index, partition, _, builder| {
+            strong_bisim_signature(state_index, &lts, partition, builder);
+        })
     });
 
-    time.finish();
     (lts, partition)
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement
-pub fn branching_bisim_sigref<L: LTS>(
-    lts: L,
-    timing: &mut Timing,
-) -> (LabelledTransitionSystem<L::Label>, BlockPartition) {
-    let mut timepre = timing.start("scc_decomposition");
-    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
-    let incoming = IncomingTransitions::new(&preprocessed_lts);
-    timepre.finish();
+pub fn branching_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (LabelledTransitionSystem<L::Label>, BlockPartition) {
+    let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
+    let incoming = timing.measure("preprocess", || IncomingTransitions::new(&preprocessed_lts));
 
     debug!("longest_tau_path" = longest_tau_path(&preprocessed_lts); "The longest tau path is {}", longest_tau_path(&preprocessed_lts));
 
-    let mut time = timing.start("reduction");
     let mut expected_builder = SignatureBuilder::default();
     let mut visited = FxHashSet::default();
     let mut stack = Vec::new();
 
-    let partition = signature_refinement::<_, _, true>(
-        &preprocessed_lts,
-        &incoming,
-        |state_index, partition, state_to_key, builder| {
-            branching_bisim_signature_inductive(state_index, &preprocessed_lts, partition, state_to_key, builder);
+    let partition = timing.measure("reduction", || {
+        signature_refinement::<_, _, true>(
+            &preprocessed_lts,
+            &incoming,
+            |state_index, partition, state_to_key, builder| {
+                branching_bisim_signature_inductive(state_index, &preprocessed_lts, partition, state_to_key, builder);
 
-            // Compute the expected signature, only used in debugging.
-            if cfg!(debug_assertions) {
-                branching_bisim_signature(
-                    state_index,
-                    &preprocessed_lts,
-                    partition,
-                    &mut expected_builder,
-                    &mut visited,
-                    &mut stack,
-                );
-                let expected_result = builder.clone();
+                // Compute the expected signature, only used in debugging.
+                if cfg!(debug_assertions) {
+                    branching_bisim_signature(
+                        state_index,
+                        &preprocessed_lts,
+                        partition,
+                        &mut expected_builder,
+                        &mut visited,
+                        &mut stack,
+                    );
+                    let expected_result = builder.clone();
 
-                let signature = Signature::new(builder);
-                debug_assert_eq!(
-                    signature.as_slice(),
-                    expected_result,
-                    "The sorted and expected signature should be the same"
-                );
-            }
-        },
-        |signature, key_to_signature| {
-            // Inductive signatures.
-            for (label, key) in signature.iter().rev() {
-                if is_tau_hat(*label, &preprocessed_lts)
-                    && key_to_signature[*key].is_subset_of(signature, (*label, *key))
-                {
-                    return Some(*key);
+                    let signature = Signature::new(builder);
+                    debug_assert_eq!(
+                        signature.as_slice(),
+                        expected_result,
+                        "The sorted and expected signature should be the same"
+                    );
+                }
+            },
+            |signature, key_to_signature| {
+                // Inductive signatures.
+                for (label, key) in signature.iter().rev() {
+                    if is_tau_hat(*label, &preprocessed_lts)
+                        && key_to_signature[*key].is_subset_of(signature, (*label, *key))
+                    {
+                        return Some(*key);
+                    }
+
+                    if !is_tau_hat(*label, &preprocessed_lts) {
+                        return None;
+                    }
                 }
 
-                if !is_tau_hat(*label, &preprocessed_lts) {
-                    return None;
-                }
-            }
-
-            None
-        },
-    );
-
-    time.finish();
+                None
+            },
+        )
+    });
 
     // Combine the SCC partition with the branching bisimulation partition.
     (preprocessed_lts, partition)
@@ -137,57 +129,63 @@ pub fn branching_bisim_sigref<L: LTS>(
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
 pub fn branching_bisim_sigref_naive<L: LTS>(
     lts: L,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
-    let mut timepre = timing.start("preprocess");
-    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
-    timepre.finish();
+    let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
 
-    let mut time = timing.start("reduction");
-    let mut expected_builder = SignatureBuilder::default();
-    let mut visited = FxHashSet::default();
-    let mut stack = Vec::new();
+    timing.measure("reduction", || {
+        let mut expected_builder = SignatureBuilder::default();
+        let mut visited = FxHashSet::default();
+        let mut stack = Vec::new();
 
-    let partition = signature_refinement_naive::<_, _, false>(
-        &preprocessed_lts,
-        |state_index, partition, state_to_signature, builder| {
-            branching_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder);
-
-            // Compute the expected signature, only used in debugging.
-            if cfg!(debug_assertions) {
-                branching_bisim_signature(
+        let partition = signature_refinement_naive::<_, _, false>(
+            &preprocessed_lts,
+            |state_index, partition, state_to_signature, builder| {
+                branching_bisim_signature_sorted(
                     state_index,
                     &preprocessed_lts,
                     partition,
-                    &mut expected_builder,
-                    &mut visited,
-                    &mut stack,
+                    state_to_signature,
+                    builder,
                 );
-                let expected_result = builder.clone();
 
-                let signature = Signature::new(builder);
-                debug_assert_eq!(
-                    signature.as_slice(),
-                    expected_result,
-                    "The sorted and expected signature should be the same"
-                );
-            }
-        },
-    );
-    time.finish();
+                // Compute the expected signature, only used in debugging.
+                if cfg!(debug_assertions) {
+                    branching_bisim_signature(
+                        state_index,
+                        &preprocessed_lts,
+                        partition,
+                        &mut expected_builder,
+                        &mut visited,
+                        &mut stack,
+                    );
+                    let expected_result = builder.clone();
 
-    (preprocessed_lts, partition)
+                    let signature = Signature::new(builder);
+                    debug_assert_eq!(
+                        signature.as_slice(),
+                        expected_result,
+                        "The sorted and expected signature should be the same"
+                    );
+                }
+            },
+        );
+
+        (preprocessed_lts, partition)
+    })
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
 pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
     lts: L,
     preprocess: bool,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
-        let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
+        let lts = timing.measure("preprocess", || {
+            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+        });
         weak_bisim_sigref_inductive_naive_impl(lts, timing)
     } else {
         weak_bisim_sigref_inductive_naive_impl(lts, timing)
@@ -197,17 +195,10 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
 /// Implementation of [weak bisimulation signature refinement] that deals with  both preprocessed and regular LTSs.
 pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     lts: L,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
-    let mut timepre = timing.start("scc_decomposition");
-    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
-    timepre.finish();
-
-    let mut time = timing.start("reduction");
-
-    let partition = signature_refinement_weak(&preprocessed_lts);
-    time.finish();
-
+    let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
+    let partition = timing.measure("reduction", || signature_refinement_weak(&preprocessed_lts));
     (preprocessed_lts, partition)
 }
 
@@ -215,14 +206,13 @@ pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
 pub fn weak_bisim_sigref_naive<L: LTS>(
     lts: L,
     preprocess: bool,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
-        let mut preprocess_time = timing.start("preprocess");
-        let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
-        preprocess_time.finish();
-
+        let lts = timing.measure("preprocess", || {
+            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+        });
         weak_bisim_sigref_naive_impl(lts, timing)
     } else {
         weak_bisim_sigref_naive_impl(lts, timing)
@@ -233,20 +223,15 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
 /// both preprocessed and regular LTSs.
 fn weak_bisim_sigref_naive_impl<L: LTS>(
     lts: L,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
-    let mut timepre = timing.start("scc_decomposition");
-    let preprocessed_lts = tau_loop_elimination_and_reorder(lts);
-    timepre.finish();
-
-    let mut time = timing.start("reduction");
-    let partition = signature_refinement_naive::<_, _, true>(
+    let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
+    let partition = timing.measure("reduction", || signature_refinement_naive::<_, _, true>(
         &preprocessed_lts,
         |state_index, partition, state_to_signature, builder| {
             weak_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder)
         },
-    );
-    time.finish();
+    ));
 
     (preprocessed_lts, partition)
 }
@@ -462,7 +447,7 @@ where {
         state_to_taus.resize_with(lts.num_of_states(), || Signature::default());
         for state in lts.iter_states() {
             weak_bisim_signature_sorted_taus(state, lts, &partition, &state_to_taus, &mut builder);
-       
+
             let slice = if builder.is_empty() {
                 empty_slice
             } else {
@@ -473,7 +458,14 @@ where {
 
         for state_index in lts.iter_states() {
             // Compute the Presignature of a single state
-            weak_bisim_presignature_sorted(state_index, lts, &partition, &state_to_taus,&state_to_signature, &mut builder);
+            weak_bisim_presignature_sorted(
+                state_index,
+                lts,
+                &partition,
+                &state_to_taus,
+                &state_to_signature,
+                &mut builder,
+            );
 
             // Inductive step see if presig is a subset of a tau reachable state.
             let mut inductive_key = None;
@@ -482,9 +474,7 @@ where {
                     let tau_sig = &key_to_signature[keyvalue.1.value()];
                     let presig = Signature::new(&builder);
 
-                    if tau_sig
-                        .is_subset_of(presig.as_slice(), *keyvalue)
-                    {
+                    if tau_sig.is_subset_of(presig.as_slice(), *keyvalue) {
                         inductive_key = Some(*keyvalue.1);
                         break;
                     }

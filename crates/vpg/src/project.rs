@@ -1,14 +1,14 @@
 use merc_utilities::Timing;
-use oxidd::BooleanFunction;
 use oxidd::bdd::BDDFunction;
 use oxidd::util::OptBool;
+use oxidd::BooleanFunction;
 
 use merc_symbolic::CubeIterAll;
 use merc_utilities::MercError;
 
-use crate::PG;
 use crate::ParityGame;
 use crate::VariabilityParityGame;
+use crate::PG;
 
 /// Projects a variability parity game into a standard parity game by removing
 /// edges that are not enabled by the given feature selection.
@@ -51,9 +51,9 @@ pub fn project_variability_parity_games_iter<'a>(
     CubeIterAll::new(vpg.variables(), vpg.configuration()).map(move |cube| {
         let (cube, bdd) = cube?;
 
-        let mut time_proj = timing.start("project");
-        let pg = project_variability_parity_game(vpg, &bdd)?;
-        time_proj.finish();
+        let pg = timing.measure("project", || -> Result<_, MercError> {
+            project_variability_parity_game(vpg, &bdd)
+        })?;
 
         Ok((
             Projected {

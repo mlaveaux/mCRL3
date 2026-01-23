@@ -97,48 +97,46 @@ pub fn is_failures_refinement<L: LTS>(
         impl_lts.merge_disjoint(&spec_lts)
     };
 
-    let mut refine_time = timing.start("refinement");
-    let (result, ce) = if counter_example {
-        // Construct a counter example tree, and return a trace.
-        let mut ce_constructor = CounterExampleConstructor::new();
-        let (result, state) =
-            is_refinement_internal(strategy, refinement, &merged_lts, initial_spec, &mut ce_constructor);
-        trace!("Counter example tree: {:?}", ce_constructor);
+    timing.measure("refinement", || {
+        if counter_example {
+            // Construct a counter example tree, and return a trace.
+            let mut ce_constructor = CounterExampleConstructor::new();
+            let (result, state) =
+                is_refinement_internal(strategy, refinement, &merged_lts, initial_spec, &mut ce_constructor);
+            trace!("Counter example tree: {:?}", ce_constructor);
 
-        if let Some(state) = state {
-            // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
-            (
-                result,
-                Some(if refinement == RefinementType::Trace {
-                    CounterExample::Trace(
-                        ce_constructor
-                            .reconstruct_trace(state)
-                            .iter()
-                            .map(|l| merged_lts.labels()[*l].clone())
-                            .collect(),
-                    )
-                } else {
-                    // The resulting trace is a weak trace.
-                    CounterExample::WeakTrace(
-                        ce_constructor
-                            .reconstruct_trace(state)
-                            .iter()
-                            .map(|l| merged_lts.labels()[*l].clone())
-                            .collect(),
-                    )
-                }),
-            )
+            if let Some(state) = state {
+                // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
+                (
+                    result,
+                    Some(if refinement == RefinementType::Trace {
+                        CounterExample::Trace(
+                            ce_constructor
+                                .reconstruct_trace(state)
+                                .iter()
+                                .map(|l| merged_lts.labels()[*l].clone())
+                                .collect(),
+                        )
+                    } else {
+                        // The resulting trace is a weak trace.
+                        CounterExample::WeakTrace(
+                            ce_constructor
+                                .reconstruct_trace(state)
+                                .iter()
+                                .map(|l| merged_lts.labels()[*l].clone())
+                                .collect(),
+                        )
+                    }),
+                )
+            } else {
+                (result, None)
+            }
         } else {
+            // Run without constructing a counter example.
+            let (result, _) = is_refinement_internal::<_, ()>(strategy, refinement, &merged_lts, initial_spec, &mut ());
             (result, None)
         }
-    } else {
-        // Run without constructing a counter example.
-        let (result, _) = is_refinement_internal::<_, ()>(strategy, refinement, &merged_lts, initial_spec, &mut ());
-        (result, None)
-    };
-
-    refine_time.finish();
-    (result, ce)
+    })
 }
 
 /// The inner loop for checking refinement.

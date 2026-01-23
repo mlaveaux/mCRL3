@@ -31,44 +31,43 @@ pub fn rewrite_rec(
 
     let spec = syntax_spec.to_rewrite_spec();
 
-    let mut rewrite_time = timing.start("rewrite_rec");
-    match rewriter {
-        Rewriter::Naive => {
-            let mut inner = NaiveRewriter::new(&spec);
+    timing.measure("rewrite_rec", || {
+        match rewriter {
+            Rewriter::Naive => {
+                let mut inner = NaiveRewriter::new(&spec);
 
-            for term in &syntax_terms {
-                let term = to_untyped_data_expression(term.clone(), None);
-                let result = inner.rewrite(&term);
-                if output {
-                    println!("{}", result)
+                for term in &syntax_terms {
+                    let term = to_untyped_data_expression(term.clone(), None);
+                    let result = inner.rewrite(&term);
+                    if output {
+                        println!("{}", result)
+                    }
+                }
+            }
+            Rewriter::Innermost => {
+                let mut inner = InnermostRewriter::new(&spec);
+
+                for term in &syntax_terms {
+                    let term = to_untyped_data_expression(term.clone(), None);
+                    let result = inner.rewrite(&term);
+                    if output {
+                        println!("{}", result)
+                    }
+                }
+            }
+            Rewriter::Sabre => {
+                let mut sa = SabreRewriter::new(&spec);
+
+                for term in &syntax_terms {
+                    let term = to_untyped_data_expression(term.clone(), None);
+                    let result = sa.rewrite(&term);
+                    if output {
+                        println!("{}", result)
+                    }
                 }
             }
         }
-        Rewriter::Innermost => {
-            let mut inner = InnermostRewriter::new(&spec);
 
-            for term in &syntax_terms {
-                let term = to_untyped_data_expression(term.clone(), None);
-                let result = inner.rewrite(&term);
-                if output {
-                    println!("{}", result)
-                }
-            }
-        }
-        Rewriter::Sabre => {
-            let mut sa = SabreRewriter::new(&spec);
-
-            for term in &syntax_terms {
-                let term = to_untyped_data_expression(term.clone(), None);
-                let result = sa.rewrite(&term);
-                if output {
-                    println!("{}", result)
-                }
-            }
-        }
-    }
-
-    rewrite_time.finish();
-
-    Ok(())
+        Ok(())
+    })
 }
