@@ -1,5 +1,7 @@
 //! Authors: Maurice Laveaux and Sjef van Loo
 
+use std::marker::PhantomData;
+
 use merc_collections::ByteCompressedVec;
 use merc_collections::bytevec;
 
@@ -7,14 +9,21 @@ use crate::PG;
 use crate::VertexIndex;
 
 /// Stores the predecessors for a given parity game.
-pub struct Predecessors {
+pub struct Predecessors<'a> {
+    /// A flat list of all predecessors in the game.
     edges_from: ByteCompressedVec<VertexIndex>,
+
+    /// A mapping from the vertex to the `edges_from` that stores its
+    /// predecessors.
     vertex_to_predecessors: ByteCompressedVec<usize>,
+
+    /// Marker to tie the lifetime of the predecessors to the game.
+    _marker: PhantomData<&'a ()>,
 }
 
-impl Predecessors {
+impl<'a> Predecessors<'a> {
     /// Creates the predecessors structure for the given parity game.
-    pub fn new(game: &impl PG) -> Self {
+    pub fn new(game: &'a impl PG) -> Self {
         let mut edges_from = bytevec![VertexIndex::new(0); game.num_of_edges()];
         let mut state2incoming = bytevec![0; game.num_of_vertices()];
 
@@ -54,6 +63,7 @@ impl Predecessors {
         Self {
             edges_from,
             vertex_to_predecessors: state2incoming,
+            _marker: PhantomData,
         }
     }
 

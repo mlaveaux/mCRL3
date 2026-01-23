@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use std::marker::PhantomData;
+
 use merc_collections::ByteCompressedVec;
 use merc_collections::bytevec;
 
@@ -9,14 +11,22 @@ use crate::StateIndex;
 use crate::Transition;
 
 /// Stores the incoming transitions for a given labelled transition system.
-pub struct IncomingTransitions {
+pub struct IncomingTransitions<'a> {
+    /// A flat list of all incoming transition labels in the LTS. They are stored in two separate
+    /// arrays since the compression is based on the highest value.
     transition_labels: ByteCompressedVec<LabelIndex>,
     transition_from: ByteCompressedVec<StateIndex>,
+
+    /// A mapping from the state to the `transition_labels` and
+    /// `transition_from` that stores its incoming transitions.
     state2incoming: ByteCompressedVec<usize>,
+
+    /// Marker to tie the lifetime of the incoming transitions to the LTS.
+    _marker: PhantomData<&'a ()>,
 }
 
-impl IncomingTransitions {
-    pub fn new(lts: &impl LTS) -> Self {
+impl<'a> IncomingTransitions<'a> {
+    pub fn new(lts: &'a impl LTS) -> Self {
         let mut transition_labels = bytevec![LabelIndex::new(0); lts.num_of_transitions()];
         let mut transition_from = bytevec![StateIndex::new(0); lts.num_of_transitions()];
         let mut state2incoming = bytevec![0usize; lts.num_of_states()];
@@ -78,6 +88,7 @@ impl IncomingTransitions {
             transition_labels,
             transition_from,
             state2incoming,
+            _marker: PhantomData,
         }
     }
 
