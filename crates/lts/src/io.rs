@@ -7,6 +7,9 @@ use std::path::Path;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use crate::LTS;
+use crate::LabelledTransitionSystem;
+use crate::LtsMultiAction;
 use crate::read_aut;
 use crate::read_bcg;
 use crate::read_lts;
@@ -82,7 +85,7 @@ pub enum GenericLts {
     /// The LTS in the Aldebaran format.
     Aut(LabelledTransitionSystem<String>),
     /// The LTS in the mCRL2 .lts format.
-    Lts(LabelledTransitionSystem<MultiAction>),
+    Lts(LabelledTransitionSystem<LtsMultiAction>),
     /// The LTS in the CADP BCG format.
     Bcg(LabelledTransitionSystem<String>),
 }
@@ -93,7 +96,7 @@ impl GenericLts {
     pub fn apply_pair<T, FAut, FLts, R>(self, other: GenericLts, arguments: T, apply_aut: FAut, apply_lts: FLts) -> R
     where
         FAut: FnOnce(LabelledTransitionSystem<String>, LabelledTransitionSystem<String>, T) -> R,
-        FLts: FnOnce(LabelledTransitionSystem<MultiAction>, LabelledTransitionSystem<MultiAction>, T) -> R,
+        FLts: FnOnce(LabelledTransitionSystem<LtsMultiAction>, LabelledTransitionSystem<LtsMultiAction>, T) -> R,
     {
         match (self, other) {
             (GenericLts::Aut(a), GenericLts::Aut(b)) => apply_aut(a, b, arguments),
@@ -108,7 +111,7 @@ impl GenericLts {
     pub fn apply<T, F, G, R>(self, arguments: T, apply_aut: F, apply_lts: G) -> R
     where
         F: FnOnce(LabelledTransitionSystem<String>, T) -> R,
-        G: FnOnce(LabelledTransitionSystem<MultiAction>, T) -> R,
+        G: FnOnce(LabelledTransitionSystem<LtsMultiAction>, T) -> R,
     {
         match self {
             GenericLts::Aut(lts) => apply_aut(lts, arguments),
