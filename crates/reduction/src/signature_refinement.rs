@@ -3,6 +3,7 @@ use std::mem::swap;
 use bumpalo::Bump;
 use log::debug;
 use log::info;
+use log::log_enabled;
 use log::trace;
 use merc_io::TimeProgress;
 use merc_lts::IncomingTransitions;
@@ -10,6 +11,7 @@ use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
+use merc_lts::write_aut;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
@@ -70,7 +72,13 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (LabelledTrans
     let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
     let incoming = timing.measure("preprocess", || IncomingTransitions::new(&preprocessed_lts));
 
-    debug!("longest_tau_path" = longest_tau_path(&preprocessed_lts); "The longest tau path is {}", longest_tau_path(&preprocessed_lts));
+    write_aut(&mut std::fs::File::create("bruh.aut").unwrap(), &preprocessed_lts).unwrap();
+
+    if log_enabled!(log::Level::Debug) {
+        let path = longest_tau_path(&preprocessed_lts);
+        debug!("longest_tau_path" = path.len(); "The longest tau path is {:?}", path);
+    }
+
 
     let mut expected_builder = SignatureBuilder::default();
     let mut visited = FxHashSet::default();
