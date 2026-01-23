@@ -3374,6 +3374,7 @@ dependencies = [
 [[package]]
 name = "merc_pest_consume"
 version = "2.0.0"
+source = "git+https://github.com/MERCorg/pest_consume#85a78b26809c63d84c5605ec8f408d04bae5f53f"
 dependencies = [
  "itertools 0.14.0",
  "merc_pest_consume_macros",
@@ -3384,6 +3385,7 @@ dependencies = [
 [[package]]
 name = "merc_pest_consume_macros"
 version = "2.0.0"
+source = "git+https://github.com/MERCorg/pest_consume#85a78b26809c63d84c5605ec8f408d04bae5f53f"
 dependencies = [
  "proc-macro2",
  "quote",
