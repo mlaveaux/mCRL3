@@ -54,7 +54,7 @@ struct ZielonkaSolver<'a, G: PG> {
     temp_queue: Vec<VertexIndex>,
 
     /// Stores the predecessors of the game.
-    predecessors: Predecessors,
+    predecessors: Predecessors<'a>,
 
     /// Temporary storage for vertices per priority.
     priority_vertices: Vec<Vec<VertexIndex>>,
