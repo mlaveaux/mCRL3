@@ -119,9 +119,7 @@ pub fn solve_variability_product_zielonka<'a>(
     project_variability_parity_games_iter(vpg, timing).map(|result| {
         match result {
             Ok((Projected { bits, bdd, game }, timing)) => {
-                let mut reachable_time = timing.start("reachable");
-                let (reachable_pg, projection) = compute_reachable(&game);
-                reachable_time.finish();
+                let (reachable_pg, projection) = timing.measure("reachable", || compute_reachable(&game));
 
                 debug!("Solving projection on {}...", FormatConfig(&bits));
 

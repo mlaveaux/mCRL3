@@ -34,14 +34,11 @@ type BitArray = BitVec<u64, Lsb0>;
 pub fn weak_bisimulation<L: LTS>(
     lts: L,
     preprocess: bool,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
-        let mut time_pre = timing.start("preprocess");
-        let lts = reduce_lts(lts, Equivalence::BranchingBisim, true, timing);
-        time_pre.finish();
-
+        let lts = timing.measure("preprocess", || reduce_lts(lts, Equivalence::BranchingBisim, true, timing));
         weak_bisimulation_impl(lts, timing)
     } else {
         weak_bisimulation_impl(lts, timing)
@@ -51,73 +48,71 @@ pub fn weak_bisimulation<L: LTS>(
 /// Core weak bisimulation algorithm implementation.
 fn weak_bisimulation_impl<L: LTS>(
     lts: L,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
-    let mut time_pre = timing.start("scc_decomposition");
-    let tau_loop_free_lts = tau_loop_elimination_and_reorder(lts);
-    time_pre.finish();
+    let tau_loop_free_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
 
-    let mut time_reduction = timing.start("reduction");
-    let mut blocks = SimpleBlockPartition::new(tau_loop_free_lts.num_of_states());
+    timing.measure("reduction", || {
+        let mut blocks = SimpleBlockPartition::new(tau_loop_free_lts.num_of_states());
 
-    let mut act_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
-    let mut tau_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
+        let mut act_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
+        let mut tau_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
 
-    let incoming = IncomingTransitions::new(&tau_loop_free_lts);
+        let incoming = IncomingTransitions::new(&tau_loop_free_lts);
 
-    let progress = TimeProgress::new(
-        |num_of_blocks: usize| {
-            info!("Found {} blocks...", num_of_blocks);
-        },
-        1,
-    );
+        let progress = TimeProgress::new(
+            |num_of_blocks: usize| {
+                info!("Found {} blocks...", num_of_blocks);
+            },
+            1,
+        );
 
-    loop {
-        let mut stable = true;
-        for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
-            progress.print(blocks.num_of_blocks());
-            if blocks.block(block_index).is_stable() {
-                continue;
-            }
+        loop {
+            let mut stable = true;
+            for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
+                progress.print(blocks.num_of_blocks());
+                if blocks.block(block_index).is_stable() {
+                    continue;
+                }
 
-            trace!("Stabilising block {:?}", block_index);
-            stable = false;
-            blocks.mark_block_stable(block_index);
+                trace!("Stabilising block {:?}", block_index);
+                stable = false;
+                blocks.mark_block_stable(block_index);
 
-            // tau is the first label.
-            for label in tau_loop_free_lts
-                .labels()
-                .iter()
-                .enumerate()
-                .map(|(i, _)| LabelIndex::new(i))
-            {
-                compute_weak_act(
-                    &mut act_mark,
-                    &mut tau_mark,
-                    &tau_loop_free_lts,
-                    &blocks,
-                    &incoming,
-                    block_index,
-                    label,
-                );
+                // tau is the first label.
+                for label in tau_loop_free_lts
+                    .labels()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| LabelIndex::new(i))
+                {
+                    compute_weak_act(
+                        &mut act_mark,
+                        &mut tau_mark,
+                        &tau_loop_free_lts,
+                        &blocks,
+                        &incoming,
+                        block_index,
+                        label,
+                    );
 
-                // Note that we cannot use the block references here, and instead uses indices, because stabilise
-                // also modifies the blocks structure.
-                for block_prime in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
-                    stabilise(block_prime, &mut act_mark, &mut blocks);
+                    // Note that we cannot use the block references here, and instead uses indices, because stabilise
+                    // also modifies the blocks structure.
+                    for block_prime in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
+                        stabilise(block_prime, &mut act_mark, &mut blocks);
+                    }
                 }
             }
+
+            if stable {
+                // Quit the outer loop.
+                trace!("Partition is stable!");
+                break;
+            }
         }
 
-        if stable {
-            // Quit the outer loop.
-            trace!("Partition is stable!");
-            break;
-        }
-    }
-
-    time_reduction.finish();
-    (tau_loop_free_lts, blocks)
+        (tau_loop_free_lts, blocks)
+    })
 }
 
 /// Sets s.act_mark to true iff exists t: S. s =\not{a}=> t

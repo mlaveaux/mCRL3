@@ -33,46 +33,36 @@ pub fn reduce_lts<L: LTS>(
     lts: L,
     equivalence: Equivalence,
     preprocess: bool,
-    timing: &mut Timing,
+    timing: &Timing,
 ) -> LabelledTransitionSystem<L::Label> {
-    let (result, mut timer) = match equivalence {
+    match equivalence {
         Equivalence::WeakBisim => {
             let (lts, partition) = weak_bisimulation(lts, preprocess, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_naive(&lts, &partition, true), quotient_time)
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigref => {
             let (lts, partition) = weak_bisim_sigref_inductive_naive(lts, preprocess, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_naive(&lts, &partition, true), quotient_time)
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigrefNaive => {
             let (lts, partition) = weak_bisim_sigref_naive(lts, preprocess, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_naive(&lts, &partition, true), quotient_time)
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::StrongBisim => {
             let (lts, partition) = strong_bisim_sigref(lts, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_block::<_, false>(&lts, &partition), quotient_time)
+            timing.measure("quotient", || quotient_lts_block::<_, false>(&lts, &partition))
         }
         Equivalence::StrongBisimNaive => {
             let (lts, partition) = strong_bisim_sigref_naive(lts, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_naive(&lts, &partition, false), quotient_time)
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, false))
         }
         Equivalence::BranchingBisim => {
             let (lts, partition) = branching_bisim_sigref(lts, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_block::<_, true>(&lts, &partition), quotient_time)
+            timing.measure("quotient", || quotient_lts_block::<_, true>(&lts, &partition))
         }
         Equivalence::BranchingBisimNaive => {
             let (lts, partition) = branching_bisim_sigref_naive(lts, timing);
-            let quotient_time = timing.start("quotient");
-            (quotient_lts_naive(&lts, &partition, true), quotient_time)
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
-    };
-
-    timer.finish();
-    result
+    }
 }

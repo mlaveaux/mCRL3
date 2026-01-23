@@ -15,10 +15,8 @@ use crate::weak_bisimulation;
 
 // Compare two LTSs for equivalence using the given algorithm.
 pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preprocess: bool, timing: &mut Timing) -> bool {
-    let mut time_merge = timing.start("merge lts");
-    let (merged, rhs_initial) = left.merge_disjoint(&right);
+    let (merged, rhs_initial) =timing.measure("merge lts", || left.merge_disjoint(&right));
     drop(right); // No longer needed.
-    time_merge.finish();
 
     // Reduce the merged LTS modulo the given equivalence and return the partition
     match equivalence {
