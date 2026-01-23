@@ -153,7 +153,7 @@ Further details on the implementation are explained in the following paper:
 
 The initial ATerm library was presented by the following article:
 
-  > M. G. J. van den Brand, H. A. de Jong, P. Klint, P. A. Olivier. Efficient annotated terms. Software: Practice and Experience. [DOI](https://doi.org/10.1002/(SICI)1097-024X(200003)30:3<259::AID-SPE298>3.0.CO;2-Y).
+  > M.G.J. van den Brand, H.A. de Jong, P. Klint, P.A. Olivier. Efficient annotated terms. Software: Practice and Experience. [DOI](https://doi.org/10.1002/(SICI)1097-024X(200003)30:3<259::AID-SPE298>3.0.CO;2-Y).
  
 ## Authors
 

@@ -27,11 +27,11 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigref => {
-            let (lts, partition) = weak_bisim_sigref_inductive_naive(merged, timing);
+            let (lts, partition) = weak_bisim_sigref_inductive_naive(merged, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigrefNaive => {
-            let (lts, partition) = weak_bisim_sigref_naive(merged, timing);
+            let (lts, partition) = weak_bisim_sigref_naive(merged, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::StrongBisim => {
