@@ -31,11 +31,9 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 use which::which_in;
 
+/// A command line tool for symbolic labelled transition systems
 #[derive(clap::Parser, Debug)]
-#[command(
-    about = "A command line tool for symbolic labelled transition systems",
-    arg_required_else_help = true
-)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(flatten)]
     version: VersionFlag,

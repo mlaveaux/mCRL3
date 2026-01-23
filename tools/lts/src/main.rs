@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::Write;
 use std::io::stdout;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -10,33 +10,31 @@ use clap::Subcommand;
 use log::info;
 
 use merc_io::LargeFormatter;
-use merc_lts::GenericLts;
-use merc_lts::LTS;
-use merc_lts::LtsFormat;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
-use merc_reduction::Equivalence;
+use merc_lts::GenericLts;
+use merc_lts::LtsFormat;
+use merc_lts::LTS;
 use merc_reduction::reduce_lts;
-use merc_refinement::RefinementType;
+use merc_reduction::Equivalence;
 use merc_refinement::generate_formula;
 use merc_refinement::refines;
+use merc_refinement::RefinementType;
+use merc_tools::format_key_values_json;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
-use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+/// A command line tool for labelled transition systems
 #[derive(clap::Parser, Debug)]
-#[command(
-    about = "A command line tool for labelled transition systems",
-    arg_required_else_help = true
-)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(flatten)]
     version: VersionFlag,
@@ -61,8 +59,9 @@ enum Commands {
     Convert(ConvertArgs),
 }
 
+/// Prints information related to the given LTS"
 #[derive(clap::Args, Debug)]
-#[command(about = "Prints information related to the given LTS")]
+#[command()]
 struct InfoArgs {
     /// Specify the input LTS.
     filename: String,
@@ -103,8 +102,9 @@ struct ReduceArgs {
     no_preprocess: bool,
 }
 
+/// Compares two LTS modulo an equivalent relation
 #[derive(clap::Args, Debug)]
-#[command(about = "Compares two LTS modulo an equivalent relation")]
+#[command()]
 struct CompareArgs {
     /// Selects the equivalence to compare the LTSs modulo.
     equivalence: Equivalence,
@@ -128,8 +128,9 @@ struct CompareArgs {
     no_preprocess: bool,
 }
 
+/// Converts an LTS from one format to another
 #[derive(clap::Args, Debug)]
-#[command(about = "Converts an LTS from one format to another")]
+#[command()]
 struct ConvertArgs {
     /// Explicitly specify the LTS input file format
     #[arg(long)]
@@ -150,10 +151,9 @@ struct ConvertArgs {
     tau: Option<Vec<String>>,
 }
 
+/// Checks whether the given implementation LTS refines the given specification LTS modulo various preorders.
 #[derive(clap::Args, Debug)]
-#[command(
-    about = "Checks whether the given implementation LTS refines the given specification LTS modulo various preorders."
-)]
+#[command()]
 struct RefinesArgs {
     /// Selects the preorder to check for refinement.
     refinement: RefinementType,
@@ -171,6 +171,10 @@ struct RefinesArgs {
     /// Explicitly specify the LTS file format
     #[arg(long)]
     format: Option<LtsFormat>,
+    
+    /// List of actions that should be considered tau actions
+    #[arg(long, value_delimiter = ',')]
+    tau: Option<Vec<String>>,
 
     /// Disables preprocessing of the LTSs before checking refinement.
     #[arg(long)]
@@ -296,8 +300,8 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
     let spec_path = Path::new(&args.specification_filename);
     let format = guess_lts_format_from_extension(impl_path, args.format).ok_or("Unknown LTS file format.")?;
 
-    let impl_lts = read_explicit_lts(impl_path, format, Vec::new(), timing)?;
-    let spec_lts = read_explicit_lts(spec_path, format, Vec::new(), timing)?;
+    let impl_lts = read_explicit_lts(impl_path, format, args.tau.clone().unwrap_or_default(), timing)?;
+    let spec_lts = read_explicit_lts(spec_path, format, args.tau.clone().unwrap_or_default(), timing)?;
 
     info!(
         "Implementation LTS has {} states and {} transitions.",

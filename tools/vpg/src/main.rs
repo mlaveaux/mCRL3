@@ -50,9 +50,9 @@ use merc_vpg::write_vpg;
 /// for this value is fairly arbitrary.
 const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
 
+/// "A command line tool for variability parity games
 #[derive(clap::Parser, Debug)]
 #[command(
-    about = "A command line tool for variability parity games",
     arg_required_else_help = true
 )]
 struct Cli {
@@ -129,7 +129,7 @@ struct ProjectArgs {
     output: String,
 
     /// Whether to compute the reachable part after outputting each projection
-    #[arg(long, short, default_value_t = false)]
+    #[arg(long, short)]
     reachable: bool,
 
     #[arg(long, short)]

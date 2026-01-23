@@ -22,8 +22,9 @@ mod trs_format;
 use merc_utilities::Timing;
 pub use trs_format::*;
 
+/// A command line rewriting tool
 #[derive(clap::Parser, Debug)]
-#[command(about = "A command line rewriting tool", arg_required_else_help = true)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(flatten)]
     version: VersionFlag,
@@ -41,8 +42,9 @@ enum Commands {
     Convert(ConvertArgs),
 }
 
+/// Rewrite mCRL2 data specifications and REC files
 #[derive(clap::Args, Debug)]
-#[command(about = "Rewrite mCRL2 data specifications and REC files")]
+#[command()]
 struct RewriteArgs {
     rewriter: Rewriter,
 
@@ -50,15 +52,17 @@ struct RewriteArgs {
     #[arg(value_name = "SPEC")]
     specification: PathBuf,
 
-    #[arg(help = "File containing the terms to be rewritten.")]
+    /// File containing the terms to be rewritten.
     terms: Option<String>,
 
-    #[arg(long = "output", default_value_t = false, help = "Print the rewritten term(s)")]
+    /// Print the rewritten term(s)
+    #[arg(long)]
     output: bool,
 }
 
+/// Convert input rewrite system to the TRS format"
 #[derive(clap::Args, Debug)]
-#[command(about = "Convert input rewrite system to the TRS format")]
+#[command()]
 struct ConvertArgs {
     /// The REC specification that contains the rewrite rules.
     #[arg(value_name = "SPEC")]
