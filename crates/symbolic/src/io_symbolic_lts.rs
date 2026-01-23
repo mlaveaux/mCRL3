@@ -14,7 +14,7 @@ use merc_data::DataVariable;
 use merc_io::BitStreamRead;
 use merc_ldd::BinaryLddReader;
 use merc_ldd::Storage;
-use merc_lts::MultiAction;
+use merc_lts::LtsMultiAction;
 use merc_utilities::MercError;
 
 use crate::SummandGroup;
@@ -71,7 +71,12 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let mut parameter_values: Vec<Vec<DataExpression>> = Vec::with_capacity(process_parameters.len());
     for parameter in &process_parameters {
         let num_of_entries = stream.read_integer()?;
-        debug!("Parameter {}: {} has {} entries", parameter_values.len(), parameter, num_of_entries);
+        debug!(
+            "Parameter {}: {} has {} entries",
+            parameter_values.len(),
+            parameter,
+            num_of_entries
+        );
 
         let mut values = Vec::with_capacity(num_of_entries as usize);
         for i in 0..num_of_entries {
@@ -90,7 +95,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let mut action_labels = Vec::with_capacity(num_of_action_labels as usize);
     for _ in 0..num_of_action_labels {
         let action_label = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
-        let action = MultiAction::from_mcrl2_aterm(action_label)?;
+        let action = LtsMultiAction::from_mcrl2_aterm(action_label)?;
 
         debug!("Action {}: {}", action_labels.len(), action);
         action_labels.push(action);

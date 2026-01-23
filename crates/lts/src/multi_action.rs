@@ -23,7 +23,6 @@ use merc_collections::VecSet;
 use merc_data::DataExpression;
 use merc_data::DataVariable;
 use merc_data::DataVariableRef;
-use merc_data::SortExpression;
 use merc_data::is_data_variable;
 use merc_macros::merc_derive_terms;
 use merc_macros::merc_term;
@@ -33,11 +32,11 @@ use crate::TransitionLabel;
 
 /// Represents a multi-action, i.e., a set of action labels
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct MultiAction {
-    actions: VecSet<Action>,
+pub struct LtsMultiAction {
+    actions: VecSet<LtsAction>,
 }
 
-impl MultiAction {
+impl LtsMultiAction {
     /// Parses a multi-action from a string representation, typically found in the Aldebaran format.
     pub fn from_string(input: &str) -> Result<Self, MercError> {
         let mut actions = VecSet::new();
@@ -53,28 +52,26 @@ impl MultiAction {
                     return Err(format!("Malformed action with arguments: {}", part).into());
                 }
 
-                let undefined_sort = SortExpression::unknown_sort();
-
                 let label = &part[..open_paren_index].trim();
                 let args_str = &part[open_paren_index + 1..part.len() - 1];
-                let arguments: Vec<(String, String)> = args_str
+                let arguments: Vec<DataExpression> = args_str
                     .split(',')
-                    .map(|s| (s.trim().to_string(), undefined_sort.name().to_string()))
-                    .collect();
-                actions.insert(Action {
+                    .map(|s| DataExpression::from_string(s.trim()))
+                    .collect::<Result<_, MercError>>()?;
+                actions.insert(LtsAction {
                     label: label.to_string(),
                     arguments,
                 });
             } else {
                 let label = part.trim();
-                actions.insert(Action {
+                actions.insert(LtsAction {
                     label: label.to_string(),
                     arguments: Vec::new(),
                 });
             }
         }
 
-        Ok(MultiAction { actions })
+        Ok(LtsMultiAction { actions })
     }
 
     /// Converts the MultiAction into its mCRL2 ATerm representation.
@@ -88,12 +85,7 @@ impl MultiAction {
                     ATermList::<DataExpression>::empty(),
                 );
 
-                let arguments_term = ATermList::<DataExpression>::try_from_double_iter(
-                    action
-                        .arguments
-                        .iter()
-                        .map(|(name, _sort)| DataExpression::from_string(name)),
-                )?;
+                let arguments_term = ATermList::<DataExpression>::from_double_iter(action.arguments.iter().cloned());
 
                 Ok(MCRL2Action::new(label_term.copy(), arguments_term))
             })
@@ -120,19 +112,16 @@ impl MultiAction {
 
             let mut actions = VecSet::new();
             for action in multi_action.actions() {
-                let arguments = action
-                    .arguments()
-                    .iter()
-                    .map(|arg| (arg.to_string(), "".to_string()))
-                    .collect();
+                let arguments = action.arguments().to_vec();
 
-                actions.insert(Action {
+                // Convert the label to string
+                actions.insert(LtsAction {
                     label: action.label().name().to_string(),
                     arguments,
                 });
             }
 
-            Ok(MultiAction { actions })
+            Ok(LtsMultiAction { actions })
         } else {
             Err(format!("Expected TimedMultAction symbol, got {}.", term).into())
         }
@@ -255,25 +244,25 @@ fn is_mcrl2_action_label_symbol(symbol: &SymbolRef<'_>) -> bool {
 
 /// Represents a single action label, with its (data) arguments
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct Action {
+pub struct LtsAction {
     label: String,
-    arguments: Vec<(String, String)>,
+    arguments: Vec<DataExpression>,
 }
 
-impl Action {
-    /// Creates a new action label with the given name and arguments, consisting of pairs of argument names and sorts.
-    pub fn new(label: String, arguments: Vec<(String, String)>) -> Self {
-        Action { label, arguments }
+impl LtsAction {
+    /// Creates a new action label with the given name and arguments.
+    pub fn new(label: String, arguments: Vec<DataExpression>) -> Self {
+        LtsAction { label, arguments }
     }
 }
 
-impl TransitionLabel for MultiAction {
+impl TransitionLabel for LtsMultiAction {
     fn is_tau_label(&self) -> bool {
         self.actions.is_empty()
     }
 
     fn tau_label() -> Self {
-        MultiAction { actions: VecSet::new() }
+        LtsMultiAction { actions: VecSet::new() }
     }
 
     fn matches_label(&self, label: &str) -> bool {
@@ -283,8 +272,8 @@ impl TransitionLabel for MultiAction {
 
     fn from_index(i: usize) -> Self {
         // For now we only generate single actions, but these could become multiactions as well
-        MultiAction {
-            actions: VecSet::singleton(Action::new(
+        LtsMultiAction {
+            actions: VecSet::singleton(LtsAction::new(
                 char::from_digit(i as u32, 36)
                     .expect("Radix is less than 37, so should not panic")
                     .to_string(),
@@ -294,7 +283,7 @@ impl TransitionLabel for MultiAction {
     }
 }
 
-impl fmt::Display for MultiAction {
+impl fmt::Display for LtsMultiAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.actions.is_empty() {
             write!(f, "τ")
@@ -304,18 +293,17 @@ impl fmt::Display for MultiAction {
     }
 }
 
-impl fmt::Display for Action {
+impl fmt::Display for LtsAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.arguments.is_empty() {
             write!(f, "{}", self.label)
         } else {
-            let args_str = self.arguments.iter().map(|(name, _sort)| name).join(", ");
-            write!(f, "{}({})", self.label, args_str)
+            write!(f, "{}({})", self.label, self.arguments.iter().format(", "))
         }
     }
 }
 
-impl fmt::Debug for MultiAction {
+impl fmt::Debug for LtsMultiAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Use the debug format to print the display format
         write!(f, "{}", self)
@@ -324,15 +312,13 @@ impl fmt::Debug for MultiAction {
 
 #[cfg(test)]
 mod tests {
-    use merc_data::SortExpression;
+    use merc_data::DataExpression;
 
-    use crate::MultiAction;
+    use crate::LtsMultiAction;
 
     #[test]
     fn test_multi_action_parse_string() {
-        let action = MultiAction::from_string("a | b(1, 2) | c").unwrap();
-
-        let unknown_type = SortExpression::unknown_sort();
+        let action = LtsMultiAction::from_string("a | b(1, 2) | c").unwrap();
 
         assert_eq!(action.actions.len(), 3);
         assert!(
@@ -344,8 +330,8 @@ mod tests {
         assert!(action.actions.iter().any(|act| act.label == "b"
             && act.arguments
                 == vec![
-                    ("1".to_string(), unknown_type.name().to_string()),
-                    ("2".to_string(), unknown_type.name().to_string())
+                    DataExpression::from_string("1").unwrap(),
+                    DataExpression::from_string("2").unwrap()
                 ]));
         assert!(
             action

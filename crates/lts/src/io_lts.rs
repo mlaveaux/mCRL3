@@ -27,7 +27,8 @@ use crate::LTS;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilder;
 use crate::LtsBuilderMem;
-use crate::MultiAction;
+use crate::LtsBuilder;
+use crate::LtsMultiAction;
 use crate::StateIndex;
 
 /// Loads a labelled transition system from the binary 'lts' format of the mCRL2 toolset.
@@ -35,7 +36,7 @@ pub fn read_lts(
     reader: impl Read,
     hidden_labels: Vec<String>,
     read_state_labels: bool,
-) -> Result<LabelledTransitionSystem<MultiAction>, MercError> {
+) -> Result<LabelledTransitionSystem<LtsMultiAction>, MercError> {
     info!("Reading LTS in .lts format...");
 
     let mut reader = BinaryATermReader::new(BufReader::new(reader))?;
@@ -50,7 +51,7 @@ pub fn read_lts(
     let _actions = reader.read_aterm()?;
 
     // Use a cache to avoid translating the same multi-action multiple times.
-    let mut multi_actions: HashMap<ATerm, MultiAction> = HashMap::new();
+    let mut multi_actions: HashMap<ATerm, LtsMultiAction> = HashMap::new();
 
     // The initial state is not known yet.
     let mut initial_state: Option<StateIndex> = None;
@@ -83,7 +84,7 @@ pub fn read_lts(
                         )?;
                     } else {
                         // New multi-action found, add it to the builder.
-                        let multi_action = MultiAction::from_mcrl2_aterm(label.clone())?;
+                        let multi_action = LtsMultiAction::from_mcrl2_aterm(label.clone())?;
                         multi_actions.insert(label.clone(), multi_action.clone());
                         builder.add_transition(
                             StateIndex::new(from.value()),
@@ -157,7 +158,7 @@ pub fn read_lts(
 ///    state_label: ATermList::<DataExpression>
 pub fn write_lts<L>(writer: &mut impl Write, lts: &L) -> Result<(), MercError>
 where
-    L: LTS<Label = MultiAction>,
+    L: LTS<Label = LtsMultiAction>,
 {
     info!("Writing LTS in .lts format...");
 
@@ -254,7 +255,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_random_lts_io() {
         random_test(100, |rng| {
-            let lts = random_lts_monolithic::<MultiAction>(rng, 100, 3, 20);
+            let lts = random_lts_monolithic::<LtsMultiAction>(rng, 100, 3, 20);
 
             let mut buffer: Vec<u8> = Vec::new();
             write_lts(&mut buffer, &lts).unwrap();
