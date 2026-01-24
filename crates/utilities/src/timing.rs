@@ -10,7 +10,6 @@ use log::info;
 /// is useful for debugging and profiling.
 #[derive(Default)]
 pub struct Timing {
-
     /// Stores the results of finished timers.
     results: RefCell<Vec<(String, f32)>>,
 }
@@ -34,18 +33,19 @@ impl Timing {
     }
 
     /// Starts a new timer with the given name.
-    pub fn measure<F, O>(&self, name: &str, function: F) -> O 
-        where F: FnOnce() -> O
+    pub fn measure<F, O>(&self, name: &str, function: F) -> O
+    where
+        F: FnOnce() -> O,
     {
         let start = Instant::now();
         let result = function();
-        
+
         let time = start.elapsed().as_secs_f64();
         info!("Time {}: {:.3}s", name, time);
 
         // Register the result.
-        self.results.borrow_mut().push((name.to_string(), time as f32));  
-        result      
+        self.results.borrow_mut().push((name.to_string(), time as f32));
+        result
     }
 
     /// Aggregate results by name and compute (min, max, avg, count, total) for each.
