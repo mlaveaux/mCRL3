@@ -1,26 +1,26 @@
-#[cfg(feature = "merc_metrics")]
+#[cfg(feature = "metrics")]
 use log::info;
 
-#[cfg(feature = "merc_metrics")]
+#[cfg(feature = "metrics")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: crate::AllocCounter = crate::AllocCounter::new();
 
 #[cfg(not(target_env = "msvc"))]
-#[cfg(not(feature = "merc_metrics"))]
-#[cfg(feature = "merc_jemalloc")]
+#[cfg(not(feature = "metrics"))]
+#[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-#[cfg(not(feature = "merc_metrics"))]
-#[cfg(feature = "merc_mimalloc")]
+#[cfg(not(feature = "metrics"))]
+#[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// Prints information from the [AllocCounter].
-#[cfg(feature = "merc_metrics")]
+#[cfg(feature = "metrics")]
 pub fn print_allocator_metrics() {
     info!("{}", GLOBAL_ALLOCATOR.get_metrics());
 }
 
-#[cfg(not(feature = "merc_metrics"))]
+#[cfg(not(feature = "metrics"))]
 pub fn print_allocator_metrics() {}
