@@ -8,7 +8,6 @@ use clap::Subcommand;
 
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
-use merc_ldd::len;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;

@@ -14,7 +14,6 @@ use oxidd::error::DuplicateVarName;
 use merc_ldd::Storage;
 use merc_ldd::singleton;
 use merc_utilities::MercError;
-use oxidd_dump::Visualizer;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
@@ -353,11 +352,5 @@ mod tests {
         let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
 
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_random_symbolic_lts_bdd() {
-        random_test(100, |rng| {})
     }
 }
