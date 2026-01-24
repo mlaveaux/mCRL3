@@ -290,7 +290,7 @@ fn encode_block(
 }
 
 /// Decodes the given block number from a BDD using the given variables as bits.
-fn decode_block(manager_ref: &BDDManagerRef, partition: &BDDFunction) -> u64 {
+fn decode_block(_manager_ref: &BDDManagerRef, partition: &BDDFunction) -> u64 {
     let mut result = 0u64;
     let mut mask = 1u64;
     let mut block = partition.clone();
