@@ -6,10 +6,10 @@ use log::info;
 use log::trace;
 use merc_io::TimeProgress;
 use merc_lts::IncomingTransitions;
+use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
-use merc_lts::LTS;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
@@ -17,6 +17,12 @@ use merc_collections::BlockIndex;
 use merc_collections::IndexedPartition;
 use merc_utilities::Timing;
 
+use crate::BlockPartition;
+use crate::BlockPartitionBuilder;
+use crate::Equivalence;
+use crate::Partition;
+use crate::Signature;
+use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
@@ -29,12 +35,6 @@ use crate::weak_bisim_presignature_sorted;
 use crate::weak_bisim_signature_sorted;
 use crate::weak_bisim_signature_sorted_full;
 use crate::weak_bisim_signature_sorted_taus;
-use crate::BlockPartition;
-use crate::BlockPartitionBuilder;
-use crate::Equivalence;
-use crate::Partition;
-use crate::Signature;
-use crate::SignatureBuilder;
 
 /// Computes a strong bisimulation partitioning using signature refinement
 pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (L, BlockPartition) {
@@ -226,12 +226,14 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, IndexedPartition) {
     let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
-    let partition = timing.measure("reduction", || signature_refinement_naive::<_, _, true>(
-        &preprocessed_lts,
-        |state_index, partition, state_to_signature, builder| {
-            weak_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder)
-        },
-    ));
+    let partition = timing.measure("reduction", || {
+        signature_refinement_naive::<_, _, true>(
+            &preprocessed_lts,
+            |state_index, partition, state_to_signature, builder| {
+                weak_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder)
+            },
+        )
+    });
 
     (preprocessed_lts, partition)
 }
@@ -430,6 +432,9 @@ where {
         // Clear the current partition to start the next blocks.
         id.clear();
 
+        // Remove the current signatures.
+        arena.reset();
+
         state_to_signature.clear();
         key_to_signature.clear();
 
@@ -439,11 +444,8 @@ where {
         let id: &'_ mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
         let key_to_signature: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut key_to_signature) };
         let state_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_taus) };
-        // let state_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_taus) };
-        // Remove the current signatures.
-        arena.reset();
 
-        // Compute for each state its tau signature. This seems innefficient, but for now it works.
+        // Compute for each state its tau signature. This seems inefficient, but for now it works.
         state_to_taus.resize_with(lts.num_of_states(), || Signature::default());
         for state in lts.iter_states() {
             weak_bisim_signature_sorted_taus(state, lts, &partition, &state_to_taus, &mut builder);
@@ -725,8 +727,8 @@ mod tests {
     use test_log::test;
 
     use merc_lts::random_lts;
-    use merc_utilities::random_test;
     use merc_utilities::Timing;
+    use merc_utilities::random_test;
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
     fn equal_partitions(left: &impl Partition, right: &impl Partition) -> bool {
@@ -780,8 +782,7 @@ mod tests {
                     assert_eq!(
                         branching_partition.block_number(state_index),
                         branching_partition.block_number(other_state_index),
-                        "The strong partition should be a refinement of the branching partition, 
-                        but states {state_index} and {other_state_index} are in different strong blocks"
+                        "The strong partition should be a refinement of the branching partition, but states {state_index} and {other_state_index} are in different strong blocks"
                     );
                 }
             }
