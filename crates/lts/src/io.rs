@@ -13,9 +13,6 @@ use crate::LtsMultiAction;
 use crate::read_aut;
 use crate::read_bcg;
 use crate::read_lts;
-use crate::LabelledTransitionSystem;
-use crate::MultiAction;
-use crate::LTS;
 
 /// Convenience macro to call `GenericLts::apply` with the same function for both variants.
 /// Useful with generic functions that can be monomorphized for both label types.

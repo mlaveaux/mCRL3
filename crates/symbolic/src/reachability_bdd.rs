@@ -83,20 +83,3 @@ pub fn reachability_bdd(
             as usize,
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use merc_ldd::Storage;
-    use merc_utilities::random_test;
-
-    use crate::random_lts;
-
-    #[test]
-    fn test_random_reachability_bdd() {
-        random_test(100, |rng| {
-            let mut storage = Storage::new();
-
-            let lts = random_lts(rng, &mut storage, 10);
-        });
-    }
-}
