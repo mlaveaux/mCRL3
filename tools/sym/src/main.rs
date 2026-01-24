@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::Subcommand;
 
+use itertools::Itertools;
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
 use merc_lts::AutStream;
@@ -295,7 +296,7 @@ fn handle_reorder(args: &ReorderArgs, _timing: &mut Timing) -> Result<(), MercEr
         let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
 
         let order = reorder(&graph)?;
-        println!("Computed variable order: {:?}", order);
+        println!("Computed variable order: {}", order.iter().format(" "));
     } else if args.filename.extension() == Some(OsStr::new("pbes")) {
         // Find pbessolvesymbolic
         let pbessolvesymbolic = if let Some(path) = &args.mcrl2_tool_path {
