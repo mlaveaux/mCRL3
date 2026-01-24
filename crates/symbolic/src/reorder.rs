@@ -17,6 +17,7 @@ mod inner {
     use mt_kahypar::Context;
     use mt_kahypar::Hypergraph;
     use mt_kahypar::Objective;
+    use mt_kahypar::Preset;
 
     /// Computes a variable reordering for symbolic transition relations using the MINCE algorithm.
     ///
@@ -31,7 +32,8 @@ mod inner {
         trace!("Starting MINCE with {graph:?}");
 
         let context = Context::builder()
-            .epsilon(0.01)
+            .preset(Preset::HighestQuality)
+            .epsilon(0.000001)
             .k(2)
             .objective(Objective::Cut)
             .build()?;
