@@ -27,7 +27,6 @@ use crate::LTS;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilder;
 use crate::LtsBuilderMem;
-use crate::LtsBuilder;
 use crate::LtsMultiAction;
 use crate::StateIndex;
 

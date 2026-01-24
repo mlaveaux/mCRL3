@@ -7,8 +7,8 @@ use clap::Parser;
 use clap::Subcommand;
 
 use merc_io::LargeFormatter;
-use merc_ldd::len;
 use merc_ldd::Storage;
+use merc_ldd::len;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
@@ -193,9 +193,9 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
 
     match format {
         SymFormat::Sylvan => {
-            let mut time_read = timing.start("read_symbolic_lts");
-            let lts = read_sylvan(&mut storage, &mut File::open(&args.filename)?)?;
-            time_read.finish();
+            let lts = timing.measure("read_symbolic_lts", || -> Result<_, MercError> {
+                read_sylvan(&mut storage, &mut File::open(&args.filename)?)
+            })?;
 
             println!("Symbolic LTS information:");
             println!(
@@ -205,9 +205,9 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
             println!("  Number of summand groups: {}", lts.transition_groups().len());
         }
         SymFormat::Sym => {
-            let mut time_read = timing.start("read_symbolic_lts");
-            let lts = read_symbolic_lts(&mut storage, &mut File::open(&args.filename)?)?;
-            time_read.finish();
+            let lts = timing.measure("read_symbolic_lts", || -> Result<_, MercError> {
+                read_symbolic_lts(&mut storage, &mut File::open(&args.filename)?)
+            })?;
 
             println!("Symbolic LTS information:");
             println!(
@@ -230,15 +230,11 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &mut Timing) -> Result<
     let mut file = File::open(&args.filename)?;
     match format {
         SymFormat::Sylvan => {
-            let mut time_read = timing.start("read_symbolic_lts");
-            let lts = read_sylvan(&mut storage, &mut file)?;
-            time_read.finish();
-
+            let lts = timing.measure("read_symbolic_lts", || read_sylvan(&mut storage, &mut file))?;
             explore_impl(&mut storage, cli, args, &lts, timing)?;
         }
         SymFormat::Sym => {
             let lts = read_symbolic_lts(&mut storage, &mut file)?;
-
             explore_impl(&mut storage, cli, args, &lts, timing)?;
         }
     }
@@ -260,17 +256,23 @@ fn explore_impl(
             cli.oxidd_workers,
         );
 
-        let mut convert_time = timing.start("convert_bdd");
-        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(storage, &manager_ref, lts)?;
-        convert_time.finish();
+        let lts_bdd = timing.measure("convert_bdd", || {
+            SymbolicLtsBdd::from_symbolic_lts(storage, &manager_ref, lts)
+        })?;
 
-        let mut explore_time = timing.start("explore_bdd");
-        println!("LTS has {} states", reachability_bdd(&manager_ref, &lts_bdd, args.visualize)?);
-        explore_time.finish();
+        println!(
+            "LTS has {} states",
+            timing.measure("explore_bdd", || reachability_bdd(
+                &manager_ref,
+                &lts_bdd,
+                args.visualize
+            ))?
+        );
     } else {
-        let mut explore_time = timing.start("explore");
-        println!("LTS has {} states", reachability(storage, lts)?);
-        explore_time.finish();
+        println!(
+            "LTS has {} states",
+            timing.measure("explore", || reachability(storage, lts))?
+        );
     }
     Ok(())
 }
@@ -372,13 +374,10 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &mut Timing) -> Result<()
     let mut file = File::open(&args.filename)?;
     let lts = read_symbolic_lts(&mut storage, &mut file)?;
 
-    let mut convert_time = timing.start("convert_bdd");
-    let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)?;
-    convert_time.finish();
+    let lts_bdd = timing.measure("convert_bdd", || {
+        SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
+    })?;
 
-    let mut reduction_time = timing.start("reduction");
-    sigref_symbolic(&manager_ref, &lts_bdd, args.visualize)?;
-    reduction_time.finish();
-
+    timing.measure("reduction", || sigref_symbolic(&manager_ref, &lts_bdd, args.visualize))?;
     Ok(())
 }
