@@ -1,8 +1,11 @@
 use std::fmt;
 
+use log::debug;
 use log::info;
+use log::trace;
 use merc_io::TimeProgress;
 use merc_ldd::Ldd;
+use merc_ldd::LddDisplay;
 use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_ldd::minus;
@@ -48,6 +51,7 @@ pub fn reachability(storage: &mut Storage, lts: &impl SymbolicLTS) -> Result<usi
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
 
+        trace!("states = {}", LddDisplay::new(storage, &states));
     let progress = TimeProgress::new(
         |iteration: usize| {
             info!("Iteration {}", iteration);
@@ -56,11 +60,14 @@ pub fn reachability(storage: &mut Storage, lts: &impl SymbolicLTS) -> Result<usi
     );
 
     while todo != *storage.empty_set() {
+        debug!("Iteration {}: todo size = {}", iteration, len(storage, &todo));
         let mut todo1 = storage.empty_set().clone();
         for transition in lts.transition_groups() {
             let result = relational_product(storage, &todo, transition.relation(), transition.meta());
             todo1 = union(storage, &todo1, &result);
         }
+
+        trace!("todo1 = {}", LddDisplay::new(storage, &todo1));
 
         todo = minus(storage, &todo1, &states);
         states = union(storage, &states, &todo);
