@@ -334,7 +334,6 @@ fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<(Vec<
 #[cfg(test)]
 mod tests {
     use merc_ldd::Storage;
-    use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
     use crate::SymbolicLtsBdd;

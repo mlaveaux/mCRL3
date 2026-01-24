@@ -11,17 +11,17 @@ version.workspace = true
 
 [features]
 # Enables an allocator that counts additional metrics (but is slower), this disables `merc_jemalloc` and `merc_mimalloc`.
-merc_metrics = []
+metrics = []
 
 # Feature to enable jemalloc as the global allocator. This feature only works if 
 # the `tikv-jemallocator` crate is supported on that platform.
-merc_jemalloc = ["dep:tikv-jemallocator"]
+jemalloc = ["dep:tikv-jemallocator"]
 
 # Feature to enable mimalloc as the global allocator.
-merc_mimalloc = ["dep:mimalloc"]
+mimalloc = ["dep:mimalloc"]
 
 # Enables extra debug options to be enabled. Also enables jemalloc debugging.
-merc_debug = ["tikv-jemallocator?/debug"]
+debug = ["tikv-jemallocator?/debug"]
 
 [dependencies]
 merc_collections.workspace = true

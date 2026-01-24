@@ -12,8 +12,8 @@ rust-version.workspace = true
 version.workspace = true
 
 [features]
-# The `merc_debug` feature is used to enable additional run-time checks.
-merc_debug = ["parking_lot/deadlock_detection"]
+# The `debug` feature is used to enable additional run-time checks.
+debug = ["parking_lot/deadlock_detection"]
 
 [dependencies]
 merc_collections.workspace = true

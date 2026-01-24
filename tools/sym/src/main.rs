@@ -233,7 +233,7 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &mut Timing) -> Result<
             explore_impl(&mut storage, cli, args, &lts, timing)?;
         }
         SymFormat::Sym => {
-            let lts = read_symbolic_lts(&mut storage, &mut file)?;
+            let lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, &mut file))?;
             explore_impl(&mut storage, cli, args, &lts, timing)?;
         }
     }
@@ -349,8 +349,6 @@ fn handle_convert(args: &ConvertArgs, _timing: &mut Timing) -> Result<(), MercEr
             convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
         }
         LtsFormat::Bcg => {
-            let explicit_lts =
-                convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
             let explicit_lts =
                 convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
             write_bcg(&explicit_lts, &args.output)?;

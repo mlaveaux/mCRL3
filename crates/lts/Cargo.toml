@@ -36,7 +36,7 @@ rustc-hash.workspace = true
 streaming-iterator.workspace = true
 thiserror.workspace = true
 
-clap = { workspace = true, optional = true}
+clap = { workspace = true, optional = true }
 
 [dev-dependencies]
 test-log.workspace = true

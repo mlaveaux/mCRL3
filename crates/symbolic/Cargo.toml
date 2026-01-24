@@ -15,6 +15,8 @@ version.workspace = true
 kahypar = ["dep:mt-kahypar"]
 # Derive additional traits for clap.
 clap = ["dep:clap"]
+# Enables keeping track of various performance metrics.
+metrics = ["oxidd/statistics"]
 
 [dependencies]
 merc_aterm.workspace = true
