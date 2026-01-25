@@ -39,7 +39,7 @@ pub fn reachability_bdd(
     );
 
     // Substitution to replace next state variables with current state variables.
-    let next_state_substitution = Subst::new(lts.next_state_variables_bits(), lts.state_variables());
+    let next_state_substitution = Subst::new(lts.next_state_variables_indices(), lts.state_variables());
 
     while todo.satisfiable() {
         // Apply the transition relations to the todo set.
@@ -50,6 +50,8 @@ pub fn reachability_bdd(
             // would become unconstrained and then after substituting next state
             // variables with current state variables, they would lead to
             // spurious states.
+            //
+            // This can easily be seen in the definition: `exists s, a. (todo(s) ∧ R(a, s'))`.
             todo1 = todo1.or(&todo.apply_exists(
                 BooleanOperator::And,
                 transition.relation(),
@@ -76,10 +78,40 @@ pub fn reachability_bdd(
         iteration += 1;
     }
 
-    assert!(states == *lts.states(), "The computed state space does not match the LTS states.");
-
     Ok(
         states.sat_count::<u64, FxBuildHasher>(lts.state_variable_indices().len() as u32, &mut SatCountCache::default())
             as usize,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_utilities::random_test;
+
+    use crate::SymbolicLtsBdd;
+    use crate::random_symbolic_lts;
+    use crate::reachability;
+    use crate::reachability_bdd;
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_reachability() {
+        random_test(100, |rng| {
+            let mut storage = merc_ldd::Storage::new();
+
+            // We don't really check anything here, just ensure that reachability runs without errors.
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let num_reachable_states = reachability(&mut storage, &lts).unwrap();
+
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+            let num_reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, false).unwrap();
+
+            assert_eq!(
+                num_reachable_states, num_reachable_states_bdd,
+                "Number of reachable states does not match between BDD and LDD-based reachability."
+            );
+        });
+    }
 }

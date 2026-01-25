@@ -51,7 +51,7 @@ pub fn reachability(storage: &mut Storage, lts: &impl SymbolicLTS) -> Result<usi
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
 
-        trace!("states = {}", LddDisplay::new(storage, &states));
+    trace!("states = {}", LddDisplay::new(storage, &states));
     let progress = TimeProgress::new(
         |iteration: usize| {
             info!("Iteration {}", iteration);
