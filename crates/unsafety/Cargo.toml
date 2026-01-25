@@ -10,7 +10,8 @@ rust-version.workspace = true
 version.workspace = true
 
 [features]
-# Enables an allocator that counts additional metrics (but is slower), this disables `merc_jemalloc` and `merc_mimalloc`.
+# Enables an allocator that counts additional metrics, this disables features `jemalloc` and `mimalloc`. The allocator has
+# performance overhead.
 metrics = []
 
 # Feature to enable jemalloc as the global allocator. This feature only works if 
@@ -20,7 +21,7 @@ jemalloc = ["dep:tikv-jemallocator"]
 # Feature to enable mimalloc as the global allocator.
 mimalloc = ["dep:mimalloc"]
 
-# Enables extra debug options to be enabled. Also enables jemalloc debugging.
+# Enables extra debug options for `jemalloc`.
 debug = ["tikv-jemallocator?/debug"]
 
 [dependencies]

@@ -3,9 +3,9 @@ use mcrl2_sys::data::ffi::RewriterJitty;
 use mcrl2_sys::data::ffi::data_specification;
 use mcrl2_sys::data::ffi::mcrl2_create_rewriter_jitty;
 
-#[cfg(feature = "mcrl2_jittyc")]
+#[cfg(feature = "jittyc")]
 use mcrl2_sys::data::ffi::RewriterCompilingJitty;
-#[cfg(feature = "mcrl2_jittyc")]
+#[cfg(feature = "jittyc")]
 use mcrl2_sys::data::ffi::mcrl2_create_rewriter_jittyc;
 
 pub struct DataSpecification {

@@ -71,7 +71,7 @@ impl SymbolicLtsBdd {
     ) -> Result<Self, MercError> {
         info!("Converting symbolic LTS from LDD to BDD representation...");
 
-        // Detemine the highest values for every layer in the LDD representing the states
+        // Determine the highest values for every layer in the LDD representing the states
         let state_bits = compute_bits(&compute_highest(storage, lts.states()));
         debug!("Determined number of bits for state variables: {:?}", state_bits);
 

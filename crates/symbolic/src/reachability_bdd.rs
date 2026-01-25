@@ -21,7 +21,7 @@ use crate::minus;
 ///
 /// # Details
 ///
-/// When `visualize` has been set to true, intermediate BDDs are visualized using `oxidd-vis`.d
+/// When `visualize` has been set to true, intermediate BDDs are visualized using `oxidd-vis`.
 pub fn reachability_bdd(
     manager_ref: &BDDManagerRef,
     lts: &SymbolicLtsBdd,
