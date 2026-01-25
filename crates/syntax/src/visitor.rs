@@ -170,8 +170,8 @@ fn visit_statefrm_rec<T>(
     Ok(None)
 }
 
-/// Applies the given function recursively to the regular formula. / The
-///substitution function takes a regular formula and returns an optional new
+/// Applies the given function recursively to the regular formula. The
+/// substitution function takes a regular formula and returns an optional new
 /// formula. If it returns `Some(new_formula)`, the substitution is applied and
 /// the new formula is returned. If it returns `None`, the substitution is not
 /// applied and the function continues to traverse the formula tree.

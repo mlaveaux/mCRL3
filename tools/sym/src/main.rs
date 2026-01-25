@@ -35,7 +35,7 @@ use merc_utilities::Timing;
 use which::which_in;
 
 /// Default node capacity for the Oxidd decision diagram manager.
-const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
+const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2028;
 
 /// A command line tool for symbolic labelled transition systems
 #[derive(clap::Parser, Debug)]
@@ -50,12 +50,15 @@ struct Cli {
     #[command(subcommand)]
     commands: Option<Commands>,
 
+    /// Number of workers for the Oxidd decision diagram manager.
     #[arg(long, global = true, default_value_t = 1)]
     oxidd_workers: u32,
 
+    /// Node capacity for the Oxidd decision diagram manager.
     #[arg(long, global = true, default_value_t = DEFAULT_OXIDD_NODE_CAPACITY)]
     oxidd_node_capacity: usize,
 
+    /// Cache capacity for the Oxidd decision diagram manager, if `None` it is set to the node capacity.
     #[arg(long, global = true)]
     oxidd_cache_capacity: Option<usize>,
 
@@ -145,11 +148,24 @@ struct ReduceArgs {
 
     /// Sets the input symbolic LTS format.
     #[arg(long)]
-    format: Option<LtsFormat>,
+    format: Option<SymFormat>,
+
+    /// Sets the output LTS format.
+    #[arg(long)]
+    output_format: Option<LtsFormat>,
 
     /// Visualize the reduction steps in oxidd-vis.
     #[arg(long)]
     visualize: bool,
+}
+
+/// Initializes the Oxidd BDD manager based on CLI arguments.
+fn init_bdd_manager(cli: &Cli) -> oxidd::bdd::BDDManagerRef {
+    oxidd::bdd::new_manager(
+        cli.oxidd_node_capacity,
+        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
+        cli.oxidd_workers,
+    )
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -250,11 +266,7 @@ fn explore_impl(
     timing: &mut Timing,
 ) -> Result<(), MercError> {
     if args.use_bdd {
-        let manager_ref = oxidd::bdd::new_manager(
-            cli.oxidd_node_capacity,
-            cli.oxidd_cache_capacity.unwrap_or(DEFAULT_OXIDD_NODE_CAPACITY),
-            cli.oxidd_workers,
-        );
+        let manager_ref = init_bdd_manager(cli);
 
         let lts_bdd = timing.measure("convert_bdd", || {
             SymbolicLtsBdd::from_symbolic_lts(storage, &manager_ref, lts)
@@ -363,11 +375,7 @@ fn handle_convert(args: &ConvertArgs, _timing: &mut Timing) -> Result<(), MercEr
 fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
-    let manager_ref = oxidd::bdd::new_manager(
-        cli.oxidd_node_capacity,
-        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
-        cli.oxidd_workers,
-    );
+    let manager_ref = init_bdd_manager(cli);
 
     let mut file = File::open(&args.filename)?;
     let lts = read_symbolic_lts(&mut storage, &mut file)?;
