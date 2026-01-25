@@ -7,7 +7,7 @@ updates:
     allow:
       - update-types: version-update:semver-major
     groups:
-      - name: "crate-dependencies"
+      crate-dependencies:
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
