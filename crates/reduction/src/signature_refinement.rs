@@ -11,7 +11,6 @@ use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
-use merc_lts::write_aut;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
@@ -451,9 +450,9 @@ where {
         let state_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_taus) };
 
         // Compute for each state its tau signature. This seems inefficient, but for now it works.
-        state_to_taus.resize_with(lts.num_of_states(), || Signature::default());
+        state_to_taus.resize_with(lts.num_of_states(), Signature::default);
         for state in lts.iter_states() {
-            weak_bisim_signature_sorted_taus(state, lts, &partition, &state_to_taus, &mut builder);
+            weak_bisim_signature_sorted_taus(state, lts, &partition, state_to_taus, &mut builder);
 
             let slice = if builder.is_empty() {
                 empty_slice
@@ -469,8 +468,8 @@ where {
                 state_index,
                 lts,
                 &partition,
-                &state_to_taus,
-                &state_to_signature,
+                state_to_taus,
+                state_to_signature,
                 &mut builder,
             );
 
@@ -501,9 +500,9 @@ where {
                     state_index,
                     lts,
                     &partition,
-                    &state_to_taus,
-                    &state_to_signature,
-                    &key_to_signature,
+                    state_to_taus,
+                    state_to_signature,
+                    key_to_signature,
                     &mut builder,
                 );
                 trace!("State {state_index} final signature {:?}", builder.as_slice());
