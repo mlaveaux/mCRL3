@@ -72,13 +72,10 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (LabelledTrans
     let preprocessed_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
     let incoming = timing.measure("preprocess", || IncomingTransitions::new(&preprocessed_lts));
 
-    write_aut(&mut std::fs::File::create("bruh.aut").unwrap(), &preprocessed_lts).unwrap();
-
     if log_enabled!(log::Level::Debug) {
         let path = longest_tau_path(&preprocessed_lts);
         debug!("longest_tau_path" = path.len(); "The longest tau path is {:?}", path);
     }
-
 
     let mut expected_builder = SignatureBuilder::default();
     let mut visited = FxHashSet::default();
