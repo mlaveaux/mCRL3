@@ -751,26 +751,22 @@ const UNDEFINED_VERTEX: usize = usize::MAX;
 
 /// Returns the index of the variable that the control flow graph considers
 fn variable_index(cfg: &ControlFlowGraph) -> usize {
+    // Find the first defined index
+    let defined_index = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_VERTEX)
+        .expect("Control flow graph should have defined variable index.")
+        .index();
+
     // Check that all the vertices have the same variable assigned for consistency
     cfg.vertices().iter().for_each(|v| {
         if v.index() != UNDEFINED_VERTEX
             && v.index()
-                != cfg
-                    .vertices()
-                    .first()
-                    .expect("There is at least one vertex in a CFG")
-                    .index()
+                != defined_index
         {
-            panic!("Inconsistent variable indices in control flow graph.");
+            panic!("Inconsistent variable index {} in control flow graph.", v.index());
         }
     });
-
-    if let Some(v) = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_VERTEX) {
-        // Return the first non-undefined index
-        return v.index();
-    }
-
-    panic!("No variable found in control flow graph.");
+    
+    return defined_index;
 }
 
 /// Applies the given permutation to the given expression.
