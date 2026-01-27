@@ -293,10 +293,10 @@ pub struct SummandGroupBdd {
     /// The BDD representing the transition relation for this summand group.
     relation: BDDFunction,
 
-    /// The BDDs representing the read variables for this summand group.
+    /// The BDDs representing the write variables for this summand group.
     write_variables: Vec<BDDFunction>,
 
-    /// The BDD representing all the read variables for this summand group.
+    /// The BDD representing all the write variables for this summand group.
     write_variables_bdd: BDDFunction,
 }
 

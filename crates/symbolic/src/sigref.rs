@@ -1,6 +1,7 @@
 use std::fmt;
 use std::ops::Range;
 
+use itertools::Itertools;
 use log::debug;
 use log::info;
 use log::trace;
@@ -64,18 +65,6 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         .map(|var_no| manager_ref.with_manager_shared(|manager| BDDFunction::var(manager, var_no)))
         .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
-    // Keep track of local information.
-    let mut num_of_blocks = 0;
-    let mut old_num_of_blocks = 1;
-    let mut iteration = 0usize;
-
-    let progress = TimeProgress::new(
-        |(iterations, num_of_blocks): (usize, usize)| {
-            info!("iteration {}: {} blocks", iterations, num_of_blocks);
-        },
-        1,
-    );
-
     let mut signature_to_block = FxHashMap::default();
 
     // Substitution to replace next state variables with current state variables.
@@ -89,6 +78,18 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
     // In the sigref algorithm, the partition is defined over the next state. When we compute the signature
     // we then get (s, a, b), since in the signature we need to consider the block of the next state.
     partition = partition.substitute(&next_state_substitution)?;
+
+    // Keep track of local information.
+    let mut num_of_blocks = 0;
+    let mut old_num_of_blocks = 1;
+    let mut iteration = 0usize; 
+
+    let progress = TimeProgress::new(
+        |(iterations, num_of_blocks): (usize, usize)| {
+            info!("iteration {}: {} blocks", iterations, num_of_blocks);
+        },
+        1,
+    );
 
     while num_of_blocks != old_num_of_blocks {
         // No fixed point reached yet, so keep refining.
@@ -119,6 +120,12 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         // Substitute next state variables with current state variables to align
         // with the partition representation, required for `refine`.
         signature = signature.substitute(&next_state_substitution)?;
+
+        println!(
+            "Signature after iteration {}: {}",
+            iteration,
+            PartitionDisplay::new(&signature, lts.state_variable_bits(), num_of_block_bits)
+        );
 
         if visualize {
             // Visualize the computed signature.
@@ -169,7 +176,8 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
 /// # Details
 ///
 /// For strong bisimulation the signature is defined as follows, where `P` is
-/// the previous partition.
+/// the previous partition defined over the next state variables, and `relation` is defined
+/// over the states, next states and the action label bits.
 ///
 /// > ∃ s'. (relation(s, s', a) ∧ P(s'))
 fn signature_strong(
@@ -186,7 +194,7 @@ fn signature_strong(
 /// # Details
 ///
 /// This function assumes that in the partition only a single block number is
-/// assigned to each state. The same applies for the signature function.
+/// assigned to each state, which should be by definition.
 fn refine(
     manager_ref: &BDDManagerRef,
     signature_to_block: &mut FxHashMap<BDDFunction, u64>,
@@ -218,7 +226,7 @@ fn refine(
         let (s_high, s_low) = manager_ref.with_manager_shared(|manager| {
             let gnode = manager.get_node(signature.as_edge(manager)).unwrap_inner();
             if gnode.level() == level {
-                signature.cofactors().unwrap()
+                signature.cofactors().expect("Not a terminal node")
             } else {
                 (signature.clone(), signature.clone())
             }
@@ -226,7 +234,7 @@ fn refine(
         let (p_high, p_low) = manager_ref.with_manager_shared(|manager| {
             let fnode = manager.get_node(partition.as_edge(manager)).unwrap_inner();
             if fnode.level() == level {
-                partition.cofactors().unwrap()
+                partition.cofactors().expect("Not a terminal node")
             } else {
                 (partition.clone(), partition.clone())
             }
@@ -287,14 +295,21 @@ fn refine(
 /// # Details
 ///
 /// Encodes the bits starting with the least significant bit, which is the
-/// inverse of [ldd_to_bdd]. The intuition potentially is that the block numbers
-/// are often small numbers, so the most significant bits are more likely to be
-/// 0 and these will collapse to singular nodes.
+/// inverse of the encoding used in [crate::ldd_to_bdd]. The intuition is
+/// (potentially) that the block numbers are often small numbers, so the most
+/// significant bits are more likely to be 0 and these will collapse to singular
+/// nodes at the bottom layers.
 fn encode_block(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
     block_no: u64,
 ) -> Result<BDDFunction, MercError> {
+    debug_assert!(
+        variables.len() >= required_bits_64(block_no) as usize,
+        "Not enough variables to encode block number {}",
+        block_no
+    );
+
     let mut result = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
     for (i, var) in variables.iter().enumerate() {
         if block_no & (1 << i) != 0 {
@@ -316,10 +331,14 @@ fn encode_block(
 }
 
 /// Decodes the given block number from a BDD using the given variables as bits.
-fn decode_block(_manager_ref: &BDDManagerRef, partition: &BDDFunction) -> u64 {
+/// 
+/// # Details
+/// 
+/// Should be the inverse of [encode_block].
+fn decode_block(_manager_ref: &BDDManagerRef, block: &BDDFunction) -> u64 {
     let mut result = 0u64;
     let mut mask = 1u64;
-    let mut block = partition.clone();
+    let mut block = block.clone();
 
     while block.satisfiable() {
         if let Some((b_high, b_low)) = block.cofactors() {
@@ -338,7 +357,36 @@ fn decode_block(_manager_ref: &BDDManagerRef, partition: &BDDFunction) -> u64 {
 
     result
 }
-/// Display helper that prints all vectors represented by the given partition BDD.
+
+/// Extend the given relation to the full domain.
+/// 
+/// # Details
+/// 
+/// For every [(s, s'), (t, t'), ...] in the relation, add layers s <=> s' , t <=> t', ...
+fn extend_relation(
+    manager_ref: &BDDManagerRef,
+    relation: &BDDFunction,
+    variables: &[BDDFunction],
+) -> Result<BDDFunction, OutOfMemory> {
+
+    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {        
+        let mut eq = BDDFunction::t(manager);
+        let false_node = BDDFunction::f(manager);
+
+        // For every missing variable, add an equality layer between (s and s').
+        for (var, next_var) in variables.iter().tuples() {
+            let low = next_var.ite(&eq, &false_node)?;
+            let high = next_var.ite(&false_node, &eq)?;
+            eq = var.ite(&high, &low)?;
+        }
+
+        // Finally, combine the relation with the equalities. Any don't care variable will become an equality layer.
+        Ok(relation.and(&eq)?)
+    })
+}
+
+/// Display helper that prints all vectors represented by the given partition BDD as numbers, by decoding
+/// the BDD layers as `bits`, see [crate::ldd_to_bdd].
 pub struct PartitionDisplay<'a> {
     partition: &'a BDDFunction,
     bits: &'a [u32],
@@ -361,14 +409,14 @@ impl<'a> PartitionDisplay<'a> {
 }
 
 impl fmt::Display for PartitionDisplay<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {        
         let mut first = true;
-        for bits in CubeIterAll::new(self.partition) {
+        for cube in CubeIterAll::new(self.partition) {
             if !first {
                 writeln!(f)?;
             }
             first = false;
-            write!(f, "{}", ValuesDisplayWithTail::new(&bits, self.bits, self.block_bits))?;
+            write!(f, "{}", ValuesDisplayWithTail::new(&cube, self.bits, self.block_bits))?;
         }
 
         Ok(())
