@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::Range;
 
 use log::debug;
@@ -9,9 +10,11 @@ use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
 use oxidd::Function;
+use oxidd::FunctionSubst;
 use oxidd::HasLevel;
 use oxidd::Manager;
 use oxidd::ManagerRef;
+use oxidd::Subst;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
@@ -62,8 +65,8 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
     // Keep track of local information.
-    let mut num_of_blocks = 1;
-    let mut old_num_of_blocks = 0;
+    let mut num_of_blocks = 0;
+    let mut old_num_of_blocks = 1;
     let mut iteration = 0usize;
 
     let progress = TimeProgress::new(
@@ -75,10 +78,17 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
 
     let mut signature_to_block = FxHashMap::default();
 
+    // Substitution to replace next state variables with current state variables.
+    let next_state_substitution = Subst::new(lts.state_variable_indices(), lts.next_state_variables());
+
     // Stores the partition of the states as BDD.
     let mut partition = lts
         .states()
         .and(&encode_block(manager_ref, &block_variables_bdds, 0)?)?;
+
+    // In the sigref algorithm, the partition is defined over the next state. When we compute the signature
+    // we then get (s, a, b), since in the signature we need to consider the block of the next state.
+    partition = partition.substitute(&next_state_substitution)?;
 
     while num_of_blocks != old_num_of_blocks {
         // No fixed point reached yet, so keep refining.
@@ -99,9 +109,16 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         // Compute the new signatures w.r.t. the previous partition.
         let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
         for group in lts.transition_groups() {
-            let group_signature = signature_strong(&partition, group.relation(), lts.next_state_variables())?;
+            let group_signature = signature_strong(&partition, group.relation(), lts.next_state_variables_bdd())?;
             signature = signature.or(&group_signature)?;
         }
+
+        // Restrict the signature to only the reachable states. TODO: Why is this not in Tom's paper?
+        signature = signature.and(lts.states())?;
+
+        // Substitute next state variables with current state variables to align
+        // with the partition representation, required for `refine`.
+        signature = signature.substitute(&next_state_substitution)?;
 
         if visualize {
             // Visualize the computed signature.
@@ -117,7 +134,7 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
             manager_ref,
             &mut signature_to_block,
             &block_variables_bdds,
-            &lts.state_variable_indices(),
+            lts.next_state_variables_indices(),
             &signature,
             &partition,
         )?;
@@ -134,18 +151,27 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         iteration, num_of_blocks
     );
 
-    print_partition(&partition, &block_variables_bdds, lts.state_variables(), lts.state_variable_bits(), num_of_block_bits)?;
+    debug!(
+        "Final partition: {}",
+        PartitionDisplay::new(
+            &partition,
+            lts.state_variable_bits(),
+            num_of_block_bits
+        )
+    );
 
     Ok(())
 }
 
-
-
-/// Computes the strong signature refinement of the given partition and relation.
+/// Computes the strong signature refinement of the given partition and
+/// relation.
 ///
 /// # Details
 ///
+/// For strong bisimulation the signature is defined as follows, where `P` is
+/// the previous partition.
 ///
+/// > ∃ s'. (relation(s, s', a) ∧ P(s'))
 fn signature_strong(
     partition: &BDDFunction,
     relation: &BDDFunction,
@@ -156,9 +182,9 @@ fn signature_strong(
 
 /// Refines the partition w.r.t. the given signature by assigning block numbers
 /// to signatures.
-/// 
+///
 /// # Details
-/// 
+///
 /// This function assumes that in the partition only a single block number is
 /// assigned to each state. The same applies for the signature function.
 fn refine(
@@ -177,7 +203,7 @@ fn refine(
         // a) not part of the actions. So return empty.
         return Ok(partition.clone());
     }
-    
+
     // topVar
     let level = manager_ref.with_manager_shared(|manager| {
         let fnode = manager.get_node(partition.as_edge(manager)).unwrap_inner();
@@ -234,7 +260,7 @@ fn refine(
 
         // 10. B := decode_block(partition)
         let block_index = decode_block(manager_ref, partition);
-        if let Some(block) = signature_to_block.get(&signature) {
+        if let Some(block) = signature_to_block.get(signature) {
             // 11. If blocks[B].signature == \bottom then
             // 12.     blocks[B].signature := signature
             // 13. if blocks[B].signature == signature then
@@ -245,21 +271,21 @@ fn refine(
             } else {
                 // New partition needed
                 trace!("Return existing block {block}");
-                Ok(encode_block(manager_ref, &block_variables_bdds, *block)?)
+                Ok(encode_block(manager_ref, block_variables_bdds, *block)?)
             }
         } else {
             let new_block_index = signature_to_block.len() as u64;
             trace!("Creating new block {new_block_index}");
             signature_to_block.insert(signature.clone(), new_block_index);
-            Ok(encode_block(manager_ref, &block_variables_bdds, new_block_index)?)
+            Ok(encode_block(manager_ref, block_variables_bdds, new_block_index)?)
         }
     }
 }
 
 /// Encodes the given block number into a BDD using the given variables as bits.
-/// 
+///
 /// # Details
-/// 
+///
 /// Encodes the bits starting with the least significant bit, which is the
 /// inverse of [ldd_to_bdd]. The intuition potentially is that the block numbers
 /// are often small numbers, so the most significant bits are more likely to be
@@ -312,47 +338,118 @@ fn decode_block(_manager_ref: &BDDManagerRef, partition: &BDDFunction) -> u64 {
 
     result
 }
-
-/// Prints all vectors represented by the given partition BDD using the given block and state variables.
-fn print_partition(partition: &BDDFunction,
-    block_variables_bdds: &[BDDFunction],
-    state_variables: &[BDDFunction],
-    bits: &[u32],
+/// Display helper that prints all vectors represented by the given partition BDD.
+pub struct PartitionDisplay<'a> {
+    partition: &'a BDDFunction,
+    bits: &'a [u32],
     block_bits: u32,
-) -> Result<(), MercError> {    
-
-    // Combine state variables and block variables
-    let variables = state_variables.iter().chain(block_variables_bdds.iter()).cloned().collect::<Vec<_>>();
-    let mut total_bits = bits.iter().cloned().collect::<Vec<u32>>();
-    total_bits.push(block_bits);
-
-    for result in CubeIterAll::new(&variables, partition) {
-        let (bits, _) = result?;
-        println!("{:?}", to_vector(&bits, &total_bits));
-    }
-
-    Ok(())
 }
 
-/// Reconstruct all values represented by the given bits and number of bits per value.
-fn to_vector(bits: &[OptBool], num_of_bits: &[u32]) -> Vec<u64>{
-    let mut values = Vec::new();
-
-    // Every number of bits represent a single value encoded in the bits.
-    let mut offset = 0;
-    for num_of_bit in num_of_bits {
-        values.push(to_value(&bits[offset..(offset + *num_of_bit as usize)]));
-        offset += *num_of_bit as usize;
+impl<'a> PartitionDisplay<'a> {
+    /// Creates a new partition display helper.
+    fn new(
+        partition: &'a BDDFunction,
+        bits: &'a [u32],
+        block_bits: u32,
+    ) -> Self {
+        Self {
+            partition,
+            bits,
+            block_bits,
+        }
     }
+}
 
-    values
+impl fmt::Display for PartitionDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for bits in CubeIterAll::new(self.partition) {
+            if !first {
+                writeln!(f)?;
+            }
+            first = false;
+            write!(f, "{}", ValuesDisplayWithTail::new(&bits, self.bits, self.block_bits))?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Display helper that formats values reconstructed from bit slices without allocating intermediate vectors.
+pub struct ValuesDisplay<'a> {
+    bits: &'a [OptBool],
+    num_of_bits: &'a [u32],
+}
+
+impl<'a> ValuesDisplay<'a> {
+    /// Display an array of bits with the given number of bits per value.
+    pub fn new(bits: &'a [OptBool], num_of_bits: &'a [u32]) -> Self {
+        Self { bits, num_of_bits }
+    }
+}
+
+impl fmt::Display for ValuesDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut offset = 0usize;
+        f.write_str("[")?;
+        for (i, &num_bits) in self.num_of_bits.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            let value = to_value(&self.bits[offset..offset + num_bits as usize]);
+            write!(f, "{}", value)?;
+            offset += num_bits as usize;
+        }
+        f.write_str("]")
+    }
+}
+
+/// Display helper that appends a final value encoded with `tail_bits` to avoid allocating a combined bit-length vector.
+pub struct ValuesDisplayWithTail<'a> {
+    bits: &'a [OptBool],
+    num_of_bits: &'a [u32],
+    tail_bits: u32,
+}
+
+impl<'a> ValuesDisplayWithTail<'a> {
+    fn new(bits: &'a [OptBool], num_of_bits: &'a [u32], tail_bits: u32) -> Self {
+        Self {
+            bits,
+            num_of_bits,
+            tail_bits,
+        }
+    }
+}
+
+impl fmt::Display for ValuesDisplayWithTail<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+
+        let mut offset = 0usize;
+        for (i, &num_bits) in self.num_of_bits.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            let value = to_value(&self.bits[offset..offset + num_bits as usize]);
+            write!(f, "{}", value)?;
+            offset += num_bits as usize;
+        }
+
+        if !self.num_of_bits.is_empty() {
+            write!(f, ", ")?;
+        }
+
+        let tail_value = to_value(&self.bits[offset..offset + self.tail_bits as usize]);
+        write!(f, "{}", tail_value)?;
+        write!(f, "]")
+    }
 }
 
 /// Reconstruct the value represented by the first num_of_bit bits.
 fn to_value(bits: &[OptBool]) -> u64 {
     let mut value = 0u64;
-    for i in 0..bits.len() {
-        if bits[i as usize] == OptBool::True {
+    for (i, bit) in bits.iter().enumerate() {
+        if *bit == OptBool::True {
             value |= 1 << i;
         }
     }
@@ -364,8 +461,6 @@ fn to_value(bits: &[OptBool]) -> u64 {
 mod tests {
     use std::ops::Range;
 
-    use merc_ldd::Storage;
-    use merc_utilities::random_test;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
@@ -374,7 +469,11 @@ mod tests {
     use oxidd::error::DuplicateVarName;
     use rand::Rng;
 
+    use merc_ldd::Storage;
+    use merc_utilities::random_test;
+
     use crate::SymbolicLtsBdd;
+    use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
@@ -421,7 +520,25 @@ mod tests {
             let encoded = encode_block(&manager_ref, &block_variables_bdds, block_number).unwrap();
             let decoded = decode_block(&manager_ref, &encoded);
 
-            assert_eq!(block_number, decoded, "Decoding the block number did not yield the original");
+            assert_eq!(
+                block_number, decoded,
+                "Decoding the block number did not yield the original"
+            );
         })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_reachability() {
+        random_test(100, |rng| {
+            let mut storage = merc_ldd::Storage::new();
+
+            // We don't really check anything here, just ensure that reachability runs without errors.
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+            sigref_symbolic(&manager_ref, &lts_bdd, false).unwrap();
+        });
     }
 }

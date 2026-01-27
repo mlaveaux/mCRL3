@@ -1,19 +1,17 @@
-use core::num;
+use rand::Rng;
+use rand::seq::IndexedRandom;
+use rand::seq::IteratorRandom;
 
 use merc_aterm::ATermString;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
+use merc_ldd::from_iter;
+use merc_ldd::random_vector_set;
+use merc_ldd::Storage;
 use merc_lts::LtsMultiAction;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
-use rand::Rng;
-use rand::seq::IndexedRandom;
-use rand::seq::IteratorRandom;
-
-use merc_ldd::Storage;
-use merc_ldd::from_iter;
-use merc_ldd::random_vector_set;
 
 use crate::SummandGroup;
 use crate::SymbolicLts;
@@ -41,7 +39,7 @@ pub fn random_symbolic_lts(
     let mut parameter_values = Vec::new();
     let value = DataExpression::from_string("1")?;
     for _ in 0..num_state_variables {
-        parameter_values.push(Vec::from_iter(std::iter::repeat(value.clone()).take(num_of_values)));
+        parameter_values.push(Vec::from_iter(std::iter::repeat_n(value.clone(), num_of_values)));
     }
 
     // The parameter names
