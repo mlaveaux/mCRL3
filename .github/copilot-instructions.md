@@ -40,7 +40,7 @@ cargo +nightly fmt
 ### Parsing & Grammar
 
 - **`pest`/`pest_derive`**: PEG parser generator
-- **`pest_consume`**: Vendored in `3rd-party/pest_consume/` - parser-combinator framework built on pest
+- **`pest_consume`**: A set of macros to consume pest parse trees into ASTs effectively.
 - Grammar files use `.pest` extension (see `crates/syntax/mcrl2_grammar.pest`, `crates/aterm/term_grammar.pest`)
 
 ### Data Structures
