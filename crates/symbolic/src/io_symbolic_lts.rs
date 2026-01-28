@@ -1,3 +1,4 @@
+use std::io::BufReader;
 use std::io::Read;
 
 use log::debug;
@@ -53,7 +54,7 @@ use crate::SymbolicLts;
 pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<SymbolicLts, MercError> {
     info!("Reading symbolic LTS in the mCRL2 symbolic format...");
 
-    let aterm_stream = BinaryATermReader::new(reader)?;
+    let aterm_stream = BinaryATermReader::new(BufReader::new(reader))?;
     let mut stream = BinaryLddReader::new(storage, aterm_stream)?;
 
     if ATermRead::read_aterm(&mut stream)? != Some(symbolic_labelled_transition_system_mark()) {
