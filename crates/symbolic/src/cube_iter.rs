@@ -6,6 +6,7 @@ use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::Manager;
 use oxidd::ManagerRef;
+use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::AllocResult;
@@ -76,8 +77,19 @@ impl Iterator for CubeIter<'_> {
 }
 
 /// The same as [CubeIter], but iterates over all satisfying assignments without
-/// considering don't care values. For the universe BDD, the [CubeIter] yields only
-/// one cube with all don't cares, while this iterator yields all possible cubes.
+/// considering don't care values. 
+/// 
+/// # Details
+/// 
+/// For the universe BDD, the [CubeIter] yields only one cube with all don't
+/// cares, while this iterator yields all possible cubes. When
+/// `variable_indices` is provided, returned assignments are projected to only
+/// those variables.
+/// 
+/// Note that with `variable_indices` set, there can be multiple (identical)
+/// cubes returned if the original cube has relevant outside of the projected
+/// variables. This can be avoided by first restricting the input BDD to only
+/// the desired `variable_indices`.
 pub struct CubeIterAll<'a> {
     /// Iterator over the cubes with don't cares.
     iter: CubeIter<'a>,
@@ -87,15 +99,51 @@ pub struct CubeIterAll<'a> {
 
     /// The cube that is currently being iterated over.
     current_cube: Vec<OptBool>,
+
+    /// Optional set of variable indices to project the output onto.
+    variable_indices: Option<&'a Vec<VarNo>>,
 }
 
 impl<'a> CubeIterAll<'a> {
     /// Creates a new cube iterator that defers initialization to the first `next` call.
-    pub fn new(bdd: &'a BDDFunction) -> CubeIterAll<'a> {
-        CubeIterAll {
+    pub fn new(bdd: &'a BDDFunction) -> Self {
+        Self {
             iter: CubeIter::new(bdd),
             cube: None,
             current_cube: Vec::new(),
+            variable_indices: None,
+        }
+    }
+
+    /// Creates a new cube iterator that returns assignments only for the given variable indices.
+    pub fn with_variables(bdd: &'a BDDFunction, variable_indices: &'a Vec<VarNo>) -> Self {
+        Self {
+            iter: CubeIter::new(bdd),
+            cube: None,
+            current_cube: Vec::new(),
+            variable_indices: Some(variable_indices),
+        }
+    }
+
+    /// Initialize the `current` cube by replacing don't cares with false.
+    fn initialize_cube(&mut self) {
+        if let Some(cube) = &mut self.cube {
+            self.current_cube = cube
+                .iter()
+                .map(|element| {
+                    if *element == OptBool::None {
+                        OptBool::False
+                    } else {
+                        *element
+                    }
+                })
+                .collect();
+
+            // Project to selected variable indices if requested.
+            if let Some(indices) = &self.variable_indices {                    
+                *cube = project_bits(&cube, indices);       
+                self.current_cube = cube.clone();
+            }
         }
     }
 }
@@ -112,13 +160,7 @@ impl Iterator for CubeIterAll<'_> {
                 None => return None,
             };
 
-            // Initialize the current cube by replacing don't cares with false.
-            if let Some(cube) = &self.cube {
-                self.current_cube = cube
-                    .iter()
-                    .map(|element| if *element == OptBool::None { OptBool::False } else { *element })
-                    .collect();
-            }
+            self.initialize_cube();
         }
 
         // At this point, cube must be Some; otherwise we would have returned None above.
@@ -134,22 +176,15 @@ impl Iterator for CubeIterAll<'_> {
                 None => None,
             };
 
-            if let Some(next_cube) = &self.cube {
-                self.current_cube = next_cube
-                    .iter()
-                    .map(|element| if *element == OptBool::None { OptBool::False } else { *element })
-                    .collect();
-            } else {
-                // No more cubes; next call will return None.
-            }
+            self.initialize_cube();
         }
 
         Some(Ok(result))
     }
 }
 
-/// Constructs a BDD representing the given cube.
-pub fn cube_to_bdd(
+/// Constructs a BDD representing the given vector of (optional) bits.
+pub fn bits_to_bdd(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
     cube: &[OptBool],
@@ -181,18 +216,37 @@ pub fn cube_to_bdd(
 /// Only considers bits for which the `cube` has don't care values, since these
 /// are the only ones that can be changed.
 fn increment(current_cube: &mut [OptBool], cube: &[OptBool]) -> bool {
-    for (index, value) in current_cube.iter_mut().enumerate() {
-        if cube[index] == OptBool::None {
-            // Set each variable to true until we find one that is false
-            if *value == OptBool::False {
-                *value = OptBool::True;
-                return true;
+    // Propagate carry across don't-care positions, resetting carried bits to false.
+    let mut carry = true;
+    for i in 0..current_cube.len() {
+        if cube[i] != OptBool::None {
+            continue;
+        }
+        match current_cube[i] {
+            // Treat None as False for robustness.
+            OptBool::None | OptBool::False => {
+                // Found a bit to flip; set it to True and stop carrying.
+                current_cube[i] = OptBool::True;
+                carry = false;
+                break;
+            }
+            OptBool::True => {
+                // Reset this don't-care bit and continue carrying to the next.
+                current_cube[i] = OptBool::False;
             }
         }
     }
 
-    // All variables were true, overflow
-    false
+    // All relevant variables were true (or there were none), overflow.
+    !carry
+}
+
+/// Project bits onto the given variable indices.
+fn project_bits(bits: &[OptBool], variable_indices: &[VarNo]) -> Vec<OptBool> {
+    variable_indices
+        .iter()
+        .map(|&i| bits.get(i as usize).copied().expect("Projecting out of bounds"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -251,7 +305,6 @@ mod tests {
             let cubes: Vec<Vec<OptBool>> = CubeIterAll::new(&bdd)
                 .collect::<Result<Vec<_>, _>>()
                 .expect("Failed to iterate cubes");
-            println!("cubes {cubes:?}");
             for cube in &set {
                 let found = cubes.iter().find(|bits| *bits == cube);
                 assert!(found.is_some(), "Expected cube {} not found", FormatConfig(cube));

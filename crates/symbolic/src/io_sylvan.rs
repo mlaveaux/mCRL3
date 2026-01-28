@@ -2,6 +2,7 @@ use std::fmt;
 use std::io::Read;
 
 use log::info;
+use merc_data::DataExpression;
 use merc_ldd::Ldd;
 use merc_ldd::Storage;
 use merc_ldd::SylvanReader;
@@ -100,6 +101,11 @@ impl SymbolicLTS for SylvanLts {
 
     fn action_labels(&self) -> &[String] {
         // A Sylvan LTS does not have action labels.
+        &[]
+    }
+
+    fn parameter_values(&self) -> &[Vec<DataExpression>] {
+        // A Sylvan LTS does not have parameter values.
         &[]
     }
 }
