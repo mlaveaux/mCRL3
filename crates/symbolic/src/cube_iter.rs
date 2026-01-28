@@ -5,9 +5,12 @@ use std::marker::PhantomData;
 use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::Manager;
+use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
 use oxidd::util::AllocResult;
 use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
 use oxidd_core::function::EdgeOfFunc;
 
 /// Returns the boolean set difference of two BDD functions: lhs \ rhs.
@@ -30,6 +33,8 @@ pub fn minus_edge<'id>(
 /// The returned cubes contain don't care values (OptBool::None) for variables
 /// that can be either true or false without affecting the satisfaction of the
 /// BDD.
+///
+/// Returns Result to handle out of memory errors.
 pub struct CubeIter<'a> {
     /// The BDD to iterate over.
     bdd: BDDFunction,
@@ -48,14 +53,25 @@ impl<'a> CubeIter<'a> {
 }
 
 impl Iterator for CubeIter<'_> {
-    type Item = Vec<OptBool>;
+    type Item = Result<(Vec<OptBool>, BDDFunction), OutOfMemory>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let cube = self.bdd.pick_cube_dd(|_, _, _| true).unwrap();
+        // We need to turn Err into Some(Err) to satisfy the Iterator trait.
+        let cube = match self.bdd.pick_cube_dd(|_, _, _| true) {
+            Ok(cube) => cube,
+            Err(e) => return Some(Err(e)),
+        };
 
-        self.bdd = minus(&self.bdd, &cube).expect("Failed to compute BDD difference");
+        self.bdd = match minus(&self.bdd, &cube) {
+            Ok(bdd) => bdd,
+            Err(e) => return Some(Err(e)),
+        };
 
-        cube.pick_cube(|_, _, _| true)
+        if let Some(bits) = cube.pick_cube(|_, _, _| true) {
+            Some(Ok((bits, cube)))
+        } else {
+            None
+        }
     }
 }
 
@@ -63,8 +79,6 @@ impl Iterator for CubeIter<'_> {
 /// considering don't care values. For the universe BDD, the [CubeIter] yields only
 /// one cube with all don't cares, while this iterator yields all possible cubes.
 pub struct CubeIterAll<'a> {
-    bdd: &'a BDDFunction,
-
     /// Iterator over the cubes with don't cares.
     iter: CubeIter<'a>,
 
@@ -76,61 +90,90 @@ pub struct CubeIterAll<'a> {
 }
 
 impl<'a> CubeIterAll<'a> {
-    /// Creates a new cube iterator that iterates over the single cube
+    /// Creates a new cube iterator that defers initialization to the first `next` call.
     pub fn new(bdd: &'a BDDFunction) -> CubeIterAll<'a> {
-        let mut iter = CubeIter::new(bdd);
-        let cube = iter.next();
-
-        // Initialize the current cube by replacing don't cares with false.
-        let mut current_cube = cube.clone().unwrap_or_default();
-        for element in current_cube.iter_mut() {
-            if *element == OptBool::None {
-                *element = OptBool::False;
-            }
-        }
-
-        Self {
-            bdd,
-            iter,
-            current_cube,
-            cube,
+        CubeIterAll {
+            iter: CubeIter::new(bdd),
+            cube: None,
+            current_cube: Vec::new(),
         }
     }
 }
 
 impl Iterator for CubeIterAll<'_> {
-    type Item = Vec<OptBool>;
+    type Item = Result<Vec<OptBool>, OutOfMemory>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(cube) = &self.cube {
-            // Yield the current assignment first.
-            let result = self.current_cube.clone();
+        // Lazy initialization on first call.
+        if self.cube.is_none() {
+            self.cube = match self.iter.next() {
+                Some(Ok((bits, _))) => Some(bits),
+                Some(Err(e)) => return Some(Err(e)),
+                None => return None,
+            };
 
-            // Advance to the next assignment for this cube. If overflow,
-            // move to the next cube and initialize its current assignment.
-            if !increment(&mut self.current_cube, cube) {
-                self.cube = self.iter.next();
-                if let Some(next_cube) = &self.cube {
-                    self.current_cube = next_cube
-                        .iter()
-                        .map(|element| {
-                            if *element == OptBool::None {
-                                OptBool::False
-                            } else {
-                                *element
-                            }
-                        })
-                        .collect();
-                } else {
-                    // Will return None on subsequent calls.
-                }
+            // Initialize the current cube by replacing don't cares with false.
+            if let Some(cube) = &self.cube {
+                self.current_cube = cube
+                    .iter()
+                    .map(|element| if *element == OptBool::None { OptBool::False } else { *element })
+                    .collect();
             }
-
-            return Some(result);
         }
 
-        None
+        // At this point, cube must be Some; otherwise we would have returned None above.
+        let cube = self.cube.as_ref().unwrap();
+        let result = self.current_cube.clone();
+
+        // Advance to the next assignment for this cube. If overflow,
+        // move to the next cube and initialize its current assignment.
+        if !increment(&mut self.current_cube, cube) {
+            self.cube = match self.iter.next() {
+                Some(Ok((bits, _))) => Some(bits), // We cannot use the cube since we are going to fill in the don't cares.
+                Some(Err(e)) => return Some(Err(e)),
+                None => None,
+            };
+
+            if let Some(next_cube) = &self.cube {
+                self.current_cube = next_cube
+                    .iter()
+                    .map(|element| if *element == OptBool::None { OptBool::False } else { *element })
+                    .collect();
+            } else {
+                // No more cubes; next call will return None.
+            }
+        }
+
+        Some(Ok(result))
     }
+}
+
+/// Constructs a BDD representing the given cube.
+pub fn cube_to_bdd(
+    manager_ref: &BDDManagerRef,
+    variables: &[BDDFunction],
+    cube: &[OptBool],
+) -> AllocResult<BDDFunction> {
+    manager_ref.with_manager_shared(|manager| {
+        let mut result = BDDFunction::t(manager);
+
+        for (var, value) in variables.iter().zip(cube.iter()) {
+            match value {
+                OptBool::True => {
+                    result = result.and(var)?;
+                }
+                OptBool::False => {
+                    let not_var = var.not()?;
+                    result = result.and(&not_var)?;
+                }
+                OptBool::None => {
+                    // Don't care, skip
+                }
+            }
+        }
+
+        Ok(result)
+    })
 }
 
 /// Perform the binary increment, returns false if overflow occurs.
@@ -145,8 +188,6 @@ fn increment(current_cube: &mut [OptBool], cube: &[OptBool]) -> bool {
                 *value = OptBool::True;
                 return true;
             }
-
-            *value = OptBool::False;
         }
     }
 
@@ -196,6 +237,8 @@ mod tests {
             // Check that the cube iterator yields all the expected cubes
             let mut seen = HashSet::new();
             for bits in CubeIterAll::new(&bdd) {
+                let bits = bits.expect("Failed to iterate cubes");
+
                 println!("Cube: {}", FormatConfig(&bits));
                 assert!(set.contains(&bits), "Cube {} not in expected set", FormatConfig(&bits));
                 assert!(
@@ -205,7 +248,9 @@ mod tests {
                 );
             }
 
-            let cubes: Vec<Vec<OptBool>> = CubeIterAll::new(&bdd).collect();
+            let cubes: Vec<Vec<OptBool>> = CubeIterAll::new(&bdd)
+                .collect::<Result<Vec<_>, _>>()
+                .expect("Failed to iterate cubes");
             println!("cubes {cubes:?}");
             for cube in &set {
                 let found = cubes.iter().find(|bits| *bits == cube);
@@ -236,6 +281,8 @@ mod tests {
             // Check that it does not yield duplicates.
             let mut seen = HashSet::new();
             for cube in CubeIter::new(&bdd) {
+                let (cube, _) = cube.expect("Failed to iterate cubes");
+
                 println!("Cube: {}", FormatConfig(&cube));
                 assert!(
                     seen.insert(cube.clone()),
