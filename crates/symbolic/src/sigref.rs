@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt;
 use std::ops::Range;
 
@@ -385,6 +386,33 @@ fn extend_relation(
     })
 }
 
+/// Computes the support (set of variables) of the given BDD function.
+fn support(
+    manager_ref: &BDDManagerRef,
+    function: &BDDFunction,
+) -> Result<Vec<VarNo>, OutOfMemory> {
+    let mut result = HashSet::new();
+    support_rec(manager_ref, function, &mut result);
+    Ok(result.into_iter().collect())
+}
+
+/// Recursive implementation of [support].
+fn support_rec(manager_ref: &BDDManagerRef,
+    function: &BDDFunction,
+    result: &mut HashSet<VarNo>) {
+
+    manager_ref.with_manager_shared(|manager| {
+        let node = manager.get_node(function.as_edge(manager)).unwrap_inner();
+        result.insert(node.level());
+
+        // Recurse into cofactors
+        if let Some((low, high)) = function.cofactors() {
+            support_rec(manager_ref, &low, result);
+            support_rec(manager_ref, &high, result);
+        }
+    })
+}
+
 /// Display helper that prints all vectors represented by the given partition BDD as numbers, by decoding
 /// the BDD layers as `bits`, see [crate::ldd_to_bdd].
 pub struct PartitionDisplay<'a> {
@@ -409,9 +437,12 @@ impl<'a> PartitionDisplay<'a> {
 }
 
 impl fmt::Display for PartitionDisplay<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {        
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {   
+        // We ignore the output cube, so just pass no variables.     
         let mut first = true;
         for cube in CubeIterAll::new(self.partition) {
+            let cube = cube.map_err(|_| fmt::Error)?;
+            
             if !first {
                 writeln!(f)?;
             }
