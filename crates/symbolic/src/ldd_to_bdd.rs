@@ -13,6 +13,7 @@ use merc_ldd::LddRef;
 use merc_ldd::Storage;
 use merc_ldd::height;
 use merc_utilities::MercError;
+use oxidd::util::OptBool;
 use oxidd_core::util::EdgeDropGuard;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
@@ -138,6 +139,67 @@ pub fn compute_highest(storage: &mut Storage, ldd: &LddRef<'_>) -> Vec<u32> {
     let mut result = vec![0; height(storage, ldd)];
     compute_highest_rec(storage, &mut result, ldd, 0);
     result
+}
+
+/// Iterator that yields values reconstructed from a bit cube, from a BDD obtained by
+/// [ldd_to_bdd].
+pub struct ValuesIter<'a> {
+    bits: &'a [OptBool],
+    num_of_bits: &'a [u32],
+    offset: usize,
+    index: usize,
+}
+
+impl<'a> ValuesIter<'a> {
+    pub fn new(bits: &'a [OptBool], num_of_bits: &'a [u32]) -> Self {
+        Self {
+            bits,
+            num_of_bits,
+            offset: 0,
+            index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for ValuesIter<'a> {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.num_of_bits.len() {
+            return None;
+        }
+
+        let nb = self.num_of_bits[self.index] as usize;
+        if self.offset + nb > self.bits.len() {
+            // Malformed input; stop iterating.
+            return None;
+        }
+
+        let value = to_value(&self.bits[self.offset..self.offset + nb]);
+        self.offset += nb;
+        self.index += 1;
+        Some(value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.num_of_bits.len().saturating_sub(self.index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for ValuesIter<'a> {}
+
+/// Reconstruct the value represented by the bits as encoded by
+/// [crate::ldd_to_bdd]. So most significant bit first.
+pub fn to_value(bits: &[OptBool]) -> u64 {
+    let mut value = 0u64;
+    for (i, bit) in bits.iter().rev().enumerate() {
+        if *bit == OptBool::True {
+            value |= 1 << i;
+        }
+    }
+
+    value
 }
 
 /// Helper function for compute_highest

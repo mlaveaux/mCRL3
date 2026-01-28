@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt;
 use std::ops::Range;
 
@@ -30,7 +29,9 @@ use rustc_hash::FxHashMap;
 
 use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
+use crate::ValuesIter;
 use crate::required_bits_64;
+use crate::to_value;
 
 /// Computes the signature refinement of the given symbolic LTS using strong bisimulation.
 ///
@@ -46,6 +47,13 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         .states()
         .sat_count::<u64, FxBuildHasher>(lts.state_variable_indices().len() as u32, &mut SatCountCache::default());
     debug!("Number of states: {}", number_of_states);
+    
+        // Visualize the initial partition.
+    manager_ref.with_manager_shared(|manager| {
+        Visualizer::new()
+            .add("states", manager, [lts.states()])
+            .serve()
+    })?;
 
     let num_of_block_bits = required_bits_64(number_of_states);
     debug!("Number of block bits: {}", num_of_block_bits);
@@ -55,21 +63,40 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         .collect::<Vec<String>>();
 
     // Create variables in the BDD manager
-    let block_variables = manager_ref
+    let block_variable_indices: Vec<VarNo> = manager_ref
         .with_manager_exclusive(|manager| -> Result<Range<VarNo>, DuplicateVarName> {
             manager.add_named_vars(block_variable_names)
         })
-        .map_err(|e| format!("Failed to create variables: {e}"))?;
+        .map_err(|e| format!("Failed to create variables: {e}"))?
+        .collect();
 
     // Create BDD functions for the block variables
-    let block_variables_bdds = block_variables
-        .map(|var_no| manager_ref.with_manager_shared(|manager| BDDFunction::var(manager, var_no)))
+    let block_variables_bdds = block_variable_indices
+        .iter()
+        .map(|var_no| manager_ref.with_manager_shared(|manager| BDDFunction::var(manager, *var_no)))
         .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
     let mut signature_to_block = FxHashMap::default();
 
     // Substitution to replace next state variables with current state variables.
     let next_state_substitution = Subst::new(lts.state_variable_indices(), lts.next_state_variables());
+
+    // Determine the variables in the support of a signature function.
+    let signature_variables = lts
+        .next_state_variable_indices()
+        .iter()
+        .chain(lts.action_variable_indices())
+        .chain(block_variable_indices.iter())
+        .cloned()
+        .collect::<Vec<VarNo>>();
+
+    // Determine the variables in the support of a partition function.
+    let partition_variables = lts
+        .next_state_variable_indices()
+        .iter()
+        .chain(block_variable_indices.iter())
+        .cloned()
+        .collect::<Vec<VarNo>>();
 
     // Stores the partition of the states as BDD.
     let mut partition = lts
@@ -83,7 +110,7 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
     // Keep track of local information.
     let mut num_of_blocks = 0;
     let mut old_num_of_blocks = 1;
-    let mut iteration = 0usize; 
+    let mut iteration = 0usize;
 
     let progress = TimeProgress::new(
         |(iterations, num_of_blocks): (usize, usize)| {
@@ -92,6 +119,49 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         1,
     );
 
+    if visualize {
+        // Visualize the initial partition.
+        manager_ref.with_manager_shared(|manager| {
+            Visualizer::new()
+                .add("initial_partition", manager, [&partition])
+                .serve()
+        })?;
+    }
+
+    trace!(
+        "Initial partition: {}",
+        PartitionDisplay::new(
+            lts,
+            &partition,
+            &partition_variables,
+            lts.state_variable_num_of_bits(),
+            num_of_block_bits
+        )
+    );
+
+    // Extend the given relation by adding identity on all state variables.
+    // let relations: Vec<BDDFunction> = lts
+    //     .transition_groups()
+    //     .iter()
+    //     .map(|group| {
+    //         // Determine the variables that are either not read or written, but not both.
+    //         let mut variables: Vec<BDDFunction> = Vec::with_capacity(lts.state_variable_indices().len() * 2);
+    //         for var_no in lts.state_variable_indices().iter() {
+    //             if group.read_variables().contains(var_no) || group.write_variables().contains(var_no) {
+    //                 continue;
+    //             }
+
+    //             let var_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::var(manager, *var_no))?;
+    //             let next_var_bdd = lts.next_state_variables()[*var_no as usize].clone();
+    //             variables.push(var_bdd);
+    //             variables.push(next_var_bdd);
+    //         }
+
+    //         extend_relation(manager_ref, group.relation(), &variables)
+        
+    //     })
+    //     .collect::<Result<_, OutOfMemory>>()?;
+
     while num_of_blocks != old_num_of_blocks {
         // No fixed point reached yet, so keep refining.
         old_num_of_blocks = num_of_blocks;
@@ -99,33 +169,31 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
 
         iteration += 1;
 
-        if visualize {
-            // Visualize the current partition.
-            manager_ref.with_manager_shared(|manager| {
-                Visualizer::new()
-                    .add(&format!("partition_{iteration}"), manager, [&partition])
-                    .serve()
-            })?;
-        }
-
         // Compute the new signatures w.r.t. the previous partition.
         let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
         for group in lts.transition_groups() {
-            let group_signature = signature_strong(&partition, group.relation(), lts.next_state_variables_bdd())?;
+            let group_signature = signature_strong(&partition, group.relation(), group.write_variables_bdd())?;
             signature = signature.or(&group_signature)?;
         }
 
         // Restrict the signature to only the reachable states. TODO: Why is this not in Tom's paper?
-        signature = signature.and(lts.states())?;
+        // signature = signature.and(lts.states())?;
 
         // Substitute next state variables with current state variables to align
         // with the partition representation, required for `refine`.
         signature = signature.substitute(&next_state_substitution)?;
 
-        println!(
-            "Signature after iteration {}: {}",
+        trace!(
+            "Signature at iteration {}: {}",
             iteration,
-            PartitionDisplay::new(&signature, lts.state_variable_bits(), num_of_block_bits)
+            SignatureDisplay::new(
+                lts,
+                &signature,
+                &signature_variables,
+                lts.state_variable_num_of_bits(),
+                lts.action_variable_indices().len() as u32,
+                num_of_block_bits
+            )
         );
 
         if visualize {
@@ -142,10 +210,31 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
             manager_ref,
             &mut signature_to_block,
             &block_variables_bdds,
-            lts.next_state_variables_indices(),
+            lts.next_state_variable_indices(),
             &signature,
             &partition,
         )?;
+
+        if visualize {
+            // Visualize the current partition.
+            manager_ref.with_manager_shared(|manager| {
+                Visualizer::new()
+                    .add(&format!("partition_{iteration}"), manager, [&partition])
+                    .serve()
+            })?;
+        }
+
+        trace!(
+            "Partition at iteration {}: {}",
+            iteration,
+            PartitionDisplay::new(
+                lts,
+                &partition,
+                &partition_variables,
+                lts.state_variable_num_of_bits(),
+                num_of_block_bits
+            )
+        );
 
         num_of_blocks = signature_to_block.len();
         progress.print((iteration, num_of_blocks));
@@ -157,15 +246,6 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
     info!(
         "Signature refinement completed in {} iterations with {} blocks",
         iteration, num_of_blocks
-    );
-
-    debug!(
-        "Final partition: {}",
-        PartitionDisplay::new(
-            &partition,
-            lts.state_variable_bits(),
-            num_of_block_bits
-        )
     );
 
     Ok(())
@@ -332,9 +412,9 @@ fn encode_block(
 }
 
 /// Decodes the given block number from a BDD using the given variables as bits.
-/// 
+///
 /// # Details
-/// 
+///
 /// Should be the inverse of [encode_block].
 fn decode_block(_manager_ref: &BDDManagerRef, block: &BDDFunction) -> u64 {
     let mut result = 0u64;
@@ -359,173 +439,217 @@ fn decode_block(_manager_ref: &BDDManagerRef, block: &BDDFunction) -> u64 {
     result
 }
 
-/// Extend the given relation to the full domain.
+/// For every pair of variables (s, s') in `variables` added the s <=> s' relation to `relation`.
 /// 
 /// # Details
 /// 
-/// For every [(s, s'), (t, t'), ...] in the relation, add layers s <=> s' , t <=> t', ...
-fn extend_relation(
-    manager_ref: &BDDManagerRef,
+/// Variables should have the form [(s_0, s_0'), (s_1, s_1'), ..., (s_n, s_n')].
+fn extend_relation(manager_ref: &BDDManagerRef,
     relation: &BDDFunction,
     variables: &[BDDFunction],
 ) -> Result<BDDFunction, OutOfMemory> {
-
-    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {        
+    manager_ref.with_manager_shared(|manager| {        
         let mut eq = BDDFunction::t(manager);
-        let false_node = BDDFunction::f(manager);
 
-        // For every missing variable, add an equality layer between (s and s').
         for (var, next_var) in variables.iter().tuples() {
-            let low = next_var.ite(&eq, &false_node)?;
-            let high = next_var.ite(&false_node, &eq)?;
-            eq = var.ite(&high, &low)?;
+            // Extend the relation by adding identity on this variable.
+            let low = next_var.ite(
+                &BDDFunction::f(manager),
+                &var,
+            )?;
+            let high = next_var.ite(
+                &var,
+                &BDDFunction::t(manager),
+            )?;
+
+            eq = var.ite(
+                &high,
+                &low,
+            )?;
         }
 
-        // Finally, combine the relation with the equalities. Any don't care variable will become an equality layer.
-        Ok(relation.and(&eq)?)
+        relation.and(&eq)
     })
 }
 
-/// Computes the support (set of variables) of the given BDD function.
-fn support(
-    manager_ref: &BDDManagerRef,
-    function: &BDDFunction,
-) -> Result<Vec<VarNo>, OutOfMemory> {
-    let mut result = HashSet::new();
-    support_rec(manager_ref, function, &mut result);
-    Ok(result.into_iter().collect())
+/// Display helper that prints all vectors represented by the given signature BDD as numbers, by decoding
+/// the BDD layers as `bits`, see [crate::ldd_to_bdd].
+pub struct SignatureDisplay<'a> {
+    lts: &'a SymbolicLtsBdd,
+    signature: &'a BDDFunction,
+
+    /// The number of bits per state variable, the action bits and block bits.
+    num_of_bits: &'a [u32],
+    action_bits: u32,
+    block_bits: u32,
+
+    /// The variables that contribute to the signature.
+    variables: &'a Vec<VarNo>,
 }
 
-/// Recursive implementation of [support].
-fn support_rec(manager_ref: &BDDManagerRef,
-    function: &BDDFunction,
-    result: &mut HashSet<VarNo>) {
-
-    manager_ref.with_manager_shared(|manager| {
-        let node = manager.get_node(function.as_edge(manager)).unwrap_inner();
-        result.insert(node.level());
-
-        // Recurse into cofactors
-        if let Some((low, high)) = function.cofactors() {
-            support_rec(manager_ref, &low, result);
-            support_rec(manager_ref, &high, result);
+impl<'a> SignatureDisplay<'a> {
+    /// Creates a new partition display helper.
+    fn new(
+        lts: &'a SymbolicLtsBdd,
+        signature: &'a BDDFunction,
+        variables: &'a Vec<VarNo>,
+        num_of_bits: &'a [u32],
+        action_bits: u32,
+        block_bits: u32,
+    ) -> Self {
+        Self {
+            lts,
+            signature,
+            num_of_bits,
+            action_bits,
+            block_bits,
+            variables,
         }
-    })
+    }
 }
 
-/// Display helper that prints all vectors represented by the given partition BDD as numbers, by decoding
+
+/// Display helper that prints all vectors represented by the given signature BDD as numbers, by decoding
 /// the BDD layers as `bits`, see [crate::ldd_to_bdd].
 pub struct PartitionDisplay<'a> {
-    partition: &'a BDDFunction,
-    bits: &'a [u32],
+    lts: &'a SymbolicLtsBdd,
+    signature: &'a BDDFunction,
+
+    /// The number of bits per state variable and block bits.
+    num_of_bits: &'a [u32],
     block_bits: u32,
+
+    /// The variables that contribute to the signature.
+    variables: &'a Vec<VarNo>,
 }
 
 impl<'a> PartitionDisplay<'a> {
     /// Creates a new partition display helper.
     fn new(
-        partition: &'a BDDFunction,
-        bits: &'a [u32],
+        lts: &'a SymbolicLtsBdd,
+        signature: &'a BDDFunction,
+        variables: &'a Vec<VarNo>,
+        num_of_bits: &'a [u32],
         block_bits: u32,
     ) -> Self {
         Self {
-            partition,
-            bits,
+            lts,
+            signature,
+            num_of_bits,
             block_bits,
+            variables,
         }
     }
 }
 
 impl fmt::Display for PartitionDisplay<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {   
-        // We ignore the output cube, so just pass no variables.     
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Total number of bits for the state variables.
+        let total_num_of_bits: u32 = self.num_of_bits.iter().sum();
+
+        // We ignore the output cube, so just pass no variables.
         let mut first = true;
-        for cube in CubeIterAll::new(self.partition) {
+        for cube in CubeIterAll::with_variables(self.signature, self.variables) {
             let cube = cube.map_err(|_| fmt::Error)?;
-            
+
+            debug_assert_eq!(
+                cube.len(),
+                (total_num_of_bits + self.block_bits) as usize,
+                "Unexpected number of bits found"
+            );
+
             if !first {
                 writeln!(f)?;
             }
             first = false;
-            write!(f, "{}", ValuesDisplayWithTail::new(&cube, self.bits, self.block_bits))?;
+
+            let (state_bits, block_bits) = cube.split_at(total_num_of_bits as usize);
+            debug_assert_eq!(
+                block_bits.len(),
+                self.block_bits as usize,
+                "Unexpected number of block bits found"
+            );
+
+            write!(
+                f,
+                "[{}] -> {}",
+                ValuesIter::new(state_bits, self.num_of_bits).format(", "),
+                to_block_index(block_bits)
+            )?;
+
+            // write!(
+            //     f,
+            //     "[{}] -> ({}, {})",
+            //     ValuesIter::new(state_bits, self.num_of_bits)
+            //         .enumerate()
+            //         .map(|(index, value)| &self.lts.parameter_values()[index][value as usize])
+            //         .format(", "),
+            //     self.lts.action_labels()[to_value(action_bits) as usize],
+            //     to_block_index(block_bits)
+            // )?;
         }
 
         Ok(())
     }
 }
 
-/// Display helper that formats values reconstructed from bit slices without allocating intermediate vectors.
-pub struct ValuesDisplay<'a> {
-    bits: &'a [OptBool],
-    num_of_bits: &'a [u32],
-}
 
-impl<'a> ValuesDisplay<'a> {
-    /// Display an array of bits with the given number of bits per value.
-    pub fn new(bits: &'a [OptBool], num_of_bits: &'a [u32]) -> Self {
-        Self { bits, num_of_bits }
-    }
-}
-
-impl fmt::Display for ValuesDisplay<'_> {
+impl fmt::Display for SignatureDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut offset = 0usize;
-        f.write_str("[")?;
-        for (i, &num_bits) in self.num_of_bits.iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
+        // Total number of bits for the state variables.
+        let total_num_of_bits: u32 = self.num_of_bits.iter().sum();
+
+        // We ignore the output cube, so just pass no variables.
+        let mut first = true;
+        for cube in CubeIterAll::with_variables(self.signature, self.variables) {
+            let cube = cube.map_err(|_| fmt::Error)?;
+
+            debug_assert_eq!(
+                cube.len(),
+                (total_num_of_bits + self.action_bits + self.block_bits) as usize,
+                "Unexpected number of bits found"
+            );
+
+            if !first {
+                writeln!(f)?;
             }
-            let value = to_value(&self.bits[offset..offset + num_bits as usize]);
-            write!(f, "{}", value)?;
-            offset += num_bits as usize;
+            first = false;
+
+            let (state_bits, rest) = cube.split_at(total_num_of_bits as usize);
+            let (action_bits, block_bits) = rest.split_at(self.action_bits as usize);
+            debug_assert_eq!(
+                block_bits.len(),
+                self.block_bits as usize,
+                "Unexpected number of block bits found"
+            );
+
+            write!(
+                f,
+                "[{}] -> ({}, {})",
+                ValuesIter::new(state_bits, self.num_of_bits).format(", "),
+                to_value(action_bits),
+                to_block_index(block_bits)
+            )?;
+
+            // write!(
+            //     f,
+            //     "[{}] -> ({}, {})",
+            //     ValuesIter::new(state_bits, self.num_of_bits)
+            //         .enumerate()
+            //         .map(|(index, value)| &self.lts.parameter_values()[index][value as usize])
+            //         .format(", "),
+            //     self.lts.action_labels()[to_value(action_bits) as usize],
+            //     to_block_index(block_bits)
+            // )?;
         }
-        f.write_str("]")
+
+        Ok(())
     }
 }
 
-/// Display helper that appends a final value encoded with `tail_bits` to avoid allocating a combined bit-length vector.
-pub struct ValuesDisplayWithTail<'a> {
-    bits: &'a [OptBool],
-    num_of_bits: &'a [u32],
-    tail_bits: u32,
-}
-
-impl<'a> ValuesDisplayWithTail<'a> {
-    fn new(bits: &'a [OptBool], num_of_bits: &'a [u32], tail_bits: u32) -> Self {
-        Self {
-            bits,
-            num_of_bits,
-            tail_bits,
-        }
-    }
-}
-
-impl fmt::Display for ValuesDisplayWithTail<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[")?;
-
-        let mut offset = 0usize;
-        for (i, &num_bits) in self.num_of_bits.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            let value = to_value(&self.bits[offset..offset + num_bits as usize]);
-            write!(f, "{}", value)?;
-            offset += num_bits as usize;
-        }
-
-        if !self.num_of_bits.is_empty() {
-            write!(f, ", ")?;
-        }
-
-        let tail_value = to_value(&self.bits[offset..offset + self.tail_bits as usize]);
-        write!(f, "{}", tail_value)?;
-        write!(f, "]")
-    }
-}
-
-/// Reconstruct the value represented by the first num_of_bit bits.
-fn to_value(bits: &[OptBool]) -> u64 {
+/// Reconstruct the block index represented by the bits, this uses the same encoding
+/// as [encode_block]. This is least significant bit first.
+fn to_block_index(bits: &[OptBool]) -> u64 {
     let mut value = 0u64;
     for (i, bit) in bits.iter().enumerate() {
         if *bit == OptBool::True {

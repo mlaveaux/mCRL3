@@ -11,7 +11,7 @@ use itertools::Itertools;
 use log::debug;
 use log::info;
 use merc_lts::read_aut;
-use merc_symbolic::cube_to_bdd;
+use merc_symbolic::bits_to_bdd;
 use merc_vpg::Projected;
 use oxidd::BooleanFunction;
 
@@ -294,7 +294,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
                 for (index, w) in solutions.iter().enumerate() {
                     for entry in CubeIterAll::new(game.configuration()) {
                         let config = entry?;
-                        let config_function = cube_to_bdd(&manager_ref, game.variables(), &config)?;
+                        let config_function = bits_to_bdd(&manager_ref, game.variables(), &config)?;
 
                         println!(
                             "W{index}: For product {} the following vertices are in: {}",

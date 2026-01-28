@@ -3,7 +3,7 @@ use oxidd::bdd::BDDFunction;
 use oxidd::util::OptBool;
 use oxidd::BooleanFunction;
 
-use merc_symbolic::cube_to_bdd;
+use merc_symbolic::bits_to_bdd;
 use merc_utilities::Timing;
 use merc_symbolic::CubeIterAll;
 use merc_utilities::MercError;
@@ -52,7 +52,7 @@ pub fn project_variability_parity_games_iter<'a>(
 ) -> impl Iterator<Item = Result<(Projected, &'a Timing), MercError>> {
     CubeIterAll::new(vpg.configuration()).map(move |cube| {
         let cube = cube?;
-        let bdd = match cube_to_bdd(&vpg.configuration().manager_ref(), vpg.variables(), &cube) {
+        let bdd = match bits_to_bdd(&vpg.configuration().manager_ref(), vpg.variables(), &cube) {
             Ok(bdd) => bdd,
             Err(e) => return Err(MercError::from(e)),
         };

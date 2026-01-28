@@ -16,16 +16,18 @@ use crate::TransitionGroup;
 /// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
 pub struct SymbolicLts {
     data_specification: DataSpecification,
-
     states: Ldd,
 
     /// A singleton LDD representing the initial state.
     initial_state: Ldd,
-
     summand_groups: Vec<SummandGroup>,
 
+    /// The action labels of the LTS, stored as their string representation,
+    /// their position corresponds to the LDD values.
     action_labels: Vec<String>,
 
+    /// The possible values for each process parameter, their position
+    /// corresponds to the LDD values.
     parameter_values: Vec<Vec<DataExpression>>,
 }
 
@@ -84,6 +86,10 @@ impl SymbolicLTS for SymbolicLts {
 
     fn action_labels(&self) -> &[String] {
         &self.action_labels
+    }
+
+    fn parameter_values(&self) -> &[Vec<DataExpression>] {
+        &self.parameter_values
     }
 }
 

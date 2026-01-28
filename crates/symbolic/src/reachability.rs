@@ -3,6 +3,7 @@ use std::fmt;
 use log::debug;
 use log::info;
 use log::trace;
+use merc_data::DataExpression;
 use merc_io::TimeProgress;
 use merc_ldd::Ldd;
 use merc_ldd::LddDisplay;
@@ -26,6 +27,9 @@ pub trait SymbolicLTS {
 
     /// Returns the action labels for the LTS.
     fn action_labels(&self) -> &[String];
+
+    /// Returns the possible values for each process parameter.
+    fn parameter_values(&self) -> &[Vec<DataExpression>];
 }
 
 pub trait TransitionGroup: fmt::Debug {

@@ -39,7 +39,7 @@ pub fn reachability_bdd(
     );
 
     // Substitution to replace next state variables with current state variables.
-    let next_state_substitution = Subst::new(lts.next_state_variables_indices(), lts.state_variables());
+    let next_state_substitution = Subst::new(lts.next_state_variable_indices(), lts.state_variables());
 
     while todo.satisfiable() {
         // Apply the transition relations to the todo set.
