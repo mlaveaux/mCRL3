@@ -42,8 +42,11 @@ impl IndexedPartition {
     }
 
     /// Sets the block number of the given element
+    /// 
+    /// # Details
+    /// 
+    /// This assumes that the blocks are dense, otherwise the partition overestimates the total number of blocks present returned from `len`.
     pub fn set_block(&mut self, element_index: usize, block_number: BlockIndex) {
-        // TODO: This assumes that the blocks are dense, otherwise it overestimates the number of blocks.
         self.num_of_blocks = self.num_of_blocks.max(block_number.value() + 1);
 
         self.partition[element_index] = block_number;

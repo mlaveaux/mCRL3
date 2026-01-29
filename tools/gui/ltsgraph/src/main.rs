@@ -56,15 +56,15 @@ pub const fn align_up(num: u32, align: u32) -> u32 {
 
 #[derive(Clone, Debug, ValueEnum, PartialEq, Eq, PartialOrd, Ord)]
 enum ViewerType {
-    /// Uses tiny-skia to render the graph on the CPU
+    /// Uses `tiny-skia` to render the graph on the CPU.
     Cpu,
-    /// Uses femtovg to render the graph on the GPU, with wgpu
+    /// Uses `femtovg` to render the graph on the GPU, with wgpu.
     Gpu,
 }
 
 /// A GUI tool to view labelled transition systems.
 #[derive(Parser, Debug)]
-#[command(name = "Maurice Laveaux")]
+#[command(about = "A labelled transition system GUI tool")]
 pub struct Cli {
     #[arg(
         long,
@@ -77,14 +77,15 @@ pub struct Cli {
     #[command(flatten)]
     verbosity: VerbosityFlag,
 
-    /// Path to the labelled transition system to load
+    /// Path to the labelled transition system to load on startup.
     #[arg(value_name = "FILE")]
     labelled_transition_system: Option<String>,
 
-    /// Explicitly specify the LTS format
+    /// Explicitly specify the LTS format.
     #[arg(long)]
     lts_format: Option<LtsFormat>,
 
+    /// Change the viewer to CPU or GPU rendering.
     #[arg(long, default_value_t = ViewerType::Cpu, value_enum)]
     viewer: ViewerType,
 }

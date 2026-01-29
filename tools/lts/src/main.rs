@@ -59,7 +59,7 @@ enum Commands {
     Convert(ConvertArgs),
 }
 
-/// Prints information related to the given LTS"
+/// Prints information related to the given LTS
 #[derive(clap::Args, Debug)]
 #[command()]
 struct InfoArgs {
@@ -128,7 +128,7 @@ struct CompareArgs {
     no_preprocess: bool,
 }
 
-/// Converts an LTS from one format to another
+/// Converts an LTS from one format to another format.
 #[derive(clap::Args, Debug)]
 #[command()]
 struct ConvertArgs {
@@ -151,7 +151,7 @@ struct ConvertArgs {
     tau: Option<Vec<String>>,
 }
 
-/// Checks whether the given implementation LTS refines the given specification LTS modulo various preorders.
+/// Checks whether the given implementation LTS refines the given specification LTS modulo various refinement relation.
 #[derive(clap::Args, Debug)]
 #[command()]
 struct RefinesArgs {

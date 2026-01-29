@@ -57,7 +57,7 @@ use merc_vpg::write_vpg;
 /// for this value is fairly arbitrary.
 const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
 
-/// "A command line tool for variability parity games
+/// A command line tool for variability parity games
 #[derive(clap::Parser, Debug)]
 #[command(
     arg_required_else_help = true

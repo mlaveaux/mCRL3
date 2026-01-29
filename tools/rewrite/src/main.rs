@@ -73,6 +73,7 @@ struct ConvertArgs {
     #[arg(value_name = "SPEC")]
     specification: PathBuf,
 
+    /// The output file to write the TRS to.
     output: String,
 }
 

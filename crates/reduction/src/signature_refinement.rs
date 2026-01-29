@@ -293,7 +293,7 @@ where
         key_to_signature.clear();
 
         // Safety: The current signatures have been removed, so it safe to reuse the memory.
-        let id: &'_ mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
+        let id: &mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
         let key_to_signature: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut key_to_signature) };
 
         arena.reset();

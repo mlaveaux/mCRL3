@@ -22,8 +22,11 @@ macro_rules! bytevec {
     };
 }
 
-/// A vector data structure that stores objects in a byte compressed format. The
-/// basic idea is that elements of type `T` implement the `CompressedEntry`
+/// A vector data structure that stores objects in a byte compressed format.
+/// 
+/// # Details
+/// 
+/// The basic idea is that elements of type `T` implement the `CompressedEntry`
 /// trait which allows them to be converted to and from a byte representation.
 /// The vector dynamically adjusts the number of bytes used per entry based on
 /// the maximum size of the entries added so far.
@@ -32,7 +35,8 @@ macro_rules! bytevec {
 /// represent the largest number added so far. Note that the number of bytes
 /// used per entry is only increased over time as larger entries are added.
 ///
-/// TODO: The `drop()` function of `T` is never called.
+/// Note that the `drop()` function of `T` is never called, but we cannot
+/// require that `T: !Drop`.
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct ByteCompressedVec<T> {
     data: Vec<u8>,

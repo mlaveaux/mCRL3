@@ -15,10 +15,7 @@ use merc_utilities::MercError;
 
 /// Trait for writing bit-level data.
 pub trait BitStreamWrite {
-    /// Writes the least significant bits from a u64 value.
-    ///
-    /// # Preconditions
-    /// - number_of_bits must be <= 64
+    /// Writes the least significant bits from a u64 value. The `number_of_bits` must be <= 64.
     fn write_bits(&mut self, value: u64, number_of_bits: u8) -> Result<(), MercError>;
 
     /// Writes a string prefixed with its length as a variable-width integer.
@@ -33,10 +30,7 @@ pub trait BitStreamWrite {
 
 /// Trait for reading bit-level data.
 pub trait BitStreamRead {
-    /// Reads bits into the least significant bits of a u64.
-    ///
-    /// # Preconditions
-    /// - number_of_bits must be <= 64
+    /// Reads bits into the least significant bits of a u64. The `number_of_bits` must be <= 64.
     fn read_bits(&mut self, number_of_bits: u8) -> Result<u64, MercError>;
 
     /// Reads a length-prefixed string.
