@@ -22,6 +22,8 @@ use crate::ModalityOperator;
 use crate::ParseResult;
 use crate::PbesExpr;
 use crate::PbesExprBinaryOp;
+use crate::PresExpr;
+use crate::PresExprBinaryOp;
 use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
 use crate::Quantifier;
@@ -135,7 +137,7 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
             Rule::DataExprSetBagComp => Mcrl2Parser::DataExprSetBagComp(Node::new(primary)),
             Rule::DataExprSetEnum => Mcrl2Parser::DataExprSetEnum(Node::new(primary)),
             Rule::Number => Mcrl2Parser::Number(Node::new(primary)),
-            Rule::Id => Ok(DataExpr::Id(Mcrl2Parser::Id(Node::new(primary))?)),
+            Rule::IdAt => Ok(DataExpr::Id(Mcrl2Parser::IdAt(Node::new(primary))?)),
 
             Rule::DataExprBrackets => {
                 // Handle parentheses by recursively parsing the inner expression
@@ -651,7 +653,7 @@ pub fn parse_pbesexpr(pairs: Pairs<Rule>) -> ParseResult<PbesExpr> {
         .parse(pairs)
 }
 
-static _PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+static PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
         .op(Op::prefix(Rule::PresExprInf) | Op::prefix(Rule::PresExprSup) | Op::prefix(Rule::PresExprSum)) // $right 0
@@ -662,3 +664,64 @@ static _PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::PresExprLeftConstantMultiply) | Op::postfix(Rule::PresExprRightConstMultiply)) // $right 6
         .op(Op::prefix(Rule::PbesExprNegation)) // $right 7
 });
+
+pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
+    PRESEXPR_PRATT_PARSER
+        .map_primary(|primary| match primary.as_rule() {
+            Rule::PbesExprParens => {
+                // Handle parentheses by recursively parsing the inner expression
+                let inner = primary
+                    .into_inner()
+                    .next()
+                    .expect("Expected inner expression in brackets");
+                parse_presexpr(inner.into_inner())
+            },
+            Rule::PbesExprTrue => Ok(PresExpr::True),
+            Rule::PbesExprFalse => Ok(PresExpr::False),
+            Rule::PropVarInst => Ok(PresExpr::PropVarInst(Mcrl2Parser::PropVarInst(Node::new(primary))?)),
+            Rule::PresExprEqinf => Ok(Mcrl2Parser::PresExprEqinf(Node::new(primary))?),
+            Rule::PresExprEqninf => Ok(Mcrl2Parser::PresExprEqninf(Node::new(primary))?),
+            Rule::PresExprCondsm => Ok(Mcrl2Parser::PresExprCondsm(Node::new(primary))?),
+            Rule::PresExprCondeq => Ok(Mcrl2Parser::PresExprCondeq(Node::new(primary))?),
+            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
+        })
+        .map_prefix(|op, expr| match op.as_rule() {
+            Rule::PbesExprNegation => Ok(PresExpr::Negation(Box::new(expr?))),
+            Rule::PresExprInf => Ok(PresExpr::Bound { op: Bound::Inf, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprInf(op) }),
+            Rule::PresExprSup => Ok(PresExpr::Bound { op: Bound::Sup, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(op) }),
+            Rule::PresExprSum => Ok(PresExpr::Bound { op: Bound::Sum, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(op) }),
+            Rule::PresExprLeftConstantMultiply => Ok(PresExpr::LeftConstantMultiply { constant: Mcrl2Parser::PresExprLeftConstantMultiply(op), expr: Box::new(expr?) }),
+            _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
+        })
+        .map_infix(|lhs, op, rhs| match op.as_rule() {
+            Rule::PbesExprImplies => Ok(PresExpr::Binary {
+                op: PresExprBinaryOp::Implies,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::PbesExprDisj => Ok(PresExpr::Binary {
+                op: PresExprBinaryOp::Disjunction,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::PbesExprConj => Ok(PresExpr::Binary {
+                op: PresExprBinaryOp::Conjunction,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            Rule::PresExprAdd => Ok(PresExpr::Binary {
+                op: PresExprBinaryOp::Add,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
+            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        })
+        .map_postfix(|expr, postfix| match postfix.as_rule() {
+            Rule::PresExprRightConstMultiply => Ok(PresExpr::RightConstantMultiply {
+                expr: Box::new(expr?),
+                constant: Mcrl2Parser::PresExprRightConstMultiply(Node::new(postfix))?,
+            }),
+            _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
+        })
+        .parse(pairs)
+}

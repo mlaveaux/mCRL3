@@ -38,6 +38,15 @@ pub struct UntypedPbes {
     pub init: PropVarInst,
 }
 
+/// An mCRL2 parameterised boolean equation system (PBES).
+#[derive(Debug, Default, Eq, PartialEq, Hash)]
+pub struct UntypedPres {
+    pub data_specification: UntypedDataSpecification,
+    pub global_variables: Vec<VarDecl>,
+    pub equations: Vec<PresEquation>,
+    pub init: PropVarInst,
+}
+
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct PropVarDecl {
     pub identifier: String,
@@ -562,9 +571,21 @@ pub enum Bound {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
+pub enum PresExprBinaryOp {
+    Implies,
+    Disjunction,
+    Conjunction,
+    Add
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum PresExpr {
     DataValExpr(DataExpr),
     PropVarInst(PropVarInst),
+    RightConstantMultiply {
+        expr: Box<PresExpr>,
+        constant: DataExpr,
+    },
     LeftConstantMultiply {
         constant: DataExpr,
         expr: Box<PresExpr>,
@@ -576,7 +597,7 @@ pub enum PresExpr {
     },
     Equal {
         eq: Eq,
-        body: Box<PbesExpr>,
+        body: Box<PresExpr>,
     },
     Condition {
         condition: Condition,
@@ -586,7 +607,7 @@ pub enum PresExpr {
     },
     Negation(Box<PresExpr>),
     Binary {
-        op: PbesExprBinaryOp,
+        op: PresExprBinaryOp,
         lhs: Box<PresExpr>,
         rhs: Box<PresExpr>,
     },
@@ -607,6 +628,14 @@ pub enum PbesExprBinaryOp {
     Implies,
     Disjunction,
     Conjunction,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct PresEquation {
+    pub operator: FixedPointOperator,
+    pub variable: PropVarDecl,
+    pub formula: PresExpr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
