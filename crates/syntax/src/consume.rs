@@ -16,10 +16,12 @@ use crate::Assignment;
 use crate::BagElement;
 use crate::Comm;
 use crate::ComplexSort;
+use crate::Condition;
 use crate::ConstructorDecl;
 use crate::DataExpr;
 use crate::DataExprUnaryOp;
 use crate::DataExprUpdate;
+use crate::Eq;
 use crate::EqnDecl;
 use crate::EqnSpec;
 use crate::FixedPointOperator;
@@ -29,6 +31,8 @@ use crate::MultiAction;
 use crate::MultiActionLabel;
 use crate::PbesEquation;
 use crate::PbesExpr;
+use crate::PresEquation;
+use crate::PresExpr;
 use crate::ProcDecl;
 use crate::ProcessExpr;
 use crate::PropVarDecl;
@@ -44,12 +48,14 @@ use crate::StateVarDecl;
 use crate::UntypedActionRenameSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedPbes;
+use crate::UntypedPres;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
 use crate::VarDecl;
 use crate::parse_actfrm;
 use crate::parse_dataexpr;
 use crate::parse_pbesexpr;
+use crate::parse_presexpr;
 use crate::parse_process_expr;
 use crate::parse_regfrm;
 use crate::parse_sortexpr;
@@ -259,6 +265,70 @@ impl Mcrl2Parser {
         parse_pbesexpr(expr.children().as_pairs().clone())
     }
 
+    pub fn PresSpec(spec: ParseNode) -> ParseResult<UntypedPres> {
+        let mut data_specification = None;
+        let mut global_variables = None;
+        let mut equations = None;
+        let mut init = None;
+
+        for child in spec.into_children() {
+            match child.as_rule() {
+                Rule::DataSpec => {
+                    data_specification = Some(Mcrl2Parser::DataSpec(child)?);
+                }
+                Rule::GlobVarSpec => {
+                    global_variables = Some(Mcrl2Parser::GlobVarSpec(child)?);
+                }
+                Rule::PresEqnSpec => {
+                    equations = Some(Mcrl2Parser::PresEqnSpec(child)?);
+                }
+                Rule::PbesInit => {
+                    init = Some(Mcrl2Parser::PbesInit(child)?);
+                }
+                Rule::EOI => {
+                    // End of input
+                    break;
+                }
+                _ => {
+                    unimplemented!("Unexpected rule: {:?}", child.as_rule());
+                }
+            }
+        }
+
+        Ok(UntypedPres {
+            data_specification: data_specification.unwrap_or_default(),
+            global_variables: global_variables.unwrap_or_default(),
+            equations: equations.unwrap(),
+            init: init.unwrap(),
+        })
+    }
+
+    fn PresEqnSpec(spec: ParseNode) -> ParseResult<Vec<PresEquation>> {
+        match_nodes!(spec.into_children();
+            [PresEqnDecl(equations)..] => {
+                Ok(equations.collect())
+            },
+        )
+    }
+
+    fn PresEqnDecl(decl: ParseNode) -> ParseResult<PresEquation> {
+        let span = decl.as_span();
+        match_nodes!(decl.into_children();
+            [FixedPointOperator(operator), PropVarDecl(variable), PresExpr(formula)] => {
+                Ok(PresEquation {
+                    operator,
+                    variable,
+                    formula,
+                    span: span.into(),
+                })
+            },
+        )
+    }
+
+    fn PresExpr(expr: ParseNode) -> ParseResult<PresExpr> {
+        parse_presexpr(expr.children().as_pairs().clone())
+    }
+
     fn ActSpec(spec: ParseNode) -> ParseResult<Vec<ActDecl>> {
         match_nodes!(spec.into_children();
             [ActDecl(decls)..] => {
@@ -426,7 +496,7 @@ impl Mcrl2Parser {
         let span = decl.as_span();
 
         match_nodes!(decl.into_children();
-            [Id(identifier), SortExpr(expr)] => {
+            [IdAt(identifier), SortExpr(expr)] => {
                 Ok(vec![SortDecl { identifier, expr: Some(expr), span: span.into() }])
             },
             [IdList(ids)] => {
@@ -593,7 +663,7 @@ impl Mcrl2Parser {
 
     pub(crate) fn Assignment(assignment: ParseNode) -> ParseResult<Assignment> {
         match_nodes!(assignment.into_children();
-            [Id(identifier), DataExpr(expr)] => {
+            [IdAt(identifier), DataExpr(expr)] => {
                 Ok(Assignment { identifier, expr })
             },
         )
@@ -657,9 +727,13 @@ impl Mcrl2Parser {
         Ok(identifier.as_str().to_string())
     }
 
+    pub(crate) fn IdAt(identifier: ParseNode) -> ParseResult<String> {
+        Ok(identifier.as_str().to_string())
+    }
+
     pub(crate) fn IdList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
         match_nodes!(identifiers.into_children();
-            [Id(ids)..] => {
+            [IdAt(ids)..] => {
                 Ok(ids.collect())
             },
         )
@@ -727,16 +801,16 @@ impl Mcrl2Parser {
 
     pub(crate) fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
         match_nodes!(input.into_children();
-            [Id(name)] => {
+            [IdAt(name)] => {
                 Ok(ConstructorDecl { name, args: Vec::new(), projection: None })
             },
-            [Id(name), Id(projection)] => {
+            [IdAt(name), IdAt(projection)] => {
                 Ok(ConstructorDecl { name, args: Vec::new(), projection: Some(projection)  })
             },
-            [Id(name), ProjDeclList(args)] => {
+            [IdAt(name), ProjDeclList(args)] => {
                 Ok(ConstructorDecl { name, args, projection: None })
             },
-            [Id(name), ProjDeclList(args), Id(projection)] => {
+            [IdAt(name), ProjDeclList(args), Id(projection)] => {
                 Ok(ConstructorDecl { name, args, projection: Some(projection) })
             },
         )
@@ -808,7 +882,7 @@ impl Mcrl2Parser {
     fn VarDecl(decl: ParseNode) -> ParseResult<VarDecl> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [Id(identifier), SortExpr(sort)] => {
+            [IdAt(identifier), SortExpr(sort)] => {
                 Ok(VarDecl { identifier, sort, span: span.into() })
             },
         )
@@ -1229,6 +1303,54 @@ impl Mcrl2Parser {
         )
     }
 
+    pub(crate) fn PresExprEqinf(input: ParseNode) -> ParseResult<PresExpr> {
+        match_nodes!(input.into_children();
+            [PresExpr(body)] => {
+                Ok(PresExpr::Equal {
+                    eq: Eq::EqInf,
+                    body: Box::new(body),
+                })
+            },
+        )
+    }
+
+    pub(crate) fn PresExprEqninf(input: ParseNode) -> ParseResult<PresExpr> {
+        match_nodes!(input.into_children();
+            [PresExpr(body)] => {
+                Ok(PresExpr::Equal {
+                    eq: Eq::EqnInf,
+                    body: Box::new(body),
+                })
+            },
+        )
+    }
+
+    pub(crate) fn PresExprCondsm(input: ParseNode) -> ParseResult<PresExpr> {
+        match_nodes!(input.into_children();
+            [PresExpr(expr), PresExpr(then), PresExpr(else_)] => {
+                Ok(PresExpr::Condition{
+                    condition: Condition::Condsm,
+                    lhs: Box::new(expr),
+                    then: Box::new(then),
+                    else_: Box::new(else_),
+                })
+            },
+        )
+    }
+
+    pub(crate) fn PresExprCondeq(input: ParseNode) -> ParseResult<PresExpr> {
+        match_nodes!(input.into_children();
+            [PresExpr(expr), PresExpr(then), PresExpr(else_)] => {
+                Ok(PresExpr::Condition{
+                    condition: Condition::Condeq,
+                    lhs: Box::new(expr),
+                    then: Box::new(then),
+                    else_: Box::new(else_),
+                })
+            },
+        )
+    }
+
     fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
@@ -1260,11 +1382,28 @@ impl Mcrl2Parser {
     fn EqnDecl(decl: ParseNode) -> ParseResult<EqnDecl> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [DataExpr(condition), DataExpr(lhs), DataExpr(rhs)] => {
+            [DataExpr(condition), DataExprLhs(lhs), DataExpr(rhs)] => {
                 Ok(EqnDecl { condition: Some(condition), lhs, rhs, span: span.into() })
             },
-            [DataExpr(lhs), DataExpr(rhs)] => {
+            [DataExprLhs(lhs), DataExpr(rhs)] => {
                 Ok(EqnDecl { condition: None, lhs, rhs, span: span.into() })
+            },
+        )
+    }
+
+    fn DataExprLhs(expr: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(expr.into_children();
+            [IdAt(identifier)] => {
+                Ok(DataExpr::Application {
+                    function: Box::new(DataExpr::Id(identifier)),
+                    arguments: Vec::new()
+                })
+            },
+            [IdAt(identifier), DataExprApplication(arguments)] => {
+                Ok(DataExpr::Application {
+                    function: Box::new(DataExpr::Id(identifier)),
+                    arguments
+                })
             },
         )
     }
@@ -1349,6 +1488,46 @@ impl Mcrl2Parser {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
+            },
+        )
+    }
+    
+    pub(crate) fn PresExprInf(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(variables)] => {
+                Ok(variables)
+            },
+        )
+    }
+
+    pub(crate) fn PresExprSup(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(variables)] => {
+                Ok(variables)
+            },
+        )
+    }
+
+    pub(crate) fn PresExprSum(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+        match_nodes!(input.into_children();
+            [VarsDeclList(variables)] => {
+                Ok(variables)
+            },
+        )
+    }
+
+    pub(crate) fn PresExprLeftConstantMultiply(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExpr(constant)] => {
+                Ok(constant)
+            },
+        )
+    }
+
+    pub(crate) fn PresExprRightConstMultiply(input: ParseNode) -> ParseResult<DataExpr> {
+        match_nodes!(input.into_children();
+            [DataExpr(constant)] => {
+                Ok(constant)
             },
         )
     }

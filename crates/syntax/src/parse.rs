@@ -12,6 +12,7 @@ use crate::StateFrmOp;
 use crate::UntypedActionRenameSpec;
 use crate::UntypedDataSpecification;
 use crate::UntypedPbes;
+use crate::UntypedPres;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
 
@@ -24,6 +25,7 @@ impl UntypedProcessSpecification {
     pub fn parse(spec: &str) -> Result<UntypedProcessSpecification, MercError> {
         let mut result = Mcrl2Parser::parse(Rule::MCRL2Spec, spec).map_err(extend_parser_error)?;
         let root = result.next().expect("Could not parse mCRL2 specification");
+
         Ok(Mcrl2Parser::MCRL2Spec(ParseNode::new(root))?)
     }
 }
@@ -88,6 +90,18 @@ impl UntypedPbes {
         Ok(Mcrl2Parser::PbesSpec(ParseNode::new(root))?)
     }
 }
+
+impl UntypedPres {
+    pub fn parse(spec: &str) -> Result<UntypedPres, MercError> {
+        let mut result = Mcrl2Parser::parse(Rule::PresSpec, spec).map_err(extend_parser_error)?;
+        let root = result
+            .next()
+            .expect("Could not parse parameterised real equation system");
+
+        Ok(Mcrl2Parser::PresSpec(ParseNode::new(root))?)
+    }
+}
+
 
 fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {
     error.renamed_rules(|rule| match rule {
