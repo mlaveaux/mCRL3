@@ -371,8 +371,13 @@ fn handle_convert(args: &ConvertArgs, _timing: &mut Timing) -> Result<(), MercEr
 
 /// Applies reductions to a symbolic LTS.
 fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError> {
-    let mut storage = Storage::new();
+    let format =
+        guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
+    if format != SymFormat::Sym {
+        return Err("Currently only the .sym format is supported for conversion".into());
+    }
 
+    let mut storage = Storage::new();
     let manager_ref = init_bdd_manager(cli);
 
     let mut file = File::open(&args.filename)?;
