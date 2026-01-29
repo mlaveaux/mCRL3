@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 
+mod block_partition;
 mod compressed_vec;
 mod graph;
 mod indexed_partition;
@@ -9,6 +10,7 @@ mod protection_set;
 mod scc_decomposition;
 mod vecset;
 
+pub use block_partition::*;
 pub use compressed_vec::*;
 pub use graph::*;
 pub use indexed_partition::*;
