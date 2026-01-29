@@ -198,24 +198,7 @@ fn main() -> Result<ExitCode, MercError> {
 fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
-    let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
-
-    match format {
-        SymFormat::Sylvan => {
-            let lts = timing.measure("read_symbolic_lts", || -> Result<_, MercError> {
-                read_sylvan(&mut storage, &mut File::open(&args.filename)?)
-            })?;
-
-            println!(
-                "Number of states: {}",
-                LargeFormatter(merc_ldd::len(&mut storage, lts.states()))
-            );
-            println!("Number of summand groups: {}", lts.transition_groups().len());
-        }
-        SymFormat::Sym => {
-            let lts = timing.measure("read_symbolic_lts", || -> Result<_, MercError> {
-                read_symbolic_lts(&mut storage, &mut File::open(&args.filename)?)
-            })?;
+    let lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, File::open(&args.filename)?))?;
 
             println!(
                 "Number of states: {}",
