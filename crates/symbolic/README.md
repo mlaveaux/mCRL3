@@ -26,6 +26,10 @@ the MINCE algorithm for a given dependency graph. This requires the `kahypar`
 feature to be enabled, which will compile
 [mt-kahypar](https://github.com/kahypar/mt-kahypar) internally.
 
+In this crate we refer to `variables` as the BDDs representing individual variables, i.e., constructed by `BDDFunction::var`, we refer to `variable index` as the number of the variable, given by `VarNo`. And finally the `variable bdd` is the conjunction of variables, which is also called the `support set`. Where `support` is the variables on which the `BDD` is defined, and other variables are irrelevant or don't care, formally:
+
+> support(f) = { x_i | exists x_0, ..., x_{i-1}, x_{i+1}, ..., x_n : f(x_0, ..., x_{i-1}, true, x_{i+1}, ..., x_n) != f(x_0, ..., x_{i-1}, false, x_{i+1}, ..., x_n) }
+
 ## Safety
 
 This crate contains no `unsafe` code.
