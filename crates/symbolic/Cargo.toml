@@ -36,3 +36,4 @@ oxidd-dump.workspace = true
 oxidd.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
+streaming-iterator.workspace = true

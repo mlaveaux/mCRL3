@@ -26,3 +26,4 @@ itertools.workspace = true
 log.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
+streaming-iterator.workspace = true

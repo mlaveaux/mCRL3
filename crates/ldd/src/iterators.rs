@@ -1,4 +1,7 @@
+use streaming_iterator::StreamingIterator;
+
 use crate::Data;
+use crate::DataRef;
 use crate::Ldd;
 use crate::Storage;
 use crate::Value;
@@ -17,13 +20,17 @@ pub fn iter<'a>(storage: &'a Storage, ldd: &Ldd) -> Iter<'a> {
         Iter {
             storage,
             vector: Vec::new(),
+            current: Vec::new(),
             stack: Vec::new(),
+            finished: false,
         }
     } else {
         Iter {
             storage,
             vector: Vec::new(),
+            current: Vec::new(),
             stack: vec![ldd.clone()],
+            finished: false,
         }
     }
 }
@@ -110,41 +117,61 @@ impl Iterator for IterRight<'_> {
 
 pub struct Iter<'a> {
     storage: &'a Storage,
-    vector: Vec<Value>, // Stores the values of the returned vector.
-    stack: Vec<Ldd>,    // Stores the stack for the depth-first search (only non 'true' or 'false' nodes)
+    /// Stores the values of the returned vector.
+    vector: Vec<Value>,
+    /// Stores the current path in the LDD.
+    current: Vec<Value>,
+    /// Stores the stack for the depth-first search (only non 'true' or 'false' nodes)
+    stack: Vec<Ldd>,   
+    /// Indicates whether the iteration is finished.
+    finished: bool, 
 }
 
-impl Iterator for Iter<'_> {
+impl StreamingIterator for Iter<'_> {
     type Item = Vec<Value>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    
+    fn advance(&mut self) {
         // Find the next vector by going down the chain.
-        let vector: Vec<Value>;
         loop {
-            let current = self.stack.last()?;
+            if let Some(current) = self.stack.last() {
+                let DataRef(value, down, _) = self.storage.get_ref(current);
+                self.vector.push(value);
+                if down == *self.storage.empty_vector() {
+                    // Reserve sufficient space in current
+                    if self.current.len() < self.vector.len() {
+                        self.current.resize(self.vector.len(), Value::default());
+                    }
 
-            let Data(value, down, _) = self.storage.get(current);
-            self.vector.push(value);
-            if down == *self.storage.empty_vector() {
-                vector = self.vector.clone();
-                break; // Stop iteration.
+                    self.current.copy_from_slice(&self.vector);
+                    break; // Stop iteration.
+                } else {
+                    self.stack.push(self.storage.protect(&down));
+                }
             } else {
-                self.stack.push(down.clone());
+                // No more elements to iterate.
+                self.finished = true;
+                return;
             }
         }
 
         // Go up the chain to find the next right sibling that is not 'false'.
         while let Some(current) = self.stack.pop() {
             self.vector.pop();
-            let Data(_, _, right) = self.storage.get(&current);
+            let DataRef(_, _, right) = self.storage.get_ref(&current);
 
             if right != *self.storage.empty_set() {
-                self.stack.push(right); // This is the first right sibling.
+                self.stack.push(self.storage.protect(&right)); // This is the first right sibling.
                 break;
             }
         }
-
-        Some(vector)
+    }
+    
+    fn get(&self) -> Option<&Self::Item> {
+        if self.finished {
+            None
+        } else {
+            Some(&self.current)
+        }
     }
 }
 
@@ -173,8 +200,9 @@ mod tests {
                 "Number of iterations does not match the number of elements in the set."
             );
 
-            for vector in iter(&storage, &ldd) {
-                assert!(set.contains(&vector), "Found element not in the set.");
+            let mut iter = iter(&storage, &ldd);
+            while let Some(vector) = iter.next() {
+                assert!(set.contains(vector), "Found element not in the set.");
             }
         })
     }

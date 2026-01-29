@@ -294,6 +294,7 @@ mod tests {
                 let bits = bits.expect("Failed to iterate cubes");
 
                 println!("Cube: {}", FormatConfig(&bits));
+                assert!(!bits.contains(&OptBool::None), "Cube has no don't cares:");
                 assert!(set.contains(&bits), "Cube {} not in expected set", FormatConfig(&bits));
                 assert!(
                     seen.insert(bits.clone()),
@@ -337,7 +338,6 @@ mod tests {
                 let (cube, _) = cube.expect("Failed to iterate cubes");
                 println!("Cube: {}", FormatConfig(&cube));
 
-                assert!(cube.contains(&OptBool::None), "Cube has no don't cares:");
                 assert!(
                     seen.insert(cube.clone()),
                     "Duplicate cube found: {}",

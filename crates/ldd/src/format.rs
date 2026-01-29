@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use streaming_iterator::StreamingIterator;
 use std::collections::HashSet;
 use std::fmt;
 
@@ -66,7 +67,9 @@ impl<'a> LddDisplay<'a> {
 impl fmt::Display for LddDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
-        for vector in iter(self.storage, self.ldd) {
+
+        let mut iter = iter(self.storage, self.ldd);
+        while let Some(vector) = iter.next() {
             writeln!(f, "[{}]", vector.iter().format(" "))?;
         }
         write!(f, "}}")

@@ -300,7 +300,7 @@ mod tests {
             let resulting_ldd = manager_ref.with_manager_shared(|manager| bdd_to_ldd(&mut storage, manager, &bdd, &bits_dd, 0, 0).unwrap());
 
             println!("resulting LDD: {}", LddDisplay::new(&storage, &resulting_ldd));
-            // assert_eq!(ldd, resulting_ldd, "Converted LDD does not match original");
+            assert_eq!(ldd, resulting_ldd, "Converted LDD does not match original");
         });
     }
 }

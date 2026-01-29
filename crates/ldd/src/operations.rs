@@ -430,6 +430,7 @@ mod tests {
 
     use merc_utilities::random_test;
     use rand::Rng;
+    use streaming_iterator::StreamingIterator;
     use std::collections::HashSet;
     use std::ops::Sub;
 
@@ -552,7 +553,7 @@ mod tests {
             // Check that ldd contains exactly one vector that is equal to the initial vector.
             let mut it = iter(&storage, &ldd);
             let result = it.next().unwrap();
-            assert_eq!(vector, result, "Contained vector did not match expected");
+            assert_eq!(vector, *result, "Contained vector did not match expected");
             assert_eq!(it.next(), None, "The ldd should not contain any other vector");
         });
     }
@@ -746,9 +747,10 @@ mod tests {
             };
 
             // Check the other way around
-            for res in iter(&storage, &result) {
+            let mut iter = iter(&storage, &result);
+            while let Some(res) = iter.next() {
                 assert!(
-                    expected.contains(&res),
+                    expected.contains(res),
                     "Result unexpectedly contains vector {:?}.",
                     res
                 );
