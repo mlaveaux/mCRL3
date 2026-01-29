@@ -1,4 +1,5 @@
 use indoc::indoc;
+use merc_syntax::UntypedDataSpecification;
 use pest::Parser;
 
 use merc_syntax::Mcrl2Parser;
@@ -123,14 +124,14 @@ fn test_sort_precedence() {
     }
 }
 
-// #[test]
-// fn test_bool_spec() {
-//     match UntypedDataSpecification::parse(include_str!("../spec/bool.mcrl2")) {
-//         Ok(result) => {
-//             println!("{}", result);
-//         }
-//         Err(e) => {
-//             panic!("Failed to parse expression: {}", e);
-//         }
-//     }
-// }
+#[test]
+fn test_bool_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/bool.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
