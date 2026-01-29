@@ -252,6 +252,7 @@ fn refine<'id>(
     signature: &BDDFunction,
     partition: &BDDFunction,
 ) -> Result<BDDFunction, MercError> {
+    // TODO: Handle the `true` case.
     if !partition.satisfiable() || !signature.satisfiable() {
         // In this case the state is not part of the partition function, or (s,
         // a) not part of the actions. So return empty.
@@ -623,7 +624,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_random_reachability() {
+    fn test_random_symbolic_sigref() {
         random_test(100, |rng| {
             let mut storage = merc_ldd::Storage::new();
 

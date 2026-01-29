@@ -335,8 +335,9 @@ mod tests {
             let mut seen = HashSet::new();
             for cube in CubeIter::new(&bdd) {
                 let (cube, _) = cube.expect("Failed to iterate cubes");
-
                 println!("Cube: {}", FormatConfig(&cube));
+
+                assert!(cube.contains(&OptBool::None), "Cube has no don't cares:");
                 assert!(
                     seen.insert(cube.clone()),
                     "Duplicate cube found: {}",

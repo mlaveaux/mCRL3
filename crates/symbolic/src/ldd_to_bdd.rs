@@ -15,22 +15,22 @@ use merc_ldd::Value;
 use merc_utilities::MercError;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
-/// same set by bitblasting the vector elements using the given variables as bits.
+/// same set by bitblasting the vector elements using the given variables as
+/// bits.
 ///
 /// # Details
 ///
-/// The `bits` should be a singleton LDD containing the result of
+/// The `bits_per_layer` should be a singleton LDD containing the result of
 /// [compute_bits]. The conversion works recursively by processing the LDD node
-/// by node, and introducing bits number of BDD variables for each layer in the
-/// LDD. Note that `first_variable` indicates the level of the first variable,
-/// and the next bits are placed at consecutive BDD layers. These variables
-/// *must* already exist in the given BDD manager.
+/// by node, and introducing bit number of BDD variables (given by
+/// `bit_variables`) for each layer in the LDD. These variables *must* already
+/// exist in the given BDD manager.
 pub fn ldd_to_bdd<'id>(
     storage: &mut Storage,
     manager: &<BDDFunction as Function>::Manager<'id>,
     ldd: &LddRef<'_>,
-    bits: &LddRef<'_>,
-    vars: &[VarNo],
+    bits_per_layer: &LddRef<'_>,
+    bit_variables: &[VarNo],
 ) -> Result<BDDFunction, MercError> {
     // Base cases
     if **storage.empty_set() == *ldd {
@@ -41,29 +41,29 @@ pub fn ldd_to_bdd<'id>(
     }
 
     let DataRef(value, down, right) = storage.get_ref(ldd);
-    let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits);
+    let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits_per_layer);
 
     // Right branch does not consume variables at this layer
-    let right_bdd = ldd_to_bdd(storage, manager, &right, bits, vars)?;
+    let right_bdd = ldd_to_bdd(storage, manager, &right, bits_per_layer, bit_variables)?;
 
     // Ensure we have enough variables for this layer
     let needed = bits_value as usize;
-    if vars.len() < needed {
+    if bit_variables.len() < needed {
         return Err(format!(
             "Insufficient variables: need {needed}, have {} for current layer",
-            vars.len()
+            bit_variables.len()
         )
         .into());
     }
 
     // Recurse on down with the remaining variables after consuming this layer
-    let mut down_bdd = ldd_to_bdd(storage, manager, &down, &bits_down, &vars[needed..])?;
+    let mut down_bdd = ldd_to_bdd(storage, manager, &down, &bits_down, &bit_variables[needed..])?;
 
     // Encode current value using the variables for this layer (MSB to LSB)
     // Current layer variables: vars[0..bits_value]
     for i in 0..bits_value {
         let bit = bits_value - i - 1; // MSB first
-        let var_no = vars[bit as usize];
+        let var_no = bit_variables[bit as usize];
         if value & (1 << i) != 0 {
             // bit is 1
             down_bdd = BDDFunction::var(manager, var_no)?.ite(&down_bdd, &BDDFunction::f(manager))?;
@@ -82,9 +82,9 @@ pub fn bdd_to_ldd<'id>(
     storage: &mut Storage,
     manager: &<BDDFunction as Function>::Manager<'id>,
     bdd: &BDDFunction,
-    bits_dd: &LddRef<'_>,
-    bit: Value,
-    value: Value,
+    bits_per_layer: &LddRef<'_>,
+    current_bit: Value,
+    current_value: Value,
 ) -> Result<Ldd, MercError> {
     // Base cases
     if *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager)) {
@@ -92,7 +92,7 @@ pub fn bdd_to_ldd<'id>(
         let empty_set = storage.empty_set().clone();
         let empty_vector = storage.empty_vector().clone();
 
-        return Ok(storage.insert(value, &empty_vector, &empty_set));
+        return Ok(storage.insert(current_value, &empty_vector, &empty_set));
     }
     if !bdd.satisfiable() {
         return Ok(storage.empty_set().clone());
@@ -101,13 +101,13 @@ pub fn bdd_to_ldd<'id>(
     // TODO: Implement caching
 
     // Read the bits required per layer
-    let DataRef(num_bits, bits_down, _bits_right) = storage.get_ref(bits_dd);
+    let DataRef(num_bits, bits_down, _bits_right) = storage.get_ref(bits_per_layer);
 
-    if num_bits == bit {
+    if num_bits == current_bit {
         // We reached the last bit for this layer
         let down = bdd_to_ldd(storage, manager, bdd, &bits_down, 0, 0)?;
         let right = storage.empty_set().clone();
-        Ok(storage.insert(value, &down, &right))
+        Ok(storage.insert(current_value, &down, &right))
     } else {
         let (high, low) = bdd.cofactors().ok_or("Failed to compute cofactors")?;
 
@@ -116,11 +116,11 @@ pub fn bdd_to_ldd<'id>(
             storage,
             manager,
             &high,
-            bits_dd,
-            bit + 1,
-            value | (1 << (num_bits - bit - 1)),
+            bits_per_layer,
+            current_bit + 1,
+            current_value | (1 << (num_bits - current_bit - 1)),
         )?;
-        let low = bdd_to_ldd(storage, manager, &low, bits_dd, bit + 1, value)?;
+        let low = bdd_to_ldd(storage, manager, &low, bits_per_layer, current_bit + 1, current_value)?;
 
         Ok(union(storage, &high, &low))
     }
