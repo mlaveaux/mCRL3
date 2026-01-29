@@ -14,15 +14,31 @@ thread_local! {
 
 /// Defines default symbols and terms for data elements.
 ///
-/// For now these mirror the mCRL2 definitions since that is convenient.
+/// These mirror the mCRL2 definitions since that is convenient for loading the mCRL2 binary formats.
 pub struct DataSymbols {
-    pub sort_id_symbol: ManuallyDrop<Symbol>,
-    /// OpId(name, sort)
+    // Sorts
+    pub basic_sort_symbol: ManuallyDrop<Symbol>,
+    pub function_sort_symbol: ManuallyDrop<Symbol>,
+    pub container_sort_symbol: ManuallyDrop<Symbol>,    
+    pub structured_sort_symbol: ManuallyDrop<Symbol>,
+    pub untyped_sort_symbol: ManuallyDrop<Symbol>,
+    pub untyped_possible_sorts_symbol: ManuallyDrop<Symbol>,
+
+    // Data expressions that are abstractions
+    pub data_binder_symbol: ManuallyDrop<Symbol>,
+    pub data_lambda_symbol: ManuallyDrop<Symbol>,
+    pub data_exists_symbol: ManuallyDrop<Symbol>,
+    pub data_forall_symbol: ManuallyDrop<Symbol>,
+    pub data_set_comprehension_symbol: ManuallyDrop<Symbol>,
+    pub data_bag_comprehension_symbol: ManuallyDrop<Symbol>,
+    pub data_untyped_set_bag_comprehension_symbol: ManuallyDrop<Symbol>,
+
+    // Data expressions
     pub data_function_symbol: ManuallyDrop<Symbol>,
     pub data_function_symbol_no_index: ManuallyDrop<Symbol>,
     pub data_variable: ManuallyDrop<Symbol>,
     pub data_where_clause: ManuallyDrop<Symbol>,
-    pub data_abstraction: ManuallyDrop<Symbol>,
+    pub data_untyped_identifier_clause: ManuallyDrop<Symbol>,
 
     /// The data application symbol for a given arity.
     data_appl: Vec<Symbol>,
@@ -31,53 +47,66 @@ pub struct DataSymbols {
 impl DataSymbols {
     fn new() -> Self {
         Self {
-            sort_id_symbol: ManuallyDrop::new(Symbol::new("SortId", 1)),
+            basic_sort_symbol: ManuallyDrop::new(Symbol::new("SortId", 1)),
+            function_sort_symbol: ManuallyDrop::new(Symbol::new("SortArrow", 2)),
+            container_sort_symbol: ManuallyDrop::new(Symbol::new("SortCons", 2)),
+            structured_sort_symbol: ManuallyDrop::new(Symbol::new("SortStruct", 1)),
+            untyped_sort_symbol: ManuallyDrop::new(Symbol::new("UntypedSortUnknown", 0)),
+            untyped_possible_sorts_symbol: ManuallyDrop::new(Symbol::new("UntypedSortsPossible", 1)),
+
+            data_binder_symbol: ManuallyDrop::new(Symbol::new("Binder", 3)),
+            data_lambda_symbol: ManuallyDrop::new(Symbol::new("Lambda", 0)),
+            data_exists_symbol: ManuallyDrop::new(Symbol::new("Exists", 0)),
+            data_forall_symbol: ManuallyDrop::new(Symbol::new("Forall", 0)),
+            data_set_comprehension_symbol: ManuallyDrop::new(Symbol::new("SetComp", 0)),
+            data_bag_comprehension_symbol: ManuallyDrop::new(Symbol::new("BagComp", 0)),
+            data_untyped_set_bag_comprehension_symbol: ManuallyDrop::new(Symbol::new("UntypedSetBagComp", 0)),
+
             data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 2)),
             data_function_symbol_no_index: ManuallyDrop::new(Symbol::new("OpIdNoIndex", 2)),
             data_variable: ManuallyDrop::new(Symbol::new("DataVarId", 2)),
-
             data_where_clause: ManuallyDrop::new(Symbol::new("Where", 2)),
-            data_abstraction: ManuallyDrop::new(Symbol::new("Abstraction", 2)),
+            data_untyped_identifier_clause: ManuallyDrop::new(Symbol::new("UntypedIdentifier", 1)),
+
             data_appl: Vec::new(),
         }
     }
 
-    pub fn is_sort_expression<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
-        term.get_head_symbol() == **self.sort_id_symbol
-    }
-
-    pub fn is_bool_sort<'a, 'b>(&self, _term: &'b impl Term<'a, 'b>) -> bool {
-        true
-    }
-
-    pub fn is_data_variable<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
-        term.get_head_symbol() == **self.data_variable
-    }
-
+    /// Returns true iff the given term is any of the possible data expressions.
+    /// Note that this check is relatively expensive.
     pub fn is_data_expression<'a, 'b>(&mut self, term: &'b impl Term<'a, 'b>) -> bool {
         self.is_data_variable(term)
             || self.is_data_function_symbol(term)
             || self.is_data_machine_number(term)
-            || self.is_data_abstraction(term)
+            || self.is_data_binder(term)
             || self.is_data_where_clause(term)
             || self.is_data_application(term)
     }
 
+    /// Returns true iff the given term is a data variable.
+    pub fn is_data_variable<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
+        term.get_head_symbol() == **self.data_variable
+    }
+
+    /// Returns true iff the given term is a data function symbol.
     pub fn is_data_function_symbol<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.data_function_symbol
             || term.get_head_symbol() == **self.data_function_symbol_no_index
     }
 
+    /// Returns true iff the given term is a data machine number.
     pub fn is_data_machine_number<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         is_int_term(term)
     }
 
+    /// Returns true iff the given term is a data where clause.
     pub fn is_data_where_clause<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
         term.get_head_symbol() == **self.data_where_clause
     }
 
-    pub fn is_data_abstraction<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
-        term.get_head_symbol() == **self.data_abstraction
+    /// Returns true iff the given term is a data abstraction (binder).
+    pub fn is_data_binder<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
+        term.get_head_symbol() == **self.data_binder_symbol
     }
 
     /// Returns true iff the given term is a data application.
@@ -97,40 +126,61 @@ impl DataSymbols {
 
         &self.data_appl[arity]
     }
+
+    /// Returns true iff the given term is a sort expression.
+    pub fn is_sort_expression<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
+        self.is_basic_sort(term)
+    }
+
+    /// Returns true iff the given term is a basic sort.
+    pub fn is_basic_sort<'a, 'b>(&self, term: &'b impl Term<'a, 'b>) -> bool {
+        term.get_head_symbol() == **self.basic_sort_symbol
+    }
 }
 
+// Helper functions to access the DATA_SYMBOLS thread local storage.
+
+/// See [DataSymbols::is_sort_expression].
 pub fn is_sort_expression<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_sort_expression(term))
 }
 
-pub fn is_bool_sort<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
-    DATA_SYMBOLS.with_borrow(|ds| ds.is_bool_sort(term))
+/// See [DataSymbols::is_basic_sort].
+pub fn is_basic_sort<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_basic_sort(term))
 }
 
+/// See [DataSymbols::is_data_variable].
 pub fn is_data_variable<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_variable(term))
 }
 
+/// See [DataSymbols::is_data_expression].
 pub fn is_data_expression<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_expression(term))
 }
 
+/// See [DataSymbols::is_data_function_symbol].
 pub fn is_data_function_symbol<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_function_symbol(term))
 }
 
+/// See [DataSymbols::is_data_machine_number].
 pub fn is_data_machine_number<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_machine_number(term))
 }
 
+/// See [DataSymbols::is_data_where_clause].
 pub fn is_data_where_clause<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_where_clause(term))
 }
 
-pub fn is_data_abstraction<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
-    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_abstraction(term))
+/// See [DataSymbols::is_data_binder].
+pub fn is_data_binder<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_binder(term))
 }
 
+/// See [DataSymbols::is_data_application].
 pub fn is_data_application<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
 }
