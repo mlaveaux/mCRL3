@@ -29,11 +29,11 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 /// Identifiers
 Id = @{ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 
-// Special identifiers
+/// Identifiers that can start with at "@".
 IdAt = @{ (ASCII_ALPHANUMERIC|"@"|"_"|"'")+ }
 
 /// List of identifiers
-IdList = { Id ~ ( "," ~ Id )* }
+IdList = { IdAt ~ ( "," ~ IdAt )* }
 
 /// Numbers
 Number = { ASCII_DIGIT+ }
@@ -117,6 +117,9 @@ SortProduct = {
 /// Data Expression
 DataExpr = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* ~ (DataExprInfix ~ DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix*)* }
 
+/// Data Expression that can be used as a left hand side
+DataExprLhs = { IdAt ~ DataExprApplication? }
+
 /// Data Expressions without infix operators
 DataExprUnit = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* }
 
@@ -149,7 +152,7 @@ DataExprPrimary = _{
     | DataExprSetEnum
     | DataExprBrackets
     | Number
-    | Id
+    | IdAt
 }
     DataExprTrue = { "true" ~ !Id }
     DataExprFalse = { "false" ~ !Id }
@@ -360,7 +363,7 @@ Init = { "init" ~ ProcExpr ~ ";" }
 /// Typed parameters
 IdsDecl = { IdList ~ ":" ~ SortExpr }                                   
 
-/// Declaration of constructors
+/// Declaration of constructorss
 ConsSpec = { "cons" ~ ( IdsDecl ~ ";" )+ }
 
 /// Declaration of mappings
@@ -376,7 +379,7 @@ VarSpec = { "var" ~ ( VarsDeclList ~ ";" )+ }
 EqnSpec = { VarSpec? ~ "eqn" ~ EqnDecl+ }                               
 
 /// Conditional equation
-EqnDecl = { (DataExpr ~ "->")? ~ DataExpr ~ "=" ~ DataExpr ~ ";" }            
+EqnDecl = { (DataExpr ~ "->")? ~ DataExprLhs ~ "=" ~ DataExpr ~ ";" }            
 
 
 //
@@ -609,8 +612,13 @@ PbesExprInfix = _{
     PbesExprConj = { "&&" }
     PbesExprDisj = { "||" }
 
-    
 /// Parameterised boolean equations systems
+PresSpec = { SOI ~ DataSpec? ~ GlobVarSpec? ~ PresEqnSpec ~ PbesInit ~ EOI }
+
+PresEqnSpec = { "pbes" ~ PresEqnDecl+ }
+
+PresEqnDecl = { FixedPointOperator ~ PropVarDecl ~ "=" ~ PresExpr ~ ";" }
+    
 PresExpr = { PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix* ~ (PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix*)* }
 
 PresExprPrimary = _{
