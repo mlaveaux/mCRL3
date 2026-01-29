@@ -13,6 +13,7 @@ use merc_ldd::iterators::iter;
 use merc_ldd::len;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
+use streaming_iterator::StreamingIterator;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
@@ -72,8 +73,9 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
 
     // All states have been explored, so add them to the discovered set immediately.
     let mut discovered: IndexedSet<Vec<u32>, FxBuildHasher> = IndexedSet::new();
-    for state in iter(storage, lts.states()) {
-        let (_, inserted) = discovered.insert(state);
+    let mut state_iter = iter(storage, lts.states());
+    while let Some(state) = state_iter.next() { 
+        let (_, inserted) = discovered.insert(state.clone());
         debug_assert!(inserted, "State space contains duplicate states");
         state_progress.print(discovered.len())
     }
@@ -93,15 +95,20 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
 
     // Avoid reallocations.
     let mut target = vec![0u32; height(storage, lts.states())];
-    for (index, state) in iter(storage, lts.states()).enumerate() {
-        // Insert the state if necessary, this avoids cloning when already present.
+
+    let mut state_iter = iter(storage, lts.states());
+    let mut index: usize = 0;
+
+    while let Some(state) = state_iter.next() {
+        // Find the index of this state, it was already added before.
         let state_index = discovered
-            .index(&state)
+            .index(state)
             .ok_or("Found state that was not in the state set")?;
 
         // Apply every transition group to this state.
         for (group_index, group) in lts.transition_groups().iter().enumerate() {
-            'skip: for transition in iter(storage, group.relation()) {
+            let mut iter_transitions = iter(storage, group.relation());
+            'skip: while let Some(transition) = iter_transitions.next() {
                 // Try to match the read parameters of this vector.
                 for (index, i) in group.read_indices().iter().enumerate() {
                     if state[*i as usize] != transition[read_positions[group_index][index]] {
@@ -128,7 +135,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
                     state, target, label
                 );
 
-                // Insert the target state if necessary, this avoids cloning when already present.
+                // Find the target state index.
                 let target_index = discovered
                     .index(&target)
                     .ok_or("Found state that was not in the state set")?;
@@ -137,15 +144,17 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
         }
 
         progress.print((index, output.num_of_transitions()));
+        index += 1;
     }
 
     // Find the initial state.
-    let initial_state = iter(storage, lts.initial_state())
+    let mut state_iter = iter(storage, lts.initial_state());
+    let initial_state = state_iter
         .next()
         .ok_or("Symbolic LTS has no initial state")?;
 
     let initial_state_index = discovered
-        .index(&initial_state)
+        .index(initial_state)
         .ok_or("Initial state was not found in the discovered state set")?;
 
     output.finish(StateIndex::new(*initial_state_index))

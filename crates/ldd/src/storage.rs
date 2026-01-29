@@ -151,7 +151,7 @@ impl Storage {
     }
 
     /// Upgrade an [LddRef] to a protected [Ldd] instance.
-    pub fn protect(&mut self, ldd: &LddRef) -> Ldd {
+    pub fn protect(&self, ldd: &LddRef) -> Ldd {
         Ldd::new(&self.protection_set, ldd.index())
     }
 

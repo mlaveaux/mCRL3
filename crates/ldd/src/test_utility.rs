@@ -1,6 +1,7 @@
 //! Functions in this module are only relevant for testing purposes.
 
 use rand::Rng;
+use streaming_iterator::StreamingIterator;
 use std::collections::HashSet;
 
 use crate::Ldd;
@@ -59,7 +60,8 @@ where
 pub fn print_left(storage: &Storage, left: &Ldd, right: &Ldd) -> bool {
     let mut result = true;
 
-    for element in iter(storage, left) {
+    let mut iter = iter(storage, left);
+    while let Some(element) = iter.next() {
         if !element_of(storage, &element, right) {
             result = false;
             eprintln!("{:?}", element);

@@ -69,19 +69,10 @@ struct Cli {
 /// Defines the subcommands for this tool.
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Prints information related to the given symbolic LTS
     Info(InfoArgs),
-
-    /// Explores the given symbolic LTS
     Explore(ExploreArgs),
-
-    /// Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic
     Reorder(ReorderArgs),
-
-    /// Converts a symbolic LTS to a concrete LTS
     Convert(ConvertArgs),
-
-    /// Applied reductions to a symbolic LTS
     Reduce(ReduceArgs),
 }
 
@@ -113,6 +104,7 @@ struct ExploreArgs {
     visualize: bool,
 }
 
+/// Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic
 #[derive(clap::Args, Debug)]
 struct ReorderArgs {
     /// Path to the mCRL2 tools (lpsreach or pbessolvesymbolic)
@@ -141,6 +133,7 @@ struct ConvertArgs {
     output: PathBuf,
 }
 
+/// Apply reductions to a symbolic LTS
 #[derive(clap::Args, Debug)]
 struct ReduceArgs {
     /// The input symbolic LTS file path.
@@ -387,6 +380,6 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &mut Timing) -> Result<()
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
     })?;
 
-    timing.measure("reduction", || sigref_symbolic(&manager_ref, &lts_bdd, args.visualize))?;
+    timing.measure("reduction", || sigref_symbolic(&manager_ref, &lts_bdd, timing, args.visualize))?;
     Ok(())
 }

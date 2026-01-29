@@ -7,6 +7,7 @@ use log::info;
 use log::trace;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
+use merc_utilities::Timing;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -40,7 +41,7 @@ use crate::to_value;
 /// The implementation is based on the following paper:
 ///  
 /// > Tom van Dijk and Jaco van de Pol. Multi-core Symbolic Bisimulation Minimization.
-pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visualize: bool) -> Result<(), MercError> {
+pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing: &Timing, visualize: bool) -> Result<(), MercError> {
     // There can only be one block per state, so we need as many bits as required to
     // represent all states.
     let number_of_states = lts
@@ -139,15 +140,17 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, visual
         iteration += 1;
 
         // Compute the new signatures w.r.t. the previous partition.
-        let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
-        for group in lts.transition_groups() {
-            let group_signature = signature_strong(&partition, group.relation(), group.write_variables_bdd())?;
-            signature = signature.or(&group_signature)?;
-        }
+        let signature = timing.measure("signature", || {
+            let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
+            for (index, group) in lts.transition_groups().iter().enumerate() {
+                let group_signature = timing.measure(&format!("group_signature_{}", index), || signature_strong(&partition, group.relation(), group.write_variables_bdd()))?;
+                signature = signature.or(&group_signature)?;
+            }
 
-        // Substitute next state variables with current state variables to align
-        // with the partition representation, required for `refine`.
-        signature = signature.substitute(&next_state_substitution)?;
+            // Substitute next state variables with current state variables to align
+            // with the partition representation, required for `refine`.
+            signature.substitute(&next_state_substitution)
+        })?;
 
         trace!(
             "Signature at iteration {}: {}",
@@ -554,6 +557,7 @@ fn to_block_index(bits: &[OptBool]) -> u64 {
 mod tests {
     use std::ops::Range;
 
+    use merc_utilities::Timing;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
@@ -562,12 +566,10 @@ mod tests {
     use oxidd::error::DuplicateVarName;
     use rand::Rng;
 
-    use merc_ldd::Storage;
     use merc_utilities::random_test;
 
     use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
-    use crate::read_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
@@ -575,16 +577,17 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_symbolic_lts_bdd() {
-        let input = include_bytes!("../../../examples/lts/abp.sym");
+    fn test_random_symbolic_sigref() {
+        random_test(100, |rng| {
+            let mut storage = merc_ldd::Storage::new();
 
-        let mut storage = Storage::new();
-        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-        let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
+            // We don't really check anything here, just ensure that reachability runs without errors.
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-        let symbolic_lts = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
-
-        let _reduced = sigref_symbolic(&manager_ref, &symbolic_lts, false).unwrap();
+            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false).unwrap();
+        });
     }
 
     #[test]
@@ -620,20 +623,5 @@ mod tests {
                 );
             });
         })
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_random_symbolic_sigref() {
-        random_test(100, |rng| {
-            let mut storage = merc_ldd::Storage::new();
-
-            // We don't really check anything here, just ensure that reachability runs without errors.
-            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
-            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
-
-            sigref_symbolic(&manager_ref, &lts_bdd, false).unwrap();
-        });
     }
 }
