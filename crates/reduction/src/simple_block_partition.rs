@@ -121,6 +121,10 @@ impl fmt::Display for SimpleBlockPartition {
 
 impl Partition for SimpleBlockPartition {
     fn block_number(&self, state_index: StateIndex) -> BlockIndex {
+        if !cfg!(debug_assertions) {
+            panic!("block_number is only available in debug mode");
+        }
+        
         // Note that this is O(n) in the number of blocks. This could be improved
         // by storing a mapping from state index to block index. However, this
         // is only used in the comparison functions, so it is not a big issue.
