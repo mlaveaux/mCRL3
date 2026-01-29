@@ -13,6 +13,7 @@ use merc_ldd::iterators::iter;
 use merc_ldd::len;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
+use rustc_hash::FxHashSet;
 use streaming_iterator::StreamingIterator;
 
 use crate::SymbolicLTS;
@@ -93,6 +94,9 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
         1,
     );
 
+    // Keep track of outgoing transitions to avoid duplicates.
+    let mut outgoing = FxHashSet::default();
+
     // Avoid reallocations.
     let mut target = vec![0u32; height(storage, lts.states())];
 
@@ -130,21 +134,26 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
                     .ok_or("Transition vector should at least have the action label")?]
                     as usize];
 
-                trace!(
-                    " Found transition in {group_index} from {:?} to {:?} with label {:?}",
-                    state, target, label
-                );
-
                 // Find the target state index.
                 let target_index = discovered
                     .index(&target)
                     .ok_or("Found state that was not in the state set")?;
-                output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
+                if outgoing.insert((*state_index, *target_index)) {     
+                    trace!(
+                        " Found transition in {group_index} from {:?} to {:?} with label {:?}",
+                        state, target, label
+                    );
+
+                    output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
+                }
             }
         }
 
         progress.print((index, output.num_of_transitions()));
         index += 1;
+
+        // Clear the outgoing set for the next state.
+        outgoing.clear();
     }
 
     // Find the initial state.
