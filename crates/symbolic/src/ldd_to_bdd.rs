@@ -1,20 +1,18 @@
-use merc_ldd::Ldd;
-use merc_ldd::Value;
-use merc_ldd::union;
+use oxidd_core::util::EdgeDropGuard;
+use oxidd::bdd::BDDFunction;
 use oxidd::BooleanFunction;
 use oxidd::Function;
-use oxidd::ManagerRef;
+use oxidd::util::OptBool;
 use oxidd::VarNo;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
 
 use merc_ldd::DataRef;
+use merc_ldd::height;
+use merc_ldd::Ldd;
 use merc_ldd::LddRef;
 use merc_ldd::Storage;
-use merc_ldd::height;
+use merc_ldd::union;
+use merc_ldd::Value;
 use merc_utilities::MercError;
-use oxidd::util::OptBool;
-use oxidd_core::util::EdgeDropGuard;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
 /// same set by bitblasting the vector elements using the given variables as bits.
@@ -27,26 +25,26 @@ use oxidd_core::util::EdgeDropGuard;
 /// LDD. Note that `first_variable` indicates the level of the first variable,
 /// and the next bits are placed at consecutive BDD layers. These variables
 /// *must* already exist in the given BDD manager.
-pub fn ldd_to_bdd(
+pub fn ldd_to_bdd<'id>(
     storage: &mut Storage,
-    manager_ref: &BDDManagerRef,
+    manager: &<BDDFunction as Function>::Manager<'id>,
     ldd: &LddRef<'_>,
     bits: &LddRef<'_>,
     vars: &[VarNo],
 ) -> Result<BDDFunction, MercError> {
     // Base cases
     if **storage.empty_set() == *ldd {
-        return Ok(manager_ref.with_manager_shared(|manager| BDDFunction::f(manager)));
+        return Ok(BDDFunction::f(manager));
     }
     if **storage.empty_vector() == *ldd {
-        return Ok(manager_ref.with_manager_shared(|manager| BDDFunction::t(manager)));
+        return Ok(BDDFunction::t(manager));
     }
 
     let DataRef(value, down, right) = storage.get_ref(ldd);
     let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits);
 
     // Right branch does not consume variables at this layer
-    let right_bdd = ldd_to_bdd(storage, manager_ref, &right, bits, vars)?;
+    let right_bdd = ldd_to_bdd(storage, manager, &right, bits, vars)?;
 
     // Ensure we have enough variables for this layer
     let needed = bits_value as usize;
@@ -59,7 +57,7 @@ pub fn ldd_to_bdd(
     }
 
     // Recurse on down with the remaining variables after consuming this layer
-    let mut down_bdd = ldd_to_bdd(storage, manager_ref, &down, &bits_down, &vars[needed..])?;
+    let mut down_bdd = ldd_to_bdd(storage, manager, &down, &bits_down, &vars[needed..])?;
 
     // Encode current value using the variables for this layer (MSB to LSB)
     // Current layer variables: vars[0..bits_value]
@@ -68,14 +66,10 @@ pub fn ldd_to_bdd(
         let var_no = vars[bit as usize];
         if value & (1 << i) != 0 {
             // bit is 1
-            down_bdd = manager_ref.with_manager_shared(|manager| {
-                BDDFunction::var(manager, var_no)?.ite(&down_bdd, &BDDFunction::f(manager))
-            })?;
+            down_bdd = BDDFunction::var(manager, var_no)?.ite(&down_bdd, &BDDFunction::f(manager))?;
         } else {
             // bit is 0
-            down_bdd = manager_ref.with_manager_shared(|manager| {
-                BDDFunction::var(manager, var_no)?.ite(&BDDFunction::f(manager), &down_bdd)
-            })?;
+            down_bdd = BDDFunction::var(manager, var_no)?.ite(&BDDFunction::f(manager), &down_bdd)?;
         }
     }
 
@@ -84,18 +78,16 @@ pub fn ldd_to_bdd(
 
 /// Converts a BDD representing a set of bitblasted vectors back into an LDD
 /// representing the same set, i.e., the inverse of [ldd_to_bdd].
-pub fn bdd_to_ldd(
+pub fn bdd_to_ldd<'id>(
     storage: &mut Storage,
-    manager_ref: &BDDManagerRef,
+    manager: &<BDDFunction as Function>::Manager<'id>,
     bdd: &BDDFunction,
     bits_dd: &LddRef<'_>,
     bit: Value,
     value: Value,
 ) -> Result<Ldd, MercError> {
     // Base cases
-    if manager_ref.with_manager_shared(|manager| {
-        *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager))
-    }) {
+    if *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager)) {
         // TODO: Can this be avoided?
         let empty_set = storage.empty_set().clone();
         let empty_vector = storage.empty_vector().clone();
@@ -113,7 +105,7 @@ pub fn bdd_to_ldd(
 
     if num_bits == bit {
         // We reached the last bit for this layer
-        let down = bdd_to_ldd(storage, manager_ref, bdd, &bits_down, 0, 0)?;
+        let down = bdd_to_ldd(storage, manager, bdd, &bits_down, 0, 0)?;
         let right = storage.empty_set().clone();
         Ok(storage.insert(value, &down, &right))
     } else {
@@ -122,13 +114,13 @@ pub fn bdd_to_ldd(
         // Recurse for high and low cofactors
         let high = bdd_to_ldd(
             storage,
-            manager_ref,
+            manager,
             &high,
             bits_dd,
             bit + 1,
             value | (1 << (num_bits - bit - 1)),
         )?;
-        let low = bdd_to_ldd(storage, manager_ref, &low, bits_dd, bit + 1, value)?;
+        let low = bdd_to_ldd(storage, manager, &low, bits_dd, bit + 1, value)?;
 
         Ok(union(storage, &high, &low))
     }
@@ -239,6 +231,7 @@ mod tests {
     use merc_ldd::singleton;
     use merc_utilities::random_test;
     use oxidd::Manager;
+    use oxidd::ManagerRef;
 
     use crate::FormatConfigSet;
 
@@ -301,11 +294,10 @@ mod tests {
             println!("Total bits: {}", total_bits);
             println!("Bits per layer: {:?}", bits);
             let vars = manager_ref.with_manager_exclusive(|manager| manager.add_vars(total_bits).collect::<Vec<_>>());
-
-            let bdd = ldd_to_bdd(&mut storage, &manager_ref, &ldd, &bits_dd, &vars).unwrap();
+            let bdd =  manager_ref.with_manager_shared(|manager| ldd_to_bdd(&mut storage, manager, &ldd, &bits_dd, &vars).unwrap() );
             println!("resulting BDD: {}", FormatConfigSet(&bdd));
 
-            let resulting_ldd = bdd_to_ldd(&mut storage, &manager_ref, &bdd, &bits_dd, 0, 0).unwrap();
+            let resulting_ldd = manager_ref.with_manager_shared(|manager| bdd_to_ldd(&mut storage, manager, &bdd, &bits_dd, 0, 0).unwrap());
 
             println!("resulting LDD: {}", LddDisplay::new(&storage, &resulting_ldd));
             // assert_eq!(ldd, resulting_ldd, "Converted LDD does not match original");

@@ -170,14 +170,14 @@ impl SymbolicLtsBdd {
         // Convert the states to a BDD representation.
         let bits_dd = singleton(storage, &state_bits);
         let all_state_variables_bits: Vec<VarNo> = state_variables_bits.iter().flatten().cloned().collect();
-        let states = ldd_to_bdd(storage, manager_ref, lts.states(), &bits_dd, &all_state_variables_bits)?;
-        let initial_state = ldd_to_bdd(
+        let states = manager_ref.with_manager_shared(|manager| ldd_to_bdd(storage, manager, lts.states(), &bits_dd, &all_state_variables_bits))?;
+        let initial_state = manager_ref.with_manager_shared(|manager| ldd_to_bdd(
             storage,
-            manager_ref,
+            manager,
             lts.initial_state(),
             &bits_dd,
             &all_state_variables_bits,
-        )?;
+        ))?;
 
         let mut transition_groups = Vec::new();
         for group in lts.transition_groups() {
@@ -220,7 +220,7 @@ impl SymbolicLtsBdd {
             );
 
             let bits_dd = singleton(storage, &bits);
-            let relation_bdd = ldd_to_bdd(storage, manager_ref, group.relation(), &bits_dd, &variables)?;
+            let relation_bdd = manager_ref.with_manager_shared(|manager| ldd_to_bdd(storage, manager, group.relation(), &bits_dd, &variables))?;
 
             let (read_variables, read_variables_bdd) = compute_vars_bdd(manager_ref, &read_variable_indices)?;
             let (write_variables, write_variables_bdd) = compute_vars_bdd(manager_ref, &write_variable_indices)?;
