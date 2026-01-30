@@ -14,6 +14,9 @@ use merc_ldd::relational_product;
 use merc_ldd::union;
 use merc_utilities::MercError;
 
+use crate::DependencyGraph;
+use crate::Relation;
+
 /// A generic trait representing a symbolic LTS
 pub trait SymbolicLTS {
     /// Returns the LDD representing the set of states.
@@ -30,6 +33,20 @@ pub trait SymbolicLTS {
 
     /// Returns the possible values for each process parameter.
     fn parameter_values(&self) -> &[Vec<DataExpression>];
+    
+    /// Computes the dependency graph of the LTS.
+    fn dependency_graph(&self) -> DependencyGraph {
+        let mut relations = Vec::new();
+
+        for group in self.transition_groups() {
+            relations.push(Relation::new(
+                group.read_indices().iter().map(|i| *i as usize).collect(),
+                group.write_indices().iter().map(|i| *i as usize).collect(),
+            ));
+        }
+
+        DependencyGraph::new(relations)
+    }
 }
 
 pub trait TransitionGroup: fmt::Debug {
