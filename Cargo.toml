@@ -68,6 +68,7 @@ num = "0.4"
 oxidd = { version = "0.11", features = ["manager-pointer"] }
 oxidd-dump = "0.6"
 oxidd-core = "0.11"
+oxidd-rules-bdd = "0.11"
 parking_lot = "0.12"
 pest = "2.8"
 pest_derive  = "2.8"

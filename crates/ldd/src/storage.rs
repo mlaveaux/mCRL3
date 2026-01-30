@@ -119,6 +119,20 @@ impl Storage {
         &mut self.cache
     }
 
+    /// Create a new LDD singleton(value)
+    pub fn insert_singleton(&mut self, value: Value) -> Ldd {
+        if self.count_until_collection == 0 {
+            if self.enable_garbage_collection {
+                self.garbage_collect();
+            }
+            self.count_until_collection = self.nodes.len() as u64;
+        }
+
+        let (index, _inserted) = self.nodes.insert(Node::new(value, self.empty_vector().index(), self.empty_set().index()));
+
+        Ldd::new(&self.protection_set, index)
+    }
+
     /// Create a new LDD node(value, down, right)
     pub fn insert(&mut self, value: Value, down: &LddRef, right: &LddRef) -> Ldd {
         // These invariants ensure that the result is a valid LDD.
