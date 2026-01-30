@@ -59,6 +59,14 @@ pub struct Relation {
 }
 
 impl Relation {
+    /// Create a new relation or hyper-edge.
+    pub fn new(read_vars: Vec<usize>, write_vars: Vec<usize>) -> Self {
+        Relation {
+            read_vars,
+            write_vars,
+        }
+    }
+
     /// Returns an iterator over the read variables in this relation.
     pub fn read_vars(&self) -> impl Iterator<Item = usize> + '_ {
         self.read_vars.iter().copied()
