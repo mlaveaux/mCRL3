@@ -1230,6 +1230,7 @@ dependencies = [
  "oxidd",
  "oxidd-core",
  "oxidd-dump",
+ "oxidd-rules-bdd",
  "rand",
  "rustc-hash 2.1.1",
  "streaming-iterator",

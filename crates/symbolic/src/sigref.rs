@@ -143,6 +143,13 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
         let signature = timing.measure("signature", || {
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
             for (index, group) in lts.transition_groups().iter().enumerate() {
+                // Compute the signature for this transition group.
+                //
+                // Observe that we explicitly do not quantify over state
+                // variables that are not written by the transition group.
+                // Otherwise, these state variables would become unconstrained
+                // and then after substituting next state variables with current
+                // state variables, they would lead to spurious states.
                 let group_signature = timing.measure(&format!("group_signature_{}", index), || signature_strong(&partition, group.relation(), group.write_variables_bdd()))?;
                 signature = signature.or(&group_signature)?;
             }

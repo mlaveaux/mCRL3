@@ -1,4 +1,12 @@
-use oxidd_core::util::EdgeDropGuard;
+use oxidd::Edge;
+use oxidd::HasLevel;
+use oxidd::InnerNode;
+use oxidd::Manager;
+use oxidd::ManagerRef;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::util::Borrowed;
+use oxidd::util::OutOfMemory;
+use oxidd_core::function::EdgeOfFunc;
 use oxidd::bdd::BDDFunction;
 use oxidd::BooleanFunction;
 use oxidd::Function;
@@ -12,7 +20,7 @@ use merc_ldd::LddRef;
 use merc_ldd::Storage;
 use merc_ldd::union;
 use merc_ldd::Value;
-use merc_utilities::MercError;
+use oxidd_rules_bdd::simple::BDDTerminal;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
 /// same set by bitblasting the vector elements using the given variables as
@@ -31,7 +39,8 @@ pub fn ldd_to_bdd<'id>(
     ldd: &LddRef<'_>,
     bits_per_layer: &LddRef<'_>,
     bit_variables: &[VarNo],
-) -> Result<BDDFunction, MercError> {
+) -> Result<BDDFunction, OutOfMemory> {
+
     // Base cases
     if **storage.empty_set() == *ldd {
         return Ok(BDDFunction::f(manager));
@@ -39,6 +48,8 @@ pub fn ldd_to_bdd<'id>(
     if **storage.empty_vector() == *ldd {
         return Ok(BDDFunction::t(manager));
     }
+
+    // TODO: Implement caching
 
     let DataRef(value, down, right) = storage.get_ref(ldd);
     let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits_per_layer);
@@ -49,11 +60,7 @@ pub fn ldd_to_bdd<'id>(
     // Ensure we have enough variables for this layer
     let needed = bits_value as usize;
     if bit_variables.len() < needed {
-        return Err(format!(
-            "Insufficient variables: need {needed}, have {} for current layer",
-            bit_variables.len()
-        )
-        .into());
+        panic!("Insufficient variables: need {needed}, have {} for current layer", bit_variables.len());
     }
 
     // Recurse on down with the remaining variables after consuming this layer
@@ -80,47 +87,104 @@ pub fn ldd_to_bdd<'id>(
 /// representing the same set, i.e., the inverse of [ldd_to_bdd].
 pub fn bdd_to_ldd<'id>(
     storage: &mut Storage,
-    manager: &<BDDFunction as Function>::Manager<'id>,
+    manager_ref: &BDDManagerRef,
     bdd: &BDDFunction,
-    bits_per_layer: &LddRef<'_>,
+    variables: &[VarNo],
+    bits_per_layer: &[Value],
     current_bit: Value,
     current_value: Value,
-) -> Result<Ldd, MercError> {
-    // Base cases
-    if *bdd.as_edge(manager) == *EdgeDropGuard::new(manager, BDDFunction::t_edge(manager)) {
-        // TODO: Can this be avoided?
-        let empty_set = storage.empty_set().clone();
-        let empty_vector = storage.empty_vector().clone();
+) -> Result<Ldd, OutOfMemory> {
+    manager_ref.with_manager_shared(|manager| {
+        let edge = bdd.as_edge(manager);
+        bdd_to_ldd_edge(storage, manager, edge.borrowed(), variables, bits_per_layer, current_bit, current_value)
+    })
+}
 
-        return Ok(storage.insert(current_value, &empty_vector, &empty_set));
-    }
-    if !bdd.satisfiable() {
-        return Ok(storage.empty_set().clone());
-    }
+/// Recursive implementation of [bdd_to_ldd].
+pub fn bdd_to_ldd_edge<'id>(
+    storage: &mut Storage,
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+    variables: &[VarNo],
+    bits_per_layer: &[Value],
+    current_bit: Value,
+    current_value: Value,
+) -> Result<Ldd, OutOfMemory> {
+    let bdd_node = match manager.get_node(&bdd) {
+        oxidd::Node::Inner(node) => node,
+        oxidd::Node::Terminal(terminal) => {
+            // Base cases
+            match terminal {
+                BDDTerminal::False => {
+                    return Ok(storage.empty_set().clone());
+                }
+                BDDTerminal::True => {
+                    if !variables.is_empty() {
+                        // If there are still variables left, we must generate don't cares for the remaining layers
+                        let num_bits = bits_per_layer.first().copied().expect("Missing bits per layer for current layer");
+
+                        // There are don't care variables in this BDD that have been skipped, so generate both branches.
+                        if num_bits == current_bit {
+                            // We reached the last bit for this layer, variable still belongs to next layer.
+                            let down = bdd_to_ldd_edge(storage, manager, bdd, &variables, &bits_per_layer[1..], 0, 0)?;
+                            let right = storage.empty_set().clone();
+                            return Ok(storage.insert(current_value, &down, &right))
+                        } else {  
+                            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");        
+                            let high = bdd_to_ldd_edge(storage, manager, bdd.borrowed(), &variables[1..], bits_per_layer, current_bit + 1, current_value | (1 << (num_bits - current_bit - 1)))?;
+                            let low = bdd_to_ldd_edge(storage, manager, bdd, &variables[1..], bits_per_layer, current_bit + 1, current_value)?;
+                            return Ok(union(storage, &high, &low));
+                        }
+                    }
+
+                    return Ok(storage.insert_singleton(current_value));
+                }
+            }
+        },
+    };
 
     // TODO: Implement caching
 
     // Read the bits required per layer
-    let DataRef(num_bits, bits_down, _bits_right) = storage.get_ref(bits_per_layer);
+    let num_bits = bits_per_layer.first().copied().expect("Missing bits per layer for current layer");
 
+    let variable_level = variables.first().expect("Missing variable for current layer");
+    if *variable_level < bdd_node.level() { 
+        // There are don't care variables in this BDD that have been skipped, so generate both branches without cofactors.
+        if num_bits == current_bit {
+            // We reached the last bit for this layer, variable still belongs to next layer.
+            let down = bdd_to_ldd_edge(storage, manager, bdd, &variables, &bits_per_layer[1..], 0, 0)?;
+            let right = storage.empty_set().clone();
+            return Ok(storage.insert(current_value, &down, &right))
+        } else {    
+            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
+            let high = bdd_to_ldd_edge(storage, manager, bdd.borrowed(), &variables[1..], bits_per_layer, current_bit + 1, current_value | (1 << (num_bits - current_bit - 1)))?;
+            let low = bdd_to_ldd_edge(storage, manager, bdd, &variables[1..], bits_per_layer, current_bit + 1, current_value)?;
+            return Ok(union(storage, &high, &low));
+        }
+    }
+
+    debug_assert_eq!(*variable_level, bdd_node.level(), "Levels do not match");
     if num_bits == current_bit {
         // We reached the last bit for this layer
-        let down = bdd_to_ldd(storage, manager, bdd, &bits_down, 0, 0)?;
+        let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
         let right = storage.empty_set().clone();
         Ok(storage.insert(current_value, &down, &right))
     } else {
-        let (high, low) = bdd.cofactors().ok_or("Failed to compute cofactors")?;
+        debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");  
+        let (bdd_high, bdd_low) = collect_children(bdd_node);
 
         // Recurse for high and low cofactors
-        let high = bdd_to_ldd(
+        let high = bdd_to_ldd_edge(
             storage,
             manager,
-            &high,
+            bdd_high,
+            &variables[1..],
             bits_per_layer,
             current_bit + 1,
             current_value | (1 << (num_bits - current_bit - 1)),
         )?;
-        let low = bdd_to_ldd(storage, manager, &low, bits_per_layer, current_bit + 1, current_value)?;
+        let low = bdd_to_ldd_edge(storage, manager, bdd_low, &variables[1..], bits_per_layer, current_bit + 1, current_value)?;
 
         Ok(union(storage, &high, &low))
     }
@@ -131,6 +195,18 @@ pub fn compute_highest(storage: &mut Storage, ldd: &LddRef<'_>) -> Vec<u32> {
     let mut result = vec![0; height(storage, ldd)];
     compute_highest_rec(storage, &mut result, ldd, 0);
     result
+}
+
+/// Collect the two children of a binary node
+#[inline]
+#[must_use]
+fn collect_children<E: Edge, N: InnerNode<E>>(node: &N) -> (Borrowed<'_, E>, Borrowed<'_, E>) {
+    debug_assert_eq!(N::ARITY, 2);
+    let mut it = node.children();
+    let f_then = it.next().unwrap();
+    let f_else = it.next().unwrap();
+    debug_assert!(it.next().is_none());
+    (f_then, f_else)
 }
 
 /// Iterator that yields values reconstructed from a bit cube, from a BDD obtained by
@@ -278,7 +354,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_ldd_to_bdd() {
         random_test(100, |rng| {
-            let set = random_vector_set(rng, 2, 3, 5);
+            let set = random_vector_set(rng, 50, 3, 5);
 
             let mut storage = Storage::new();
             let ldd = from_iter(&mut storage, set.iter());
@@ -296,8 +372,7 @@ mod tests {
             let vars = manager_ref.with_manager_exclusive(|manager| manager.add_vars(total_bits).collect::<Vec<_>>());
             let bdd =  manager_ref.with_manager_shared(|manager| ldd_to_bdd(&mut storage, manager, &ldd, &bits_dd, &vars).unwrap() );
             println!("resulting BDD: {}", FormatConfigSet(&bdd));
-
-            let resulting_ldd = manager_ref.with_manager_shared(|manager| bdd_to_ldd(&mut storage, manager, &bdd, &bits_dd, 0, 0).unwrap());
+            let resulting_ldd = bdd_to_ldd(&mut storage, &manager_ref, &bdd, &vars, &bits, 0, 0).unwrap();
 
             println!("resulting LDD: {}", LddDisplay::new(&storage, &resulting_ldd));
             assert_eq!(ldd, resulting_ldd, "Converted LDD does not match original");
