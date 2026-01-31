@@ -167,33 +167,33 @@ impl SymbolicLtsBdd {
             // Determine the number of bits used for each layer.
             let mut relation_bits = Vec::new();
 
+            // Determine all the variables used in this relation.
+            let mut variables = Vec::new();
+
             let mut read_variable_indices: Vec<VarNo> = Vec::new();
             let mut write_variable_indices: Vec<VarNo> = Vec::new();
 
-            for (var, bits)  in state_bits.iter().enumerate() {
+            for (var, bits) in state_bits.iter().enumerate() {
                 if group.read_indices().contains(&(var as VarNo)) {
                     // The transition group reads this state variable
                     relation_bits.push(*bits);
+                    variables.extend(state_variables_bits[var].iter());
                     read_variable_indices.extend(state_variables_bits[var].iter())
                 }
 
                 if group.write_indices().contains(&(var as VarNo)) {
                     // The transition group writes this state variable
                     relation_bits.push(*bits);
+                    variables.extend(next_state_variables_bits[var].iter());
                     write_variable_indices.extend(next_state_variables_bits[var].iter())
                 }
             }
             
-            // Determine all the variables used in this relation.
-            let mut variables = read_variable_indices.iter().chain(write_variable_indices.iter()).cloned().collect::<Vec<VarNo>>();
-
             // Append action label bits (between read and write segments) if present
             if let Some(_action_index) = group.action_label_index() {
                 // TODO: This currently assumes that action label bits are at the end.
                 variables.extend(action_labels_vars.iter());
             }
-
-            variables.sort();
 
             // Append action label bits
             relation_bits.push(action_label_bits);

@@ -129,10 +129,10 @@ mod tests {
 
             let num_reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, false).unwrap();
 
-            // assert_eq!(
-            //     num_reachable_states, num_reachable_states_bdd,
-            //     "Number of reachable states does not match between BDD and LDD-based reachability."
-            // );
+            assert_eq!(
+                num_reachable_states, num_reachable_states_bdd,
+                "Number of reachable states does not match between BDD and LDD-based reachability."
+            );
         });
     }
 }
