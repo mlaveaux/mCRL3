@@ -173,8 +173,6 @@ pub fn sigref_symbolic(
                     signature_strong(&partition, group.relation(), write_vars)
                 })?;
                 signature = signature.or(&group_signature)?;
-
-                println!("{}", signature.node_count());
             }
 
             // Substitute next state variables with current state variables to align
