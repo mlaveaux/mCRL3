@@ -810,7 +810,7 @@ impl Mcrl2Parser {
             [IdAt(name), ProjDeclList(args)] => {
                 Ok(ConstructorDecl { name, args, projection: None })
             },
-            [IdAt(name), ProjDeclList(args), Id(projection)] => {
+            [IdAt(name), ProjDeclList(args), IdAt(projection)] => {
                 Ok(ConstructorDecl { name, args, projection: Some(projection) })
             },
         )

@@ -30,7 +30,7 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 Id = @{ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 
 /// Identifiers that can start with at "@".
-IdAt = @{ (ASCII_ALPHANUMERIC|"@"|"_"|"'")+ }
+IdAt = @{ "@"? ~ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 
 /// List of identifiers
 IdList = { IdAt ~ ( "," ~ IdAt )* }
@@ -58,7 +58,7 @@ ActDecl = { IdList ~ ( ":" ~  SortProduct )? ~ ";" }
 SortSpec = { "sort" ~ SortDecl+ } 
 
 SortDecl = {                                             
-        Id ~ "=" ~ SortExpr ~ ";"  // Sort alias  
+        IdAt ~ "=" ~ SortExpr ~ ";"  // Sort alias  
     |   IdList ~ ";"               // List of sort identifiers                                               
 }
 
@@ -104,7 +104,7 @@ SortExprInfix = _{
     SortExprProduct = { "#" }
 
 /// Constructor declaration
-ConstrDecl = { Id ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ Id )? } 
+ConstrDecl = { IdAt ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ IdAt )? } 
 
 /// Constructor declaration list
 ConstrDeclList = { ConstrDecl ~ ( "|" ~ ConstrDecl )* }             
@@ -221,7 +221,7 @@ DataExprInfix = _{
 DataExprList = { DataExpr ~ ( "," ~ DataExpr )* }
 
 /// Assignment x = expression
-Assignment = { Id ~ "=" ~ DataExpr }
+Assignment = { IdAt ~ "=" ~ DataExpr }
 
 /// List of assignments
 AssignmentList = { Assignment ~ ( "," ~ Assignment )* }
@@ -231,7 +231,7 @@ AssignmentList = { Assignment ~ ( "," ~ Assignment )* }
 //
 
 /// Typed variable
-VarDecl = { Id ~ ":" ~ SortExpr }
+VarDecl = { IdAt ~ ":" ~ SortExpr }
 
 /// Typed variables
 VarsDecl = { IdList ~ ":" ~ SortExpr }
