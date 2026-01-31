@@ -1,0 +1,111 @@
+% Author(s): Aad Mathijssen, Jeroen Keiren
+% Copyright: see the accompanying file COPYING or copy at
+% https://github.com/mCRL2org/mCRL2/blob/master/COPYING
+%
+% Distributed under the Boost Software License, Version 1.0.
+% (See accompanying file LICENSE_1_0.txt or copy at
+% http://www.boost.org/LICENSE_1_0.txt)
+%
+% Specification of the Int data sort.
+
+#supertypeof Pos
+#supertypeof Nat
+
+sort Int;
+
+cons @cInt: Nat -> Int;
+     @cNeg: Pos -> Int;
+
+map Nat2Int: Nat -> Int;
+    Int2Nat: Int -> Nat;
+    Pos2Int: Pos -> Int;
+    Int2Pos: Int -> Pos;
+    max: Pos # Int -> Pos;
+    max: Int # Pos -> Pos;
+    max: Nat # Int -> Nat;
+    max: Int # Nat -> Nat;
+    max: Int # Int -> Int;
+    min: Int # Int -> Int;
+    abs: Int - >Nat;
+    @minus: Pos -> Int;
+    @minus: Nat -> Int;
+    @minus: Int -> Int;
+    succ: Int -> Int;
+    pred: Nat -> Int;
+    pred: Int -> Int;
+    @plus: Int # Int -> Int;
+    @minus: Pos # Pos -> Int;
+    @minus: Nat # Nat -> Int;
+    @minus: Int # Int -> Int;
+    *: Int # Int -> Int;
+    div: Int # Pos -> Int;
+    mod: Int # Pos -> Nat;
+    exp: Int # Nat -> Int;
+
+var b:Bool;
+    n:Nat;
+    m:Nat;
+    p:Pos;
+    q:Pos;
+    x:Int;
+    y:Int;
+
+eqn ==(@cInt(m),@cInt(n)) = ==(m,n);
+    ==(@cInt(n), @cNeg(p)) = false;
+    ==(@cNeg(p), @cInt(n)) = false;
+    ==(@cNeg(p),@cNeg(q)) = ==(p,q);
+    <(@cInt(m),@cInt(n)) = <(m,n);
+    <(@cInt(n),@cNeg(p)) = false;
+    <(@cNeg(p),@cInt(n)) = true;
+    <(@cNeg(p),@cNeg(q)) = <(q,p);
+    <=(@cInt(m),@cInt(n)) = <=(m,n);
+    <=(@cInt(n),@cNeg(p)) = false;
+    <=(@cNeg(p),@cInt(n)) = true;
+    <=(@cNeg(p),@cNeg(q)) = <=(q,p);
+    Nat2Int(n) = @cInt(n);
+    Int2Nat(@cInt(n)) = n;
+    Pos2Int(p) = @cInt(@cNat(p));
+    Int2Pos(@cInt(n)) = Nat2Pos(n);
+    max(p,@cInt(n)) = max(p,n);
+    max(p,@cNeg(q)) = p;
+    max(@cInt(n),p) = max(n,p);
+    max(@cNeg(q),p) = p;
+    max(m,@cInt(n)) = if(<=(m,n),n,m);
+    max(n,@cNeg(p)) = n;
+    max(@cInt(m),n) = if(<=(m,n),n,m);
+    max(@cNeg(p),n) = n;
+    max(x,y) = if(<=(x,y),y,x);
+    min(x,y) = if(<=(x,y),x,y);
+    abs(@cInt(n)) = n;
+    abs(@cNeg(p)) = @cNat(p);
+    @minus(p) = @cNeg(p);
+    @minus(@c0) = @cInt(@c0);
+    @minus(@cNat(p)) = @cNeg(p);
+    @minus(@cInt(n)) = @minus(n);
+    @minus(@cNeg(p)) = @cInt(@cNat(p));
+    succ(@cInt(n)) = @cInt(@cNat(succ(n)));
+    succ(@cNeg(p)) = @minus(pred(p));
+    pred(@c0) = @cNeg(@c1);
+    pred(@cNat(p)) = @cInt(pred(p));
+    pred(@cInt(n)) = pred(n);
+    pred(@cNeg(p)) = @cNeg(succ(p));
+    @plus(@cInt(m),@cInt(n)) = @cInt(+(m,n));
+    @plus(@cInt(n),@cNeg(p)) = @minus(n,@cNat(p));
+    @plus(@cNeg(p),@cInt(n)) = @minus(n,@cNat(p));
+    @plus(@cNeg(p),@cNeg(q)) = @cNeg(@addc(false,p,q));
+    <=(q,p) -> @minus(p,q) = @cInt(@gtesubtb(false,p,q));
+    <(p,q) -> @minus(p,q) = @minus(@gtesubtb(false,q,p));
+    <=(n,m) -> @minus(m,n) = @cInt(@monus(m,n));
+    <(m,n) -> @minus(m,n) = @minus(@monus(n,m));
+    @minus(x,y) = @plus(x, @minus(y));
+    *(@cInt(m),@cInt(n)) = @cInt(*(m,n));
+    *(@cInt(n),@cNeg(p)) = @minus(*(@cNat(p),n));
+    *(@cNeg(p),@cInt(n)) = @minus(*(@cNat(p),n));
+    *(@cNeg(p),@cNeg(q)) = @cInt(@cNat(*(p,q)));
+    div(@cInt(n),p) = @cInt(div(n,p));
+    div(@cNeg(p),q) = @cNeg(succ(div(pred(p),q)));
+    mod(@cInt(n),p) = mod(n,p);
+    mod(@cNeg(p),q) = Int2Nat(@minus(q,succ(mod(pred(p),q))));
+    exp(@cInt(m),n) = @cInt(exp(m,n));
+    @even(n) -> exp(@cNeg(p),n) = @cInt(@cNat(exp(p,n)));
+    !(@even(n)) -> exp(@cNeg(p),n) = @cNeg(exp(p,n));

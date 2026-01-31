@@ -687,10 +687,10 @@ pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
         })
         .map_prefix(|op, expr| match op.as_rule() {
             Rule::PbesExprNegation => Ok(PresExpr::Negation(Box::new(expr?))),
-            Rule::PresExprInf => Ok(PresExpr::Bound { op: Bound::Inf, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprInf(op) }),
-            Rule::PresExprSup => Ok(PresExpr::Bound { op: Bound::Sup, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(op) }),
-            Rule::PresExprSum => Ok(PresExpr::Bound { op: Bound::Sum, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(op) }),
-            Rule::PresExprLeftConstantMultiply => Ok(PresExpr::LeftConstantMultiply { constant: Mcrl2Parser::PresExprLeftConstantMultiply(op), expr: Box::new(expr?) }),
+            Rule::PresExprInf => Ok(PresExpr::Bound { op: Bound::Inf, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprInf(Node::new(op))? }),
+            Rule::PresExprSup => Ok(PresExpr::Bound { op: Bound::Sup, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(Node::new(op))? }),
+            Rule::PresExprSum => Ok(PresExpr::Bound { op: Bound::Sum, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(Node::new(op))? }),
+            Rule::PresExprLeftConstantMultiply => Ok(PresExpr::LeftConstantMultiply { constant: Mcrl2Parser::PresExprLeftConstantMultiply(Node::new(op))?, expr: Box::new(expr?) }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
