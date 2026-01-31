@@ -8,6 +8,12 @@ use log::trace;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
+use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
+use oxidd::util::SatCountCache;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -18,21 +24,16 @@ use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Subst;
 use oxidd::VarNo;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::error::DuplicateVarName;
-use oxidd::util::OptBool;
-use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 use oxidd_dump::Visualizer;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
+use crate::compute_vars_bdd;
+use crate::required_bits_64;
+use crate::to_value;
 use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
 use crate::ValuesIter;
-use crate::required_bits_64;
-use crate::to_value;
 
 /// Computes the signature refinement of the given symbolic LTS using strong bisimulation.
 ///
@@ -41,12 +42,17 @@ use crate::to_value;
 /// The implementation is based on the following paper:
 ///  
 /// > Tom van Dijk and Jaco van de Pol. Multi-core Symbolic Bisimulation Minimization.
-pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing: &Timing, visualize: bool) -> Result<(), MercError> {
+pub fn sigref_symbolic(
+    manager_ref: &BDDManagerRef,
+    lts: &SymbolicLtsBdd,
+    timing: &Timing,
+    visualize: bool,
+) -> Result<(), MercError> {
     // There can only be one block per state, so we need as many bits as required to
     // represent all states.
     let number_of_states = lts
         .states()
-        .sat_count::<u64, FxBuildHasher>(lts.state_variable_indices().len() as u32, &mut SatCountCache::default());
+        .sat_count::<u64, FxBuildHasher>(lts.state_variables().len() as u32, &mut SatCountCache::default());
     debug!("Number of states: {}", number_of_states);
 
     let num_of_block_bits = required_bits_64(number_of_states);
@@ -73,20 +79,21 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
     let mut signature_to_block = FxHashMap::default();
 
     // Substitution to replace next state variables with current state variables.
-    let next_state_substitution = Subst::new(lts.state_variable_indices(), lts.next_state_variables());
+    let next_state_variables = compute_vars_bdd(manager_ref, lts.next_state_variables())?.0;
+    let next_state_substitution = Subst::new(lts.state_variables(), next_state_variables);
 
     // Determine the variables in the support of a signature function.
     let signature_variables = lts
-        .next_state_variable_indices()
+        .next_state_variables()
         .iter()
-        .chain(lts.action_variable_indices())
+        .chain(lts.action_variables())
         .chain(block_variable_indices.iter())
         .cloned()
         .collect::<Vec<VarNo>>();
 
     // Determine the variables in the support of a partition function.
     let partition_variables = lts
-        .next_state_variable_indices()
+        .next_state_variables()
         .iter()
         .chain(block_variable_indices.iter())
         .cloned()
@@ -132,6 +139,13 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
         )
     );
 
+    // Determine the write variables BDDs for all transition groups.
+    let write_variable_bdd = lts
+        .transition_groups()
+        .iter()
+        .map(|group| -> Result<_, MercError> { Ok(compute_vars_bdd(manager_ref, group.write_variables())?.1) })
+        .collect::<Result<Vec<BDDFunction>, MercError>>()?;
+
     while num_of_blocks != old_num_of_blocks {
         // No fixed point reached yet, so keep refining.
         old_num_of_blocks = num_of_blocks;
@@ -142,7 +156,12 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
         // Compute the new signatures w.r.t. the previous partition.
         let signature = timing.measure("signature", || {
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
-            for (index, group) in lts.transition_groups().iter().enumerate() {
+            for (index, (group, write_vars)) in lts
+                .transition_groups()
+                .iter()
+                .zip(write_variable_bdd.iter())
+                .enumerate()
+            {
                 // Compute the signature for this transition group.
                 //
                 // Observe that we explicitly do not quantify over state
@@ -150,14 +169,20 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
                 // Otherwise, these state variables would become unconstrained
                 // and then after substituting next state variables with current
                 // state variables, they would lead to spurious states.
-                let group_signature = timing.measure(&format!("group_signature_{}", index), || signature_strong(&partition, group.relation(), group.write_variables_bdd()))?;
+                let group_signature = timing.measure(&format!("group_signature_{}", index), || {
+                    signature_strong(&partition, group.relation(), write_vars)
+                })?;
                 signature = signature.or(&group_signature)?;
+
+                println!("{}", signature.node_count());
             }
 
             // Substitute next state variables with current state variables to align
             // with the partition representation, required for `refine`.
             signature.substitute(&next_state_substitution)
         })?;
+
+        // TODO: Why no intersection.
 
         trace!(
             "Signature at iteration {}: {}",
@@ -166,7 +191,7 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
                 &signature,
                 &signature_variables,
                 lts.state_variable_num_of_bits(),
-                lts.action_variable_indices().len() as u32,
+                lts.action_variables().len() as u32,
                 num_of_block_bits
             )
         );
@@ -186,7 +211,7 @@ pub fn sigref_symbolic(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd, timing
                 manager,
                 &mut signature_to_block,
                 &block_variables_bdds,
-                lts.next_state_variable_indices(),
+                lts.next_state_variables(),
                 &signature,
                 &partition,
             )
@@ -252,7 +277,7 @@ fn signature_strong(
 ///
 /// This function assumes that in the partition only a single block number is
 /// assigned to each state, which should be by definition.
-/// 
+///
 /// TODO: Definition
 fn refine<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
@@ -565,22 +590,22 @@ mod tests {
     use std::ops::Range;
 
     use merc_utilities::Timing;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::error::DuplicateVarName;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
     use oxidd::VarNo;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::error::DuplicateVarName;
     use rand::Rng;
 
     use merc_utilities::random_test;
 
-    use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
     use crate::sigref_symbolic;
+    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
