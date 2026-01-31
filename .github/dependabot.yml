@@ -5,7 +5,8 @@ updates:
     schedule:
       interval: "monthly"
     allow:
-      - update-types: version-update:semver-major
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       crate-dependencies:
         patterns:
