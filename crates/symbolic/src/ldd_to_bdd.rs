@@ -80,12 +80,12 @@ pub fn ldd_to_bdd<'id>(
         }
     }
 
-    Ok(down_bdd.or(&right_bdd)?)
+    down_bdd.or(&right_bdd)
 }
 
 /// Converts a BDD representing a set of bitblasted vectors back into an LDD
 /// representing the same set, i.e., the inverse of [ldd_to_bdd].
-pub fn bdd_to_ldd<'id>(
+pub fn bdd_to_ldd(
     storage: &mut Storage,
     manager_ref: &BDDManagerRef,
     bdd: &BDDFunction,
@@ -126,7 +126,7 @@ pub fn bdd_to_ldd_edge<'id>(
                         // There are don't care variables in this BDD that have been skipped, so generate both branches.
                         if num_bits == current_bit {
                             // We reached the last bit for this layer, variable still belongs to next layer.
-                            let down = bdd_to_ldd_edge(storage, manager, bdd, &variables, &bits_per_layer[1..], 0, 0)?;
+                            let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
                             let right = storage.empty_set().clone();
                             return Ok(storage.insert(current_value, &down, &right))
                         } else {  
@@ -153,7 +153,7 @@ pub fn bdd_to_ldd_edge<'id>(
         // There are don't care variables in this BDD that have been skipped, so generate both branches without cofactors.
         if num_bits == current_bit {
             // We reached the last bit for this layer, variable still belongs to next layer.
-            let down = bdd_to_ldd_edge(storage, manager, bdd, &variables, &bits_per_layer[1..], 0, 0)?;
+            let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
             let right = storage.empty_set().clone();
             return Ok(storage.insert(current_value, &down, &right))
         } else {    

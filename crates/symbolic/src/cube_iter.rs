@@ -68,11 +68,7 @@ impl Iterator for CubeIter<'_> {
             Err(e) => return Some(Err(e)),
         };
 
-        if let Some(bits) = cube.pick_cube(|_, _, _| true) {
-            Some(Ok((bits, cube)))
-        } else {
-            None
-        }
+        cube.pick_cube(|_, _, _| true).map(|bits| Ok((bits, cube)))
     }
 }
 
@@ -141,7 +137,7 @@ impl<'a> CubeIterAll<'a> {
 
             // Project to selected variable indices if requested.
             if let Some(indices) = &self.variable_indices {                    
-                *cube = project_bits(&cube, indices);       
+                *cube = project_bits(cube, indices);       
                 self.current_cube = cube.clone();
             }
         }

@@ -122,7 +122,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
                 }
 
                 // Apply the transition writes to the state vector.
-                target.clone_from_slice(&state);
+                target.clone_from_slice(state);
                 trace!("transition {:?}", transition);
                 for (index, i) in group.write_indices().iter().enumerate() {
                     target[*i as usize] = transition[write_positions[group_index][index]];

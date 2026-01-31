@@ -62,7 +62,7 @@ pub fn print_left(storage: &Storage, left: &Ldd, right: &Ldd) -> bool {
 
     let mut iter = iter(storage, left);
     while let Some(element) = iter.next() {
-        if !element_of(storage, &element, right) {
+        if !element_of(storage, element, right) {
             result = false;
             eprintln!("{:?}", element);
         }
