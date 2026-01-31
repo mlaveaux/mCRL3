@@ -15,6 +15,7 @@ use merc_ldd::singleton;
 use merc_ldd::Storage;
 use merc_ldd::Value;
 use merc_utilities::MercError;
+use oxidd::util::OutOfMemory;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
@@ -22,9 +23,6 @@ use crate::compute_bits;
 use crate::compute_highest;
 use crate::ldd_to_bdd;
 use crate::required_bits;
-
-/// The BDD representing the support variables of a BDD function.
-pub type BDDSupport = BDDFunction;
 
 /// A symbolic LTS that uses BDDs for the symbolic representation, instead of
 /// LDDs as done in [crate::SymbolicLts].
@@ -44,26 +42,11 @@ pub struct SymbolicLtsBdd {
     /// The variable numbers used to represent the state variables.
     state_variable_indices: Vec<VarNo>,
 
-    /// The BDDs representing each state variable.
-    state_variables: Vec<BDDFunction>,
-
-    /// The set of BDD variables used to represent the state variables.
-    state_variables_bdd: BDDSupport,
-
-    /// The set of BDD variables used to represent the next state variables (or primed variables).
-    next_state_variables_bdd: BDDSupport,
-
-    /// The BDD variables used to represent the next state variables (or primed variables).
-    next_state_variables: Vec<BDDFunction>,
-
     /// The variable numbers used to represent the next state variables.
     next_state_variables_indices: Vec<VarNo>,
 
     /// The action variable indices used to represent the action labels.
     action_variable_indices: Vec<VarNo>,
-
-    /// The BDD representing the action label variables.
-    action_variables_bdd: BDDSupport,
 
     /// The action labels of the LTS, stored as their string representation,
     /// their position corresponds to the LDD values.
@@ -182,29 +165,27 @@ impl SymbolicLtsBdd {
         let mut transition_groups = Vec::new();
         for group in lts.transition_groups() {
             // Determine the number of bits used for each layer.
-            let mut bits = Vec::new();
-
-            // Determine all the variables used in this relation.
-            let mut variables = Vec::new();
+            let mut relation_bits = Vec::new();
 
             let mut read_variable_indices: Vec<VarNo> = Vec::new();
             let mut write_variable_indices: Vec<VarNo> = Vec::new();
 
-            for (i, state_var_bits) in state_variables_bits.iter().enumerate() {
-                if group.read_indices().contains(&(i as u32)) {
+            for (var, bits)  in state_bits.iter().enumerate() {
+                if group.read_indices().contains(&(var as VarNo)) {
                     // The transition group reads this state variable
-                    bits.push(state_bits[i]);
-                    variables.extend(state_var_bits.iter());
-                    read_variable_indices.extend(state_variables_bits[i].iter())
+                    relation_bits.push(*bits);
+                    read_variable_indices.extend(state_variables_bits[var].iter())
                 }
 
-                if group.write_indices().contains(&(i as u32)) {
+                if group.write_indices().contains(&(var as VarNo)) {
                     // The transition group writes this state variable
-                    bits.push(state_bits[i]);
-                    variables.extend(next_state_variables_bits[i].iter());
-                    write_variable_indices.extend(next_state_variables_bits[i].iter())
+                    relation_bits.push(*bits);
+                    write_variable_indices.extend(next_state_variables_bits[var].iter())
                 }
             }
+            
+            // Determine all the variables used in this relation.
+            let mut variables = read_variable_indices.iter().chain(write_variable_indices.iter()).cloned().collect::<Vec<VarNo>>();
 
             // Append action label bits (between read and write segments) if present
             if let Some(_action_index) = group.action_label_index() {
@@ -212,27 +193,22 @@ impl SymbolicLtsBdd {
                 variables.extend(action_labels_vars.iter());
             }
 
+            variables.sort();
+
             // Append action label bits
-            bits.push(action_label_bits);
+            relation_bits.push(action_label_bits);
             debug!(
                 "Transition group {:?} uses number of bits {:?}, and variables: {:?}",
-                group, bits, variables
+                group, relation_bits, variables
             );
 
-            let bits_dd = singleton(storage, &bits);
+            let bits_dd = singleton(storage, &relation_bits);
             let relation_bdd = manager_ref.with_manager_shared(|manager| ldd_to_bdd(storage, manager, group.relation(), &bits_dd, &variables))?;
-
-            let (read_variables, read_variables_bdd) = compute_vars_bdd(manager_ref, &read_variable_indices)?;
-            let (write_variables, write_variables_bdd) = compute_vars_bdd(manager_ref, &write_variable_indices)?;
 
             transition_groups.push(SummandGroupBdd::new(
                 relation_bdd,
                 read_variable_indices,
-                read_variables,
-                read_variables_bdd,
                 write_variable_indices,
-                write_variables,
-                write_variables_bdd,
             ));
         }
 
@@ -245,11 +221,6 @@ impl SymbolicLtsBdd {
 
         debug!("State bits {all_state_variables_bits:?}, and next state bits {all_next_state_variables_bits:?}");
 
-        let (state_variables, state_variables_bdd) = compute_vars_bdd(manager_ref, &all_state_variables_bits)?;
-        let (next_state_variables_bdds, next_state_variables_bdd) =
-            compute_vars_bdd(manager_ref, &all_next_state_variables_bits)?;
-        let (_action_label_variables, action_variables_bdd) = compute_vars_bdd(manager_ref, &action_labels_vars)?;
-
         info!("Finished conversion.");
         Ok(Self {
             action_variable_indices: action_labels_vars,
@@ -258,12 +229,7 @@ impl SymbolicLtsBdd {
             transition_groups,
             state_variable_num_of_bits: state_bits,
             state_variable_indices: all_state_variables_bits,
-            state_variables_bdd,
-            state_variables,
-            next_state_variables_bdd,
-            next_state_variables: next_state_variables_bdds,
             next_state_variables_indices: all_next_state_variables_bits,
-            action_variables_bdd,
             action_labels: lts.action_labels().to_vec(),
             parameter_values: lts.parameter_values().to_vec(),
         })
@@ -285,33 +251,13 @@ impl SymbolicLtsBdd {
     }
 
     /// Returns the BDD variables used to represent the state variables.
-    pub fn state_variable_indices(&self) -> &[VarNo] {
+    pub fn state_variables(&self) -> &[VarNo] {
         &self.state_variable_indices
     }
 
-    /// Returns the BDDs representing each state variable.
-    pub fn state_variables(&self) -> &[BDDFunction] {
-        &self.state_variables
-    }
-
-    /// Returns the BDD variables used to represent the state variables.
-    pub fn state_variables_bdd(&self) -> &BDDSupport {
-        &self.state_variables_bdd
-    }
-
-    /// Returns the BDD variables used to represent the state variables.
-    pub fn next_state_variables_bdd(&self) -> &BDDSupport {
-        &self.next_state_variables_bdd
-    }
-
     /// Returns the variable numbers used to represent the next state variables.
-    pub fn next_state_variable_indices(&self) -> &[VarNo] {
+    pub fn next_state_variables(&self) -> &[VarNo] {
         &self.next_state_variables_indices
-    }
-
-    /// Returns the variable numbers used to represent the next state variables.
-    pub fn next_state_variables(&self) -> &[BDDFunction] {
-        &self.next_state_variables
     }
 
     /// Returns the transition groups representing the disjunctive transition relation.
@@ -320,13 +266,8 @@ impl SymbolicLtsBdd {
     }
 
     /// Returns the action variable indices used to represent the action labels.
-    pub fn action_variable_indices(&self) -> &[VarNo] {
+    pub fn action_variables(&self) -> &[VarNo] {
         &self.action_variable_indices
-    }
-
-    /// Returns the BDD representing the action label variables.
-    pub fn action_variables_bdd(&self) -> &BDDSupport {
-        &self.action_variables_bdd
     }
 
     /// Returns the action labels of the LTS.
@@ -345,43 +286,23 @@ pub struct SummandGroupBdd {
     relation: BDDFunction,
 
     /// The indices of the read variables for this summand group.
-    read_variable_indices: Vec<VarNo>,
-
-    /// The BDDs representing the read variables for this summand group.
-    read_variables: Vec<BDDFunction>,
-
-    /// The BDD representing all the read variables for this summand group.
-    read_variables_bdd: BDDFunction,
+    read_variable: Vec<VarNo>,
 
     /// The indices of the write variables for this summand group.
-    write_variable_indices: Vec<VarNo>,
-
-    /// The BDDs representing the write variables for this summand group.
-    write_variables: Vec<BDDFunction>,
-
-    /// The BDD representing all the write variables for this summand group.
-    write_variables_bdd: BDDFunction,
+    write_variable: Vec<VarNo>,
 }
 
 impl SummandGroupBdd {
     /// Creates a new summand group with the given transition relation.
     pub fn new(
         relation: BDDFunction,
-        read_variable_indices: Vec<VarNo>,
-        read_variables: Vec<BDDFunction>,
-        read_variables_bdd: BDDFunction,
-        write_variable_indices: Vec<VarNo>,
-        write_variables: Vec<BDDFunction>,
-        write_variables_bdd: BDDFunction,
+        read_variable: Vec<VarNo>,
+        write_variable: Vec<VarNo>,
     ) -> Self {
         Self {
             relation,
-            read_variable_indices,
-            read_variables,
-            read_variables_bdd,
-            write_variable_indices,
-            write_variables,
-            write_variables_bdd,
+            read_variable,
+            write_variable,
         }
     }
 
@@ -391,39 +312,19 @@ impl SummandGroupBdd {
     }
 
     /// Returns the indices of the read variables for this summand group.
-    pub fn read_variable_indices(&self) -> &Vec<VarNo> {
-        &self.read_variable_indices
-    }
-
-    /// Returns the BDDs representing the read variables for this summand group.
-    pub fn read_variables(&self) -> &Vec<BDDFunction> {
-        &self.read_variables
-    }
-
-    /// Returns the BDD representing all the read variables for this summand group.
-    pub fn read_variables_bdd(&self) -> &BDDFunction {
-        &self.read_variables_bdd
+    pub fn read_variables(&self) -> &Vec<VarNo> {
+        &self.read_variable
     }
 
     /// Returns the indices of the write variables for this summand group.
-    pub fn write_variable_indices(&self) -> &Vec<VarNo> {
-        &self.write_variable_indices
-    }
-
-    /// Returns the BDDs representing the write variables for this summand group.
-    pub fn write_variables_bdds(&self) -> &Vec<BDDFunction> {
-        &self.write_variables
-    }
-
-    /// Returns the BDD representing all the write variables for this summand group.
-    pub fn write_variables_bdd(&self) -> &BDDFunction {
-        &self.write_variables_bdd
+    pub fn write_variables(&self) -> &Vec<VarNo> {
+        &self.write_variable
     }
 }
 
 /// Creates BDD of variables for the given variable numbers.
-fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<(Vec<BDDFunction>, BDDFunction), MercError> {
-    manager_ref.with_manager_shared(|manager| -> Result<_, MercError> {
+pub fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<(Vec<BDDFunction>, BDDFunction), OutOfMemory> {
+    manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {
         let mut vector = Vec::new();
         let mut bdd: BDDFunction = BDDFunction::t(manager);
 
