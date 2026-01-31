@@ -4,9 +4,6 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "monthly"
-    allow:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
     groups:
       crate-dependencies:
         patterns:
