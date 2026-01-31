@@ -26,7 +26,7 @@ members = [
 
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }
-cosmic-text = "0.16"
+cosmic-text = "0.17"
 env_logger = "0.11"
 femtovg = { version = "0.20", features = ["wgpu"] }
 glam = "0.31"
