@@ -136,7 +136,9 @@ let expr_ref: DataExpressionRef = expr.copy();
 
 ### Current
 
-Removed the `ahash`, `arbitrary`, `arbtest`, and `rayon` dependencies since their use was only minimal.
+Removed the `ahash`, `arbitrary`, `arbtest`, and `rayon` dependencies since
+their use was only minimal. Fixed a bug where garbage collection of terms was
+not triggered properly.
 
 ## Safety
 

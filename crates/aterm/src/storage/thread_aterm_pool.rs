@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
+use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
 use crate::storage::AGGRESSIVE_GC;
 use crate::storage::GlobalTermPool;
+use crate::storage::GlobalTermPoolGuard;
 use crate::storage::SharedTerm;
 use crate::storage::SharedTermProtection;
 use crate::storage::global_aterm_pool::GLOBAL_TERM_POOL;
@@ -90,12 +92,14 @@ impl ThreadTermPool {
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
 
         let (index, inserted) = guard.create_term_array(symbol, &empty_args);
+        let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
 
         if inserted {
+            // Intentially called after the guard is dropped.
             self.trigger_garbage_collection();
         }
 
-        self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) })
+        result
     }
 
     /// Create a term with the given arguments
@@ -114,33 +118,36 @@ impl ThreadTermPool {
         }
 
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
 
-        if inserted {
-            self.trigger_garbage_collection();
-        }
-
-        unsafe {
+        let result = unsafe {
             // SAFETY: The guard is guaranteed to live as long as the returned term, since it is thread local and Return cannot be sended to other threads.
             Return::new(
                 std::mem::transmute::<RecursiveLockReadGuard<'_, _>, RecursiveLockReadGuard<'static, _>>(guard),
                 ATermRef::from_index(&index),
             )
+        };
+
+        if inserted {
+            // Intentially called after the guard is dropped.
+            self.trigger_garbage_collection();
         }
+
+        result
     }
 
     /// Create a term with the given index.
     pub fn create_int(&self, value: usize) -> ATerm {
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-
         let (index, inserted) = guard.create_int(value);
+        let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
 
         if inserted {
+            // Intentially called after the guard is dropped.
             self.trigger_garbage_collection();
         }
 
-        self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) })
+        result
     }
 
     /// Create a term with the given arguments given by the iterator.
@@ -158,14 +165,16 @@ impl ThreadTermPool {
         }
 
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
 
+        let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
+
         if inserted {
+            // Intentially called after the guard is dropped.
             self.trigger_garbage_collection();
         }
 
-        self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) })
+        result
     }
 
     /// Create a term with the given arguments given by the iterator that is failable.
@@ -187,14 +196,16 @@ impl ThreadTermPool {
         }
 
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
 
+        let result = Ok(self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) }));
+
         if inserted {
+            // Intentially called after the guard is dropped.
             self.trigger_garbage_collection();
         }
 
-        Ok(self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) }))
+        result
     }
 
     /// Create a term with the given arguments given by the iterator.
@@ -220,14 +231,16 @@ impl ThreadTermPool {
         }
 
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
 
+        let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
+
         if inserted {
+            // Intentially called after the guard is dropped.
             self.trigger_garbage_collection();
         }
 
-        self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) })
+        result
     }
 
     /// Create a function symbol
@@ -362,6 +375,22 @@ impl ThreadTermPool {
     pub fn automatic_garbage_collection(&self, enabled: bool) {
         let mut guard = self.term_pool.write().expect("Lock poisoned!");
         guard.automatic_garbage_collection(enabled);
+    }
+
+    /// Triggers delayed garbage collection if the counter has reached zero.
+    /// 
+    /// # Safety
+    /// 
+    /// This function drops the passed guard.
+    pub(crate) unsafe fn trigger_delayed_garbage_collection(&self, guard: &mut ManuallyDrop<GlobalTermPoolGuard<'_>>) {
+        unsafe {
+            ManuallyDrop::drop(guard);
+        }
+
+        debug_assert!(guard.read_depth() == 0, "Cannot trigger garbage collection while holding a read lock");        
+        if self.garbage_collection_counter.get() == 0 {
+            self.trigger_garbage_collection();
+        }
     }
 
     /// Returns access to the shared protection set.

@@ -108,6 +108,13 @@ pub struct RecursiveLockReadGuard<'a, T> {
     mutex: &'a RecursiveLock<T>,
 }
 
+impl<T> RecursiveLockReadGuard<'_, T> {
+    /// Returns the read depth of the recursive lock.
+    pub fn read_depth(&self) -> usize {
+        self.mutex.recursive_depth.get()
+    }
+}
+
 /// Allow dereferences the underlying object.
 impl<T> Deref for RecursiveLockReadGuard<'_, T> {
     type Target = T;

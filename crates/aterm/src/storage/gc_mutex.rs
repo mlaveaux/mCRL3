@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -24,9 +25,9 @@ impl<T> GcMutex<T> {
     pub fn write(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            _guard: THREAD_TERM_POOL.with_borrow(|tp| unsafe {
+            guard: ManuallyDrop::new(THREAD_TERM_POOL.with_borrow(|tp| unsafe {
                 std::mem::transmute(tp.term_pool().read_recursive().expect("Lock poisoned!"))
-            }),
+            })),
         }
     }
 
@@ -34,9 +35,9 @@ impl<T> GcMutex<T> {
     pub fn read(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            _guard: THREAD_TERM_POOL.with_borrow(|tp| unsafe {
+            guard: ManuallyDrop::new(THREAD_TERM_POOL.with_borrow(|tp| unsafe {
                 std::mem::transmute(tp.term_pool().read_recursive().expect("Lock poisoned!"))
-            }),
+            })),
         }
     }
 }
@@ -45,7 +46,7 @@ pub struct GcMutexGuard<'a, T> {
     mutex: &'a GcMutex<T>,
 
     /// Only used to avoid garbage collection, will be released on drop.
-    _guard: GlobalTermPoolGuard<'a>,
+    guard: ManuallyDrop<GlobalTermPoolGuard<'a>>,
 }
 
 impl<T> Deref for GcMutexGuard<'_, T> {
@@ -60,5 +61,19 @@ impl<T> DerefMut for GcMutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
         unsafe { &mut *self.mutex.inner.get() }
+    }
+}
+
+impl<T> Drop for GcMutexGuard<'_, T> {
+    fn drop(&mut self) {
+        if self.guard.read_depth() == 1 {
+            // If this is the last guard, we can trigger garbage collection when it was delayed earlier.
+            THREAD_TERM_POOL.with_borrow(|tp| {
+                unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) }
+            })
+        } else {
+            // Just drop the guard
+            unsafe { ManuallyDrop::drop(&mut self.guard) };
+        }
     }
 }
