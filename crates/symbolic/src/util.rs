@@ -139,6 +139,26 @@ pub fn collect_children<E: Edge, N: InnerNode<E>>(node: &N) -> (Borrowed<'_, E>,
     (f_then, f_else)
 }
 
+/// Apply the reduction rules, creating a node in `manager` if necessary
+#[inline(always)]
+pub(crate) fn reduce<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    level: LevelNo,
+    t: EdgeOfFunc<'id, BDDFunction>,
+    e: EdgeOfFunc<'id, BDDFunction>,
+) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
+    // We do not use `DiagramRules::reduce()` here, as the iterator is
+    // apparently not fully optimized away.
+    if t == e {
+        manager.drop_edge(e);
+        return Ok(t);
+    }
+    oxidd_core::LevelView::get_or_insert(
+        &mut manager.level(level),
+        <<BDDFunction as Function>::Manager<'id> as Manager>::InnerNode::new(level, [t, e]),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;

@@ -108,11 +108,14 @@ pub fn sigref_symbolic(
         .collect::<Vec<VarNo>>();
 
     // Stores the partition of the states as BDD.
-    let mut partition = lts
-        .states()
-        .and(&manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
-            Ok(BDDFunction::from_edge(manager, encode_block(manager, &block_variables_bdds, 0)?))
-        })?)?;
+    let mut partition = lts.states().and(&manager_ref.with_manager_shared(
+        |manager| -> Result<BDDFunction, OutOfMemory> {
+            Ok(BDDFunction::from_edge(
+                manager,
+                encode_block(manager, &block_variables_bdds, 0)?,
+            ))
+        },
+    )?)?;
 
     // In the sigref algorithm, the partition is defined over the next state. When we compute the signature
     // we then get (s, a, b), since in the signature we need to consider the block of the next state.
@@ -153,19 +156,7 @@ pub fn sigref_symbolic(
         .transition_groups()
         .iter()
         .map(|group| -> Result<_, MercError> {
-            let variables = group
-                .read_variables()
-                .iter()
-                .map(|var| {
-                    let index = lts
-                        .state_variables()
-                        .iter()
-                        .position(|next_var| next_var == var)
-                        .unwrap();
-                    lts.next_state_variables()[index]
-                })
-                .chain(group.write_variables().iter().cloned())
-                .collect::<Vec<VarNo>>();
+            let variables = group.write_variables().iter().cloned().collect::<Vec<VarNo>>();
 
             Ok(compute_vars_bdd(manager_ref, &variables)?.1)
         })
@@ -409,22 +400,28 @@ fn refine_edge<'id>(
             }
         };
 
-        let low = EdgeDropGuard::new(manager, refine_edge(
+        let low = EdgeDropGuard::new(
             manager,
-            signature_to_block,
-            block_variables_bdds,
-            state_variables,
-            s_low,
-            p_low,
-        )?);
-        let high = EdgeDropGuard::new(manager, refine_edge(
+            refine_edge(
+                manager,
+                signature_to_block,
+                block_variables_bdds,
+                state_variables,
+                s_low,
+                p_low,
+            )?,
+        );
+        let high = EdgeDropGuard::new(
             manager,
-            signature_to_block,
-            block_variables_bdds,
-            state_variables,
-            s_high,
-            p_high,
-        )?);
+            refine_edge(
+                manager,
+                signature_to_block,
+                block_variables_bdds,
+                state_variables,
+                s_high,
+                p_high,
+            )?,
+        );
 
         // 7. result := BDDnode(topVar, high, low)
 
@@ -490,10 +487,16 @@ fn encode_block<'id>(
     for (i, var) in variables.iter().enumerate() {
         if block_no & (1 << i) != 0 {
             // bit is 1
-            result = EdgeDropGuard::new(manager, BDDFunction::ite_edge(manager, var.as_edge(manager), &result, &f_edge)?);
+            result = EdgeDropGuard::new(
+                manager,
+                BDDFunction::ite_edge(manager, var.as_edge(manager), &result, &f_edge)?,
+            );
         } else {
             // bit is 0
-            result = EdgeDropGuard::new(manager, BDDFunction::ite_edge(manager, var.as_edge(manager), &f_edge, &result)?);
+            result = EdgeDropGuard::new(
+                manager,
+                BDDFunction::ite_edge(manager, var.as_edge(manager), &f_edge, &result)?,
+            );
         }
     }
 
