@@ -31,7 +31,6 @@ use merc_ldd::height;
 use merc_ldd::union;
 
 use crate::collect_children;
-use crate::reduce;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
 /// same set by bitblasting the vector elements using the given variables as
@@ -104,23 +103,26 @@ pub fn ldd_to_bdd_edge<'id>(
     }
 
     // Recurse on down with the remaining variables after consuming this layer
-    let mut down_bdd = ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed..])?;
+    let mut down_bdd = EdgeDropGuard::new(manager, ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed..])?);
 
     // Encode current value using the variables for this layer (MSB to LSB)
     // Current layer variables: vars[0..bits_value]
+    // The `ite` is necessary since the variables are not in sorted order.
+    let f_edge = EdgeDropGuard::new(manager, manager.get_terminal(BDDTerminal::False)?);
     for i in 0..bits_value {
         let bit = bits_value - i - 1; // MSB first
         let var_no = bit_variables[bit as usize];
+        let var = EdgeDropGuard::new(manager, BDDFunction::var_edge(manager, var_no)?);
         if value & (1 << i) != 0 {
             // bit is 1
-            down_bdd = reduce(manager, var_no, down_bdd, manager.get_terminal(BDDTerminal::False)?)?;
+            down_bdd = EdgeDropGuard::new(manager, BDDFunction::ite_edge(manager, &var, &down_bdd, &f_edge)?);
         } else {
             // bit is 0
-            down_bdd = reduce(manager, var_no, manager.get_terminal(BDDTerminal::False)?, down_bdd)?;
+            down_bdd = EdgeDropGuard::new(manager, BDDFunction::ite_edge(manager, &var, &f_edge, &down_bdd)?);
         }
     }
 
-    let result = BDDFunction::or_edge(manager, &EdgeDropGuard::new(manager, down_bdd), &right_bdd)?;
+    let result = BDDFunction::or_edge(manager, &down_bdd, &right_bdd)?;
     cache.insert(storage.protect(ldd), BDDFunction::from_edge_ref(manager, &result));
     Ok(result)
 }
