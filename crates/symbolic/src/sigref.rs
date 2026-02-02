@@ -13,12 +13,10 @@ use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
 use oxidd::Edge;
 use oxidd::Function;
-use oxidd::FunctionSubst;
 use oxidd::HasLevel;
 use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Node;
-use oxidd::Subst;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
@@ -41,6 +39,7 @@ use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::required_bits_64;
 use crate::to_value;
+use crate::variable_rename;
 
 /// Computes the signature refinement of the given symbolic LTS using strong bisimulation.
 ///
@@ -87,8 +86,7 @@ pub fn sigref_symbolic(
     let mut signature_to_block = FxHashMap::default();
 
     // Substitution to replace next state variables with current state variables.
-    let next_state_variables = compute_vars_bdd(manager_ref, lts.next_state_variables())?.0;
-    let next_state_substitution = Subst::new(lts.state_variables(), next_state_variables);
+    let next_state_substitution: Vec<(VarNo, VarNo)> = lts.state_variables().iter().cloned().zip(lts.next_state_variables().iter().cloned()).collect();
 
     // Determine the variables in the support of a signature function.
     let signature_variables = lts
@@ -119,7 +117,7 @@ pub fn sigref_symbolic(
 
     // In the sigref algorithm, the partition is defined over the next state. When we compute the signature
     // we then get (s, a, b), since in the signature we need to consider the block of the next state.
-    partition = partition.substitute(&next_state_substitution)?;
+    partition = variable_rename(manager_ref, &partition, &next_state_substitution)?;
 
     // Keep track of local information.
     let mut num_of_blocks = 0;
@@ -203,7 +201,7 @@ pub fn sigref_symbolic(
 
             // Substitute next state variables with current state variables to align
             // with the partition representation, required for `refine`.
-            signature.substitute(&next_state_substitution)
+            variable_rename(manager_ref, &signature, &next_state_substitution)
         })?;
 
         trace!(

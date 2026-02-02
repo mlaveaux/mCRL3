@@ -204,9 +204,9 @@ pub(crate) fn reduce<'id>(
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
-    use oxidd::{BooleanFunction, Manager, ManagerRef, bdd::BDDFunction, util::AllocResult};
+    use oxidd::{BooleanFunction, FunctionSubst, Manager, ManagerRef, Subst, bdd::BDDFunction, util::AllocResult};
 
-    use crate::{random_bdd, support, variable_rename};
+    use crate::{FormatConfigSet, compute_vars_bdd, random_bdd, support, variable_rename};
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -261,8 +261,19 @@ mod tests {
                 })
                 .unwrap();
 
-            let function = random_bdd(&manager_ref, rng, &vars, 9).unwrap();            
+            let function = random_bdd(&manager_ref, rng, &vars, 24).unwrap();  
+            
+            let to = compute_vars_bdd(&manager_ref, &[1, 3]).unwrap().0;
+            let substitution = Subst::new(&[0, 2], &to);
+            println!("{}", FormatConfigSet(&function));
+
+            let expected = function.substitute(&substitution).unwrap();
             let subst = variable_rename(&manager_ref, &function, &[(0, 1), (2, 3)]).unwrap();
+
+            println!("{}", FormatConfigSet(&expected));
+            println!("{}", FormatConfigSet(&subst));
+
+            assert!(expected == subst, "Renaming did not match expected substitution");
         });
     }
 
