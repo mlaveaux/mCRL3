@@ -384,7 +384,7 @@ fn refine_edge<'id>(
                         (signature.borrowed(), signature.borrowed())
                     }
                 }
-                _ => unreachable!("Not a terminal node"),
+                _ => (signature.borrowed(), signature.borrowed())
             }
         };
         let (p_high, p_low) = {
