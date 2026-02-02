@@ -150,6 +150,10 @@ struct ReduceArgs {
     /// Visualize the reduction steps in oxidd-vis.
     #[arg(long)]
     visualize: bool,
+
+    /// Split the signature per transition group.
+    #[arg(long)]
+    split_signature: bool,
 }
 
 /// Initializes the Oxidd BDD manager based on CLI arguments.
@@ -370,8 +374,6 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
     })?;
 
-    timing.measure("reduction", || {
-        sigref_symbolic(&manager_ref, &lts_bdd, timing, args.visualize)
-    })?;
+    timing.measure("reduction", || sigref_symbolic(&manager_ref, &lts_bdd, timing, args.split_signature, args.visualize))?;
     Ok(())
 }
