@@ -59,15 +59,19 @@ fn support_edge<'id>(
 ///
 /// # Details
 ///
-/// In general substitution is defined as follows, but its computation can be
-/// fairly expensive.
+/// In general substitution is defined as follows,
+///
+/// > f[x <- g] = (!g ∧ f[x <- false]) ∨ (g ∧ f[x <- true])
+///
+/// but its computation can be fairly expensive.Restricting the substitution to
+/// only renaming variables from 'x' to 'x+1' allows for a more efficient
+/// implementation, as follows:
 ///
 /// > f[x <- x+1] = (!x+1 ∧ f[x <- false]) ∨ (x+1 ∧ f[x <- true])
-///               = reduce(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])
+///               = make_node(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])
 ///
-/// Restricting the substitution to only renaming variables from 'x' to 'x+1'
-/// allows for a more efficient implementation. This function checks whether the
-/// inputs satisfy this restriction and then performs the renaming.
+/// This function checks whether the inputs satisfy this restriction and then
+/// performs the renaming.
 pub fn variable_rename(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
@@ -94,55 +98,49 @@ pub fn variable_rename_edge<'id>(
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
     let node = match manager.get_node(&function) {
         Node::Terminal(terminal) => return manager.get_terminal(terminal),
-        Node::Inner(node) => node
+        Node::Inner(node) => node,
     };
 
     let (from, to) = match substitution.first() {
         None => {
             // No variables to substitute, so remains identity.
-            return Ok(manager.clone_edge(&function))
+            return Ok(manager.clone_edge(&function));
         }
-        Some((from, to)) => (from, to)
+        Some((from, to)) => (from, to),
     };
 
     // TODO: Caching
-        
+
     if node.level() == *from {
         let (high, low) = collect_children(node);
         // Rename variable from 'from' to 'to'.
-        let high =
-            EdgeDropGuard::new(manager, variable_rename_edge(manager, high, &substitution[1..])?);
+        let high = EdgeDropGuard::new(manager, variable_rename_edge(manager, high, &substitution[1..])?);
         let low = EdgeDropGuard::new(manager, variable_rename_edge(manager, low, &substitution[1..])?);
 
-        let (high_high, _high_low) = match manager.get_node(&high) {
+        let high_high = match manager.get_node(&high) {
             Node::Inner(node) => {
                 if node.level() == *to {
                     // There are f[x <- true][x+1 <- true]
-                    collect_children(node)
+                    collect_children(node).0
                 } else {
-                    (high.borrowed(), high.borrowed())
+                    high.borrowed()
                 }
             }
-            Node::Terminal(_terminal) => {
-                (high.borrowed(), high.borrowed())
-            }
+            Node::Terminal(_terminal) => high.borrowed(),
         };
-        
-        let (_low_high, low_low) = match manager.get_node(&low) {
+
+        let low_low = match manager.get_node(&low) {
             Node::Inner(node) => {
                 if node.level() == *to {
                     // There are f[x <- false][x+1 <- false]
-                    collect_children(node)
+                    collect_children(node).1
                 } else {
-                    (low.borrowed(), low.borrowed())
+                    low.borrowed()
                 }
             }
-            Node::Terminal(_terminal) => {
-                (low.borrowed(), low.borrowed())
-            }
+            Node::Terminal(_terminal) => low.borrowed(),
         };
 
-        // TODO: high and low might contain 'to' variables again.
         reduce(
             manager,
             *to,
@@ -155,17 +153,104 @@ pub fn variable_rename_edge<'id>(
     } else {
         // node.level() < *from, in this case we keep the variable as is.
         let (high, low) = collect_children(node);
-        let high =
-            variable_rename_edge(manager, high, substitution)?;
-        let low =
-            variable_rename_edge(manager, low, substitution)?;
+        let high = variable_rename_edge(manager, high, substitution)?;
+        let low = variable_rename_edge(manager, low, substitution)?;
 
-        reduce(
+        reduce(manager, node.level(), high, low)
+    }
+}
+
+/// Specialized substitution function for variables renaming that only works for
+/// `f[x+1 <- x]` renamings, similar to [variable_rename].
+///
+/// # Details
+///
+/// We can derive the following:
+///
+/// > f[x+1 <- x] = (!x ∧ f[x+1 <- false]) ∨ (x ∧ f[x+1 <- true])
+///               = make_node(x, f[x <- true][x+1 <- true] , f[x+1 <- false][x <- false])
+pub fn variable_rename_reverse(
+    manager_ref: &BDDManagerRef,
+    function: &BDDFunction,
+    substitution: &[(VarNo, VarNo)],
+) -> Result<BDDFunction, OutOfMemory> {
+    // Every subsitution must be from a lower variable to a higher variable.
+    for (from, to) in substitution {
+        debug_assert!(*from == to + 1, "Variable renaming must be from 'x+1' to 'x'");
+    }
+
+    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
+        Ok(BDDFunction::from_edge(
             manager,
-            node.level(),
-            high,
-            low,
-        )
+            variable_rename_reverse_edge(manager, function.as_edge(manager).borrowed(), substitution)?,
+        ))
+    })
+}
+
+/// Implementation of [variable_rename].
+pub fn variable_rename_reverse_edge<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    function: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+    substitution: &[(VarNo, VarNo)],
+) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
+    let node = match manager.get_node(&function) {
+        Node::Terminal(terminal) => return manager.get_terminal(terminal),
+        Node::Inner(node) => node,
+    };
+
+    let (from, to) = match substitution.first() {
+        None => {
+            // No variables to substitute, identity.
+            return Ok(manager.clone_edge(&function));
+        }
+        Some((from, to)) => (from, to),
+    };
+
+    // TODO: Caching
+
+    if node.level() == *to {
+        // Build node at level `to` using cofactors of `from` where present.
+        let (high, low) = collect_children(node);
+
+        let high = EdgeDropGuard::new(
+            manager,
+            variable_rename_reverse_edge(manager, high, &substitution[1..])?,
+        );
+        let low = EdgeDropGuard::new(manager, variable_rename_reverse_edge(manager, low, &substitution[1..])?);
+
+        // t = F_then with x+1 := true
+        let t = match manager.get_node(&high) {
+            Node::Inner(n) if n.level() == *from => {
+                let (hh, _hl) = collect_children(n);
+                manager.clone_edge(&hh)
+            }
+            _ => manager.clone_edge(&high),
+        };
+        // e = F_else with x+1 := false
+        let e = match manager.get_node(&low) {
+            Node::Inner(n) if n.level() == *from => {
+                let (_lh, ll) = collect_children(n);
+                manager.clone_edge(&ll)
+            }
+            _ => manager.clone_edge(&low),
+        };
+
+        reduce(manager, *to, t, e)
+    } else if node.level() == *from {
+        // `x+1` appears before `x`: rename this node to level `to`.
+        let (high, low) = collect_children(node);
+        let high = variable_rename_reverse_edge(manager, high, &substitution[1..])?;
+        let low = variable_rename_reverse_edge(manager, low, &substitution[1..])?;
+        reduce(manager, *to, high, low)
+    } else if node.level() > *from {
+        // Past both `to` and `from`, drop this substitution.
+        variable_rename_reverse_edge(manager, function, &substitution[1..])
+    } else {
+        // Recurse normally, keeping the substitution.
+        let (high, low) = collect_children(node);
+        let high = variable_rename_reverse_edge(manager, high, substitution)?;
+        let low = variable_rename_reverse_edge(manager, low, substitution)?;
+        reduce(manager, node.level(), high, low)
     }
 }
 
@@ -206,7 +291,7 @@ mod tests {
     use merc_utilities::random_test;
     use oxidd::{BooleanFunction, FunctionSubst, Manager, ManagerRef, Subst, bdd::BDDFunction, util::AllocResult};
 
-    use crate::{FormatConfigSet, compute_vars_bdd, random_bdd, support, variable_rename};
+    use crate::{FormatConfigSet, compute_vars_bdd, random_bdd, support, variable_rename, variable_rename_reverse};
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -241,7 +326,7 @@ mod tests {
 
             let function = random_bdd(&manager_ref, rng, &vars, 9).unwrap();
             let _support = support(&manager_ref, &function).unwrap();
-            
+
             // TODO: Verify support correctness
         });
     }
@@ -261,20 +346,53 @@ mod tests {
                 })
                 .unwrap();
 
-            let function = random_bdd(&manager_ref, rng, &vars, 24).unwrap();  
-            
+            let function = random_bdd(&manager_ref, rng, &vars, 24).unwrap();
+
             let to = compute_vars_bdd(&manager_ref, &[1, 3]).unwrap().0;
             let substitution = Subst::new(&[0, 2], &to);
-            println!("{}", FormatConfigSet(&function));
+            println!("input: {}", FormatConfigSet(&function));
 
             let expected = function.substitute(&substitution).unwrap();
-            let subst = variable_rename(&manager_ref, &function, &[(0, 1), (2, 3)]).unwrap();
+            let renamed = variable_rename(&manager_ref, &function, &[(0, 1), (2, 3)]).unwrap();
 
-            println!("{}", FormatConfigSet(&expected));
-            println!("{}", FormatConfigSet(&subst));
+            println!("expected: {}", FormatConfigSet(&expected));
+            println!("result: {}", FormatConfigSet(&renamed));
 
-            assert!(expected == subst, "Renaming did not match expected substitution");
+            assert!(expected == renamed, "Renaming did not match expected substitution");
         });
     }
 
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_bdd_renaming_reverse() {
+        random_test(100, |rng| {
+            let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
+
+            let vars = manager_ref
+                .with_manager_exclusive(|manager| {
+                    manager
+                        .add_vars(4)
+                        .map(|v| BDDFunction::var(manager, v))
+                        .collect::<Result<Vec<BDDFunction>, _>>()
+                })
+                .unwrap();
+
+            let function = random_bdd(&manager_ref, rng, &vars, 24).unwrap();
+
+            let to = compute_vars_bdd(&manager_ref, &[0, 2]).unwrap().0;
+            let substitution = Subst::new(&[1, 3], &to);
+            println!("input: {}", FormatConfigSet(&function));
+
+            let expected = function.substitute(&substitution).unwrap();
+            let renamed = variable_rename_reverse(&manager_ref, &function, &[(1, 0), (3, 2)]).unwrap();
+
+            println!("expected: {}", FormatConfigSet(&expected));
+            println!("renamed: {}", FormatConfigSet(&renamed));
+
+            assert!(
+                expected == renamed,
+                "Renaming with reverse did not match expected substitution"
+            );
+        });
+    }
 }

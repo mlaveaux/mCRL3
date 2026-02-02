@@ -86,7 +86,12 @@ pub fn sigref_symbolic(
     let mut signature_to_block = FxHashMap::default();
 
     // Substitution to replace next state variables with current state variables.
-    let next_state_substitution: Vec<(VarNo, VarNo)> = lts.state_variables().iter().cloned().zip(lts.next_state_variables().iter().cloned()).collect();
+    let state_substitution: Vec<(VarNo, VarNo)> = lts
+        .state_variables()
+        .iter()
+        .cloned()
+        .zip(lts.next_state_variables().iter().cloned())
+        .collect();
 
     // Determine the variables in the support of a signature function.
     let signature_variables = lts
@@ -117,7 +122,7 @@ pub fn sigref_symbolic(
 
     // In the sigref algorithm, the partition is defined over the next state. When we compute the signature
     // we then get (s, a, b), since in the signature we need to consider the block of the next state.
-    partition = variable_rename(manager_ref, &partition, &next_state_substitution)?;
+    partition = variable_rename(manager_ref, &partition, &state_substitution)?;
 
     // Keep track of local information.
     let mut num_of_blocks = 0;
@@ -201,7 +206,7 @@ pub fn sigref_symbolic(
 
             // Substitute next state variables with current state variables to align
             // with the partition representation, required for `refine`.
-            variable_rename(manager_ref, &signature, &next_state_substitution)
+            variable_rename(manager_ref, &signature, &state_substitution)
         })?;
 
         trace!(
@@ -382,7 +387,7 @@ fn refine_edge<'id>(
                         (signature.borrowed(), signature.borrowed())
                     }
                 }
-                _ => (signature.borrowed(), signature.borrowed())
+                _ => (signature.borrowed(), signature.borrowed()),
             }
         };
         let (p_high, p_low) = {
