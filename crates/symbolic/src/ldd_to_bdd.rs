@@ -195,49 +195,28 @@ pub fn bdd_to_ldd_edge<'id>(
                             let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
                             let right = storage.empty_set().clone();
                             return Ok(storage.insert(current_value, &down, &right));
-                        } else {
-                            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
-                            let high = bdd_to_ldd_edge(
-                                storage,
-                                manager,
-                                bdd.borrowed(),
-                                &variables[1..],
-                                bits_per_layer,
-                                current_bit + 1,
-                                current_value | (1 << (num_bits - current_bit - 1)),
-                            )?;
-                            let low = bdd_to_ldd_edge(
-                                storage,
-                                manager,
-                                bdd,
-                                &variables[1..],
-                                bits_per_layer,
-                                current_bit + 1,
-                                current_value,
-                            )?;
-                            return Ok(storage.insert(current_value, &down, &right));
-                        } else {
-                            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
-                            let high = bdd_to_ldd_edge(
-                                storage,
-                                manager,
-                                bdd.borrowed(),
-                                &variables[1..],
-                                bits_per_layer,
-                                current_bit + 1,
-                                current_value | (1 << (num_bits - current_bit - 1)),
-                            )?;
-                            let low = bdd_to_ldd_edge(
-                                storage,
-                                manager,
-                                bdd,
-                                &variables[1..],
-                                bits_per_layer,
-                                current_bit + 1,
-                                current_value,
-                            )?;
-                            return Ok(union(storage, &high, &low));
-                        }
+                        } 
+
+                        debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
+                        let high = bdd_to_ldd_edge(
+                            storage,
+                            manager,
+                            bdd.borrowed(),
+                            &variables[1..],
+                            bits_per_layer,
+                            current_bit + 1,
+                            current_value | (1 << (num_bits - current_bit - 1)),
+                        )?;
+                        let low = bdd_to_ldd_edge(
+                            storage,
+                            manager,
+                            bdd,
+                            &variables[1..],
+                            bits_per_layer,
+                            current_bit + 1,
+                            current_value,
+                        )?;
+                        return Ok(union(storage, &high, &low));
                     }
 
                     return Ok(storage.insert_singleton(current_value));
@@ -268,48 +247,28 @@ pub fn bdd_to_ldd_edge<'id>(
             let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
             let right = storage.empty_set().clone();
             return Ok(storage.insert(current_value, &down, &right));
-        } else {
-            return Ok(storage.insert(current_value, &down, &right));
-        } else {
-            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
-            let high = bdd_to_ldd_edge(
-                storage,
-                manager,
-                bdd.borrowed(),
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value | (1 << (num_bits - current_bit - 1)),
-            )?;
-            let low = bdd_to_ldd_edge(
-                storage,
-                manager,
-                bdd,
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value,
-            )?;
-            let high = bdd_to_ldd_edge(
-                storage,
-                manager,
-                bdd.borrowed(),
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value | (1 << (num_bits - current_bit - 1)),
-            )?;
-            let low = bdd_to_ldd_edge(
-                storage,
-                manager,
-                bdd,
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value,
-            )?;
-            return Ok(union(storage, &high, &low));
-        }
+        } 
+
+        debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
+        let high = bdd_to_ldd_edge(
+            storage,
+            manager,
+            bdd.borrowed(),
+            &variables[1..],
+            bits_per_layer,
+            current_bit + 1,
+            current_value | (1 << (num_bits - current_bit - 1)),
+        )?;
+        let low = bdd_to_ldd_edge(
+            storage,
+            manager,
+            bdd,
+            &variables[1..],
+            bits_per_layer,
+            current_bit + 1,
+            current_value,
+        )?;
+        return Ok(union(storage, &high, &low));
     }
 
     debug_assert_eq!(*variable_level, bdd_node.level(), "Levels do not match");
