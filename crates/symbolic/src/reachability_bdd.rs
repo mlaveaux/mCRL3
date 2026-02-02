@@ -2,9 +2,7 @@ use log::info;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
-use oxidd::FunctionSubst;
 use oxidd::ManagerRef;
-use oxidd::Subst;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
@@ -19,6 +17,7 @@ use rustc_hash::FxBuildHasher;
 use crate::SymbolicLtsBdd;
 use crate::compute_vars_bdd;
 use crate::minus;
+use crate::variable_rename_reverse;
 
 /// Performs reachability analysis on the given symbolic LTS represented using BDDs.
 ///
@@ -42,11 +41,12 @@ pub fn reachability_bdd(
     );
 
     // Substitution to replace next state variables with current state variables: [s <- s']
-    //
-    // Definition of subtitution:
-    // > f[x <- g] = (!g ∧ f[x <- false]) ∨ (g ∧ f[x <- true])
-    let state_variables = compute_vars_bdd(manager_ref, lts.state_variables())?.0;
-    let next_state_substitution = Subst::new(lts.next_state_variables(), state_variables);
+    let next_state_substitution: Vec<(VarNo, VarNo)> = lts
+        .next_state_variables()
+        .iter()
+        .cloned()
+        .zip(lts.state_variables().iter().cloned())
+        .collect();
 
     // Determine the write variables BDDs for all transition groups.
     let relation_vars_bdd = lts
@@ -115,7 +115,7 @@ pub fn reachability_bdd(
         }
 
         // Substitute next state variables with current state variables.
-        todo1 = todo1.substitute(&next_state_substitution)?;
+        todo1 = variable_rename_reverse(manager_ref, &todo1, &next_state_substitution)?;
 
         if visualize {
             // Visualize the current partition.
