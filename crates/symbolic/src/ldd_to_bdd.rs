@@ -2,7 +2,6 @@ use oxidd::BooleanFunction;
 use oxidd::Edge;
 use oxidd::Function;
 use oxidd::HasLevel;
-use oxidd::InnerNode;
 use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::VarNo;
@@ -12,6 +11,12 @@ use oxidd::util::Borrowed;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
 use oxidd_core::function::EdgeOfFunc;
+use oxidd::bdd::BDDFunction;
+use oxidd::BooleanFunction;
+use oxidd::Function;
+use oxidd::util::OptBool;
+use oxidd::VarNo;
+use oxidd_rules_bdd::simple::BDDTerminal;
 
 use merc_ldd::DataRef;
 use merc_ldd::Ldd;
@@ -20,7 +25,9 @@ use merc_ldd::Storage;
 use merc_ldd::Value;
 use merc_ldd::height;
 use merc_ldd::union;
-use oxidd_rules_bdd::simple::BDDTerminal;
+use merc_ldd::Value;
+
+use crate::collect_children;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
 /// same set by bitblasting the vector elements using the given variables as
@@ -251,18 +258,6 @@ pub fn compute_highest(storage: &mut Storage, ldd: &LddRef<'_>) -> Vec<u32> {
     let mut result = vec![0; height(storage, ldd)];
     compute_highest_rec(storage, &mut result, ldd, 0);
     result
-}
-
-/// Collect the two children of a binary node
-#[inline]
-#[must_use]
-fn collect_children<E: Edge, N: InnerNode<E>>(node: &N) -> (Borrowed<'_, E>, Borrowed<'_, E>) {
-    debug_assert_eq!(N::ARITY, 2);
-    let mut it = node.children();
-    let f_then = it.next().unwrap();
-    let f_else = it.next().unwrap();
-    debug_assert!(it.next().is_none());
-    (f_then, f_else)
 }
 
 /// Iterator that yields values reconstructed from a bit cube, from a BDD obtained by
