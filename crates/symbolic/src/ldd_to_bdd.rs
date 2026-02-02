@@ -18,6 +18,7 @@ use oxidd::util::OutOfMemory;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
 use oxidd_rules_bdd::simple::BDDTerminal;
+use rustc_hash::FxHashMap;
 
 use merc_ldd::DataRef;
 use merc_ldd::Ldd;
@@ -50,10 +51,14 @@ pub fn ldd_to_bdd<'id>(
     bits_per_layer: &LddRef<'_>,
     bit_variables: &[VarNo],
 ) -> Result<BDDFunction, OutOfMemory> {
+    // For LDDs we can assume that nodes in one layer are unique, so we don't
+    // need the bits_per_layer and bit_variables in the cache.
+    let mut cache = FxHashMap::default();
+
     manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
         Ok(BDDFunction::from_edge(
             manager,
-            ldd_to_bdd_edge(storage, manager, ldd, bits_per_layer, bit_variables)?,
+            ldd_to_bdd_edge(storage, manager, &mut cache, ldd, bits_per_layer, bit_variables)?,
         ))
     })
 }
@@ -62,6 +67,7 @@ pub fn ldd_to_bdd<'id>(
 pub fn ldd_to_bdd_edge<'id>(
     storage: &mut Storage,
     manager: &<BDDFunction as Function>::Manager<'id>,
+    cache: &mut FxHashMap<Ldd, BDDFunction>,
     ldd: &LddRef<'_>,
     bits_per_layer: &LddRef<'_>,
     bit_variables: &[VarNo],
@@ -74,13 +80,15 @@ pub fn ldd_to_bdd_edge<'id>(
         return manager.get_terminal(BDDTerminal::True);
     }
 
-    // TODO: Implement caching
+    if let Some(cached) = cache.get(ldd) {
+        return Ok(manager.clone_edge(cached.as_edge(manager)));
+    }
 
     let DataRef(value, down, right) = storage.get_ref(ldd);
     let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits_per_layer);
 
     // Right branch does not consume variables at this layer
-    let right_bdd = EdgeDropGuard::new(manager, ldd_to_bdd_edge(storage, manager, &right, bits_per_layer, bit_variables)?);
+    let right_bdd = EdgeDropGuard::new(manager, ldd_to_bdd_edge(storage, manager, cache, &right, bits_per_layer, bit_variables)?);
 
     // Ensure we have enough variables for this layer
     let needed = bits_value as usize;
@@ -96,7 +104,7 @@ pub fn ldd_to_bdd_edge<'id>(
     }
 
     // Recurse on down with the remaining variables after consuming this layer
-    let mut down_bdd = ldd_to_bdd_edge(storage, manager, &down, &bits_down, &bit_variables[needed..])?;
+    let mut down_bdd = ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed..])?;
 
     // Encode current value using the variables for this layer (MSB to LSB)
     // Current layer variables: vars[0..bits_value]
@@ -112,7 +120,9 @@ pub fn ldd_to_bdd_edge<'id>(
         }
     }
 
-    BDDFunction::or_edge(manager, &EdgeDropGuard::new(manager, down_bdd), &right_bdd)
+    let result = BDDFunction::or_edge(manager, &EdgeDropGuard::new(manager, down_bdd), &right_bdd)?;
+    cache.insert(storage.protect(ldd), BDDFunction::from_edge_ref(manager, &result));
+    Ok(result)
 }
 
 /// Converts a BDD representing a set of bitblasted vectors back into an LDD
