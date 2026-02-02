@@ -167,7 +167,7 @@ impl SymbolicLtsBdd {
         })?;
 
         let mut transition_groups = Vec::new();
-        for group in lts.transition_groups() {
+        for (index, group) in lts.transition_groups().iter().enumerate() {
             // Determine the number of bits used for each layer.
             let mut relation_bits = Vec::new();
 
@@ -202,8 +202,8 @@ impl SymbolicLtsBdd {
             // Append action label bits
             relation_bits.push(action_label_bits);
             debug!(
-                "Transition group {:?} uses number of bits {:?}, and variables: {:?}",
-                group, relation_bits, variables
+                "Transition group {}, {:?} uses number of bits {:?}, and variables: {:?}",
+                index, group, relation_bits, variables
             );
 
             let bits_dd = singleton(storage, &relation_bits);

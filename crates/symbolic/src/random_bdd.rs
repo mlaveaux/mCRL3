@@ -58,7 +58,8 @@ pub fn random_bdd<R: Rng>(
     manager_ref: &BDDManagerRef,
     rng: &mut R,
     variables: &[BDDFunction],
+    num_of_cubes: usize,
 ) -> Result<BDDFunction, MercError> {
-    let bitvectors = random_bitvectors(rng, variables.len(), 100);
+    let bitvectors = random_bitvectors(rng, variables.len(), num_of_cubes);
     bdd_from_iter(manager_ref, variables, bitvectors.iter())
 }
