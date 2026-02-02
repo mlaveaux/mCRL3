@@ -66,7 +66,29 @@ pub fn reachability_bdd(
                     lts.state_variables()[index]
                 })
                 .collect::<Vec<VarNo>>();
+    let relation_vars_bdd = lts
+        .transition_groups()
+        .iter()
+        .map(|group| -> Result<_, OutOfMemory> {
+            let bits = group
+                .write_variables()
+                .iter()
+                .map(|var| {
+                    // Find the index of the current state variable corresponding to this next state variable.
+                    let index = lts
+                        .next_state_variables()
+                        .iter()
+                        .position(|next_var| next_var == var)
+                        .unwrap();
+                    lts.state_variables()[index]
+                })
+                .collect::<Vec<VarNo>>();
 
+            compute_vars_bdd(manager_ref, &bits)?
+                .1
+                .and(&compute_vars_bdd(manager_ref, lts.action_variables())?.1)
+        })
+        .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
             compute_vars_bdd(manager_ref, &bits)?
                 .1
                 .and(&compute_vars_bdd(manager_ref, lts.action_variables())?.1)
@@ -85,7 +107,10 @@ pub fn reachability_bdd(
             //
             // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))`
             // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
+            // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))`
+            // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
             // result in `T`.
+            todo1 = todo1.or(&todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?)?;
             todo1 = todo1.or(&todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?)?;
         }
 

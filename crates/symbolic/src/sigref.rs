@@ -11,26 +11,33 @@ use merc_utilities::Timing;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
+use oxidd::Edge;
 use oxidd::Function;
 use oxidd::FunctionSubst;
 use oxidd::HasLevel;
 use oxidd::Manager;
 use oxidd::ManagerRef;
+use oxidd::Node;
 use oxidd::Subst;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::error::DuplicateVarName;
+use oxidd::util::Borrowed;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
 use oxidd::util::SatCountCache;
+use oxidd_core::function::EdgeOfFunc;
+use oxidd_core::util::EdgeDropGuard;
 use oxidd_dump::Visualizer;
+use oxidd_rules_bdd::simple::BDDTerminal;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
 use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
 use crate::ValuesIter;
+use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::required_bits_64;
 use crate::to_value;
@@ -46,6 +53,7 @@ pub fn sigref_symbolic(
     manager_ref: &BDDManagerRef,
     lts: &SymbolicLtsBdd,
     timing: &Timing,
+    split_signature: bool,
     visualize: bool,
 ) -> Result<(), MercError> {
     // There can only be one block per state, so we need as many bits as required to
@@ -102,7 +110,9 @@ pub fn sigref_symbolic(
     // Stores the partition of the states as BDD.
     let mut partition = lts
         .states()
-        .and(&manager_ref.with_manager_shared(|manager| encode_block(manager, &block_variables_bdds, 0))?)?;
+        .and(&manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
+            Ok(BDDFunction::from_edge(manager, encode_block(manager, &block_variables_bdds, 0)?))
+        })?)?;
 
     // In the sigref algorithm, the partition is defined over the next state. When we compute the signature
     // we then get (s, a, b), since in the signature we need to consider the block of the next state.
@@ -110,7 +120,6 @@ pub fn sigref_symbolic(
 
     // Keep track of local information.
     let mut num_of_blocks = 0;
-    let mut old_num_of_blocks = 1;
     let mut iteration = 0usize;
 
     let progress = TimeProgress::new(
@@ -143,44 +152,68 @@ pub fn sigref_symbolic(
     let write_variable_bdd = lts
         .transition_groups()
         .iter()
-        .map(|group| -> Result<_, MercError> { Ok(compute_vars_bdd(manager_ref, group.write_variables())?.1) })
+        .map(|group| -> Result<_, MercError> {
+            let variables = group
+                .read_variables()
+                .iter()
+                .map(|var| {
+                    let index = lts
+                        .state_variables()
+                        .iter()
+                        .position(|next_var| next_var == var)
+                        .unwrap();
+                    lts.next_state_variables()[index]
+                })
+                .chain(group.write_variables().iter().cloned())
+                .collect::<Vec<VarNo>>();
+
+            Ok(compute_vars_bdd(manager_ref, &variables)?.1)
+        })
         .collect::<Result<Vec<BDDFunction>, MercError>>()?;
 
-    while num_of_blocks != old_num_of_blocks {
+    let mut signature_index = 0;
+    loop {
         // No fixed point reached yet, so keep refining.
-        old_num_of_blocks = num_of_blocks;
+        let old_num_of_blocks = num_of_blocks;
         trace!("Iteration {} ({} blocks)", iteration, num_of_blocks);
-
-        iteration += 1;
 
         // Compute the new signatures w.r.t. the previous partition.
         let signature = timing.measure("signature", || {
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
-            for (index, (group, write_vars)) in lts
-                .transition_groups()
-                .iter()
-                .zip(write_variable_bdd.iter())
-                .enumerate()
-            {
-                // Compute the signature for this transition group.
-                //
-                // Observe that we explicitly do not quantify over state
-                // variables that are not written by the transition group.
-                // Otherwise, these state variables would become unconstrained
-                // and then after substituting next state variables with current
-                // state variables, they would lead to spurious states.
-                let group_signature = timing.measure(&format!("group_signature_{}", index), || {
-                    signature_strong(&partition, group.relation(), write_vars)
-                })?;
-                signature = signature.or(&group_signature)?;
+
+            if split_signature {
+                // Only compute the signature w.r.t. a single transition group.
+                signature = signature_strong(
+                    &partition,
+                    lts.transition_groups()[signature_index].relation(),
+                    &write_variable_bdd[signature_index],
+                )?;
+            } else {
+                // Compute the full signature by combining all transition groups.
+                for (index, (group, write_vars)) in lts
+                    .transition_groups()
+                    .iter()
+                    .zip(write_variable_bdd.iter())
+                    .enumerate()
+                {
+                    // Compute the signature for this transition group.
+                    //
+                    // Observe that we explicitly do not quantify over state
+                    // variables that are not written by the transition group.
+                    // Otherwise, these state variables would become unconstrained
+                    // and then after substituting next state variables with current
+                    // state variables, they would lead to spurious states.
+                    let group_signature = timing.measure(&format!("group_signature_{}", index), || {
+                        signature_strong(&partition, group.relation(), write_vars)
+                    })?;
+                    signature = timing.measure("signature_or", || signature.or(&group_signature))?;
+                }
             }
 
             // Substitute next state variables with current state variables to align
             // with the partition representation, required for `refine`.
             signature.substitute(&next_state_substitution)
         })?;
-
-        // TODO: Why no intersection.
 
         trace!(
             "Signature at iteration {}: {}",
@@ -204,9 +237,9 @@ pub fn sigref_symbolic(
         }
 
         // Build the new partition based on the signatures.
-        partition = manager_ref.with_manager_shared(|manager| {
+        partition = timing.measure("refine", || {
             refine(
-                manager,
+                manager_ref,
                 &mut signature_to_block,
                 &block_variables_bdds,
                 lts.next_state_variables(),
@@ -237,6 +270,22 @@ pub fn sigref_symbolic(
 
         num_of_blocks = signature_to_block.len();
         progress.print((iteration, num_of_blocks));
+        iteration += 1;
+
+        if split_signature {
+            if signature_index == 0 && num_of_blocks == old_num_of_blocks {
+                // We only reached a fixed point if after a full cycle no changes occurred.
+                break;
+            }
+
+            signature_index += 1;
+            if signature_index >= lts.transition_groups().len() {
+                // Start from the first transition group again.
+                signature_index = 0;
+            }
+        } else if num_of_blocks == old_num_of_blocks {
+            break;
+        }
 
         // Clear the block assignment for the next iteration.
         signature_to_block.clear();
@@ -277,83 +326,130 @@ fn signature_strong(
 /// assigned to each state, which should be by definition.
 ///
 /// TODO: Definition
-fn refine<'id>(
-    manager: &<BDDFunction as Function>::Manager<'id>,
-    signature_to_block: &mut FxHashMap<BDDFunction, u64>,
+fn refine(
+    manager_ref: &BDDManagerRef,
+    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
     block_variables_bdds: &[BDDFunction],
     state_variables: &[VarNo],
     signature: &BDDFunction,
     partition: &BDDFunction,
 ) -> Result<BDDFunction, MercError> {
-    // TODO: Handle the `true` case.
-    if !partition.satisfiable() || !signature.satisfiable() {
-        // In this case the state is not part of the partition function, or (s,
-        // a) not part of the actions. So return empty.
-        return Ok(partition.clone());
-    }
+    manager_ref.with_manager_shared(|manager| {
+        Ok(BDDFunction::from_edge(
+            manager,
+            refine_edge(
+                manager,
+                signature_to_block,
+                block_variables_bdds,
+                state_variables,
+                signature.as_edge(manager).borrowed(),
+                partition.as_edge(manager).borrowed(),
+            )?,
+        ))
+    })
+}
 
-    // topVar
-    let level = {
-        let fnode = manager.get_node(partition.as_edge(manager)).unwrap_inner();
-        let gnode = manager.get_node(signature.as_edge(manager)).unwrap_inner();
-        let flevel = fnode.level();
-        let glevel = gnode.level();
-        flevel.min(glevel)
+/// Recursive implementation of the [refine] function.
+fn refine_edge<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
+    block_variables_bdds: &[BDDFunction],
+    state_variables: &[VarNo],
+    signature: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+    partition: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+) -> Result<EdgeOfFunc<'id, BDDFunction>, MercError> {
+    let plevel = match manager.get_node(&partition) {
+        Node::Terminal(terminal) => {
+            if terminal == BDDTerminal::False {
+                // In this case the state is not part of the partition function, or (s,
+                // a) not part of the actions. So return empty.
+                return Ok(manager.clone_edge(&partition));
+            }
+
+            unreachable!();
+        }
+        Node::Inner(node) => node.level(),
     };
 
-    if state_variables.contains(&level) {
+    // topVar
+    let lowest_level = {
+        let slevel = match manager.get_node(&signature) {
+            Node::Terminal(_terminal) => {
+                VarNo::MAX // Terminal node, so no variable.
+            }
+            Node::Inner(node) => node.level(),
+        };
+        plevel.min(slevel)
+    };
+
+    if state_variables.contains(&lowest_level) {
         // Match paths on the level s_i, for irrelevant variables we take both paths.
         let (s_high, s_low) = {
-            let gnode = manager.get_node(signature.as_edge(manager)).unwrap_inner();
-            if gnode.level() == level {
-                signature.cofactors().expect("Not a terminal node")
-            } else {
-                (signature.clone(), signature.clone())
+            match manager.get_node(&signature) {
+                Node::Inner(node) => {
+                    if node.level() == lowest_level {
+                        collect_children(node)
+                    } else {
+                        (signature.borrowed(), signature.borrowed())
+                    }
+                }
+                _ => unreachable!("Not a terminal node"),
             }
         };
         let (p_high, p_low) = {
-            let fnode = manager.get_node(partition.as_edge(manager)).unwrap_inner();
-            if fnode.level() == level {
-                partition.cofactors().expect("Not a terminal node")
-            } else {
-                (partition.clone(), partition.clone())
+            match manager.get_node(&partition) {
+                Node::Inner(node) => {
+                    if node.level() == lowest_level {
+                        collect_children(node)
+                    } else {
+                        (partition.borrowed(), partition.borrowed())
+                    }
+                }
+                _ => unreachable!("Not a terminal node"),
             }
         };
 
-        let low = refine(
+        let low = EdgeDropGuard::new(manager, refine_edge(
             manager,
             signature_to_block,
             block_variables_bdds,
             state_variables,
-            &s_low,
-            &p_low,
-        )?;
-        let high = refine(
+            s_low,
+            p_low,
+        )?);
+        let high = EdgeDropGuard::new(manager, refine_edge(
             manager,
             signature_to_block,
             block_variables_bdds,
             state_variables,
-            &s_high,
-            &p_high,
-        )?;
+            s_high,
+            p_high,
+        )?);
 
         // 7. result := BDDnode(topVar, high, low)
-        Ok(BDDFunction::var(manager, level)?.ite(&high, &low)?)
+
+        Ok(BDDFunction::ite_edge(
+            manager,
+            &EdgeDropGuard::new(manager, BDDFunction::var_edge(manager, lowest_level)?),
+            &high,
+            &low,
+        )?)
     } else {
         // 9. else:
         // \sigma (the signature function) now encodes the state signature (a, B)
         // P (the partition function) encodes the current block assignment
 
         // 10. B := decode_block(partition)
-        let block_index = decode_block(manager, partition);
-        if let Some(block) = signature_to_block.get(signature) {
+        let block_index = decode_block(manager, partition.borrowed());
+        let signature = BDDFunction::from_edge(manager, manager.clone_edge(&signature));
+        if let Some(block) = signature_to_block.get(&(signature.clone(), block_index)) {
             // 11. If blocks[B].signature == \bottom then
             // 12.     blocks[B].signature := signature
             // 13. if blocks[B].signature == signature then
             // 14.     return P
             if *block == block_index {
                 trace!("Found existing signature for {block_index}");
-                Ok(partition.clone()) // The partition just encodes the current block.
+                Ok(manager.clone_edge(&partition)) // The partition just encodes the current block.
             } else {
                 // New partition needed
                 trace!("Return existing block {block}");
@@ -362,7 +458,7 @@ fn refine<'id>(
         } else {
             let new_block_index = signature_to_block.len() as u64;
             trace!("Creating new block {new_block_index}");
-            signature_to_block.insert(signature.clone(), new_block_index);
+            signature_to_block.insert((signature, block_index), new_block_index);
             Ok(encode_block(manager, block_variables_bdds, new_block_index)?)
         }
     }
@@ -381,25 +477,27 @@ fn encode_block<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     variables: &[BDDFunction],
     block_no: u64,
-) -> Result<BDDFunction, MercError> {
+) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
     debug_assert!(
         variables.len() >= required_bits_64(block_no) as usize,
         "Not enough variables to encode block number {}",
         block_no
     );
 
-    let mut result = BDDFunction::t(manager);
+    let mut result = EdgeDropGuard::new(manager, BDDFunction::t_edge(manager));
+    let f_edge = EdgeDropGuard::new(manager, BDDFunction::f_edge(manager));
+
     for (i, var) in variables.iter().enumerate() {
         if block_no & (1 << i) != 0 {
             // bit is 1
-            result = var.ite(&result, &BDDFunction::f(manager))?;
+            result = EdgeDropGuard::new(manager, BDDFunction::ite_edge(manager, var.as_edge(manager), &result, &f_edge)?);
         } else {
             // bit is 0
-            result = var.ite(&BDDFunction::f(manager), &result)?;
+            result = EdgeDropGuard::new(manager, BDDFunction::ite_edge(manager, var.as_edge(manager), &f_edge, &result)?);
         }
     }
 
-    Ok(result)
+    Ok(result.into_edge())
 }
 
 /// Decodes the given block number from a BDD using the given variables as bits.
@@ -407,23 +505,29 @@ fn encode_block<'id>(
 /// # Details
 ///
 /// Should be the inverse of [encode_block].
-fn decode_block<'id>(_manager: &<BDDFunction as Function>::Manager<'id>, block: &BDDFunction) -> u64 {
+fn decode_block<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    block: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+) -> u64 {
     let mut result = 0u64;
     let mut mask = 1u64;
-    let mut block = block.clone();
+    let mut block = block.borrowed();
 
-    while block.satisfiable() {
-        if let Some((b_high, b_low)) = block.cofactors() {
-            // For a cube: low satisfiable => bit 0, else => bit 1
-            if b_low.satisfiable() {
-                block = b_low;
-            } else {
-                result |= mask;
-                block = b_high;
+    let f_edge = EdgeDropGuard::new(manager, BDDFunction::f_edge(manager));
+    while *block != *f_edge {
+        match manager.get_node(&block) {
+            Node::Inner(node) => {
+                let (b_low, b_high) = collect_children(node);
+                // For a cube: low satisfiable => bit 0, else => bit 1
+                if *b_low != *f_edge {
+                    block = b_low;
+                } else {
+                    result |= mask;
+                    block = b_high;
+                }
+                mask <<= 1;
             }
-            mask <<= 1;
-        } else {
-            break;
+            Node::Terminal(_) => break,
         }
     }
 
@@ -587,17 +691,20 @@ fn to_block_index(bits: &[OptBool]) -> u64 {
 mod tests {
     use std::ops::Range;
 
+    use merc_utilities::Timing;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
     use oxidd::VarNo;
     use oxidd::bdd::BDDFunction;
     use oxidd::error::DuplicateVarName;
+    use oxidd::util::Borrowed;
     use rand::RngExt;
 
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
+    use crate::SymbolicLtsBdd;
     use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
     use crate::required_bits_64;
@@ -616,7 +723,7 @@ mod tests {
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false).unwrap();
+            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
         });
     }
 
@@ -645,7 +752,7 @@ mod tests {
                     .unwrap();
 
                 let encoded = encode_block(manager, &block_variables_bdds, block_number).unwrap();
-                let decoded = decode_block(manager, &encoded);
+                let decoded = decode_block(manager, Borrowed::new(encoded));
 
                 assert_eq!(
                     block_number, decoded,
