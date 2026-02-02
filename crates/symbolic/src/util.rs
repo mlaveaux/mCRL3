@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-use oxidd::BooleanFunction;
 use oxidd::Edge;
 use oxidd::Function;
 use oxidd::HasLevel;
 use oxidd::InnerNode;
+use oxidd::LevelNo;
 use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Node;
@@ -55,30 +55,34 @@ fn support_edge<'id>(
 }
 
 /// Specialized substitution function for variables renaming that only works for
-/// f[x <- x+1].
+/// `f[x <- x+1]` renamings.
 ///
 /// # Details
 ///
 /// In general substitution is defined as follows, but its computation can be
 /// fairly expensive.
 ///
-/// > f[x <- g] = (!g ∧ f[x <- false]) ∨ (g ∧ f[x <- true])
-/// 
+/// > f[x <- x+1] = (!x+1 ∧ f[x <- false]) ∨ (x+1 ∧ f[x <- true])
+///               = reduce(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])
+///
 /// Restricting the substitution to only renaming variables from 'x' to 'x+1'
 /// allows for a more efficient implementation. This function checks whether the
 /// inputs satisfy this restriction and then performs the renaming.
-pub fn variable_rename(manager_ref: &BDDManagerRef, 
+pub fn variable_rename(
+    manager_ref: &BDDManagerRef,
     function: &BDDFunction,
-    substitution: &[(VarNo, VarNo)]
-) -> Result<BDDFunction, OutOfMemory>    
-{
+    substitution: &[(VarNo, VarNo)],
+) -> Result<BDDFunction, OutOfMemory> {
     // Every subsitution must be from a lower variable to a higher variable.
     for (from, to) in substitution {
         debug_assert!(from + 1 == *to, "Variable renaming must be from 'x' to 'x+1'");
     }
 
-    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory>{
-        Ok(BDDFunction::from_edge(manager, variable_rename_edge(manager, function.as_edge(manager).borrowed(), substitution)?))
+    manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
+        Ok(BDDFunction::from_edge(
+            manager,
+            variable_rename_edge(manager, function.as_edge(manager).borrowed(), substitution)?,
+        ))
     })
 }
 
@@ -88,49 +92,87 @@ pub fn variable_rename_edge<'id>(
     function: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     substitution: &[(VarNo, VarNo)],
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
-    match substitution.first() {
-        Some((from, to)) => {
-            match manager.get_node(&function) {
-                Node::Terminal(terminal) => manager.get_terminal(terminal),
-                Node::Inner(node) => {
-                    let (high, low) = collect_children(node);
+    let node = match manager.get_node(&function) {
+        Node::Terminal(terminal) => return manager.get_terminal(terminal),
+        Node::Inner(node) => node
+    };
 
-                    if node.level() == *from {
-                        // Rename variable
-                        let high_substituted = EdgeDropGuard::new(manager, variable_rename_edge(manager, high, &substitution[1..])?);
-                        let low_substituted = EdgeDropGuard::new(manager, variable_rename_edge(manager, low, &substitution[1..])?);
-
-                        BDDFunction::ite_edge(
-                            manager,
-                            &EdgeDropGuard::new(manager, BDDFunction::var_edge(manager, *to)?),
-                            &high_substituted,
-                            &low_substituted,
-                        )
-                    } else {
-                        let high_substituted = EdgeDropGuard::new(manager, variable_rename_edge(manager, high, substitution)?);
-                        let low_substituted = EdgeDropGuard::new(manager, variable_rename_edge(manager, low, substitution)?);
-
-                        BDDFunction::ite_edge(
-                            manager,
-                            &EdgeDropGuard::new(manager, BDDFunction::var_edge(manager, node.level())?),
-                            &high_substituted,
-                            &low_substituted,
-                        )
-                    }
-                }
-            }
-        }
+    let (from, to) = match substitution.first() {
         None => {
             // No variables to substitute, so remains identity.
-            Ok(manager.clone_edge(&function))
+            return Ok(manager.clone_edge(&function))
         }
+        Some((from, to)) => (from, to)
+    };
+
+    // TODO: Caching
+        
+    if node.level() == *from {
+        let (high, low) = collect_children(node);
+        // Rename variable from 'from' to 'to'.
+        let high =
+            EdgeDropGuard::new(manager, variable_rename_edge(manager, high, &substitution[1..])?);
+        let low = EdgeDropGuard::new(manager, variable_rename_edge(manager, low, &substitution[1..])?);
+
+        let (high_high, _high_low) = match manager.get_node(&high) {
+            Node::Inner(node) => {
+                if node.level() == *to {
+                    // There are f[x <- true][x+1 <- true]
+                    collect_children(node)
+                } else {
+                    (high.borrowed(), high.borrowed())
+                }
+            }
+            Node::Terminal(_terminal) => {
+                (high.borrowed(), high.borrowed())
+            }
+        };
+        
+        let (_low_high, low_low) = match manager.get_node(&low) {
+            Node::Inner(node) => {
+                if node.level() == *to {
+                    // There are f[x <- false][x+1 <- false]
+                    collect_children(node)
+                } else {
+                    (low.borrowed(), low.borrowed())
+                }
+            }
+            Node::Terminal(_terminal) => {
+                (low.borrowed(), low.borrowed())
+            }
+        };
+
+        // TODO: high and low might contain 'to' variables again.
+        reduce(
+            manager,
+            *to,
+            manager.clone_edge(&high_high),
+            manager.clone_edge(&low_low),
+        )
+    } else if node.level() > *from {
+        // We are past the substitution point, so just continue.
+        variable_rename_edge(manager, function, &substitution[1..])
+    } else {
+        // node.level() < *from, in this case we keep the variable as is.
+        let (high, low) = collect_children(node);
+        let high =
+            variable_rename_edge(manager, high, substitution)?;
+        let low =
+            variable_rename_edge(manager, low, substitution)?;
+
+        reduce(
+            manager,
+            node.level(),
+            high,
+            low,
+        )
     }
 }
 
 /// Collect the two children (high, low) of a binary node
 #[inline]
 #[must_use]
-pub fn collect_children<E: Edge, N: InnerNode<E>>(node: &N) -> (Borrowed<'_, E>, Borrowed<'_, E>) {
+pub(crate) fn collect_children<E: Edge, N: InnerNode<E>>(node: &N) -> (Borrowed<'_, E>, Borrowed<'_, E>) {
     debug_assert_eq!(N::ARITY, 2);
     let mut it = node.children();
     let f_then = it.next().unwrap();
@@ -171,9 +213,11 @@ mod tests {
     fn test_bdd_variable_rename() {
         let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
 
-        let vars: Vec<BDDFunction> = manager_ref.with_manager_exclusive(|manager| {
-            AllocResult::from_iter(manager.add_vars(3).map(|i| BDDFunction::var(manager, i)))
-        }).unwrap();
+        let vars: Vec<BDDFunction> = manager_ref
+            .with_manager_exclusive(|manager| {
+                AllocResult::from_iter(manager.add_vars(3).map(|i| BDDFunction::var(manager, i)))
+            })
+            .unwrap();
 
         let res = vars[0].and(&vars[1]).unwrap().or(&vars[2]).unwrap();
         let subst = variable_rename(&manager_ref, &res, &[(0, 1), (1, 2), (2, 0)]).unwrap();
@@ -196,9 +240,30 @@ mod tests {
                 .unwrap();
 
             let function = random_bdd(&manager_ref, rng, &vars, 9).unwrap();
-            let support = support(&manager_ref, &function).unwrap();
-
-            println!("Support: {:?}", support);
+            let _support = support(&manager_ref, &function).unwrap();
+            
+            // TODO: Verify support correctness
         });
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_bdd_renaming() {
+        random_test(100, |rng| {
+            let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
+
+            let vars = manager_ref
+                .with_manager_exclusive(|manager| {
+                    manager
+                        .add_vars(4)
+                        .map(|v| BDDFunction::var(manager, v))
+                        .collect::<Result<Vec<BDDFunction>, _>>()
+                })
+                .unwrap();
+
+            let function = random_bdd(&manager_ref, rng, &vars, 9).unwrap();            
+            let subst = variable_rename(&manager_ref, &function, &[(0, 1), (2, 3)]).unwrap();
+        });
+    }
+
 }
