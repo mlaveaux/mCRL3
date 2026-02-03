@@ -15,6 +15,7 @@ use oxidd::util::Borrowed;
 use oxidd::util::OutOfMemory;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
+use rustc_hash::FxHashMap;
 
 /// The BDD representing the support variables of a BDD function.
 pub type BDDSupport = BDDFunction;
@@ -82,10 +83,12 @@ pub fn variable_rename(
         debug_assert!(from + 1 == *to, "Variable renaming must be from 'x' to 'x+1'");
     }
 
+    let mut cache = FxHashMap::default();
+
     manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
         Ok(BDDFunction::from_edge(
             manager,
-            variable_rename_edge(manager, function.as_edge(manager).borrowed(), substitution)?,
+            variable_rename_edge(manager, &mut cache, function.as_edge(manager).borrowed(), substitution)?,
         ))
     })
 }
@@ -93,6 +96,7 @@ pub fn variable_rename(
 /// Implementation of [variable_rename].
 pub fn variable_rename_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
+    cache: &mut FxHashMap<BDDFunction, BDDFunction>,
     function: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     substitution: &[(VarNo, VarNo)],
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
@@ -100,6 +104,10 @@ pub fn variable_rename_edge<'id>(
         Node::Terminal(terminal) => return manager.get_terminal(terminal),
         Node::Inner(node) => node,
     };
+
+    if let Some(cached) = cache.get(&BDDFunction::from_edge(manager, manager.clone_edge(&function))) {
+        return Ok(manager.clone_edge(&cached.as_edge(manager)));
+    }
 
     let (from, to) = match substitution.first() {
         None => {
@@ -111,11 +119,11 @@ pub fn variable_rename_edge<'id>(
 
     // TODO: Caching
 
-    if node.level() == *from {
+    let result = if node.level() == *from {
         let (high, low) = collect_children(node);
         // Rename variable from 'from' to 'to'.
-        let high = EdgeDropGuard::new(manager, variable_rename_edge(manager, high, &substitution[1..])?);
-        let low = EdgeDropGuard::new(manager, variable_rename_edge(manager, low, &substitution[1..])?);
+        let high = EdgeDropGuard::new(manager, variable_rename_edge(manager, cache, high, &substitution[1..])?);
+        let low = EdgeDropGuard::new(manager, variable_rename_edge(manager, cache, low, &substitution[1..])?);
 
         let high_high = match manager.get_node(&high) {
             Node::Inner(node) => {
@@ -149,15 +157,22 @@ pub fn variable_rename_edge<'id>(
         )
     } else if node.level() > *from {
         // We are past the substitution point, so just continue.
-        variable_rename_edge(manager, function, &substitution[1..])
+        variable_rename_edge(manager, cache, function.borrowed(), &substitution[1..])
     } else {
         // node.level() < *from, in this case we keep the variable as is.
         let (high, low) = collect_children(node);
-        let high = variable_rename_edge(manager, high, substitution)?;
-        let low = variable_rename_edge(manager, low, substitution)?;
+        let high = variable_rename_edge(manager, cache, high, substitution)?;
+        let low = variable_rename_edge(manager, cache, low, substitution)?;
 
         reduce(manager, node.level(), high, low)
-    }
+    }?;
+
+    cache.insert(
+        BDDFunction::from_edge(manager, manager.clone_edge(&function)),
+        BDDFunction::from_edge(manager, manager.clone_edge(&result)),
+    );
+
+    Ok(result)
 }
 
 /// Specialized substitution function for variables renaming that only works for
@@ -179,10 +194,12 @@ pub fn variable_rename_reverse(
         debug_assert!(*from == to + 1, "Variable renaming must be from 'x+1' to 'x'");
     }
 
+    let mut cache = FxHashMap::default();
+
     manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
         Ok(BDDFunction::from_edge(
             manager,
-            variable_rename_reverse_edge(manager, function.as_edge(manager).borrowed(), substitution)?,
+            variable_rename_reverse_edge(manager, &mut cache, function.as_edge(manager).borrowed(), substitution)?,
         ))
     })
 }
@@ -190,6 +207,7 @@ pub fn variable_rename_reverse(
 /// Implementation of [variable_rename].
 pub fn variable_rename_reverse_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
+    cache: &mut FxHashMap<BDDFunction, BDDFunction>,
     function: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     substitution: &[(VarNo, VarNo)],
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
@@ -197,6 +215,10 @@ pub fn variable_rename_reverse_edge<'id>(
         Node::Terminal(terminal) => return manager.get_terminal(terminal),
         Node::Inner(node) => node,
     };
+
+    if let Some(cached) = cache.get(&BDDFunction::from_edge(manager, manager.clone_edge(&function))) {
+        return Ok(manager.clone_edge(&cached.as_edge(manager)));
+    }
 
     let (from, to) = match substitution.first() {
         None => {
@@ -206,52 +228,58 @@ pub fn variable_rename_reverse_edge<'id>(
         Some((from, to)) => (from, to),
     };
 
-    // TODO: Caching
-
-    if node.level() == *to {
+    let result = if node.level() == *to {
         // Build node at level `to` using cofactors of `from` where present.
         let (high, low) = collect_children(node);
 
         let high = EdgeDropGuard::new(
             manager,
-            variable_rename_reverse_edge(manager, high, &substitution[1..])?,
+            variable_rename_reverse_edge(manager, cache, high, &substitution[1..])?,
         );
-        let low = EdgeDropGuard::new(manager, variable_rename_reverse_edge(manager, low, &substitution[1..])?);
+        let low = EdgeDropGuard::new(
+            manager,
+            variable_rename_reverse_edge(manager, cache, low, &substitution[1..])?,
+        );
 
-        // t = F_then with x+1 := true
-        let t = match manager.get_node(&high) {
-            Node::Inner(n) if n.level() == *from => {
-                let (hh, _hl) = collect_children(n);
-                manager.clone_edge(&hh)
-            }
-            _ => manager.clone_edge(&high),
+        let high_high = match manager.get_node(&high) {
+            Node::Inner(node) if node.level() == *from => collect_children(node).0,
+            _ => high.borrowed(),
         };
-        // e = F_else with x+1 := false
-        let e = match manager.get_node(&low) {
-            Node::Inner(n) if n.level() == *from => {
-                let (_lh, ll) = collect_children(n);
-                manager.clone_edge(&ll)
-            }
-            _ => manager.clone_edge(&low),
+        let low_low = match manager.get_node(&low) {
+            Node::Inner(node) if node.level() == *from => collect_children(node).1,
+            _ => low.borrowed(),
         };
 
-        reduce(manager, *to, t, e)
+        reduce(
+            manager,
+            *to,
+            manager.clone_edge(&high_high),
+            manager.clone_edge(&low_low),
+        )
     } else if node.level() == *from {
+        // TODO: Why is this case needed?
         // `x+1` appears before `x`: rename this node to level `to`.
         let (high, low) = collect_children(node);
-        let high = variable_rename_reverse_edge(manager, high, &substitution[1..])?;
-        let low = variable_rename_reverse_edge(manager, low, &substitution[1..])?;
+        let high = variable_rename_reverse_edge(manager, cache, high, &substitution[1..])?;
+        let low = variable_rename_reverse_edge(manager, cache, low, &substitution[1..])?;
         reduce(manager, *to, high, low)
     } else if node.level() > *from {
         // Past both `to` and `from`, drop this substitution.
-        variable_rename_reverse_edge(manager, function, &substitution[1..])
+        variable_rename_reverse_edge(manager, cache, function.borrowed(), &substitution[1..])
     } else {
         // Recurse normally, keeping the substitution.
         let (high, low) = collect_children(node);
-        let high = variable_rename_reverse_edge(manager, high, substitution)?;
-        let low = variable_rename_reverse_edge(manager, low, substitution)?;
+        let high = variable_rename_reverse_edge(manager, cache, high, substitution)?;
+        let low = variable_rename_reverse_edge(manager, cache, low, substitution)?;
         reduce(manager, node.level(), high, low)
-    }
+    }?;
+
+    cache.insert(
+        BDDFunction::from_edge(manager, manager.clone_edge(&function)),
+        BDDFunction::from_edge(manager, manager.clone_edge(&result)),
+    );
+
+    Ok(result)
 }
 
 /// Collect the two children (high, low) of a binary node
