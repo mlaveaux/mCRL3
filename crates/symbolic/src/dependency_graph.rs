@@ -1,5 +1,7 @@
 use std::fmt;
 
+use log::trace;
+
 /// Represents a dependency graph between variables used in symbolic transition relations.
 pub struct DependencyGraph {
     /// The list of relations in the dependency graph.
@@ -25,6 +27,30 @@ impl DependencyGraph {
         }
     }
 
+    /// Creates a new dependency graph by reordering the vertices according to the given order.
+    pub fn reorder(&self, order: &[usize]) -> Self {
+        let mut new_relations = Vec::with_capacity(self.relations.len());
+
+        for relation in &self.relations {
+            let mut new_read_vars: Vec<usize> = relation
+                .read_vars()
+                .map(|var| order.iter().position(|&v| v == var).unwrap())
+                .collect();
+
+            let mut new_write_vars: Vec<usize> = relation
+                .write_vars()
+                .map(|var| order.iter().position(|&v| v == var).unwrap())
+                .collect();
+
+            new_read_vars.sort_unstable();
+            new_write_vars.sort_unstable();
+
+            new_relations.push(Relation::new(new_read_vars, new_write_vars));
+        }
+
+        DependencyGraph::new(new_relations)
+    }
+
     /// Returns the number of vertices in the dependency graph.
     pub fn num_of_vertices(&self) -> usize {
         self.num_of_vertices
@@ -39,11 +65,21 @@ impl DependencyGraph {
     pub fn relations(&self) -> impl Iterator<Item = &Relation> {
         self.relations.iter()
     }
+
+    /// Returns the total span of all relations in the dependency graph.
+    pub fn total_span(&self) -> usize {
+        self.relations.iter().map(|rel| rel.span()).sum()
+    }
 }
 
 impl fmt::Debug for DependencyGraph {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "graph with {} vertices, and {} hyper-edges", self.num_of_vertices, self.relations.len())?;
+        writeln!(
+            f,
+            "graph with {} vertices, and {} hyper-edges",
+            self.num_of_vertices,
+            self.relations.len()
+        )?;
         for (i, relation) in self.relations.iter().enumerate() {
             writeln!(f, "  {}: {:?}", i, relation)?;
         }
@@ -73,6 +109,20 @@ impl Relation {
     pub fn write_vars(&self) -> impl Iterator<Item = usize> + '_ {
         self.write_vars.iter().copied()
     }
+
+    /// Returns the span of the relation, i.e., the range between the minimum and maximum
+    /// variable indices used by this relation.
+    pub fn span(&self) -> usize {
+        let min_read = self.read_vars.iter().min().copied().unwrap_or(usize::MAX);
+        let max_read = self.read_vars.iter().max().copied().unwrap_or(0);
+        let min_write = self.write_vars.iter().min().copied().unwrap_or(usize::MAX);
+        let max_write = self.write_vars.iter().max().copied().unwrap_or(0);
+
+        let min_var = min_read.min(min_write);
+        let max_var = max_read.max(max_write);
+
+        if max_var >= min_var { max_var - min_var + 1 } else { 0 }
+    }
 }
 
 impl fmt::Debug for Relation {
@@ -85,6 +135,7 @@ impl fmt::Debug for Relation {
 /// [lpreach](https://mcrl2.org/web/user_manual/tools/release/lpsreach.html) and
 /// [pbessolvesymbolic](https://mcrl2.org/web/user_manual/tools/release/pbessolvesymbolic.html).
 pub fn parse_compacted_dependency_graph(input: &str) -> DependencyGraph {
+    trace!("Parsing dependency graph:\n{}", input);
     let mut relations = Vec::new();
 
     for line in input.lines() {

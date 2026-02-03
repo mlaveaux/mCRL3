@@ -43,7 +43,8 @@ use crate::collect_children;
 /// by node, and introducing bit number of BDD variables (given by
 /// `bit_variables`) for each layer in the LDD. These variables *must* already
 /// exist in the given BDD manager.
-pub fn ldd_to_bdd<'id>(
+#[allow(clippy::mutable_key_type)]
+pub fn ldd_to_bdd(
     storage: &mut Storage,
     manager_ref: &BDDManagerRef,
     ldd: &LddRef<'_>,
@@ -63,6 +64,7 @@ pub fn ldd_to_bdd<'id>(
 }
 
 /// Recursive implementation of [ldd_to_bdd].
+#[allow(clippy::mutable_key_type)]
 pub fn ldd_to_bdd_edge<'id>(
     storage: &mut Storage,
     manager: &<BDDFunction as Function>::Manager<'id>,
