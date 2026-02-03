@@ -1,4 +1,5 @@
 use log::info;
+use log::trace;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -40,7 +41,7 @@ pub fn reachability_bdd(
         1,
     );
 
-    // Substitution to replace next state variables with current state variables: [s <- s']
+    // Substitution to replace next state variables with current state variables: [s' <- s]
     let next_state_substitution: Vec<(VarNo, VarNo)> = lts
         .next_state_variables()
         .iter()
@@ -96,6 +97,8 @@ pub fn reachability_bdd(
         .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
     while todo.satisfiable() {
+        trace!("iteration {}", iteration);
+
         // Apply the transition relations to the todo set.
         let mut todo1 = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
         for (transition, relation_vars) in lts.transition_groups().iter().zip(relation_vars_bdd.iter()) {
@@ -109,13 +112,14 @@ pub fn reachability_bdd(
             // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
             // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))`
             // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
-            // result in `T`.
-            todo1 = todo1.or(&todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?)?;
-            todo1 = todo1.or(&todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?)?;
-        }
+            // result in `T`. And `todo(s)[s' <- s]` is equal to `todo(s)`.
+            let tmp = todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?;
 
-        // Substitute next state variables with current state variables.
-        todo1 = variable_rename_reverse(manager_ref, &todo1, &next_state_substitution)?;
+            // Substitute next state variables with current state variables.
+            let tmp = variable_rename_reverse(manager_ref, &tmp, &next_state_substitution)?;
+
+            todo1 = todo1.or(&tmp)?;
+        }
 
         if visualize {
             // Visualize the current partition.

@@ -37,24 +37,27 @@ use crate::SymbolicLtsBdd;
 use crate::ValuesIter;
 use crate::collect_children;
 use crate::compute_vars_bdd;
+use crate::reduce;
 use crate::required_bits_64;
 use crate::to_value;
 use crate::variable_rename;
 
-/// Computes the signature refinement of the given symbolic LTS using strong bisimulation.
+/// Computes the reduction of the given symbolic LTS using symbolic signature
+/// refinement.
 ///
 /// # Details
 ///
 /// The implementation is based on the following paper:
 ///  
-/// > Tom van Dijk and Jaco van de Pol. Multi-core Symbolic Bisimulation Minimization.
+/// > Tom van Dijk and Jaco van de Pol. Multi-core Symbolic Bisimulation
+/// > Minimization.
 pub fn sigref_symbolic(
     manager_ref: &BDDManagerRef,
     lts: &SymbolicLtsBdd,
     timing: &Timing,
     split_signature: bool,
     visualize: bool,
-) -> Result<(), MercError> {
+) -> Result<BDDFunction, MercError> {
     // There can only be one block per state, so we need as many bits as required to
     // represent all states.
     let number_of_states = lts
@@ -172,7 +175,7 @@ pub fn sigref_symbolic(
         trace!("Iteration {} ({} blocks)", iteration, num_of_blocks);
 
         // Compute the new signatures w.r.t. the previous partition.
-        let signature = timing.measure("signature", || {
+        let signature = timing.measure("signature", || -> Result<BDDFunction, OutOfMemory> {
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
 
             if split_signature {
@@ -182,6 +185,8 @@ pub fn sigref_symbolic(
                     lts.transition_groups()[signature_index].relation(),
                     &write_variable_bdd[signature_index],
                 )?;
+
+                signature = variable_rename(manager_ref, &signature, &state_substitution)?;
             } else {
                 // Compute the full signature by combining all transition groups.
                 for (index, (group, write_vars)) in lts
@@ -200,13 +205,15 @@ pub fn sigref_symbolic(
                     let group_signature = timing.measure(&format!("group_signature_{}", index), || {
                         signature_strong(&partition, group.relation(), write_vars)
                     })?;
+                    
+                    // Substitute next state variables with current state variables to align
+                    // with the partition representation, required for `refine`.
+                    let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
                     signature = timing.measure("signature_or", || signature.or(&group_signature))?;
                 }
             }
 
-            // Substitute next state variables with current state variables to align
-            // with the partition representation, required for `refine`.
-            variable_rename(manager_ref, &signature, &state_substitution)
+            Ok(signature)
         })?;
 
         trace!(
@@ -290,7 +297,7 @@ pub fn sigref_symbolic(
         iteration, num_of_blocks
     );
 
-    Ok(())
+    Ok(partition)
 }
 
 /// Computes the strong signature refinement of the given partition and
@@ -329,10 +336,13 @@ fn refine(
     partition: &BDDFunction,
 ) -> Result<BDDFunction, MercError> {
     manager_ref.with_manager_shared(|manager| {
+        let mut cache = FxHashMap::default();
+
         Ok(BDDFunction::from_edge(
             manager,
             refine_edge(
                 manager,
+                &mut cache,
                 signature_to_block,
                 block_variables_bdds,
                 state_variables,
@@ -346,17 +356,17 @@ fn refine(
 /// Recursive implementation of the [refine] function.
 fn refine_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
+    cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
     signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
     block_variables_bdds: &[BDDFunction],
     state_variables: &[VarNo],
     signature: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     partition: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
-) -> Result<EdgeOfFunc<'id, BDDFunction>, MercError> {
+) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
     let plevel = match manager.get_node(&partition) {
         Node::Terminal(terminal) => {
             if terminal == BDDTerminal::False {
-                // In this case the state is not part of the partition function, or (s,
-                // a) not part of the actions. So return empty.
+                // In this case the state is not part of the partition function, so return empty.
                 return Ok(manager.clone_edge(&partition));
             }
 
@@ -364,6 +374,13 @@ fn refine_edge<'id>(
         }
         Node::Inner(node) => node.level(),
     };
+
+    if let Some(cached) = cache.get(&(
+        BDDFunction::from_edge(manager, manager.clone_edge(&signature)),
+        BDDFunction::from_edge(manager, manager.clone_edge(&partition)),
+    )) {
+        return Ok(manager.clone_edge(&cached.as_edge(manager)));
+    }
 
     // topVar
     let lowest_level = {
@@ -376,7 +393,7 @@ fn refine_edge<'id>(
         plevel.min(slevel)
     };
 
-    if state_variables.contains(&lowest_level) {
+    let result = if state_variables.contains(&lowest_level) {
         // Match paths on the level s_i, for irrelevant variables we take both paths.
         let (s_high, s_low) = {
             match manager.get_node(&signature) {
@@ -403,37 +420,27 @@ fn refine_edge<'id>(
             }
         };
 
-        let low = EdgeDropGuard::new(
+        let low = refine_edge(
             manager,
-            refine_edge(
-                manager,
-                signature_to_block,
-                block_variables_bdds,
-                state_variables,
-                s_low,
-                p_low,
-            )?,
-        );
-        let high = EdgeDropGuard::new(
+            cache,
+            signature_to_block,
+            block_variables_bdds,
+            state_variables,
+            s_low,
+            p_low,
+        )?;
+        let high = refine_edge(
             manager,
-            refine_edge(
-                manager,
-                signature_to_block,
-                block_variables_bdds,
-                state_variables,
-                s_high,
-                p_high,
-            )?,
-        );
+            cache,
+            signature_to_block,
+            block_variables_bdds,
+            state_variables,
+            s_high,
+            p_high,
+        )?;
 
         // 7. result := BDDnode(topVar, high, low)
-
-        Ok(BDDFunction::ite_edge(
-            manager,
-            &EdgeDropGuard::new(manager, BDDFunction::var_edge(manager, lowest_level)?),
-            &high,
-            &low,
-        )?)
+        Ok(reduce(manager, lowest_level, high, low)?)
     } else {
         // 9. else:
         // \sigma (the signature function) now encodes the state signature (a, B)
@@ -461,7 +468,14 @@ fn refine_edge<'id>(
             signature_to_block.insert((signature, block_index), new_block_index);
             Ok(encode_block(manager, block_variables_bdds, new_block_index)?)
         }
-    }
+    }?;
+    
+    cache.insert(
+        (BDDFunction::from_edge(manager, manager.clone_edge(&signature)), BDDFunction::from_edge(manager, manager.clone_edge(&partition))),
+        BDDFunction::from_edge(manager, manager.clone_edge(&result)),
+    );
+
+    Ok(result)
 }
 
 /// Encodes the given block number into a BDD using the given variables as bits.
@@ -766,5 +780,25 @@ mod tests {
                 );
             });
         })
+    }
+    
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_sigref() {
+        random_test(100, |rng| {            
+            let mut storage = merc_ldd::Storage::new();
+
+            // We don't really check anything here, just ensure that reachability runs without errors.
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+            let expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+            let split_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+
+            assert!(split_partition == expected_partition, "Split signature approach does not match actual signature refinement");
+        });
+
     }
 }

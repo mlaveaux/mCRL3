@@ -87,7 +87,10 @@ pub fn ldd_to_bdd_edge<'id>(
     let DataRef(bits_value, bits_down, _bits_right) = storage.get_ref(bits_per_layer);
 
     // Right branch does not consume variables at this layer
-    let right_bdd = EdgeDropGuard::new(manager, ldd_to_bdd_edge(storage, manager, cache, &right, bits_per_layer, bit_variables)?);
+    let right_bdd = EdgeDropGuard::new(
+        manager,
+        ldd_to_bdd_edge(storage, manager, cache, &right, bits_per_layer, bit_variables)?,
+    );
 
     // Ensure we have enough variables for this layer
     let needed = bits_value as usize;
@@ -103,7 +106,10 @@ pub fn ldd_to_bdd_edge<'id>(
     }
 
     // Recurse on down with the remaining variables after consuming this layer
-    let mut down_bdd = EdgeDropGuard::new(manager, ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed..])?);
+    let mut down_bdd = EdgeDropGuard::new(
+        manager,
+        ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed..])?,
+    );
 
     // Encode current value using the variables for this layer (MSB to LSB)
     // Current layer variables: vars[0..bits_value]
@@ -197,7 +203,7 @@ pub fn bdd_to_ldd_edge<'id>(
                             let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
                             let right = storage.empty_set().clone();
                             return Ok(storage.insert(current_value, &down, &right));
-                        } 
+                        }
 
                         debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
                         let high = bdd_to_ldd_edge(
@@ -249,7 +255,7 @@ pub fn bdd_to_ldd_edge<'id>(
             let down = bdd_to_ldd_edge(storage, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
             let right = storage.empty_set().clone();
             return Ok(storage.insert(current_value, &down, &right));
-        } 
+        }
 
         debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
         let high = bdd_to_ldd_edge(
