@@ -43,7 +43,7 @@ impl DependencyGraph {
 
 impl fmt::Debug for DependencyGraph {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "DependencyGraph with {} vertices:", self.num_of_vertices)?;
+        writeln!(f, "graph with {} vertices, and {} hyper-edges", self.num_of_vertices, self.relations.len())?;
         for (i, relation) in self.relations.iter().enumerate() {
             writeln!(f, "  {}: {:?}", i, relation)?;
         }
@@ -81,14 +81,17 @@ impl fmt::Debug for Relation {
     }
 }
 
-/// Parses a dependency graph as output by
+/// Parses a dependency graph as output by the `--info` option of both
 /// [lpreach](https://mcrl2.org/web/user_manual/tools/release/lpsreach.html) and
-/// [pbessolvesymbolic](https://mcrl2.org/web/user_manual/tools/release/pbessolvesymbolic.html)
-/// flag `--info`.
+/// [pbessolvesymbolic](https://mcrl2.org/web/user_manual/tools/release/pbessolvesymbolic.html).
 pub fn parse_compacted_dependency_graph(input: &str) -> DependencyGraph {
     let mut relations = Vec::new();
 
     for line in input.lines() {
+        if line == "read/write patterns compacted" {
+            continue;
+        }
+
         // Keep only pattern characters, ignoring indices/whitespace
         let pattern: Vec<char> = line.chars().filter(|c| matches!(c, '+' | '-' | 'r' | 'w')).collect();
 

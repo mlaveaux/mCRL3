@@ -33,7 +33,7 @@ mod inner {
 
         let context = Context::builder()
             .preset(Preset::HighestQuality)
-            .epsilon(0.000001)
+            .epsilon(0.01)
             .k(2)
             .objective(Objective::Cut)
             .build()?;
