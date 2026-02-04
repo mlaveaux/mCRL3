@@ -109,9 +109,13 @@ struct ExploreArgs {
 
 #[derive(clap::Args, Debug)]
 struct ReorderArgs {
-    /// Path to the mCRL2 tools (lpsreach or pbessolvesymbolic)
+    /// Explicit path to the mCRL2 tools (lpsreach or pbessolvesymbolic)
     #[arg(long)]
-    mcrl2_tool_path: Option<PathBuf>,
+    mcrl2_path: Option<PathBuf>,
+
+    /// Explicit path to the kahypar tools
+    #[arg(long)]
+    kahypar_path: Option<PathBuf>,
 
     /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
@@ -275,11 +279,18 @@ fn explore_impl<L: SymbolicLTS>(
 }
 
 /// Computes a variable reordering for the output of lpsreach.
-fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError> {
+fn handle_reorder(args: &ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {  
+    // Find kahypar
+    let kahypar_path = if let Some(path) = &args.kahypar_path {
+        which_in("KaHyPar", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find KaHyPar")?
+    } else {
+        which::which("KaHyPar").map_err(|_e| "Cannot find KaHyPar in PATH")?
+    };
+
     if args.filename.extension() == Some(OsStr::new("lps")) {
         // Find lpsreach
-        let lpsreach_path = if let Some(path) = &args.mcrl2_tool_path {
-            which_in("lpsreach", Some(path), std::env::current_dir()?)?
+        let lpsreach_path = if let Some(path) = &args.mcrl2_path {
+            which_in("lpsreach", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find lpsreach")?
         } else {
             which::which("lpsreach").map_err(|_e| "Cannot find lpsreach in PATH")?
         };
@@ -292,12 +303,12 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
 
         let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
 
-        let order = reorder(&graph)?;
+        let order = reorder(&kahypar_path, &graph)?;
         println!("Computed variable order: {}", order.iter().format(" "));
     } else if args.filename.extension() == Some(OsStr::new("pbes")) {
         // Find pbessolvesymbolic
-        let pbessolvesymbolic = if let Some(path) = &args.mcrl2_tool_path {
-            which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?)?
+        let pbessolvesymbolic = if let Some(path) = &args.mcrl2_path {
+            which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find pbessolvesymbolic")?
         } else {
             which::which("pbessolvesymbolic").map_err(|_e| "Cannot find pbessolvesymbolic in PATH")?
         };
@@ -309,7 +320,7 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
             .map_err(|e| e.to_string())?;
 
         let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
-        let mut order = reorder(&graph)?;
+        let mut order = reorder(&kahypar_path, &graph)?;
 
         // Ensure that the first variable is 0 by removing it and keeping the rest
         order.retain(|&x| x != 0);
