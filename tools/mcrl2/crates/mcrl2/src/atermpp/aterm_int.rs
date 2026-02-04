@@ -21,14 +21,14 @@ mod inner {
     use crate::Todo;
     use crate::is_aterm_int;
 
-    /// Represents an atermpp::aterm_string from the mCRL2 toolset.
+    /// Represents an atermpp::aterm_int from the mCRL2 toolset.
     #[mcrl2_term(is_aterm_int)]
     pub struct ATermInt {
         term: ATerm,
     }
 
     impl ATermInt {
-        /// Creates a new ATermInt from the given string value.
+        /// Creates a new ATermInt from the given value.
         #[mcrl2_ignore]
         pub fn with_value(value: u64) -> Self {
             Self {
@@ -36,10 +36,9 @@ mod inner {
             }                     
         }
 
-        /// Returns the string value.
+        /// Returns the integer value.
         pub fn value(&self) -> u64 {
-            // The Rust::Str should ensure that this is a valid string.
-            0
+            unimplemented!("Cannot retrieve integer value yet")
         }
     }
 }
