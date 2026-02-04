@@ -26,20 +26,27 @@ mod inner {
     /// The algorithm is described in the following paper:
     ///
     /// > Fadi A. Aloul, Igor L. Markov, Karem A. Sakallah:. MINCE: A Static Global Variable-Ordering Heuristic for SAT Search and BDD Manipulation. J. Univers. Comput. Sci. 10(12): 1562-1596 (2004). [DOI](https://doi.org/10.3217/jucs-010-12-1562)
-
     #[cfg(feature = "kahypar")]
     pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
         trace!("Starting MINCE with {graph:?}");
 
+        trace!("Total span of dependency graph: {}", graph.total_span());
+
         let context = Context::builder()
-            .preset(Preset::HighestQuality)
-            .epsilon(0.01)
+            .preset(Preset::Quality)
+            .epsilon(0.0)
             .k(2)
             .objective(Objective::Cut)
             .build()?;
 
         let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-        mince(&context, &vertices, graph)
+
+        let result = mince(&context, &vertices, graph)?;
+        trace!(
+            "Total span of dependency graph: {}",
+            graph.reorder(&result).total_span()
+        );
+        Ok(result)
     }
 
     /// The recursive MINCE algorithm to compute a partitioning of the given dependency graph.
@@ -80,17 +87,24 @@ mod inner {
 
         let mut left = mince(context, &left_vertices, graph)?;
         let mut right = mince(context, &right_vertices, graph)?;
-        left.append(&mut right);
+
+        let result = if left.iter().sum::<usize>() < right.iter().sum::<usize>() {
+            left.append(&mut right);
+            left
+        } else {
+            right.append(&mut left);
+            right
+        };
 
         // Check that the result is a valid permutation
         if cfg!(debug_assertions) {
-            let mut copy = left.clone();
+            let mut copy = result.clone();
             copy.sort();
 
             debug_assert_eq!(copy, vertices, "Resulting order is not a valid permutation");
         }
 
-        Ok(left)
+        Ok(result)
     }
 
     /// Constructs a hypergraph CSR from the given read/write matrix.
