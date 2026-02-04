@@ -374,6 +374,8 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
     })?;
 
-    timing.measure("reduction", || sigref_symbolic(&manager_ref, &lts_bdd, timing, args.split_signature, args.visualize))?;
+    timing.measure("reduction", || {
+        sigref_symbolic(&manager_ref, &lts_bdd, timing, args.split_signature, args.visualize)
+    })?;
     Ok(())
 }

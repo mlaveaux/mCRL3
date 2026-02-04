@@ -1,8 +1,9 @@
 //! Functions in this module are only relevant for testing purposes.
 
 use rand::Rng;
-use rand::RngExt;
 use std::collections::HashSet;
+
+use rand::RngExt;
 use streaming_iterator::StreamingIterator;
 
 use crate::Ldd;

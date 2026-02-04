@@ -69,7 +69,7 @@ fn support_edge<'id>(
 /// implementation, as follows:
 ///
 /// > f[x <- x+1] = (!x+1 ∧ f[x <- false]) ∨ (x+1 ∧ f[x <- true])
-///               = make_node(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])
+/// >             = make_node(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])
 ///
 /// This function checks whether the inputs satisfy this restriction and then
 /// performs the renaming.
@@ -106,7 +106,7 @@ pub fn variable_rename_edge<'id>(
     };
 
     if let Some(cached) = cache.get(&BDDFunction::from_edge(manager, manager.clone_edge(&function))) {
-        return Ok(manager.clone_edge(&cached.as_edge(manager)));
+        return Ok(manager.clone_edge(cached.as_edge(manager)));
     }
 
     let (from, to) = match substitution.first() {
@@ -183,7 +183,7 @@ pub fn variable_rename_edge<'id>(
 /// We can derive the following:
 ///
 /// > f[x+1 <- x] = (!x ∧ f[x+1 <- false]) ∨ (x ∧ f[x+1 <- true])
-///               = make_node(x, f[x <- true][x+1 <- true] , f[x+1 <- false][x <- false])
+/// >             = make_node(x, f[x <- true][x+1 <- true] , f[x+1 <- false][x <- false])
 pub fn variable_rename_reverse(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
@@ -217,7 +217,7 @@ pub fn variable_rename_reverse_edge<'id>(
     };
 
     if let Some(cached) = cache.get(&BDDFunction::from_edge(manager, manager.clone_edge(&function))) {
-        return Ok(manager.clone_edge(&cached.as_edge(manager)));
+        return Ok(manager.clone_edge(cached.as_edge(manager)));
     }
 
     let (from, to) = match substitution.first() {
@@ -317,9 +317,20 @@ pub(crate) fn reduce<'id>(
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
-    use oxidd::{BooleanFunction, FunctionSubst, Manager, ManagerRef, Subst, bdd::BDDFunction, util::AllocResult};
+    use oxidd::BooleanFunction;
+    use oxidd::FunctionSubst;
+    use oxidd::Manager;
+    use oxidd::ManagerRef;
+    use oxidd::Subst;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::util::AllocResult;
 
-    use crate::{FormatConfigSet, compute_vars_bdd, random_bdd, support, variable_rename, variable_rename_reverse};
+    use crate::FormatConfigSet;
+    use crate::compute_vars_bdd;
+    use crate::random_bdd;
+    use crate::support;
+    use crate::variable_rename;
+    use crate::variable_rename_reverse;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
