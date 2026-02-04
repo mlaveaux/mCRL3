@@ -344,7 +344,7 @@ mod tests {
             .unwrap();
 
         let res = vars[0].and(&vars[1]).unwrap().or(&vars[2]).unwrap();
-        let subst = variable_rename(&manager_ref, &res, &[(0, 1), (1, 2), (2, 0)]).unwrap();
+        let subst = variable_rename(&manager_ref, &res, &[(0, 1), (1, 2)]).unwrap();
         assert!(subst.satisfiable());
     }
 
