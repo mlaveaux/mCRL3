@@ -196,7 +196,7 @@ pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositiona
         ) -> Option<PbesExpression> {
             // Found a propositional variable instantiation, return true.
             self.result
-                .push(PbesPropositionalVariableInstantiation::from(inst.protect()));
+                .push(inst.protect());
             None
         }
     }
@@ -219,7 +219,7 @@ pub fn data_expression_variables(expr: &DataExpressionRef<'_>) -> Vec<DataVariab
         fn visit_variable(&mut self, var: &DataVariableRef<'_>) -> Option<DataExpression> {
             // Found a propositional variable instantiation, return true.
             self.result
-                .push(DataVariable::from(var.protect()));
+                .push(var.protect());
             None
         }
     }
