@@ -1,3 +1,17 @@
+use crate::is_abstraction;
+use crate::is_application;
+use crate::is_function_symbol;
+use crate::is_machine_number;
+use crate::is_pbes_and;
+use crate::is_pbes_exists;
+use crate::is_pbes_forall;
+use crate::is_pbes_imp;
+use crate::is_pbes_not;
+use crate::is_pbes_or;
+use crate::is_pbes_propositional_variable_instantiation;
+use crate::is_untyped_identifier;
+use crate::is_variable;
+use crate::is_where_clause;
 use crate::DataAbstractionRef;
 use crate::DataApplicationRef;
 use crate::DataExpression;
@@ -18,20 +32,6 @@ use crate::PbesNotRef;
 use crate::PbesOrRef;
 use crate::PbesPropositionalVariableInstantiation;
 use crate::PbesPropositionalVariableInstantiationRef;
-use crate::is_abstraction;
-use crate::is_application;
-use crate::is_function_symbol;
-use crate::is_machine_number;
-use crate::is_pbes_and;
-use crate::is_pbes_exists;
-use crate::is_pbes_forall;
-use crate::is_pbes_imp;
-use crate::is_pbes_not;
-use crate::is_pbes_or;
-use crate::is_pbes_propositional_variable_instantiation;
-use crate::is_untyped_identifier;
-use crate::is_variable;
-use crate::is_where_clause;
 
 pub trait DataExpressionVisitor {
     fn visit_variable(&mut self, _var: &DataVariableRef<'_>) -> Option<DataExpression> {
@@ -135,7 +135,7 @@ pub trait PbesExpressionVisitor {
     fn visit(&mut self, expr: &PbesExpressionRef<'_>) -> Option<PbesExpression> {
         if is_pbes_propositional_variable_instantiation(&expr.copy()) {
             self.visit_propositional_variable_instantiation(&PbesPropositionalVariableInstantiationRef::from(
-                expr.copy()
+                expr.copy(),
             ))
         } else if is_pbes_not(&expr.copy()) {
             self.visit_not(&PbesNotRef::from(expr.copy()))
@@ -155,31 +155,6 @@ pub trait PbesExpressionVisitor {
     }
 }
 
-/// Replaces data variables in the given data expression according to the
-/// provided substitution function.
-/// 
-/// TODO: This is not yet functional, the replacements actually do not work.
-pub fn data_expression_replace_variables<F>(expr: &DataExpressionRef<'_>, f: &F) -> DataExpression
-where
-    F: Fn(&DataVariableRef<'_>) -> DataExpression,
-{
-    struct ReplaceVariableBuilder<'a, F> {
-        apply: &'a F,
-    }
-
-    impl<'a, F> DataExpressionVisitor for ReplaceVariableBuilder<'a, F>
-    where
-        F: Fn(&DataVariableRef<'_>) -> DataExpression,
-    {
-        fn visit_variable(&mut self, var: &DataVariableRef<'_>) -> Option<DataExpression> {
-            Some((*self.apply)(var))
-        }
-    }
-
-    let mut builder = ReplaceVariableBuilder { apply: f };
-    builder.visit(expr).expect("Replacement should return a value")
-}
-
 /// Returns all the PVIs occurring in the given PBES expression.
 pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositionalVariableInstantiation> {
     let mut result = Vec::new();
@@ -194,9 +169,7 @@ pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositiona
             &mut self,
             inst: &PbesPropositionalVariableInstantiationRef<'_>,
         ) -> Option<PbesExpression> {
-            // Found a propositional variable instantiation, return true.
-            self.result
-                .push(inst.protect());
+            self.result.push(inst.protect());
             None
         }
     }
@@ -210,16 +183,14 @@ pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositiona
 pub fn data_expression_variables(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
     let mut result = Vec::new();
 
-    /// Local struct that is used to collect PVI occurrences.
+    /// Local struct that is used to collect variable occurrences.
     struct VariableOccurrences<'a> {
         result: &'a mut Vec<DataVariable>,
     }
 
     impl DataExpressionVisitor for VariableOccurrences<'_> {
         fn visit_variable(&mut self, var: &DataVariableRef<'_>) -> Option<DataExpression> {
-            // Found a propositional variable instantiation, return true.
-            self.result
-                .push(var.protect());
+            self.result.push(var.protect());
             None
         }
     }

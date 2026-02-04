@@ -360,7 +360,7 @@ impl SymmetryAlgorithm {
             info!("Data parameters group: {:?}, indices: {:?}", group, parameter_indices);
 
             // Compute the product of the current data group with the already concatenated ones.
-            let number_of_parametes = parameter_indices.len();
+            let number_of_parameters = parameter_indices.len();
             if number_of_permutations == 1 {
                 all_data_groups =
                     Box::new(permutation_group(parameter_indices)) as Box<dyn CloneIterator<Item = Permutation>>;
@@ -372,7 +372,7 @@ impl SymmetryAlgorithm {
                 ) as Box<dyn CloneIterator<Item = Permutation>>;
             }
 
-            number_of_permutations *= permutation_group_size(number_of_parametes);
+            number_of_permutations *= permutation_group_size(number_of_parameters);
         }
 
         number_of_permutations *= permutation_group_size(control_flow_parameter_indices.len());

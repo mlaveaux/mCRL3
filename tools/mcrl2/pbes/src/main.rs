@@ -27,11 +27,9 @@ enum PbesFormat {
     Pbes,
 }
 
+/// A command line tool for parameterised boolean equation systems (PBESs)
 #[derive(clap::Parser, Debug)]
-#[command(
-    about = "A command line tool for parameterised boolean equation systems (PBESs)",
-    arg_required_else_help = true
-)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(flatten)]
     version: VersionFlag,
@@ -48,18 +46,20 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Analyze symmetries of a PBES
     Symmetry(SymmetryArgs),
 }
 
-/// Arguments for solving a parity game
 #[derive(clap::Args, Debug)]
 struct SymmetryArgs {
+    /// The input PBES file.
     filename: String,
 
+    /// Explicitly choose the format of the input PBES file.
     #[arg(long, short('i'), value_enum)]
     format: Option<PbesFormat>,
 
-    /// Pass a single permutation in cycles notation to check whether it is a symmetry.
+    /// Pass a single permutation in mapping notation '[0->1,1->0,...]' or cycles notation '(0 1)' to check whether it is a symmetry.
     #[arg(long)]
     permutation: Option<String>,
 
