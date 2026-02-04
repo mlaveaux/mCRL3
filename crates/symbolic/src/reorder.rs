@@ -1,170 +1,181 @@
+use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::Path;
+
+use duct::cmd;
+use itertools::Itertools;
+use log::trace;
+
 use merc_utilities::MercError;
 
 use crate::DependencyGraph;
 
 /// Default implementation of reorder when `kahypar` feature is not enabled.
-#[cfg(not(feature = "kahypar"))]
-pub fn reorder(_graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
-    Err("reordering requires the `kahypar` feature to be enabled".into())
+pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+    let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
+    mince(kahypar_path, &vertices, graph)
 }
 
-#[cfg(feature = "kahypar")]
-mod inner {
-    use super::*;
+/// The recursive MINCE algorithm to compute a partitioning of the given dependency graph.
+///
+/// # Details
+///
+/// The `vertices` are the indices of the subgraph that we are considering
+fn mince(kahypar_path: &Path, vertices: &[usize], graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+    trace!("MINCE called with vertices: {:?}", vertices);
 
-    use log::trace;
-
-    use mt_kahypar::Context;
-    use mt_kahypar::Hypergraph;
-    use mt_kahypar::Objective;
-    use mt_kahypar::Preset;
-
-    /// Computes a variable reordering for symbolic transition relations using the MINCE algorithm.
-    ///
-    /// # Details
-    ///
-    /// The algorithm is described in the following paper:
-    ///
-    /// > Fadi A. Aloul, Igor L. Markov, Karem A. Sakallah:. MINCE: A Static Global Variable-Ordering Heuristic for SAT Search and BDD Manipulation. J. Univers. Comput. Sci. 10(12): 1562-1596 (2004). [DOI](https://doi.org/10.3217/jucs-010-12-1562)
-    #[cfg(feature = "kahypar")]
-    pub fn reorder(graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
-        trace!("Starting MINCE with {graph:?}");
-
-        trace!("Total span of dependency graph: {}", graph.total_span());
-
-        let context = Context::builder()
-            .preset(Preset::Quality)
-            .epsilon(0.0)
-            .k(2)
-            .objective(Objective::Cut)
-            .build()?;
-
-        let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-
-        let result = mince(&context, &vertices, graph)?;
-        trace!(
-            "Total span of dependency graph: {}",
-            graph.reorder(&result).total_span()
-        );
-        Ok(result)
+    if vertices.len() <= 2 {
+        // Base case: a single vertex is already "ordered"
+        trace!("MINCE reached base case with vertices: {:?}", vertices);
+        return Ok(vertices.to_vec());
     }
 
-    /// The recursive MINCE algorithm to compute a partitioning of the given dependency graph.
-    ///
-    /// # Details
-    ///
-    /// The `vertices` are the indices of the subgraph that we are considering
-    fn mince(context: &Context, vertices: &[usize], graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
-        trace!("MINCE called with vertices: {:?}", vertices);
+    let (hypergraph_indices, hypergraph_edges) = create_hypergraph(vertices, graph)?;
+    let partition = partition(kahypar_path, vertices.len(), hypergraph_indices, hypergraph_edges)?;
 
-        let hypergraph = create_hypergraph(context, vertices, graph)?;
+    // We kept the indices of vertices in the hypergraph the same as `vertices`, so we can now
+    // separate them according to the partitioning.
+    let left_vertices: Vec<usize> = vertices
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &v)| if partition[i] == 0 { Some(v) } else { None })
+        .collect();
 
-        let partition = hypergraph.partition()?;
-        debug_assert_eq!(partition.num_blocks(), 2, "MINCE only supports bipartitioning");
+    let right_vertices: Vec<usize> = vertices
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &v)| if partition[i] == 1 { Some(v) } else { None })
+        .collect();
 
-        // Compute the two partitions
-        let partition = partition.extract_partition();
-
-        // We kept the indices of vertices in the hypergraph the same as `vertices`, so we can now
-        // separate them according to the partitioning.
-        let left_vertices: Vec<usize> = vertices
-            .iter()
-            .enumerate()
-            .filter_map(|(i, &v)| if partition[i] == 0 { Some(v) } else { None })
-            .collect();
-
-        let right_vertices: Vec<usize> = vertices
-            .iter()
-            .enumerate()
-            .filter_map(|(i, &v)| if partition[i] == 1 { Some(v) } else { None })
-            .collect();
-
-        if left_vertices.is_empty() || right_vertices.is_empty() {
-            // Cannot partition further, return as is
-            trace!("MINCE reached base case with vertices: {:?}", vertices);
-            return Ok(vertices.to_vec());
-        }
-
-        let mut left = mince(context, &left_vertices, graph)?;
-        let mut right = mince(context, &right_vertices, graph)?;
-
-        let result = if left.iter().sum::<usize>() < right.iter().sum::<usize>() {
-            left.append(&mut right);
-            left
-        } else {
-            right.append(&mut left);
-            right
-        };
-
-        // Check that the result is a valid permutation
-        if cfg!(debug_assertions) {
-            let mut copy = result.clone();
-            copy.sort();
-
-            debug_assert_eq!(copy, vertices, "Resulting order is not a valid permutation");
-        }
-
-        Ok(result)
+    if left_vertices.is_empty() || right_vertices.is_empty() {
+        // Cannot partition further, return as is
+        trace!("MINCE reached base case with vertices: {:?}", vertices);
+        return Ok(vertices.to_vec());
     }
 
-    /// Constructs a hypergraph CSR from the given read/write matrix.
-    fn create_hypergraph<'a>(
-        context: &'a Context,
-        vertices: &[usize],
-        graph: &DependencyGraph,
-    ) -> Result<Hypergraph<'a>, MercError> {
-        let mut hyperedge_indices = Vec::with_capacity(graph.num_of_relations() + 1);
-        let mut hyperedges = Vec::new();
+    let mut left = mince(kahypar_path, &left_vertices, graph)?;
+    let mut right = mince(kahypar_path, &right_vertices, graph)?;
+    left.append(&mut right);
 
-        let mut offset = 0usize;
+    // Check that the result is a valid permutation
+    if cfg!(debug_assertions) {
+        let mut copy = left.clone();
+        copy.sort();
 
-        // Make a hyperedge for every relation
-        // Track unique edges as sorted lists of local vertex indices
-        let mut seen_edges: Vec<Vec<usize>> = Vec::new();
+        debug_assert_eq!(copy, vertices, "Resulting order is not a valid permutation");
+    }
 
-        for relation in graph.relations() {
-            // Collect only variables that are in `vertices`, and use their local indices
-            let mut edge_vars: Vec<usize> = relation
-                .read_vars()
-                .chain(relation.write_vars())
-                .filter_map(|j| vertices.iter().position(|i| *i == j))
-                .collect();
+    Ok(left)
+}
 
-            // Deduplicate within-edge vertices and normalize order
-            edge_vars.sort_unstable();
-            edge_vars.dedup();
+/// Constructs a hypergraph CSR from the given read/write matrix.
+fn create_hypergraph<'a>(vertices: &[usize], graph: &DependencyGraph) -> Result<(Vec<usize>, Vec<usize>), MercError> {
+    let mut hyperedge_indices = Vec::with_capacity(graph.num_of_relations() + 1);
+    let mut hyperedges = Vec::new();
 
-            if edge_vars.len() <= 1 {
-                // Ignore self-loops and empty edges
-                continue;
-            }
+    let mut offset = 0usize;
 
-            // Ignore duplicated edges
-            if seen_edges.iter().any(|e| e == &edge_vars) {
-                continue;
-            }
-            seen_edges.push(edge_vars.clone());
+    // Make a hyperedge for every relation
+    // Track unique edges as sorted lists of local vertex indices
+    let mut seen_edges: Vec<Vec<usize>> = Vec::new();
 
-            // Add the edge to the hypergraph
-            hyperedge_indices.push(offset);
-            for j in edge_vars {
-                hyperedges.push(j);
-                offset += 1;
-            }
+    for relation in graph.relations() {
+        // Collect only variables that are in `vertices`, and use their local indices
+        let mut edge_vars: Vec<usize> = relation
+            .read_vars()
+            .chain(relation.write_vars())
+            .filter_map(|j| vertices.iter().position(|i| *i == j))
+            .collect();
+
+        // Deduplicate within-edge vertices and normalize order
+        edge_vars.sort_unstable();
+        edge_vars.dedup();
+
+        if edge_vars.len() <= 1 {
+            // Ignore self-loops and empty edges
+            continue;
         }
 
+        // Ignore duplicated edges
+        if seen_edges.iter().any(|e| e == &edge_vars) {
+            continue;
+        }
+        seen_edges.push(edge_vars.clone());
+
+        // Add the edge to the hypergraph
         hyperedge_indices.push(offset);
-
-        Ok(Hypergraph::from_adjacency(
-            context,
-            graph.num_of_vertices(),
-            &hyperedge_indices,
-            &hyperedges,
-            None,
-            None,
-        )?)
+        for j in edge_vars {
+            hyperedges.push(j);
+            offset += 1;
+        }
     }
+
+    hyperedge_indices.push(offset);
+    Ok((hyperedge_indices, hyperedges))
 }
 
-#[cfg(feature = "kahypar")]
-pub use inner::reorder;
+/// Partitions the given hypergraph using the `kahypar` tool.
+fn partition(
+    kahypar_path: &Path,
+    num_of_vertices: usize,
+    hypergraph_indices: Vec<usize>,
+    hypergraph_edges: Vec<usize>,
+) -> Result<Vec<usize>, MercError> {
+    // Create a file to write the hypergraph to disk in hMetis format.
+    let mut file = File::create_new("reorder.hgr")?;
+
+    // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
+    writeln!(&mut file, "{} {} 0", hypergraph_indices.len() - 1, num_of_vertices)?;
+
+    for (from, to) in hypergraph_indices.iter().tuple_windows() {
+        let edge = &hypergraph_edges[*from..*to];
+        writeln!(&mut file, "{}", edge.iter().map(|i| i + 1).format(" "))?;
+    }
+
+    // Get path relative to the current executable
+    let mut kahypar_ini_path = std::env::current_exe()?;
+    kahypar_ini_path.pop(); // remove the executable filename
+    kahypar_ini_path.push("kahypar.ini");
+
+    file.flush()?;
+    cmd!(
+        kahypar_path,
+        "-h",
+        "reorder.hgr",
+        "-k",
+        "2",
+        "--objective",
+        "cut",
+        "--mode",
+        "direct",
+        "--epsilon",
+        "0.01",
+        "-w",
+        "1",
+        "-p",
+        kahypar_ini_path
+    )
+    .run()?;
+
+    // Clean up the hypergraph file.
+    std::fs::remove_file("reorder.hgr")?;
+
+    // Read the partitioning result from the output file.
+    let partition_file = File::open("reorder.hgr.part2.epsilon0.01.seed-1.KaHyPar")?;
+
+    let mut partition = Vec::new();
+    for line in BufReader::new(partition_file).lines() {
+        let line = line?;
+        let block_id: usize = line.trim().parse()?;
+        partition.push(block_id);
+    }
+
+    // Clean up the partition file.
+    std::fs::remove_file("reorder.hgr.part2.epsilon0.01.seed-1.KaHyPar")?;
+
+    debug_assert!(partition.iter().all(|x| *x <= 1), "MINCE only supports bipartitioning");
+    println!("Partition: {:?}", partition);
+    Ok(partition)
+}
