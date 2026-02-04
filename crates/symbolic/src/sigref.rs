@@ -8,6 +8,13 @@ use log::trace;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
+use oxidd::util::Borrowed;
+use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
+use oxidd::util::SatCountCache;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -18,13 +25,6 @@ use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Node;
 use oxidd::VarNo;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::error::DuplicateVarName;
-use oxidd::util::Borrowed;
-use oxidd::util::OptBool;
-use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
 use oxidd_dump::Visualizer;
@@ -32,15 +32,15 @@ use oxidd_rules_bdd::simple::BDDTerminal;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
-use crate::CubeIterAll;
-use crate::SymbolicLtsBdd;
-use crate::ValuesIter;
 use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::reduce;
 use crate::required_bits_64;
 use crate::to_value;
 use crate::variable_rename;
+use crate::CubeIterAll;
+use crate::SymbolicLtsBdd;
+use crate::ValuesIter;
 
 /// Computes the reduction of the given symbolic LTS using symbolic signature
 /// refinement.
@@ -65,6 +65,13 @@ pub fn sigref_symbolic(
         .sat_count::<u64, FxBuildHasher>(lts.state_variables().len() as u32, &mut SatCountCache::default());
     debug!("Number of states: {}", number_of_states);
 
+    let split_partition_groups = if split_signature {
+        combine_transition_groups(manager_ref, lts)?
+    } else {
+        // We do not use the grouping
+        Vec::new()
+    };
+
     let num_of_block_bits = required_bits_64(number_of_states);
     debug!("Number of block bits: {}", num_of_block_bits);
 
@@ -81,10 +88,7 @@ pub fn sigref_symbolic(
         .collect();
 
     // Create BDD functions for the block variables
-    let block_variables_bdds = block_variable_indices
-        .iter()
-        .map(|var_no| manager_ref.with_manager_shared(|manager| BDDFunction::var(manager, *var_no)))
-        .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
+    let block_variables_bdds = compute_vars_bdd(manager_ref, &block_variable_indices)?.0;
 
     let mut signature_to_block = FxHashMap::default();
 
@@ -158,11 +162,10 @@ pub fn sigref_symbolic(
     );
 
     // Determine the write variables BDDs for all transition groups.
-    let write_variable_bdd = lts
-        .transition_groups()
+    let write_variable_bdd = lts.transition_groups()
         .iter()
         .map(|group| -> Result<_, MercError> {
-            let variables = group.write_variables().iter().cloned().collect::<Vec<VarNo>>();
+            let variables = group.write_variables().to_vec();
 
             Ok(compute_vars_bdd(manager_ref, &variables)?.1)
         })
@@ -179,22 +182,20 @@ pub fn sigref_symbolic(
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
 
             if split_signature {
-                // Only compute the signature w.r.t. a single transition group.
-                signature = signature_strong(
-                    &partition,
-                    lts.transition_groups()[signature_index].relation(),
-                    &write_variable_bdd[signature_index],
-                )?;
+                // Only compute the signature w.r.t. all transition groups that share actions.                
+                for index in &split_partition_groups[signature_index] {
+                    let group_signature = signature_strong(
+                        &partition,
+                        lts.transition_groups()[*index].relation(),
+                        &write_variable_bdd[*index],
+                    )?;
 
-                signature = variable_rename(manager_ref, &signature, &state_substitution)?;
+                    let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
+                    signature = timing.measure("signature_or", || signature.or(&group_signature))?;
+                }
             } else {
                 // Compute the full signature by combining all transition groups.
-                for (index, (group, write_vars)) in lts
-                    .transition_groups()
-                    .iter()
-                    .zip(write_variable_bdd.iter())
-                    .enumerate()
-                {
+                for (index, (group, write_vars)) in lts.transition_groups().iter().zip(write_variable_bdd.iter()).enumerate() {
                     // Compute the signature for this transition group.
                     //
                     // Observe that we explicitly do not quantify over state
@@ -205,7 +206,7 @@ pub fn sigref_symbolic(
                     let group_signature = timing.measure(&format!("group_signature_{}", index), || {
                         signature_strong(&partition, group.relation(), write_vars)
                     })?;
-                    
+
                     // Substitute next state variables with current state variables to align
                     // with the partition representation, required for `refine`.
                     let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
@@ -280,7 +281,7 @@ pub fn sigref_symbolic(
             }
 
             signature_index += 1;
-            if signature_index >= lts.transition_groups().len() {
+            if signature_index >= split_partition_groups.len() {
                 // Start from the first transition group again.
                 signature_index = 0;
             }
@@ -298,6 +299,67 @@ pub fn sigref_symbolic(
     );
 
     Ok(partition)
+}
+
+/// Computes a partitioning of the transition groups for the given LTS based on the split signature option.
+///
+/// # Details
+///
+/// Two transition groups are combined if they share action labels, this ensures that in split signature mode
+/// the action labels of all transition groups are disjoint.
+fn combine_transition_groups(
+    manager_ref: &BDDManagerRef,
+    lts: &SymbolicLtsBdd
+) -> Result<Vec<Vec<usize>>, MercError> {
+    // In split signature mode we must ensure that the action labels of all transition groups are disjoint. We do this by merging
+    // transition groups that share action labels.
+
+    // Computes the BDD representing all action labels.
+    let action_bdd = manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {
+        let mut bdd: BDDFunction = BDDFunction::f(manager);
+
+        for var in lts.action_variables() {
+            let var = BDDFunction::var(manager, *var)?;
+            bdd = bdd.or(&var)?;
+        }
+
+        Ok(bdd)
+    })?;
+
+    // Compute the action labels for all transition groups.
+    let representatives = lts
+        .transition_groups()
+        .iter()
+        .map(|group| group.relation().and(&action_bdd))
+        .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
+
+    // For the split signature we must ensure that all action labels are disjoint.
+    let mut result: Vec<Vec<usize>> = Vec::new();
+
+    // This is a naive partitioning algorithm where the
+    for (i, _transition_group) in lts.transition_groups().iter().enumerate() {
+        // See if the element can be added to an existing group, by taking the first element of
+        // each group as representative.
+        if let Some(group) = result.iter_mut().find(|g: &&mut Vec<usize>| {
+            if let Some(first) = g.first() {
+                representatives[*first]
+                    .and(&representatives[i])
+                    .expect("Out of memory oxidd") // TODO: faillable try_find.
+                    .satisfiable()
+            } else {
+                false
+            }
+        }) {
+            // Add to existing group
+            group.push(i);
+        } else {
+            // Create new group, and add the representative
+            result.push(vec![i]);
+        }
+    }
+
+    trace!("Combined transition groups: {:?}", result);
+    Ok(result)
 }
 
 /// Computes the strong signature refinement of the given partition and
@@ -326,7 +388,9 @@ fn signature_strong(
 /// This function assumes that in the partition only a single block number is
 /// assigned to each state, which should be by definition.
 ///
-/// TODO: Definition
+/// This function computes the new partition `P` such that:
+///
+/// > For all states s, t it holds that P(s) == P(t) iff signature(s) == signature(t)
 fn refine(
     manager_ref: &BDDManagerRef,
     signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
@@ -379,7 +443,7 @@ fn refine_edge<'id>(
         BDDFunction::from_edge(manager, manager.clone_edge(&signature)),
         BDDFunction::from_edge(manager, manager.clone_edge(&partition)),
     )) {
-        return Ok(manager.clone_edge(&cached.as_edge(manager)));
+        return Ok(manager.clone_edge(cached.as_edge(manager)));
     }
 
     // topVar
@@ -469,9 +533,12 @@ fn refine_edge<'id>(
             Ok(encode_block(manager, block_variables_bdds, new_block_index)?)
         }
     }?;
-    
+
     cache.insert(
-        (BDDFunction::from_edge(manager, manager.clone_edge(&signature)), BDDFunction::from_edge(manager, manager.clone_edge(&partition))),
+        (
+            BDDFunction::from_edge(manager, manager.clone_edge(&signature)),
+            BDDFunction::from_edge(manager, manager.clone_edge(&partition)),
+        ),
         BDDFunction::from_edge(manager, manager.clone_edge(&result)),
     );
 
@@ -712,25 +779,24 @@ mod tests {
     use std::ops::Range;
 
     use merc_utilities::Timing;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::error::DuplicateVarName;
+    use oxidd::util::Borrowed;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
     use oxidd::VarNo;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::error::DuplicateVarName;
-    use oxidd::util::Borrowed;
-    use rand::RngExt;
+    use rand::Rng;
 
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
-    use crate::SymbolicLtsBdd;
-    use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
     use crate::sigref_symbolic;
+    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -781,11 +847,11 @@ mod tests {
             });
         })
     }
-    
+
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_sigref() {
-        random_test(100, |rng| {            
+        random_test(100, |rng| {
             let mut storage = merc_ldd::Storage::new();
 
             // We don't really check anything here, just ensure that reachability runs without errors.
@@ -797,8 +863,10 @@ mod tests {
             let expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
             let split_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
 
-            assert!(split_partition == expected_partition, "Split signature approach does not match actual signature refinement");
+            assert!(
+                split_partition == expected_partition,
+                "Split signature approach does not match actual signature refinement"
+            );
         });
-
     }
 }
