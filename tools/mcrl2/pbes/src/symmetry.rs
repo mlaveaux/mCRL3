@@ -416,10 +416,7 @@ impl SymmetryAlgorithm {
             for s_c1 in c1.vertices() {
                 // X(v) in c and X(v) in c1.
                 if s_c.value() == s_c1.value() && s_c.name() == s_c1.name() {
-                    if let Err(value) = self.find_compatible(c, c1, s_c, s_c1) {
-                        return Err(value);
-                    }
-
+                    self.find_compatible(c, c1, s_c, s_c1)?;
                     s_matched = true;
                 }
             }
@@ -542,7 +539,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Returns true iff all vertices in I comply with the detail::permutation pi.
-    fn complies(&self, pi: &Permutation, I: &Vec<usize>) -> bool {
+    fn complies(&self, pi: &Permutation, I: &[usize]) -> bool {
         I.iter()
             .all(|c| self.complies_cfg(pi, &self.state_graph.control_flow_graphs()[*c]))
     }
@@ -590,10 +587,10 @@ impl SymmetryAlgorithm {
         &self,
         equation: &StategraphEquation,
         pi: &Permutation,
-        labels: &Vec<usize>,
-        labels_prime: &Vec<usize>,
+        labels: &[usize],
+        labels_prime: &[usize],
     ) -> bool {
-        let mut remaining_j = labels_prime.clone();
+        let mut remaining_j = labels_prime.to_vec();
 
         for i in labels {
             let variable = &equation.predicate_variables()[*i];
@@ -627,8 +624,8 @@ impl SymmetryAlgorithm {
     fn equal_under_permutation(
         &self,
         pi: &Permutation,
-        left: &Vec<usize>,
-        right: &Vec<usize>,
+        left: &[usize],
+        right: &[usize],
     ) -> Result<(), MercError> {
         if left.len() != right.len() {
             return Err(format!(
@@ -766,7 +763,7 @@ fn variable_index(cfg: &ControlFlowGraph) -> usize {
         }
     });
     
-    return defined_index;
+    defined_index
 }
 
 /// Applies the given permutation to the given expression.
@@ -775,7 +772,7 @@ fn variable_index(cfg: &ControlFlowGraph) -> usize {
 ///
 /// - Replaces data variables according to the permutation.
 /// - Replaces propositional variables according to the permutation.
-fn apply_permutation(expression: &PbesExpression, parameters: &Vec<DataVariable>, pi: &Permutation) -> PbesExpression {
+fn apply_permutation(expression: &PbesExpression, parameters: &[DataVariable], pi: &Permutation) -> PbesExpression {
     let sigma: Vec<(DataExpression, DataExpression)> = (0..parameters.len())
         .map(|i| {
             let var = &parameters[i];

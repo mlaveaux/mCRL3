@@ -148,7 +148,7 @@ mod inner {
 
         /// Pretty prints the data expression.
         pub fn pretty_print(&self) -> String {
-            mcrl2_data_expression_to_string(&self.term.get())
+            mcrl2_data_expression_to_string(self.term.get())
         }
     }
 
