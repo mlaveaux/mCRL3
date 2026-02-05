@@ -604,7 +604,7 @@ fn decode_block<'id>(
     while *block != *f_edge {
         match manager.get_node(&block) {
             Node::Inner(node) => {
-                let (b_low, b_high) = collect_children(node);
+                let (b_high, b_low) = collect_children(node);
                 // For a cube: low satisfiable => bit 0, else => bit 1
                 if *b_low != *f_edge {
                     block = b_low;
