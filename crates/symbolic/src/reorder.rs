@@ -6,6 +6,7 @@ use std::path::Path;
 
 use duct::cmd;
 use itertools::Itertools;
+use log::debug;
 use log::trace;
 
 use merc_utilities::MercError;
@@ -14,8 +15,12 @@ use crate::DependencyGraph;
 
 /// Default implementation of reorder when `kahypar` feature is not enabled.
 pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+    debug!("Total span: {}", graph.total_span());
+
     let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-    mince(kahypar_path, &vertices, graph)
+    let result = mince(kahypar_path, &vertices, graph)?;
+    debug!("Reordered total span: {}", graph.reorder(&result).total_span());
+    Ok(result)
 }
 
 /// The recursive MINCE algorithm to compute a partitioning of the given dependency graph.
@@ -26,13 +31,15 @@ pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize
 fn mince(kahypar_path: &Path, vertices: &[usize], graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     trace!("MINCE called with vertices: {:?}", vertices);
 
-    if vertices.len() <= 2 {
+
+    let (hypergraph_indices, hypergraph_edges) = create_hypergraph(vertices, graph)?;
+
+    if vertices.len() <= 2 || hypergraph_edges.len() <= 1 {
         // Base case: a single vertex is already "ordered"
         trace!("MINCE reached base case with vertices: {:?}", vertices);
         return Ok(vertices.to_vec());
     }
 
-    let (hypergraph_indices, hypergraph_edges) = create_hypergraph(vertices, graph)?;
     let partition = partition(kahypar_path, vertices.len(), hypergraph_indices, hypergraph_edges)?;
 
     // We kept the indices of vertices in the hypergraph the same as `vertices`, so we can now
@@ -70,7 +77,12 @@ fn mince(kahypar_path: &Path, vertices: &[usize], graph: &DependencyGraph) -> Re
     Ok(left)
 }
 
-/// Constructs a hypergraph CSR from the given read/write matrix.
+/// Constructs a hypergraph from the given dependency graph. Returns the hypergraph in the form of
+/// (hyperedge_indices, hyperedges).
+/// 
+/// # Details
+/// 
+/// The `vertices` are the indices of the subgraph that we are considering.
 fn create_hypergraph<'a>(vertices: &[usize], graph: &DependencyGraph) -> Result<(Vec<usize>, Vec<usize>), MercError> {
     let mut hyperedge_indices = Vec::with_capacity(graph.num_of_relations() + 1);
     let mut hyperedges = Vec::new();
@@ -176,6 +188,5 @@ fn partition(
     std::fs::remove_file("reorder.hgr.part2.epsilon0.01.seed-1.KaHyPar")?;
 
     debug_assert!(partition.iter().all(|x| *x <= 1), "MINCE only supports bipartitioning");
-    println!("Partition: {:?}", partition);
     Ok(partition)
 }
