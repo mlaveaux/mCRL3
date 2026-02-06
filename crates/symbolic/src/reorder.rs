@@ -18,7 +18,7 @@ pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize
     debug!("Total span: {}", graph.total_span());
 
     let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-    let result = mince(kahypar_path, &vertices, graph)?;
+    let result = mince(kahypar_path, &vertices, &[], graph)?;
     debug!("Reordered total span: {}", graph.reorder(&result).total_span());
     Ok(result)
 }
@@ -28,19 +28,20 @@ pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize
 /// # Details
 ///
 /// The `vertices` are the indices of the subgraph that we are considering
-fn mince(kahypar_path: &Path, vertices: &[usize], graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+fn mince(
+    kahypar_path: &Path,
+    vertices: &[usize],
+    left_context: &[usize],
+    graph: &DependencyGraph,
+) -> Result<Vec<usize>, MercError> {
     trace!("MINCE called with vertices: {:?}", vertices);
+    let partition = partition(kahypar_path, vertices, left_context, graph)?;
 
-
-    let (hypergraph_indices, hypergraph_edges) = create_hypergraph(vertices, graph)?;
-
-    if vertices.len() <= 2 || hypergraph_edges.len() <= 1 {
+    if partition.len() <= 2 {
         // Base case: a single vertex is already "ordered"
         trace!("MINCE reached base case with vertices: {:?}", vertices);
-        return Ok(vertices.to_vec());
+        return Ok(partition);
     }
-
-    let partition = partition(kahypar_path, vertices.len(), hypergraph_indices, hypergraph_edges)?;
 
     // We kept the indices of vertices in the hypergraph the same as `vertices`, so we can now
     // separate them according to the partitioning.
@@ -62,8 +63,11 @@ fn mince(kahypar_path: &Path, vertices: &[usize], graph: &DependencyGraph) -> Re
         return Ok(vertices.to_vec());
     }
 
-    let mut left = mince(kahypar_path, &left_vertices, graph)?;
-    let mut right = mince(kahypar_path, &right_vertices, graph)?;
+    let mut left = mince(kahypar_path, &left_vertices, left_context, graph)?;
+
+    let mut new_left_context = left_context.to_vec();
+    new_left_context.extend(&left_vertices);
+    let mut right = mince(kahypar_path, &right_vertices, &new_left_context, graph)?;
     left.append(&mut right);
 
     // Check that the result is a valid permutation
@@ -79,15 +83,37 @@ fn mince(kahypar_path: &Path, vertices: &[usize], graph: &DependencyGraph) -> Re
 
 /// Constructs a hypergraph from the given dependency graph. Returns the hypergraph in the form of
 /// (hyperedge_indices, hyperedges).
-/// 
+///
 /// # Details
-/// 
+///
 /// The `vertices` are the indices of the subgraph that we are considering.
-fn create_hypergraph<'a>(vertices: &[usize], graph: &DependencyGraph) -> Result<(Vec<usize>, Vec<usize>), MercError> {
+fn create_hypergraph(
+    vertices: &[usize],
+    left_context: &[usize],
+    graph: &DependencyGraph,
+) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>), MercError> {
     let mut hyperedge_indices = Vec::with_capacity(graph.num_of_relations() + 1);
     let mut hyperedges = Vec::new();
+    let mut weights = vec![1; vertices.len() + 2]; // +2 for the pseudo-vertices
+    for (index, vertex) in vertices.iter().enumerate() {
+        // Calculate the total number of edges that the vertex is involved in, and use it as the weight.
+        weights[index] = graph
+            .relations()
+            .filter(|relation| {
+                relation.read_vars().any(|j| j == *vertex) || relation.write_vars().any(|j| j == *vertex)
+            })
+            .count();
+    }
 
     let mut offset = 0usize;
+
+    // Add two pseudo-vertices to represent the "left" and "right" context of the partition.
+    let left_pseudo_vertex = vertices.len();
+    let right_pseudo_vertex = vertices.len() + 1;
+
+    // They should not contribute to the cut cost.
+    weights[left_pseudo_vertex] = 1;
+    weights[right_pseudo_vertex] = 1;
 
     // Make a hyperedge for every relation
     // Track unique edges as sorted lists of local vertex indices
@@ -95,55 +121,96 @@ fn create_hypergraph<'a>(vertices: &[usize], graph: &DependencyGraph) -> Result<
 
     for relation in graph.relations() {
         // Collect only variables that are in `vertices`, and use their local indices
-        let mut edge_vars: Vec<usize> = relation
+        let edge_vars: Vec<usize> = relation
             .read_vars()
             .chain(relation.write_vars())
-            .filter_map(|j| vertices.iter().position(|i| *i == j))
+            .filter_map(|j| {
+                match vertices.iter().position(|i| *i == j) {
+                    Some(local_index) => Some(local_index),
+                    None => {
+                        // Variable is not in the current subgraph
+                        // Check if it is in the left or right context
+                        if left_context.contains(&j) {
+                            Some(left_pseudo_vertex)
+                        } else {
+                            Some(right_pseudo_vertex)
+                        }
+                    }
+                }
+            })
             .collect();
 
-        // Deduplicate within-edge vertices and normalize order
-        edge_vars.sort_unstable();
-        edge_vars.dedup();
-
-        if edge_vars.len() <= 1 {
-            // Ignore self-loops and empty edges
-            continue;
-        }
-
-        // Ignore duplicated edges
-        if seen_edges.iter().any(|e| e == &edge_vars) {
-            continue;
-        }
-        seen_edges.push(edge_vars.clone());
-
-        // Add the edge to the hypergraph
-        hyperedge_indices.push(offset);
-        for j in edge_vars {
-            hyperedges.push(j);
-            offset += 1;
-        }
+        add_edge(
+            &mut hyperedge_indices,
+            &mut hyperedges,
+            &mut offset,
+            &mut seen_edges,
+            edge_vars,
+        );
     }
 
     hyperedge_indices.push(offset);
-    Ok((hyperedge_indices, hyperedges))
+    Ok((hyperedge_indices, hyperedges, weights))
+}
+
+/// Adds an edge to the hypergraph, while ensuring that it is not a self-loop, empty, or duplicated.
+fn add_edge(
+    hyperedge_indices: &mut Vec<usize>,
+    hyperedges: &mut Vec<usize>,
+    offset: &mut usize,
+    seen_edges: &mut Vec<Vec<usize>>,
+    mut edge_vars: Vec<usize>,
+) {
+    // Deduplicate within-edge vertices and normalize order
+    edge_vars.sort_unstable();
+    edge_vars.dedup();
+
+    if edge_vars.len() <= 1 {
+        // Ignore self-loops and empty edges
+        return;
+    }
+
+    if seen_edges.iter().any(|e| e == &edge_vars) {
+        // Ignore duplicated edges
+        return;
+    }
+    seen_edges.push(edge_vars.clone());
+    hyperedge_indices.push(*offset);
+
+    // Add the edge to the hypergraph
+    for j in edge_vars {
+        hyperedges.push(j);
+        *offset += 1;
+    }
 }
 
 /// Partitions the given hypergraph using the `kahypar` tool.
 fn partition(
     kahypar_path: &Path,
-    num_of_vertices: usize,
-    hypergraph_indices: Vec<usize>,
-    hypergraph_edges: Vec<usize>,
+    vertices: &[usize],
+    left_context: &[usize],
+    graph: &DependencyGraph,
 ) -> Result<Vec<usize>, MercError> {
+    let (hypergraph_indices, hypergraph_edges, weights) = create_hypergraph(vertices, left_context, graph)?;
+
+    if vertices.len() <= 2 || hypergraph_edges.len() <= 1 {
+        return Ok(vertices.to_vec());
+    }
+
     // Create a file to write the hypergraph to disk in hMetis format.
     let mut file = File::create_new("reorder.hgr")?;
 
     // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
-    writeln!(&mut file, "{} {} 0", hypergraph_indices.len() - 1, num_of_vertices)?;
+    // type 10 is vertex weights only.
+    writeln!(&mut file, "{} {} 10", hypergraph_indices.len() - 1, weights.len())?;
 
     for (from, to) in hypergraph_indices.iter().tuple_windows() {
         let edge = &hypergraph_edges[*from..*to];
         writeln!(&mut file, "{}", edge.iter().map(|i| i + 1).format(" "))?;
+    }
+
+    for weight in weights {
+        writeln!(&mut file, "{} ", weight)?;
     }
 
     // Get path relative to the current executable
