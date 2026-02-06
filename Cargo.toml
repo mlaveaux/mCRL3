@@ -8,7 +8,7 @@ version = "1.0.0"
 
 # Add debug information to the release binaries.
 [profile.release]
-lto = "fat"
+lto = "thin"
 panic = "abort"
 debug = "line-tables-only"
 split-debuginfo= "packed"
