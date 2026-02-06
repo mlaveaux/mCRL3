@@ -52,11 +52,11 @@ pub fn make_vpg_total(
         // Missing configurations are those in the universe not covered by any outgoing edge.
         let missing = minus(&universe, &all_outgoing)?;
         if missing.satisfiable() {
-            if owners[*vertex] == Player::Even {
-                // Even player: add edge to true node for the remaining configurations.
+            if owners[*vertex] == Player::Odd {
+                // Odd player deadlock: add edge to true node for the remaining configurations.
                 edges.push((vertex, universe.clone(), true_node));
             } else {
-                // Odd player: add edge to false node for the remaining configurations.
+                // Even player deadlock: add edge to false node for the remaining configurations.
                 edges.push((vertex, universe.clone(), false_node));
             }
         }
