@@ -95,10 +95,10 @@ pub fn ldd_to_bdd_edge<'id>(
     );
 
     // Ensure we have enough variables for this layer
-    let needed = bits_value as usize;
-    if bit_variables.len() < needed {
+    let needed_bits = bits_value as usize;
+    if bit_variables.len() < needed_bits {
         panic!(
-            "Insufficient variables: need {needed}, have {} for current layer",
+            "Insufficient variables: need {needed_bits}, have {} for current layer",
             bit_variables.len()
         );
         panic!(
@@ -110,7 +110,7 @@ pub fn ldd_to_bdd_edge<'id>(
     // Recurse on down with the remaining variables after consuming this layer
     let mut down_bdd = EdgeDropGuard::new(
         manager,
-        ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed..])?,
+        ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed_bits..])?,
     );
 
     // Encode current value using the variables for this layer (MSB to LSB)
@@ -384,9 +384,9 @@ impl<'a> ExactSizeIterator for ValuesIter<'a> {}
 /// [crate::ldd_to_bdd]. So most significant bit first.
 pub fn to_value(bits: &[OptBool]) -> u64 {
     let mut value = 0u64;
-    for (i, bit) in bits.iter().rev().enumerate() {
+    for (bit_pos, bit) in bits.iter().rev().enumerate() {
         if *bit == OptBool::True {
-            value |= 1 << i;
+            value |= 1 << bit_pos;
         }
     }
 
