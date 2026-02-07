@@ -393,7 +393,7 @@ fn signature_strong(
 /// > For all states s, t it holds that P(s) == P(t) iff signature(s) == signature(t)
 fn refine(
     manager_ref: &BDDManagerRef,
-    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
+    signature_to_block: &mut FxHashMap<BDDFunction, u64>,
     block_variables_bdds: &[BDDFunction],
     state_variables: &[VarNo],
     signature: &BDDFunction,
@@ -421,7 +421,7 @@ fn refine(
 fn refine_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
-    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
+    signature_to_block: &mut FxHashMap<BDDFunction, u64>,
     block_variables_bdds: &[BDDFunction],
     state_variables: &[VarNo],
     signature: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
@@ -513,7 +513,7 @@ fn refine_edge<'id>(
         // 10. B := decode_block(partition)
         let block_index = decode_block(manager, partition.borrowed());
         let signature = BDDFunction::from_edge(manager, manager.clone_edge(&signature));
-        if let Some(block) = signature_to_block.get(&(signature.clone(), block_index)) {
+        if let Some(block) = signature_to_block.get(&signature) {
             // 11. If blocks[B].signature == \bottom then
             // 12.     blocks[B].signature := signature
             // 13. if blocks[B].signature == signature then
@@ -529,7 +529,7 @@ fn refine_edge<'id>(
         } else {
             let new_block_index = signature_to_block.len() as u64;
             trace!("Creating new block {new_block_index}");
-            signature_to_block.insert((signature, block_index), new_block_index);
+            signature_to_block.insert(signature, new_block_index);
             Ok(encode_block(manager, block_variables_bdds, new_block_index)?)
         }
     }?;
@@ -860,18 +860,18 @@ mod tests {
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            let _expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+            let expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
 
             // Create a separate manager since sigref_symbolic creates new block variables.
             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
-            let _split_partition = sigref_symbolic(&manager_ref_split, &lts_bdd_split, &mut Timing::new(), false, false).unwrap();
+            let split_partition = sigref_symbolic(&manager_ref_split, &lts_bdd_split, &mut Timing::new(), false, false).unwrap();
 
             // Apparently this works even when the BDDs are created in different managers.
-            // assert!(
-            //     split_partition == expected_partition,
-            //     "Split signature approach does not match actual signature refinement"
-            // );
+            assert!(
+                split_partition == expected_partition,
+                "Split signature approach does not match actual signature refinement"
+            );
         });
     }
 }

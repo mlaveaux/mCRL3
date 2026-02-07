@@ -261,7 +261,7 @@ impl SymbolicLtsBdd {
     }
 
     /// Returns the transition groups representing the disjunctive transition relation.
-    pub fn transition_groups(&self) -> &Vec<SummandGroupBdd> {
+    pub fn transition_groups(&self) -> &[SummandGroupBdd] {
         &self.transition_groups
     }
 
@@ -286,19 +286,19 @@ pub struct SummandGroupBdd {
     relation: BDDFunction,
 
     /// The indices of the read variables for this summand group.
-    read_variable: Vec<VarNo>,
+    read_variables: Vec<VarNo>,
 
     /// The indices of the write variables for this summand group.
-    write_variable: Vec<VarNo>,
+    write_variables: Vec<VarNo>,
 }
 
 impl SummandGroupBdd {
     /// Creates a new summand group with the given transition relation.
-    pub fn new(relation: BDDFunction, read_variable: Vec<VarNo>, write_variable: Vec<VarNo>) -> Self {
+    pub fn new(relation: BDDFunction, read_variables: Vec<VarNo>, write_variables: Vec<VarNo>) -> Self {
         Self {
             relation,
-            read_variable,
-            write_variable,
+            read_variables,
+            write_variables,
         }
     }
 
@@ -309,12 +309,12 @@ impl SummandGroupBdd {
 
     /// Returns the indices of the read variables for this summand group.
     pub fn read_variables(&self) -> &Vec<VarNo> {
-        &self.read_variable
+        &self.read_variables
     }
 
     /// Returns the indices of the write variables for this summand group.
     pub fn write_variables(&self) -> &Vec<VarNo> {
-        &self.write_variable
+        &self.write_variables
     }
 }
 
