@@ -81,8 +81,17 @@ fn mince(
     Ok(left)
 }
 
-/// Constructs a hypergraph from the given dependency graph. Returns the hypergraph in the form of
-/// (hyperedge_indices, hyperedges).
+/// A hypergraph representation with indices, edges, and vertex weights.
+pub struct Hypergraph {
+    /// Indices into the edges vector marking the start of each hyperedge.
+    pub indices: Vec<usize>,
+    /// The hyperedges, stored as a flat list of vertex indices.
+    pub edges: Vec<usize>,
+    /// Weights for each vertex in the hypergraph.
+    pub weights: Vec<usize>,
+}
+
+/// Constructs a hypergraph from the given dependency graph.
 ///
 /// # Details
 ///
@@ -91,7 +100,7 @@ fn create_hypergraph(
     vertices: &[usize],
     left_context: &[usize],
     graph: &DependencyGraph,
-) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>), MercError> {
+) -> Result<Hypergraph, MercError> {
     let mut hyperedge_indices = Vec::with_capacity(graph.num_of_relations() + 1);
     let mut hyperedges = Vec::new();
     let mut weights = vec![1; vertices.len() + 2]; // +2 for the pseudo-vertices
@@ -124,16 +133,16 @@ fn create_hypergraph(
         let edge_vars: Vec<usize> = relation
             .read_vars()
             .chain(relation.write_vars())
-            .filter_map(|j| {
+            .map(|j| {
                 match vertices.iter().position(|i| *i == j) {
-                    Some(local_index) => Some(local_index),
+                    Some(local_index) => local_index,
                     None => {
                         // Variable is not in the current subgraph
                         // Check if it is in the left or right context
                         if left_context.contains(&j) {
-                            Some(left_pseudo_vertex)
+                            left_pseudo_vertex
                         } else {
-                            Some(right_pseudo_vertex)
+                            right_pseudo_vertex
                         }
                     }
                 }
@@ -150,7 +159,11 @@ fn create_hypergraph(
     }
 
     hyperedge_indices.push(offset);
-    Ok((hyperedge_indices, hyperedges, weights))
+    Ok(Hypergraph {
+        indices: hyperedge_indices,
+        edges: hyperedges,
+        weights,
+    })
 }
 
 /// Adds an edge to the hypergraph, while ensuring that it is not a self-loop, empty, or duplicated.
@@ -191,9 +204,9 @@ fn partition(
     left_context: &[usize],
     graph: &DependencyGraph,
 ) -> Result<Vec<usize>, MercError> {
-    let (hypergraph_indices, hypergraph_edges, weights) = create_hypergraph(vertices, left_context, graph)?;
+    let hypergraph = create_hypergraph(vertices, left_context, graph)?;
 
-    if vertices.len() <= 2 || hypergraph_edges.len() <= 1 {
+    if vertices.len() <= 2 || hypergraph.edges.len() <= 1 {
         return Ok(vertices.to_vec());
     }
 
@@ -202,14 +215,14 @@ fn partition(
 
     // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
     // type 10 is vertex weights only.
-    writeln!(&mut file, "{} {} 10", hypergraph_indices.len() - 1, weights.len())?;
+    writeln!(&mut file, "{} {} 10", hypergraph.indices.len() - 1, hypergraph.weights.len())?;
 
-    for (from, to) in hypergraph_indices.iter().tuple_windows() {
-        let edge = &hypergraph_edges[*from..*to];
+    for (from, to) in hypergraph.indices.iter().tuple_windows() {
+        let edge = &hypergraph.edges[*from..*to];
         writeln!(&mut file, "{}", edge.iter().map(|i| i + 1).format(" "))?;
     }
 
-    for weight in weights {
+    for weight in &hypergraph.weights {
         writeln!(&mut file, "{} ", weight)?;
     }
 
