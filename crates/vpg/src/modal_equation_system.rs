@@ -92,6 +92,11 @@ impl ModalEquationSystem {
         self.equations.len()
     }
 
+    /// Returns true if the system contains no equations.
+    pub fn is_empty(&self) -> bool {
+        self.equations.is_empty()
+    }
+
     /// The alternation depth is a complexity measure of the given formula.
     ///
     /// # Details
