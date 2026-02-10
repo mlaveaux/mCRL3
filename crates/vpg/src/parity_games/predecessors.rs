@@ -29,8 +29,8 @@ impl<'a> Predecessors<'a> {
 
         // Count the number of incoming transitions for each state
         for state_index in game.iter_vertices() {
-            for to in game.outgoing_edges(state_index) {
-                state2incoming.update(to.value(), |start| *start += 1);
+            for edge in game.outgoing_edges(state_index) {
+                state2incoming.update(edge.to().value(), |start| *start += 1);
             }
         }
 
@@ -43,8 +43,8 @@ impl<'a> Predecessors<'a> {
 
         // Place the transitions
         for state_index in game.iter_vertices() {
-            for to in game.outgoing_edges(state_index) {
-                state2incoming.update(to.value(), |start| {
+            for edge in game.outgoing_edges(state_index) {
+                state2incoming.update(edge.to().value(), |start| {
                     edges_from.set(*start, state_index);
                     *start += 1;
                 });

@@ -41,12 +41,12 @@ pub fn make_vpg_total(
 
     for vertex in vpg.iter_vertices() {
         let mut all_outgoing = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
-        for edge in vpg.outgoing_conf_edges(vertex) {
+        for edge in vpg.outgoing_edges(vertex) {
             // Add the original edge.
-            edges.push((vertex, edge.configuration().clone(), edge.to()));
+            edges.push((vertex, edge.label().clone(), edge.to()));
 
             // Keep track of the overall outgoing configuration.
-            all_outgoing = all_outgoing.or(edge.configuration())?;
+            all_outgoing = all_outgoing.or(edge.label())?;
         }
 
         // Missing configurations are those in the universe not covered by any outgoing edge.

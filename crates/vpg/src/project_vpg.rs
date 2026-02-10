@@ -21,9 +21,9 @@ pub fn project_variability_parity_game(
     let mut edges = Vec::new();
 
     for v in vpg.iter_vertices() {
-        for edge in vpg.outgoing_conf_edges(v) {
+        for edge in vpg.outgoing_edges(v) {
             // Check if the edge is enabled by the feature selection, if so, include it.
-            if feature_selection.and(edge.configuration())?.satisfiable() {
+            if feature_selection.and(edge.label())?.satisfiable() {
                 edges.push((v, edge.to()));
             }
         }

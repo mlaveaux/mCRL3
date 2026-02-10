@@ -54,13 +54,13 @@ pub fn compute_reachable(game: &impl PG) -> (ParityGame, Vec<Option<usize>>) {
         debug_assert_eq!(new_v, new_vertices.len() - 1);
 
         // Process all outgoing edges
-        for w in game.outgoing_edges(v) {
-            let new_w = add_vertex(w);
+        for edge in game.outgoing_edges(v) {
+            let new_w = add_vertex(edge.to());
             new_edges_to.push(VertexIndex::new(new_w));
 
-            if !visited[*w] {
-                visited.set(*w, true);
-                queue.push_back(w);
+            if !visited[*edge.to()] {
+                visited.set(*edge.to(), true);
+                queue.push_back(edge.to());
             }
         }
 

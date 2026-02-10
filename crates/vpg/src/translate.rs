@@ -35,7 +35,7 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
 
-    let mut algorithm: Translation<'_, String, ()> = Translation::new(lts, &labels, &equation_system);
+    let mut algorithm: Translation<'_, _, ()> = Translation::new(lts, &labels, &equation_system);
     algorithm.translate(lts.initial_state_index(), 0, || ())?;
 
     // Construct the parity game from the collected vertices and edges, where the `()` edge label is ignored.
@@ -67,7 +67,8 @@ enum Formula<'a> {
     Equation(usize),
 }
 
-/// Local struct to keep track of the translation state.
+/// Local struct to keep track of the translation state. The generic bound `E` is the 
+/// type of the edge labels.
 ///
 /// Implements the translation from (s, Ψ) pairs to VPG vertices and edges.
 /// However, to avoid the complication of merging sub-results we immediately
@@ -76,7 +77,7 @@ enum Formula<'a> {
 /// means that during queuing we immediately assign a fresh index to each (s, Ψ)
 /// pair (if it does not yet exist) and then queue it to assign its actual
 /// values later on.
-pub(crate) struct Translation<'a, L: TransitionLabel, E> {
+pub(crate) struct Translation<'a, L, E> {
     vertex_map: IndexedSet<(StateIndex, Formula<'a>)>,
     vertices: Vec<(Player, Priority)>,
     edges: Vec<(VertexIndex, E, VertexIndex)>,
@@ -88,7 +89,7 @@ pub(crate) struct Translation<'a, L: TransitionLabel, E> {
     parsed_labels: &'a Vec<MultiAction>,
 
     /// The labelled transition system being translated.
-    lts: &'a LabelledTransitionSystem<L>,
+    lts: &'a L,
 
     /// A reference to the modal equation system being translated.
     equation_system: &'a ModalEquationSystem,
@@ -97,10 +98,10 @@ pub(crate) struct Translation<'a, L: TransitionLabel, E> {
     progress: TimeProgress<usize>,
 }
 
-impl<'a, L: TransitionLabel, E> Translation<'a, L, E> {
+impl<'a, L: LTS, E> Translation<'a, L, E> {
     /// Creates a new translation instance.
-    fn new(
-        lts: &'a LabelledTransitionSystem<L>,
+    pub fn new(
+        lts: &'a L,
         parsed_labels: &'a Vec<MultiAction>,
         equation_system: &'a ModalEquationSystem
     ) -> Self {
@@ -124,7 +125,7 @@ impl<'a, L: TransitionLabel, E> Translation<'a, L, E> {
     }
 
     /// Perform the actual translation.
-    fn translate<F>(&mut self, initial_state: StateIndex, initial_equation_index: usize, labelling: F) -> Result<(), MercError> 
+    pub fn translate<F>(&mut self, initial_state: StateIndex, initial_equation_index: usize, labelling: F) -> Result<(), MercError> 
         where F: Fn() -> E
     {
         // We store (state, formula, N) into the queue, where N is the vertex number assigned to this pair. This means
@@ -152,6 +153,16 @@ impl<'a, L: TransitionLabel, E> Translation<'a, L, E> {
         Ok(())
     }
 
+    /// Returns the collected vertices.
+    pub fn vertices(&self) -> &Vec<(Player, Priority)> {
+        &self.vertices
+    }
+
+    /// Returns the collected edges, where the edge label is ignored.
+    pub fn edges(&self) -> &Vec<(VertexIndex, E, VertexIndex)> {
+        &self.edges
+    }
+
     /// Translate a single vertex (s, Ψ) into the variability parity game vertex and its outgoing edges.
     ///
     /// The `fts` and `parsed_labels` are used to find the outgoing transitions matching the modalities in the formula.
@@ -160,7 +171,7 @@ impl<'a, L: TransitionLabel, E> Translation<'a, L, E> {
     /// The `vertex_map` is used to keep track of already translated vertices.
     ///
     /// This function is recursively called for subformulas.
-    pub fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F) 
+    fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F) 
         where F: Fn() -> E    
     {
         match formula {

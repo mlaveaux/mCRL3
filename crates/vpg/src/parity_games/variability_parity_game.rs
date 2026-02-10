@@ -12,6 +12,7 @@ use merc_symbolic::FormatConfigSet;
 use merc_symbolic::minus;
 use merc_utilities::MercError;
 
+use crate::Edge;
 use crate::PG;
 use crate::ParityGame;
 use crate::Player;
@@ -39,24 +40,6 @@ pub struct VariabilityParityGame {
     /// Every edge has an associated BDD function representing the configurations
     /// in which the edge is enabled.
     edges_configuration: Vec<BDDFunction>,
-}
-
-/// Represents an edge in the parity game along with its configuration BDD.
-pub struct Edge<'a> {
-    to: VertexIndex,
-    configuration: &'a BDDFunction,
-}
-
-impl<'a> Edge<'a> {
-    /// Returns the target vertex of the edge.
-    pub fn to(&self) -> VertexIndex {
-        self.to
-    }
-
-    /// Returns the configuration BDD associated with the edge.
-    pub fn configuration(&self) -> &BDDFunction {
-        self.configuration
-    }
 }
 
 impl VariabilityParityGame {
@@ -174,16 +157,6 @@ impl VariabilityParityGame {
         }
     }
 
-    /// Returns an iterator over the outgoing edges of the given vertex.
-    pub fn outgoing_conf_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'_>> + '_ {
-        let start = self.game.vertices()[*state_index];
-        let end = self.game.vertices()[*state_index + 1];
-        self.edges_configuration[start..end]
-            .iter()
-            .zip(self.game.edges_to()[start..end].iter())
-            .map(|(configuration, &to)| Edge { to, configuration })
-    }
-
     /// Returns true iff the parity game is total, checks all vertices have at least one outgoing edge.
     pub fn is_total(&self, manager_ref: &BDDManagerRef) -> Result<bool, MercError> {
         // Check that every vertex has at least one outgoing edge.
@@ -196,9 +169,9 @@ impl VariabilityParityGame {
         // Check that the configurations of the outgoing edges cover the overall configuration.
         for v in self.iter_vertices() {
             // Compute the disjunction of all outgoing edge configurations.
-            let covered = self.outgoing_conf_edges(v).try_fold(
+            let covered = self.outgoing_edges(v).try_fold(
                 manager_ref.with_manager_shared(|manager| BooleanFunction::f(manager)),
-                |acc: BDDFunction, edge| acc.or(edge.configuration()),
+                |acc: BDDFunction, edge| acc.or(edge.label()),
             )?;
 
             // If there are configurations not covered by the outgoing edges, the game is not total.
@@ -232,6 +205,17 @@ impl VariabilityParityGame {
 }
 
 impl PG for VariabilityParityGame {
+    type Label = BDDFunction;
+    
+    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = Edge<Self::Label>> + '_ {
+        let start = self.game.vertices()[*state_index];
+        let end = self.game.vertices()[*state_index + 1];
+        self.edges_configuration[start..end]
+            .iter()
+            .zip(self.game.edges_to()[start..end].iter())
+            .map(|(configuration, &to)| Edge::new(configuration, to))
+    }
+
     delegate! {
         to self.game {
             fn initial_vertex(&self) -> VertexIndex;
@@ -240,7 +224,6 @@ impl PG for VariabilityParityGame {
             fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
             fn owner(&self, vertex: VertexIndex) -> Player;
             fn priority(&self, vertex: VertexIndex) -> Priority;
-            fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_;
             fn is_total(&self) -> bool;
             fn highest_priority(&self) -> Priority;
         }
@@ -262,11 +245,11 @@ impl fmt::Display for VariabilityParityGame {
             )?;
 
             let mut first = true;
-            for edge in self.outgoing_conf_edges(v) {
+            for edge in self.outgoing_edges(v) {
                 if !first {
                     write!(f, ", ")?;
                 }
-                write!(f, "(v{}, {})", edge.to(), FormatConfigSet(edge.configuration()))?;
+                write!(f, "(v{}, {})", edge.to(), FormatConfigSet(edge.label()))?;
                 first = false;
             }
 

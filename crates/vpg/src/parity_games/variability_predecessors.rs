@@ -29,7 +29,7 @@ impl VariabilityPredecessors {
 
         // Count the number of incoming transitions for each state
         for state_index in game.iter_vertices() {
-            for edge in game.outgoing_conf_edges(state_index) {
+            for edge in game.outgoing_edges(state_index) {
                 state2incoming.update(*edge.to(), |start| *start += 1);
             }
         }
@@ -43,10 +43,10 @@ impl VariabilityPredecessors {
 
         // Place the transitions
         for state_index in game.iter_vertices() {
-            for edge in game.outgoing_conf_edges(state_index) {
+            for edge in game.outgoing_edges(state_index) {
                 state2incoming.update(*edge.to(), |start| {
                     edges_from.set(*start, state_index);
-                    edges_configuration[*start] = edge.configuration().clone();
+                    edges_configuration[*start] = edge.label().clone();
                     *start += 1;
                 });
             }
