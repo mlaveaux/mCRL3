@@ -10,6 +10,8 @@ use log::debug;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
+use merc_lts::TransitionLabel;
+use merc_symbolic::FormatConfigSet;
 use oxidd::BooleanFunction;
 use oxidd::Manager;
 use oxidd::ManagerRef;
@@ -29,15 +31,17 @@ use merc_utilities::MercError;
 /// # Details
 ///
 /// The action labels of a feature transition system are annotated with a
-/// special `BDD` struct that is defined as `struct BDD = node(var, true, false)
-/// | tt | ff`. The `features` map contains the mapping from variable names to
-/// their corresponding BDD variable, which *must* be defined in the BDD
-/// manager.
+/// special `BDD` struct that is defined as:
+///
+/// > `struct BDD = node(var, true, false) | tt | ff`
+///
+/// The `features` map contains the mapping from variable names to their
+/// corresponding BDD variable, which *must* be defined in the BDD manager.
 pub fn read_fts(
     manager_ref: &BDDManagerRef,
     reader: impl Read,
     features: HashMap<String, BDDFunction>,
-) -> Result<FeatureTransitionSystem, MercError> {
+) -> Result<FeatureTransitionSystem<String>, MercError> {
     // Read the underlying LTS, where the labels are in plain text
     let aut = read_aut(reader, Vec::new())?;
 
@@ -66,7 +70,7 @@ pub fn read_fts(
         }
     }
 
-    Ok(FeatureTransitionSystem::new(aut, feature_labels, features))
+    Ok(FeatureTransitionSystem::new(aut, features))
 }
 
 /// Converts the given data expression into a BDD function.
@@ -109,6 +113,7 @@ fn data_expr_to_bdd(
     }
 }
 
+/// A feature diagram represented as a BDD.
 pub struct FeatureDiagram {
     /// The mapping from variable names to their BDD variable.
     features: HashMap<String, BDDFunction>,
@@ -179,34 +184,18 @@ impl fmt::Debug for FeatureDiagram {
 
 /// A feature transition system, i.e., a labelled transition system
 /// where each label is associated with a feature expression.
-pub struct FeatureTransitionSystem {
+pub struct FeatureTransitionSystem<L: TransitionLabel> {
     /// The underlying labelled transition system.
-    lts: LabelledTransitionSystem<String>,
-
-    /// The feature expression associated with each label.
-    feature_labels: Vec<BDDFunction>,
+    lts: LabelledTransitionSystem<FeaturedLabel<L>>,
 
     /// The features associated with this feature transition system.
     features: HashMap<String, BDDFunction>,
 }
 
-impl FeatureTransitionSystem {
+impl<L: TransitionLabel> FeatureTransitionSystem<L> {
     /// Creates a new feature transition system.
-    pub fn new(
-        lts: LabelledTransitionSystem<String>,
-        feature_labels: Vec<BDDFunction>,
-        features: HashMap<String, BDDFunction>,
-    ) -> Self {
-        Self {
-            lts,
-            feature_labels,
-            features,
-        }
-    }
-
-    /// Returns the feature label BDD for the given label index.
-    pub fn feature_label(&self, label_index: LabelIndex) -> &BDDFunction {
-        &self.feature_labels[label_index]
+    pub fn new(lts: LabelledTransitionSystem<FeaturedLabel<L>>, features: HashMap<String, BDDFunction>) -> Self {
+        Self { lts, features }
     }
 
     /// Returns the features used in the feature diagram.
@@ -215,10 +204,45 @@ impl FeatureTransitionSystem {
     }
 }
 
-impl LTS for FeatureTransitionSystem {
-    type Label = String;
+/// A transition label associated with a feature expression.
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FeaturedLabel<L: TransitionLabel> {
+    pub label: L,
+    pub feature_expr: BDDFunction,
+}
 
-    fn merge_disjoint<L>(self, _other: &L) -> (LabelledTransitionSystem<String>, StateIndex) {
+impl<L: TransitionLabel> TransitionLabel for FeaturedLabel<L> {
+    delegate::delegate! {
+        to self.label {
+            fn matches_label(&self, label: &str) -> bool;
+        }
+    }
+
+    fn from_index(i: usize) -> Self {
+        panic!("Cannot create FeaturedLabel from index");
+    }
+
+    fn tau_label() -> Self {
+        panic!("Cannot create FeaturedLabel from index");
+    }
+}
+
+impl<L: TransitionLabel> fmt::Debug for FeaturedLabel<L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?} [{}]", self.label, FormatConfigSet(&self.feature_expr))
+    }
+}
+
+impl<L: TransitionLabel> fmt::Display for FeaturedLabel<L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?} [{}]", self.label, FormatConfigSet(&self.feature_expr))
+    }
+}
+
+impl<L: TransitionLabel> LTS for FeatureTransitionSystem<L> {
+    type Label = FeaturedLabel<L>;
+
+    fn merge_disjoint<Lts>(self, _other: &Lts) -> (LabelledTransitionSystem<L>, StateIndex) {
         unimplemented!("Merging feature transition systems is not yet implemented")
     }
 
@@ -229,7 +253,7 @@ impl LTS for FeatureTransitionSystem {
             fn num_of_labels(&self) -> usize;
             fn num_of_transitions(&self) -> usize;
             fn is_hidden_label(&self, label_index: LabelIndex) -> bool;
-            fn labels(&self) -> &[String];
+            fn labels(&self) -> &[FeaturedLabel<L>];
             fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition>;
             fn iter_states(&self) -> impl Iterator<Item = StateIndex> + '_;
         }

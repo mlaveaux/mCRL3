@@ -7,6 +7,7 @@ use merc_io::TimeProgress;
 use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
+use merc_lts::TransitionLabel;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
 use merc_syntax::FixedPointOperator;
@@ -34,16 +35,16 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
 
-    let mut algorithm = Translation::new(lts, &labels, &equation_system);
+    let mut algorithm: Translation<'_, String, ()> = Translation::new(lts, &labels, &equation_system);
+    algorithm.translate(lts.initial_state_index(), 0, || ())?;
 
-    algorithm.translate(lts.initial_state_index(), 0)?;
-
+    // Construct the parity game from the collected vertices and edges, where the `()` edge label is ignored.
     let result = ParityGame::from_edges(
         VertexIndex::new(0),
         algorithm.vertices.iter().map(|(p, _)| p).cloned().collect(),
         algorithm.vertices.into_iter().map(|(_, pr)| pr).collect(),
         true,
-        || algorithm.edges.iter().cloned(),
+        || algorithm.edges.iter().map(|(s, _, t)| (*s, *t)),
     );
 
     // Check that all vertices are reachable from the initial vertex. After
@@ -66,7 +67,7 @@ enum Formula<'a> {
     Equation(usize),
 }
 
-/// Local struct to keep track of the translation state
+/// Local struct to keep track of the translation state.
 ///
 /// Implements the translation from (s, Ψ) pairs to VPG vertices and edges.
 /// However, to avoid the complication of merging sub-results we immediately
@@ -75,10 +76,10 @@ enum Formula<'a> {
 /// means that during queuing we immediately assign a fresh index to each (s, Ψ)
 /// pair (if it does not yet exist) and then queue it to assign its actual
 /// values later on.
-struct Translation<'a> {
+pub(crate) struct Translation<'a, L: TransitionLabel, E> {
     vertex_map: IndexedSet<(StateIndex, Formula<'a>)>,
     vertices: Vec<(Player, Priority)>,
-    edges: Vec<(VertexIndex, VertexIndex)>,
+    edges: Vec<(VertexIndex, E, VertexIndex)>,
 
     // Used for the breadth first search.
     queue: Vec<(StateIndex, Formula<'a>, VertexIndex)>,
@@ -87,7 +88,7 @@ struct Translation<'a> {
     parsed_labels: &'a Vec<MultiAction>,
 
     /// The labelled transition system being translated.
-    lts: &'a LabelledTransitionSystem<String>,
+    lts: &'a LabelledTransitionSystem<L>,
 
     /// A reference to the modal equation system being translated.
     equation_system: &'a ModalEquationSystem,
@@ -96,12 +97,12 @@ struct Translation<'a> {
     progress: TimeProgress<usize>,
 }
 
-impl<'a> Translation<'a> {
+impl<'a, L: TransitionLabel, E> Translation<'a, L, E> {
     /// Creates a new translation instance.
     fn new(
-        lts: &'a LabelledTransitionSystem<String>,
+        lts: &'a LabelledTransitionSystem<L>,
         parsed_labels: &'a Vec<MultiAction>,
-        equation_system: &'a ModalEquationSystem,
+        equation_system: &'a ModalEquationSystem
     ) -> Self {
         let progress: TimeProgress<usize> = TimeProgress::new(
             |num_of_vertices: usize| {
@@ -123,7 +124,9 @@ impl<'a> Translation<'a> {
     }
 
     /// Perform the actual translation.
-    fn translate(&mut self, initial_state: StateIndex, initial_equation_index: usize) -> Result<(), MercError> {
+    fn translate<F>(&mut self, initial_state: StateIndex, initial_equation_index: usize, labelling: F) -> Result<(), MercError> 
+        where F: Fn() -> E
+    {
         // We store (state, formula, N) into the queue, where N is the vertex number assigned to this pair. This means
         // that during the traversal we can assume this N to exist.
         self.queue = vec![(
@@ -138,10 +141,10 @@ impl<'a> Translation<'a> {
             self.progress.print(self.vertices.len());
             match formula {
                 Formula::StateFrm(f) => {
-                    self.translate_vertex(s, f, vertex_index);
+                    self.translate_vertex(s, f, vertex_index, &labelling);
                 }
                 Formula::Equation(i) => {
-                    self.translate_equation(s, i, vertex_index);
+                    self.translate_equation(s, i, vertex_index, &labelling);
                 }
             }
         }
@@ -157,7 +160,9 @@ impl<'a> Translation<'a> {
     /// The `vertex_map` is used to keep track of already translated vertices.
     ///
     /// This function is recursively called for subformulas.
-    pub fn translate_vertex(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex) {
+    pub fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F) 
+        where F: Fn() -> E    
+    {
         match formula {
             StateFrm::True => {
                 // (s, true) → odd, 0
@@ -175,8 +180,8 @@ impl<'a> Translation<'a> {
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
-                        self.edges.push((vertex_index, s_psi_1));
-                        self.edges.push((vertex_index, s_psi_2));
+                        self.edges.push((vertex_index, labelling(), s_psi_1));
+                        self.edges.push((vertex_index, labelling(), s_psi_2));
                     }
                     StateFrmOp::Disjunction => {
                         // (s, Ψ_1 ∨ Ψ_2) →_P even, (s, Ψ_1) and (s, Ψ_2), 0
@@ -184,8 +189,8 @@ impl<'a> Translation<'a> {
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
-                        self.edges.push((vertex_index, s_psi_1));
-                        self.edges.push((vertex_index, s_psi_2));
+                        self.edges.push((vertex_index, labelling(), s_psi_1));
+                        self.edges.push((vertex_index, labelling(), s_psi_2));
                     }
                     _ => {
                         unimplemented!("Cannot translate binary operator in {}", formula);
@@ -200,7 +205,7 @@ impl<'a> Translation<'a> {
 
                 self.vertices[vertex_index] = (Player::Odd, Priority::new(0)); // The priority and owner do not matter here
                 let equation_vertex = self.queue_vertex(s, Formula::Equation(i));
-                self.edges.push((vertex_index, equation_vertex));
+                self.edges.push((vertex_index, labelling(), equation_vertex));
             }
             StateFrm::Modality {
                 operator,
@@ -220,7 +225,7 @@ impl<'a> Translation<'a> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((vertex_index, s_prime_psi));
+                                self.edges.push((vertex_index, labelling(), s_prime_psi));
                             }
                         }
                     }
@@ -234,7 +239,7 @@ impl<'a> Translation<'a> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((vertex_index, s_prime_psi));
+                                self.edges.push((vertex_index, labelling(), s_prime_psi));
                             }
                         }
                     }
@@ -247,7 +252,9 @@ impl<'a> Translation<'a> {
     }
 
     /// Applies the translation to the given (s, equation) vertex.
-    fn translate_equation(&mut self, s: StateIndex, equation_index: usize, vertex_index: VertexIndex) {
+    fn translate_equation<F>(&mut self, s: StateIndex, equation_index: usize, vertex_index: VertexIndex, labelling: &F) 
+        where F: Fn() -> E
+    {
         let equation = self.equation_system.equation(equation_index);
         match equation.operator() {
             FixedPointOperator::Least => {
@@ -257,7 +264,7 @@ impl<'a> Translation<'a> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2) + 1),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index, s_psi));
+                self.edges.push((vertex_index, labelling(), s_psi));
             }
             FixedPointOperator::Greatest => {
                 // (s, ν X. Ψ) →_P even, (s, Ψ[x := ν X. Ψ]), 2 * (AD(Ψ)/2). In Rust division is already floor.
@@ -266,7 +273,7 @@ impl<'a> Translation<'a> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2)),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index, s_psi));
+                self.edges.push((vertex_index, labelling(), s_psi));
             }
         }
     }

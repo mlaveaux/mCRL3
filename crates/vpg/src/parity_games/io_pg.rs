@@ -122,7 +122,7 @@ pub fn read_pg(reader: impl Read) -> Result<ParityGame, MercError> {
 }
 
 /// Writes the given parity game to the given writer in .pg format.
-pub fn write_pg(mut writer: impl Write, game: &ParityGame) -> Result<(), MercError> {
+pub fn write_pg(mut writer: impl Write, game: &impl PG) -> Result<(), MercError> {
     info!("Writing parity game to .pg format...");
 
     let progress = TimeProgress::new(
@@ -136,7 +136,7 @@ pub fn write_pg(mut writer: impl Write, game: &ParityGame) -> Result<(), MercErr
         let owner = game.owner(v).to_index();
 
         write!(writer, "{} {} {} ", v.value(), prio.value(), owner)?;
-        write!(writer, "{}", game.outgoing_edges(v).map(|to| to.value()).format(", "))?;
+        write!(writer, "{}", game.outgoing_edges(v).map(|edge| edge.to().value()).format(", "))?;
         writeln!(writer, ";")?;
         progress.print((v.value() + 1, game.num_of_vertices()));
     }

@@ -204,6 +204,8 @@ impl ParityGame {
 }
 
 impl PG for ParityGame {
+    type Label = ();
+
     fn initial_vertex(&self) -> VertexIndex {
         self.initial_vertex
     }
@@ -273,6 +275,8 @@ impl fmt::Debug for ParityGame {
 
 /// A trait for parity games.
 pub trait PG {
+    type Label;
+
     /// Returns the initial vertex of the parity game.
     fn initial_vertex(&self) -> VertexIndex;
 
@@ -289,7 +293,7 @@ pub trait PG {
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
 
     /// Returns an iterator over the outgoing edges for the given vertex.
-    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_;
+    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = Edge<Self::Label>> + '_;
 
     /// Returns the owner of the given vertex.
     fn owner(&self, vertex: VertexIndex) -> Player;
@@ -299,6 +303,32 @@ pub trait PG {
 
     /// Returns true iff the parity game is total, checks all vertices have at least one outgoing edge.
     fn is_total(&self) -> bool;
+}
+
+/// Represents an edge in a parity game.
+pub struct Edge<L> {
+    pub from: VertexIndex,
+    pub label: L,
+    pub to: VertexIndex,
+}
+
+impl<L> Edge<L> {
+    /// Creates a new edge.
+    pub fn new(from: VertexIndex, label: L, to: VertexIndex) -> Self {
+        Self { from, label, to }
+    }
+
+    pub fn from(&self) -> VertexIndex {
+        self.from
+    }
+
+    pub fn label(&self) -> &L {
+        &self.label
+    }
+
+    pub fn to(&self) -> VertexIndex {
+        self.to
+    }
 }
 
 /// A wrapper to view a parity game as a graph.
@@ -321,7 +351,7 @@ impl<G: PG> Graph for AsGraph<'_, G> {
         &self,
         vertex: <Self as Graph>::VertexIndex,
     ) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
-        self.0.outgoing_edges(vertex).map(|to| ((), to))
+        self.0.outgoing_edges(vertex).map(|edge| ((), edge.to()))
     }
 }
 

@@ -1,32 +1,20 @@
 use std::fmt;
 
 use log::debug;
-use log::info;
-use log::trace;
 use oxidd::BooleanFunction;
 use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
-use merc_collections::IndexedSet;
-use merc_io::TimeProgress;
 use merc_lts::LTS;
-use merc_lts::StateIndex;
-use merc_syntax::ActFrm;
-use merc_syntax::ActFrmBinaryOp;
 use merc_syntax::Action;
-use merc_syntax::FixedPointOperator;
-use merc_syntax::ModalityOperator;
 use merc_syntax::MultiAction;
-use merc_syntax::RegFrm;
 use merc_syntax::StateFrm;
-use merc_syntax::StateFrmOp;
 use merc_utilities::MercError;
 
 use crate::FeatureTransitionSystem;
 use crate::ModalEquationSystem;
-use crate::Player;
-use crate::Priority;
+use crate::Translation;
 use crate::VariabilityParityGame;
 use crate::VertexIndex;
 use crate::compute_reachable;
@@ -35,7 +23,7 @@ use crate::make_vpg_total;
 /// Translates a feature transition system into a variability parity game.
 pub fn translate_vpg(
     manager_ref: &BDDManagerRef,
-    fts: &FeatureTransitionSystem,
+    fts: &FeatureTransitionSystem<String>,
     configuration: BDDFunction,
     formula: &StateFrm,
 ) -> Result<VariabilityParityGame, MercError> {
@@ -49,6 +37,8 @@ pub fn translate_vpg(
         .map(strip_feature_configuration_from_multi_action)
         .collect();
 
+    let true_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
+
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
 
@@ -60,7 +50,6 @@ pub fn translate_vpg(
         fts,
         &simplified_labels,
         &equation_system,
-        manager_ref.with_manager_shared(|manager| BDDFunction::t(manager)),
     );
 
     algorithm.translate(fts.initial_state_index(), 0)?;
@@ -359,37 +348,6 @@ fn strip_feature_configuration_from_multi_action(multi_action: &MultiAction) -> 
                 args: Vec::new(),
             })
             .collect(),
-    }
-}
-
-/// Returns true iff the given action matches the regular formula.
-fn match_regular_formula(formula: &RegFrm, action: &MultiAction) -> bool {
-    match formula {
-        RegFrm::Action(action_formula) => match_action_formula(action_formula, action),
-        RegFrm::Choice { lhs, rhs } => match_regular_formula(lhs, action) || match_regular_formula(rhs, action),
-        _ => {
-            unimplemented!("Cannot translate regular formula {}", formula);
-        }
-    }
-}
-
-/// Returns true iff the given action matches the action formula.
-fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
-    match formula {
-        ActFrm::True => true,
-        ActFrm::False => false,
-        ActFrm::MultAct(expected_action) => expected_action == action,
-        ActFrm::Binary { op, lhs, rhs } => match op {
-            ActFrmBinaryOp::Union => match_action_formula(lhs, action) || match_action_formula(rhs, action),
-            ActFrmBinaryOp::Intersect => match_action_formula(lhs, action) && match_action_formula(rhs, action),
-            _ => {
-                unimplemented!("Cannot translate binary operator {}", formula);
-            }
-        },
-        ActFrm::Negation(expr) => !match_action_formula(expr, action),
-        _ => {
-            unimplemented!("Cannot translate action formula {}", formula);
-        }
     }
 }
 
