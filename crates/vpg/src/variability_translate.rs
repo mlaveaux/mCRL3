@@ -69,7 +69,7 @@ pub fn translate_vpg(
         manager_ref,
         VertexIndex::new(0),
         algorithm.vertices().iter().map(|(p, _)| p).cloned().collect(),
-        algorithm.vertices().into_iter().map(|(_, pr)| pr).cloned().collect(),
+        algorithm.vertices().iter().map(|(_, pr)| pr).cloned().collect(),
         configuration,
         variables,
         || algorithm.edges().iter().cloned(),

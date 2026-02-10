@@ -33,7 +33,7 @@ pub trait Block: Clone {
     }
 
     /// Returns an iterator over the elements in this block.
-    fn iter<'a>(&self, elements: &'a Vec<usize>) -> impl Iterator<Item = usize> + 'a;
+    fn iter<'a>(&self, elements: &'a [usize]) -> impl Iterator<Item = usize> + 'a;
 
     /// Returns true iff the block is consistent.
     fn assert_consistent(&self);
@@ -204,7 +204,7 @@ impl Block for SimpleBlock {
         self.end = end;
     }
 
-    fn iter<'a>(&self, elements: &'a Vec<usize>) -> impl Iterator<Item = usize> + 'a {
+    fn iter<'a>(&self, elements: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
         SimpleBlockIter {
             elements,
             index: self.begin,
@@ -218,7 +218,7 @@ impl Block for SimpleBlock {
 }
 
 pub struct SimpleBlockIter<'a> {
-    elements: &'a Vec<usize>,
+    elements: &'a [usize],
     index: usize,
     end: usize,
 }

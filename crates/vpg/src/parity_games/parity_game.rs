@@ -222,7 +222,7 @@ impl PG for ParityGame {
         (0..self.num_of_vertices()).map(VertexIndex::new)
     }
 
-    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = Edge<()>> + '_ {
+    fn outgoing_edges<'a>(&'a self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'a, ()>> + 'a {
         let start = self.vertices[*state_index];
         let end = self.vertices[*state_index + 1];
 
@@ -293,7 +293,7 @@ pub trait PG {
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
 
     /// Returns an iterator over the outgoing edges for the given vertex.
-    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = Edge<Self::Label>> + '_;
+    fn outgoing_edges<'a>(&'a self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'a, Self::Label>> + 'a;
 
     /// Returns the owner of the given vertex.
     fn owner(&self, vertex: VertexIndex) -> Player;
@@ -319,7 +319,7 @@ impl<'a, L> Edge<'a, L> {
 
     /// Returns the label of the edge.
     pub fn label(&self) -> &L {
-        &self.label
+        self.label
     }
 
     pub fn to(&self) -> VertexIndex {

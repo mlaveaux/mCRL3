@@ -46,7 +46,7 @@ pub fn verify_solution(pg: &impl PG, solution: &[Set; 2], strategy: &[Strategy; 
             trace!("Restricting game for player {} with priority {}", player, priority);
             let restricted_game = SubGame::new(pg, player, &strategy[player.to_index()], Priority::new(priority));
 
-            let predecessors = Predecessors::new(&restricted_game);
+            let _predecessors = Predecessors::new(&restricted_game);
 
             let scc_partition = scc_decomposition(&AsGraph(&restricted_game), |_, _, _| true);
 
@@ -73,7 +73,7 @@ pub fn verify_solution(pg: &impl PG, solution: &[Set; 2], strategy: &[Strategy; 
 
 /// Computes the set of vertices reachable from the given initial vertices in
 /// the given graph.
-fn reachability<G>(graph: &G, initial: Vec<G::VertexIndex>) -> Set
+fn _reachability<G>(graph: &G, initial: Vec<G::VertexIndex>) -> Set
 where
     G: Graph,
     G::VertexIndex: MercIndex<Target = usize>,
@@ -145,7 +145,7 @@ impl<G: PG> PG for SubGame<'_, G> {
             .filter(|v| self.restricted.get(**v).expect("Vertex must be in the restricted set") == true)
     }
 
-    fn outgoing_edges(&self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<G::Label>> + '_ {
+    fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a {
         self.game.outgoing_edges(vertex_index).filter(move |edge| {
             // Only consider edges to vertices that are in the restricted set and follow the strategy.
             self.restricted
