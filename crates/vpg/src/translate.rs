@@ -7,7 +7,7 @@ use merc_io::TimeProgress;
 use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
-use merc_lts::TransitionLabel;
+use merc_lts::Transition;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
 use merc_syntax::FixedPointOperator;
@@ -36,7 +36,7 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     debug!("{}", equation_system);
 
     let mut algorithm: Translation<'_, _, ()> = Translation::new(lts, &labels, &equation_system);
-    algorithm.translate(lts.initial_state_index(), 0, || ())?;
+    algorithm.translate(lts.initial_state_index(), 0, |_| ())?;
 
     // Construct the parity game from the collected vertices and edges, where the `()` edge label is ignored.
     let result = ParityGame::from_edges(
@@ -124,9 +124,14 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         }
     }
 
-    /// Perform the actual translation.
+    /// Perform the translation for the given `initial_state` and `initial_equation_index`.
+    /// 
+    /// The `labelling` function is used to compute the edge label for the
+    /// outgoing edges of this vertex. The argument is the transition
+    /// corresponding to the modality, or None if there is no modality (e.g.,
+    /// for conjunctions).
     pub fn translate<F>(&mut self, initial_state: StateIndex, initial_equation_index: usize, labelling: F) -> Result<(), MercError> 
-        where F: Fn() -> E
+        where F: Fn(Option<Transition>) -> E
     {
         // We store (state, formula, N) into the queue, where N is the vertex number assigned to this pair. This means
         // that during the traversal we can assume this N to exist.
@@ -163,16 +168,10 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         &self.edges
     }
 
-    /// Translate a single vertex (s, Ψ) into the variability parity game vertex and its outgoing edges.
-    ///
-    /// The `fts` and `parsed_labels` are used to find the outgoing transitions matching the modalities in the formula.
-    ///
-    /// These are stored in the provided `vertices` and `edges` vectors.
-    /// The `vertex_map` is used to keep track of already translated vertices.
-    ///
-    /// This function is recursively called for subformulas.
+    /// Translate a single vertex (s, Ψ) into the variability parity game vertex
+    /// and its outgoing edges.
     fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F) 
-        where F: Fn() -> E    
+        where F: Fn(Option<Transition>) -> E    
     {
         match formula {
             StateFrm::True => {
@@ -191,8 +190,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
-                        self.edges.push((vertex_index, labelling(), s_psi_1));
-                        self.edges.push((vertex_index, labelling(), s_psi_2));
+                        self.edges.push((vertex_index, labelling(None), s_psi_1));
+                        self.edges.push((vertex_index, labelling(None), s_psi_2));
                     }
                     StateFrmOp::Disjunction => {
                         // (s, Ψ_1 ∨ Ψ_2) →_P even, (s, Ψ_1) and (s, Ψ_2), 0
@@ -200,8 +199,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
-                        self.edges.push((vertex_index, labelling(), s_psi_1));
-                        self.edges.push((vertex_index, labelling(), s_psi_2));
+                        self.edges.push((vertex_index, labelling(None), s_psi_1));
+                        self.edges.push((vertex_index, labelling(None), s_psi_2));
                     }
                     _ => {
                         unimplemented!("Cannot translate binary operator in {}", formula);
@@ -216,7 +215,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
 
                 self.vertices[vertex_index] = (Player::Odd, Priority::new(0)); // The priority and owner do not matter here
                 let equation_vertex = self.queue_vertex(s, Formula::Equation(i));
-                self.edges.push((vertex_index, labelling(), equation_vertex));
+                self.edges.push((vertex_index, labelling(None), equation_vertex));
             }
             StateFrm::Modality {
                 operator,
@@ -236,7 +235,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((vertex_index, labelling(), s_prime_psi));
+                                self.edges.push((vertex_index, labelling(Some(transition)), s_prime_psi));
                             }
                         }
                     }
@@ -250,7 +249,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((vertex_index, labelling(), s_prime_psi));
+                                self.edges.push((vertex_index, labelling(Some(transition)), s_prime_psi));
                             }
                         }
                     }
@@ -264,7 +263,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
 
     /// Applies the translation to the given (s, equation) vertex.
     fn translate_equation<F>(&mut self, s: StateIndex, equation_index: usize, vertex_index: VertexIndex, labelling: &F) 
-        where F: Fn() -> E
+        where F: Fn(Option<Transition>) -> E
     {
         let equation = self.equation_system.equation(equation_index);
         match equation.operator() {
@@ -275,7 +274,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2) + 1),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index, labelling(), s_psi));
+                self.edges.push((vertex_index, labelling(None), s_psi));
             }
             FixedPointOperator::Greatest => {
                 // (s, ν X. Ψ) →_P even, (s, Ψ[x := ν X. Ψ]), 2 * (AD(Ψ)/2). In Rust division is already floor.
@@ -284,7 +283,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2)),
                 );
                 let s_psi = self.queue_vertex(s, Formula::StateFrm(equation.body()));
-                self.edges.push((vertex_index, labelling(), s_psi));
+                self.edges.push((vertex_index, labelling(None), s_psi));
             }
         }
     }

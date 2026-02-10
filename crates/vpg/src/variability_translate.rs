@@ -28,8 +28,11 @@ pub fn translate_vpg(
     formula: &StateFrm,
 ) -> Result<VariabilityParityGame, MercError> {
     // Parses all labels into MultiAction once
-    let parsed_labels: Result<Vec<MultiAction>, MercError> =
-        fts.labels().iter().map(|label| MultiAction::parse(label)).collect();
+    let parsed_labels: Result<Vec<MultiAction>, MercError> = fts
+        .labels()
+        .iter()
+        .map(|label| MultiAction::parse(label.label()))
+        .collect();
 
     // Simplify the labels by stripping BDD information
     let simplified_labels: Vec<MultiAction> = parsed_labels?
@@ -52,7 +55,12 @@ pub fn translate_vpg(
         &equation_system,
     );
 
-    algorithm.translate(fts.initial_state_index(), 0)?;
+    algorithm.translate(fts.initial_state_index(), 0, |transition| {
+        match transition {
+            Some(transition) => fts.labels()[transition.label].feature_expr().clone(),
+            None => true_bdd.clone(), // The label does not matter, allow all configurations.
+        }
+    })?;
 
     // Convert the feature diagram (with names) to a VPG
     let variables: Vec<BDDFunction> = fts.features().values().cloned().collect();
@@ -60,11 +68,11 @@ pub fn translate_vpg(
     let result = VariabilityParityGame::from_edges(
         manager_ref,
         VertexIndex::new(0),
-        algorithm.vertices.iter().map(|(p, _)| p).cloned().collect(),
-        algorithm.vertices.into_iter().map(|(_, pr)| pr).collect(),
+        algorithm.vertices().iter().map(|(p, _)| p).cloned().collect(),
+        algorithm.vertices().into_iter().map(|(_, pr)| pr).cloned().collect(),
         configuration,
         variables,
-        || algorithm.edges.iter().cloned(),
+        || algorithm.edges().iter().cloned(),
     );
 
     // Check that all vertices are reachable from the initial vertex. After
