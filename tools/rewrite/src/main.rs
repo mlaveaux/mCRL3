@@ -49,7 +49,6 @@ enum Commands {
     Convert(ConvertArgs),
 }
 
-/// Rewrite mCRL2 data specifications and REC files
 #[derive(clap::Args, Debug)]
 struct RewriteArgs {
     rewriter: Rewriter,
@@ -66,7 +65,6 @@ struct RewriteArgs {
     output: bool,
 }
 
-/// Convert input rewrite system to the TRS format
 #[derive(clap::Args, Debug)]
 struct ConvertArgs {
     /// The REC specification that contains the rewrite rules.
