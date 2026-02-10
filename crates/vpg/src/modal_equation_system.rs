@@ -87,6 +87,11 @@ impl ModalEquationSystem {
         &self.equations[i]
     }
 
+    /// Returns the number of equations in the system.
+    pub fn len(&self) -> usize {
+        self.equations.len()
+    }
+
     /// The alternation depth is a complexity measure of the given formula.
     ///
     /// # Details

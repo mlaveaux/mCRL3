@@ -1,3 +1,5 @@
+use std::fmt;
+
 use log::debug;
 use log::info;
 use log::trace;
@@ -49,6 +51,11 @@ pub fn translate_vpg(
 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
+
+    for i in 0..equation_system.len() {
+        debug!("Alternation depth of {} is {}", i, equation_system.alternation_depth(i));
+    }
+
     let mut algorithm = Translation::new(
         fts,
         &simplified_labels,
@@ -92,10 +99,19 @@ pub fn translate_vpg(
 }
 
 /// Is used to distinguish between StateFrm and Equation vertices in the vertex map.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 enum Formula<'a> {
     StateFrm(&'a StateFrm),
     Equation(usize),
+}
+
+impl fmt::Display for Formula<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Formula::StateFrm(state_frm) => write!(f, "{}", state_frm),
+            Formula::Equation(i) => write!(f, "Equation({})", i),
+        }
+    }
 }
 
 /// Local struct to keep track of the translation state
@@ -168,10 +184,11 @@ impl<'a> Translation<'a> {
             Formula::Equation(initial_equation_index),
             VertexIndex::new(0),
         )];
+        self.vertex_map.insert((initial_state, Formula::Equation(initial_equation_index)));
         self.vertices.push((Player::Odd, Priority::new(0))); // Placeholder for the initial vertex
 
         while let Some((s, formula, vertex_index)) = self.queue.pop() {
-            debug!("Translating vertex {}: (s={}, formula={:?})", vertex_index, s, formula);
+            debug!("Translating vertex {}: (s={}, formula={})", vertex_index, s, formula);
             self.progress.print(self.vertices.len());
             match formula {
                 Formula::StateFrm(f) => {
