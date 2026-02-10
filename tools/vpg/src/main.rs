@@ -2,6 +2,7 @@ use std::fs::File;
 use std::fs::read_to_string;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -10,9 +11,14 @@ use duct::cmd;
 use itertools::Itertools;
 use log::debug;
 use log::info;
+use merc_lts::LtsFormat;
+use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_aut;
+use merc_lts::write_aut;
 use merc_symbolic::bits_to_bdd;
 use merc_vpg::Projected;
+use merc_vpg::ProjectedLts;
+use merc_vpg::project_feature_transition_system_iter;
 use oxidd::BooleanFunction;
 
 use merc_symbolic::CubeIterAll;
@@ -84,6 +90,7 @@ enum Commands {
     Solve(SolveArgs),
     Reachable(ReachableArgs),
     Project(ProjectArgs),
+    ProjectVpg(ProjectVpgArgs),
     Translate(TranslateArgs),
     TranslateVpg(TranslateVpgArgs),
     Display(DisplayArgs),
@@ -114,22 +121,43 @@ struct SolveArgs {
 /// Compute the reachable part of a parity game
 #[derive(clap::Args, Debug)]
 struct ReachableArgs {
-    filename: String,
+    /// The filename of the parity game to compute the reachable part of
+    filename: PathBuf,
 
-    output: String,
+    /// The output filename for the reachable part of the parity game
+    output: PathBuf,
 
     #[arg(long, short)]
     format: Option<ParityGameFormat>,
 }
 
-/// Project a variability parity game to a set of parity games
+/// Project a feature transition system to a set of transition systems
 #[derive(clap::Args, Debug)]
 struct ProjectArgs {
-    filename: String,
+    /// The filename of the variability parity game to project
+    filename: PathBuf,
 
+    /// The filename of the feature diagram
+    feature_diagram_filename: PathBuf,
+
+    /// The output filename pattern for the projected labelled transition systems.
     output: String,
 
-    /// Whether to compute the reachable part after outputting each projection
+    /// The input featured transition system file format
+    #[arg(long, short)]
+    format: Option<LtsFormat>,
+}
+
+/// Project a variability parity game to a set of parity games
+#[derive(clap::Args, Debug)]
+struct ProjectVpgArgs {
+    /// The filename of the variability parity game to project
+    filename: PathBuf,
+
+    /// The output filename pattern for the projected parity games.
+    output: String,
+
+    /// Whether to compute the reachable part of each projection.
     #[arg(long, short)]
     reachable: bool,
 
@@ -141,26 +169,34 @@ struct ProjectArgs {
 #[derive(clap::Args, Debug)]
 struct TranslateArgs {
     /// The filename of the labelled transition system
-    labelled_transition_system: String,
+    labelled_transition_system: PathBuf,
+
+    /// The input labelled transition system file format
+    #[arg(long, short)]
+    format: Option<LtsFormat>,
 
     /// The filename of the modal formula
-    formula_filename: String,
+    formula_filename: PathBuf,
 
     /// The parity game output filename
-    output: String,
+    output: PathBuf,
 }
 
 /// Translate a feature transition system and a modal formula into a variability parity game
 #[derive(clap::Args, Debug)]
 struct TranslateVpgArgs {
     /// The filename of the feature diagram
-    feature_diagram_filename: String,
+    feature_diagram_filename: PathBuf,
+
+    /// The input featured transition system file format
+    #[arg(long, short)]
+    format: Option<LtsFormat>,
 
     /// The filename of the feature transition system
-    fts_filename: String,
+    fts_filename: PathBuf,
 
     /// The filename of the modal formula
-    formula_filename: String,
+    formula_filename: PathBuf,
 
     /// The variability parity game output filename
     output: String,
@@ -169,10 +205,11 @@ struct TranslateVpgArgs {
 /// Display a (variability) parity game
 #[derive(clap::Args, Debug)]
 struct DisplayArgs {
-    filename: String,
+    /// The filename of the (variability) parity game to display
+    filename: PathBuf,
 
     /// The .dot file output filename
-    output: String,
+    output: PathBuf,
 
     /// The parity game file format
     #[arg(long, short)]
@@ -200,6 +237,7 @@ fn main() -> Result<ExitCode, MercError> {
             Commands::Solve(args) => handle_solve(&cli, args, &mut timing)?,
             Commands::Reachable(args) => handle_reachable(&cli, args, &mut timing)?,
             Commands::Project(args) => handle_project(&cli, args, &mut timing)?,
+            Commands::ProjectVpg(args) => handle_project_vpg(&cli, args, &mut timing)?,
             Commands::Translate(args) => handle_translate(args)?,
             Commands::TranslateVpg(args) => handle_translate_vpg(&cli, args)?,
             Commands::Display(args) => handle_display(&cli, args, &mut timing)?,
@@ -366,13 +404,67 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
     Ok(())
 }
 
-/// Compute all the projects of a variability parity game and write them to output.
+/// Projects a feature transition system to a set of transition systems and writes them to output.
 fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<(), MercError> {
-    let path = Path::new(&args.filename);
-    let format = guess_format_from_extension(path, args.format)
-        .ok_or_else(|| format!("Unknown parity game file format for '{}'.", path.display()))?;
+    let format = guess_lts_format_from_extension(&args.filename, args.format)
+        .ok_or_else(|| format!("Unknown featured transition system format for '{}'.", args.filename.display()))?;
 
-    let mut file = File::open(path)?;
+    if format != LtsFormat::Aut {
+        return Err(MercError::from(
+            "The project command only works for featured transition systems in the .aut format.",
+        ));
+    }
+    
+    // Read and solve a variability parity game.
+    let manager_ref = oxidd::bdd::new_manager(
+        cli.oxidd_node_capacity,
+        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
+        cli.oxidd_workers,
+    );
+
+    // Read feature diagram
+    let mut feature_diagram_file = File::open(&args.feature_diagram_filename).map_err(|e| {
+        MercError::from(format!(
+            "Could not open feature diagram file '{}': {}",
+            &args.feature_diagram_filename.display(), e
+        ))
+    })?;
+    let feature_diagram = FeatureDiagram::from_reader(&manager_ref, &mut feature_diagram_file)?;
+
+    // Read the feature transition system.
+    let mut fts_file = File::open(&args.filename)?;
+    let fts = read_fts(&manager_ref, &mut fts_file, feature_diagram.features().clone())?;
+    let output_path = Path::new(&args.output);    
+        
+    for result in project_feature_transition_system_iter(&fts, &feature_diagram, timing) {
+        let (ProjectedLts { bits, bdd: _, lts }, _) = result?;
+
+        let extension = output_path.extension().ok_or("Missing extension on output file")?;
+        let new_path = output_path
+            .with_file_name(format!(
+                "{}_{}",
+                output_path
+                    .file_stem()
+                    .ok_or("Missing filename on output")?
+                    .to_string_lossy(),
+                FormatConfig(&bits)
+            ))
+            .with_extension(extension);
+
+        let mut output_file = File::create(new_path)?;
+
+        write_aut(&mut output_file, &lts)?;
+    }
+
+    Ok(())    
+}
+
+/// Compute all the projections of a variability parity game and write them to output.
+fn handle_project_vpg(cli: &Cli, args: &ProjectVpgArgs, timing: &mut Timing) -> Result<(), MercError> {
+    let format = guess_format_from_extension(&args.filename, args.format)
+        .ok_or_else(|| format!("Unknown parity game file format for '{}'.", args.filename.display()))?;
+
+    let mut file = File::open(&args.filename)?;
     if format != ParityGameFormat::VPG {
         return Err(MercError::from(
             "The project command only works for variability parity games.",
@@ -422,21 +514,29 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
 /// Translates a feature diagram, a feature transition system (FTS), and a modal
 /// formula into a variability parity game.
 fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
+    let format = guess_lts_format_from_extension(&args.labelled_transition_system, args.format)
+        .ok_or_else(|| format!("Unknown labelled transition system format for '{}'.", args.labelled_transition_system.display()))?;
+
+    if format != LtsFormat::Aut {
+        return Err(MercError::from(
+            "The translate command only works for labelled transition systems in the .aut format.",
+        ));
+    }
+
     // Read LTS
     let mut lts_file = File::open(&args.labelled_transition_system).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.labelled_transition_system, e
+            &args.labelled_transition_system.display(), e
         ))
     })?;
-
     let lts = read_aut(&mut lts_file, Vec::new())?;
 
     // Read and validate formula (no actions/data specs supported here)
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open formula file '{}': {}",
-            &args.formula_filename, e
+            &args.formula_filename.display(), e
         ))
     })?)?;
     if !formula_spec.action_declarations.is_empty() {
@@ -470,7 +570,7 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let mut feature_diagram_file = File::open(&args.feature_diagram_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature diagram file '{}': {}",
-            &args.feature_diagram_filename, e
+            &args.feature_diagram_filename.display(), e
         ))
     })?;
     let feature_diagram = FeatureDiagram::from_reader(&manager_ref, &mut feature_diagram_file)?;
@@ -479,7 +579,7 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let mut fts_file = File::open(&args.fts_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.fts_filename, e
+            &args.fts_filename.display(), e
         ))
     })?;
     let fts = read_fts(&manager_ref, &mut fts_file, feature_diagram.features().clone())?;
@@ -488,7 +588,7 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open formula file '{}': {}",
-            &args.formula_filename, e
+            &args.formula_filename.display(), e
         ))
     })?)?;
     if !formula_spec.action_declarations.is_empty() {

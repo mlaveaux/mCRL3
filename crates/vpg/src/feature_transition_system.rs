@@ -165,7 +165,7 @@ impl FeatureDiagram {
         &self.configuration
     }
 
-    /// Returns the features used in the feature diagram.
+    /// Returns the feature variables used in the feature diagram.
     pub fn features(&self) -> &HashMap<String, BDDFunction> {
         &self.features
     }
