@@ -29,8 +29,8 @@ impl<'a, G: PG> fmt::Display for PgDot<'a, G> {
 
         // Display edges
         for v in self.game.iter_vertices() {
-            for to in self.game.outgoing_edges(v) {
-                writeln!(f, "  v{} -> v{};", v, to)?;
+            for edge in self.game.outgoing_edges(v) {
+                writeln!(f, "  v{} -> v{};", v, edge.to())?;
             }
         }
 
@@ -63,13 +63,13 @@ impl<'a> fmt::Display for VpgDot<'a> {
 
         // Display edges
         for v in self.game.iter_vertices() {
-            for edge in self.game.outgoing_conf_edges(v) {
+            for edge in self.game.outgoing_edges(v) {
                 writeln!(
                     f,
                     "  v{} -> v{} [label=\"{}\"];",
                     v,
                     edge.to(),
-                    FormatConfigSet(edge.configuration())
+                    FormatConfigSet(edge.label())
                 )?;
             }
         }

@@ -222,11 +222,11 @@ impl PG for ParityGame {
         (0..self.num_of_vertices()).map(VertexIndex::new)
     }
 
-    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
+    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = Edge<()>> + '_ {
         let start = self.vertices[*state_index];
         let end = self.vertices[*state_index + 1];
 
-        (start..end).map(move |i| self.edges_to[i])
+        (start..end).map(move |i| Edge::new(&(), self.edges_to[i]))
     }
 
     fn owner(&self, vertex: VertexIndex) -> Player {
@@ -265,7 +265,7 @@ impl fmt::Debug for ParityGame {
                 *prio
             )?;
 
-            write!(f, "{}", self.outgoing_edges(v).format(", "))?;
+            write!(f, "{}", self.outgoing_edges(v).map(|edge| edge.to()).format(", "))?;
             writeln!(f, "]),")?;
         }
         writeln!(f, "  ]")?;
@@ -306,22 +306,18 @@ pub trait PG {
 }
 
 /// Represents an edge in a parity game.
-pub struct Edge<L> {
-    pub from: VertexIndex,
-    pub label: L,
-    pub to: VertexIndex,
+pub struct Edge<'a, L> {
+    label: &'a L,
+    to: VertexIndex,
 }
 
-impl<L> Edge<L> {
+impl<'a, L> Edge<'a, L> {
     /// Creates a new edge.
-    pub fn new(from: VertexIndex, label: L, to: VertexIndex) -> Self {
-        Self { from, label, to }
+    pub fn new(label: &'a L, to: VertexIndex) -> Self {
+        Self { label, to }
     }
 
-    pub fn from(&self) -> VertexIndex {
-        self.from
-    }
-
+    /// Returns the label of the edge.
     pub fn label(&self) -> &L {
         &self.label
     }

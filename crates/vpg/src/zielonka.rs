@@ -175,7 +175,7 @@ impl<G: PG> ZielonkaSolver<'_, G> {
                         true
                     } else {
                         // Check if all successors of v are in the attractor
-                        self.game.outgoing_edges(v).all(|w_prime| !V[*w_prime] || A[*w_prime])
+                        self.game.outgoing_edges(v).all(|edge| !V[*edge.to()] || A[*edge.to()])
                     };
 
                     if attracted && !A[*v] {

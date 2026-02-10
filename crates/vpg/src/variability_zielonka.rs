@@ -525,7 +525,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
                                 // 10. a := gamma(v)
                                 a = EdgeDropGuard::new(manager, gamma[v].clone().into_edge(manager));
                                 // 11. for w' \in vE such that gamma(v) && theta(v, w') && \gamma(w') != \emptyset do
-                                for edge_w1 in self.game.outgoing_conf_edges(v) {
+                                for edge_w1 in self.game.outgoing_edges(v) {
                                     let tmp = EdgeDropGuard::new(
                                         manager,
                                         BDDFunction::and_edge(
@@ -535,7 +535,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
                                                 BDDFunction::and_edge(
                                                     manager,
                                                     gamma[v].as_edge(manager),
-                                                    edge_w1.configuration().as_edge(manager),
+                                                    edge_w1.label().as_edge(manager),
                                                 )?,
                                             ),
                                             gamma[edge_w1.to()].as_edge(manager),
@@ -548,7 +548,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
                                             manager,
                                             BDDFunction::and_edge(
                                                 manager,
-                                                edge_w1.configuration().as_edge(manager),
+                                                edge_w1.label().as_edge(manager),
                                                 gamma[edge_w1.to()].as_edge(manager),
                                             )?,
                                         );

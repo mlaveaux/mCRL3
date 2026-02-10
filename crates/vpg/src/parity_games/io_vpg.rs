@@ -244,8 +244,8 @@ pub fn write_vpg(writer: &mut impl Write, game: &VariabilityParityGame) -> Resul
         write!(
             writer,
             "{}",
-            game.outgoing_conf_edges(v).format_with(",", |edge, fmt| {
-                fmt(&format_args!("{}|{}", edge.to(), FormatConfigSet(edge.configuration())))
+            game.outgoing_edges(v).format_with(",", |edge, fmt| {
+                fmt(&format_args!("{}|{}", edge.to(), FormatConfigSet(edge.label())))
             })
         )?;
 

@@ -8,6 +8,7 @@ use merc_collections::scc_decomposition;
 use merc_utilities::MercIndex;
 
 use crate::AsGraph;
+use crate::Edge;
 use crate::PG;
 use crate::Player;
 use crate::Predecessors;
@@ -65,19 +66,17 @@ pub fn verify_solution(pg: &impl PG, solution: &[Set; 2], strategy: &[Strategy; 
         }
 
         if winning_set != solution[player.to_index()] {
-            panic!(
-                "The proposed winning set for player {} is incorrect",
-                player
-            );
+            panic!("The proposed winning set for player {} is incorrect", player);
         }
     }
 }
 
 /// Computes the set of vertices reachable from the given initial vertices in
 /// the given graph.
-fn reachability<G>(graph: &G, initial: Vec<G::VertexIndex>) -> Set 
-    where G: Graph,
-          G::VertexIndex: MercIndex<Target = usize>,
+fn reachability<G>(graph: &G, initial: Vec<G::VertexIndex>) -> Set
+where
+    G: Graph,
+    G::VertexIndex: MercIndex<Target = usize>,
 {
     // The set of vertices that are already visited.
     let mut visited = bitvec![usize, Lsb0; 0; graph.num_of_vertices()];
@@ -137,6 +136,8 @@ impl<G: PG> SubGame<'_, G> {
 }
 
 impl<G: PG> PG for SubGame<'_, G> {
+    type Label = G::Label;
+
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_ {
         // Only consider vertices that are below the maximum priority.
         self.game
@@ -144,14 +145,14 @@ impl<G: PG> PG for SubGame<'_, G> {
             .filter(|v| self.restricted.get(**v).expect("Vertex must be in the restricted set") == true)
     }
 
-    fn outgoing_edges(&self, state_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
-        self.iter_vertices().filter(move |outgoing| {
+    fn outgoing_edges(&self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<G::Label>> + '_ {
+        self.game.outgoing_edges(vertex_index).filter(move |edge| {
             // Only consider edges to vertices that are in the restricted set and follow the strategy.
             self.restricted
-                .get(**outgoing)
+                .get(*edge.to())
                 .expect("Vertex must be in the restricted set")
                 == true
-                && (self.game.owner(*outgoing) != self.player || self.strategy.get(state_index) == Some(outgoing))
+                && (self.game.owner(edge.to()) != self.player || self.strategy.get(vertex_index) == Some(&edge.to()))
         })
     }
 
@@ -170,7 +171,7 @@ impl<G: PG> PG for SubGame<'_, G> {
         if self.game.priority(vertex) == self.max_priority {
             // Return the priority for the current player.
             Priority::new(self.player.to_index())
-        } else {            
+        } else {
             // Return the priority for the opponent.
             Priority::new(self.player.opponent().to_index())
         }

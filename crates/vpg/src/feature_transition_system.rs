@@ -70,6 +70,19 @@ pub fn read_fts(
         }
     }
 
+    let original_labels = aut.labels().to_vec();
+
+    // Find the associated feature for each label and relabel the LTS accordingly.
+    let aut = aut.relabel(|label| {
+        let associated_feature = feature_labels[original_labels
+            .iter()
+            .position(|orig| *orig == label)
+            .expect("label must have an associated feature")]
+        .clone();
+
+        FeaturedLabel::new(label, associated_feature)
+    });
+
     Ok(FeatureTransitionSystem::new(aut, features))
 }
 
@@ -207,8 +220,25 @@ impl<L: TransitionLabel> FeatureTransitionSystem<L> {
 /// A transition label associated with a feature expression.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FeaturedLabel<L: TransitionLabel> {
-    pub label: L,
-    pub feature_expr: BDDFunction,
+    label: L,
+    feature_expr: BDDFunction,
+}
+
+impl<L: TransitionLabel> FeaturedLabel<L> {
+    /// Creates a new featured label with the given label and feature expression.
+    pub fn new(label: L, feature_expr: BDDFunction) -> Self {
+        Self { label, feature_expr }
+    }
+
+    /// Returns the label of this featured label.
+    pub fn label(&self) -> &L {
+        &self.label
+    }
+
+    /// Returns the feature expression of this featured label.
+    pub fn feature_expr(&self) -> &BDDFunction {
+        &self.feature_expr
+    }
 }
 
 impl<L: TransitionLabel> TransitionLabel for FeaturedLabel<L> {
@@ -242,7 +272,7 @@ impl<L: TransitionLabel> fmt::Display for FeaturedLabel<L> {
 impl<L: TransitionLabel> LTS for FeatureTransitionSystem<L> {
     type Label = FeaturedLabel<L>;
 
-    fn merge_disjoint<Lts>(self, _other: &Lts) -> (LabelledTransitionSystem<L>, StateIndex) {
+    fn merge_disjoint<Lts>(self, _other: &Lts) -> (LabelledTransitionSystem<FeaturedLabel<L>>, StateIndex) {
         unimplemented!("Merging feature transition systems is not yet implemented")
     }
 
