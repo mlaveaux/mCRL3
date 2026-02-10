@@ -52,16 +52,19 @@ struct Cli {
 /// Defines the subcommands for this tool.
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Prints information related to the given LTS.
     Info(InfoArgs),
+    /// Reduces the given LTS modulo an equivalent relation.
     Reduce(ReduceArgs),
+    /// Compares two LTS modulo an equivalent relation.
     Compare(CompareArgs),
+    /// Checks whether the given implementation LTS refines the given specification LTS modulo various refinement relation.
     Refines(RefinesArgs),
+    /// Converts an LTS from one format to another format.
     Convert(ConvertArgs),
 }
 
-/// Prints information related to the given LTS
 #[derive(clap::Args, Debug)]
-#[command()]
 struct InfoArgs {
     /// Specify the input LTS.
     filename: String,
@@ -75,9 +78,7 @@ struct InfoArgs {
     tau: Option<Vec<String>>,
 }
 
-/// Reduces the given LTS modulo an equivalent relation.
 #[derive(clap::Args, Debug)]
-#[command()]
 struct ReduceArgs {
     /// Selects the equivalence to reduce the LTS modulo.
     equivalence: Equivalence,
@@ -102,9 +103,7 @@ struct ReduceArgs {
     no_preprocess: bool,
 }
 
-/// Compares two LTS modulo an equivalent relation
 #[derive(clap::Args, Debug)]
-#[command()]
 struct CompareArgs {
     /// Selects the equivalence to compare the LTSs modulo.
     equivalence: Equivalence,
@@ -128,9 +127,7 @@ struct CompareArgs {
     no_preprocess: bool,
 }
 
-/// Converts an LTS from one format to another format.
 #[derive(clap::Args, Debug)]
-#[command()]
 struct ConvertArgs {
     /// Explicitly specify the LTS input file format
     #[arg(long)]
@@ -151,9 +148,7 @@ struct ConvertArgs {
     tau: Option<Vec<String>>,
 }
 
-/// Checks whether the given implementation LTS refines the given specification LTS modulo various refinement relation.
 #[derive(clap::Args, Debug)]
-#[command()]
 struct RefinesArgs {
     /// Selects the preorder to check for refinement.
     refinement: RefinementType,
