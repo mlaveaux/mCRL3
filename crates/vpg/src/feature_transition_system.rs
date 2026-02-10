@@ -248,7 +248,7 @@ impl<L: TransitionLabel> TransitionLabel for FeaturedLabel<L> {
         }
     }
 
-    fn from_index(i: usize) -> Self {
+    fn from_index(_i: usize) -> Self {
         panic!("Cannot create FeaturedLabel from index");
     }
 
