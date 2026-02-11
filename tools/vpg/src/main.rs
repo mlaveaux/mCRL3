@@ -457,8 +457,7 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
                     .to_string_lossy(),
                 FormatConfig(&bits)
             ))
-            .with_extension(extension);
-
+            .with_added_extension(extension);
         let mut output_file = File::create(new_path)?;
 
         write_aut(&mut output_file, &lts)?;
@@ -502,7 +501,7 @@ fn handle_project_vpg(cli: &Cli, args: &ProjectVpgArgs, timing: &mut Timing) -> 
                     .to_string_lossy(),
                 FormatConfig(&bits)
             ))
-            .with_extension(extension);
+            .with_added_extension(extension);
 
         let mut output_file = File::create(new_path)?;
 
