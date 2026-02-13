@@ -4,11 +4,11 @@ use std::ops::ControlFlow;
 
 use log::debug;
 
+use merc_syntax::apply_statefrm;
+use merc_syntax::visit_statefrm;
 use merc_syntax::FixedPointOperator;
 use merc_syntax::StateFrm;
 use merc_syntax::StateVarDecl;
-use merc_syntax::apply_statefrm;
-use merc_syntax::visit_statefrm;
 
 /// A fixpoint equation system representing a ranked set of fixpoint equations.
 ///
@@ -55,9 +55,8 @@ impl From<Equation> for StateFrm {
 
 impl ModalEquationSystem {
     /// Converts a plain state formula into a fixpoint equation system.
-    pub fn new(formula: &StateFrm) -> Self {
+    pub fn new(formula: &StateFrm) -> Self {        
         let mut equations = Vec::new();
-
         let mut identifier_generator = FreshStateVarGenerator::new(formula);
 
         // Ensure that the formula has an outermost fixpoint operator.
@@ -225,7 +224,7 @@ fn rhs(formula: &StateFrm) -> StateFrm {
 }
 
 /// A generator for fresh state variable names.
-struct FreshStateVarGenerator {
+pub struct FreshStateVarGenerator {
     used: HashSet<String>,
 }
 
