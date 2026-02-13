@@ -17,6 +17,7 @@ use crate::VariabilityParityGame;
 use crate::VertexIndex;
 use crate::compute_reachable;
 use crate::make_vpg_total;
+use crate::warn_unknown_action_labels;
 
 /// Translates a feature transition system into a variability parity game.
 pub fn translate_vpg(
@@ -26,19 +27,18 @@ pub fn translate_vpg(
     formula: &StateFrm,
 ) -> Result<VariabilityParityGame, MercError> {
     // Parses all labels into MultiAction once
-    let parsed_labels: Result<Vec<MultiAction>, MercError> = fts
-        .labels()
-        .iter()
-        .map(|label| MultiAction::parse(label.label()))
-        .collect();
+    let parsed_labels: Result<Vec<MultiAction>, MercError> =
+        fts.labels().iter().map(|label| MultiAction::parse(label)).collect();
 
+        
     // Simplify the labels by stripping BDD information
     let simplified_labels: Vec<MultiAction> = parsed_labels?
         .iter()
         .map(strip_feature_configuration_from_multi_action)
         .collect();
 
-    let true_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
+    // Warn about any labels that are used in the formula but do not correspond to any label in the LTS. 
+    warn_unknown_action_labels(formula, &simplified_labels);
 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);

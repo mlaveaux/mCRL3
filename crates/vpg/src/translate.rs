@@ -1,13 +1,15 @@
+use std::ops::ControlFlow;
+
 use log::debug;
 use log::info;
 use log::trace;
 
+use log::warn;
 use merc_collections::IndexedSet;
 use merc_io::TimeProgress;
-use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
-use merc_lts::Transition;
+use merc_lts::LTS;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
 use merc_syntax::FixedPointOperator;
@@ -16,14 +18,20 @@ use merc_syntax::MultiAction;
 use merc_syntax::RegFrm;
 use merc_syntax::StateFrm;
 use merc_syntax::StateFrmOp;
+use merc_syntax::StateVarDecl;
+use merc_syntax::apply_statefrm;
+use merc_syntax::visit_action_formula;
+use merc_syntax::visit_regular_formula;
+use merc_syntax::visit_statefrm;
 use merc_utilities::MercError;
 
+use crate::FreshStateVarGenerator;
+use crate::compute_reachable;
 use crate::ModalEquationSystem;
 use crate::ParityGame;
 use crate::Player;
 use crate::Priority;
 use crate::VertexIndex;
-use crate::compute_reachable;
 
 /// Translates a labelled transition system into a variability parity game.
 pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> Result<ParityGame, MercError> {
@@ -31,6 +39,9 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     let parsed_labels: Result<Vec<MultiAction>, MercError> =
         lts.labels().iter().map(|label| MultiAction::parse(label)).collect();
     let labels = parsed_labels?;
+
+    // Warn about any labels that are used in the formula but do not correspond to any label in the LTS. 
+    warn_unknown_action_labels(formula, &labels);
 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);
@@ -58,6 +69,73 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     }
 
     Ok(result)
+}
+
+/// Produces a warning for each label that is used in the formula but does not correspond to any label in the LTS.
+pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &Vec<MultiAction>) {
+    visit_statefrm::<(), _>(formula, |statefrm| {
+        if let StateFrm::Modality { formula, .. } = statefrm {
+            visit_regular_formula::<(), _>(formula, |regfrm| {
+
+                if let RegFrm::Action(act_frm) = regfrm {
+                    visit_action_formula::<(), _>(act_frm, |act_frm| {
+                        if let ActFrm::MultAct(action) = act_frm {
+                            if !labels.contains(action) {
+                                warn!("Label {} in formula does not correspond to any label in the LTS", action);
+                            }
+                        }
+
+                        Ok(ControlFlow::Continue(()))
+                    })?;
+                }
+
+                Ok(ControlFlow::Continue(()))
+            })?;           
+        }
+
+        Ok(ControlFlow::Continue(()))
+    }).expect("Failed to visit state formula");
+}
+
+/// Translates regular formulas in modalities to fixpoint equations.
+///
+/// [a*]phi = nu X. [a]X && phi
+/// <a*>phi = mu X. <a>X || phi
+pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
+    apply_statefrm(formula, |subformula| {
+        if let StateFrm::Modality {
+            operator,
+            formula,
+            expr,
+        } = subformula
+        {
+            return match formula {
+                merc_syntax::RegFrm::Action(_action_frm) => Ok(None),
+                merc_syntax::RegFrm::Iteration(reg_frm) => {
+                    let iteration_var = identifier_generator.generate("I");
+                    Ok(Some(StateFrm::FixedPoint {
+                        operator: FixedPointOperator::Greatest,
+                        variable: StateVarDecl::new(iteration_var.clone(), Vec::new()),
+                        body: Box::new(StateFrm::Binary {
+                            op: StateFrmOp::Conjunction,
+                            lhs: Box::new(StateFrm::Modality {
+                                operator: operator.clone(),
+                                formula: *reg_frm.clone(),
+                                expr: Box::new(StateFrm::Id(iteration_var, Vec::new())),
+                            }),
+                            rhs: expr.clone(),
+                        }),
+                    }))
+                }
+                merc_syntax::RegFrm::Plus(reg_frm) => todo!(),
+                merc_syntax::RegFrm::Sequence { lhs, rhs } => todo!(),
+                merc_syntax::RegFrm::Choice { lhs, rhs } => todo!(),
+            }
+        }
+
+        Ok(None)
+    })
+    .expect("The apply does not fail")
 }
 
 /// Is used to distinguish between StateFrm and Equation vertices in the vertex map.

@@ -552,6 +552,7 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
             e
         ))
     })?)?;
+
     if !formula_spec.action_declarations.is_empty() {
         return Err(MercError::from("We do not support formulas with action declarations."));
     }
