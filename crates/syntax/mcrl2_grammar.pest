@@ -117,9 +117,6 @@ SortProduct = {
 /// Data Expression
 DataExpr = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* ~ (DataExprInfix ~ DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix*)* }
 
-/// Data Expression that can be used as a left hand side
-DataExprLhs = { IdAt ~ DataExprApplication? }
-
 /// Data Expressions without infix operators
 DataExprUnit = { DataExprPrefix* ~ DataExprPrimary ~ DataExprPostfix* }
 
@@ -379,7 +376,7 @@ VarSpec = { "var" ~ ( VarsDeclList ~ ";" )+ }
 EqnSpec = { VarSpec? ~ "eqn" ~ EqnDecl+ }                               
 
 /// Conditional equation
-EqnDecl = { (DataExpr ~ "->")? ~ DataExprLhs ~ "=" ~ DataExpr ~ ";" }            
+EqnDecl = { (DataExpr ~ "->")? ~ DataExpr ~ "=" ~ DataExpr ~ ";" }            
 
 
 //
