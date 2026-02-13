@@ -2,7 +2,8 @@ use std::ops::ControlFlow;
 
 use merc_utilities::MercError;
 
-use crate::{RegFrm, StateFrm};
+use crate::RegFrm;
+use crate::{SortExpression, StateFrm};
 
 /// Applies the given function recursively to the state formula.
 ///
@@ -10,11 +11,9 @@ use crate::{RegFrm, StateFrm};
 /// formula. If it returns `Some(new_formula)`, the substitution is applied and
 /// the new formula is returned. If it returns `None`, the substitution is not
 /// applied and the function continues to traverse the formula tree.
-pub fn apply_statefrm<F>(
-    formula: StateFrm,
-    mut function: F,
-) -> Result<StateFrm, MercError> 
-    where F: FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>
+pub fn apply_statefrm<F>(formula: StateFrm, mut function: F) -> Result<StateFrm, MercError>
+where
+    F: FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>,
 {
     apply_statefrm_rec(formula, &mut function)
 }
@@ -25,15 +24,22 @@ pub fn apply_statefrm<F>(
 /// it returns `ControlFlow::Break(value)`, the traversal is stopped and the
 /// value is returned. If it returns `ControlFlow::Continue(())`, the traversal
 /// continues.
-pub fn visit_statefrm<T>(
-    formula: &StateFrm,
-    mut visitor: impl FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
-) -> Result<Option<T>, MercError> {
+pub fn visit_statefrm<T, F>(formula: &StateFrm, mut visitor: F) -> Result<Option<T>, MercError>
+where
+    F: FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
+{
     visit_statefrm_rec(formula, &mut visitor)
 }
 
-/// See [`apply`].
-fn apply_statefrm_rec<F>(
+pub fn visit_sort_expr<T, F>(sort_expr: &SortExpression, mut visitor: F) -> Result<Option<T>, MercError>
+where
+    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,
+{
+    visit_sort_expr_rec(sort_expr, &mut visitor)
+}
+
+/// See [`apply_statefrm`].
+fn apply_statefrm_rec(
     formula: StateFrm,
     apply: &mut F,
 ) -> Result<StateFrm, MercError> 
@@ -122,11 +128,11 @@ fn apply_statefrm_rec<F>(
     }
 }
 
-/// See [`visit`].
-fn visit_statefrm_rec<T>(
-    formula: &StateFrm,
-    function: &mut impl FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
-) -> Result<Option<T>, MercError> {
+/// See [`visit_statefrm`].
+fn visit_statefrm_rec<T, F>(formula: &StateFrm, function: &mut F) -> Result<Option<T>, MercError>
+where
+    F: FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
+{
     if let ControlFlow::Break(result) = function(formula)? {
         // The visitor requested to break the traversal.
         return Ok(Some(result));
@@ -164,6 +170,41 @@ fn visit_statefrm_rec<T>(
         | StateFrm::Delay(_)
         | StateFrm::Yaled(_)
         | StateFrm::DataValExpr(_) => {}
+    }
+
+    // The visitor did not break the traversal.
+    Ok(None)
+}
+
+fn visit_sort_expr_rec<T, F>(sort_expr: &SortExpression, function: &mut F) -> Result<Option<T>, MercError>
+where
+    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,
+{
+    if let ControlFlow::Break(result) = function(sort_expr)? {
+        // The visitor requested to break the traversal.
+        return Ok(Some(result));
+    }
+
+    match sort_expr {
+        SortExpression::Product { lhs, rhs } => {
+            visit_sort_expr_rec(lhs, function)?;
+            visit_sort_expr_rec(rhs, function)?;
+        }
+        SortExpression::Function { domain, range } => {
+            visit_sort_expr_rec(domain, function)?;
+            visit_sort_expr_rec(range, function)?;
+        }
+        SortExpression::Struct { inner } => {
+            for constructors in inner {
+                for (_name, sort) in &constructors.args {
+                    visit_sort_expr_rec(&sort, function)?;
+                }
+            }
+        }
+        SortExpression::Complex(_complex_sort, sort_expression) => {
+            visit_sort_expr_rec(sort_expression, function)?;
+        }
+        SortExpression::Reference(_) | SortExpression::Simple(_) => {}
     }
 
     // The visitor did not break the traversal.
