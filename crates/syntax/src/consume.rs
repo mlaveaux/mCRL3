@@ -1382,28 +1382,11 @@ impl Mcrl2Parser {
     fn EqnDecl(decl: ParseNode) -> ParseResult<EqnDecl> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [DataExpr(condition), DataExprLhs(lhs), DataExpr(rhs)] => {
+            [DataExpr(condition), DataExpr(lhs), DataExpr(rhs)] => {
                 Ok(EqnDecl { condition: Some(condition), lhs, rhs, span: span.into() })
             },
-            [DataExprLhs(lhs), DataExpr(rhs)] => {
+            [DataExpr(lhs), DataExpr(rhs)] => {
                 Ok(EqnDecl { condition: None, lhs, rhs, span: span.into() })
-            },
-        )
-    }
-
-    fn DataExprLhs(expr: ParseNode) -> ParseResult<DataExpr> {
-        match_nodes!(expr.into_children();
-            [IdAt(identifier)] => {
-                Ok(DataExpr::Application {
-                    function: Box::new(DataExpr::Id(identifier)),
-                    arguments: Vec::new()
-                })
-            },
-            [IdAt(identifier), DataExprApplication(arguments)] => {
-                Ok(DataExpr::Application {
-                    function: Box::new(DataExpr::Id(identifier)),
-                    arguments
-                })
             },
         )
     }

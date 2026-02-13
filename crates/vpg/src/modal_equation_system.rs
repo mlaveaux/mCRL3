@@ -180,7 +180,7 @@ fn add_placeholder_operator(formula: StateFrm, identifier_generator: &mut FreshS
 fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
     debug!("Applying E to formula: {}", formula);
 
-    visit_statefrm::<()>(formula, |formula| match formula {
+    visit_statefrm::<(), _>(formula, |formula| match formula {
         StateFrm::FixedPoint {
             operator,
             variable,
