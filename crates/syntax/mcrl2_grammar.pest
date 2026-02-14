@@ -29,11 +29,17 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 /// Identifiers
 Id = @{ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 
-/// Identifiers that can start with at "@".
+/// Internal identifiers that can start with at "@".
 IdAt = @{ "@"? ~ (ASCII_ALPHANUMERIC|"_"|"'")+ }
+
+/// Identifiers that can also be the allowed infix operators.
+IdInfix = @{ "@"? ~ (ASCII_ALPHANUMERIC|"_"|"'"|"|"|"&"|"<"|"="|">"|"!"|"+"|"-"|"*")+ }
 
 /// List of identifiers
 IdList = { IdAt ~ ( "," ~ IdAt )* }
+
+/// List of identifiers
+IdInfixList = { IdInfix ~ ( "," ~ IdInfix )* }
 
 /// Numbers
 Number = { ASCII_DIGIT+ }
@@ -58,7 +64,7 @@ ActDecl = { IdList ~ ( ":" ~  SortProduct )? ~ ";" }
 SortSpec = { "sort" ~ SortDecl+ } 
 
 SortDecl = {                                             
-        IdAt ~ "=" ~ SortExpr ~ ";"  // Sort alias  
+        Id ~ "=" ~ SortExpr ~ ";"  // Sort alias  
     |   IdList ~ ";"               // List of sort identifiers                                               
 }
 
@@ -358,7 +364,7 @@ ProcSpec = { "proc" ~ ProcDecl+ }
 Init = { "init" ~ ProcExpr ~ ";" }   
 
 /// Typed parameters
-IdsDecl = { IdList ~ ":" ~ SortExpr }                                   
+IdsDecl = { IdInfixList ~ ":" ~ SortExpr }                                   
 
 /// Declaration of constructorss
 ConsSpec = { "cons" ~ ( IdsDecl ~ ";" )+ }

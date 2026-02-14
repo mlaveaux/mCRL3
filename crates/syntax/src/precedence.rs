@@ -665,6 +665,7 @@ static PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::PbesExprNegation)) // $right 7
 });
 
+#[allow(clippy::result_large_err)]
 pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
     PRESEXPR_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
