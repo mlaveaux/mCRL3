@@ -135,3 +135,15 @@ fn test_bool_spec() {
         }
     }
 }
+
+#[test]
+fn test_int_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/int.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}

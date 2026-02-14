@@ -112,7 +112,7 @@ fn main() -> Result<ExitCode, MercError> {
                         let data_expr = DataExpr::parse(&term)?;
                         let term = data_expr_to_term(&data_expr);
 
-                        let rewrite_spec = to_rewrite_spec(&spec);
+                        let rewrite_spec = to_rewrite_spec(&spec)?;
                         rewrite_rec(args.rewriter, &rewrite_spec, &[term.into()], args.output, &timing)?;
                     } else {
                         return Err("No terms provided for rewriting mCRL2 specification".into());

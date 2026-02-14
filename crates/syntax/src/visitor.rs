@@ -197,7 +197,7 @@ where
         SortExpression::Struct { inner } => {
             for constructors in inner {
                 for (_name, sort) in &constructors.args {
-                    visit_sort_expr_rec(&sort, function)?;
+                    visit_sort_expr_rec(sort, function)?;
                 }
             }
         }
