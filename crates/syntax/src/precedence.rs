@@ -46,7 +46,7 @@ pub static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 #[allow(clippy::result_large_err)]
 pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpression> {
     match primary.as_rule() {
-        Rule::Id => Ok(SortExpression::Reference(Mcrl2Parser::Id(Node::new(primary))?)),
+        Rule::IdAt => Ok(SortExpression::Reference(Mcrl2Parser::IdAt(Node::new(primary))?)),
         Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)),
 
         Rule::SortExprBool => Ok(SortExpression::Simple(Sort::Bool)),

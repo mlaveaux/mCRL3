@@ -147,3 +147,15 @@ fn test_int_spec() {
         }
     }
 }
+
+#[test]
+fn test_nat_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/nat.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
