@@ -11,7 +11,7 @@ pub struct UntypedProcessSpecification {
 }
 
 /// An mCRL2 data specification.
-#[derive(Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedDataSpecification {
     pub sort_declarations: Vec<SortDecl>,
     pub constructor_declarations: Vec<IdDecl>,
@@ -61,7 +61,7 @@ pub struct PropVarInst {
 }
 
 /// A declaration of an identifier with its sort.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct IdDecl {
     /// Identifier being declared
     pub identifier: String,
@@ -124,7 +124,7 @@ pub enum ComplexSort {
 }
 
 /// Sort declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SortDecl {
     /// Sort identifier
     pub identifier: String,
@@ -142,14 +142,14 @@ pub struct VarDecl {
     pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EqnSpec {
     pub variables: Vec<VarDecl>,
     pub equations: Vec<EqnDecl>,
 }
 
 /// Equation declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EqnDecl {
     pub condition: Option<DataExpr>,
     pub lhs: DataExpr,
