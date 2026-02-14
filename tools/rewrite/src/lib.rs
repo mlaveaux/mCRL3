@@ -1,13 +1,13 @@
 use std::fmt::Debug;
-use std::path::Path;
 
 use clap::ValueEnum;
 
+use merc_aterm::ATerm;
 use merc_data::to_untyped_data_expression;
-use merc_rec_tests::load_rec_from_file;
 use merc_sabre::InnermostRewriter;
 use merc_sabre::NaiveRewriter;
 use merc_sabre::RewriteEngine;
+use merc_sabre::RewriteSpecification;
 use merc_sabre::SabreRewriter;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -23,20 +23,17 @@ pub enum Rewriter {
 /// Rewrites the given REC specification.
 pub fn rewrite_rec(
     rewriter: Rewriter,
-    filename_specification: &Path,
+    spec: &RewriteSpecification,
+    syntax_terms: &[ATerm],
     output: bool,
     timing: &Timing,
 ) -> Result<(), MercError> {
-    let (syntax_spec, syntax_terms) = load_rec_from_file(filename_specification)?;
-
-    let spec = syntax_spec.to_rewrite_spec();
-
     timing.measure("rewrite_rec", || {
         match rewriter {
             Rewriter::Naive => {
-                let mut inner = NaiveRewriter::new(&spec);
+                let mut inner = NaiveRewriter::new(spec);
 
-                for term in &syntax_terms {
+                for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = inner.rewrite(&term);
                     if output {
@@ -45,9 +42,9 @@ pub fn rewrite_rec(
                 }
             }
             Rewriter::Innermost => {
-                let mut inner = InnermostRewriter::new(&spec);
+                let mut inner = InnermostRewriter::new(spec);
 
-                for term in &syntax_terms {
+                for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = inner.rewrite(&term);
                     if output {
@@ -56,9 +53,9 @@ pub fn rewrite_rec(
                 }
             }
             Rewriter::Sabre => {
-                let mut sa = SabreRewriter::new(&spec);
+                let mut sa = SabreRewriter::new(spec);
 
-                for term in &syntax_terms {
+                for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = sa.rewrite(&term);
                     if output {

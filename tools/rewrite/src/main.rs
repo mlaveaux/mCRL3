@@ -6,20 +6,24 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use clap::Subcommand;
+use log::warn;
 
 use merc_rec_tests::load_rec_from_file;
+use merc_sabre::data_expr_to_term;
+use merc_sabre::to_rewrite_spec;
+use merc_syntax::DataExpr;
+use merc_syntax::UntypedDataSpecification;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
-
 use merc_rewrite::Rewriter;
 use merc_rewrite::rewrite_rec;
+use merc_utilities::Timing;
 
 mod trs_format;
 
-use merc_utilities::Timing;
 pub use trs_format::*;
 
 /// A command line rewriting tool
@@ -38,13 +42,15 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Rewrite a term using the rewrite rules specified in a REC file or mCRL2 specification
     Rewrite(RewriteArgs),
+    
+    /// Convert a REC specification to the TRS format
     Convert(ConvertArgs),
 }
 
 /// Rewrite mCRL2 data specifications and REC files
 #[derive(clap::Args, Debug)]
-#[command()]
 struct RewriteArgs {
     rewriter: Rewriter,
 
@@ -62,7 +68,6 @@ struct RewriteArgs {
 
 /// Convert input rewrite system to the TRS format"
 #[derive(clap::Args, Debug)]
-#[command()]
 struct ConvertArgs {
     /// The REC specification that contains the rewrite rules.
     #[arg(value_name = "SPEC")]
@@ -90,8 +95,28 @@ fn main() -> Result<ExitCode, MercError> {
         match command {
             Commands::Rewrite(args) => {
                 if args.specification.extension() == Some(OsStr::new("rec")) {
-                    assert!(args.terms.is_none());
-                    rewrite_rec(args.rewriter, &args.specification, args.output, &timing)?;
+                    if args.terms.is_some() {
+                        warn!("The --terms option is currently ignored when rewriting REC specifications, the terms are taken from the REC spec.");
+                    }
+
+                    let (syntax_spec, syntax_terms) = load_rec_from_file(&args.specification)?;
+
+                    let spec = syntax_spec.to_rewrite_spec();
+
+                    rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, &timing)?;
+                } else if args.specification.extension() == Some(OsStr::new("mcrl2")) {
+                    let spec_text = std::fs::read_to_string(&args.specification)?;
+                    let spec = UntypedDataSpecification::parse(&spec_text)?;
+
+                    if let Some(term) = args.terms {
+                        let data_expr = DataExpr::parse(&term)?;
+                        let term = data_expr_to_term(&data_expr);
+
+                        let rewrite_spec = to_rewrite_spec(&spec);
+                        rewrite_rec(args.rewriter, &rewrite_spec, &[term.into()], args.output, &timing)?;
+                    } else {
+                        return Err("No terms provided for rewriting mCRL2 specification".into());
+                    }
                 }
             }
             Commands::Convert(args) => {
