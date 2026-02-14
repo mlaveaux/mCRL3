@@ -33,6 +33,13 @@ pub struct Condition {
     pub equality: bool,
 }
 
+impl Condition {
+    /// Create a new condition with the given left-hand side, right-hand side and equality.
+    pub fn new(lhs: DataExpression, rhs: DataExpression, equality: bool) -> Condition {
+        Condition { lhs, rhs, equality }
+    }
+}
+
 /// A rewrite rule.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Rule {
@@ -40,6 +47,18 @@ pub struct Rule {
     pub conditions: Vec<Condition>,
     pub lhs: DataExpression,
     pub rhs: DataExpression,
+}
+
+impl Rule {
+    /// Create a rewrite rule with the given conditions, left-hand side and right-hand side.
+    pub fn with_condition(conditions: Vec<Condition>, lhs: DataExpression, rhs: DataExpression) -> Rule {
+        Rule { conditions, lhs, rhs }
+    }
+
+    /// Create a rewrite rule without conditions.
+    pub fn new(lhs: DataExpression, rhs: DataExpression) -> Rule {
+        Rule { conditions: Vec::new(), lhs, rhs }
+    }
 }
 
 impl fmt::Display for RewriteSpecification {
