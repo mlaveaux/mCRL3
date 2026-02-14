@@ -27,6 +27,16 @@ impl UntypedDataSpecification {
             && self.map_declarations.is_empty()
             && self.equation_declarations.is_empty()
     }
+
+    /// Merges another data specification into the current one.
+    pub fn merge(&mut self, other_spec: &UntypedDataSpecification) {
+        self.sort_declarations.extend_from_slice(&other_spec.sort_declarations);
+        self.constructor_declarations
+            .extend_from_slice(&other_spec.constructor_declarations);
+        self.map_declarations.extend_from_slice(&other_spec.map_declarations);
+        self.equation_declarations
+            .extend_from_slice(&other_spec.equation_declarations);
+    }
 }
 
 /// An mCRL2 parameterised boolean equation system (PBES).

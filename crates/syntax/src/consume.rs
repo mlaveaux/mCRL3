@@ -739,6 +739,18 @@ impl Mcrl2Parser {
         )
     }
 
+    fn IdInfix(identifier: ParseNode) -> ParseResult<String> {
+        Ok(identifier.as_str().to_string())
+    }
+
+    fn IdInfixList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
+        match_nodes!(identifiers.into_children();
+            [IdInfix(ids)..] => {
+                Ok(ids.collect())
+            },
+        )
+    }
+
     // Complex sorts
     pub(crate) fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
         Ok(SortExpression::Complex(
@@ -1354,7 +1366,7 @@ impl Mcrl2Parser {
     fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [IdList(identifiers), SortExpr(sort)] => {
+            [IdInfixList(identifiers), SortExpr(sort)] => {
                 let id_decls = identifiers.into_iter().map(|identifier| {
                     IdDecl { identifier, sort: sort.clone(), span: span.into() }
                 }).collect();
