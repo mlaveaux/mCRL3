@@ -64,8 +64,8 @@ ActDecl = { IdList ~ ( ":" ~  SortProduct )? ~ ";" }
 SortSpec = { "sort" ~ SortDecl+ } 
 
 SortDecl = {                                             
-        Id ~ "=" ~ SortExpr ~ ";"  // Sort alias  
-    |   IdList ~ ";"               // List of sort identifiers                                               
+        IdAt ~ "=" ~ SortExpr ~ ";"  // Sort alias  
+    |   IdList ~ ";"                 // List of sort identifiers                                               
 }
 
 /// A general sort expression with infix operators.
@@ -87,7 +87,7 @@ SortExprPrimary = _{
     | SortExprFBag
     | SortExprParens
     | SortExprStruct
-    | Id
+    | IdAt
 }
     SortExprBool = { "Bool" ~ !Id }
     SortExprPos  = { "Pos" ~ !Id }
