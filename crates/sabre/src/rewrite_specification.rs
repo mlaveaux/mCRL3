@@ -57,7 +57,11 @@ impl Rule {
 
     /// Create a rewrite rule without conditions.
     pub fn new(lhs: DataExpression, rhs: DataExpression) -> Rule {
-        Rule { conditions: Vec::new(), lhs, rhs }
+        Rule {
+            conditions: Vec::new(),
+            lhs,
+            rhs,
+        }
     }
 }
 
