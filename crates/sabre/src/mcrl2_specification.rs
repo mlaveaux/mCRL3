@@ -46,10 +46,9 @@ fn complete_data_specification(spec: &UntypedDataSpecification) -> Result<Untype
             visit_sort_expr::<(), _>(expr, |sort| {
                 if let SortExpression::Simple(name) = sort {
                     if *name == Sort::Nat {
-                        let int_spec =
-                            UntypedDataSpecification::parse(include_str!("../../syntax/spec/int.mcrl2"))?;
-
-                        result.merge(&int_spec);
+                        result.merge(&UntypedDataSpecification::parse(include_str!("../../syntax/spec/nat.mcrl2"))?);
+                    } else if *name == Sort::Int {
+                        result.merge(&UntypedDataSpecification::parse(include_str!("../../syntax/spec/int.mcrl2"))?);
                     }
                 }
 

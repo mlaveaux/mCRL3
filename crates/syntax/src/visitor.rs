@@ -39,7 +39,7 @@ where
 }
 
 /// See [`apply_statefrm`].
-fn apply_statefrm_rec(
+fn apply_statefrm_rec<F>(
     formula: StateFrm,
     apply: &mut F,
 ) -> Result<StateFrm, MercError> 

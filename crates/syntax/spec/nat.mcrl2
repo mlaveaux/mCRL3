@@ -17,42 +17,42 @@ cons @c0 : Nat;
 % Constructor for natpair
      @cPair : Nat # Nat -> @NatPair;
 
-map Pos2Nat : Pos -> Nat;
-    Nat2Pos : Nat -> Pos;
-    max:Pos #Nat->Pos;
-    max:Nat #Pos->Pos;
-    max:Nat #Nat->Nat;
-    min:Nat #Nat->Nat;
-    succ:Nat->Pos;
-    pred:Pos->Nat;
+map Pos2Nat: Pos -> Nat;
+    Nat2Pos: Nat -> Pos;
+    max: Pos # Nat -> Pos;
+    max: Nat # Pos -> Pos;
+    max: Nat # Nat -> Nat;
+    min: Nat # Nat -> Nat;
+    succ: Nat -> Pos;
+    pred: Pos -> Nat;
 % Double and conditionally add 1
-    @dub:Bool # Nat -> Nat;
+    @dub: Bool # Nat -> Nat;
 % Double and add 1
-    @dubsucc:Nat -> Pos;
-    +:Pos #Nat->Pos;
-    +:Nat #Pos->Pos;
-    +:Nat #Nat->Nat;
+    @dubsucc: Nat -> Pos;
+    +: Pos # Nat -> Pos;
+    +: Nat # Pos -> Pos;
+    +: Nat # Nat -> Nat;
     @gtesubtb: Bool # Pos # Pos -> Nat;
-    *:Nat #Nat->Nat;
+    *: Nat # Nat -> Nat;
     div: Nat # Pos -> Nat;
-    mod:Nat # Pos -> Nat ;
-    exp:Pos # Nat -> Pos ;
-    exp:Nat # Nat -> Nat ;
-    @even:Nat -> Bool;
-    @monus:Nat # Nat -> Nat;
+    mod: Nat # Pos -> Nat ;
+    exp: Pos # Nat -> Pos ;
+    exp: Nat # Nat -> Nat ;
+    @even: Nat -> Bool;
+    @monus: Nat # Nat -> Nat;
     @swap_zero:Nat # Nat -> Nat;
-    @swap_zero_add:Nat # Nat # Nat # Nat -> Nat;
-    @swap_zero_min:Nat # Nat # Nat # Nat -> Nat;
-    @swap_zero_monus:Nat # Nat # Nat # Nat -> Nat;
-    sqrt:Nat -> Nat;
-    @sqrt_nat:Nat # Nat # Pos -> Nat;
+    @swap_zero_add: Nat # Nat # Nat # Nat -> Nat;
+    @swap_zero_min: Nat # Nat # Nat # Nat -> Nat;
+    @swap_zero_monus: Nat # Nat # Nat # Nat -> Nat;
+    sqrt: Nat -> Nat;
+    @sqrt_nat: Nat # Nat # Pos -> Nat;
 
 % functions for natpair
-    @first : @NatPair -> Nat;
-    @last : @NatPair -> Nat;
-    @divmod : Pos # Pos -> @NatPair;
-    @gdivmod : @NatPair # Bool # Pos -> @NatPair;
-    @ggdivmod : Nat # Nat # Pos -> @NatPair;
+    @first: @NatPair -> Nat;
+    @last: @NatPair -> Nat;
+    @divmod: Pos # Pos -> @NatPair;
+    @gdivmod: @NatPair # Bool # Pos -> @NatPair;
+    @ggdivmod: Nat # Nat # Pos -> @NatPair;
 
 
 var b:Bool;
@@ -116,10 +116,10 @@ eqn @c0 == @cNat(p) = false;
     @even(@c0) = true;
     @even(@cNat(@c1)) = false;
     @even(@cNat(@cDub(b,p))) = !(b);
-    div(@c0,p) = @c0;
-    div(@cNat(p),q) = @first(@divmod(p,q));
-    mod(@c0,p) = @c0;
-    mod(@cNat(p),q) = @last(@divmod(p,q));
+    @c0 div p = @c0;
+    @cNat(p) div q = @first(@divmod(p,q));
+    @c0 mod p = @c0;
+    @cNat(p) mod q = @last(@divmod(p,q));
     @monus(@c0,n) = @c0;
     @monus(n,@c0) = n;
     @monus(@cNat(p),@cNat(q)) = @gtesubtb(false,p,q);
