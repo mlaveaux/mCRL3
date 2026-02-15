@@ -114,7 +114,7 @@ pub struct ConstructorDecl {
 }
 
 /// Built-in simple sorts.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum Sort {
     Bool,
     Pos,
@@ -124,7 +124,7 @@ pub enum Sort {
 }
 
 /// Complex (parameterized) sorts.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum ComplexSort {
     List,
     Set,
