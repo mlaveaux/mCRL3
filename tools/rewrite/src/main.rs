@@ -117,6 +117,8 @@ fn main() -> Result<ExitCode, MercError> {
                     } else {
                         return Err("No terms provided for rewriting mCRL2 specification".into());
                     }
+                } else {
+                    return Err("Unsupported file extension for rewriting, expected .rec or .mcrl2".into());
                 }
             }
             Commands::Convert(args) => {

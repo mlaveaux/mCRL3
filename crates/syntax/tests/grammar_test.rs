@@ -159,3 +159,87 @@ fn test_nat_spec() {
         }
     }
 }
+
+#[test]
+fn test_pos_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/pos.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_real_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/real.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_list_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/list.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_set_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/set.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_fset_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/fset.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_bag_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/bag.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_fbag_spec() {
+    match UntypedDataSpecification::parse(include_str!("../spec/fbag.mcrl2")) {
+        Ok(result) => {
+            println!("{}", result);
+        }
+        Err(e) => {
+            panic!("Failed to parse expression: {}", e);
+        }
+    }
+}

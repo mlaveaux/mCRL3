@@ -33,7 +33,7 @@ Id = @{ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 IdAt = @{ "@"? ~ (ASCII_ALPHANUMERIC|"_"|"'")+ }
 
 /// Identifiers that can also be the allowed infix operators.
-IdInfix = @{ "@"? ~ (ASCII_ALPHANUMERIC|"_"|"'"|"|"|"&"|"<"|"="|">"|"!"|"+"|"-"|"*")+ }
+IdInfix = @{ "@"? ~ (ASCII_ALPHANUMERIC|"_"|"'"|"|"|"&"|"<"|"="|">"|"!"|"+"|"-"|"*"|"/"|"["|"]"|"#"|"."|"{:}"|"{}")+ }
 
 /// List of identifiers
 IdList = { IdAt ~ ( "," ~ IdAt )* }
@@ -366,7 +366,7 @@ Init = { "init" ~ ProcExpr ~ ";" }
 /// Typed parameters
 IdsDecl = { IdInfixList ~ ":" ~ SortExpr }                                   
 
-/// Declaration of constructorss
+/// Declaration of constructors
 ConsSpec = { "cons" ~ ( IdsDecl ~ ";" )+ }
 
 /// Declaration of mappings

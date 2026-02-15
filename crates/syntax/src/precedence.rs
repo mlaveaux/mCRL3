@@ -669,7 +669,7 @@ static PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
     PRESEXPR_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
-            Rule::PbesExprParens => {
+            Rule::PresExprParens => {
                 // Handle parentheses by recursively parsing the inner expression
                 let inner = primary
                     .into_inner()
@@ -690,7 +690,7 @@ pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
             Rule::PbesExprNegation => Ok(PresExpr::Negation(Box::new(expr?))),
             Rule::PresExprInf => Ok(PresExpr::Bound { op: Bound::Inf, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprInf(Node::new(op))? }),
             Rule::PresExprSup => Ok(PresExpr::Bound { op: Bound::Sup, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(Node::new(op))? }),
-            Rule::PresExprSum => Ok(PresExpr::Bound { op: Bound::Sum, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSup(Node::new(op))? }),
+            Rule::PresExprSum => Ok(PresExpr::Bound { op: Bound::Sum, expr: Box::new(expr?), variables: Mcrl2Parser::PresExprSum(Node::new(op))? }),
             Rule::PresExprLeftConstantMultiply => Ok(PresExpr::LeftConstantMultiply { constant: Mcrl2Parser::PresExprLeftConstantMultiply(Node::new(op))?, expr: Box::new(expr?) }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
         })

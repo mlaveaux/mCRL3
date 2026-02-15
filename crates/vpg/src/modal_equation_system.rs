@@ -237,7 +237,7 @@ impl FreshStateVarGenerator {
     /// Traverses the given formula to collect all used variable names.
     pub fn new(formula: &StateFrm) -> Self {
         let mut used = HashSet::new();
-        visit_statefrm::<()>(formula, |subformula| {
+        visit_statefrm::<(), _>(formula, |subformula| {
             if let StateFrm::FixedPoint { variable, .. } = subformula {
                 used.insert(variable.identifier.clone());
             }
