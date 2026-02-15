@@ -66,7 +66,7 @@ struct RewriteArgs {
     output: bool,
 }
 
-/// Convert input rewrite system to the TRS format"
+/// Convert input rewrite system to the TRS format
 #[derive(clap::Args, Debug)]
 struct ConvertArgs {
     /// The REC specification that contains the rewrite rules.

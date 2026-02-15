@@ -4,6 +4,7 @@ use merc_aterm::ATerm;
 use merc_aterm::Symbol;
 use merc_data::DataApplication;
 use merc_data::DataExpression;
+use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
 use merc_syntax::EqnDecl;
 use merc_syntax::Sort;
@@ -33,27 +34,74 @@ pub fn to_rewrite_spec(spec: &UntypedDataSpecification) -> Result<RewriteSpecifi
     Ok(RewriteSpecification::new(rewrite_rules))
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+enum PredefinedSort {
+    Basic(Sort),
+    Complex(ComplexSort),
+}
+
 /// Adds the default data specifications to the provided specification.
 fn complete_data_specification(spec: &UntypedDataSpecification) -> Result<UntypedDataSpecification, MercError> {
     let mut result = spec.clone();
 
-    // Add the booleans, these must always be present.
-    let bool_spec = UntypedDataSpecification::parse(include_str!("../../syntax/spec/bool.mcrl2"))?;
-    result.merge(&bool_spec);
+    // Sorts that occur in the specification.
+    let mut present = std::collections::HashSet::new();
+    present.insert(PredefinedSort::Basic(Sort::Bool));
 
     for sort in &spec.sort_declarations {
         if let Some(expr) = &sort.expr {
             visit_sort_expr::<(), _>(expr, |sort| {
                 if let SortExpression::Simple(name) = sort {
-                    if *name == Sort::Nat {
-                        result.merge(&UntypedDataSpecification::parse(include_str!("../../syntax/spec/nat.mcrl2"))?);
-                    } else if *name == Sort::Int {
-                        result.merge(&UntypedDataSpecification::parse(include_str!("../../syntax/spec/int.mcrl2"))?);
-                    }
+                    present.insert(PredefinedSort::Basic(*name));
+                }
+
+                if let SortExpression::Complex(complex, _args) = sort {
+                    // Args are visited anyway.
+                    present.insert(PredefinedSort::Complex(*complex));
                 }
 
                 Ok(ControlFlow::Continue(()))
             })?;
+        }
+    }
+
+    // Append the relevant specifications for the sorts that are present in the specification.
+    for sort in present {
+        match sort {
+            PredefinedSort::Basic(sort) => match sort {
+                Sort::Bool => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/bool.mcrl2"
+                ))?),
+                Sort::Pos => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/pos.mcrl2"
+                ))?),
+                Sort::Int => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/int.mcrl2"
+                ))?),
+                Sort::Nat => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/nat.mcrl2"
+                ))?),
+                Sort::Real => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/real.mcrl2"
+                ))?),
+            },
+            PredefinedSort::Complex(complex) => match complex {
+                ComplexSort::List => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/list.mcrl2"
+                ))?),
+                ComplexSort::Set => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/set.mcrl2"
+                ))?),
+                ComplexSort::FSet => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/fset.mcrl2"
+                ))?),
+                ComplexSort::FBag => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/fbag.mcrl2"
+                ))?),
+                ComplexSort::Bag => result.merge(&UntypedDataSpecification::parse(include_str!(
+                    "../../syntax/spec/bag.mcrl2"
+                ))?),
+            },
         }
     }
 
