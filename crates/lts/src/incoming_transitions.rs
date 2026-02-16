@@ -26,7 +26,7 @@ pub struct IncomingTransitions<'a> {
 }
 
 impl<'a> IncomingTransitions<'a> {
-    pub fn new(lts: &'a impl LTS) -> Self {
+    pub fn new<L: LTS>(lts: &'a L) -> Self {
         let mut transition_labels = bytevec![LabelIndex::new(0); lts.num_of_transitions()];
         let mut transition_from = bytevec![StateIndex::new(0); lts.num_of_transitions()];
         let mut state2incoming = bytevec![0usize; lts.num_of_states()];

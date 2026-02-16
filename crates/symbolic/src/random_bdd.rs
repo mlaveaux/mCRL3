@@ -7,7 +7,7 @@ use oxidd::util::OptBool;
 use rand::Rng;
 
 /// Generate `num_vectors` random bitvectors of length `num_vars`.
-pub fn random_bitvectors(rng: &mut impl Rng, num_vars: usize, num_vectors: usize) -> Vec<Vec<OptBool>> {
+pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usize) -> Vec<Vec<OptBool>> {
     let mut vectors = Vec::new();
     for _ in 0..rng.random_range(0..num_vectors) {
         let mut vec = Vec::new();
@@ -24,11 +24,13 @@ pub fn random_bitvectors(rng: &mut impl Rng, num_vars: usize, num_vectors: usize
 }
 
 /// Create a BDD from the given bitvector.
-pub fn bdd_from_iter<'a>(
+pub fn bdd_from_iter<'a, I>(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
-    vectors: impl Iterator<Item = &'a Vec<OptBool>>,
-) -> Result<BDDFunction, MercError> {
+    vectors: I,
+) -> Result<BDDFunction, MercError> 
+    where I: Iterator<Item = &'a Vec<OptBool>>
+{
     let mut bdd = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
     for bits in vectors {
         let mut cube = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
@@ -50,9 +52,9 @@ pub fn bdd_from_iter<'a>(
 }
 
 /// Create a random BDD over the given variables with the given number of cubes.
-pub fn random_bdd(
+pub fn random_bdd<R: Rng>(
     manager_ref: &BDDManagerRef,
-    rng: &mut impl Rng,
+    rng: &mut R,
     variables: &[BDDFunction],
 ) -> Result<BDDFunction, MercError> {
     let bitvectors = random_bitvectors(rng, variables.len(), 100);

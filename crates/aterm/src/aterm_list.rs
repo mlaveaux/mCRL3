@@ -20,12 +20,12 @@ use crate::TermIterator;
 use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true iff the term is a list term.
-pub fn is_list_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
+pub fn is_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.list_symbol() == t.get_head_symbol())
 }
 
 /// Returns true iff the term is an empty list.
-pub fn is_empty_list_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
+pub fn is_empty_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.empty_list_symbol() == t.get_head_symbol())
 }
 
@@ -57,9 +57,10 @@ impl<T: From<ATerm>> ATermList<T> {
 
 impl<T> ATermList<T> {
     /// Constructs a new list from an iterator that is consumed.
-    pub fn from_double_iter(iter: impl DoubleEndedIterator<Item = T>) -> Self
+    pub fn from_double_iter<I>(iter: I) -> Self
     where
         T: Into<ATerm>,
+        I: DoubleEndedIterator<Item = T>,
     {
         let mut list = Self::empty();
         for item in iter.rev() {
@@ -69,9 +70,10 @@ impl<T> ATermList<T> {
     }
 
     /// Constructs a new list from an iterator that is consumed.
-    pub fn try_from_double_iter(iter: impl DoubleEndedIterator<Item = Result<T, MercError>>) -> Result<Self, MercError>
+    pub fn try_from_double_iter<I>(iter: I) -> Result<Self, MercError>
     where
         T: Into<ATerm>,
+        I: DoubleEndedIterator<Item = Result<T, MercError>>,
     {
         let mut list = Self::empty();
         for item in iter.rev() {

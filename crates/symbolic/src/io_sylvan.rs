@@ -15,7 +15,7 @@ use crate::SymbolicLTS;
 use crate::TransitionGroup;
 
 /// Returns the (initial state, transitions) read from the file in Sylvan's format.
-pub fn read_sylvan(storage: &mut Storage, stream: &mut impl Read) -> Result<SylvanLts, MercError> {
+pub fn read_sylvan<R: Read>(storage: &mut Storage, stream: &mut R) -> Result<SylvanLts, MercError> {
     info!("Reading symbolic LTS in Sylvan format...");
     let mut reader = SylvanReader::new();
 
@@ -45,7 +45,7 @@ pub fn read_sylvan(storage: &mut Storage, stream: &mut impl Read) -> Result<Sylv
 }
 
 /// Reads the read and write projections from the given stream.
-pub fn read_projection(file: &mut impl Read) -> Result<(Vec<Value>, Vec<Value>), MercError> {
+pub fn read_projection<R: Read>(file: &mut R) -> Result<(Vec<Value>, Vec<Value>), MercError> {
     let num_read = read_u32(file)?;
     let num_write = read_u32(file)?;
 

@@ -103,10 +103,10 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments
-    pub fn create_term<'a, 'b>(
+    pub fn create_term<'a, 'b, S: Symb<'a, 'b>, T: Term<'a, 'b>>(
         &self,
-        symbol: &'b impl Symb<'a, 'b>,
-        args: &'b [impl Term<'a, 'b>],
+        symbol: &'b S,
+        args: &'b [T],
     ) -> Return<ATermRef<'static>> {
         let mut arguments = self.tmp_arguments.borrow_mut();
 
@@ -151,8 +151,9 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
-    pub fn create_term_iter<'a, 'b, 'c, 'd, I, T>(&self, symbol: &'b impl Symb<'a, 'b>, args: I) -> ATerm
+    pub fn create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> ATerm
     where
+        S: Symb<'a, 'b>,
         I: IntoIterator<Item = T>,
         T: Term<'c, 'd>,
     {
@@ -178,12 +179,13 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator that is failable.
-    pub fn try_create_term_iter<'a, 'b, 'c, 'd, I, T>(
+    pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(
         &self,
-        symbol: &'b impl Symb<'a, 'b>,
+        symbol: &'b S,
         args: I,
     ) -> Result<ATerm, MercError>
     where
+        S: Symb<'a, 'b>,
         I: IntoIterator<Item = Result<T, MercError>>,
         T: Term<'c, 'd>,
     {
@@ -209,13 +211,15 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
-    pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(
+    pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, S, H, I, T>(
         &self,
-        symbol: &'b impl Symb<'a, 'b>,
-        head: &'d impl Term<'c, 'd>,
+        symbol: &'b S,
+        head: &'d H,
         args: I,
     ) -> ATerm
     where
+        S: Symb<'a, 'b>,
+        H: Term<'d, 'e>,
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
     {
@@ -244,7 +248,7 @@ impl ThreadTermPool {
     }
 
     /// Create a function symbol
-    pub fn create_symbol(&self, name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
+    pub fn create_symbol<N: Into<String> + AsRef<str>>(&self, name: N, arity: usize) -> Symbol {
         self.term_pool
             .read_recursive()
             .expect("Lock poisoned!")

@@ -25,10 +25,10 @@ use crate::TransitionGroup;
 ///
 /// This basically applies the symbolic transitions to every state in the state
 /// space, and constructs the explicit LTS.
-pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
+pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     storage: &mut Storage,
     output: &mut B,
-    lts: &impl SymbolicLTS,
+    lts: &L,
 ) -> Result<B::LTS, MercError> {
     for group in lts.transition_groups() {
         if group.action_label_index().is_none() {
@@ -170,7 +170,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>>(
 }
 
 /// Computes the positions of the read and write indices in the transition vector.
-fn compute_positions(group: &impl TransitionGroup) -> (Vec<usize>, Vec<usize>) {
+fn compute_positions<G: TransitionGroup>(group: &G) -> (Vec<usize>, Vec<usize>) {
     // Ensure indices are non-decreasing; merge relies on sorted inputs.
     debug_assert!(group.read_indices().is_sorted(), "read_indices must be sorted");
     debug_assert!(group.write_indices().is_sorted(), "write_indices must be sorted");

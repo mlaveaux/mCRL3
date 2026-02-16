@@ -22,7 +22,7 @@ impl SylvanReader {
     }
 
     /// Returns an LDD read from the given stream in the Sylvan format.
-    pub fn read_ldd(&mut self, storage: &mut Storage, stream: &mut impl Read) -> Result<Ldd, MercError> {
+    pub fn read_ldd<R: Read>(&mut self, storage: &mut Storage, stream: &mut R) -> Result<Ldd, MercError> {
         let count = read_u64(stream)?;
         //println!("node count = {}", count);
 
@@ -79,7 +79,7 @@ impl Default for SylvanReader {
 }
 
 /// Returns a single u32 read from the given stream.
-pub fn read_u32(stream: &mut impl Read) -> Result<u32, MercError> {
+pub fn read_u32<R: Read>(stream: &mut R) -> Result<u32, MercError> {
     let mut buffer: [u8; 4] = Default::default();
     stream.read_exact(&mut buffer)?;
 
@@ -87,7 +87,7 @@ pub fn read_u32(stream: &mut impl Read) -> Result<u32, MercError> {
 }
 
 /// Returns a single u64 read from the given stream.
-pub fn read_u64(stream: &mut impl Read) -> Result<u64, MercError> {
+pub fn read_u64<R: Read>(stream: &mut R) -> Result<u64, MercError> {
     let mut buffer: [u8; 8] = Default::default();
     stream.read_exact(&mut buffer)?;
 

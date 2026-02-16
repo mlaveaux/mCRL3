@@ -39,7 +39,7 @@ use crate::VertexIndex;
 /// `<index> <priority> <owner> <outgoing_vertex>,<outgoing_vertex>,...;`
 /// Each outgoing edge is represented as `<to>|<configuration_set>`. For the
 /// format of the configuration set see [parse_configuration_set]
-pub fn read_vpg(manager: &BDDManagerRef, reader: impl Read) -> Result<VariabilityParityGame, MercError> {
+pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<VariabilityParityGame, MercError> {
     info!("Reading variability parity game in .vpg format...");
 
     manager.with_manager_exclusive(|manager| {
@@ -225,7 +225,7 @@ pub fn parse_configuration_set(
 
 /// Writes the given parity game to the given writer in .vpg format.
 /// Note that the writer is buffered internally using a `BufWriter`.
-pub fn write_vpg(writer: &mut impl Write, game: &VariabilityParityGame) -> Result<(), MercError> {
+pub fn write_vpg<W: Write>(writer: &mut W, game: &VariabilityParityGame) -> Result<(), MercError> {
     info!("Writing variability parity game to .vpg format...");
     let mut writer = BufWriter::new(writer);
 

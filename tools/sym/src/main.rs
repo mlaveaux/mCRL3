@@ -232,11 +232,11 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
     Ok(())
 }
 
-fn explore_impl(
+fn explore_impl<L: SymbolicLTS>(
     storage: &mut Storage,
     cli: &Cli,
     args: &ExploreArgs,
-    lts: &impl SymbolicLTS,
+    lts: &L,
     timing: &Timing,
 ) -> Result<(), MercError> {
     if args.use_bdd {

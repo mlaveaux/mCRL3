@@ -95,7 +95,7 @@ fn write_dot_style(f: &mut fmt::Formatter<'_>) -> fmt::Result {
     )
 }
 
-fn write_init_arrow(f: &mut fmt::Formatter<'_>, initial: impl fmt::Display) -> fmt::Result {
+fn write_init_arrow<I: fmt::Display>(f: &mut fmt::Formatter<'_>, initial: I) -> fmt::Result {
     writeln!(f, "  init [shape=point, width=0.05, label=\"\"];")?;
     writeln!(f, "  init -> v{} [arrowsize=0.6];", initial)
 }

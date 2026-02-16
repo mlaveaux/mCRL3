@@ -17,8 +17,8 @@ use crate::VertexIndex;
 use crate::make_vpg_total;
 
 /// Creates a random parity game with the given number of vertices, priorities, and outdegree.
-pub fn random_parity_game(
-    rng: &mut impl Rng,
+pub fn random_parity_game<R: Rng>(
+    rng: &mut R,
     make_total: bool,
     num_of_vertices: usize,
     num_of_priorities: usize,
@@ -59,9 +59,9 @@ pub fn random_parity_game(
 }
 
 /// Creates a random parity game with the given number of vertices, priorities, and outdegree.
-pub fn random_variability_parity_game(
+pub fn random_variability_parity_game<R: Rng>(
     manager_ref: &BDDManagerRef,
-    rng: &mut impl Rng,
+    rng: &mut R,
     make_total: bool,
     num_of_vertices: usize,
     num_of_priorities: usize,

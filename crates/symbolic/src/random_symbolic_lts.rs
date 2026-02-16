@@ -17,8 +17,8 @@ use crate::SummandGroup;
 use crate::SymbolicLts;
 
 /// Generates random symbolic LTSs for testing purposes.
-pub fn random_symbolic_lts(
-    rng: &mut impl Rng,
+pub fn random_symbolic_lts<R: Rng>(
+    rng: &mut R,
     storage: &mut Storage,
     num_state_variables: usize,
     num_action_labels: usize,

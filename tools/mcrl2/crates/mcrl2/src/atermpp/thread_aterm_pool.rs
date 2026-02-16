@@ -21,19 +21,19 @@ use mcrl2_sys::cxx::UniquePtr;
 use merc_collections::ProtectionIndex;
 use merc_collections::ProtectionSet;
 
-use crate::ATerm;
-use crate::ATermRef;
 use crate::atermpp::BfTermPoolThreadWrite;
 use crate::atermpp::Symbol;
+use crate::ATerm;
+use crate::ATermRef;
 
-use super::Markable;
-use super::SymbolRef;
-use super::global_aterm_pool::ATermPtr;
-use super::global_aterm_pool::GLOBAL_TERM_POOL;
-use super::global_aterm_pool::SharedContainerProtectionSet;
-use super::global_aterm_pool::SharedProtectionSet;
 use super::global_aterm_pool::mark_protection_sets;
 use super::global_aterm_pool::protection_set_size;
+use super::global_aterm_pool::ATermPtr;
+use super::global_aterm_pool::SharedContainerProtectionSet;
+use super::global_aterm_pool::SharedProtectionSet;
+use super::global_aterm_pool::GLOBAL_TERM_POOL;
+use super::Markable;
+use super::SymbolRef;
 
 /// The number of times before garbage collection is tested again.
 const TEST_GC_INTERVAL: usize = 100;
@@ -98,11 +98,11 @@ impl ThreadTermPool {
     }
 
     /// Creates an [ATerm] with the given symbol and arguments.
-    pub fn create<'a, 'b>(
-        &self,
-        symbol: &impl Borrow<SymbolRef<'a>>,
-        arguments: &[impl Borrow<ATermRef<'b>>],
-    ) -> ATerm {
+    pub fn create<'a, 'b, S, T>(&self, symbol: &S, arguments: &[T]) -> ATerm
+    where
+        S: Borrow<SymbolRef<'a>>,
+        T: Borrow<ATermRef<'b>>,
+    {
         // Copy the arguments to make a slice.
         let mut tmp_args = self.arguments.borrow_mut();
         tmp_args.clear();
@@ -125,11 +125,11 @@ impl ThreadTermPool {
     }
 
     /// Creates an [ATerm] with the given symbol, head argument and other arguments.
-    pub fn create_data_application<'a, 'b>(
-        &self,
-        head: &impl Borrow<ATermRef<'a>>,
-        arguments: &[impl Borrow<ATermRef<'b>>],
-    ) -> ATerm {
+    pub fn create_data_application<'a, 'b>(&self, head: &S, arguments: &[T]) -> ATerm
+    where
+        S: Borrow<ATermRef<'a>>,
+        T: Borrow<ATermRef<'b>>,
+    {
         // Make the temp vector of sufficient length.
         let mut tmp_args = self.arguments.borrow_mut();
         while tmp_args.len() < arguments.len() {
@@ -213,7 +213,9 @@ impl ThreadTermPool {
             let mut protection_set = self.protection_set.write_exclusive();
             trace!(
                 "Dropped term {:?}, index {}, protection set {}",
-                term.term, term.root, self.index
+                term.term,
+                term.root,
+                self.index
             );
             protection_set.unprotect(term.root);
         }
@@ -225,7 +227,8 @@ impl ThreadTermPool {
             let mut container_protection_set = self.container_protection_set.write_exclusive();
             trace!(
                 "Dropped container index {}, protection set {}",
-                container_root, self.index
+                container_root,
+                self.index
             );
             container_protection_set.unprotect(container_root);
         }
@@ -258,7 +261,9 @@ impl ThreadTermPool {
         let term = ATermRef::new(term);
         trace!(
             "Protected term {:?}, index {}, protection set {}",
-            term, root, self.index
+            term,
+            root,
+            self.index
         );
 
         let result = ATerm::from_ref(term, root);
@@ -311,9 +316,9 @@ impl fmt::Display for ThreadTermPool {
 mod tests {
     use std::thread;
 
+    use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
-    use rand::rngs::StdRng;
 
     use crate::random_term;
 

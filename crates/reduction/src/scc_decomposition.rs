@@ -9,12 +9,12 @@ use merc_lts::AsGraph;
 use crate::sort_topological;
 
 /// Computes the strongly connected tau component partitioning of the given LTS.
-pub fn tau_scc_decomposition(lts: &impl LTS) -> IndexedPartition {
+pub fn tau_scc_decomposition<L: LTS>(lts: &L) -> IndexedPartition {
     scc_decomposition(&AsGraph(lts), |_, label_index, _| lts.is_hidden_label(label_index))
 }
 
 /// Returns true iff the labelled transition system has tau-loops.
-pub fn has_tau_loop(lts: &impl LTS) -> bool {
+pub fn has_tau_loop<L: LTS>(lts: &L) -> bool {
     sort_topological(lts, |label_index, _| lts.is_hidden_label(label_index), false).is_err()
 }
 
@@ -35,11 +35,14 @@ mod tests {
     use super::*;
 
     /// Returns the reachable states from the given state index.
-    fn reachable_states(
-        lts: &impl LTS,
+    fn reachable_states<F, L>(
+        lts: &L,
         state_index: StateIndex,
-        filter: &impl Fn(StateIndex, LabelIndex, StateIndex) -> bool,
-    ) -> Vec<usize> {
+        filter: &F,
+    ) -> Vec<usize> 
+        where F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
+              L: LTS
+    {
         let mut stack = vec![state_index];
         let mut visited = vec![false; lts.num_of_states()];
 

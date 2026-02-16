@@ -67,7 +67,7 @@ pub trait TransitionGroup: fmt::Debug {
 }
 
 /// Performs reachability analysis using the given initial state and transitions read from a Sylvan file.
-pub fn reachability(storage: &mut Storage, lts: &impl SymbolicLTS) -> Result<usize, MercError> {
+pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &L) -> Result<usize, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;

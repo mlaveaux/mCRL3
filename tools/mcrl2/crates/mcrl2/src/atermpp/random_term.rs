@@ -1,13 +1,15 @@
 use std::collections::HashSet;
 
+use rand::Rng;
+
 use crate::Symbol;
 use crate::atermpp::aterm::ATerm;
 
 /// Create a random term consisting of the given symbol and constants. Performs
 /// iterations number of constructions, and uses chance_duplicates to choose the
 /// amount of subterms that are duplicated.
-pub fn random_term(
-    rng: &mut impl rand::Rng,
+pub fn random_term<R: Rng>(
+    rng: &mut T,
     symbols: &[(String, usize)],
     constants: &[String],
     iterations: usize,

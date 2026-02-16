@@ -19,7 +19,10 @@ pub struct TimeProgress<T> {
 
 impl<T> TimeProgress<T> {
     /// Create a new time-based progress tracker with a given interval in seconds.
-    pub fn new(message: impl Fn(T) + 'static, interval_seconds: u64) -> TimeProgress<T> {
+    pub fn new<F>(message: F, interval_seconds: u64) -> TimeProgress<T>
+    where
+        F: Fn(T) + 'static,
+    {
         TimeProgress {
             message: Box::new(message),
             interval: Duration::from_secs(interval_seconds),

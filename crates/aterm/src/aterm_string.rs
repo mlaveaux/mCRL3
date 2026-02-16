@@ -28,7 +28,7 @@ use crate::storage::Marker;
 use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true if the term is a string term
-fn is_string_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
+fn is_string_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     t.get_head_symbol().arity() == 0
 }
 
@@ -43,7 +43,10 @@ mod inner {
 
     impl ATermString {
         #[merc_ignore]
-        pub fn new(string: impl Into<String> + AsRef<str>) -> Self {
+        pub fn new<S>(string: S) -> Self
+        where
+            S: Into<String> + AsRef<str>,
+        {
             THREAD_TERM_POOL.with_borrow(|tp| ATermString {
                 term: tp.create_constant(&Symbol::new(string, 0)),
             })

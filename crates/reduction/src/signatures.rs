@@ -93,12 +93,12 @@ impl fmt::Debug for Signature<'_> {
 }
 
 /// Returns true if the label is the special tau_hat label for the given LTS.
-pub fn is_tau_hat(label: LabelIndex, lts: &impl LTS) -> bool {
+pub fn is_tau_hat<L: LTS>(label: LabelIndex, lts: &L) -> bool {
     label == lts.num_of_labels()
 }
 
 /// Returns a special label that is not in the set of labels.
-fn tau_hat(lts: &impl LTS) -> LabelIndex {
+fn tau_hat<L: LTS>(lts: &L) -> LabelIndex {
     LabelIndex::new(lts.num_of_labels())
 }
 
@@ -107,10 +107,10 @@ fn tau_hat(lts: &impl LTS) -> LabelIndex {
 /// ```plain
 ///     sig(s, pi) = { (a, pi(t)) | s -a-> t in T }
 /// ```
-pub fn strong_bisim_signature(
+pub fn strong_bisim_signature<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     builder: &mut SignatureBuilder,
 ) {
     builder.clear();
@@ -129,10 +129,10 @@ pub fn strong_bisim_signature(
 /// ```plain
 ///     sig(s, pi) = { (a, pi(t)) | s -tau-> s1 -> ... s_n -a-> t in T && pi(s) = pi(s_i) && ((a != tau) || pi(s) != pi(t)) }
 /// ```
-pub fn branching_bisim_signature(
+pub fn branching_bisim_signature<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     builder: &mut SignatureBuilder,
     visited: &mut FxHashSet<StateIndex>,
     stack: &mut Vec<StateIndex>,
@@ -174,10 +174,10 @@ pub fn branching_bisim_signature(
 
 /// The same as [branching_bisim_signature], but assuming that the input LTS is
 /// topological sorted, and contains no tau-cycles.
-pub fn branching_bisim_signature_sorted(
+pub fn branching_bisim_signature_sorted<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     state_to_signature: &[Signature],
     builder: &mut SignatureBuilder,
 ) {
@@ -206,9 +206,9 @@ pub fn branching_bisim_signature_sorted(
 
 /// The inductive version of [branching_bisim_signature_sorted]. Assumes that
 /// the input LTS has no tau-cycles, and is topologically sorted.
-pub fn branching_bisim_signature_inductive(
+pub fn branching_bisim_signature_inductive<L: LTS>(
     state_index: StateIndex,
-    lts: &impl LTS,
+    lts: &L,
     partition: &BlockPartition,
     state_to_key: &[BlockIndex],
     builder: &mut SignatureBuilder,
@@ -240,10 +240,10 @@ pub fn branching_bisim_signature_inductive(
 /// Computes the weak bisimulation presignature.
 ///
 /// The input lts must contain no tau-cycles.
-pub fn weak_bisim_presignature_sorted(
+pub fn weak_bisim_presignature_sorted<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     state_to_taus: &[Signature],
     state_to_key: &[Option<usize>],
     builder: &mut SignatureBuilder,
@@ -271,10 +271,10 @@ pub fn weak_bisim_presignature_sorted(
 /// Computes the weak bisimulation signature.
 ///
 /// The input lts must contain no tau-cycles.
-pub fn weak_bisim_signature_sorted_full(
+pub fn weak_bisim_signature_sorted_full<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     state_to_taus: &[Signature],
     state_to_signature: &[Option<usize>],
     key_to_signature: &[Signature],
@@ -307,10 +307,10 @@ pub fn weak_bisim_signature_sorted_full(
 /// Computes the weak bisimulation signature.
 ///
 /// The input lts must contain no tau-cycles.
-pub fn weak_bisim_signature_sorted(
+pub fn weak_bisim_signature_sorted<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     state_to_signature: &[Signature],
     builder: &mut SignatureBuilder,
 ) {
@@ -340,10 +340,10 @@ pub fn weak_bisim_signature_sorted(
 /// This computes only tau signatures.
 ///
 /// The input lts must contain no tau-cycles.
-pub fn weak_bisim_signature_sorted_taus(
+pub fn weak_bisim_signature_sorted_taus<L: LTS, P: Partition>(
     state_index: StateIndex,
-    lts: &impl LTS,
-    partition: &impl Partition,
+    lts: &L,
+    partition: &P,
     state_to_taus: &[Signature],
     builder: &mut SignatureBuilder,
 ) {

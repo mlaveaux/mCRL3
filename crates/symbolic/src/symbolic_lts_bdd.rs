@@ -65,10 +65,10 @@ impl SymbolicLtsBdd {
     /// The resulting BDD is assumed to only be valid for the reachable states
     /// of the LDD symbolic LTS, as unreachable states may not be representable
     /// with the number of bits assigned to each state variable.
-    pub fn from_symbolic_lts(
+    pub fn from_symbolic_lts<L: SymbolicLTS>(
         storage: &mut Storage,
         manager_ref: &BDDManagerRef,
-        lts: &impl SymbolicLTS,
+        lts: &L,
     ) -> Result<Self, MercError> {
         info!("Converting symbolic LTS from LDD to BDD representation...");
 

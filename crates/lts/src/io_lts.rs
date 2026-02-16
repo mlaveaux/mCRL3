@@ -31,8 +31,8 @@ use crate::LtsMultiAction;
 use crate::StateIndex;
 
 /// Loads a labelled transition system from the binary 'lts' format of the mCRL2 toolset.
-pub fn read_lts(
-    reader: impl Read,
+pub fn read_lts<R: Read>(
+    reader: R,
     hidden_labels: Vec<String>,
     read_state_labels: bool,
 ) -> Result<LabelledTransitionSystem<LtsMultiAction>, MercError> {
@@ -155,9 +155,10 @@ pub fn read_lts(
 ///
 /// state_label (index derived from order of appearance):
 ///    state_label: ATermList::<DataExpression>
-pub fn write_lts<L>(writer: &mut impl Write, lts: &L) -> Result<(), MercError>
+pub fn write_lts<L, W>(writer: &mut W, lts: &L) -> Result<(), MercError>
 where
     L: LTS<Label = LtsMultiAction>,
+    W: Write,
 {
     info!("Writing LTS in .lts format...");
 

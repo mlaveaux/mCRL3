@@ -86,7 +86,10 @@ impl<M> SetAutomaton<M> {
     /// The `annotate` function is used to create the annotation for each match
     /// announcement. This is used to accomondate different types of annotations
     /// for the different rewrite engines.
-    pub fn new(spec: &RewriteSpecification, annotate: impl Fn(&Rule) -> M, apma: bool) -> SetAutomaton<M> {
+    pub fn new<F>(spec: &RewriteSpecification, annotate: F, apma: bool) -> SetAutomaton<M> 
+    where 
+        F: Fn(&Rule) -> M,
+    {
         let start = Instant::now();
 
         // States are labelled s0, s1, s2, etcetera. state_counter keeps track of count.

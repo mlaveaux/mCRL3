@@ -22,28 +22,30 @@ pub type SubstitutionBuilder = Protected<Vec<ATermRef<'static>>>;
 /// Lets say we want to replace the a with the term 0. Then we traverse the term
 /// until we have arrived at a and replace it with 0. We then construct s(0)
 /// and then construct s(s(0)).
-pub fn substitute<'a, 'b>(tp: &ThreadTermPool, t: &'b impl Term<'a, 'b>, new_subterm: ATerm, p: &[usize]) -> ATerm {
+pub fn substitute<'a, 'b, T: Term<'a, 'b>>(tp: &ThreadTermPool, t: &'b T, new_subterm: ATerm, p: &[usize]) -> ATerm {
     let mut args = Protected::new(vec![]);
     substitute_rec(tp, t, new_subterm, p, &mut args, 0)
 }
 
-pub fn substitute_with<'a, 'b>(
+pub fn substitute_with<'a, 'b, T: Term<'a, 'b>>(
     builder: &mut SubstitutionBuilder,
     tp: &ThreadTermPool,
-    t: &'b impl Term<'a, 'b>,
+    t: &'b T,
     new_subterm: ATerm,
     p: &[usize],
 ) -> ATerm {
     substitute_rec(tp, t, new_subterm, p, builder, 0)
 }
 
-/// The recursive implementation for subsitute
+/// The recursive implementation for subsitute.
 ///
-/// 'depth'         -   Used to keep track of the depth in 't'. Function should be called with
-///                     'depth' = 0.
-fn substitute_rec<'a, 'b>(
+/// # Details
+///
+/// The `depth` keeps track of the depth in 't'. Function should be called with
+/// 'depth' = 0.
+fn substitute_rec<'a, 'b, T: Term<'a, 'b>>(
     tp: &ThreadTermPool,
-    t: &'b impl Term<'a, 'b>,
+    t: &'b T,
     new_subterm: ATerm,
     p: &[usize],
     args: &mut SubstitutionBuilder,

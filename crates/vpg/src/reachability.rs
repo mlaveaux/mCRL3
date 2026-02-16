@@ -13,7 +13,7 @@ use crate::VertexIndex;
 ///
 /// Returns a new parity game containing only reachable vertices and a mapping
 /// from old vertex indices to new vertex indices (None for unreachable vertices).
-pub fn compute_reachable(game: &impl PG) -> (ParityGame, Vec<Option<usize>>) {
+pub fn compute_reachable<G: PG>(game: &G) -> (ParityGame, Vec<Option<usize>>) {
     let num_vertices = game.num_of_vertices();
 
     // Mapping from old vertex indices to new vertices (None means unreachable)
