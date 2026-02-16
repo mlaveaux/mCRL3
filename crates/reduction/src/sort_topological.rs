@@ -72,8 +72,8 @@ enum Mark {
 /// Visits the given state in a depth first search.
 ///
 /// Returns false if a cycle is detected.
-fn sort_topological_visit<F>(
-    lts: &impl LTS,
+fn sort_topological_visit<F, L>(
+    lts: &L,
     filter: &F,
     state_index: StateIndex,
     depth_stack: &mut Vec<StateIndex>,
@@ -83,6 +83,7 @@ fn sort_topological_visit<F>(
 ) -> bool
 where
     F: Fn(LabelIndex, StateIndex) -> bool,
+    L: LTS,
 {
     // Perform a depth first search.
     depth_stack.push(state_index);
@@ -118,10 +119,11 @@ where
 }
 
 /// Returns true if the given permutation is a topological ordering of the states of the given LTS.
-fn is_topologically_sorted<F, P>(lts: &impl LTS, filter: F, permutation: P, reverse: bool) -> bool
+fn is_topologically_sorted<F, P, L>(lts: &L, filter: F, permutation: P, reverse: bool) -> bool
 where
     F: Fn(LabelIndex, StateIndex) -> bool,
     P: Fn(StateIndex) -> StateIndex,
+    L: LTS,
 {
     debug_assert!(is_valid_permutation(
         |i| permutation(StateIndex::new(i)).value(),

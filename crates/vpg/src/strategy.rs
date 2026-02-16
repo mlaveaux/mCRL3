@@ -49,7 +49,7 @@ impl Strategy {
 
     /// Checks that the strategy is only defined for the vertices owned by the
     /// given player.
-    pub fn check_consistent(&self, pg: &impl PG, player: Player) {
+    pub fn check_consistent<G: PG>(&self, pg: &G, player: Player) {
         for vertex in pg.iter_vertices() {
             if self.get(vertex).is_some() && pg.owner(vertex) != player {
                 panic!(

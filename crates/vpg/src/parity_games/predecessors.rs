@@ -23,7 +23,7 @@ pub struct Predecessors<'a> {
 
 impl<'a> Predecessors<'a> {
     /// Creates the predecessors structure for the given parity game.
-    pub fn new(game: &'a impl PG) -> Self {
+    pub fn new<G: PG>(game: &'a G) -> Self {
         let mut edges_from = bytevec![VertexIndex::new(0); game.num_of_edges()];
         let mut state2incoming = bytevec![0; game.num_of_vertices()];
 

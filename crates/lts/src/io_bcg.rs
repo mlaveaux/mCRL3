@@ -22,7 +22,7 @@ mod inner {
     }
 
     /// This is a stub implementation used when BCG support is not compiled in.
-    pub fn write_bcg(_lts: &impl LTS, _path: &Path) -> Result<(), MercError> {
+    pub fn write_bcg<L: LTS>(_lts: &L, _path: &Path) -> Result<(), MercError> {
         Err("BCG format support not compiled in, see the 'cadp' feature.".into())
     }
 }

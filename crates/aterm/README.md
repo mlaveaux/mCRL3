@@ -103,7 +103,7 @@ mod inner {
 
     // Uses the Term trait to specify a predicate for terms that are data expressions
     #[merc_ignore]
-    fn is_data_expression<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
+    fn is_data_expression<'a, 'b, T: Term<'a, 'b>>>(term: &'b T) -> bool {
       true
     }
 

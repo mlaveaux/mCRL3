@@ -232,16 +232,17 @@ pub struct ATerm {
 
 impl ATerm {
     /// Creates a new term with the given symbol and arguments.
-    pub fn with_args<'a, 'b>(
-        symbol: &'b impl Symb<'a, 'b>,
-        args: &'b [impl Term<'a, 'b>],
+    pub fn with_args<'a, 'b, S: Symb<'a, 'b>, T: Term<'a, 'b>>(
+        symbol: &'b S,
+        args: &'b [T],
     ) -> Return<ATermRef<'static>> {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term(symbol, args))
     }
 
     /// Creates a new term with the given symbol and an iterator over the arguments.
-    pub fn with_iter<'a, 'b, 'c, 'd, I, T>(symbol: &'b impl Symb<'a, 'b>, iter: I) -> ATerm
+    pub fn with_iter<'a, 'b, 'c, 'd, S, I, T>(symbol: &'b S, iter: I) -> ATerm
     where
+        S: Symb<'a, 'b>,
         I: IntoIterator<Item = T>,
         T: Term<'c, 'd>,
     {
@@ -249,8 +250,9 @@ impl ATerm {
     }
 
     /// Creates a new term with the given symbol and an iterator over the arguments.
-    pub fn try_with_iter<'a, 'b, 'c, 'd, I, T>(symbol: &'b impl Symb<'a, 'b>, iter: I) -> Result<ATerm, MercError>
+    pub fn try_with_iter<'a, 'b, 'c, 'd, S, I, T>(symbol: &'b S, iter: I) -> Result<ATerm, MercError>
     where
+        S: Symb<'a, 'b>,
         I: IntoIterator<Item = Result<T, MercError>>,
         T: Term<'c, 'd>,
     {
@@ -258,12 +260,14 @@ impl ATerm {
     }
 
     /// Creates a new term with the given symbol and a head term, along with a list of arguments.
-    pub fn with_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, T>(
-        symbol: &'b impl Symb<'a, 'b>,
-        head: &'d impl Term<'c, 'd>,
+    pub fn with_iter_head<'a, 'b, 'c, 'd, 'e, 'f, I, S, T, H>(
+        symbol: &'b S,
+        head: &'d H,
         iter: I,
     ) -> ATerm
     where
+        S:  Symb<'a, 'b>,
+        H: Term<'c, 'd>,
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
     {

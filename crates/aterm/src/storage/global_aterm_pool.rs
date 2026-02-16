@@ -125,9 +125,9 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term_array<'a, 'b, 'c>(
+    pub fn create_term_array<'a, 'b, 'c, S: Symb<'a, 'b>>(
         &'c self,
-        symbol: &'b impl Symb<'a, 'b>,
+        symbol: &'b S,
         args: &'c [ATermRef<'c>],
     ) -> (StablePointer<SharedTerm>, bool) {
         let shared_term = SharedTermLookup {
@@ -153,9 +153,10 @@ impl GlobalTermPool {
     }
 
     /// Create a function symbol
-    pub fn create_symbol<P>(&self, name: impl Into<String> + AsRef<str>, arity: usize, protect: P) -> Symbol
+    pub fn create_symbol<P, N>(&self, name: N, arity: usize, protect: P) -> Symbol
     where
         P: FnOnce(SymbolIndex) -> Symbol,
+        N: Into<String> + AsRef<str>,
     {
         protect(self.symbol_pool.create(name, arity))
     }

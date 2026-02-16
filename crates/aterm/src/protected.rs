@@ -143,7 +143,7 @@ impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
     ///
     /// The invariant to uphold is that the resulting term MUST be inserted into the container. This is checked in debug mode, but not in release mode. If this invariant is violated, undefined behaviour may occur during garbage collection.
     /// We do not mark this function unsafe since that would make its use cumbersome.
-    pub fn protect<'b>(&self, term: &'b impl Term<'a, 'b>) -> ATermRef<'static> {
+    pub fn protect<'b, T: Term<'a, 'b>>(&self, term: &'b T) -> ATermRef<'static> {
         unsafe {
             // Store terms that are marked as protected to check if they are
             // actually in the container when the protection is dropped.
@@ -159,7 +159,7 @@ impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
     /// Yields a symbol to insert into the container.
     ///
     /// The invariant to uphold is that the resulting symbol MUST be inserted into the container.
-    pub fn protect_symbol<'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> SymbolRef<'static> {
+    pub fn protect_symbol<'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> SymbolRef<'static> {
         unsafe {
             // Store symbols that are marked as protected to check if they are
             // actually in the container when the protection is dropped.

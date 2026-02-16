@@ -159,7 +159,10 @@ mod inner {
 
     impl DataFunctionSymbol {
         #[merc_ignore]
-        pub fn new(name: impl Into<String> + AsRef<str>) -> DataFunctionSymbol {
+        pub fn new<N>(name: N) -> DataFunctionSymbol 
+        where 
+            N: Into<ATermString> + AsRef<str>,
+        {
             DATA_SYMBOLS.with_borrow(|ds| DataFunctionSymbol {
                 term: ATerm::with_args(
                     ds.data_function_symbol.deref(),
@@ -202,7 +205,7 @@ mod inner {
     impl DataVariable {
         /// Create a new untyped variable with the given name.
         #[merc_ignore]
-        pub fn new(name: impl Into<ATermString>) -> DataVariable {
+        pub fn new<N: Into<ATermString>>(name: N) -> DataVariable {
             DATA_SYMBOLS.with_borrow(|ds| {
                 // TODO: Storing terms temporarily is not optimal.
                 let t = name.into();
@@ -215,7 +218,7 @@ mod inner {
         }
 
         /// Create a variable with the given sort and name.
-        pub fn with_sort(name: impl Into<ATermString>, sort: SortExpressionRef<'_>) -> DataVariable {
+        pub fn with_sort<N: Into<ATermString>>(name: N, sort: SortExpressionRef<'_>) -> DataVariable {
             DATA_SYMBOLS.with_borrow(|ds| {
                 // TODO: Storing terms temporarily is not optimal.
                 let t = name.into();
@@ -253,7 +256,7 @@ mod inner {
     impl DataApplication {
         /// Create a new data application with the given head and arguments.
         #[merc_ignore]
-        pub fn with_args<'a, 'b>(head: &'b impl Term<'a, 'b>, arguments: &'b [impl Term<'a, 'b>]) -> DataApplication {
+        pub fn with_args<'a, 'b, H: Term<'a, 'b>, T: Term<'a, 'b>>(head: &'b H, arguments: &'b [T]) -> DataApplication {
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 let symbol = ds.get_data_application_symbol(arguments.len() + 1).copy();
 
@@ -268,14 +271,15 @@ mod inner {
         ///
         /// arity must be equal to the number of arguments + 1.
         #[merc_ignore]
-        pub fn with_iter<'a, 'b, 'c, 'd, T, I>(
-            head: &'b impl Term<'a, 'b>,
+        pub fn with_iter<'a, 'b, 'c, 'd, T, H, I>(
+            head: &'b H,
             arity: usize,
             arguments: I,
         ) -> DataApplication
         where
             I: Iterator<Item = T>,
             T: Term<'c, 'd>,
+            H: Term<'a, 'b>,
         {
             DATA_SYMBOLS.with_borrow_mut(|ds| {
                 let symbol = ds.get_data_application_symbol(arity + 1).copy();

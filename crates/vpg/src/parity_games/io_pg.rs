@@ -36,7 +36,7 @@ pub enum IOError {
 ///
 /// `parity <num_of_vertices>;`
 /// `<index> <priority> <owner> <outgoing_vertex>, <outgoing_vertex>, ...;`
-pub fn read_pg(reader: impl Read) -> Result<ParityGame, MercError> {
+pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
     info!("Reading parity game in .pg format...");
 
     let mut lines = LineIterator::new(reader);
@@ -122,7 +122,7 @@ pub fn read_pg(reader: impl Read) -> Result<ParityGame, MercError> {
 }
 
 /// Writes the given parity game to the given writer in .pg format.
-pub fn write_pg(mut writer: impl Write, game: &impl PG) -> Result<(), MercError> {
+pub fn write_pg<W: Write, G: PG>(mut writer: W, game: &G) -> Result<(), MercError> {
     info!("Writing parity game to .pg format...");
 
     let progress = TimeProgress::new(

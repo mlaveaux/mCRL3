@@ -42,7 +42,7 @@ pub enum IOError {
 /// And one line for every transition either one of these cases:
 ///  `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///  `(<from>: Nat, <label>: Str, <to>: Nat)`
-pub fn read_aut(reader: impl Read, hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem<String>, MercError> {
+pub fn read_aut<R: Read>(reader: R, hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem<String>, MercError> {
     info!("Reading LTS in .aut format...");
 
     let mut lines = LineIterator::new(reader);
@@ -101,7 +101,7 @@ pub fn read_aut(reader: impl Read, hidden_labels: Vec<String>) -> Result<Labelle
 /// given writer, see [read_aut].
 ///
 /// Note that the writer is buffered internally using a `BufWriter`.
-pub fn write_aut(writer: &mut impl Write, lts: &impl LTS) -> Result<(), MercError> {
+pub fn write_aut<W: Write, L: LTS>(writer: &mut W, lts: &L) -> Result<(), MercError> {
     info!("Writing LTS in .aut format...");
 
     let mut writer = BufWriter::new(writer);

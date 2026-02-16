@@ -117,10 +117,10 @@ fn weak_bisimulation_impl<L: LTS>(
 
 /// Sets s.act_mark to true iff exists t: S. s =\not{a}=> t
 /// If a = tau, then also updates s.tau_mark
-fn compute_weak_act(
+fn compute_weak_act<L: LTS>(
     act_mark: &mut BitArray,
     tau_mark: &mut BitArray,
-    lts: &impl LTS,
+    lts: &L,
     blocks: &SimpleBlockPartition,
     incoming: &IncomingTransitions,
     block: BlockIndex,

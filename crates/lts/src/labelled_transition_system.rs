@@ -196,7 +196,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     /// Internally this works by offsetting the state indices of the other LTS by the number of states
     /// in the current LTS, and combining the action labels. The offset is returned such that
     /// can find the states of the other LTS in the merged LTS as the initial state of the other LTS.
-    fn merge_disjoint_impl(mut self, other: &impl LTS<Label = Label>) -> (Self, StateIndex) {
+    fn merge_disjoint_impl<L: LTS<Label = Label>>(mut self, other: &L) -> (Self, StateIndex) {
         // Determine the combination of action labels
         let mut all_labels = self.labels().to_vec();
         for label in other.labels() {
@@ -288,8 +288,12 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     }
 
     /// Consumes the LTS and relabels its transition labels according to the given mapping.
-    pub fn relabel<L: TransitionLabel>(self, labelling: impl Fn(Label) -> L) -> LabelledTransitionSystem<L> {
-        let new_labels: Vec<L> = self.labels.iter().cloned().map(labelling).collect();
+    pub fn relabel<L, F>(self, labelling: F) -> LabelledTransitionSystem<L>
+    where
+        L: TransitionLabel,
+        F: Fn(&Label) -> L,
+    {
+        let new_labels: Vec<L> = self.labels.iter().map(labelling).collect();
 
         LabelledTransitionSystem {
             initial_state: self.initial_state,

@@ -42,7 +42,7 @@ pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (L, BlockPartitio
     let incoming = timing.measure("preprocess", || IncomingTransitions::new(&lts));
 
     let partition = timing.measure("reduction", || {
-        signature_refinement::<_, _, false>(
+        signature_refinement::<_, _, _, false>(
             &lts,
             &incoming,
             |state_index, partition, _, builder| {
@@ -81,7 +81,7 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (LabelledTrans
     let mut stack = Vec::new();
 
     let partition = timing.measure("reduction", || {
-        signature_refinement::<_, _, true>(
+        signature_refinement::<_, _, _, true>(
             &preprocessed_lts,
             &incoming,
             |state_index, partition, state_to_key, builder| {
@@ -247,8 +247,8 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
 /// The signature function is called for each state and should fill the
 /// signature builder with the signature of the state. It consists of the
 /// current partition, the signatures per state for the next partition.
-fn signature_refinement<F, G, const BRANCHING: bool>(
-    lts: &impl LTS,
+fn signature_refinement<F, G, L, const BRANCHING: bool>(
+    lts: &L,
     incoming: &IncomingTransitions,
     mut signature: F,
     mut renumber: G,
@@ -256,6 +256,7 @@ fn signature_refinement<F, G, const BRANCHING: bool>(
 where
     F: FnMut(StateIndex, &BlockPartition, &[BlockIndex], &mut SignatureBuilder),
     G: FnMut(&[(LabelIndex, BlockIndex)], &Vec<Signature>) -> Option<BlockIndex>,
+    L: LTS,
 {
     // Avoids reallocations when computing the signature.
     let mut arena = Bump::new();
@@ -673,10 +674,11 @@ where
 }
 
 /// Returns true iff the given partition is a strong bisimulation partition
-pub fn is_valid_refinement<F, P>(lts: &impl LTS, partition: &P, mut compute_signature: F) -> bool
+pub fn is_valid_refinement<F, P, L>(lts: &L, partition: &P, mut compute_signature: F) -> bool
 where
     F: FnMut(StateIndex, &P, &mut SignatureBuilder),
     P: Partition,
+    L: LTS,
 {
     // Check that the partition is indeed stable and as such is a quotient of strong bisimulation
     let mut block_to_signature: Vec<Option<SignatureBuilder>> = vec![None; partition.num_of_blocks()];
@@ -737,7 +739,7 @@ mod tests {
     use merc_utilities::random_test;
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
-    fn equal_partitions(left: &impl Partition, right: &impl Partition) -> bool {
+    fn equal_partitions<P: Partition, Q: Partition>(left: &P, right: &Q) -> bool {
         // Check that states in the same block, have a single (unique) number in
         // the other partition.
         for block_index in (0..left.num_of_blocks()).map(BlockIndex::new) {
@@ -780,7 +782,7 @@ mod tests {
     }
 
     /// Checks that the strong bisimulation partition is a refinement of the branching bisimulation partition.
-    fn is_refinement(lts: &impl LTS, strong_partition: &impl Partition, branching_partition: &impl Partition) {
+    fn is_refinement<L: LTS, P: Partition, Q: Partition>(lts: &L, strong_partition: &P, branching_partition: &Q) {
         for state_index in lts.iter_states() {
             for other_state_index in lts.iter_states() {
                 if strong_partition.block_number(state_index) == strong_partition.block_number(other_state_index) {

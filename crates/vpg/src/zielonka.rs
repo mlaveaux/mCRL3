@@ -27,7 +27,7 @@ use crate::VertexIndex;
 pub type Set = BitVec<usize, Lsb0>;
 
 /// Solves the given parity game using the Zielonka algorithm.
-pub fn solve_zielonka(game: &impl PG) -> ([Set; 2], [Strategy; 2]) {
+pub fn solve_zielonka<G: PG>(game: &G) -> ([Set; 2], [Strategy; 2]) {
     debug_assert!(game.is_total(), "Zielonka solver requires a total parity game");
 
     // Initial set of vertices V = all vertices

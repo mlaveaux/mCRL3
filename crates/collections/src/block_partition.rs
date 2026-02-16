@@ -98,7 +98,10 @@ impl<B: Block> BlockPartition<B> {
 
     /// Splits a block into two blocks according to the given predicate. If the
     /// predicate holds for all or none of the elements, no split occurs.
-    pub fn split_block(&mut self, block_index: BlockIndex, predicate: impl Fn(usize) -> bool) -> Option<BlockIndex> {
+    pub fn split_block<F>(&mut self, block_index: BlockIndex, predicate: F) -> Option<BlockIndex>
+    where
+        F: Fn(usize) -> bool,
+    {
         // Size of the new block.
         let mut size = 0usize;
 

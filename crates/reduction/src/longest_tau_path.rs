@@ -5,7 +5,7 @@ use merc_lts::{LTS, StateIndex};
 /// # Details
 ///
 /// Assumes that the LTS does not contain any tau-cycles.
-pub fn longest_tau_path(lts: &impl LTS) -> Vec<StateIndex> {
+pub fn longest_tau_path<L: LTS>(lts: &L) -> Vec<StateIndex> {
     let mut length = vec![0usize; lts.num_of_states()];
     let mut next = vec![None; lts.num_of_states()];
 

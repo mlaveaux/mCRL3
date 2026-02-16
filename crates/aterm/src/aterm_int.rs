@@ -21,12 +21,12 @@ use crate::storage::Marker;
 use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true if the term is an [ATermInt] term.
-pub fn is_int_term<'a, 'b>(t: &'b impl Term<'a, 'b>) -> bool {
+pub fn is_int_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == t.get_head_symbol())
 }
 
 /// Returns true if the symbol is an integer.
-pub fn is_int_symbol<'a, 'b>(f: &'b impl Symb<'a, 'b>) -> bool {
+pub fn is_int_symbol<'a, 'b, S: Symb<'a, 'b>>(f: &'b S) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == f.copy())
 }
 

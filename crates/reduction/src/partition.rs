@@ -38,7 +38,7 @@ impl Partition for IndexedPartition {
 }
 
 /// Combines two partitions into a new partition.
-pub fn combine_partition(left: IndexedPartition, right: &impl Partition) -> IndexedPartition {
+pub fn combine_partition<P: Partition>(left: IndexedPartition, right: &P) -> IndexedPartition {
     let mut combined_partition = IndexedPartition::new(left.len());
 
     for (element_index, block) in left.partition().iter().enumerate() {

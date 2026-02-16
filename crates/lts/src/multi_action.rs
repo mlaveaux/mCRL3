@@ -213,17 +213,17 @@ mod inner {
 pub use inner::*;
 
 /// See [`is_mcrl2_timed_multi_action_symbol`]
-fn is_mcrl2_timed_multi_action<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
+fn is_mcrl2_timed_multi_action<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     is_mcrl2_timed_multi_action_symbol(&term.get_head_symbol())
 }
 
 /// See [`is_mcrl2_action_symbol`]
-fn is_mcrl2_action<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
+fn is_mcrl2_action<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     is_mcrl2_action_symbol(&term.get_head_symbol())
 }
 
 /// See [`is_mcrl2_action_label_symbol`]
-fn is_mcrl2_action_label<'a, 'b>(term: &'b impl Term<'a, 'b>) -> bool {
+fn is_mcrl2_action_label<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     is_mcrl2_action_label_symbol(&term.get_head_symbol())
 }
 

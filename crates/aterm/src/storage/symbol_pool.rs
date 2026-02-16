@@ -61,7 +61,7 @@ impl SymbolPool {
     }
 
     /// Returns the arity of the function symbol
-    pub fn symbol_arity<'a, 'b>(&self, symbol: &'b impl Symb<'a, 'b>) -> usize {
+    pub fn symbol_arity<'a, 'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> usize {
         symbol.shared().arity()
     }
 
@@ -167,7 +167,7 @@ pub struct SharedSymbol {
 
 impl SharedSymbol {
     /// Creates a new function symbol.
-    pub fn new(name: impl Into<String>, arity: usize) -> Self {
+    pub fn new<N: Into<String>>(name: N, arity: usize) -> Self {
         Self {
             name: name.into(),
             arity,

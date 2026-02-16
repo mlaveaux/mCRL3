@@ -12,9 +12,9 @@ use crate::Partition;
 /// Returns a new LTS based on the given partition.
 ///
 /// The naive version will add the transitions of all states in the block to the quotient LTS.
-pub fn quotient_lts_naive<L: LTS>(
+pub fn quotient_lts_naive<L: LTS, P: Partition>(
     lts: &L,
-    partition: &impl Partition,
+    partition: &P,
     eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
     // Introduce the transitions based on the block numbers, the number of blocks is a decent approximation for the number of transitions.

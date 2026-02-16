@@ -20,7 +20,7 @@ use crate::check_partition;
 
 /// Verifies that a proposed solution is valid for the given parity game and
 /// strategies.
-pub fn verify_solution(pg: &impl PG, solution: &[Set; 2], strategy: &[Strategy; 2]) {
+pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy; 2]) {
     debug_assert!(pg.is_total(), "Verifying requires a total parity game");
 
     // The set of all vertices in the game.
@@ -28,6 +28,7 @@ pub fn verify_solution(pg: &impl PG, solution: &[Set; 2], strategy: &[Strategy; 
 
     // Check that the input solution is a proper partitioning
     check_partition(&solution[0], &solution[1], &vertices);
+    let predecessors = Predecessors::new(pg);
 
     // We check both players' strategies
     for player in [Player::Even, Player::Odd] {
@@ -46,7 +47,6 @@ pub fn verify_solution(pg: &impl PG, solution: &[Set; 2], strategy: &[Strategy; 
             trace!("Restricting game for player {} with priority {}", player, priority);
             let restricted_game = SubGame::new(pg, player, &strategy[player.to_index()], Priority::new(priority));
 
-            let _predecessors = Predecessors::new(&restricted_game);
 
             let scc_partition = scc_decomposition(&AsGraph(&restricted_game), |_, _, _| true);
 

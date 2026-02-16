@@ -37,9 +37,9 @@ use merc_utilities::MercError;
 ///
 /// The `features` map contains the mapping from variable names to their
 /// corresponding BDD variable, which *must* be defined in the BDD manager.
-pub fn read_fts(
+pub fn read_fts<R: Read>(
     manager_ref: &BDDManagerRef,
-    reader: impl Read,
+    reader: R,
     features: HashMap<String, BDDFunction>,
 ) -> Result<FeatureTransitionSystem<String>, MercError> {
     // Read the underlying LTS, where the labels are in plain text
@@ -145,7 +145,7 @@ impl FeatureDiagram {
     /// expression. This function will initialize the BDD manager with the
     /// variables read from the first line, and assumes that the manager has no
     /// variables yet defined.
-    pub fn from_reader(manager_ref: &BDDManagerRef, input: impl Read) -> Result<Self, MercError> {
+    pub fn from_reade<R: Read>(manager_ref: &BDDManagerRef, input: R) -> Result<Self, MercError> {
         manager_ref.with_manager_exclusive(|manager| {
             debug_assert_eq!(
                 manager.num_vars(),

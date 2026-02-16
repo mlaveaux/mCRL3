@@ -78,7 +78,7 @@ impl<'a> SymbolRef<'a> {
 
 impl SymbolRef<'_> {
     /// Internal constructo to convert any `Symb` to a `SymbolRef`.
-    pub(crate) fn from_symbol<'a, 'b>(symbol: &'b impl Symb<'a, 'b>) -> Self {
+    pub(crate) fn from_symbol<'a, 'b, S: Symb<'a, 'b>>(symbol: &'b S) -> Self {
         SymbolRef {
             shared: symbol.shared().copy(),
             marker: PhantomData,
@@ -146,7 +146,10 @@ pub struct Symbol {
 
 impl Symbol {
     /// Create a new symbol with the given name and arity.
-    pub fn new(name: impl Into<String> + AsRef<str>, arity: usize) -> Symbol {
+    pub fn new<N>(name: N, arity: usize) -> Symbol
+    where
+        N: Into<String> + AsRef<str>,
+    {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_symbol(name, arity))
     }
 }

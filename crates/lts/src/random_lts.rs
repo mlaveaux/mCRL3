@@ -12,8 +12,8 @@ use crate::product_lts;
 /// degree by composing three smaller random LTSs using the synchronous product.
 /// This is often a more realistic structure than fully random LTSs, but
 /// otherwise see [`random_lts_monolithic`].
-pub fn random_lts(
-    rng: &mut impl Rng,
+pub fn random_lts<R: Rng>(
+    rng: &mut R,
     num_of_states: usize,
     num_of_labels: u32,
     outdegree: usize,
@@ -41,8 +41,8 @@ pub fn random_lts(
 ///
 /// The number of labels is limited to 26, since only singular alphabetic labels
 /// are used, because those are easier to read and understand.
-pub fn random_lts_monolithic<L: TransitionLabel>(
-    rng: &mut impl Rng,
+pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
+    rng: &mut R,
     num_of_states: usize,
     num_of_labels: u32,
     outdegree: usize,
