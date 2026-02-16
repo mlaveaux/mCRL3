@@ -32,7 +32,7 @@ use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
-/// A command line tool for labelled transition systems
+/// A command line tool for labelled transition systems.
 #[derive(clap::Parser, Debug)]
 #[command(arg_required_else_help = true)]
 struct Cli {
@@ -58,7 +58,7 @@ enum Commands {
     Reduce(ReduceArgs),
     /// Compares two LTS modulo an equivalent relation.
     Compare(CompareArgs),
-    /// Checks whether the given implementation LTS refines the given specification LTS modulo various refinement relation.
+    /// Checks whether the given implementation LTS refines the given specification LTS modulo various refinement relations.
     Refines(RefinesArgs),
     /// Converts an LTS from one format to another format.
     Convert(ConvertArgs),
@@ -69,11 +69,11 @@ struct InfoArgs {
     /// Specify the input LTS.
     filename: String,
 
-    /// Explicitly specify the LTS file format
+    /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
 
-    /// List of actions that should be considered tau actions
+    /// List of actions that should be considered tau actions.
     #[arg(short, long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
 }
@@ -86,7 +86,7 @@ struct ReduceArgs {
     /// Specify the input LTS.
     filename: PathBuf,
 
-    /// Explicitly specify the LTS file format
+    /// Explicitly specify the LTS file format.
     #[arg(long)]
     filetype: Option<LtsFormat>,
 
@@ -94,7 +94,7 @@ struct ReduceArgs {
     #[arg(long)]
     output: Option<PathBuf>,
 
-    /// List of actions that should be considered tau actions
+    /// List of actions that should be considered tau actions.
     #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
 
@@ -114,11 +114,11 @@ struct CompareArgs {
     /// Specify the input LTS.
     right_filename: PathBuf,
 
-    /// Explicitly specify the LTS file format
+    /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
 
-    /// List of actions that should be considered tau actions
+    /// List of actions that should be considered tau actions.
     #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
 
@@ -129,21 +129,21 @@ struct CompareArgs {
 
 #[derive(clap::Args, Debug)]
 struct ConvertArgs {
-    /// Explicitly specify the LTS input file format
+    /// Explicitly specify the LTS input file format.
     #[arg(long)]
     format: Option<LtsFormat>,
 
     /// Specify the input LTS.
     filename: PathBuf,
 
-    /// Explicitly specify the LTS output file format
+    /// Explicitly specify the LTS output file format.
     #[arg(long)]
     output_format: Option<LtsFormat>,
 
     /// Specify the output LTS.
     output: Option<PathBuf>,
 
-    /// List of actions that should be considered tau actions
+    /// List of actions that should be considered tau actions.
     #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,
 }
@@ -163,7 +163,7 @@ struct RefinesArgs {
     #[arg(short = 'c', long)]
     counter_example: Option<PathBuf>,
 
-    /// Explicitly specify the LTS file format
+    /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
     
