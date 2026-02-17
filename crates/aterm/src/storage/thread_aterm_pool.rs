@@ -219,7 +219,7 @@ impl ThreadTermPool {
     ) -> ATerm
     where
         S: Symb<'a, 'b>,
-        H: Term<'d, 'e>,
+        H: Term<'c, 'd>,
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
     {

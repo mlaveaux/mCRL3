@@ -167,7 +167,7 @@ mod inner {
                 term: ATerm::with_args(
                     ds.data_function_symbol.deref(),
                     &[
-                        Into::<ATerm>::into(ATermString::new(name)),
+                        Into::<ATerm>::into(name.into()),
                         SortExpression::unknown_sort().into(),
                     ],
                 )

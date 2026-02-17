@@ -14,8 +14,10 @@ pub type BlockIndex = TagIndex<usize, BlockTag>;
 /// number.
 #[derive(Debug)]
 pub struct IndexedPartition {
+    /// Stores a mapping from element index to block number.
     partition: Vec<BlockIndex>,
 
+    /// Keeps track of the number of blocks defined.
     num_of_blocks: usize,
 }
 
