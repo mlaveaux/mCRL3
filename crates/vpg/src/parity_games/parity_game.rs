@@ -293,7 +293,7 @@ pub trait PG {
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
 
     /// Returns an iterator over the outgoing edges for the given vertex.
-    fn outgoing_edges<'a>(&'a self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'a, Self::Label>> + 'a;
+    fn outgoing_edges<'a>(&'a self, vertex: VertexIndex) -> impl Iterator<Item = Edge<'a, Self::Label>> + 'a;
 
     /// Returns the owner of the given vertex.
     fn owner(&self, vertex: VertexIndex) -> Player;

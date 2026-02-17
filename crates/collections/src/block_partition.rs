@@ -7,74 +7,43 @@ use log::trace;
 
 use crate::{BlockIndex, IndexedPartition};
 
-/// A trait for blocks in a [BlockPartition].
-pub trait Block: Clone {
-    /// Creates a new block.
-    fn new(start: usize, end: usize) -> Self;
-
-    /// Returns the start index of the block.
-    fn start(&self) -> usize;
-    fn set_start(&mut self, start: usize);
-
-    /// Returns the end index (exclusive) of the block.
-    fn end(&self) -> usize;
-    fn set_end(&mut self, end: usize);
-
-    /// Returns the number of elements in the block.
-    fn len(&self) -> usize {
-        self.assert_consistent();
-        self.end() - self.start()
-    }
-
-    /// Returns true iff the block is empty.
-    fn is_empty(&self) -> bool {
-        self.assert_consistent();
-        self.start() == self.end()
-    }
-
-    /// Returns an iterator over the elements in this block.
-    fn iter<'a>(&self, elements: &'a [usize]) -> impl Iterator<Item = usize> + 'a;
-
-    /// Returns true iff the block is consistent.
-    fn assert_consistent(&self);
-}
-
 /// A partition that explicitly stores a list of blocks and their indexing into
 /// the list of elements.
 #[derive(Debug)]
-pub struct BlockPartition<B: Block> {
+pub struct BlockPartition<A: Clone + fmt::Debug = ()> {
     elements: Vec<usize>,
-    blocks: Vec<B>,
+    blocks: Vec<Block<A>>,
 }
 
-impl<B: Block> BlockPartition<B> {
+impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create an initial partition where all the states are in a single block
     /// 0. And all the elements in the block are marked.
     pub fn new(num_of_elements: usize) -> Self {
         debug_assert!(num_of_elements > 0, "Cannot partition the empty set");
 
-        let blocks = vec![B::new(0, num_of_elements)];
+        let blocks = vec![Block::new(0, num_of_elements)];
         let elements = (0..num_of_elements).collect();
 
         Self { elements, blocks }
     }
+}
 
+impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create a block partition from an indexed partition.
     pub fn from_indexed_partition(partition: &IndexedPartition) -> Self {
-        let mut blocks = vec![B::new(0, 0); partition.num_of_blocks()];
+        let mut blocks = vec![Block::new_unchecked(0, 0); partition.num_of_blocks()];
 
         // Figure out the number of elements per block.
         for element in partition.iter() {
-            let end = blocks[element].end();
-            blocks[element].set_end(end + 1);
+            blocks[element].end += 1;
         }
 
         // Compute the start index for each block.
         let mut start = 0;
         for block in &mut blocks {
-            let end = block.end();
-            block.set_start(start);
-            block.set_end(start); // This will be updated when adding elements.
+            let end = block.end;
+            block.begin = start;
+            block.end = start; // This will be updated when adding elements.
             start = end;
         }
 
@@ -83,16 +52,19 @@ impl<B: Block> BlockPartition<B> {
         for (element_index, block_index) in partition.iter().enumerate() {
             // Add the element to the block, and update the end index.
             let block = &mut blocks[block_index];
-            let pos = block.end();
+            let pos = block.end;
             elements[pos] = element_index;
-            block.set_end(pos + 1);
+            block.end = pos + 1;
         }
+
+        // Remove empty blocks.
+        blocks.retain(|block| !block.is_empty());
 
         Self { elements, blocks }
     }
 
     /// Return a reference to the given block.
-    pub fn block(&self, block_index: BlockIndex) -> &B {
+    pub fn block(&self, block_index: BlockIndex) -> &Block<A> {
         &self.blocks[block_index]
     }
 
@@ -105,9 +77,9 @@ impl<B: Block> BlockPartition<B> {
         // Size of the new block.
         let mut size = 0usize;
 
-        for state in self.blocks[block_index].start()..self.blocks[block_index].end() {
+        for state in self.blocks[block_index].begin..self.blocks[block_index].end {
             if predicate(self.elements[state]) {
-                self.elements.swap(self.blocks[block_index].start() + size, state);
+                self.elements.swap(self.blocks[block_index].begin + size, state);
                 size += 1;
             }
         }
@@ -119,13 +91,13 @@ impl<B: Block> BlockPartition<B> {
         }
 
         // Create a new block for the remaining elements
-        let new_block = B::new(self.blocks[block_index].start() + size, self.blocks[block_index].end());
+        let new_block = Block::new(self.blocks[block_index].begin + size, self.blocks[block_index].end);
         let last_block = self.blocks.len();
         self.blocks.push(new_block);
 
         // Update the original block
-        let new_end = self.blocks[block_index].start() + size;
-        self.blocks[block_index].set_end(new_end);
+        let new_end = self.blocks[block_index].begin + size;
+        self.blocks[block_index].end = new_end;
 
         trace!(
             "Split block {:?} into blocks {:?} and {:?}",
@@ -142,26 +114,26 @@ impl<B: Block> BlockPartition<B> {
     }
 
     /// Returns an iterator over the elements of a given block.
-    pub fn iter_block(&self, block_index: BlockIndex) -> SimpleBlockIter<'_> {
-        SimpleBlockIter {
+    pub fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
+        BlockIter {
             elements: &self.elements,
-            index: self.blocks[block_index].start(),
-            end: self.blocks[block_index].end(),
+            index: self.blocks[block_index].begin,
+            end: self.blocks[block_index].end,
         }
     }
 
     /// Returns an iterator over all blocks in the partition.
-    pub fn iter(&self) -> impl Iterator<Item = &B> {
+    pub fn iter(&self) -> impl Iterator<Item = &Block<A>> {
         self.blocks.iter()
     }
 
     /// Returns an iterator over all blocks in the partition.
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut B> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Block<A>> {
         self.blocks.iter_mut()
     }
 }
 
-impl<B: Block> fmt::Display for BlockPartition<B> {
+impl<B: Clone + fmt::Debug> fmt::Display for BlockPartition<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format = self
             .blocks
@@ -172,61 +144,76 @@ impl<B: Block> fmt::Display for BlockPartition<B> {
         write!(f, "{{{}}}", format)
     }
 }
-/// A [super::Block] that stores a subset of the elements in a partition.
+/// A block that stores a subset of the elements in a partition.
 ///
 /// # Details
 ///
 /// It uses `start` and `end` to indicate a range start..end of elements in the
 /// partition.
 #[derive(Clone, Copy, Debug)]
-pub struct SimpleBlock {
+pub struct Block<A: Clone + fmt::Debug> {
     begin: usize,
     end: usize,
+    annotation: A
 }
 
-impl Block for SimpleBlock {
-    fn new(begin: usize, end: usize) -> SimpleBlock {
-        debug_assert!(begin < end, "The range of this block is incorrect");
-
-        SimpleBlock { begin, end }
+impl<A: Clone + fmt::Debug + Default> Block<A> {
+    pub fn new(begin: usize, end: usize) -> Self {
+        debug_assert!(begin < end, "The range of this block is incorrect {begin}..{end}");
+        Block { begin, end, annotation: Default::default() }
     }
-
-    fn start(&self) -> usize {
-        self.begin
+    
+    /// Variant of [new] that can be used to initialize empty blocks.
+    fn new_unchecked(begin: usize, end: usize) -> Self {
+        Block { begin, end, annotation: Default::default() }
     }
+}
 
-    fn set_start(&mut self, start: usize) {
-        self.begin = start;
-    }
-
-    fn end(&self) -> usize {
-        self.end
-    }
-
-    fn set_end(&mut self, end: usize) {
-        self.end = end;
-    }
-
-    fn iter<'a>(&self, elements: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
-        SimpleBlockIter {
+impl<A: Clone + fmt::Debug>  Block<A> {
+    /// Returns an iterator over the elements in this block.
+    pub fn iter<'a>(&self, elements: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
+        BlockIter {
             elements,
             index: self.begin,
             end: self.end,
         }
     }
 
+    /// Returns the underlying annotation of this block.
+    pub fn annotation(&self) -> &A {
+        &self.annotation
+    }
+
+    /// Returns the underlying annotation of this block.
+    pub fn annotation_mut(&mut self) -> &mut A {
+        &mut self.annotation
+    }
+        
+    /// Returns the number of elements in the block.
+    pub fn len(&self) -> usize {
+        self.assert_consistent();
+        self.end - self.begin
+    }
+
+    /// Returns true iff the block is empty.
+    pub fn is_empty(&self) -> bool {
+        self.assert_consistent();
+        self.begin == self.end
+    }
+
+    /// Returns true iff the block is consistent.
     fn assert_consistent(&self) {
         debug_assert!(self.begin < self.end, "The range of block {self:?} is incorrect");
     }
 }
 
-pub struct SimpleBlockIter<'a> {
+pub struct BlockIter<'a> {
     elements: &'a [usize],
     index: usize,
     end: usize,
 }
 
-impl Iterator for SimpleBlockIter<'_> {
+impl Iterator for BlockIter<'_> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -242,11 +229,14 @@ impl Iterator for SimpleBlockIter<'_> {
 
 #[cfg(test)]
 mod tests {
+    use merc_utilities::random_test;
+    use rand::Rng;
+
     use super::*;
 
     #[test]
     fn test_simple_block_partition() {
-        let mut partition: BlockPartition<SimpleBlock> = BlockPartition::new(10);
+        let mut partition: BlockPartition<()> = BlockPartition::new(10);
 
         assert_eq!(partition.num_of_blocks(), 1);
 
@@ -258,5 +248,25 @@ mod tests {
         assert_eq!(partition.num_of_blocks(), 2);
         assert_eq!(partition.block(initial_block).len(), 5);
         assert_eq!(partition.block(block_index).len(), 5);
+    }
+
+    #[test]
+    fn test_random_from_indexed_partition() {
+        random_test(100, |rng| {
+            let mut partition = IndexedPartition::new(100);
+
+            for element in 0..partition.len() {
+                partition.set_block(element, BlockIndex::new(rng.random_range(0..10)));
+            }
+
+            let block_partition: BlockPartition<()> = BlockPartition::from_indexed_partition(&partition);
+
+            // Check that the results are consistent with the indexed partition.
+            for block in 0..block_partition.num_of_blocks() {
+                for element in block_partition.iter_block(BlockIndex::new(block)) {
+                    assert_eq!(partition.block(element), block);
+                }
+            }
+        })
     }
 }
