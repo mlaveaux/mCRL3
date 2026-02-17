@@ -145,7 +145,7 @@ impl FeatureDiagram {
     /// expression. This function will initialize the BDD manager with the
     /// variables read from the first line, and assumes that the manager has no
     /// variables yet defined.
-    pub fn from_reade<R: Read>(manager_ref: &BDDManagerRef, input: R) -> Result<Self, MercError> {
+    pub fn from_reader<R: Read>(manager_ref: &BDDManagerRef, input: R) -> Result<Self, MercError> {
         manager_ref.with_manager_exclusive(|manager| {
             debug_assert_eq!(
                 manager.num_vars(),
