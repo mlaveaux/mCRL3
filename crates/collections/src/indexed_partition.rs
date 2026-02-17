@@ -54,6 +54,11 @@ impl IndexedPartition {
         self.partition[element_index] = block_number;
     }
 
+    /// Returns the block number of the given element.
+    pub fn block(&self, element_index: usize) -> BlockIndex {
+        self.partition[element_index]
+    }
+
     /// Returns the number of blocks in the partition.
     pub fn len(&self) -> usize {
         self.partition.len()
