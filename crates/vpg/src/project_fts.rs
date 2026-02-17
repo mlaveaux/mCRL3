@@ -1,7 +1,10 @@
-use merc_lts::LTS;
+use log::debug;
+use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilderFast;
-use merc_lts::TransitionLabel;
+use merc_lts::LTS;
+use merc_symbolic::FormatConfigSet;
+use oxidd::bdd::BDDFunction;
 use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::bdd::BDDFunction;
@@ -11,6 +14,7 @@ use merc_symbolic::bits_to_bdd;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
 
 use crate::FeatureDiagram;
 use crate::FeatureTransitionSystem;
@@ -20,20 +24,28 @@ use crate::FeatureTransitionSystem;
 pub fn project_feature_transition_system<L: TransitionLabel>(
     fts: &FeatureTransitionSystem<L>,
     feature_selection: &BDDFunction,
-) -> Result<LabelledTransitionSystem<L>, MercError> {
-    let mut builder = LtsBuilderFast::new(
-        fts.labels().iter().map(|label| label.label()).cloned().collect(),
-        Vec::new(),
-    );
+) -> Result<LabelledTransitionSystem<String>, MercError> {
+    let mut builder = LtsBuilderFast::new(fts.labels().to_vec(), Vec::new());
+
+    debug!("Projecting on feature selection {}", FormatConfigSet(feature_selection));
+
+    let labels = fts
+        .labels()
+        .iter()
+        .enumerate()
+        .map(|(label_index, label)| -> Result<bool, OutOfMemory> {
+            // Check if the edge is enabled by the feature selection, if so, include it.
+            let result = feature_selection.and(fts.feature_label(LabelIndex::new(label_index)))?.satisfiable();
+            debug!("Label {} is included: {}", label, result);
+
+            Ok(result)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     for v in fts.iter_states() {
         for edge in fts.outgoing_transitions(v) {
-            // Check if the edge is enabled by the feature selection, if so, include it.
-            if feature_selection
-                .and(fts.labels()[edge.label].feature_expr())?
-                .satisfiable()
-            {
-                builder.add_transition(v, fts.labels()[edge.label].label(), edge.to);
+            if labels[edge.label] {
+                builder.add_transition(v, &fts.labels()[edge.label], edge.to);
             }
         }
     }
@@ -53,10 +65,16 @@ pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
     fts: &'a FeatureTransitionSystem<L>,
     fd: &'a FeatureDiagram,
     timing: &'a Timing,
-) -> impl Iterator<Item = Result<(ProjectedLts<L>, &'a Timing), MercError>> {
+) -> impl Iterator<Item = Result<(ProjectedLts, &'a Timing), MercError>> {
+    let variables = fd.feature_names().iter().map(|name| {
+        fd.features()
+            .get(name)
+            .expect("Feature diagram should contain all features defined in the feature names")
+            .clone()
+    }).collect::<Vec<_>>();
+
     CubeIterAll::new(fd.configuration()).map(move |cube| {
         let cube = cube?;
-        let variables = fd.features().values().cloned().collect::<Vec<_>>();
 
         let bdd = match bits_to_bdd(&fd.configuration().manager_ref(), &variables, &cube) {
             Ok(bdd) => bdd,
@@ -67,6 +85,7 @@ pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
             project_feature_transition_system(fts, &bdd)
         })?;
 
+        Ok((ProjectedLts { bits: cube, bdd, lts }, timing))
         Ok((ProjectedLts { bits: cube, bdd, lts }, timing))
     })
 }
