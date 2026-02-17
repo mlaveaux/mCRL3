@@ -6,6 +6,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
 
+use itertools::Itertools;
 use log::debug;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
@@ -18,9 +19,13 @@ use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
-use merc_lts::LTS;
+use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
+use merc_lts::LTS;
 use merc_lts::read_aut;
+use merc_lts::StateIndex;
+use merc_lts::Transition;
+use merc_symbolic::FormatConfigSet;
 use merc_syntax::DataExpr;
 use merc_syntax::MultiAction;
 use merc_utilities::MercError;
@@ -60,7 +65,9 @@ pub fn read_fts<R: Read>(
 
         if let Some(action) = action.actions.first() {
             if let Some(arg) = action.args.first() {
-                feature_labels.push(data_expr_to_bdd(manager_ref, &features, arg)?);
+                let expr = data_expr_to_bdd(manager_ref, &features, arg)?;
+                debug!("Feature label {}", FormatConfigSet(&expr));
+                feature_labels.push(expr);
             } else {
                 feature_labels.push(manager_ref.with_manager_shared(|manager| BDDFunction::t(manager)));
             }
@@ -128,8 +135,11 @@ fn data_expr_to_bdd(
 
 /// A feature diagram represented as a BDD.
 pub struct FeatureDiagram {
-    /// The mapping from variable names to their BDD variable.
+    /// The mapping from feature names to their BDD variable.
     features: HashMap<String, BDDFunction>,
+
+    /// The feature names in the order they are defined in the input.
+    feature_names: Vec<String>,
 
     /// Stores the set of products as a BDD function.
     configuration: BDDFunction,
@@ -167,13 +177,14 @@ impl FeatureDiagram {
                 .collect::<Result<Vec<_>, _>>()?)
         })?;
 
-        let variables = HashMap::from_iter(variable_names.into_iter().zip(variables));
+        let variables = HashMap::from_iter(variable_names.iter().cloned().zip(variables));
 
         let second_line = line_iter.next().ok_or("Expected initial configuration line")??;
         let initial_configuration = data_expr_to_bdd(manager_ref, &variables, &DataExpr::parse(&second_line)?)?;
 
         Ok(Self {
             features: variables,
+            feature_names: variable_names,
             configuration: initial_configuration,
         })
     }
@@ -187,11 +198,16 @@ impl FeatureDiagram {
     pub fn features(&self) -> &HashMap<String, BDDFunction> {
         &self.features
     }
+
+    /// Returns the feature names used in the feature diagram, in the order they are defined in the input.
+    pub fn feature_names(&self) -> &[String] {
+        &self.feature_names
+    }
 }
 
 impl fmt::Debug for FeatureDiagram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "variables = {:?}", self.features.keys())
+        write!(f, "features = {}", self.feature_names().join(", "))
     }
 }
 

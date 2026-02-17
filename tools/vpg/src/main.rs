@@ -235,7 +235,7 @@ fn main() -> Result<ExitCode, MercError> {
         match command {
             Commands::Solve(args) => handle_solve(&cli, args, &mut timing)?,
             Commands::Reachable(args) => handle_reachable(&cli, args, &mut timing)?,
-            Commands::Project(args) => handle_project(&cli, args, &mut timing)?,
+            Commands::Project(args) => handle_project_fts(&cli, args, &mut timing)?,
             Commands::ProjectVpg(args) => handle_project_vpg(&cli, args, &mut timing)?,
             Commands::Translate(args) => handle_translate(args)?,
             Commands::TranslateVpg(args) => handle_translate_vpg(&cli, args)?,
@@ -408,13 +408,9 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
 }
 
 /// Projects a feature transition system to a set of transition systems and writes them to output.
-fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<(), MercError> {
-    let format = guess_lts_format_from_extension(&args.filename, args.format).ok_or_else(|| {
-        format!(
-            "Unknown featured transition system format for '{}'.",
-            args.filename.display()
-        )
-    })?;
+fn handle_project_fts(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<(), MercError> {
+    let format = guess_lts_format_from_extension(&args.filename, args.format)
+        .ok_or_else(|| format!("Unknown featured transition system format for '{}'.", args.filename.display()))?;
 
     if format != LtsFormat::Aut {
         return Err(MercError::from(
@@ -438,6 +434,7 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
         ))
     })?;
     let feature_diagram = FeatureDiagram::from_reader(&manager_ref, &mut feature_diagram_file)?;
+    debug!("Feature diagram {:?}", feature_diagram);
 
     // Read the feature transition system.
     let mut fts_file = File::open(&args.filename)?;
