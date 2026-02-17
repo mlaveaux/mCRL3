@@ -261,7 +261,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under Miri
     fn test_random_aut_io() {
         random_test(100, |rng| {
-            let lts = random_lts_monolithic::<String>(rng, 100, 3, 20);
+            let lts = random_lts_monolithic::<String, _>(rng, 100, 3, 20);
 
             let mut buffer: Vec<u8> = Vec::new();
             write_aut(&mut buffer, &lts).unwrap();

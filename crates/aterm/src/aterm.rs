@@ -266,7 +266,7 @@ impl ATerm {
         iter: I,
     ) -> ATerm
     where
-        S:  Symb<'a, 'b>,
+        S: Symb<'a, 'b>,
         H: Term<'c, 'd>,
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,

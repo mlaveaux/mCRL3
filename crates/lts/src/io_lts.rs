@@ -255,7 +255,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_random_lts_io() {
         random_test(100, |rng| {
-            let lts = random_lts_monolithic::<LtsMultiAction>(rng, 100, 3, 20);
+            let lts = random_lts_monolithic::<LtsMultiAction, _>(rng, 100, 3, 20);
 
             let mut buffer: Vec<u8> = Vec::new();
             write_lts(&mut buffer, &lts).unwrap();
