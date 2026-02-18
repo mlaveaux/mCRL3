@@ -75,7 +75,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     // All states have been explored, so add them to the discovered set immediately.
     let mut discovered: IndexedSet<Vec<u32>, FxBuildHasher> = IndexedSet::new();
     let mut state_iter = iter(storage, lts.states());
-    while let Some(state) = state_iter.next() { 
+    while let Some(state) = state_iter.next() {
         let (_, inserted) = discovered.insert(state.clone());
         debug_assert!(inserted, "State space contains duplicate states");
         state_progress.print(discovered.len())
@@ -138,7 +138,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
                 let target_index = discovered
                     .index(&target)
                     .ok_or("Found state that was not in the state set")?;
-                if outgoing.insert((*state_index, *target_index)) {     
+                if outgoing.insert((*state_index, *target_index)) {
                     trace!(
                         " Found transition in {group_index} from {:?} to {:?} with label {:?}",
                         state, target, label
@@ -158,9 +158,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
 
     // Find the initial state.
     let mut state_iter = iter(storage, lts.initial_state());
-    let initial_state = state_iter
-        .next()
-        .ok_or("Symbolic LTS has no initial state")?;
+    let initial_state = state_iter.next().ok_or("Symbolic LTS has no initial state")?;
 
     let initial_state_index = discovered
         .index(initial_state)

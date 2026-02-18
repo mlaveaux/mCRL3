@@ -206,7 +206,7 @@ impl VariabilityParityGame {
 
 impl PG for VariabilityParityGame {
     type Label = BDDFunction;
-    
+
     fn outgoing_edges<'a>(&'a self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'a, Self::Label>> + 'a {
         let start = self.game.vertices()[*state_index];
         let end = self.game.vertices()[*state_index + 1];

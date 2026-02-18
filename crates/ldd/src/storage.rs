@@ -128,7 +128,9 @@ impl Storage {
             self.count_until_collection = self.nodes.len() as u64;
         }
 
-        let (index, _inserted) = self.nodes.insert(Node::new(value, self.empty_vector().index(), self.empty_set().index()));
+        let (index, _inserted) =
+            self.nodes
+                .insert(Node::new(value, self.empty_vector().index(), self.empty_set().index()));
 
         Ldd::new(&self.protection_set, index)
     }

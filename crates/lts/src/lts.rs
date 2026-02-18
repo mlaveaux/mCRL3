@@ -98,7 +98,7 @@ pub trait TransitionLabel: Ord + Hash + Eq + Clone + fmt::Display + fmt::Debug {
     fn tau_label() -> Self;
 
     /// Returns true iff this label is the tau label.
-    /// 
+    ///
     /// This default implementation compares with the tau label returned by [Self::tau_label].
     fn is_tau_label(&self) -> bool {
         self == &Self::tau_label()

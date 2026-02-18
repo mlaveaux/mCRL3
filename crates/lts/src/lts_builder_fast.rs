@@ -145,7 +145,7 @@ mod tests {
     use super::*;
 
     use itertools::Itertools;
-    use rand::Rng;
+    use rand::RngExt;
 
     use merc_utilities::random_test;
 

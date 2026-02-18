@@ -73,15 +73,15 @@ impl Iterator for CubeIter<'_> {
 }
 
 /// The same as [CubeIter], but iterates over all satisfying assignments without
-/// considering don't care values. 
-/// 
+/// considering don't care values.
+///
 /// # Details
-/// 
+///
 /// For the universe BDD, the [CubeIter] yields only one cube with all don't
 /// cares, while this iterator yields all possible cubes. When
 /// `variable_indices` is provided, returned assignments are projected to only
 /// those variables.
-/// 
+///
 /// Note that with `variable_indices` set, there can be multiple (identical)
 /// cubes returned if the original cube has relevant outside of the projected
 /// variables. This can be avoided by first restricting the input BDD to only
@@ -136,8 +136,8 @@ impl<'a> CubeIterAll<'a> {
                 .collect();
 
             // Project to selected variable indices if requested.
-            if let Some(indices) = &self.variable_indices {                    
-                *cube = project_bits(cube, indices);       
+            if let Some(indices) = &self.variable_indices {
+                *cube = project_bits(cube, indices);
                 self.current_cube = cube.clone();
             }
         }

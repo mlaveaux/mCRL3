@@ -136,7 +136,11 @@ pub fn write_pg<W: Write, G: PG>(mut writer: W, game: &G) -> Result<(), MercErro
         let owner = game.owner(v).to_index();
 
         write!(writer, "{} {} {} ", v.value(), prio.value(), owner)?;
-        write!(writer, "{}", game.outgoing_edges(v).map(|edge| edge.to().value()).format(", "))?;
+        write!(
+            writer,
+            "{}",
+            game.outgoing_edges(v).map(|edge| edge.to().value()).format(", ")
+        )?;
         writeln!(writer, ";")?;
         progress.print((v.value() + 1, game.num_of_vertices()));
     }

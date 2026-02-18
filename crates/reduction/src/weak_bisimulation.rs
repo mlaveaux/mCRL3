@@ -19,8 +19,8 @@ use merc_utilities::Timing;
 
 use crate::Equivalence;
 use crate::MarkedBlockPartition;
-use crate::tau_loop_elimination_and_reorder;
 use crate::reduce_lts;
+use crate::tau_loop_elimination_and_reorder;
 
 /// Type alias because we use bitvec for marking states
 type BitArray = BitVec<u64, Lsb0>;
@@ -38,7 +38,9 @@ pub fn weak_bisimulation<L: LTS>(
 ) -> (LabelledTransitionSystem<L::Label>, MarkedBlockPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
-        let lts = timing.measure("preprocess", || reduce_lts(lts, Equivalence::BranchingBisim, true, timing));
+        let lts = timing.measure("preprocess", || {
+            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+        });
         weak_bisimulation_impl(lts, timing)
     } else {
         weak_bisimulation_impl(lts, timing)
@@ -194,7 +196,13 @@ mod tests {
             files.dump("result.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
-            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &mut timing));
+            assert!(compare_lts(
+                Equivalence::StrongBisim,
+                result,
+                expected,
+                false,
+                &mut timing
+            ));
         })
     }
 }

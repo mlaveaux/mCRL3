@@ -130,12 +130,13 @@ impl<R: Read> BitStreamRead for BitStreamReader<R> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use log::debug;
-    use merc_utilities::random_test;
-    use rand::Rng;
+    use rand::RngExt;
     use rand::distr::Alphanumeric;
 
-    use super::*;
+    use merc_utilities::random_test;
 
     /// Decide (arbitrarily) what to write into the bitstream.
     #[derive(Debug)]

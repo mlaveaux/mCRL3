@@ -67,7 +67,7 @@ enum Formula<'a> {
     Equation(usize),
 }
 
-/// Local struct to keep track of the translation state. The generic bound `E` is the 
+/// Local struct to keep track of the translation state. The generic bound `E` is the
 /// type of the edge labels.
 ///
 /// Implements the translation from (s, Ψ) pairs to VPG vertices and edges.
@@ -100,11 +100,7 @@ pub(crate) struct Translation<'a, L, E> {
 
 impl<'a, L: LTS, E> Translation<'a, L, E> {
     /// Creates a new translation instance.
-    pub fn new(
-        lts: &'a L,
-        parsed_labels: &'a Vec<MultiAction>,
-        equation_system: &'a ModalEquationSystem
-    ) -> Self {
+    pub fn new(lts: &'a L, parsed_labels: &'a Vec<MultiAction>, equation_system: &'a ModalEquationSystem) -> Self {
         let progress: TimeProgress<usize> = TimeProgress::new(
             |num_of_vertices: usize| {
                 info!("Translated {} vertices...", num_of_vertices);
@@ -125,13 +121,19 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     }
 
     /// Perform the translation for the given `initial_state` and `initial_equation_index`.
-    /// 
+    ///
     /// The `labelling` function is used to compute the edge label for the
     /// outgoing edges of this vertex. The argument is the transition
     /// corresponding to the modality, or None if there is no modality (e.g.,
     /// for conjunctions).
-    pub fn translate<F>(&mut self, initial_state: StateIndex, initial_equation_index: usize, labelling: F) -> Result<(), MercError> 
-        where F: Fn(Option<Transition>) -> E
+    pub fn translate<F>(
+        &mut self,
+        initial_state: StateIndex,
+        initial_equation_index: usize,
+        labelling: F,
+    ) -> Result<(), MercError>
+    where
+        F: Fn(Option<Transition>) -> E,
     {
         // We store (state, formula, N) into the queue, where N is the vertex number assigned to this pair. This means
         // that during the traversal we can assume this N to exist.
@@ -170,8 +172,9 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
 
     /// Translate a single vertex (s, Ψ) into the variability parity game vertex
     /// and its outgoing edges.
-    fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F) 
-        where F: Fn(Option<Transition>) -> E    
+    fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F)
+    where
+        F: Fn(Option<Transition>) -> E,
     {
         match formula {
             StateFrm::True => {
@@ -235,7 +238,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((vertex_index, labelling(Some(transition)), s_prime_psi));
+                                self.edges
+                                    .push((vertex_index, labelling(Some(transition)), s_prime_psi));
                             }
                         }
                     }
@@ -249,7 +253,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 
-                                self.edges.push((vertex_index, labelling(Some(transition)), s_prime_psi));
+                                self.edges
+                                    .push((vertex_index, labelling(Some(transition)), s_prime_psi));
                             }
                         }
                     }
@@ -262,8 +267,9 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     }
 
     /// Applies the translation to the given (s, equation) vertex.
-    fn translate_equation<F>(&mut self, s: StateIndex, equation_index: usize, vertex_index: VertexIndex, labelling: &F) 
-        where F: Fn(Option<Transition>) -> E
+    fn translate_equation<F>(&mut self, s: StateIndex, equation_index: usize, vertex_index: VertexIndex, labelling: &F)
+    where
+        F: Fn(Option<Transition>) -> E,
     {
         let equation = self.equation_system.equation(equation_index);
         match equation.operator() {

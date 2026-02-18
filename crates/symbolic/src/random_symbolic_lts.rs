@@ -1,4 +1,5 @@
 use rand::Rng;
+use rand::RngExt;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
 
@@ -6,9 +7,9 @@ use merc_aterm::ATermString;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
+use merc_ldd::Storage;
 use merc_ldd::from_iter;
 use merc_ldd::random_vector_set;
-use merc_ldd::Storage;
 use merc_lts::LtsMultiAction;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
@@ -52,13 +53,13 @@ pub fn random_symbolic_lts<R: Rng>(
     for _ in 0..5 {
         let num_of_read_variables = rng.random_range(0..parameters.len());
         let read_parameters = parameters
-            .choose_multiple(rng, num_of_read_variables)
+            .sample(rng, num_of_read_variables)
             .cloned()
             .collect::<Vec<_>>();
 
         let num_of_write_variables = rng.random_range(0..parameters.len());
         let write_parameters = parameters
-            .choose_multiple(rng, num_of_write_variables)
+            .sample(rng, num_of_write_variables)
             .cloned()
             .collect::<Vec<_>>();
 

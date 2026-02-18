@@ -3,8 +3,8 @@
 use merc_collections::IndexedPartition;
 
 use merc_collections::scc_decomposition;
-use merc_lts::LTS;
 use merc_lts::AsGraph;
+use merc_lts::LTS;
 
 use crate::sort_topological;
 
@@ -21,27 +21,24 @@ pub fn has_tau_loop<L: LTS>(lts: &L) -> bool {
 #[cfg(test)]
 mod tests {
     use merc_io::DumpFiles;
-    use merc_lts::random_lts;
-    use merc_lts::write_aut;
     use merc_lts::LabelIndex;
     use merc_lts::LabelledTransitionSystem;
     use merc_lts::StateIndex;
+    use merc_lts::random_lts;
+    use merc_lts::write_aut;
     use merc_utilities::random_test;
     use test_log::test;
 
-    use crate::quotient_lts_naive;
     use crate::Partition;
+    use crate::quotient_lts_naive;
 
     use super::*;
 
     /// Returns the reachable states from the given state index.
-    fn reachable_states<F, L>(
-        lts: &L,
-        state_index: StateIndex,
-        filter: &F,
-    ) -> Vec<usize> 
-        where F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
-              L: LTS
+    fn reachable_states<F, L>(lts: &L, state_index: StateIndex, filter: &F) -> Vec<usize>
+    where
+        F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
+        L: LTS,
     {
         let mut stack = vec![state_index];
         let mut visited = vec![false; lts.num_of_states()];

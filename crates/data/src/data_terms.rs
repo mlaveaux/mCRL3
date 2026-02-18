@@ -19,7 +19,7 @@ pub struct DataSymbols {
     // Sorts
     pub basic_sort_symbol: ManuallyDrop<Symbol>,
     pub function_sort_symbol: ManuallyDrop<Symbol>,
-    pub container_sort_symbol: ManuallyDrop<Symbol>,    
+    pub container_sort_symbol: ManuallyDrop<Symbol>,
     pub structured_sort_symbol: ManuallyDrop<Symbol>,
     pub untyped_sort_symbol: ManuallyDrop<Symbol>,
     pub untyped_possible_sorts_symbol: ManuallyDrop<Symbol>,

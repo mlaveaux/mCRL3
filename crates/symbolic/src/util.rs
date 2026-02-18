@@ -10,14 +10,13 @@ use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OutOfMemory;
 
-
 /// The BDD representing the support variables of a BDD function.
 pub type BDDSupport = BDDFunction;
 
 /// Computes the support (set of variables) of the given BDD function.
-/// 
+///
 /// # Details
-/// 
+///
 /// The `support` is the variables on which the `BDD` is defined, and other
 /// variables are irrelevant or don't care, formally:
 ///

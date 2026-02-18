@@ -159,17 +159,14 @@ mod inner {
 
     impl DataFunctionSymbol {
         #[merc_ignore]
-        pub fn new<N>(name: N) -> DataFunctionSymbol 
-        where 
+        pub fn new<N>(name: N) -> DataFunctionSymbol
+        where
             N: Into<ATermString> + AsRef<str>,
         {
             DATA_SYMBOLS.with_borrow(|ds| DataFunctionSymbol {
                 term: ATerm::with_args(
                     ds.data_function_symbol.deref(),
-                    &[
-                        Into::<ATerm>::into(name.into()),
-                        SortExpression::unknown_sort().into(),
-                    ],
+                    &[Into::<ATerm>::into(name.into()), SortExpression::unknown_sort().into()],
                 )
                 .protect(),
             })
@@ -271,11 +268,7 @@ mod inner {
         ///
         /// arity must be equal to the number of arguments + 1.
         #[merc_ignore]
-        pub fn with_iter<'a, 'b, 'c, 'd, T, H, I>(
-            head: &'b H,
-            arity: usize,
-            arguments: I,
-        ) -> DataApplication
+        pub fn with_iter<'a, 'b, 'c, 'd, T, H, I>(head: &'b H, arity: usize, arguments: I) -> DataApplication
         where
             I: Iterator<Item = T>,
             T: Term<'c, 'd>,

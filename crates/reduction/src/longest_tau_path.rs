@@ -1,4 +1,5 @@
-use merc_lts::{LTS, StateIndex};
+use merc_lts::LTS;
+use merc_lts::StateIndex;
 
 /// Computes the length of the longest path consisting solely of tau (hidden) transitions in the given LTS.
 ///
@@ -43,7 +44,7 @@ pub fn longest_tau_path<L: LTS>(lts: &L) -> Vec<StateIndex> {
     let mut path = Vec::with_capacity(max_length + 1);
     let mut current = StateIndex::new(max_state);
     path.push(current);
-    
+
     while let Some(next_state) = next[current] {
         path.push(next_state);
         current = next_state;

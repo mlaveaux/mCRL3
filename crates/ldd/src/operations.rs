@@ -425,14 +425,17 @@ pub fn height(storage: &Storage, ldd: &LddRef) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LddDisplay;
-    use crate::test_utility::*;
 
-    use merc_utilities::random_test;
-    use rand::Rng;
-    use streaming_iterator::StreamingIterator;
     use std::collections::HashSet;
     use std::ops::Sub;
+
+    use rand::RngExt;
+    use streaming_iterator::StreamingIterator;
+
+    use merc_utilities::random_test;
+
+    use crate::LddDisplay;
+    use crate::test_utility::*;
 
     // Compare the LDD element_of implementation for random inputs.
     #[test]
@@ -749,11 +752,7 @@ mod tests {
             // Check the other way around
             let mut iter = iter(&storage, &result);
             while let Some(res) = iter.next() {
-                assert!(
-                    expected.contains(res),
-                    "Result unexpectedly contains vector {:?}.",
-                    res
-                );
+                assert!(expected.contains(res), "Result unexpectedly contains vector {:?}.", res);
             }
         });
     }

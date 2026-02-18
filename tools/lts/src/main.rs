@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::stdout;
 use std::io::Write;
+use std::io::stdout;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -10,24 +10,24 @@ use clap::Subcommand;
 use log::info;
 
 use merc_io::LargeFormatter;
+use merc_lts::GenericLts;
+use merc_lts::LTS;
+use merc_lts::LtsFormat;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
-use merc_lts::GenericLts;
-use merc_lts::LtsFormat;
-use merc_lts::LTS;
-use merc_reduction::reduce_lts;
 use merc_reduction::Equivalence;
+use merc_reduction::reduce_lts;
+use merc_refinement::RefinementType;
 use merc_refinement::generate_formula;
 use merc_refinement::refines;
-use merc_refinement::RefinementType;
-use merc_tools::format_key_values_json;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -166,7 +166,7 @@ struct RefinesArgs {
     /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
-    
+
     /// List of actions that should be considered tau actions
     #[arg(long, value_delimiter = ',')]
     tau: Option<Vec<String>>,

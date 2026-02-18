@@ -60,9 +60,7 @@ const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
 
 /// A command line tool for variability parity games
 #[derive(clap::Parser, Debug)]
-#[command(
-    arg_required_else_help = true
-)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(flatten)]
     version: VersionFlag,
@@ -411,15 +409,19 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
 
 /// Projects a feature transition system to a set of transition systems and writes them to output.
 fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<(), MercError> {
-    let format = guess_lts_format_from_extension(&args.filename, args.format)
-        .ok_or_else(|| format!("Unknown featured transition system format for '{}'.", args.filename.display()))?;
+    let format = guess_lts_format_from_extension(&args.filename, args.format).ok_or_else(|| {
+        format!(
+            "Unknown featured transition system format for '{}'.",
+            args.filename.display()
+        )
+    })?;
 
     if format != LtsFormat::Aut {
         return Err(MercError::from(
             "The project command only works for featured transition systems in the .aut format.",
         ));
     }
-    
+
     // Read and solve a variability parity game.
     let manager_ref = oxidd::bdd::new_manager(
         cli.oxidd_node_capacity,
@@ -431,7 +433,8 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
     let mut feature_diagram_file = File::open(&args.feature_diagram_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature diagram file '{}': {}",
-            &args.feature_diagram_filename.display(), e
+            &args.feature_diagram_filename.display(),
+            e
         ))
     })?;
     let feature_diagram = FeatureDiagram::from_reader(&manager_ref, &mut feature_diagram_file)?;
@@ -439,8 +442,8 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
     // Read the feature transition system.
     let mut fts_file = File::open(&args.filename)?;
     let fts = read_fts(&manager_ref, &mut fts_file, feature_diagram.features().clone())?;
-    let output_path = Path::new(&args.output);    
-        
+    let output_path = Path::new(&args.output);
+
     for result in project_feature_transition_system_iter(&fts, &feature_diagram, timing) {
         let (ProjectedLts { bits, bdd: _, lts }, _) = result?;
 
@@ -461,7 +464,7 @@ fn handle_project(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<
         write_aut(&mut output_file, &lts)?;
     }
 
-    Ok(())    
+    Ok(())
 }
 
 /// Compute all the projections of a variability parity game and write them to output.
@@ -482,7 +485,7 @@ fn handle_project_vpg(cli: &Cli, args: &ProjectVpgArgs, timing: &mut Timing) -> 
         cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
         cli.oxidd_workers,
     );
-    
+
     let vpg = timing.measure("read_vpg", || read_vpg(&manager_ref, &mut file))?;
     let output_path = Path::new(&args.output);
 
@@ -519,8 +522,12 @@ fn handle_project_vpg(cli: &Cli, args: &ProjectVpgArgs, timing: &mut Timing) -> 
 /// Translates a feature diagram, a feature transition system (FTS), and a modal
 /// formula into a variability parity game.
 fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
-    let format = guess_lts_format_from_extension(&args.labelled_transition_system, args.format)
-        .ok_or_else(|| format!("Unknown labelled transition system format for '{}'.", args.labelled_transition_system.display()))?;
+    let format = guess_lts_format_from_extension(&args.labelled_transition_system, args.format).ok_or_else(|| {
+        format!(
+            "Unknown labelled transition system format for '{}'.",
+            args.labelled_transition_system.display()
+        )
+    })?;
 
     if format != LtsFormat::Aut {
         return Err(MercError::from(
@@ -532,7 +539,8 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
     let mut lts_file = File::open(&args.labelled_transition_system).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.labelled_transition_system.display(), e
+            &args.labelled_transition_system.display(),
+            e
         ))
     })?;
     let lts = read_aut(&mut lts_file, Vec::new())?;
@@ -541,7 +549,8 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open formula file '{}': {}",
-            &args.formula_filename.display(), e
+            &args.formula_filename.display(),
+            e
         ))
     })?)?;
     if !formula_spec.action_declarations.is_empty() {
@@ -575,7 +584,8 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let mut feature_diagram_file = File::open(&args.feature_diagram_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature diagram file '{}': {}",
-            &args.feature_diagram_filename.display(), e
+            &args.feature_diagram_filename.display(),
+            e
         ))
     })?;
     let feature_diagram = FeatureDiagram::from_reader(&manager_ref, &mut feature_diagram_file)?;
@@ -584,7 +594,8 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let mut fts_file = File::open(&args.fts_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.fts_filename.display(), e
+            &args.fts_filename.display(),
+            e
         ))
     })?;
     let fts = read_fts(&manager_ref, &mut fts_file, feature_diagram.features().clone())?;
@@ -593,7 +604,8 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open formula file '{}': {}",
-            &args.formula_filename.display(), e
+            &args.formula_filename.display(),
+            e
         ))
     })?)?;
     if !formula_spec.action_declarations.is_empty() {

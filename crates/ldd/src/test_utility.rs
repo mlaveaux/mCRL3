@@ -1,8 +1,9 @@
 //! Functions in this module are only relevant for testing purposes.
 
 use rand::Rng;
-use streaming_iterator::StreamingIterator;
+use rand::RngExt;
 use std::collections::HashSet;
+use streaming_iterator::StreamingIterator;
 
 use crate::Ldd;
 use crate::Storage;
@@ -24,7 +25,7 @@ pub fn random_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Ve
 pub fn random_sorted_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Vec<Value> {
     use rand::prelude::IteratorRandom;
 
-    let mut result = (0..max_value).choose_multiple(rng, length);
+    let mut result = (0..max_value).sample(rng, length);
     result.sort();
     result
 }

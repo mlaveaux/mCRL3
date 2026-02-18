@@ -59,7 +59,7 @@ mod tests {
     use super::*;
 
     use bitstream_io::BigEndian;
-    use rand::Rng;
+    use rand::RngExt;
 
     use merc_utilities::random_test;
 

@@ -3,7 +3,8 @@ use std::ops::ControlFlow;
 use merc_utilities::MercError;
 
 use crate::RegFrm;
-use crate::{SortExpression, StateFrm};
+use crate::SortExpression;
+use crate::StateFrm;
 
 /// Applies the given function recursively to the state formula.
 ///
@@ -39,11 +40,9 @@ where
 }
 
 /// See [`apply_statefrm`].
-fn apply_statefrm_rec<F>(
-    formula: StateFrm,
-    apply: &mut F,
-) -> Result<StateFrm, MercError> 
-    where F: FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>
+fn apply_statefrm_rec<F>(formula: StateFrm, apply: &mut F) -> Result<StateFrm, MercError>
+where
+    F: FnMut(&StateFrm) -> Result<Option<StateFrm>, MercError>,
 {
     if let Some(formula) = apply(&formula)? {
         // A substitution was made, return the new formula.
@@ -216,18 +215,17 @@ where
 /// formula. If it returns `Some(new_formula)`, the substitution is applied and
 /// the new formula is returned. If it returns `None`, the substitution is not
 /// applied and the function continues to traverse the formula tree.
-pub fn apply_regular_formula<F>(
-    formula: RegFrm,
-    mut function: F,
-) -> Result<RegFrm, MercError> 
-    where F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>
+pub fn apply_regular_formula<F>(formula: RegFrm, mut function: F) -> Result<RegFrm, MercError>
+where
+    F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>,
 {
     apply_regular_formula_rec(formula, &mut function)
 }
 
 /// See [apply_regular_formula].
-fn apply_regular_formula_rec<F>(formula: RegFrm, apply: &mut F) -> Result<RegFrm, MercError> 
-    where F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>
+fn apply_regular_formula_rec<F>(formula: RegFrm, apply: &mut F) -> Result<RegFrm, MercError>
+where
+    F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>,
 {
     if let Some(formula) = apply(&formula)? {
         // A substitution was made, return the new formula.

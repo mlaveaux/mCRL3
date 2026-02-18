@@ -102,7 +102,6 @@ impl UntypedPres {
     }
 }
 
-
 fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {
     error.renamed_rules(|rule| match rule {
         Rule::DataExprWhr => "DataExpr whr AssignmentList end".to_string(),
