@@ -189,7 +189,7 @@ fn convert_regular_iteration(
         body: Box::new(StateFrm::Binary {
             op: StateFrmOp::Conjunction,
             lhs: Box::new(StateFrm::Modality {
-                operator: operator.clone(),
+                operator: *operator,
                 formula: *reg_frm.clone(),
                 expr: Box::new(StateFrm::Id(iteration_var, Vec::new())),
             }),
