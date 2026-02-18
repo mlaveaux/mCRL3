@@ -5,6 +5,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use rand::Rng;
+use rand::RngExt;
 use rand::prelude::IteratorRandom;
 
 use merc_ldd::Ldd;
