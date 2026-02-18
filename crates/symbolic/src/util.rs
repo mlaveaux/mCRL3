@@ -409,7 +409,7 @@ mod tests {
 
             let vars = manager_ref
                 .with_manager_exclusive(|manager| {
-                    manager
+                manager
                         .add_vars(4)
                         .map(|v| BDDFunction::var(manager, v))
                         .collect::<Result<Vec<BDDFunction>, _>>()
@@ -428,10 +428,10 @@ mod tests {
             println!("expected: {}", FormatConfigSet(&expected));
             println!("renamed: {}", FormatConfigSet(&renamed));
 
-            // assert!(
-            //     expected == renamed,
-            //     "Renaming with reverse did not match expected substitution"
-            // );
+            assert!(
+                expected == renamed,
+                "Renaming with reverse did not match expected substitution"
+            );
         });
     }
 }

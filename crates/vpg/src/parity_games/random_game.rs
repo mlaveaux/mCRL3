@@ -119,12 +119,32 @@ mod tests {
     }
 
     #[test]
+    fn test_random_total_parity_game() {
+        random_test(100, |rng| {
+            let pg = random_parity_game(rng, true, 10, 5, 3);
+            assert_eq!(pg.num_of_vertices(), 10);
+            assert!(pg.is_total(), "Generated parity game should be total");
+        })
+    }
+
+    #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_variability_parity_game() {
         random_test(100, |rng| {
             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
             let vpg = random_variability_parity_game(&manager_ref, rng, false, 10, 5, 3, 3).unwrap();
             assert_eq!(vpg.num_of_vertices(), 10);
+        })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_total_variability_parity_game() {
+        random_test(100, |rng| {
+            let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
+            let vpg = random_variability_parity_game(&manager_ref, rng, true, 10, 5, 3, 3).unwrap();
+            assert_eq!(vpg.num_of_vertices(), 10);
+            assert!(vpg.is_total(&manager_ref).unwrap(), "Generated variability parity game should be total");
         })
     }
 }
