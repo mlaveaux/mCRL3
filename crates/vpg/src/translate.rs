@@ -10,6 +10,7 @@ use merc_io::TimeProgress;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
 use merc_lts::LTS;
+use merc_lts::Transition;
 use merc_syntax::apply_statefrm;
 use merc_syntax::visit_action_formula;
 use merc_syntax::visit_regular_formula;

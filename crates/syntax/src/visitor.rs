@@ -30,10 +30,6 @@ pub fn visit_statefrm<T, F>(formula: &StateFrm, mut visitor: F) -> Result<Option
 where
     F: FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
 {
-pub fn visit_statefrm<T, F>(formula: &StateFrm, mut visitor: F) -> Result<Option<T>, MercError>
-where
-    F: FnMut(&StateFrm) -> Result<ControlFlow<T>, MercError>,
-{
     visit_statefrm_rec(formula, &mut visitor)
 }
 
@@ -174,6 +170,42 @@ where
         | StateFrm::Delay(_)
         | StateFrm::Yaled(_)
         | StateFrm::DataValExpr(_) => {}
+    }
+
+    // The visitor did not break the traversal.
+    Ok(None)
+}
+
+
+fn visit_sort_expr_rec<T, F>(sort_expr: &SortExpression, function: &mut F) -> Result<Option<T>, MercError>
+where
+    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,
+{
+    if let ControlFlow::Break(result) = function(sort_expr)? {
+        // The visitor requested to break the traversal.
+        return Ok(Some(result));
+    }
+
+    match sort_expr {
+        SortExpression::Product { lhs, rhs } => {
+            visit_sort_expr_rec(lhs, function)?;
+            visit_sort_expr_rec(rhs, function)?;
+        }
+        SortExpression::Function { domain, range } => {
+            visit_sort_expr_rec(domain, function)?;
+            visit_sort_expr_rec(range, function)?;
+        }
+        SortExpression::Struct { inner } => {
+            for constructors in inner {
+                for (_name, sort) in &constructors.args {
+                    visit_sort_expr_rec(sort, function)?;
+                }
+            }
+        }
+        SortExpression::Complex(_complex_sort, sort_expression) => {
+            visit_sort_expr_rec(sort_expression, function)?;
+        }
+        SortExpression::Reference(_) | SortExpression::Simple(_) => {}
     }
 
     // The visitor did not break the traversal.
