@@ -37,16 +37,24 @@ impl MarkedBlockPartition {
         self.partition.block(block_index)
     }
 
-    /// Splits a block into two blocks according to the given predicate. If the
-    /// predicate holds for all or none of the elements, no split occurs.
+    /// Splits a block into two blocks according to the given predicate. If
+    /// a split occurs both blocks are marked as unstable.
+    /// 
+    /// If the predicate holds for all or none of the elements, no split occurs.
     pub fn split_block(
         &mut self,
         block_index: BlockIndex,
         predicate: impl Fn(StateIndex) -> bool,
     ) -> Option<BlockIndex> {
-        *self.partition.block_annotation(block_index) = false;
-        self.partition
-            .split_block(block_index, |element| predicate(StateIndex::new(element)))
+        let result = self.partition
+            .split_block(block_index, |element| predicate(StateIndex::new(element)));
+
+        if let Some(new_block_index) = result {
+            *self.partition.block_annotation(block_index) = false;
+            *self.partition.block_annotation(new_block_index) = false;
+        }
+
+        result
     }
 
     /// Returns the number of blocks in the partition.

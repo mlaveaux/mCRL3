@@ -183,7 +183,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_weak_bisimulation");
 
-            let lts = random_lts(rng, 2, 10, 3);
+            let lts = random_lts(rng, 100, 10, 3);
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 

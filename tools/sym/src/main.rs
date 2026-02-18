@@ -198,6 +198,13 @@ fn main() -> Result<ExitCode, MercError> {
 fn handle_info(args: &InfoArgs, timing: &Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
+    let format = guess_format_from_extension(&args.filename, args.format)
+        .ok_or("Cannot determine input symbolic LTS format")?;
+
+    if format != SymFormat::Sym {
+        return Err("Currently only the .sym format is supported for info".into());
+    }
+
     let lts = timing.measure("read_symbolic_lts", || {
         read_symbolic_lts(&mut storage, File::open(&args.filename)?)
     })?;
