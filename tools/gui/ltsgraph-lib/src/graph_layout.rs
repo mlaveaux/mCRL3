@@ -3,7 +3,7 @@ use std::sync::Arc;
 use glam::Vec3;
 use log::debug;
 use merc_lts::LTS;
-use rand::Rng;
+use rand::RngExt;
 
 use merc_lts::LabelledTransitionSystem;
 use merc_unsafety::Edge;

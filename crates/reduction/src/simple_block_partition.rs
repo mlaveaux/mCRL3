@@ -84,10 +84,10 @@ impl fmt::Display for MarkedBlockPartition {
     }
 }
 
-impl Partition for MarkedBlockPartition {
+impl Partition for MarkedBlockPartition {    
     fn block_number(&self, state_index: StateIndex) -> BlockIndex {
-        if !cfg!(debug_assertions) {
-            panic!("block_number is only available in debug mode");
+        if !cfg!(test) {
+            panic!("block_number is only available in tests");
         }
 
         // Note that this is O(n) in the number of blocks. This could be improved
