@@ -288,6 +288,7 @@ mod tests {
     use crate::random_parity_game;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow for this test.
     fn test_random_zielonka_solver() {
         random_test(100, |rng| {
             let game = random_parity_game(rng, true, 100, 6, 3);
