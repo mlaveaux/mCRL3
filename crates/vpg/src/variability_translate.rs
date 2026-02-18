@@ -28,8 +28,7 @@ pub fn translate_vpg(
 ) -> Result<VariabilityParityGame, MercError> {
     // Parses all labels into MultiAction once
     let parsed_labels: Result<Vec<MultiAction>, MercError> =
-        fts.labels().iter().map(|label| MultiAction::parse(label)).collect();
-
+        fts.labels().iter().map(|label| MultiAction::parse(label.label())).collect();
         
     // Simplify the labels by stripping BDD information
     let simplified_labels: Vec<MultiAction> = parsed_labels?
@@ -39,6 +38,8 @@ pub fn translate_vpg(
 
     // Warn about any labels that are used in the formula but do not correspond to any label in the LTS. 
     warn_unknown_action_labels(formula, &simplified_labels);
+
+    let true_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
 
     let equation_system = ModalEquationSystem::new(formula);
     debug!("{}", equation_system);

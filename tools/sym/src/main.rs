@@ -279,7 +279,7 @@ fn explore_impl<L: SymbolicLTS>(
 }
 
 /// Computes a variable reordering for the output of lpsreach.
-fn handle_reorder(args: &ReorderArgs, _timing: &mut Timing) -> Result<(), MercError> {  
+fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError> {  
     // Find kahypar
     let kahypar_path = if let Some(path) = &args.kahypar_path {
         which_in("KaHyPar", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find KaHyPar")?

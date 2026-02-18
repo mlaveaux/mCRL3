@@ -1,30 +1,30 @@
 use log::debug;
-use merc_lts::LabelIndex;
-use merc_lts::LabelledTransitionSystem;
-use merc_lts::LtsBuilderFast;
-use merc_lts::LTS;
-use merc_symbolic::FormatConfigSet;
 use oxidd::bdd::BDDFunction;
 use oxidd::BooleanFunction;
 use oxidd::Function;
-use oxidd::bdd::BDDFunction;
-
-use merc_symbolic::CubeIterAll;
-use merc_symbolic::bits_to_bdd;
-use merc_utilities::MercError;
-use merc_utilities::Timing;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
 
+use merc_lts::LabelledTransitionSystem;
+use merc_lts::LTS;
+use merc_lts::LtsBuilderFast;
+use merc_lts::TransitionLabel;
+use merc_symbolic::bits_to_bdd;
+use merc_symbolic::CubeIterAll;
+use merc_symbolic::FormatConfigSet;
+use merc_utilities::MercError;
+use merc_utilities::Timing;
+
 use crate::FeatureDiagram;
 use crate::FeatureTransitionSystem;
+use crate::FeaturedLabel;
 
 /// Projects a variability parity game into a standard parity game by removing
 /// edges that are not enabled by the given feature selection.
 pub fn project_feature_transition_system<L: TransitionLabel>(
     fts: &FeatureTransitionSystem<L>,
     feature_selection: &BDDFunction,
-) -> Result<LabelledTransitionSystem<String>, MercError> {
+) -> Result<LabelledTransitionSystem<FeaturedLabel<L>>, MercError> {
     let mut builder = LtsBuilderFast::new(fts.labels().to_vec(), Vec::new());
 
     debug!("Projecting on feature selection {}", FormatConfigSet(feature_selection));
@@ -32,10 +32,9 @@ pub fn project_feature_transition_system<L: TransitionLabel>(
     let labels = fts
         .labels()
         .iter()
-        .enumerate()
-        .map(|(label_index, label)| -> Result<bool, OutOfMemory> {
+        .map(|label| -> Result<bool, OutOfMemory> {
             // Check if the edge is enabled by the feature selection, if so, include it.
-            let result = feature_selection.and(fts.feature_label(LabelIndex::new(label_index)))?.satisfiable();
+            let result = feature_selection.and(label.feature_expr())?.satisfiable();
             debug!("Label {} is included: {}", label, result);
 
             Ok(result)
@@ -65,7 +64,7 @@ pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
     fts: &'a FeatureTransitionSystem<L>,
     fd: &'a FeatureDiagram,
     timing: &'a Timing,
-) -> impl Iterator<Item = Result<(ProjectedLts, &'a Timing), MercError>> {
+) -> impl Iterator<Item = Result<(ProjectedLts<FeaturedLabel<L>>, &'a Timing), MercError>> {
     let variables = fd.feature_names().iter().map(|name| {
         fd.features()
             .get(name)
@@ -85,7 +84,6 @@ pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
             project_feature_transition_system(fts, &bdd)
         })?;
 
-        Ok((ProjectedLts { bits: cube, bdd, lts }, timing))
         Ok((ProjectedLts { bits: cube, bdd, lts }, timing))
     })
 }

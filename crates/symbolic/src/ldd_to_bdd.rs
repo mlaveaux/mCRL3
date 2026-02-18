@@ -1,18 +1,13 @@
 use oxidd::BooleanFunction;
-use oxidd::BooleanFunction;
 use oxidd::Edge;
-use oxidd::Function;
 use oxidd::Function;
 use oxidd::HasLevel;
 use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
-use oxidd::VarNo;
-use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::Borrowed;
-use oxidd::util::OptBool;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
 use oxidd_core::function::EdgeOfFunc;
@@ -24,8 +19,6 @@ use merc_ldd::DataRef;
 use merc_ldd::Ldd;
 use merc_ldd::LddRef;
 use merc_ldd::Storage;
-use merc_ldd::Value;
-use merc_ldd::height;
 use merc_ldd::Value;
 use merc_ldd::height;
 use merc_ldd::union;
@@ -101,10 +94,6 @@ pub fn ldd_to_bdd_edge<'id>(
             "Insufficient variables: need {needed_bits}, have {} for current layer",
             bit_variables.len()
         );
-        panic!(
-            "Insufficient variables: need {needed}, have {} for current layer",
-            bit_variables.len()
-        );
     }
 
     // Recurse on down with the remaining variables after consuming this layer
@@ -157,15 +146,6 @@ pub fn bdd_to_ldd(
             current_bit,
             current_value,
         )
-        bdd_to_ldd_edge(
-            storage,
-            manager,
-            edge.borrowed(),
-            variables,
-            bits_per_layer,
-            current_bit,
-            current_value,
-        )
     })
 }
 
@@ -190,10 +170,6 @@ pub fn bdd_to_ldd_edge<'id>(
                 BDDTerminal::True => {
                     if !variables.is_empty() {
                         // If there are still variables left, we must generate don't cares for the remaining layers
-                        let num_bits = bits_per_layer
-                            .first()
-                            .copied()
-                            .expect("Missing bits per layer for current layer");
                         let num_bits = bits_per_layer
                             .first()
                             .copied()
@@ -233,7 +209,6 @@ pub fn bdd_to_ldd_edge<'id>(
                 }
             }
         }
-        }
     };
 
     // TODO: Implement caching
@@ -243,13 +218,8 @@ pub fn bdd_to_ldd_edge<'id>(
         .first()
         .copied()
         .expect("Missing bits per layer for current layer");
-    let num_bits = bits_per_layer
-        .first()
-        .copied()
-        .expect("Missing bits per layer for current layer");
 
     let variable_level = variables.first().expect("Missing variable for current layer");
-    if *variable_level < bdd_node.level() {
     if *variable_level < bdd_node.level() {
         // There are don't care variables in this BDD that have been skipped, so generate both branches without cofactors.
         if num_bits == current_bit {
@@ -301,15 +271,6 @@ pub fn bdd_to_ldd_edge<'id>(
             bits_per_layer,
             current_bit + 1,
             current_value | (1 << (num_bits - current_bit - 1)),
-        )?;
-        let low = bdd_to_ldd_edge(
-            storage,
-            manager,
-            bdd_low,
-            &variables[1..],
-            bits_per_layer,
-            current_bit + 1,
-            current_value,
         )?;
         let low = bdd_to_ldd_edge(
             storage,
