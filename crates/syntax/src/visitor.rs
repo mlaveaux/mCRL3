@@ -277,7 +277,7 @@ fn visit_regular_formula_rec<T, F>(formula: &RegFrm, visit: &mut F) -> Result<Op
 where
     F: FnMut(&RegFrm) -> Result<ControlFlow<T>, MercError>,
 {
-    if let ControlFlow::Break(result) = visit(&formula)? {
+    if let ControlFlow::Break(result) = visit(formula)? {
         // A substitution was made, return the new formula.
         return Ok(Some(result));
     }

@@ -7,14 +7,10 @@ use log::trace;
 use log::warn;
 use merc_collections::IndexedSet;
 use merc_io::TimeProgress;
+use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
-use merc_lts::LTS;
 use merc_lts::Transition;
-use merc_syntax::apply_statefrm;
-use merc_syntax::visit_action_formula;
-use merc_syntax::visit_regular_formula;
-use merc_syntax::visit_statefrm;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
 use merc_syntax::FixedPointOperator;
@@ -24,15 +20,19 @@ use merc_syntax::RegFrm;
 use merc_syntax::StateFrm;
 use merc_syntax::StateFrmOp;
 use merc_syntax::StateVarDecl;
+use merc_syntax::apply_statefrm;
+use merc_syntax::visit_action_formula;
+use merc_syntax::visit_regular_formula;
+use merc_syntax::visit_statefrm;
 use merc_utilities::MercError;
 
-use crate::compute_reachable;
 use crate::FreshStateVarGenerator;
 use crate::ModalEquationSystem;
 use crate::ParityGame;
 use crate::Player;
 use crate::Priority;
 use crate::VertexIndex;
+use crate::compute_reachable;
 
 /// Translates a labelled transition system into a variability parity game.
 pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> Result<ParityGame, MercError> {
@@ -44,7 +44,11 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     // Warn about any labels that are used in the formula but do not correspond to any label in the LTS.
     warn_unknown_action_labels(formula, &labels);
 
-    let equation_system = ModalEquationSystem::new(formula);
+    let mut identifier_generator = FreshStateVarGenerator::new(formula);
+    let formula = translate_regular_formulas(formula.clone(), &mut identifier_generator);
+    debug!("Translated regular formulas: {}", formula);
+
+    let equation_system = ModalEquationSystem::new(&formula);
     debug!("{}", equation_system);
 
     let mut algorithm: Translation<'_, _, ()> = Translation::new(lts, &labels, &equation_system);
@@ -73,19 +77,19 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
 }
 
 /// Produces a warning for each label that is used in the formula but does not correspond to any label in the LTS.
-pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &Vec<MultiAction>) {
+pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
     visit_statefrm::<(), _>(formula, |statefrm| {
         if let StateFrm::Modality { formula, .. } = statefrm {
             visit_regular_formula::<(), _>(formula, |regfrm| {
                 if let RegFrm::Action(act_frm) = regfrm {
                     visit_action_formula::<(), _>(act_frm, |act_frm| {
-                        if let ActFrm::MultAct(action) = act_frm {
-                            if !labels.contains(action) {
-                                warn!(
-                                    "Label {} in formula does not correspond to any label in the LTS",
-                                    action
-                                );
-                            }
+                        if let ActFrm::MultAct(action) = act_frm
+                            && !labels.contains(action)
+                        {
+                            warn!(
+                                "Label {} in formula does not correspond to any label in the LTS",
+                                action
+                            );
                         }
 
                         Ok(ControlFlow::Continue(()))
@@ -179,10 +183,10 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
 
 /// Convert a formula `[reg_frm*]phi` into `nu I. [reg_frm]I && phi`, and similarly for the diamond modality.
 fn convert_regular_iteration(
-    reg_frm: &Box<RegFrm>,
+    reg_frm: &RegFrm,
     iteration_var: String,
     operator: &ModalityOperator,
-    expr: &Box<StateFrm>,
+    expr: &StateFrm,
 ) -> StateFrm {
     StateFrm::FixedPoint {
         operator: FixedPointOperator::Greatest,
@@ -191,10 +195,10 @@ fn convert_regular_iteration(
             op: StateFrmOp::Conjunction,
             lhs: Box::new(StateFrm::Modality {
                 operator: *operator,
-                formula: *reg_frm.clone(),
+                formula: reg_frm.clone(),
                 expr: Box::new(StateFrm::Id(iteration_var, Vec::new())),
             }),
-            rhs: expr.clone(),
+            rhs: Box::new(expr.clone()),
         }),
     }
 }
@@ -485,6 +489,8 @@ mod tests {
     use merc_macros::merc_test;
     use merc_syntax::UntypedStateFrmSpec;
 
+    use crate::PG;
+
     use super::*;
 
     #[merc_test]
@@ -493,6 +499,9 @@ mod tests {
         let lts = read_aut(include_bytes!("../../../examples/lts/abp.aut") as &[u8], Vec::new()).unwrap();
         let formula = UntypedStateFrmSpec::parse(include_str!("../../../examples/vpg/running_example.mcf")).unwrap();
 
-        let _pg = translate(&lts, &formula.formula).unwrap();
+        let pg: ParityGame = translate(&lts, &formula.formula).unwrap();
+
+        assert!(pg.is_total(), "The translated parity game should be total");
+        assert!(compute_reachable(&pg).1.iter().all(|v| v.is_some()), "All vertices should be reachable from the initial vertex");
     }
 }

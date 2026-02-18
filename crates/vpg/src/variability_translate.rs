@@ -111,7 +111,7 @@ mod tests {
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_running_example() {
+    fn test_vpg_running_example() {
         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
         let fd = FeatureDiagram::from_reader(
@@ -128,6 +128,9 @@ mod tests {
 
         let formula = UntypedStateFrmSpec::parse(include_str!("../../../examples/vpg/running_example.mcf")).unwrap();
 
-        let _vpg = translate_vpg(&manager_ref, &fts, fd.configuration().clone(), &formula.formula).unwrap();
+        let vpg = translate_vpg(&manager_ref, &fts, fd.configuration().clone(), &formula.formula).unwrap();
+
+        assert!(vpg.is_total(&manager_ref).unwrap(), "The translated VPG should be total");
+        assert!(compute_reachable(&vpg).1.iter().all(|v| v.is_some()), "All vertices should be reachable from the initial vertex");
     }
 }

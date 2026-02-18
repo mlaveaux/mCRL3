@@ -28,16 +28,8 @@ pub fn make_vpg_total(
     let mut priorities = vpg.priorities().clone();
 
     // Owner does not matter, priority must be even for true node and odd for false node.
-    let true_node = VertexIndex::new(owners.len());
-    owners.push(Player::Even);
-    priorities.push(Priority::new(0)); // Even priority for true node
-
-    let false_node = VertexIndex::new(owners.len());
-    owners.push(Player::Even);
-    priorities.push(Priority::new(1)); // Odd priority for false node
-
-    edges.push((true_node, universe.clone(), true_node)); // Self-loop on true node
-    edges.push((false_node, universe.clone(), false_node)); // Self-loop on false node
+    let mut true_node = None;
+    let mut false_node = None;
 
     for vertex in vpg.iter_vertices() {
         let mut all_outgoing = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
@@ -54,12 +46,32 @@ pub fn make_vpg_total(
         if missing.satisfiable() {
             if owners[*vertex] == Player::Odd {
                 // Odd player deadlock: add edge to true node for the remaining configurations.
-                edges.push((vertex, universe.clone(), true_node));
+                let node = true_node.get_or_insert_with(|| {
+                    let idx = VertexIndex::new(owners.len());
+                    owners.push(Player::Even);
+                    priorities.push(Priority::new(0)); // Even priority for true node
+                    idx
+                });
+                edges.push((vertex, missing.clone(), *node));
             } else {
                 // Even player deadlock: add edge to false node for the remaining configurations.
-                edges.push((vertex, universe.clone(), false_node));
+                let node = false_node.get_or_insert_with(|| {
+                    let idx = VertexIndex::new(owners.len());
+                    owners.push(Player::Even);
+                    priorities.push(Priority::new(1)); // Odd priority for false node
+                    idx
+                });
+                edges.push((vertex, missing.clone(), *node));
             }
         }
+    }
+
+    // Add self-loops for sink nodes if they were created
+    if let Some(node) = true_node {
+        edges.push((node, universe.clone(), node));
+    }
+    if let Some(node) = false_node {
+        edges.push((node, universe.clone(), node));
     }
 
     Ok(VariabilityParityGame::from_edges(
