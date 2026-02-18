@@ -51,4 +51,4 @@ jobs:
         RUST_BACKTRACE: full
         RUST_LOG: debug
         RUSTC_WRAPPER: sccache
-        MIRIFLAGS: -Zmiri-disable-isolation
+        MIRIFLAGS: -Zmiri-disable-isolation --cfg chacha20_force_soft

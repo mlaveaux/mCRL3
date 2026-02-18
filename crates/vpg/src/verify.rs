@@ -44,7 +44,7 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
         let restricted = Restricted::new(pg, player, &strategy[player.to_index()]);
 
         // The opponent is the solitaire player.
-        if solve_solitair_game(&restricted, player.opponent()) != solution[player.to_index()] {
+        if solve_solitair_game(&restricted, player.opponent()) != solution[player.opponent().to_index()] {
             panic!("The proposed winning set for player {} is incorrect", player);
         }
     }
@@ -59,7 +59,7 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
 fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
 
-    for priority in 0..pg.highest_priority().value() {
+    for priority in 0..=pg.highest_priority().value() {
         if Player::from_priority(&(Priority::new(priority))) != player {
             // Skip priorities that do not belong to the current player
             continue;
@@ -156,7 +156,7 @@ impl<G: PG> PG for Restricted<'_, G> {
     fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a {
         self.game.outgoing_edges(vertex_index).filter(move |edge| {
             // Only consider edges that follow the strategy.
-            self.game.owner(edge.to()) != self.player || self.strategy.get(vertex_index) == Some(&edge.to())
+            self.game.owner(vertex_index) != self.player || self.strategy.get(vertex_index) == Some(&edge.to())
         })
     }
 
