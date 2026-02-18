@@ -18,7 +18,7 @@ use merc_lts::LabelledTransitionSystem;
 use merc_utilities::Timing;
 
 use crate::Equivalence;
-use crate::SimpleBlockPartition;
+use crate::MarkedBlockPartition;
 use crate::tau_loop_elimination_and_reorder;
 use crate::reduce_lts;
 
@@ -35,7 +35,7 @@ pub fn weak_bisimulation<L: LTS>(
     lts: L,
     preprocess: bool,
     timing: &Timing,
-) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
+) -> (LabelledTransitionSystem<L::Label>, MarkedBlockPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
         let lts = timing.measure("preprocess", || reduce_lts(lts, Equivalence::BranchingBisim, true, timing));
@@ -49,11 +49,11 @@ pub fn weak_bisimulation<L: LTS>(
 fn weak_bisimulation_impl<L: LTS>(
     lts: L,
     timing: &Timing,
-) -> (LabelledTransitionSystem<L::Label>, SimpleBlockPartition) {
+) -> (LabelledTransitionSystem<L::Label>, MarkedBlockPartition) {
     let tau_loop_free_lts = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts));
 
     timing.measure("reduction", || {
-        let mut blocks = SimpleBlockPartition::new(tau_loop_free_lts.num_of_states());
+        let mut blocks = MarkedBlockPartition::new(tau_loop_free_lts.num_of_states());
 
         let mut act_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
         let mut tau_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
@@ -71,7 +71,7 @@ fn weak_bisimulation_impl<L: LTS>(
             let mut stable = true;
             for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
                 progress.print(blocks.num_of_blocks());
-                if blocks.block(block_index).is_stable() {
+                if *blocks.block(block_index).annotation() {
                     continue;
                 }
 
@@ -121,7 +121,7 @@ fn compute_weak_act<L: LTS>(
     act_mark: &mut BitArray,
     tau_mark: &mut BitArray,
     lts: &L,
-    blocks: &SimpleBlockPartition,
+    blocks: &MarkedBlockPartition,
     incoming: &IncomingTransitions,
     block: BlockIndex,
     label: LabelIndex,
@@ -130,7 +130,7 @@ fn compute_weak_act<L: LTS>(
         // s.act_mark := true iff s in B && a == tau
         act_mark.set(
             *s,
-            lts.is_hidden_label(label) && blocks.iter_block(block).any(|state| state == s),
+            lts.is_hidden_label(label) && blocks.iter_block(block).any(|state| state == *s),
         );
 
         for transition in lts.outgoing_transitions(s) {
@@ -158,7 +158,7 @@ fn compute_weak_act<L: LTS>(
 }
 
 /// Splits the given block according to the given marking.
-fn stabilise(block: BlockIndex, act_mark: &mut BitArray, blocks: &mut SimpleBlockPartition) {
+fn stabilise(block: BlockIndex, act_mark: &mut BitArray, blocks: &mut MarkedBlockPartition) {
     blocks.split_block(block, |state| act_mark[*state]);
 }
 

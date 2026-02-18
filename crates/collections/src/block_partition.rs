@@ -68,6 +68,11 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
         &self.blocks[block_index]
     }
 
+    /// Return a mutable reference to the block's annotation.
+    pub fn block_annotation(&mut self, block_index: BlockIndex) -> &mut A {
+         self.blocks[block_index].annotation_mut()
+    }
+
     /// Splits a block into two blocks according to the given predicate. If the
     /// predicate holds for all or none of the elements, no split occurs.
     pub fn split_block<F>(&mut self, block_index: BlockIndex, predicate: F) -> Option<BlockIndex>
@@ -130,6 +135,11 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Returns an iterator over all blocks in the partition.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Block<A>> {
         self.blocks.iter_mut()
+    }
+
+    /// Returns the number of elements in the partition.
+    pub fn len(&self) -> usize {
+        self.elements.len()
     }
 }
 
