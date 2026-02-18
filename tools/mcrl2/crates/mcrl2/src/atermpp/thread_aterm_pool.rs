@@ -125,7 +125,7 @@ impl ThreadTermPool {
     }
 
     /// Creates an [ATerm] with the given symbol, head argument and other arguments.
-    pub fn create_data_application<'a, 'b>(&self, head: &S, arguments: &[T]) -> ATerm
+    pub fn create_data_application<'a, 'b, S, T>(&self, head: &S, arguments: &[T]) -> ATerm
     where
         S: Borrow<ATermRef<'a>>,
         T: Borrow<ATermRef<'b>>,
@@ -316,8 +316,8 @@ impl fmt::Display for ThreadTermPool {
 mod tests {
     use std::thread;
 
+    use rand::RngExt;
     use rand::rngs::StdRng;
-    use rand::Rng;
     use rand::SeedableRng;
 
     use crate::random_term;
@@ -337,7 +337,8 @@ mod tests {
 
     #[test]
     fn test_thread_aterm_pool_parallel() {
-        let seed: u64 = rand::rng().random();
+        let mut rng = rand::rng();
+        let seed: u64 = rng.random();
         println!("seed: {}", seed);
 
         thread::scope(|s| {

@@ -9,7 +9,7 @@ use crate::atermpp::aterm::ATerm;
 /// iterations number of constructions, and uses chance_duplicates to choose the
 /// amount of subterms that are duplicated.
 pub fn random_term<R: Rng>(
-    rng: &mut T,
+    rng: &mut R,
     symbols: &[(String, usize)],
     constants: &[String],
     iterations: usize,

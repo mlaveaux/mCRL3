@@ -1,5 +1,4 @@
-use rand::RngCore;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 
 use crate::test_logger;

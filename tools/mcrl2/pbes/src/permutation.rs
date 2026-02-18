@@ -281,9 +281,9 @@ pub fn permutation_group_size(n: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
-    use rand::Rng;
     use rand::seq::IteratorRandom;
     use rand::seq::SliceRandom;
+    use rand::RngExt;
 
     use super::*;
 
@@ -328,7 +328,7 @@ mod tests {
             let m = rng.random_range(2..10);
 
             // Choose a random subset of distinct domain elements.
-            let domain: Vec<usize> = (0..10).choose_multiple(rng, m);
+            let domain: Vec<usize> = (0..10).sample(rng, m);
 
             // Create a random derangement of the chosen domain.
             let mut image = domain.clone();
@@ -357,7 +357,7 @@ mod tests {
             let m = rng.random_range(2..10);
 
             // Choose a random subset of distinct domain elements.
-            let domain: Vec<usize> = (0..10).choose_multiple(rng, m);
+            let domain: Vec<usize> = (0..10).sample(rng, m);
 
             // Create a random derangement of the chosen domain.
             let mut image = domain.clone();
