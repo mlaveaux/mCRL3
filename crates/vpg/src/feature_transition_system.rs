@@ -6,7 +6,6 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
 
-use itertools::Itertools;
 use log::debug;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
