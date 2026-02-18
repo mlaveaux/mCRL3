@@ -9,18 +9,18 @@ use merc_aterm::ATermIndex;
 use merc_aterm::ATermRef;
 use merc_aterm::ATermString;
 use merc_aterm::Markable;
-use merc_aterm::storage::Marker;
 use merc_aterm::Symb;
 use merc_aterm::SymbolRef;
 use merc_aterm::Term;
 use merc_aterm::TermIterator;
 use merc_aterm::Transmutable;
+use merc_aterm::storage::Marker;
 use merc_macros::merc_derive_terms;
 use merc_macros::merc_term;
 
 use crate::DATA_SYMBOLS;
-use crate::is_sort_expression;
 use crate::is_basic_sort;
+use crate::is_sort_expression;
 
 /// This module is only used internally to run the proc macro.
 #[merc_derive_terms]
@@ -51,7 +51,7 @@ mod inner {
             write!(f, "{}", self.name())
         }
     }
-    
+
     #[merc_term(is_basic_sort)]
     pub struct BasicSort {
         term: ATerm,

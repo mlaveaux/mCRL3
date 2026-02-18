@@ -236,7 +236,6 @@ pub fn branching_bisim_signature_inductive<L: LTS>(
     builder.dedup();
 }
 
-
 /// Computes the weak bisimulation presignature.
 ///
 /// The input lts must contain no tau-cycles.
@@ -302,7 +301,6 @@ pub fn weak_bisim_signature_sorted_full<L: LTS, P: Partition>(
     builder.sort_unstable();
     builder.dedup();
 }
-
 
 /// Computes the weak bisimulation signature.
 ///

@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use merc_collections::{Block, BlockIndex, BlockIter, BlockPartition};
+use merc_collections::Block;
+use merc_collections::BlockIndex;
+use merc_collections::BlockIter;
+use merc_collections::BlockPartition;
 use merc_lts::StateIndex;
 
 use crate::Partition;
@@ -31,7 +34,7 @@ impl MarkedBlockPartition {
 
     /// Return a reference to the given block.
     pub fn block(&self, block_index: BlockIndex) -> &Block<bool> {
-        &self.partition.block(block_index)
+        self.partition.block(block_index)
     }
 
     /// Splits a block into two blocks according to the given predicate. If the
@@ -42,7 +45,8 @@ impl MarkedBlockPartition {
         predicate: impl Fn(StateIndex) -> bool,
     ) -> Option<BlockIndex> {
         *self.partition.block_annotation(block_index) = false;
-        self.partition.split_block(block_index, |element| predicate(StateIndex::new(element)))
+        self.partition
+            .split_block(block_index, |element| predicate(StateIndex::new(element)))
     }
 
     /// Returns the number of blocks in the partition.
@@ -77,7 +81,7 @@ impl Partition for MarkedBlockPartition {
         if !cfg!(debug_assertions) {
             panic!("block_number is only available in debug mode");
         }
-        
+
         // Note that this is O(n) in the number of blocks. This could be improved
         // by storing a mapping from state index to block index. However, this
         // is only used in the comparison functions, so it is not a big issue.

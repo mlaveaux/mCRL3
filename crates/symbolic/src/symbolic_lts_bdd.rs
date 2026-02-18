@@ -11,9 +11,9 @@ use oxidd::bdd::BDDManagerRef;
 use oxidd::error::DuplicateVarName;
 
 use merc_data::DataExpression;
-use merc_ldd::singleton;
 use merc_ldd::Storage;
 use merc_ldd::Value;
+use merc_ldd::singleton;
 use merc_utilities::MercError;
 use oxidd::util::OutOfMemory;
 
@@ -153,14 +153,18 @@ impl SymbolicLtsBdd {
         // Convert the states to a BDD representation.
         let bits_dd = singleton(storage, &state_bits);
         let all_state_variables_bits: Vec<VarNo> = state_variables_bits.iter().flatten().cloned().collect();
-        let states = manager_ref.with_manager_shared(|manager| ldd_to_bdd(storage, manager, lts.states(), &bits_dd, &all_state_variables_bits))?;
-        let initial_state = manager_ref.with_manager_shared(|manager| ldd_to_bdd(
-            storage,
-            manager,
-            lts.initial_state(),
-            &bits_dd,
-            &all_state_variables_bits,
-        ))?;
+        let states = manager_ref.with_manager_shared(|manager| {
+            ldd_to_bdd(storage, manager, lts.states(), &bits_dd, &all_state_variables_bits)
+        })?;
+        let initial_state = manager_ref.with_manager_shared(|manager| {
+            ldd_to_bdd(
+                storage,
+                manager,
+                lts.initial_state(),
+                &bits_dd,
+                &all_state_variables_bits,
+            )
+        })?;
 
         let mut transition_groups = Vec::new();
         for group in lts.transition_groups() {
@@ -188,7 +192,7 @@ impl SymbolicLtsBdd {
                     write_variable_indices.extend(next_state_variables_bits[var].iter())
                 }
             }
-            
+
             // Append action label bits (between read and write segments) if present
             if let Some(_action_index) = group.action_label_index() {
                 // TODO: This currently assumes that action label bits are at the end.
@@ -203,7 +207,8 @@ impl SymbolicLtsBdd {
             );
 
             let bits_dd = singleton(storage, &relation_bits);
-            let relation_bdd = manager_ref.with_manager_shared(|manager| ldd_to_bdd(storage, manager, group.relation(), &bits_dd, &variables))?;
+            let relation_bdd = manager_ref
+                .with_manager_shared(|manager| ldd_to_bdd(storage, manager, group.relation(), &bits_dd, &variables))?;
 
             transition_groups.push(SummandGroupBdd::new(
                 relation_bdd,
@@ -294,11 +299,7 @@ pub struct SummandGroupBdd {
 
 impl SummandGroupBdd {
     /// Creates a new summand group with the given transition relation.
-    pub fn new(
-        relation: BDDFunction,
-        read_variable: Vec<VarNo>,
-        write_variable: Vec<VarNo>,
-    ) -> Self {
+    pub fn new(relation: BDDFunction, read_variable: Vec<VarNo>, write_variable: Vec<VarNo>) -> Self {
         Self {
             relation,
             read_variable,
@@ -323,7 +324,10 @@ impl SummandGroupBdd {
 }
 
 /// Creates BDD of variables for the given variable numbers.
-pub fn compute_vars_bdd(manager_ref: &BDDManagerRef, vars: &[VarNo]) -> Result<(Vec<BDDFunction>, BDDFunction), OutOfMemory> {
+pub fn compute_vars_bdd(
+    manager_ref: &BDDManagerRef,
+    vars: &[VarNo],
+) -> Result<(Vec<BDDFunction>, BDDFunction), OutOfMemory> {
     manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {
         let mut vector = Vec::new();
         let mut bdd: BDDFunction = BDDFunction::t(manager);

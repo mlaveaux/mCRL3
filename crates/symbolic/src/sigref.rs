@@ -8,12 +8,6 @@ use log::trace;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::error::DuplicateVarName;
-use oxidd::util::OptBool;
-use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -24,16 +18,22 @@ use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Subst;
 use oxidd::VarNo;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
+use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
+use oxidd::util::SatCountCache;
 use oxidd_dump::Visualizer;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
-use crate::compute_vars_bdd;
-use crate::required_bits_64;
-use crate::to_value;
 use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
 use crate::ValuesIter;
+use crate::compute_vars_bdd;
+use crate::required_bits_64;
+use crate::to_value;
 
 /// Computes the signature refinement of the given symbolic LTS using strong bisimulation.
 ///
@@ -587,23 +587,23 @@ fn to_block_index(bits: &[OptBool]) -> u64 {
 mod tests {
     use std::ops::Range;
 
-    use merc_utilities::Timing;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::error::DuplicateVarName;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
     use oxidd::ManagerRef;
     use oxidd::VarNo;
-    use rand::Rng;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::error::DuplicateVarName;
+    use rand::RngExt;
 
+    use merc_utilities::Timing;
     use merc_utilities::random_test;
 
+    use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
     use crate::sigref_symbolic;
-    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri

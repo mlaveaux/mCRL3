@@ -1,7 +1,7 @@
 use itertools::Itertools;
-use streaming_iterator::StreamingIterator;
 use std::collections::HashSet;
 use std::fmt;
+use streaming_iterator::StreamingIterator;
 
 use crate::Data;
 use crate::Ldd;

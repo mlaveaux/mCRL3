@@ -158,7 +158,11 @@ impl TermStack {
     }
 
     /// Evaluate the rhs stack for the given term and returns the result.
-    pub fn evaluate_with<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T, builder: &mut TermStackBuilder) -> DataExpression {
+    pub fn evaluate_with<'a, 'b, T: Term<'a, 'b>>(
+        &self,
+        term: &'b T,
+        builder: &mut TermStackBuilder,
+    ) -> DataExpression {
         let stack = &mut builder.stack;
         {
             let mut write = stack.terms.write();

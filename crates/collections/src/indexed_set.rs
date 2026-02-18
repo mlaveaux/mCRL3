@@ -427,7 +427,7 @@ impl<'a, T, S> IntoIterator for &'a IndexedSet<T, S> {
 mod tests {
     use std::collections::HashMap;
 
-    use rand::Rng;
+    use rand::RngExt;
 
     use merc_utilities::random_test;
 

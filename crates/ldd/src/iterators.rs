@@ -122,14 +122,14 @@ pub struct Iter<'a> {
     /// Stores the current path in the LDD.
     current: Vec<Value>,
     /// Stores the stack for the depth-first search (only non 'true' or 'false' nodes)
-    stack: Vec<Ldd>,   
+    stack: Vec<Ldd>,
     /// Indicates whether the iteration is finished.
-    finished: bool, 
+    finished: bool,
 }
 
 impl StreamingIterator for Iter<'_> {
     type Item = Vec<Value>;
-    
+
     fn advance(&mut self) {
         // Find the next vector by going down the chain.
         loop {
@@ -165,13 +165,9 @@ impl StreamingIterator for Iter<'_> {
             }
         }
     }
-    
+
     fn get(&self) -> Option<&Self::Item> {
-        if self.finished {
-            None
-        } else {
-            Some(&self.current)
-        }
+        if self.finished { None } else { Some(&self.current) }
     }
 }
 

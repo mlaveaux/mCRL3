@@ -235,7 +235,7 @@ impl<'a, T> IntoIterator for &'a ProtectionSet<T> {
 mod tests {
     use super::*;
 
-    use rand::Rng;
+    use rand::RngExt;
 
     use merc_utilities::random_test;
     use merc_utilities::test_logger;

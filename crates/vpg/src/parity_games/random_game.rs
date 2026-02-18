@@ -7,6 +7,7 @@ use rand::Rng;
 
 use merc_symbolic::random_bdd;
 use merc_utilities::MercError;
+use rand::RngExt;
 
 use crate::PG;
 use crate::ParityGame;

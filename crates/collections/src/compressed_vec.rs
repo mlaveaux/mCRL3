@@ -23,9 +23,9 @@ macro_rules! bytevec {
 }
 
 /// A vector data structure that stores objects in a byte compressed format.
-/// 
+///
 /// # Details
-/// 
+///
 /// The basic idea is that elements of type `T` implement the `CompressedEntry`
 /// trait which allows them to be converted to and from a byte representation.
 /// The vector dynamically adjusts the number of bytes used per entry based on
@@ -486,7 +486,7 @@ impl<T: CompressedEntry + Copy, Tag> CompressedEntry for TagIndex<T, Tag> {
 mod tests {
     use super::*;
 
-    use rand::Rng;
+    use rand::RngExt;
     use rand::distr::Uniform;
     use rand::seq::SliceRandom;
 

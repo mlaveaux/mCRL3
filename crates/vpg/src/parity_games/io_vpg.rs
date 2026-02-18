@@ -158,8 +158,10 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
 
 /// Parses a configuration set from a string representation into a BDD function, but also creates the necessary variables.
 /// based on the length of the configurations.
-fn parse_configuration(manager_ref: &BDDManagerRef, config: &str) -> Result<(Vec<BDDFunction>, BDDFunction), MercError> {
-    
+fn parse_configuration(
+    manager_ref: &BDDManagerRef,
+    config: &str,
+) -> Result<(Vec<BDDFunction>, BDDFunction), MercError> {
     // Check for existing variables
     if manager_ref.with_manager_shared(|manager| manager.num_vars()) != 0 {
         return Err("BDD manager must not contain any variables yet".into());

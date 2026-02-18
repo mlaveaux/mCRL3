@@ -9,6 +9,8 @@ use clap::Subcommand;
 use log::warn;
 
 use merc_rec_tests::load_rec_from_file;
+use merc_rewrite::Rewriter;
+use merc_rewrite::rewrite_rec;
 use merc_sabre::data_expr_to_term;
 use merc_sabre::to_rewrite_spec;
 use merc_syntax::DataExpr;
@@ -18,8 +20,6 @@ use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
-use merc_rewrite::Rewriter;
-use merc_rewrite::rewrite_rec;
 use merc_utilities::Timing;
 
 mod trs_format;
@@ -44,7 +44,7 @@ struct Cli {
 enum Commands {
     /// Rewrite a term using the rewrite rules specified in a REC file or mCRL2 specification
     Rewrite(RewriteArgs),
-    
+
     /// Convert a REC specification to the TRS format
     Convert(ConvertArgs),
 }
@@ -95,7 +95,9 @@ fn main() -> Result<ExitCode, MercError> {
             Commands::Rewrite(args) => {
                 if args.specification.extension() == Some(OsStr::new("rec")) {
                     if args.terms.is_some() {
-                        warn!("The --terms option is currently ignored when rewriting REC specifications, the terms are taken from the REC spec.");
+                        warn!(
+                            "The --terms option is currently ignored when rewriting REC specifications, the terms are taken from the REC spec."
+                        );
                     }
 
                     let (syntax_spec, syntax_terms) = load_rec_from_file(&args.specification)?;

@@ -585,7 +585,7 @@ pub enum PresExprBinaryOp {
     Implies,
     Disjunction,
     Conjunction,
-    Add
+    Add,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]

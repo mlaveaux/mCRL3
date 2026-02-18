@@ -41,24 +41,37 @@ pub fn reachability_bdd(
         1,
     );
 
-
     // Substitution to replace next state variables with current state variables: [s <- s']
     //
     // Definition of subtitution:
     // > f[x <- g] = (!g ∧ f[x <- false]) ∨ (g ∧ f[x <- true])
     let state_variables = compute_vars_bdd(manager_ref, lts.state_variables())?.0;
     let next_state_substitution = Subst::new(lts.next_state_variables(), state_variables);
-    
-    // Determine the write variables BDDs for all transition groups.
-    let relation_vars_bdd = lts.transition_groups().iter().map(|group| -> Result<_, OutOfMemory> {
-        let bits = group.write_variables().iter().map(|var| {
-            // Find the index of the current state variable corresponding to this next state variable.
-            let index = lts.next_state_variables().iter().position(|next_var| next_var == var).unwrap();
-            lts.state_variables()[index]
-        }).collect::<Vec<VarNo>>();
 
-        compute_vars_bdd(manager_ref, &bits)?.1.and(&compute_vars_bdd(manager_ref, lts.action_variables())?.1)
-    }).collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
+    // Determine the write variables BDDs for all transition groups.
+    let relation_vars_bdd = lts
+        .transition_groups()
+        .iter()
+        .map(|group| -> Result<_, OutOfMemory> {
+            let bits = group
+                .write_variables()
+                .iter()
+                .map(|var| {
+                    // Find the index of the current state variable corresponding to this next state variable.
+                    let index = lts
+                        .next_state_variables()
+                        .iter()
+                        .position(|next_var| next_var == var)
+                        .unwrap();
+                    lts.state_variables()[index]
+                })
+                .collect::<Vec<VarNo>>();
+
+            compute_vars_bdd(manager_ref, &bits)?
+                .1
+                .and(&compute_vars_bdd(manager_ref, lts.action_variables())?.1)
+        })
+        .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
     while todo.satisfiable() {
         // Apply the transition relations to the todo set.
@@ -70,14 +83,10 @@ pub fn reachability_bdd(
             // variables with current state variables, they would lead to
             // spurious states.
             //
-            // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))` 
-            // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would 
+            // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))`
+            // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
             // result in `T`.
-            todo1 = todo1.or(&todo.apply_exists(
-                BooleanOperator::And,
-                transition.relation(),
-                relation_vars,
-            )?)?;
+            todo1 = todo1.or(&todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?)?;
         }
 
         // Substitute next state variables with current state variables.

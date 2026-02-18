@@ -1486,7 +1486,7 @@ impl Mcrl2Parser {
             },
         )
     }
-    
+
     pub(crate) fn PresExprInf(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {

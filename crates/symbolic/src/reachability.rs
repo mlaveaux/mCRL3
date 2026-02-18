@@ -33,7 +33,7 @@ pub trait SymbolicLTS {
 
     /// Returns the possible values for each process parameter.
     fn parameter_values(&self) -> &[Vec<DataExpression>];
-    
+
     /// Computes the dependency graph of the LTS.
     fn dependency_graph(&self) -> DependencyGraph {
         let mut relations = Vec::new();

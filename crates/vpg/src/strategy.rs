@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use crate::PG;
 use crate::Player;
 use crate::VertexIndex;
-use crate::PG;
 
 /// Keeps track of a strategy for a player in a parity game.
 ///

@@ -1,16 +1,16 @@
+use oxidd::BooleanFunction;
 use oxidd::Function;
 use oxidd::bdd::BDDFunction;
 use oxidd::util::OptBool;
-use oxidd::BooleanFunction;
 
-use merc_symbolic::bits_to_bdd;
-use merc_utilities::Timing;
 use merc_symbolic::CubeIterAll;
+use merc_symbolic::bits_to_bdd;
 use merc_utilities::MercError;
+use merc_utilities::Timing;
 
+use crate::PG;
 use crate::ParityGame;
 use crate::VariabilityParityGame;
-use crate::PG;
 
 /// Projects a variability parity game into a standard parity game by removing
 /// edges that are not enabled by the given feature selection.

@@ -179,11 +179,7 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator that is failable.
-    pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(
-        &self,
-        symbol: &'b S,
-        args: I,
-    ) -> Result<ATerm, MercError>
+    pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> Result<ATerm, MercError>
     where
         S: Symb<'a, 'b>,
         I: IntoIterator<Item = Result<T, MercError>>,
@@ -382,16 +378,19 @@ impl ThreadTermPool {
     }
 
     /// Triggers delayed garbage collection if the counter has reached zero.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// This function drops the passed guard.
     pub(crate) unsafe fn trigger_delayed_garbage_collection(&self, guard: &mut ManuallyDrop<GlobalTermPoolGuard<'_>>) {
         unsafe {
             ManuallyDrop::drop(guard);
         }
 
-        debug_assert!(guard.read_depth() == 0, "Cannot trigger garbage collection while holding a read lock");        
+        debug_assert!(
+            guard.read_depth() == 0,
+            "Cannot trigger garbage collection while holding a read lock"
+        );
         if self.garbage_collection_counter.get() == 0 {
             self.trigger_garbage_collection();
         }

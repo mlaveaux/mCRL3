@@ -231,9 +231,9 @@ struct FreshStateVarGenerator {
 
 impl FreshStateVarGenerator {
     /// Creates a new fresh state variable generator.
-    /// 
+    ///
     /// # Details
-    /// 
+    ///
     /// Traverses the given formula to collect all used variable names.
     pub fn new(formula: &StateFrm) -> Self {
         let mut used = HashSet::new();
@@ -243,11 +243,10 @@ impl FreshStateVarGenerator {
             }
 
             Ok(ControlFlow::Continue(()))
-        }).expect("No error expected during visiting");
+        })
+        .expect("No error expected during visiting");
 
-        FreshStateVarGenerator {
-            used,
-        }
+        FreshStateVarGenerator { used }
     }
 
     /// Generates a fresh state variable name based on the given base.

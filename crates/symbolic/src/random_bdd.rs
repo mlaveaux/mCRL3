@@ -5,6 +5,7 @@ use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
 use rand::Rng;
+use rand::RngExt;
 
 /// Generate `num_vectors` random bitvectors of length `num_vars`.
 pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usize) -> Vec<Vec<OptBool>> {
@@ -28,8 +29,9 @@ pub fn bdd_from_iter<'a, I>(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
     vectors: I,
-) -> Result<BDDFunction, MercError> 
-    where I: Iterator<Item = &'a Vec<OptBool>>
+) -> Result<BDDFunction, MercError>
+where
+    I: Iterator<Item = &'a Vec<OptBool>>,
 {
     let mut bdd = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
     for bits in vectors {

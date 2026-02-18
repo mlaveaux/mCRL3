@@ -68,9 +68,7 @@ impl<T> Drop for GcMutexGuard<'_, T> {
     fn drop(&mut self) {
         if self.guard.read_depth() == 1 {
             // If this is the last guard, we can trigger garbage collection when it was delayed earlier.
-            THREAD_TERM_POOL.with_borrow(|tp| {
-                unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) }
-            })
+            THREAD_TERM_POOL.with_borrow(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
         } else {
             // Just drop the guard
             unsafe { ManuallyDrop::drop(&mut self.guard) };

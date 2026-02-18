@@ -67,7 +67,7 @@ fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
 
         // Restrict the game according to the strategy and the current priority.
         let prio_subgame = PrioSubgame::new(pg, Priority::new(priority));
-        winning_vertices = winning_vertices | solve_solitair_simple(&prio_subgame, player);
+        winning_vertices |= solve_solitair_simple(&prio_subgame, player);
     }
 
     let predecessors = Predecessors::new(pg);
@@ -109,7 +109,7 @@ fn solve_solitair_simple<G: PG>(pg: &G, player: Player) -> BitVec {
 
 /// Computes the set of vertices reachable from the given initial vertices in
 /// the given graph.
-fn backward_reachability<'a>(predecessors: &Predecessors, mut initial: BitVec) -> BitVec {
+fn backward_reachability(predecessors: &Predecessors, mut initial: BitVec) -> BitVec {
     // The set of vertices that are already visited.
     let visited = &mut initial;
     let mut queue: Vec<VertexIndex> = Vec::new();

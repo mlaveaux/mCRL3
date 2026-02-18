@@ -207,7 +207,7 @@ impl<T, const N: usize> fmt::Debug for BlockAllocator<T, N> {
 mod tests {
     use super::*;
 
-    use rand::Rng;
+    use rand::RngExt;
 
     use merc_utilities::random_test;
 

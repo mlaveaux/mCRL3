@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use rand::Rng;
+use rand::RngExt;
 
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilderFast;

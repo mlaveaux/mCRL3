@@ -114,7 +114,7 @@ impl<T: fmt::Debug, U: fmt::Debug> fmt::Debug for Antichain<T, U> {
 mod tests {
     use merc_collections::vecset;
     use merc_utilities::random_test;
-    use rand::Rng;
+    use rand::RngExt;
 
     use crate::Antichain;
 

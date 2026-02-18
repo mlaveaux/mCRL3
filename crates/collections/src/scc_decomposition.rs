@@ -111,7 +111,9 @@ fn strongly_connect<F, G>(
                         .as_ref()
                         .expect("The state must be visited in the recursive call")
                         .index;
-                    let info = state_info[vertex_index.index()].as_mut().expect("This state was added before");
+                    let info = state_info[vertex_index.index()]
+                        .as_mut()
+                        .expect("This state was added before");
                     info.lowlink = info.lowlink.min(w_index);
                 }
             } else {
@@ -132,13 +134,17 @@ fn strongly_connect<F, G>(
                     .as_ref()
                     .expect("The state must be visited in the recursive call")
                     .lowlink;
-                let info = state_info[vertex_index.index()].as_mut().expect("This state was added before");
+                let info = state_info[vertex_index.index()]
+                    .as_mut()
+                    .expect("This state was added before");
                 info.lowlink = info.lowlink.min(w_lowlink);
             }
         }
     }
 
-    let info = state_info[vertex_index.index()].as_ref().expect("This state was added before");
+    let info = state_info[vertex_index.index()]
+        .as_ref()
+        .expect("This state was added before");
     if info.lowlink == info.index {
         // Start a new strongly connected component.
         while let Some(index) = stack.pop() {
