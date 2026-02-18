@@ -129,11 +129,10 @@ impl SymbolPool {
             let potential_number = &name[start_of_index..];
             let prefix = &name[..start_of_index];
 
-            if let Some(counter) = self.prefix_to_register_function_map.get(prefix) {
-                if let Ok(number) = potential_number.parse::<usize>() {
+            if let Some(counter) = self.prefix_to_register_function_map.get(prefix)
+                && let Ok(number) = potential_number.parse::<usize>() {
                     counter.fetch_max(number + 1, Ordering::Relaxed);
                 }
-            }
         }
     }
 

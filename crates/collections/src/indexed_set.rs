@@ -242,8 +242,8 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         F: FnMut(SetIndex, &mut T) -> bool,
     {
         for (index, element) in self.table.iter_mut().enumerate() {
-            if let IndexSetEntry::Filled(value) = element {
-                if !f(SetIndex(self.generation_counter.recall_index(index)), value) {
+            if let IndexSetEntry::Filled(value) = element
+                && !f(SetIndex(self.generation_counter.recall_index(index)), value) {
                     // Find and remove the IndexEntry from the index set
                     let entry_to_remove = self.index.iter().find(|entry| entry.index == index).cloned();
 
@@ -260,8 +260,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
                         }
                     };
                     self.free = Some(index);
-                }
-            };
+                };
         }
     }
 

@@ -200,21 +200,19 @@ impl BlockPartition {
             }
         }
 
-        if let Some(new_block) = new_block {
-            if (updated_block.end - updated_block.begin) != 0 {
-                // A new block was introduced, so we need to update the current
-                // block. Unless the current block is empty in which case
-                // nothing changes.
-                updated_block.unmark_all();
-                self.blocks[block_index] = updated_block;
+        if let Some(new_block) = new_block && (updated_block.end - updated_block.begin) != 0 {
+            // A new block was introduced, so we need to update the current
+            // block. Unless the current block is empty in which case
+            // nothing changes.
+            updated_block.unmark_all();
+            self.blocks[block_index] = updated_block;
 
-                // Introduce a new block for the split, containing only the new element.
-                self.blocks.push(new_block);
+            // Introduce a new block for the split, containing only the new element.
+            self.blocks.push(new_block);
 
-                // Update the elements for the new block
-                for element in new_block.iter(&self.elements) {
-                    self.element_to_block[element] = BlockIndex::new(self.blocks.len() - 1);
-                }
+            // Update the elements for the new block
+            for element in new_block.iter(&self.elements) {
+                self.element_to_block[element] = BlockIndex::new(self.blocks.len() - 1);
             }
         }
 
