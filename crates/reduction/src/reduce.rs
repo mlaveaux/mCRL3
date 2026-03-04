@@ -13,12 +13,14 @@ use crate::strong_bisim_sigref_naive;
 use crate::weak_bisim_sigref_inductive_naive;
 use crate::weak_bisim_sigref_naive;
 use crate::weak_bisimulation;
+use crate::weak_bisimulation_parallel;
 
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum Equivalence {
     /// Partition based refinement algorithms.
     WeakBisim,
+    WeakBisimParallel,
     /// Various signature based reduction algorithms.
     WeakBisimSigref,
     WeakBisimSigrefNaive,
@@ -38,6 +40,10 @@ pub fn reduce_lts<L: LTS>(
     match equivalence {
         Equivalence::WeakBisim => {
             let (lts, partition) = weak_bisimulation(lts, preprocess, timing);
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+        }
+        Equivalence::WeakBisimParallel => {
+            let (lts, partition) = weak_bisimulation_parallel(lts, preprocess, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigref => {
