@@ -12,6 +12,7 @@ use crate::strong_bisim_sigref_naive;
 use crate::weak_bisim_sigref_inductive_naive;
 use crate::weak_bisim_sigref_naive;
 use crate::weak_bisimulation;
+use crate::weak_bisimulation_parallel;
 
 // Compare two LTSs for equivalence using the given algorithm.
 pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preprocess: bool, timing: &mut Timing) -> bool {
@@ -22,6 +23,10 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
     match equivalence {
         Equivalence::WeakBisim => {
             let (lts, partition) = weak_bisimulation(merged, preprocess, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::WeakBisimParallel => {
+            let (lts, partition) = weak_bisimulation_parallel(merged, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigref => {
