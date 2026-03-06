@@ -313,6 +313,14 @@ where
                 .index
                 .get(&entry)
                 .expect("Insertion failed, so entry must be in the set");
+
+            // Call the drop function
+            unsafe { std::ptr::drop_in_place(ptr.as_ptr()) };
+
+            // Remove the entry we just created since it was not inserted            
+            unsafe { self.allocator.deallocate(ptr.cast(), layout); }
+
+
             return (StablePointer::from_entry(&element), false);
         }
 
