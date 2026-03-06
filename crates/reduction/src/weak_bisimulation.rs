@@ -187,7 +187,7 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
                     LabelIndex::new(0),
                 );
 
-                compute_weak_acts(&mut marked, &tau_mark, &tau_loop_free_lts);
+                compute_weak_acts(&mut marked, &tau_mark, &tau_loop_free_lts, &incoming);
 
                 while let Some(label) = find_act(&tau_loop_free_lts, &blocks, &mut marked) {
                     for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
@@ -255,7 +255,7 @@ fn compute_weak_act<L: LTS>(
 ///
 /// Requires s.tau_mark iff s ->> B.
 /// For all a in A sets s.marked[a] iff s =[a]> B.
-fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L) {
+fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L, incoming: &IncomingTransitions<'_>) {
     // For each s in state do s.marked := 0
     for entry in marked.iter_mut() {
         entry.fill(false);
@@ -269,9 +269,17 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lt
                 if tau_mark[*transition.to] {
                     marked[*t].set(*transition.label, true);
                 }
-            } else {
-                marked[transition.to] = marked[transition.to].clone() | marked[*t].clone();
             }
+        }
+
+        for transition in incoming.incoming_silent_transitions(t) {
+            marked[transition.to] = marked[transition.to].clone() | marked[*t].clone();
+        }
+    }
+
+    if cfg!(debug_assertions) {
+        for label in 0..lts.labels().len() {
+            
         }
     }
 }
