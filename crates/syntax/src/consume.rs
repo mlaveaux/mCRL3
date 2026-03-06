@@ -11,7 +11,9 @@ use merc_pest_consume::match_nodes;
 use crate::ActDecl;
 use crate::ActFrm;
 use crate::Action;
+use crate::ActionRHS;
 use crate::ActionRenameDecl;
+use crate::ActionRenameRule;
 use crate::Assignment;
 use crate::BagElement;
 use crate::Comm;
@@ -440,7 +442,7 @@ impl Mcrl2Parser {
                 Rule::ActSpec => {
                     action_declarations.append(&mut Mcrl2Parser::ActSpec(child)?);
                 }
-                Rule::ActionRenameRuleSpec => rename_declarations.push(Mcrl2Parser::ActionRenameRuleSpec(child)?),
+                Rule::ActionRenameRuleSpec => rename_declarations.append(&mut Mcrl2Parser::ActionRenameRuleSpec(child)?),
                 Rule::EOI => {
                     // End of input
                     break;
@@ -1040,6 +1042,10 @@ impl Mcrl2Parser {
         Ok(())
     }
 
+    fn ProcExprDelta(_input: ParseNode) -> ParseResult<()> {
+        Ok(())
+    }
+
     pub(crate) fn MultAct(input: ParseNode) -> ParseResult<MultiAction> {
         match_nodes!(input.into_children();
             [MultiActTau(_)] => {
@@ -1451,8 +1457,44 @@ impl Mcrl2Parser {
         )
     }
 
-    fn ActionRenameRuleSpec(spec: ParseNode) -> ParseResult<ActionRenameDecl> {
-        unimplemented!();
+    fn ActionRenameRuleSpec(spec: ParseNode) -> ParseResult<Vec<ActionRenameDecl>> {
+        match_nodes!(spec.into_children();
+            [VarSpec(variables_specification), ActionRenameRule(renames)..] => {
+                Ok(renames.map(|rename_rule| {
+                    ActionRenameDecl { variables_specification: variables_specification.clone(), rename_rule }
+                }).collect())
+            },
+            [ActionRenameRule(renames)..] => {
+                Ok(renames.map(|rename_rule| {
+                    ActionRenameDecl { variables_specification: Vec::new(), rename_rule }
+                }).collect())
+            },
+        )
+    }
+
+    fn ActionRenameRule(input: ParseNode) -> ParseResult<ActionRenameRule> {
+        match_nodes!(input.into_children();
+            [DataExpr(condition), Action(action), ActionRenameRuleRHS(rhs)] => {
+                Ok(ActionRenameRule { condition: Some(condition), action, rhs })
+            },
+            [Action(action), ActionRenameRuleRHS(rhs)] => {
+                Ok(ActionRenameRule { condition: None, action, rhs })
+            },
+        )
+    }
+
+    fn ActionRenameRuleRHS(input: ParseNode) -> ParseResult<ActionRHS> {
+        match_nodes!(input.into_children();
+            [Action(action)] => {
+                Ok(ActionRHS::Action(action))
+            },
+            [MultiActTau(_)] => {
+                Ok(ActionRHS::Tau)
+            },
+            [ProcExprDelta(_)] => {
+                Ok(ActionRHS::Delta)
+            },
+        )
     }
 
     fn FormSpec(input: ParseNode) -> ParseResult<StateFrm> {

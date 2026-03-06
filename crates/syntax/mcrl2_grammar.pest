@@ -562,8 +562,8 @@ ActionRenameRuleSpec = { VarSpec? ~ "rename" ~ ActionRenameRule+ }
 ActionRenameRule = { (DataExpr ~ "->")? ~ Action ~ "=>" ~ ActionRenameRuleRHS ~ ";" }
 
 ActionRenameRuleRHS = {
-      "tau"                                                        // Tau, hidden action, empty multi-action
-    | "delta"                                                      // Delta, deadlock, inaction
+       MultiActTau                                                 // Tau, hidden action, empty multi-action
+    |  ProcExprDelta                                               // Delta, deadlock, inaction
     |  Action                                                      // Action
 }
 
