@@ -1,10 +1,18 @@
 use std::hash::Hash;
 
+use merc_utilities::TagIndex;
+
+/// A unique type for declarations.
+pub struct DeclTag;
+
+/// The index type for a label.
+pub type DeclId = TagIndex<usize, DeclTag>;
+
 /// A complete mCRL2 process specification.
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedProcessSpecification {
     pub data_specification: UntypedDataSpecification,
-    pub global_variables: Vec<VarDecl>,
+    pub global_variables: Vec<IdDecl>,
     pub action_declarations: Vec<ActDecl>,
     pub process_declarations: Vec<ProcDecl>,
     pub init: Option<ProcessExpr>,
@@ -43,7 +51,7 @@ impl UntypedDataSpecification {
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedPbes {
     pub data_specification: UntypedDataSpecification,
-    pub global_variables: Vec<VarDecl>,
+    pub global_variables: Vec<IdDecl>,
     pub equations: Vec<PbesEquation>,
     pub init: PropVarInst,
 }
@@ -52,7 +60,7 @@ pub struct UntypedPbes {
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedPres {
     pub data_specification: UntypedDataSpecification,
-    pub global_variables: Vec<VarDecl>,
+    pub global_variables: Vec<IdDecl>,
     pub equations: Vec<PresEquation>,
     pub init: PropVarInst,
 }
@@ -60,7 +68,7 @@ pub struct UntypedPres {
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct PropVarDecl {
     pub identifier: String,
-    pub parameters: Vec<VarDecl>,
+    pub parameters: Vec<IdDecl>,
     pub span: Span,
 }
 
@@ -71,7 +79,7 @@ pub struct PropVarInst {
 }
 
 /// A declaration of an identifier with its sort.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct IdDecl {
     /// Identifier being declared
     pub identifier: String,
@@ -79,6 +87,20 @@ pub struct IdDecl {
     pub sort: SortExpression,
     /// Source location information
     pub span: Span,
+    /// Unique ID assigned to this declaration during name resolution.
+    pub id: Option<DeclId>,
+}
+
+impl IdDecl {
+    /// Creates a new identifier declaration with the given identifier, sort, and span.
+    pub fn new(identifier: String, sort: SortExpression, span: Span) -> Self {
+        IdDecl {
+            identifier,
+            sort,
+            span,
+            id: None,
+        }
+    }
 }
 
 /// Expression representing a sort (type).
@@ -142,19 +164,25 @@ pub struct SortDecl {
     pub expr: Option<SortExpression>,
     /// Where the sort is defined
     pub span: Span,
+    /// Unique ID assigned to this declaration during name resolution.
+    pub id: Option<DeclId>,
 }
 
-/// Variable declaration
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct VarDecl {
-    pub identifier: String,
-    pub sort: SortExpression,
-    pub span: Span,
+impl SortDecl {
+    /// Creates a new sort declaration with the given identifier, expression, and span.
+    pub fn new(identifier: String, expr: Option<SortExpression>, span: Span) -> Self {
+        SortDecl {
+            identifier,
+            expr,
+            span,
+            id: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EqnSpec {
-    pub variables: Vec<VarDecl>,
+    pub variables: Vec<IdDecl>,
     pub equations: Vec<EqnDecl>,
 }
 
@@ -179,7 +207,7 @@ pub struct ActDecl {
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct ProcDecl {
     pub identifier: String,
-    pub params: Vec<VarDecl>,
+    pub params: Vec<IdDecl>,
     pub body: ProcessExpr,
     pub span: Span,
 }
@@ -232,16 +260,16 @@ pub enum DataExpr {
     EmptyBag,
     Bag(Vec<BagElement>),
     SetBagComp {
-        variable: VarDecl,
+        variable: IdDecl,
         predicate: Box<DataExpr>,
     },
     Lambda {
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         body: Box<DataExpr>,
     },
     Quantifier {
         op: Quantifier,
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         body: Box<DataExpr>,
     },
     Unary {
@@ -298,11 +326,11 @@ pub enum ProcessExpr {
     Delta,
     Tau,
     Sum {
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         operand: Box<ProcessExpr>,
     },
     Dist {
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         expr: DataExpr,
         operand: Box<ProcessExpr>,
     },
@@ -434,12 +462,12 @@ pub enum StateFrm {
     },
     Quantifier {
         quantifier: Quantifier,
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         body: Box<StateFrm>,
     },
     Bound {
         bound: Bound,
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         body: Box<StateFrm>,
     },
     FixedPoint {
@@ -531,7 +559,7 @@ pub enum ActFrm {
     Negation(Box<ActFrm>),
     Quantifier {
         quantifier: Quantifier,
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         body: Box<ActFrm>,
     },
     Binary {
@@ -547,7 +575,7 @@ pub enum PbesExpr {
     PropVarInst(PropVarInst),
     Quantifier {
         quantifier: Quantifier,
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         body: Box<PbesExpr>,
     },
     Negation(Box<PbesExpr>),
@@ -602,7 +630,7 @@ pub enum PresExpr {
     },
     Bound {
         op: Bound,
-        variables: Vec<VarDecl>,
+        variables: Vec<IdDecl>,
         expr: Box<PresExpr>,
     },
     Equal {
@@ -678,7 +706,7 @@ pub struct UntypedActionRenameSpec {
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct ActionRenameDecl {
-    pub variables_specification: Vec<VarDecl>,
+    pub variables_specification: Vec<IdDecl>,
     pub rename_rule: ActionRenameRule,
 }
 

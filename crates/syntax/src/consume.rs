@@ -1,5 +1,3 @@
-#![allow(clippy::result_large_err)]
-
 use std::iter;
 
 use itertools::Itertools;
@@ -53,7 +51,6 @@ use crate::UntypedPbes;
 use crate::UntypedPres;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
-use crate::VarDecl;
 use crate::parse_actfrm;
 use crate::parse_dataexpr;
 use crate::parse_pbesexpr;
@@ -367,7 +364,7 @@ impl Mcrl2Parser {
         Ok(result)
     }
 
-    fn GlobVarSpec(spec: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    fn GlobVarSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(spec.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
@@ -499,13 +496,13 @@ impl Mcrl2Parser {
 
         match_nodes!(decl.into_children();
             [IdAt(identifier), SortExpr(expr)] => {
-                Ok(vec![SortDecl { identifier, expr: Some(expr), span: span.into() }])
+                Ok(vec![SortDecl::new(identifier, Some(expr), span.into())])
             },
             [IdList(ids)] => {
-                Ok(ids.iter().map(|identifier| SortDecl { identifier: identifier.clone(), expr: None, span: span.into() }).collect())
+                Ok(ids.iter().map(|identifier| SortDecl::new(identifier.clone(), None, span.into())).collect())
             },
             [IdsDecl(decl)] => {
-                Ok(decl.iter().map(|element| SortDecl { identifier: element.identifier.clone(), expr: Some(element.sort.clone()), span: span.into() }).collect())
+                Ok(decl.iter().map(|element| SortDecl::new(element.identifier.clone(), Some(element.sort.clone()), span.into())).collect())
             }
         )
     }
@@ -564,7 +561,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn StateFrmExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn StateFrmExists(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -572,7 +569,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn StateFrmForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn StateFrmForall(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -596,7 +593,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn ActFrmExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn ActFrmExists(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -604,7 +601,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn ActFrmForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn ActFrmForall(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -690,7 +687,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn VarSpec(vars: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    fn VarSpec(vars: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(vars.into_children();
             [VarsDeclList(ids)..] => {
                 Ok(ids.flatten().collect())
@@ -698,7 +695,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn VarsDeclList(vars: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn VarsDeclList(vars: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(vars.into_children();
             [VarsDecl(decl)..] => {
                 Ok(decl.flatten().collect())
@@ -706,14 +703,14 @@ impl Mcrl2Parser {
         )
     }
 
-    fn VarsDecl(decl: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    fn VarsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let mut vars = Vec::new();
 
         let span = decl.as_span();
         match_nodes!(decl.into_children();
             [IdList(identifier), SortExpr(sort)] => {
                 for id in identifier {
-                    vars.push(VarDecl { identifier: id, sort: sort.clone(), span: span.into() });
+                    vars.push(IdDecl::new(id, sort.clone(), span.into()));
                 }
             },
         );
@@ -893,16 +890,16 @@ impl Mcrl2Parser {
         Ok(DataExpr::Number(input.as_str().into()))
     }
 
-    fn VarDecl(decl: ParseNode) -> ParseResult<VarDecl> {
+    fn VarDecl(decl: ParseNode) -> ParseResult<IdDecl> {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
             [IdAt(identifier), SortExpr(sort)] => {
-                Ok(VarDecl { identifier, sort, span: span.into() })
+                Ok(IdDecl::new(identifier, sort, span.into()))
             },
         )
     }
 
-    pub(crate) fn DataExprLambda(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn DataExprLambda(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
@@ -910,7 +907,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn DataExprForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn DataExprForall(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
@@ -918,7 +915,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn DataExprExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn DataExprExists(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
@@ -1144,7 +1141,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn ProcExprSum(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn ProcExprSum(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -1152,7 +1149,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn ProcExprDist(input: ParseNode) -> ParseResult<(Vec<VarDecl>, DataExpr)> {
+    pub(crate) fn ProcExprDist(input: ParseNode) -> ParseResult<(Vec<IdDecl>, DataExpr)> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables), DataExpr(expr)] => {
                 Ok((variables, expr))
@@ -1305,7 +1302,7 @@ impl Mcrl2Parser {
         })
     }
 
-    pub(crate) fn PbesExprForall(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn PbesExprForall(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
@@ -1313,7 +1310,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn PbesExprExists(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn PbesExprExists(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(vars)] => {
                 Ok(vars)
@@ -1374,7 +1371,7 @@ impl Mcrl2Parser {
         match_nodes!(decl.into_children();
             [IdInfixList(identifiers), SortExpr(sort)] => {
                 let id_decls = identifiers.into_iter().map(|identifier| {
-                    IdDecl { identifier, sort: sort.clone(), span: span.into() }
+                    IdDecl::new(identifier, sort.clone(), span.into())
                 }).collect();
 
                 Ok(id_decls)
@@ -1505,7 +1502,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn StateFrmSup(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn StateFrmSup(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -1513,7 +1510,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn StateFrmInf(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn StateFrmInf(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -1521,7 +1518,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn StateFrmSum(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn StateFrmSum(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -1529,7 +1526,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn PresExprInf(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn PresExprInf(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -1537,7 +1534,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn PresExprSup(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn PresExprSup(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)
@@ -1545,7 +1542,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn PresExprSum(input: ParseNode) -> ParseResult<Vec<VarDecl>> {
+    pub(crate) fn PresExprSum(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
         match_nodes!(input.into_children();
             [VarsDeclList(variables)] => {
                 Ok(variables)

@@ -46,7 +46,6 @@ use crate::UntypedDataSpecification;
 use crate::UntypedPbes;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
-use crate::VarDecl;
 
 /// Prints location information for a span in the source.
 pub fn print_location(input: &str, span: &Span) {
@@ -267,12 +266,6 @@ impl fmt::Display for ActDecl {
     }
 }
 
-impl fmt::Display for VarDecl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} : {}", self.identifier, self.sort)
-    }
-}
-
 impl fmt::Display for EqnDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.condition {
@@ -332,7 +325,7 @@ impl fmt::Display for DataExpr {
 
 impl fmt::Display for IdDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} : {}", self.identifier, self.sort)
+        write!(f, "{}: {}", self.identifier, self.sort)
     }
 }
 
