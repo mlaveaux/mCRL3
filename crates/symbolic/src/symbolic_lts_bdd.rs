@@ -294,6 +294,8 @@ pub struct SummandGroupBdd {
 
 impl SummandGroupBdd {
     /// Creates a new summand group with the given transition relation.
+    ///
+    /// Read variables are current state variables, and write variables are next state variables.
     pub fn new(relation: BDDFunction, read_variables: Vec<VarNo>, write_variables: Vec<VarNo>) -> Self {
         Self {
             relation,

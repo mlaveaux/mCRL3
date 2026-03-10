@@ -318,7 +318,7 @@ impl<'a, L> Edge<'a, L> {
     }
 
     /// Returns the label of the edge.
-    pub fn label(&self) -> &L {
+    pub fn label(&self) -> &'a L {
         self.label
     }
 

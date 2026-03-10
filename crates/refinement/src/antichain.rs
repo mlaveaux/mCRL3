@@ -4,9 +4,14 @@ use std::hash::Hash;
 
 use merc_collections::VecSet;
 
-/// An antichain is a data structure that stores pairs of (s, T) \subset S x 2^S, where `S` is a set of elements that have a total order <.
-/// The antichain maintains the invariant that for any two pairs (s1, T1) and (s2, T2) in the antichain, neither s1 < s2 nor s2 < s1 holds, i.e.,
-/// it is dual to a chain.
+/// An antichain is a structure (<, S) such that < is a preorder on S, such that
+/// for any s, t in S neither s < t nor t < s holds. In other words, all
+/// elements of S are incomparable under the preorder <. This is dual to to
+/// notion of a chain.
+/// 
+/// # Details
+/// 
+/// This implementation stores pairs (s, T) in S.
 pub struct Antichain<K, V> {
     storage: HashMap<K, VecSet<VecSet<V>>>,
 
@@ -31,6 +36,10 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
 
     /// Inserts the given (s, T) pair into the antichain and returns true iff it was
     /// not already present.
+    /// 
+    /// # Details
+    /// 
+    /// A pair (s, T) is `present` in `S` iff there exists a pair (s, T') in S such that T < T'.
     pub fn insert(&mut self, key: K, value: VecSet<V>) -> bool {
         let mut inserted = false;
         self.storage
