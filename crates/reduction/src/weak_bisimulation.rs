@@ -187,7 +187,7 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
                     LabelIndex::new(0),
                 );
 
-                compute_weak_acts(&mut marked, &tau_mark, &tau_loop_free_lts, &incoming);
+                compute_weak_acts(&mut marked, &tau_mark, &tau_loop_free_lts, &incoming, &blocks, block_index);
 
                 while let Some(label) = find_act(&tau_loop_free_lts, &blocks, &mut marked) {
                     for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
@@ -255,7 +255,44 @@ fn compute_weak_act<L: LTS>(
 ///
 /// Requires s.tau_mark iff s ->> B.
 /// For all a in A sets s.marked[a] iff s =[a]> B.
-fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L, incoming: &IncomingTransitions<'_>) {
+/// 
+/// Note that `B` is only used for debugging checks, and is not used in the actual algorithm.
+fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
+    if cfg!(debug_assertions) {
+        // Check that compute_weak_act results in the same markings as the optimised compute_weak_acts procedure.
+        
+        // Determine the act_mark for every label.
+        let mut tau_mark_copy = tau_mark.clone();
+
+        // Skip the tau action (index 0)
+        let act_mark = (1..lts.labels().len()).map(|label| {
+            let mut act_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
+
+            for s in lts.iter_states() {
+                act_mark.set(*s, marked[*s][label]);
+            }
+
+            compute_weak_act(&mut act_mark, &mut tau_mark_copy, lts, &blocks, incoming, block, LabelIndex::new(label));
+            debug_assert_eq!(tau_mark_copy, *tau_mark, "The tau mark should not be modified by compute_weak_act when a is not tau");
+            act_mark
+        }).collect::<Vec<_>>();
+
+        // Compute the markings using the optimised procedure.
+        compute_weak_acts_inner(marked, tau_mark, lts, incoming);
+        
+        // Check for correctness.
+        for label in 1..lts.labels().len() {
+            debug_assert!(act_mark[label].iter().zip(marked.iter()).all(|(a, m)| a == m[label]), "The act mark should be the same as the corresponding column in marked");
+        }
+    } else {
+        // No checking for correctness.
+        compute_weak_acts_inner(marked, tau_mark, lts, incoming);
+    }
+}
+
+/// The inner implementation of [compute_weak_acts].
+fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L, incoming: &IncomingTransitions<'_>) {
+    
     // For each s in state do s.marked := 0
     for entry in marked.iter_mut() {
         entry.fill(false);
@@ -272,14 +309,9 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lt
             }
         }
 
+        // For each s -[tau]-> t do
         for transition in incoming.incoming_silent_transitions(t) {
             marked[transition.to] = marked[transition.to].clone() | marked[*t].clone();
-        }
-    }
-
-    if cfg!(debug_assertions) {
-        for label in 0..lts.labels().len() {
-            
         }
     }
 }
