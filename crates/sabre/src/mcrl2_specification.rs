@@ -1,16 +1,10 @@
-use std::ops::ControlFlow;
-
 use merc_aterm::ATerm;
 use merc_aterm::Symbol;
 use merc_data::DataApplication;
 use merc_data::DataExpression;
-use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
 use merc_syntax::EqnDecl;
-use merc_syntax::Sort;
-use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::visit_sort_expr;
 use merc_utilities::MercError;
 
 use crate::Condition;
@@ -18,7 +12,7 @@ use crate::RewriteSpecification;
 use crate::Rule;
 
 /// Converts an `DataSpecification` to a `RewriteSpecification` by converting each equation declaration to a rewrite rule.
-pub fn to_rewrite_spec(spec: &DataSpecification) -> Result<RewriteSpecification, MercError> {
+pub fn to_rewrite_spec(spec: &UntypedDataSpecification) -> Result<RewriteSpecification, MercError> {
     let mut rewrite_rules = Vec::new();
 
     let true_term = DataApplication::with_args(&ATerm::constant(&Symbol::new("true", 0)), &[] as &[ATerm]).into();

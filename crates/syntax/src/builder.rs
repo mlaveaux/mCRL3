@@ -1,6 +1,8 @@
 use merc_utilities::MercError;
 
-use crate::{Sort, SortExpression, StateFrm};
+use crate::RegFrm;
+use crate::SortExpression;
+use crate::StateFrm;
 
 /// Applies the given function recursively to the state formula.
 ///
@@ -20,6 +22,58 @@ where
     F: FnMut(&SortExpression) -> Result<Option<SortExpression>, MercError>,
 {
     apply_sort_expression_rec(sort_expr, &mut function)
+}
+
+/// Applies the given `function` recursively to the regular formula.
+///
+/// # Details
+///
+/// The substitution function is a partial function, where `Some(formula)`
+/// indicates that substitution should be applied.
+pub fn apply_regular_formula<F>(formula: RegFrm, mut function: F) -> Result<RegFrm, MercError>
+where
+    F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>,
+{
+    apply_regular_formula_rec(formula, &mut function)
+}
+
+/// See [apply_regular_formula].
+fn apply_regular_formula_rec<F>(formula: RegFrm, apply: &mut F) -> Result<RegFrm, MercError>
+where
+    F: FnMut(&RegFrm) -> Result<Option<RegFrm>, MercError>,
+{
+    if let Some(formula) = apply(&formula)? {
+        // A substitution was made, return the new formula.
+        return Ok(formula);
+    }
+
+    match formula {
+        RegFrm::Iteration(reg_frm) => {
+            let new_reg_frm = apply_regular_formula_rec(*reg_frm, apply)?;
+            Ok(RegFrm::Iteration(Box::new(new_reg_frm)))
+        }
+        RegFrm::Plus(reg_frm) => {
+            let new_reg_frm = apply_regular_formula_rec(*reg_frm, apply)?;
+            Ok(RegFrm::Plus(Box::new(new_reg_frm)))
+        }
+        RegFrm::Sequence { lhs, rhs } => {
+            let new_lhs = apply_regular_formula_rec(*lhs, apply)?;
+            let new_rhs = apply_regular_formula_rec(*rhs, apply)?;
+            Ok(RegFrm::Sequence {
+                lhs: Box::new(new_lhs),
+                rhs: Box::new(new_rhs),
+            })
+        }
+        RegFrm::Choice { lhs, rhs } => {
+            let new_lhs = apply_regular_formula_rec(*lhs, apply)?;
+            let new_rhs = apply_regular_formula_rec(*rhs, apply)?;
+            Ok(RegFrm::Choice {
+                lhs: Box::new(new_lhs),
+                rhs: Box::new(new_rhs),
+            })
+        }
+        _ => Ok(formula),
+    }
 }
 
 /// See [`apply_statefrm`].
