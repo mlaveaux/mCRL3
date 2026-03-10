@@ -55,6 +55,8 @@ fn support_edge<'id>(
     }
 }
 
+pub type Substitution = [(VarNo, VarNo)];
+
 /// Specialized substitution function for variables renaming that only works for
 /// `f[x <- x+1]` renamings.
 ///
@@ -76,7 +78,7 @@ fn support_edge<'id>(
 pub fn variable_rename(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
-    substitution: &[(VarNo, VarNo)],
+    substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
     // Every subsitution must be from a lower variable to a higher variable.
     for (from, to) in substitution {
@@ -98,7 +100,7 @@ pub fn variable_rename_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<BDDFunction, BDDFunction>,
     function: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
-    substitution: &[(VarNo, VarNo)],
+    substitution: &Substitution,
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
     let node = match manager.get_node(&function) {
         Node::Terminal(terminal) => return manager.get_terminal(terminal),
@@ -185,7 +187,7 @@ pub fn variable_rename_edge<'id>(
 pub fn variable_rename_reverse(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
-    substitution: &[(VarNo, VarNo)],
+    substitution: &Substitution
 ) -> Result<BDDFunction, OutOfMemory> {
     // Every subsitution must be from a lower variable to a higher variable.
     for (from, to) in substitution {
@@ -205,9 +207,9 @@ pub fn variable_rename_reverse(
 /// Implementation of [variable_rename].
 pub fn variable_rename_reverse_edge<'id, 'a>(
     manager: &<BDDFunction as Function>::Manager<'id>,
-    cache: &mut FxHashMap<(BDDFunction, &'a [(VarNo, VarNo)]), BDDFunction>,
+    cache: &mut FxHashMap<(BDDFunction, &'a Substitution), BDDFunction>,
     function: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
-    substitution: &'a [(VarNo, VarNo)],
+    substitution: &'a Substitution,
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
     let node = match manager.get_node(&function) {
         Node::Terminal(terminal) => return manager.get_terminal(terminal),
