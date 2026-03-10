@@ -29,7 +29,7 @@ pub fn random_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Ve
 
 /// Returns a sorted vector of the given length with unique u64 values (from 0..max_value).
 pub fn random_sorted_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Vec<Value> {
-    let mut result = (0..max_value).choose_multiple(rng, length);
+    let mut result = (0..max_value).sample(rng, length);
     result.sort();
     result
 }
