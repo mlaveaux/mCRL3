@@ -42,6 +42,7 @@ members = [
     "crates/symbolic",
     "crates/syntax",
     "crates/tools",
+    "crates/typecheck",
     "crates/unsafety",
     "crates/unsafety/benchmarks",
     "crates/utilities",

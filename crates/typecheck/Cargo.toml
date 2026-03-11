@@ -1,0 +1,15 @@
+[package]
+name = "merc_typecheck"
+
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+indoc.workspace = true
+
+merc_syntax.workspace = true
+merc_utilities.workspace = true
