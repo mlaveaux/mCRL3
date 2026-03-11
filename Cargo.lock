@@ -1395,6 +1395,7 @@ dependencies = [
  "merc_aterm",
  "merc_data",
  "merc_syntax",
+ "merc_typecheck",
  "merc_utilities",
  "rand",
  "rustc-hash 2.1.2",
@@ -1499,6 +1500,15 @@ dependencies = [
  "log",
  "merc_utilities",
  "winapi",
+]
+
+[[package]]
+name = "merc_typecheck"
+version = "1.0.0"
+dependencies = [
+ "indoc",
+ "merc_syntax",
+ "merc_utilities",
 ]
 
 [[package]]
