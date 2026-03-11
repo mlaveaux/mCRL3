@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::fmt;
+use std::marker::PhantomData;
 use std::slice::Iter;
 
 use itertools::Itertools;
@@ -43,9 +45,13 @@ impl<T: Ord> VecSet<T> {
 
     /// Creates a VecSet from the given vector without assuming anything of the given vector.
     pub fn from_vec(mut vec: Vec<T>) -> Self {
-        vec.sort();
+        vec.sort_unstable();
         vec.dedup();
         Self { sorted_array: vec }
+    }
+
+    pub fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from_vec(iter.into_iter().collect())
     }
 
     /// Returns the capacity of the set.
@@ -84,13 +90,13 @@ impl<T: Ord> VecSet<T> {
         while let Some(self_val) = self_next {
             match other_next {
                 Some(other_val) => {
-                    if self_val == other_val {
-                        self_next = self_iter.next();
-                        other_next = other_iter.next();
-                    } else if self_val > other_val {
-                        other_next = other_iter.next();
-                    } else {
-                        return false; // self_val < other_val
+                    match self_val.cmp(other_val) {
+                        Ordering::Equal => {
+                            self_next = self_iter.next();
+                            other_next = other_iter.next();
+                        }
+                        Ordering::Greater => other_next = other_iter.next(),
+                        Ordering::Less => return false, // self_val is smaller, not in other
                     }
                 }
                 None => return false, // other is exhausted
@@ -110,6 +116,16 @@ impl<T: Ord> VecSet<T> {
     /// Returns true iff the set is empty.
     pub fn is_empty(&self) -> bool {
         self.sorted_array.is_empty()
+    }
+
+    /// Returns the difference of this set and the other set.
+    pub fn difference<'a>(&'a self, other: &'a VecSet<T>) -> impl Iterator<Item = &'a T> {      
+        Difference::<'a, T, _> {
+            self_iter: self.sorted_array.iter(),
+            other_iter: other.sorted_array.iter(),
+            other_next: None,
+            marker: PhantomData,
+        }             
     }
 
     /// Inserts the given element into the set, returns true iff the element was
@@ -140,6 +156,48 @@ impl<T: Ord> VecSet<T> {
     }
 }
 
+/// A lazy iterator that yields the difference of two sets. The elements are yielded in sorted order.
+struct Difference<'a, T, I> {
+    self_iter: I,
+    other_iter: I,
+    other_next: Option<&'a T>,
+    marker: PhantomData<&'a T>,
+}
+
+impl<'a, T, I> Iterator for Difference<'a, T, I>
+where
+    I: Iterator<Item = &'a T>,
+    T: Ord + PartialEq,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.other_next.is_none() {
+            self.other_next = self.other_iter.next();
+        }
+
+        while let Some(self_val) = self.self_iter.next() {
+            loop {
+                match self.other_next {
+                    Some(other_val) => {
+                        match self_val.cmp(other_val) {
+                            Ordering::Equal => {
+                                self.other_next = self.other_iter.next();
+                                break;
+                            }
+                            Ordering::Greater => self.other_next = self.other_iter.next(),
+                            Ordering::Less => return Some(self_val), // self_val is smaller, yield it
+                        }
+                    }
+                    None => return Some(self_val), // other is exhausted, yield remaining elements of self
+                }
+            }
+        }
+
+        None
+    }
+}
+
 impl<T: Ord> Default for VecSet<T> {
     fn default() -> Self {
         Self::new()
@@ -158,5 +216,41 @@ impl<'a, T> IntoIterator for &'a VecSet<T> {
 impl<T: fmt::Debug> fmt::Debug for VecSet<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{{:?}}}", self.sorted_array.iter().format(", "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use rand::RngExt;
+    
+    use merc_utilities::random_test;
+
+    use crate::VecSet;
+
+    #[test]
+    fn test_random_vecset_difference() {
+        random_test(100, |rng| {
+            let size = rng.random_range(0..20);
+            let size2 = rng.random_range(0..20);
+            let vec1: Vec<u32> = (0..size).map(|_| rng.random_range(0..100)).collect();
+            let vec2: Vec<u32> = (0..size2).map(|_| rng.random_range(0..100)).collect();
+
+            let set1 = VecSet::from_vec(vec1.clone());
+            let set2 = VecSet::from_vec(vec2.clone());
+
+            println!("left: {:?}", set1);
+            println!("right: {:?}", set2);
+
+            let difference: Vec<u32> = set1.difference(&set2).cloned().collect();
+            let expected_difference: Vec<u32> = vec1
+                .into_iter()
+                .filter(|x| !vec2.contains(x))
+                .sorted()
+                .dedup()
+                .collect();
+
+            assert_eq!(difference, expected_difference);
+        })
     }
 }
