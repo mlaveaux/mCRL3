@@ -119,13 +119,13 @@ impl<T: Ord> VecSet<T> {
     }
 
     /// Returns the difference of this set and the other set.
-    pub fn difference<'a>(&'a self, other: &'a VecSet<T>) -> impl Iterator<Item = &'a T> {      
+    pub fn difference<'a>(&'a self, other: &'a VecSet<T>) -> impl Iterator<Item = &'a T> {
         Difference::<'a, T, _> {
             self_iter: self.sorted_array.iter(),
             other_iter: other.sorted_array.iter(),
             other_next: None,
             marker: PhantomData,
-        }             
+        }
     }
 
     /// Inserts the given element into the set, returns true iff the element was
@@ -138,6 +138,21 @@ impl<T: Ord> VecSet<T> {
         }
 
         false
+    }
+
+    /// Extends this set with the elements from the given iterator, returns true iff at least one element was inserted.
+    pub fn extend<'a, I: IntoIterator<Item = &'a T>>(&mut self, iter: I) -> bool
+    where
+        T: Clone + 'a,
+    {
+        let mut inserted = false;
+        for element in iter {
+            if self.insert(element.clone()) {
+                inserted = true;
+            }
+        }
+
+        inserted
     }
 
     /// Returns an iterator over the elements in the set, they are yielded in sorted order.
@@ -223,7 +238,7 @@ impl<T: fmt::Debug> fmt::Debug for VecSet<T> {
 mod tests {
     use itertools::Itertools;
     use rand::RngExt;
-    
+
     use merc_utilities::random_test;
 
     use crate::VecSet;
