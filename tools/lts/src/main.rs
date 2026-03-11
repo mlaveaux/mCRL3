@@ -21,6 +21,7 @@ use merc_lts::write_aut;
 use merc_lts::write_bcg;
 use merc_reduction::Equivalence;
 use merc_reduction::reduce_lts;
+use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
 use merc_refinement::generate_formula;
 use merc_refinement::refines;
@@ -317,6 +318,7 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
             left,
             right,
             args.refinement,
+            ExplorationStrategy::BFS,
             !args.no_preprocess,
             args.counter_example.is_some(),
             timing,
