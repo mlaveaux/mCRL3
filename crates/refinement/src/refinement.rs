@@ -1,21 +1,43 @@
-use merc_lts::LTS;
+use log::trace;
+use merc_lts::{StateIndex, LTS};
+use merc_reduction::{quotient_lts_block, reduce_lts, strong_bisim_sigref, Equivalence, Partition};
 use merc_utilities::Timing;
 
-use crate::CounterExample;
-use crate::ExplorationStrategy;
-use crate::is_failures_refinement;
+use crate::{is_failures_refinement, CounterExample, CounterExampleConstructor};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum RefinementType {
+    /// Checks for (strong) trace inclusion, i.e., whether all traces of the implementation are also traces of the specification.
     Trace,
+    /// Checks for weak trace inclusion, i.e., whether all weak traces of the implementation are also weak traces of the specification.
     Weaktrace,
+    /// Checks for stable failures inclusion, i.e., whether all stable failures of the implementation are also stable failures of the specification.
+    StableFailures,
+}
+
+/// Determines the exploration strategy for the failures refinement algorithm.
+///
+/// Typically `BFS` is more suited for counter examples, but `DFS` can be more efficient
+/// in practice when a counter example is not required.
+#[derive(Clone, Copy)]
+pub enum ExplorationStrategy {
+    BFS,
+    DFS,
 }
 
 /// Checks whether `impl_lts` refines `spec_lts` according to the given
-/// `refinement`.
+/// `refinement` relation.
 ///
 /// # Details
+///
+/// The `refinement_type` determines (weak) trace inclusions, failures inclusion
+/// and divergence failures inclusion etc.
+///
+/// The `strategy` parameter determines whether a breadth-first search
+/// or depth-first search is used to explore the state space. Breadth-first search
+/// is often better suited for finding short counter examples, while depth-first
+/// search often uses less memory.
 ///
 /// The `preprocess` flag indicates whether preprocessing should be applied to
 /// the LTSs. The refinement checks often involve product constructions, and
@@ -26,17 +48,91 @@ pub fn refines<L: LTS>(
     impl_lts: L,
     spec_lts: L,
     refinement: RefinementType,
+    strategy: ExplorationStrategy,
     preprocess: bool,
     counter_example: bool,
     timing: &mut Timing,
 ) -> (bool, Option<CounterExample<L::Label>>) {
-    is_failures_refinement(
-        impl_lts,
-        spec_lts,
-        refinement,
-        ExplorationStrategy::BFS,
-        preprocess,
-        counter_example,
-        timing,
-    )
+    let reduction = match refinement {
+        RefinementType::Trace => Equivalence::StrongBisim,
+        RefinementType::Weaktrace|RefinementType::StableFailures => Equivalence::BranchingBisim,
+    };
+
+    // For the preprocessing/quotienting step it makes sense to merge both LTSs
+    // together in case that some states are equivalent. So we do this in all branches.
+    let (merged_lts, initial_spec) = if preprocess {
+        if counter_example {
+            // If a counter example is to be generated, we only reduce the
+            // specification LTS such that the resulting counter example remains valid.
+            let reduced_spec = reduce_lts(spec_lts, reduction, true, timing);
+            impl_lts.merge_disjoint(&reduced_spec)
+        } else {
+            let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
+
+            // Reduce all states in the merged LTS.
+            match reduction {
+                Equivalence::StrongBisim => {
+                    let (preprocess_lts, partition) = strong_bisim_sigref(merged_lts, timing);
+
+                    let initial_spec = partition.block_number(initial_spec);
+                    let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
+
+                    // After partitioning the block becomes the state in the reduced_lts.
+                    (reduced_lts, StateIndex::new(*initial_spec))
+                }
+                _ => unimplemented!(),
+            }
+        }
+    } else {
+        impl_lts.merge_disjoint(&spec_lts)
+    };
+
+    timing.measure("refinement", || {
+        if counter_example {
+            // Construct a counter example tree, and return a trace.
+            let mut ce_constructor = CounterExampleConstructor::new();
+            let (result, state) = match refinement {
+                RefinementType::Trace | RefinementType::Weaktrace | RefinementType::StableFailures => {
+                    is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ce_constructor)
+                }
+            };
+
+            trace!("Counter example tree: {:?}", ce_constructor);
+
+            if let Some(state) = state {
+                // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
+                (
+                    result,
+                    Some(if refinement == RefinementType::Trace {
+                        CounterExample::Trace(
+                            ce_constructor
+                                .reconstruct_trace(state)
+                                .iter()
+                                .map(|l| merged_lts.labels()[*l].clone())
+                                .collect(),
+                        )
+                    } else {
+                        // The resulting trace is a weak trace.
+                        CounterExample::WeakTrace(
+                            ce_constructor
+                                .reconstruct_trace(state)
+                                .iter()
+                                .map(|l| merged_lts.labels()[*l].clone())
+                                .collect(),
+                        )
+                    }),
+                )
+            } else {
+                (result, None)
+            }
+        } else {
+            // Run without constructing a counter example.
+            let (result, _) = match refinement {
+                RefinementType::Trace | RefinementType::Weaktrace | RefinementType::StableFailures => {
+                    is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ())
+                }
+            };
+            (result, None)
+        }
+    })
 }
