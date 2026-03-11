@@ -3,10 +3,10 @@ use std::hash::Hash;
 use merc_utilities::TagIndex;
 
 /// A unique type for declarations.
-pub struct DeclTag;
+pub struct DefTag;
 
 /// The index type for a label.
-pub type DeclId = TagIndex<usize, DeclTag>;
+pub type DefId = TagIndex<usize, DefTag>;
 
 /// A complete mCRL2 process specification.
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
@@ -106,7 +106,7 @@ pub struct IdDecl {
     /// Source location information
     pub span: Span,
     /// Unique ID assigned to this declaration during name resolution.
-    pub id: Option<DeclId>,
+    pub id: Option<DefId>,
 }
 
 impl IdDecl {
@@ -183,7 +183,7 @@ pub struct SortDecl {
     /// Where the sort is defined
     pub span: Span,
     /// Unique ID assigned to this declaration during name resolution.
-    pub id: Option<DeclId>,
+    pub id: Option<DefId>,
 }
 
 impl SortDecl {
