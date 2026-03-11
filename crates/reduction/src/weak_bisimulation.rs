@@ -280,9 +280,10 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lt
         // Compute the markings using the optimised procedure.
         compute_weak_acts_inner(marked, tau_mark, lts, incoming);
         
-        // Check for correctness.
+        // Check that the markings are the same for all labels, except tau
         for label in 1..lts.labels().len() {
-            debug_assert!(act_mark[label].iter().zip(marked.iter()).all(|(a, m)| a == m[label]), "The act mark should be the same as the corresponding column in marked");
+            // The act_mark array starts at the first action, because we skip the tau action (index 0).
+            debug_assert!(act_mark[label - 1].iter().zip(marked.iter()).all(|(a, m)| a == m[label]), "The act mark should be the same as the corresponding column in marked");
         }
     } else {
         // No checking for correctness.
