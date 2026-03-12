@@ -305,10 +305,12 @@ fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming
     }
 
     for t in lts.iter_states() {
-        // For each s -[tau]-> t do
-        for transition in incoming.incoming_silent_transitions(t) {
-            // s.marked[tau] := True
-            marked[transition.to].set(*tau_index, true);
+        if marked[*t][*tau_index] {
+            // For each s -[tau]-> t do
+            for transition in incoming.incoming_silent_transitions(t) {
+                // s.marked[tau] := True if t.marked[tau]
+                marked[transition.from].set(*tau_index, true);
+            }
         }
     }
 
