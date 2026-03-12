@@ -235,7 +235,7 @@ fn compute_weak_act<L: LTS>(
 
         if act_mark[*t] {
             for transition in incoming.incoming_silent_transitions(t) {
-                act_mark.set(*transition.to, true);
+                act_mark.set(*transition.from, true);
             }
         }
     }
@@ -255,21 +255,19 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &Inc
         
         // Determine the tau_mark first, the act_mark result is ignored.
         let mut tau_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
-        let mut act_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
-        compute_weak_act(&mut act_mark, &mut tau_mark, lts, &blocks, incoming, block, LabelIndex::new(0));
-
-        let mut tau_mark_copy = tau_mark.clone();
+        for s in lts.iter_states() {
+            tau_mark.set(*s, marked[*s][0]);
+        }
 
         // Determine the act_mark for every label that is not tau
-        let act_mark = (1..lts.labels().len()).map(|label| {
+        let act_mark = (0..lts.labels().len()).map(|label| {
             let mut act_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
 
             for s in lts.iter_states() {
                 act_mark.set(*s, marked[*s][label]);
             }
 
-            compute_weak_act(&mut act_mark, &mut tau_mark_copy, lts, &blocks, incoming, block, LabelIndex::new(label));
-            debug_assert_eq!(tau_mark_copy, *tau_mark, "The tau mark should not be modified by compute_weak_act when a is not tau");
+            compute_weak_act(&mut act_mark, &mut tau_mark, lts, &blocks, incoming, block, LabelIndex::new(label));
             act_mark
         }).collect::<Vec<_>>();
 
@@ -279,7 +277,7 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &Inc
         // Check that the markings are the same for all labels, except tau
         for label in 1..lts.labels().len() {
             // The act_mark array starts at the first action, because we skip the tau action (index 0).
-            debug_assert!(act_mark[label - 1].iter().zip(marked.iter()).all(|(a, m)| a == m[label]), "The act mark should be the same as the corresponding column in marked");
+            debug_assert!(act_mark[label].iter().zip(marked.iter()).all(|(a, m)| a == m[label]), "The act mark should be the same as the corresponding column in marked");
         }
     } else {
         // No checking for correctness.
@@ -326,7 +324,7 @@ fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming
         // For each s -[tau]-> t do
         for transition in incoming.incoming_silent_transitions(t) {
             // Computes s.marked[a] := s.marked[a] | t.marked[a] in place.
-            let [marked_s, marked_t] = marked.get_disjoint_mut([*transition.to, *t]).expect("The indices are disjoint");
+            let [marked_s, marked_t] = marked.get_disjoint_mut([*transition.from, *t]).expect("The indices are disjoint");
             for (i, number) in marked_s.as_raw_mut_slice().iter_mut().enumerate() {
                 *number |= marked_t.as_raw_slice()[i];
             }
