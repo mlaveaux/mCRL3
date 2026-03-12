@@ -249,7 +249,7 @@ fn compute_weak_act<L: LTS>(
 /// For all a in A sets s.marked[a] iff s =[a]> B.
 /// 
 /// Note that `B` is only used for debugging checks, and is not used in the actual algorithm.
-fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
+fn compute_weak_acts<L: LTS>(marked: &mut [BitArray], lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
     if cfg!(debug_assertions) {
         // Check that compute_weak_act results in the same markings as the optimised compute_weak_acts procedure.
         
@@ -267,7 +267,7 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &Inc
                 act_mark.set(*s, marked[*s][label]);
             }
 
-            compute_weak_act(&mut act_mark, &mut tau_mark, lts, &blocks, incoming, block, LabelIndex::new(label));
+            compute_weak_act(&mut act_mark, &mut tau_mark, lts, blocks, incoming, block, LabelIndex::new(label));
             act_mark
         }).collect::<Vec<_>>();
 
@@ -290,7 +290,7 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &Inc
 /// # Details
 /// 
 /// Requires that marked = 0 for all states.
-fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
+fn compute_weak_acts_inner<L: LTS>(marked: &mut [BitArray], lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
     debug_assert!(marked.iter().all(|m| m.not_any()), "The marked array should be empty when calling compute_weak_acts_inner");
 
     // TODO: This should probably not be hardcoded.
@@ -333,15 +333,15 @@ fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming
 }
 
 /// Finding an action that can be used to perform a refinement step.
-fn find_act<L: LTS>(lts: &L, blocks: &MarkedBlockPartition, marked: &mut Vec<BitArray>) -> Option<LabelIndex> {
+fn find_act<L: LTS>(_lts: &L, blocks: &MarkedBlockPartition, marked: &mut [BitArray]) -> Option<LabelIndex> {
     for block in (0..blocks.num_of_blocks()).map(BlockIndex::new) {
         // Pick a representative state s from the block
         let s = blocks.iter_block(block).next().expect("Block is non-empty");
         for t in blocks.iter_block(block) {
             if marked[s] != marked[t] {
                 // Find an action a such that s.marked[a] != t.marked[a]
-                for label in 0..lts.labels().len() {
-                    if marked[s][label] != marked[t][label] {
+                for (label, marked_s) in marked[s].iter().enumerate() {
+                    if marked_s != marked[t][label] {
                         return Some(LabelIndex::new(label));
                     }
                 }
@@ -358,7 +358,7 @@ fn stabilise(block: BlockIndex, act_mark: &mut BitArray, blocks: &mut MarkedBloc
 }
 
 /// Splits the given block according to the given marking.
-fn stabilise_act(block: BlockIndex, act: LabelIndex, marked: &mut Vec<BitArray>, blocks: &mut MarkedBlockPartition) {
+fn stabilise_act(block: BlockIndex, act: LabelIndex, marked: &mut [BitArray], blocks: &mut MarkedBlockPartition) {
     blocks.split_block(block, |state| marked[*state][*act]);
 }
 
