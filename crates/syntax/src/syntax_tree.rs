@@ -143,6 +143,13 @@ pub enum SortExpression {
     Simple(Sort),
     /// Parameterized complex sort
     Complex(ComplexSort, Box<SortExpression>),
+    /// Resolved reference to a sort after name resolution
+    Resolved(String, DefId),
+    /// Function sort (A_0 # ... # A_n -> B) after flattening (performed during name resolution)
+    FlattenedFunction {
+        domain: Vec<SortExpression>,
+        range: Box<SortExpression>,
+    },
 }
 
 /// Constructor declaration
