@@ -111,6 +111,7 @@ pub trait TransitionLabel: Ord + Hash + Eq + Clone + fmt::Display + fmt::Debug {
     fn from_index(i: usize) -> Self;
 }
 
+/// Represents a transition in the LTS originating from some known state.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Transition {
     pub label: LabelIndex,

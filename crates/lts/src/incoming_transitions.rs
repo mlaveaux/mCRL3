@@ -8,7 +8,6 @@ use merc_collections::bytevec;
 use crate::LTS;
 use crate::LabelIndex;
 use crate::StateIndex;
-use crate::Transition;
 
 /// Stores the incoming transitions for a given labelled transition system.
 pub struct IncomingTransitions<'a> {
@@ -93,21 +92,36 @@ impl<'a> IncomingTransitions<'a> {
     }
 
     /// Returns an iterator over the incoming transitions for the given state.
-    pub fn incoming_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_ {
+    pub fn incoming_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = FromTransition> + '_ {
         let start = self.state2incoming.index(state_index.value());
         let end = self.state2incoming.index(state_index.value() + 1);
-        (start..end).map(move |i| Transition::new(self.transition_labels.index(i), self.transition_from.index(i)))
+        (start..end).map(move |i| FromTransition::new(self.transition_labels.index(i), self.transition_from.index(i)))
     }
 
     // Return an iterator over the incoming silent transitions for the given state.
-    pub fn incoming_silent_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_ {
+    pub fn incoming_silent_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = FromTransition> + '_ {
         let start = self.state2incoming.index(state_index.value());
         let end = self.state2incoming.index(state_index.value() + 1);
         (start..end)
-            .map(move |i| Transition::new(self.transition_labels.index(i), self.transition_from.index(i)))
+            .map(move |i| FromTransition::new(self.transition_labels.index(i), self.transition_from.index(i)))
             .take_while(|transition| transition.label == 0)
     }
 }
+
+/// Represents an incoming transition in the LTS going to a known state.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FromTransition {
+    pub label: LabelIndex,
+    pub from: StateIndex,
+}
+
+impl FromTransition {
+    /// Constructs a new transition.
+    pub fn new(label: LabelIndex, from: StateIndex) -> Self {
+        Self { label, from }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -133,7 +147,7 @@ mod tests {
                 for transition in lts.outgoing_transitions(state_index) {
                     let found = incoming
                         .incoming_transitions(transition.to)
-                        .any(|incoming| incoming.label == transition.label && incoming.to == state_index);
+                        .any(|incoming| incoming.label == transition.label && incoming.from == state_index);
                     assert!(
                         found,
                         "Outgoing transition ({state_index}, {transition:?}) should have an incoming transition"
@@ -145,7 +159,7 @@ mod tests {
             for state_index in lts.iter_states() {
                 for transition in incoming.incoming_transitions(state_index) {
                     let found = lts
-                        .outgoing_transitions(transition.to)
+                        .outgoing_transitions(transition.from)
                         .any(|outgoing| outgoing.label == transition.label && outgoing.to == state_index);
                     assert!(
                         found,
