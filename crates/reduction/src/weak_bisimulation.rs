@@ -157,9 +157,6 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
     timing.measure("reduction", || {
         let mut blocks = MarkedBlockPartition::new(tau_loop_free_lts.num_of_states());
 
-        let mut act_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
-        let mut tau_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
-
         // Represents the s.marked[a] from the pseudocode.
         let mut marked = Vec::from_iter(iter::repeat_n(bitvec![u64, Lsb0; 0; tau_loop_free_lts.labels().len()], tau_loop_free_lts.num_of_states()));
 
@@ -177,17 +174,12 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
                 stable = false;
                 blocks.mark_block_stable(block_index);
 
-                compute_weak_act(
-                    &mut act_mark,
-                    &mut tau_mark,
-                    &tau_loop_free_lts,
-                    &blocks,
-                    &incoming,
-                    block_index,
-                    LabelIndex::new(0),
-                );
+                // marked := 0 for all states and actions
+                for act_mark in &mut marked {
+                    act_mark.fill(false);
+                }
 
-                compute_weak_acts(&mut marked, &tau_mark, &tau_loop_free_lts, &incoming, &blocks, block_index);
+                compute_weak_acts(&mut marked, &tau_loop_free_lts, &incoming, &blocks, block_index);
 
                 while let Some(label) = find_act(&tau_loop_free_lts, &blocks, &mut marked) {
                     for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
@@ -257,14 +249,18 @@ fn compute_weak_act<L: LTS>(
 /// For all a in A sets s.marked[a] iff s =[a]> B.
 /// 
 /// Note that `B` is only used for debugging checks, and is not used in the actual algorithm.
-fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
+fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
     if cfg!(debug_assertions) {
         // Check that compute_weak_act results in the same markings as the optimised compute_weak_acts procedure.
         
-        // Determine the act_mark for every label.
+        // Determine the tau_mark first, the act_mark result is ignored.
+        let mut tau_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
+        let mut act_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
+        compute_weak_act(&mut act_mark, &mut tau_mark, lts, &blocks, incoming, block, LabelIndex::new(0));
+
         let mut tau_mark_copy = tau_mark.clone();
 
-        // Skip the tau action (index 0)
+        // Determine the act_mark for every label that is not tau
         let act_mark = (1..lts.labels().len()).map(|label| {
             let mut act_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
 
@@ -278,7 +274,7 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lt
         }).collect::<Vec<_>>();
 
         // Compute the markings using the optimised procedure.
-        compute_weak_acts_inner(marked, tau_mark, lts, incoming);
+        compute_weak_acts_inner(marked, lts, incoming, blocks, block);
         
         // Check that the markings are the same for all labels, except tau
         for label in 1..lts.labels().len() {
@@ -287,32 +283,51 @@ fn compute_weak_acts<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lt
         }
     } else {
         // No checking for correctness.
-        compute_weak_acts_inner(marked, tau_mark, lts, incoming);
+        compute_weak_acts_inner(marked, lts, incoming, blocks, block);
     }
 }
 
-/// The inner implementation of [compute_weak_acts].
-fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, tau_mark: &BitArray, lts: &L, incoming: &IncomingTransitions<'_>) {
-    
-    // For each s in state do s.marked := 0
-    for entry in marked.iter_mut() {
-        entry.fill(false);
+/// The inner implementation of [compute_weak_acts]. For all action a, sets s.marked[a] iff s =[a]> B, where B is the given block.
+/// 
+/// # Details
+/// 
+/// Requires that marked = 0 for all states.
+fn compute_weak_acts_inner<L: LTS>(marked: &mut Vec<BitArray>, lts: &L, incoming: &IncomingTransitions<'_>, blocks: &MarkedBlockPartition, block: BlockIndex) {
+    debug_assert!(marked.iter().all(|m| m.not_any()), "The marked array should be empty when calling compute_weak_acts_inner");
+
+    // TODO: This should probably not be hardcoded.
+    let tau_index = LabelIndex::new(0);
+    debug_assert!(lts.is_hidden_label(tau_index), "The first label should be the tau action");
+
+    // For t in B: t.marked[tau] := true
+    for t in blocks.iter_block(block) {
+        marked[t].set(*tau_index, true);
+    }
+
+    for t in lts.iter_states() {
+        // For each s -[tau]-> t do
+        for transition in incoming.incoming_silent_transitions(t) {
+            // s.marked[tau] := True
+            marked[transition.to].set(*tau_index, true);
+        }
     }
 
     for t in lts.iter_states() {
         // For each t -[a]-> u do
         for transition in lts.outgoing_transitions(t) {
-            if !lts.is_hidden_label(transition.label) {
-                // If u.tau_mark then t.marked[a] := true
-                if tau_mark[*transition.to] {
-                    marked[*t].set(*transition.label, true);
-                }
+            // If u.marked[tau] then t.marked[a] := true
+            if marked[*transition.to][*tau_index] {
+                marked[*t].set(*transition.label, true);
             }
         }
 
         // For each s -[tau]-> t do
         for transition in incoming.incoming_silent_transitions(t) {
-            marked[transition.to] = marked[transition.to].clone() | marked[*t].clone();
+            // Computes s.marked[a] := s.marked[a] | t.marked[a] in place.
+            let [marked_s, marked_t] = marked.get_disjoint_mut([*transition.to, *t]).expect("The indices are disjoint");
+            for (i, number) in marked_s.as_raw_mut_slice().iter_mut().enumerate() {
+                *number |= marked_t.as_raw_slice()[i];
+            }
         }
     }
 }
@@ -346,7 +361,6 @@ fn stabilise(block: BlockIndex, act_mark: &mut BitArray, blocks: &mut MarkedBloc
 fn stabilise_act(block: BlockIndex, act: LabelIndex, marked: &mut Vec<BitArray>, blocks: &mut MarkedBlockPartition) {
     blocks.split_block(block, |state| marked[*state][*act]);
 }
-
 
 #[cfg(test)]
 mod tests {
