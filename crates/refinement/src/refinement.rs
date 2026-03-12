@@ -3,7 +3,7 @@ use merc_lts::{StateIndex, LTS};
 use merc_reduction::{quotient_lts_block, reduce_lts, strong_bisim_sigref, Equivalence, Partition};
 use merc_utilities::Timing;
 
-use crate::{is_failures_refinement, CounterExample, CounterExampleConstructor};
+use crate::{is_failures_refinement, is_impossible_futures_refinement, CounterExample, CounterExampleConstructor};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -14,6 +14,8 @@ pub enum RefinementType {
     Weaktrace,
     /// Checks for stable failures inclusion, i.e., whether all stable failures of the implementation are also stable failures of the specification.
     StableFailures,
+    /// Checks for impossible futures inclusion, i.e., whether all impossible futures of the implementation are also impossible futures of the specification.
+    ImpossibleFutures,
 }
 
 /// Determines the exploration strategy for the failures refinement algorithm.
@@ -55,7 +57,9 @@ pub fn refines<L: LTS>(
 ) -> (bool, Option<CounterExample<L::Label>>) {
     let reduction = match refinement {
         RefinementType::Trace => Equivalence::StrongBisim,
-        RefinementType::Weaktrace|RefinementType::StableFailures => Equivalence::BranchingBisim,
+        RefinementType::Weaktrace | RefinementType::StableFailures | RefinementType::ImpossibleFutures => {
+            Equivalence::BranchingBisim
+        }
     };
 
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
@@ -91,48 +95,80 @@ pub fn refines<L: LTS>(
         if counter_example {
             // Construct a counter example tree, and return a trace.
             let mut ce_constructor = CounterExampleConstructor::new();
-            let (result, state) = match refinement {
+            let result = match refinement {
                 RefinementType::Trace | RefinementType::Weaktrace | RefinementType::StableFailures => {
-                    is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ce_constructor)
+                    let (result, ce_state, ce_inner) =
+                        is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ce_constructor);
+
+                    if let Some(state) = ce_state {
+                        // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
+                        let trace = ce_constructor
+                            .reconstruct_trace(state)
+                            .iter()
+                            .map(|l| merged_lts.labels()[*l].clone())
+                            .collect();
+                        (
+                            result,
+                            Some(match refinement {
+                                RefinementType::Trace => CounterExample::Trace(trace),
+                                RefinementType::Weaktrace => CounterExample::WeakTrace(trace),
+                                RefinementType::StableFailures => if let Some(inner) = ce_inner {
+                                    CounterExample::StableFailures(
+                                        trace,
+                                        merged_lts.labels()[inner].clone(),
+                                    )
+                                } else {
+                                    // The stable failures failed because of a weak trace difference.
+                                    CounterExample::WeakTrace(trace)
+                                },
+                                _ => unreachable!("Refinement {refinement:?} is not valid in this path"),
+                            }),
+                        )
+                    } else {
+                        (result, None)
+                    }
+                }
+                RefinementType::ImpossibleFutures => {
+                    let (result, ce_state, ce_inner) =
+                        is_impossible_futures_refinement(&merged_lts, initial_spec, strategy, &mut ce_constructor);
+
+                    if let Some(state) = ce_state {
+                        // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
+                        let trace = ce_constructor
+                            .reconstruct_trace(state)
+                            .iter()
+                            .map(|l| merged_lts.labels()[*l].clone())
+                            .collect();
+                        (
+                            result,
+                            Some(if let Some(inner) = ce_inner {
+                                CounterExample::ImpossibleFutures(trace, inner)
+                            } else {
+                                // The impossible futures failed because of a weak trace.
+                                CounterExample::WeakTrace(trace)
+                            }),
+                        )
+                    } else {
+                        (result, None)
+                    }
                 }
             };
 
             trace!("Counter example tree: {:?}", ce_constructor);
-
-            if let Some(state) = state {
-                // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
-                (
-                    result,
-                    Some(if refinement == RefinementType::Trace {
-                        CounterExample::Trace(
-                            ce_constructor
-                                .reconstruct_trace(state)
-                                .iter()
-                                .map(|l| merged_lts.labels()[*l].clone())
-                                .collect(),
-                        )
-                    } else {
-                        // The resulting trace is a weak trace.
-                        CounterExample::WeakTrace(
-                            ce_constructor
-                                .reconstruct_trace(state)
-                                .iter()
-                                .map(|l| merged_lts.labels()[*l].clone())
-                                .collect(),
-                        )
-                    }),
-                )
-            } else {
-                (result, None)
-            }
+            result
         } else {
             // Run without constructing a counter example.
-            let (result, _) = match refinement {
+            match refinement {
                 RefinementType::Trace | RefinementType::Weaktrace | RefinementType::StableFailures => {
-                    is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ())
+                    let (result, _, _) =
+                        is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ());
+                    (result, None)
                 }
-            };
-            (result, None)
+                RefinementType::ImpossibleFutures => {
+                    let (result, _, _) = is_impossible_futures_refinement(&merged_lts, initial_spec, strategy, &mut ());
+                    (result, None)
+                }
+            }
         }
     })
 }

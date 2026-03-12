@@ -33,14 +33,14 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
     refinement: RefinementType,
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>) {
+) -> (bool, Option<CE::Index>, Option<LabelIndex>) {
     match refinement {
         RefinementType::Trace => is_refinement_generic(
             strategy,
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |_, _| true,
+            |_, _| None,
             false,
             counter_example,
         ),
@@ -49,7 +49,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |_, _| true,
+            |_, _| None,
             true,
             counter_example,
         ),
@@ -62,6 +62,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             true,
             counter_example,
         ),
+        _ => unreachable!("This refinement variant {refinement:?} can not be checked by is_failures_refinement"),
     }
 }
 
@@ -78,13 +79,14 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
 /// transitions.
 ///
 /// The `check` function is applied to every pair (impl, spec) that is explored
-/// during the algorithm.
+/// during the algorithm, it should return `None` if the pair is valid, and
+/// `Some(counter_example)` if the pair is invalid.
 ///
 /// The `CE` type parameter indicates the type of counter example tree that is
 /// used to construct counter examples. If no counter examples are required,
 /// this can be set to `()`. Avoiding the cost for keeping track of counter
 /// example information.
-pub fn is_refinement_generic<L: LTS, CE: CounterExampleTree, F>(
+pub fn is_refinement_generic<L: LTS, CE: CounterExampleTree, F, CC>(
     strategy: ExplorationStrategy,
     merged_lts: &L,
     initial_impl: StateIndex,
@@ -92,9 +94,9 @@ pub fn is_refinement_generic<L: LTS, CE: CounterExampleTree, F>(
     check: F,
     weak_transition: bool,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>)
+) -> (bool, Option<CE::Index>, Option<CC>)
 where
-    F: Fn(StateIndex, &VecSet<StateIndex>) -> bool,
+    F: Fn(StateIndex, &VecSet<StateIndex>) -> Option<CC>,
 {
     // The antichain data structure is used for storing explored states. However, as opposed to a discovered set it
     // allows for pruning additional pairs based on the `antichain` property.
@@ -117,9 +119,9 @@ where
         trace!("Checking ({:?}, {:?})", impl_state, spec);
         // pop (impl,spec) from working;
 
-        if !check(impl_state, &spec) {
+        if let Some(counter_example) = check(impl_state, &spec) {
             // if not check(impl,spec) then
-            return (false, Some(ce));
+            return (false, Some(ce), Some(counter_example));
         }
 
         // for all impl-e->impl' do
@@ -164,7 +166,7 @@ where
             trace!("spec' = {:?}", spec_prime);
             if spec_prime.is_empty() {
                 // if spec' = {} then
-                return (false, Some(new_edge));
+                return (false, Some(new_edge), None);
             }
 
             if antichain.insert(impl_transition.to, spec_prime.clone()) {
@@ -177,22 +179,21 @@ where
         }
     }
 
-    (true, None)
+    (true, None, None)
 }
 
 /// This function checks that the refusals(impl) are contained in the refusals
-/// of spec.
-///
-/// # Details
-///
-/// A state s is stable, denoted by stable(s) iff tau \not\in enabled(s), and
-/// refusals are defined for stable states s by:
-///
-///
-fn refusals_contained_in<L: LTS>(lts: &L, impl_state: StateIndex, spec_states: &VecSet<StateIndex>) -> bool {
+/// of spec, it returns Some(action) iff the inclusion fails.
+/// 
+/// See [refusals_contained_in_naive] for its definition.
+fn refusals_contained_in<L: LTS>(
+    lts: &L,
+    impl_state: StateIndex,
+    spec_states: &VecSet<StateIndex>,
+) -> Option<LabelIndex> {
     if !is_stable(lts, impl_state) {
         // If the implementation state is not stable, then it cannot have any refusals.
-        return true;
+        return None;
     }
 
     // refusals(impl) \subseteq refusals(spec)
@@ -212,13 +213,13 @@ fn refusals_contained_in<L: LTS>(lts: &L, impl_state: StateIndex, spec_states: &
             } else {
                 // The current label shows that the refusal set of impl is not contained in the refusal set of spec, so we can return false.
                 debug_assert!(!refusals_contained_in_naive(lts, impl_state, spec_states));
-                return false;
+                return Some(transition_spec.label);
             }
         }
     }
 
     debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
-    true
+    None
 }
 
 /// A naive implementation for checking that the refusals of an implementation state are contained in the refusals of a set of specification states.
@@ -233,8 +234,10 @@ fn refusals_contained_in_naive<L: LTS>(lts: &L, impl_state: StateIndex, spec_sta
     impl_refusals.is_subset(&spec_refusals)
 }
 
-/// Naive implementation for the refusals of a set of states spec
-fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<VecSet<L::Label>> {
+/// Naive implementation for the refusals of a set of states spec:
+/// 
+/// > refusals(spec) = { r | exists s in spec. r in refusals(s) and stable(r) }
+fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<VecSet<LabelIndex>> {
     let mut result = VecSet::new();
 
     for s in spec_states.iter() {
@@ -250,27 +253,27 @@ fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<Vec
 ///
 /// A state s is stable, denoted by stable(s) iff tau \not\in enabled(s), and
 /// refusals are defined for stable states s by:
+///
 /// > refusals(s) = { r | r \subseteq (Act \setminus enabled(s)) }.
-/// > refusals(spec) = { r | exists s in spec. r in refusals(s) and stable(r) }
-fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<L::Label>> {
+fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
     if !is_stable(lts, state) {
         return VecSet::new();
     }
 
     // The set of actions enabled in the given state.
-    let enabled_labels: VecSet<L::Label> = VecSet::from_vec(
+    let enabled_labels: VecSet<LabelIndex> = VecSet::from_vec(
         lts.outgoing_transitions(state)
-            .map(|t| lts.labels()[t.label].clone())
+            .map(|t| t.label)
             .collect(),
     );
 
     // The refusal set of a stable state includes all subsets of the set of labels that are not enabled.
-    let all_labels: VecSet<L::Label> = VecSet::from_vec(
+    let all_labels: VecSet<LabelIndex> = VecSet::from_vec(
         lts.labels()
             .iter()
             .enumerate()
             .filter(|(i, _)| !lts.is_hidden_label(LabelIndex::new(*i)))
-            .map(|(_, label)| label.clone())
+            .map(|(i, _)| LabelIndex::new(i))
             .collect(),
     );
 
@@ -361,6 +364,7 @@ pub fn tau_closure<L: LTS>(
 #[cfg(test)]
 mod tests {
     use merc_io::DumpFiles;
+    use merc_lts::LTS;
     use merc_lts::random_lts;
     use merc_lts::read_aut;
     use merc_lts::write_aut;
@@ -399,20 +403,17 @@ mod tests {
             (2, "10", 3)
             (3, "10", 0)
             (1, "i", 5)
-            (5, "20", 0)
-        "#;
+            (5, "20", 0)"#;
 
         let t0 = r#"des(0, 3, 2)
             (0, "req", 1)
-            (1, "20", 2)
-        "#;
+            (1, "20", 2)"#;
 
         let u0 = r#"des(0, 3, 4)
             (0, "req", 1)
             (1, "i", 1)
             (1, "20", 2)
-            (2, "i", 0)
-        "#;
+            (2, "i", 0)"#;
 
         let s0 = read_aut(s0.as_bytes(), Vec::new()).unwrap();
         let t0 = read_aut(t0.as_bytes(), Vec::new()).unwrap();
@@ -490,7 +491,7 @@ mod tests {
                 let (spec_solution, _) = solve_zielonka(&spec_pg);
 
                 assert!(
-                    impl_solution[0] != spec_solution[0],
+                    impl_solution[impl_lts.initial_state_index()] != spec_solution[spec_lts.initial_state_index()],
                     "Refinement returned false, but the counter example is not distinguishing."
                 );
             } else {
