@@ -357,12 +357,17 @@ impl fmt::Display for SortExpression {
         match self {
             SortExpression::Product { lhs, rhs } => write!(f, "({lhs} # {rhs})"),
             SortExpression::Function { domain, range } => write!(f, "({domain} -> {range})"),
-            SortExpression::Reference(ident) => write!(f, "{ident}"),
+            SortExpression::Reference(name) => write!(f, "{name}"),
             SortExpression::Simple(sort) => write!(f, "{sort}"),
             SortExpression::Complex(complex, inner) => write!(f, "{complex}({inner})"),
             SortExpression::Struct { inner } => {
                 write!(f, "struct ")?;
                 write!(f, "{}", inner.iter().format(" | "))
+            }
+            SortExpression::Resolved(name, _id) => write!(f, "{name}"),
+            SortExpression::FlattenedFunction { domain, range } => {
+                let domain = domain.iter().format(" # ");
+                write!(f, "({domain} -> {range})")
             }
         }
     }

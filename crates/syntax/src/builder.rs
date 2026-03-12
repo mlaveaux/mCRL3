@@ -205,7 +205,18 @@ where
             let inner = apply_sort_expression_rec(*sort_expression, apply)?;
             Ok(SortExpression::Complex(complex_sort, Box::new(inner)))
         }
-        SortExpression::Reference(_) | SortExpression::Simple(_) => {
+        SortExpression::FlattenedFunction { domain, range } => {
+            let domain = domain
+                .into_iter()
+                .map(|sort| apply_sort_expression_rec(sort, apply))
+                .collect::<Result<Vec<SortExpression>, _>>()?;
+            let range = apply_sort_expression_rec(*range, apply)?;
+            Ok(SortExpression::FlattenedFunction {
+                domain,
+                range: Box::new(range),
+            })
+        }
+        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {
             // Ignored
             Ok(sort_expr)
         }

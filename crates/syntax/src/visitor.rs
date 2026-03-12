@@ -93,6 +93,7 @@ where
     Ok(None)
 }
 
+/// See [`visit_sort_expr`].
 fn visit_sort_expr_rec<T, F>(sort_expr: &SortExpression, function: &mut F) -> Result<Option<T>, MercError>
 where
     F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,
@@ -133,7 +134,13 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Reference(_) | SortExpression::Simple(_) => {}
+        SortExpression::FlattenedFunction { domain, range } => {
+            for domain_sort in domain {
+                visit_sort_expr_rec(domain_sort, function)?;
+            }
+            visit_sort_expr_rec(range, function)?;
+        }
+        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _)=> {}
     }
 
     // The visitor did not break the traversal.
