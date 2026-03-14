@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::ops::ControlFlow;
 
 use merc_utilities::MercError;
@@ -20,9 +21,20 @@ where
     visit_statefrm_rec(formula, &mut visitor)
 }
 
-pub fn visit_sort_expr<T, F>(sort_expr: &SortExpression, mut visitor: F) -> Result<Option<T>, MercError>
+/// Visits all sort expressions in the sort expression.
+pub fn visit_sort_expr<T, F>(sort_expr: &SortExpression, mut visitor: F) -> Option<T>
 where
-    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,
+    F: FnMut(&SortExpression) -> ControlFlow<T>,
+{
+    try_visit_sort_expr(sort_expr, |sort_expr| -> Result<_, Infallible> {
+        Ok(visitor(sort_expr))
+    }).expect("Inner function does not fail")
+}
+
+/// Visits all sort expressions in the sort expression, allowing the visitor to return an error.
+pub fn try_visit_sort_expr<E, T, F>(sort_expr: &SortExpression, mut visitor: F) -> Result<Option<T>, E>
+where
+    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, E>,
 {
     visit_sort_expr_rec(sort_expr, &mut visitor)
 }
@@ -94,9 +106,9 @@ where
 }
 
 /// See [`visit_sort_expr`].
-fn visit_sort_expr_rec<T, F>(sort_expr: &SortExpression, function: &mut F) -> Result<Option<T>, MercError>
+fn visit_sort_expr_rec<E, T, F>(sort_expr: &SortExpression, function: &mut F) -> Result<Option<T>, E>
 where
-    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,
+    F: FnMut(&SortExpression) -> Result<ControlFlow<T>, E>,
 {
     if let ControlFlow::Break(result) = function(sort_expr)? {
         // The visitor requested to break the traversal.
