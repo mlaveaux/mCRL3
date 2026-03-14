@@ -68,15 +68,18 @@ pub enum WellTypedError {
     #[error("Sort '{}' is syntactically empty", sort)]
     EmptySort { sort: String },
 
+    #[error("Alias cycle detected: {:?}", sorts)]
+    AliasCycle { sorts: Vec<String> },
+
+    #[error("Error: '{}'", 0)]
+    Custom(MercError),
+
     // These are name resolution errors, but we include them here to avoid having to define a separate error type for name resolution.
     #[error("Duplicate sort declaration: '{}'", sort)]
     DuplicateSortDeclaration { sort: String },
 
     #[error("Undefined sort: '{}'", sort)]
     UndefinedSort { sort: String },
-
-    #[error("Error: '{}'", 0)]
-    Custom(MercError),
 }
 
 /// Checks that the constructors and mappings are disjoint, i.e. that no identifier is both a constructor and a mapping.
