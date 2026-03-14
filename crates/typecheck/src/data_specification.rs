@@ -10,6 +10,7 @@ use merc_syntax::apply_sort_expression;
 
 use crate::WellTypedError;
 use crate::basic_sort_data_specification;
+use crate::has_alias_cycle;
 use crate::is_well_typed;
 use crate::map_sorts_in_spec;
 use crate::resolve_names;
@@ -27,7 +28,16 @@ impl DataSpecification {
         })
         .expect("The inner function never fails");
 
-        let _sorts = resolve_names(&mut spec)?;
+        let sorts = resolve_names(&mut spec)?;
+
+        has_alias_cycle(&spec).map_err(|cycle| WellTypedError::AliasCycle {
+            sorts: cycle
+                .iter()
+                .map(|id| {
+                    sorts.get_unchecked(**id).expect("The sort should be declared").clone()
+                })
+                .collect(),
+        })?;
 
         is_well_typed(&spec)?;
 
@@ -68,7 +78,7 @@ pub fn argument_sorts(sort: &SortExpression) -> &Vec<SortExpression> {
 
 /// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
 fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
-    apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible>{
+    apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible> {
         if let SortExpression::Function { domain, range } = expr {
             let mut flattened_domain = Vec::new();
             flatten_function_domain_rec(domain, &mut flattened_domain);

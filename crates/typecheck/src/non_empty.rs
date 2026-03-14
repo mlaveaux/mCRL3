@@ -76,8 +76,8 @@ mod tests {
 
         match DataSpecification::from_untyped(spec) {
             Err(WellTypedError::EmptySort { sort }) if sort == "D" => {},
-            Err(other) => panic!("{:?}", other),
-            _ => panic!("Excepted from_untyped to fail"),
+            Err(other) => panic!("Unexpected {:?}", other),
+            _ => panic!("Unexpected from_untyped to fail"),
         }
     }
 }
