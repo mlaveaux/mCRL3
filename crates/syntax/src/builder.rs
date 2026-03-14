@@ -17,7 +17,7 @@ where
     apply_statefrm_rec(formula, &mut function)
 }
 
-///// Applies the given function recursively to the sort expression.
+/// Applies the given function recursively to the sort expression.
 pub fn apply_sort_expression<E, F>(sort_expr: SortExpression, mut function: F) -> Result<SortExpression, E>
 where
     F: FnMut(&SortExpression) -> Result<Option<SortExpression>, E>,
