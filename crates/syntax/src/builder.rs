@@ -18,9 +18,9 @@ where
 }
 
 ///// Applies the given function recursively to the sort expression.
-pub fn apply_sort_expression<F>(sort_expr: SortExpression, mut function: F) -> Result<SortExpression, MercError>
+pub fn apply_sort_expression<E, F>(sort_expr: SortExpression, mut function: F) -> Result<SortExpression, E>
 where
-    F: FnMut(&SortExpression) -> Result<Option<SortExpression>, MercError>,
+    F: FnMut(&SortExpression) -> Result<Option<SortExpression>, E>,
 {
     apply_sort_expression_rec(sort_expr, &mut function)
 }
@@ -166,9 +166,9 @@ where
 }
 
 /// See [`apply_sort_expression`].
-fn apply_sort_expression_rec<F>(sort_expr: SortExpression, apply: &mut F) -> Result<SortExpression, MercError>
+fn apply_sort_expression_rec<E, F>(sort_expr: SortExpression, apply: &mut F) -> Result<SortExpression, E>
 where
-    F: FnMut(&SortExpression) -> Result<Option<SortExpression>, MercError>,
+    F: FnMut(&SortExpression) -> Result<Option<SortExpression>, E>,
 {
     if let Some(sort_expr) = apply(&sort_expr)? {
         // A substitution was made, return the new sort expression.
