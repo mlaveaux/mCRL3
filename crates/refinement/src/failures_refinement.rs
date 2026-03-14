@@ -417,7 +417,7 @@ mod tests {
 
         let s0 = read_aut(s0.as_bytes(), Vec::new()).unwrap();
         let t0 = read_aut(t0.as_bytes(), Vec::new()).unwrap();
-        let u0 = read_aut(u0.as_bytes(), Vec::new()).unwrap();
+        let _u0 = read_aut(u0.as_bytes(), Vec::new()).unwrap();
 
         let mut timing = Timing::new();
         assert!(
