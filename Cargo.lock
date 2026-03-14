@@ -1507,8 +1507,10 @@ name = "merc_typecheck"
 version = "1.0.0"
 dependencies = [
  "indoc",
+ "merc_collections",
  "merc_syntax",
  "merc_utilities",
+ "thiserror",
 ]
 
 [[package]]

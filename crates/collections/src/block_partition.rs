@@ -29,6 +29,10 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
 
 impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create a block partition from an indexed partition.
+    /// 
+    /// This function creates a new partition that is dense, i.e. it does not
+    /// contain empty blocks, and the blocks are indexed from 0 to n-1 even if the
+    /// indexed partition is sparse.
     pub fn from_indexed_partition(partition: &IndexedPartition) -> Self {
         let mut blocks = vec![Block::new_empty(); partition.num_of_blocks()];
         let num_of_elements = partition.iter_elements().count();
