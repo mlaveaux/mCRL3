@@ -86,10 +86,6 @@ impl fmt::Display for MarkedBlockPartition {
 
 impl Partition for MarkedBlockPartition {    
     fn block_number(&self, state_index: StateIndex) -> BlockIndex {
-        if !cfg!(test) {
-            panic!("block_number is only available in tests");
-        }
-
         // Note that this is O(n) in the number of blocks. This could be improved
         // by storing a mapping from state index to block index. However, this
         // is only used in the comparison functions, so it is not a big issue.
