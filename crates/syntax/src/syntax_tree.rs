@@ -370,14 +370,6 @@ pub enum ProcessExpr {
     },
 }
 
-/// Communication action
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct CommAction {
-    pub inputs: Vec<String>,
-    pub output: String,
-    pub span: Span,
-}
-
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct UntypedStateFrmSpec {
     pub data_specification: UntypedDataSpecification,
@@ -505,6 +497,11 @@ impl MultiAction {
     /// Creates a new multi-action from a list of actions.
     pub fn new(actions: Vec<Action>) -> Self {
         MultiAction { actions }
+    }
+
+    /// Creates the empty multi-action, which represents the tau action.
+    pub fn tau() -> Self {
+        MultiAction { actions: Vec::new() }
     }
 }
 
