@@ -1,9 +1,10 @@
-use merc_utilities::MercError;
-use oxidd::BooleanFunction;
-use oxidd::ManagerRef;
+
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
+use oxidd::BooleanFunction;
+use oxidd::ManagerRef;
+use oxidd::util::OutOfMemory;
 use rand::Rng;
 use rand::RngExt;
 
@@ -24,30 +25,37 @@ pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usiz
     vectors
 }
 
-/// Create a BDD from the given bitvector.
+/// Constructs a BDD representing the given cube (bitvector) over the given variables.
+pub fn bdd_from_cube(
+    manager_ref: &BDDManagerRef,
+    variables: &[BDDFunction],
+    cube: &[OptBool],
+) -> Result<BDDFunction, OutOfMemory> {
+    let mut bdd = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
+    for (i, bit) in cube.iter().enumerate() {
+        let var = variables[i].clone();
+        let literal = match *bit {
+            OptBool::True => var,
+            OptBool::False => var.not()?,
+            OptBool::None => continue,
+        };
+        bdd = bdd.and(&literal)?;
+    }
+    Ok(bdd)
+}
+
+/// Create a BDD from the given iterator over bitvector.
 pub fn bdd_from_iter<'a, I>(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
     vectors: I,
-) -> Result<BDDFunction, MercError>
+) -> Result<BDDFunction, OutOfMemory>
 where
     I: Iterator<Item = &'a Vec<OptBool>>,
 {
     let mut bdd = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
     for bits in vectors {
-        let mut cube = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
-        // Create a cube for this bitvector
-        for (i, bit) in bits.iter().enumerate() {
-            let var = variables[i].clone();
-            let literal = match *bit {
-                OptBool::True => var,
-                OptBool::False => var.not()?,
-                OptBool::None => continue,
-            };
-            cube = cube.and(&literal)?;
-        }
-
-        bdd = bdd.or(&cube)?;
+        bdd = bdd.or(&bdd_from_cube(manager_ref, variables, bits)?)?;
     }
 
     Ok(bdd)
@@ -59,7 +67,7 @@ pub fn random_bdd<R: Rng>(
     rng: &mut R,
     variables: &[BDDFunction],
     num_of_cubes: usize,
-) -> Result<BDDFunction, MercError> {
+) -> Result<BDDFunction, OutOfMemory> {
     let bitvectors = random_bitvectors(rng, variables.len(), num_of_cubes);
     bdd_from_iter(manager_ref, variables, bitvectors.iter())
 }
