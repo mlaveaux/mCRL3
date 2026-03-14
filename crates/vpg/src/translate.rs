@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::ControlFlow;
 
 use log::debug;
@@ -11,6 +12,7 @@ use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
+use merc_lts::TransitionLabel;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
 use merc_syntax::FixedPointOperator;
@@ -37,9 +39,12 @@ use crate::compute_reachable;
 /// Translates a labelled transition system into a variability parity game.
 pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> Result<ParityGame, MercError> {
     // Parses all labels into MultiAction once
-    let parsed_labels: Result<Vec<MultiAction>, MercError> =
-        lts.labels().iter().map(|label| MultiAction::parse(label)).collect();
-    let labels = parsed_labels?;
+    let labels =
+        lts.labels().iter().map(|label| if label.is_tau_label() {
+            Ok(MultiAction::tau())
+        } else {
+            MultiAction::parse(label)
+        }).collect::<Result<Vec<MultiAction>, MercError>>()?;
 
     // Warn about any labels that are used in the formula but do not correspond to any label in the LTS.
     warn_unknown_action_labels(formula, &labels);
@@ -57,8 +62,25 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     // Construct the parity game from the collected vertices and edges, where the `()` edge label is ignored.
     let result = ParityGame::from_edges(
         VertexIndex::new(0),
-        algorithm.vertices.iter().map(|(p, _)| p).cloned().collect(),
-        algorithm.vertices.into_iter().map(|(_, pr)| pr).collect(),
+        algorithm
+            .vertices
+            .iter()
+            .map(|vertex| {
+                vertex
+                    .as_ref()
+                    .expect("All vertices must be assigned before constructing the parity game")
+                    .0
+            })
+            .collect(),
+        algorithm
+            .vertices
+            .into_iter()
+            .map(|vertex| {
+                vertex
+                    .expect("All vertices must be assigned before constructing the parity game")
+                    .1
+            })
+            .collect(),
         true,
         || algorithm.edges.iter().map(|(s, _, t)| (*s, *t)),
     );
@@ -210,6 +232,15 @@ enum Formula<'a> {
     Equation(usize),
 }
 
+impl fmt::Display for Formula<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Formula::StateFrm(statefrm) => write!(f, "{}", statefrm),
+            Formula::Equation(i) => write!(f, "Equation({})", i),
+        }
+    }
+}
+
 /// Local struct to keep track of the translation state. The generic bound `E` is the
 /// type of the edge labels.
 ///
@@ -222,7 +253,7 @@ enum Formula<'a> {
 /// values later on.
 pub(crate) struct Translation<'a, L, E> {
     vertex_map: IndexedSet<(StateIndex, Formula<'a>)>,
-    vertices: Vec<(Player, Priority)>,
+    vertices: Vec<Option<(Player, Priority)>>,
     edges: Vec<(VertexIndex, E, VertexIndex)>,
 
     // Used for the breadth first search.
@@ -285,10 +316,10 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             Formula::Equation(initial_equation_index),
             VertexIndex::new(0),
         )];
-        self.vertices.push((Player::Odd, Priority::new(0))); // Placeholder for the initial vertex
+        self.vertices.push(None); // Placeholder for the initial vertex
 
         while let Some((s, formula, vertex_index)) = self.queue.pop() {
-            debug!("Translating vertex {}: (s={}, formula={:?})", vertex_index, s, formula);
+            debug!("Translating vertex {}: (s={}, formula={})", vertex_index, s, formula);
             self.progress.print(self.vertices.len());
             match formula {
                 Formula::StateFrm(f) => {
@@ -303,9 +334,14 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         Ok(())
     }
 
-    /// Returns the collected vertices.
-    pub fn vertices(&self) -> &Vec<(Player, Priority)> {
-        &self.vertices
+    /// Returns the collected vertices with placeholders removed.
+    pub fn vertices(&self) -> Vec<(Player, Priority)> {
+        debug_assert!(
+            self.vertices.iter().all(|v| v.is_some()),
+            "All vertices should be assigned before retrieving the vertices"
+        );
+
+        self.vertices.iter().filter_map(|vertex| vertex.as_ref().copied()).collect()
     }
 
     /// Returns the collected edges, where the edge label is ignored.
@@ -322,17 +358,17 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         match formula {
             StateFrm::True => {
                 // (s, true) → odd, 0
-                self.vertices[vertex_index] = (Player::Odd, Priority::new(0));
+                self.set_vertex(vertex_index, Player::Odd, Priority::new(0));
             }
             StateFrm::False => {
                 // (s, false) → even, 0
-                self.vertices[vertex_index] = (Player::Even, Priority::new(0));
+                self.set_vertex(vertex_index, Player::Even, Priority::new(0));
             }
             StateFrm::Binary { op, lhs, rhs } => {
                 match op {
                     StateFrmOp::Conjunction => {
                         // (s, Ψ_1 ∧ Ψ_2) →_P odd, (s, Ψ_1) and (s, Ψ_2), 0
-                        self.vertices[vertex_index] = (Player::Odd, Priority::new(0));
+                        self.set_vertex(vertex_index, Player::Odd, Priority::new(0));
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
@@ -341,7 +377,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                     }
                     StateFrmOp::Disjunction => {
                         // (s, Ψ_1 ∨ Ψ_2) →_P even, (s, Ψ_1) and (s, Ψ_2), 0
-                        self.vertices[vertex_index] = (Player::Even, Priority::new(0));
+                        self.set_vertex(vertex_index, Player::Even, Priority::new(0));
                         let s_psi_1 = self.queue_vertex(s, Formula::StateFrm(lhs));
                         let s_psi_2 = self.queue_vertex(s, Formula::StateFrm(rhs));
 
@@ -359,7 +395,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                     .find_equation_by_identifier(identifier)
                     .expect("Variable must correspond to an equation");
 
-                self.vertices[vertex_index] = (Player::Odd, Priority::new(0)); // The priority and owner do not matter here
+                self.set_vertex(vertex_index, Player::Odd, Priority::new(0)); // The priority and owner do not matter here
                 let equation_vertex = self.queue_vertex(s, Formula::Equation(i));
                 self.edges.push((vertex_index, labelling(None), equation_vertex));
             }
@@ -371,7 +407,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                 match operator {
                     ModalityOperator::Box => {
                         // (s, [a] Ψ) → odd, (s', Ψ) for all s' with s -a-> s', 0
-                        self.vertices[vertex_index] = (Player::Odd, Priority::new(0));
+                        self.set_vertex(vertex_index, Player::Odd, Priority::new(0));
 
                         for transition in self.lts.outgoing_transitions(s) {
                             let action = &self.parsed_labels[*transition.label];
@@ -388,7 +424,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                     }
                     ModalityOperator::Diamond => {
                         // (s, <a> Ψ) → even, (s', Ψ) for all s' with s -a-> s', 0
-                        self.vertices[vertex_index] = (Player::Even, Priority::new(0));
+                        self.set_vertex(vertex_index, Player::Even, Priority::new(0));
 
                         for transition in self.lts.outgoing_transitions(s) {
                             let action = &self.parsed_labels[*transition.label];
@@ -418,7 +454,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         match equation.operator() {
             FixedPointOperator::Least => {
                 // (s, μ X. Ψ) →_P odd, (s, Ψ[x := μ X. Ψ]), 2 * floor(AD(Ψ)/2) + 1. In Rust division is already floor.
-                self.vertices[vertex_index] = (
+                self.set_vertex(
+                    vertex_index,
                     Player::Odd,
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2) + 1),
                 );
@@ -427,7 +464,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             }
             FixedPointOperator::Greatest => {
                 // (s, ν X. Ψ) →_P even, (s, Ψ[x := ν X. Ψ]), 2 * (AD(Ψ)/2). In Rust division is already floor.
-                self.vertices[vertex_index] = (
+                self.set_vertex(
+                    vertex_index,
                     Player::Even,
                     Priority::new(2 * (self.equation_system.alternation_depth(equation_index) / 2)),
                 );
@@ -437,6 +475,15 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         }
     }
 
+    /// Assigns a concrete vertex value exactly once.
+    fn set_vertex(&mut self, vertex_index: VertexIndex, player: Player, priority: Priority) {
+        debug_assert!(
+            self.vertices[vertex_index].is_none(),
+            "Vertex {vertex_index} was assigned more than once"
+        );
+        self.vertices[vertex_index] = Some((player, priority));
+    }
+
     /// Queues a new pair to be translated, returning its vertex index.
     fn queue_vertex(&mut self, s: StateIndex, formula: Formula<'a>) -> VertexIndex {
         let (index, inserted) = self.vertex_map.insert((s, formula.clone()));
@@ -444,7 +491,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
 
         if inserted {
             // New vertex, assign placeholder values
-            self.vertices.resize(*vertex_index + 1, (Player::Odd, Priority::new(0)));
+            self.vertices.resize(*vertex_index + 1, None);
             self.queue.push((s, formula, vertex_index));
         }
 
