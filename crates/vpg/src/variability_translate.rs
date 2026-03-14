@@ -55,11 +55,12 @@ pub fn translate_vpg(
     // Convert the feature diagram (with names) to a VPG
     let variables: Vec<BDDFunction> = fts.features().values().cloned().collect();
 
+    let vertices = algorithm.vertices();
     let result = VariabilityParityGame::from_edges(
         manager_ref,
         VertexIndex::new(0),
-        algorithm.vertices().iter().map(|(p, _)| p).cloned().collect(),
-        algorithm.vertices().iter().map(|(_, pr)| pr).cloned().collect(),
+        vertices.iter().map(|vertex| vertex.0).collect(),
+        vertices.iter().map(|vertex| vertex.1).collect(),
         configuration,
         variables,
         || algorithm.edges().iter().cloned(),
