@@ -55,7 +55,7 @@ impl From<Equation> for StateFrm {
 
 impl ModalEquationSystem {
     /// Converts a plain state formula into a fixpoint equation system.
-    pub fn new(formula: &StateFrm) -> Self {        
+    pub fn new(formula: &StateFrm) -> Self {
         let mut equations = Vec::new();
         let mut identifier_generator = FreshStateVarGenerator::new(formula);
 
@@ -265,7 +265,10 @@ impl FreshStateVarGenerator {
 impl fmt::Display for ModalEquationSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, equation) in self.equations.iter().enumerate() {
-            writeln!(f, "{i}: {} {} = {}", equation.operator, equation.variable, equation.rhs)?;
+            write!(f, "{i}: {} {} = {}", equation.operator, equation.variable, equation.rhs)?;
+            if i + 1 < self.equations.len() {
+                writeln!(f)?;
+            }
         }
         Ok(())
     }
