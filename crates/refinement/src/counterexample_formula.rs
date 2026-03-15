@@ -22,10 +22,7 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
             for label in trace.iter().rev() {
                 expr = StateFrm::Modality {
                     operator: ModalityOperator::Diamond,
-                    formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
-                        label.to_string(),
-                        Vec::new(),
-                    )]))),
+                    formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
                     expr: Box::new(expr),
                 }
             }
@@ -41,10 +38,7 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
                     formula: tau_star.clone(),
                     expr: Box::new(StateFrm::Modality {
                         operator: ModalityOperator::Diamond,
-                        formula: RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![Action::new(
-                            label.to_string(),
-                            Vec::new(),
-                        )]))),
+                        formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
                         expr: Box::new(expr),
                     }),
                 }
@@ -53,4 +47,13 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
     }
 
     expr
+}
+
+/// Converts a label to a multi-action, where tau labels are converted to the empty multi-action.
+fn label_to_multi_action<L: TransitionLabel>(label: &L) -> MultiAction {
+    if label.is_tau_label() {
+        MultiAction::tau()
+    } else {
+        MultiAction::new(vec![Action::new(label.to_string(), Vec::new())])
+    }
 }
