@@ -316,6 +316,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             Formula::Equation(initial_equation_index),
             VertexIndex::new(0),
         )];
+        self.vertex_map.insert((initial_state, Formula::Equation(initial_equation_index)));
         self.vertices.push(None); // Placeholder for the initial vertex
 
         while let Some((s, formula, vertex_index)) = self.queue.pop() {
