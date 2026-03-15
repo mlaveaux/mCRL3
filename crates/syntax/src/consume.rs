@@ -14,7 +14,7 @@ use crate::ActionRenameDecl;
 use crate::ActionRenameRule;
 use crate::Assignment;
 use crate::BagElement;
-use crate::Comm;
+use crate::CommExpr;
 use crate::ComplexSort;
 use crate::Condition;
 use crate::ConstructorDecl;
@@ -929,7 +929,7 @@ impl Mcrl2Parser {
         parse_actfrm(input.children().as_pairs().clone())
     }
 
-    fn ActIdSet(actions: ParseNode) -> ParseResult<Vec<String>> {
+    pub(crate) fn ActIdSet(actions: ParseNode) -> ParseResult<Vec<String>> {
         match_nodes!(actions.into_children();
             [IdList(list)] => {
                 Ok(list)
@@ -953,7 +953,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn MultActIdSet(actions: ParseNode) -> ParseResult<Vec<MultiActionLabel>> {
+    pub(crate) fn MultActIdSet(actions: ParseNode) -> ParseResult<Vec<MultiActionLabel>> {
         match_nodes!(actions.into_children();
             [MultActIdList(list)] => {
                 Ok(list)
@@ -1056,13 +1056,13 @@ impl Mcrl2Parser {
         )
     }
 
-    fn CommExpr(action: ParseNode) -> ParseResult<Comm> {
+    fn CommExpr(action: ParseNode) -> ParseResult<CommExpr> {
         match_nodes!(action.into_children();
             [Id(id), MultActId(multiact), Id(to)] => {
                 let mut actions = vec![id];
                 actions.extend(multiact.actions);
 
-                Ok(Comm {
+                Ok(CommExpr {
                     from: MultiActionLabel { actions },
                     to
                 })
@@ -1070,7 +1070,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn CommExprList(actions: ParseNode) -> ParseResult<Vec<Comm>> {
+    pub(crate) fn CommExprList(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
         match_nodes!(actions.into_children();
             [CommExpr(action), CommExpr(actions)..] => {
                 Ok(iter::once(action).chain(actions).collect())
@@ -1078,7 +1078,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn CommExprSet(actions: ParseNode) -> ParseResult<Vec<Comm>> {
+    fn CommExprSet(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
         match_nodes!(actions.into_children();
             [CommExprList(list)] => {
                 Ok(list)

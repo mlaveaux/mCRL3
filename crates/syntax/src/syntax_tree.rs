@@ -374,7 +374,7 @@ pub enum ProcessExpr {
         operand: Box<ProcessExpr>,
     },
     Comm {
-        comm: Vec<Comm>,
+        comm: Vec<CommExpr>,
         operand: Box<ProcessExpr>,
     },
     Condition {
@@ -491,6 +491,18 @@ pub enum StateFrm {
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct MultiActionLabel {
     pub actions: Vec<String>,
+}
+
+impl MultiActionLabel {
+    /// Creates a new multi-action label from a list of action identifiers.
+    pub fn new(actions: Vec<String>) -> Self {
+        MultiActionLabel { actions }
+    }
+
+    /// Returns true if the multi-action label is empty (i.e., contains no actions).
+    pub fn is_tau_label(&self) -> bool {
+        self.actions.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
@@ -719,7 +731,7 @@ pub struct Rename {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Comm {
+pub struct CommExpr {
     pub from: MultiActionLabel,
     pub to: String,
 }
