@@ -48,7 +48,7 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
 
         // Ensure that all hidden labels are mapped to the tau action.
         let mut labels_index = HashMap::new();
-        labels_index.insert(L::tau_label(), LabelIndex::new(0));
+        labels_index.insert(labels[0].clone(), LabelIndex::new(0));
         for (index, label) in labels.iter().enumerate() {
             if hidden_labels.iter().any(|l| label.matches_label(l)) {
                 labels_index.insert(label.clone(), LabelIndex::new(0)); // Map hidden labels to tau

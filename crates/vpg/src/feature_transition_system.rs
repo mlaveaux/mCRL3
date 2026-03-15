@@ -256,6 +256,7 @@ impl<L: TransitionLabel> TransitionLabel for FeaturedLabel<L> {
     delegate::delegate! {
         to self.label {
             fn matches_label(&self, label: &str) -> bool;
+            fn is_tau_label(&self) -> bool;
         }
     }
 
@@ -264,7 +265,7 @@ impl<L: TransitionLabel> TransitionLabel for FeaturedLabel<L> {
     }
 
     fn tau_label() -> Self {
-        panic!("Cannot create FeaturedLabel from index");
+        panic!("Cannot create a tau label for FeaturedLabel");
     }
 }
 
