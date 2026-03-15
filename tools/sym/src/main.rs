@@ -24,6 +24,7 @@ use merc_symbolic::reachability;
 use merc_symbolic::reachability_bdd;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
+use merc_symbolic::refine_bisimulation;
 use merc_symbolic::reorder;
 use merc_symbolic::sigref_symbolic;
 use merc_tools::VerbosityFlag;
@@ -32,6 +33,7 @@ use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use oxidd::bdd::BDDFunction;
 use which::which_in;
 
 /// Default node capacity for the Oxidd decision diagram manager.
@@ -142,8 +144,17 @@ struct ConvertArgs {
     output: PathBuf,
 }
 
+#[derive(Clone, Copy, clap::ValueEnum, Debug)]
+enum Equivalence {
+    StrongBisim,
+    StrongBisimSigref,
+}
+
 #[derive(clap::Args, Debug)]
 struct ReduceArgs {
+    /// The equivalence relation to reduce modulo.
+    equivalence: Equivalence,
+
     /// The input symbolic LTS file path.
     filename: PathBuf,
 
@@ -417,8 +428,12 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
     })?;
 
-    timing.measure("reduction", || {
-        sigref_symbolic(&manager_ref, &lts_bdd, timing, args.split_signature, args.visualize)
+    let _quotient = timing.measure("reduction", || -> Result<BDDFunction, MercError> {
+        match args.equivalence {
+            Equivalence::StrongBisimSigref => sigref_symbolic(&manager_ref, &lts_bdd, timing, args.split_signature, args.visualize),
+            Equivalence::StrongBisim => refine_bisimulation(&manager_ref, &lts_bdd),
+        }
     })?;
+
     Ok(())
 }
