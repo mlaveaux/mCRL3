@@ -393,7 +393,13 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
     fn test_random_trace_refinement() {
         random_test(100, |rng| {
-            is_refinment_test(rng, RefinementType::Trace, ExplorationStrategy::BFS, false);
+            is_refinment_test(
+                "test_random_trace_refinement",
+                rng,
+                RefinementType::Trace,
+                ExplorationStrategy::BFS,
+                false,
+            );
         });
     }
 
@@ -401,7 +407,27 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
     fn test_random_weak_trace_refinement() {
         random_test(100, |rng| {
-            is_refinment_test(rng, RefinementType::Weaktrace, ExplorationStrategy::BFS, false);
+            is_refinment_test(
+                "test_random_weak_trace_refinement",
+                rng,
+                RefinementType::Weaktrace,
+                ExplorationStrategy::BFS,
+                false,
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+    fn test_random_stable_failures_refinement() {
+        random_test(100, |rng| {
+            is_refinment_test(
+                "test_random_stable_failures_refinement",
+                rng,
+                RefinementType::StableFailures,
+                ExplorationStrategy::BFS,
+                false,
+            );
         });
     }
 
@@ -467,12 +493,13 @@ mod tests {
     /// the counter example is indeed a valid witness for the failure of the
     /// refinement check.
     fn is_refinment_test(
+        dump_name: &str,
         rng: &mut StdRng,
         refinement: RefinementType,
         strategy: ExplorationStrategy,
         preprocess: bool,
     ) {
-        let mut files = DumpFiles::new("test_random_trace_refinement");
+        let mut files = DumpFiles::new(dump_name);
 
         let spec_lts = random_lts(rng, 10, 10, 3);
         let impl_lts = random_lts(rng, 10, 10, 3);
