@@ -4,9 +4,11 @@ use pest_derive::Parser;
 use merc_pest_consume::Error;
 use merc_utilities::MercError;
 
+use crate::CommExpr;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
 use crate::MultiAction;
+use crate::MultiActionLabel;
 use crate::ParseNode;
 use crate::StateFrmOp;
 use crate::UntypedActionRenameSpec;
@@ -100,6 +102,31 @@ impl UntypedPres {
 
         Ok(Mcrl2Parser::PresSpec(ParseNode::new(root))?)
     }
+}
+
+/// Parses a list of communication expressions from the given input string.
+pub fn parse_comm_expr_list(input: &str) -> Result<Vec<CommExpr>, MercError> {
+    let mut result = Mcrl2Parser::parse(Rule::CommExprList, input).map_err(extend_parser_error)?;
+    let root = result.next().expect("Could not parse communication expression list");
+
+    Ok(Mcrl2Parser::CommExprList(ParseNode::new(root))?)
+}
+
+/// Parses a list of action names from the given input string, for example those used in the hide operator.
+pub fn parse_action_names(input: &str) -> Result<Vec<String>, MercError> {
+    let mut result = Mcrl2Parser::parse(Rule::ActIdSet, input).map_err(extend_parser_error)?;
+    let root = result.next().expect("Could not parse action name list");
+
+    Ok(Mcrl2Parser::ActIdSet(ParseNode::new(root))?)
+}
+
+/// Parses the action names for the allow operator from the given input string.
+pub fn parse_allow_action_names(input: &str) -> Result<Vec<MultiActionLabel>, MercError> {
+    
+    let mut result = Mcrl2Parser::parse(Rule::ActIdSet, input).map_err(extend_parser_error)?;
+    let root = result.next().expect("Could not parse allow set name list");
+
+    Ok(Mcrl2Parser::MultActIdSet(ParseNode::new(root))?)    
 }
 
 fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {

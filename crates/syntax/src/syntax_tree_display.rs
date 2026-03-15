@@ -8,7 +8,7 @@ use crate::ActFrmBinaryOp;
 use crate::Action;
 use crate::Assignment;
 use crate::Bound;
-use crate::Comm;
+use crate::CommExpr;
 use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
@@ -695,7 +695,7 @@ impl fmt::Display for ProcessExpr {
     }
 }
 
-impl fmt::Display for Comm {
+impl fmt::Display for CommExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} -> {}", self.from, self.to)
     }
