@@ -108,7 +108,7 @@ where
     let mut working = VecDeque::from([(
         initial_impl,
         if weak_transition {
-            VecSet::from_vec(tau_closure(merged_lts, vec![initial_spec], true, &mut closure_cache))
+            VecSet::from_vec(tau_closure(merged_lts, vec![initial_spec], &mut closure_cache))
         } else {
             VecSet::singleton(initial_spec)
         },
@@ -137,7 +137,7 @@ where
 
                 if weak_transition {
                     // For weak trace refinement we need to consider tau-closures s -->* s1 -e-> s2 -*-> s'
-                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), true, &mut closure_cache);
+                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache);
 
                     for s in &closure {
                         for spec_transition in merged_lts.outgoing_transitions(*s) {
@@ -148,7 +148,7 @@ where
                     }
 
                     spec_prime =
-                        VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), false, &mut closure_cache));
+                        VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache));
                 } else {
                     // Otherwise, simply consider direct transitions.
                     for s in &spec {
@@ -196,8 +196,10 @@ fn refusals_contained_in<L: LTS>(
         return None;
     }
 
-    // refusals(impl) \subseteq refusals(spec)
-    for s in spec_states.iter() {
+    // refusals(impl) ⊆ refusals(spec) iff there exists a stable spec state s with enabled(s) ⊆ enabled(impl).
+    // Violation: no such witness exists.
+    let mut violation_label = None;
+    'outer: for s in spec_states.iter() {
         if !is_stable(lts, *s) {
             // Unstable spec states do not contribute to the refusals of the specification, so we can ignore them.
             continue;
@@ -210,12 +212,23 @@ fn refusals_contained_in<L: LTS>(
             {
                 // Label is enabled in spec, but also in impl, so it cannot be part of the refusal set of impl.
                 continue;
-            } else {
-                // The current label shows that the refusal set of impl is not contained in the refusal set of spec, so we can return false.
-                debug_assert!(!refusals_contained_in_naive(lts, impl_state, spec_states));
-                return Some(transition_spec.label);
             }
+
+            // s has an action impl cannot do, so s is not a witness (enabled(s) ⊄ enabled(impl)).
+            violation_label = Some(transition_spec.label);
+            continue 'outer;
         }
+
+        // All of s's enabled actions are also enabled in impl: s is a witness.
+        // Therefore refusals(impl) ⊆ refusals(s) ⊆ refusals_set(spec).
+        debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
+        return None;
+    }
+
+    if let Some(label) = violation_label {
+        // No witness found: the refusal set of impl is not contained in the refusal set of spec.
+        debug_assert!(!refusals_contained_in_naive(lts, impl_state, spec_states));
+        return Some(label);
     }
 
     debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
@@ -327,18 +340,14 @@ impl Default for ClosureCache {
 pub fn tau_closure<L: LTS>(
     lts: &L,
     mut states: Vec<StateIndex>,
-    extend: bool,
     cache: &mut ClosureCache,
 ) -> Vec<StateIndex> {
-    debug_assert_eq!(cache.working.len(), 0, "Closure cache not cleared before use.");
-    debug_assert_eq!(cache.visited.len(), 0, "Closure cache not cleared before use.");
+    debug_assert!(cache.working.is_empty(), "Closure cache not cleared before use.");
+    debug_assert!(cache.visited.is_empty(), "Closure cache not cleared before use.");
 
-    if extend {
-        cache.working.extend(states.iter().cloned());
-    } else {
-        // Leaves the states empty.
-        cache.working.append(&mut states);
-    }
+    // Initialize the working set with the initial states, note that states is
+    // kept in tact. As such the original states are also returned.
+    cache.working.extend(states.iter().cloned());
 
     // Keep track of states that are already in the closure.
     for s in &states {
@@ -370,6 +379,7 @@ mod tests {
     use merc_lts::write_aut;
     use merc_utilities::random_test;
     use merc_utilities::Timing;
+    use merc_utilities::test_logger;
     use merc_vpg::solve_zielonka;
     use merc_vpg::translate;
     use rand::rngs::StdRng;
@@ -397,7 +407,9 @@ mod tests {
 
     #[test]
     fn test_example_2_12() {
-        let s0 = r#"des(0, 5, 5)
+        let _ = test_logger();
+
+        let s0 = r#"des(0, 6, 5)
             (0, "req", 1)
             (1, "i", 2)
             (2, "10", 3)
@@ -409,7 +421,7 @@ mod tests {
             (0, "req", 1)
             (1, "20", 2)"#;
 
-        let u0 = r#"des(0, 3, 4)
+        let u0 = r#"des(0, 4, 3)
             (0, "req", 1)
             (1, "i", 1)
             (1, "20", 2)

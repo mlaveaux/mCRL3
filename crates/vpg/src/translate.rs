@@ -120,12 +120,16 @@ pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
 ///
 /// # Details
 ///
-/// Applies these transformations, and symmetrical for the diamond operator:
+/// Applies these transformations:
 ///
-/// [a*]phi = nu I. [a]I && phi
-/// [a+]phi = [a](nu I. [a]I && phi)
-/// [a+b]phi = [a]phi || [b]phi
-/// [a.b]phi = [a][b]phi
+/// > [a*]phi = nu I. [a]I && phi
+/// > [a+]phi = [a](nu I. [a]I && phi)
+/// > [a+b]phi = [a]phi || [b]phi
+/// > [a.b]phi = [a][b]phi
+/// 
+/// and symmetrical for the diamond operator:
+/// > <a*>phi = mu I. <a>I || phi
+/// > <a+>phi = <a>(mu I. <a>I || phi
 pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
     apply_statefrm(formula, |subformula| {
         if let StateFrm::Modality {
@@ -140,7 +144,7 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
                     // Generate the I equation and replace the regular formula with it.
                     let iteration_var = identifier_generator.generate("I");
                     Ok(Some(translate_regular_formulas(
-                        convert_regular_iteration(reg_frm, iteration_var, operator, expr),
+                        convert_regular_iteration(*operator, reg_frm, iteration_var, operator, expr),
                         identifier_generator,
                     )))
                 }
@@ -151,7 +155,7 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
                         operator: *operator,
                         formula: *reg_frm.clone(),
                         expr: Box::new(translate_regular_formulas(
-                            convert_regular_iteration(reg_frm, iteration_var, operator, expr),
+                            convert_regular_iteration(*operator, reg_frm, iteration_var, operator, expr),
                             identifier_generator,
                         )),
                     }))
@@ -192,8 +196,13 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
     .expect("Failed to visit state formula")
 }
 
-/// Convert a formula `[reg_frm*]phi` into `nu I. [reg_frm]I && phi`, and similarly for the diamond modality.
+/// Convert an iteration regular formula to a fixpoint formula
+/// 
+/// # Details
+/// 
+/// The `modality` is the modality of the outer formula.
 fn convert_regular_iteration(
+    modality: ModalityOperator,
     reg_frm: &RegFrm,
     iteration_var: String,
     operator: &ModalityOperator,
@@ -203,7 +212,11 @@ fn convert_regular_iteration(
         operator: FixedPointOperator::Greatest,
         variable: StateVarDecl::new(iteration_var.clone(), Vec::new()),
         body: Box::new(StateFrm::Binary {
-            op: StateFrmOp::Conjunction,
+            op: if modality == ModalityOperator::Box {
+                StateFrmOp::Conjunction
+            } else {
+                StateFrmOp::Disjunction
+            },
             lhs: Box::new(StateFrm::Modality {
                 operator: *operator,
                 formula: reg_frm.clone(),
