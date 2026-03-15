@@ -280,7 +280,8 @@ impl<L: TransitionLabel> fmt::Debug for FeaturedLabel<L> {
 
 impl<L: TransitionLabel> fmt::Display for FeaturedLabel<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} [{}]", self.label, FormatConfigSet(&self.feature_expr))
+        // This is also used for the output in .aut format, so should be valid labels.
+        write!(f, "{}", self.label)
     }
 }
 
