@@ -66,7 +66,9 @@ pub fn read_aut<R: Read>(reader: R, hidden_labels: Vec<String>) -> Result<Labell
     let num_of_transitions: usize = num_of_transitions_txt.parse()?;
     let num_of_states: usize = num_of_states_txt.parse()?;
 
-    let mut builder = LtsBuilderMem::with_capacity(Vec::new(), hidden_labels, num_of_states, 16, num_of_transitions);
+    let mut builder = LtsBuilderMem::with_capacity(Vec::new(), hidden_labels, 16, num_of_states, num_of_transitions);
+    builder.require_num_of_states(num_of_states);
+    
     let progress = TimeProgress::new(
         move |read: usize| {
             info!(
