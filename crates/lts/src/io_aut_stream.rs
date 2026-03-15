@@ -13,6 +13,10 @@ use crate::LtsBuilder;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
+/// A stream writer for the AUT format, which allows writing an LTS to a file
+/// without keeping the entire LTS in memory. The header of the AUT file is
+/// written at the end, after all transitions have been added, to ensure that
+/// the correct number of states and transitions is included in the header.
 pub struct AutStream<W: Write, L> {
     writer: BufWriter<W>,
 

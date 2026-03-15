@@ -10,12 +10,14 @@ use clap::Subcommand;
 use log::info;
 
 use merc_io::LargeFormatter;
+use merc_lts::AutStream;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
 use merc_lts::LtsFormat;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
+use merc_lts::read_aut;
 use merc_lts::read_explicit_lts;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
@@ -25,6 +27,8 @@ use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
 use merc_refinement::refines;
 use merc_syntax::generate_formula;
+use merc_syntax::parse_allow_action_names;
+use merc_syntax::parse_comm_expr_list;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -32,6 +36,11 @@ use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use merc_syntax::parse_action_names;
+
+use crate::combine::combine_lts;
+
+mod combine;
 
 /// A command line tool for labelled transition systems.
 #[derive(clap::Parser, Debug)]
@@ -63,6 +72,8 @@ enum Commands {
     Refines(RefinesArgs),
     /// Converts an LTS from one format to another format.
     Convert(ConvertArgs),
+    /// Computes the parallel composition hide(allow(comm(L1 || ... || Ln))).
+    Combine(CombineArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -157,6 +168,36 @@ struct RefinesArgs {
     no_preprocess: bool,
 }
 
+#[derive(clap::Args, Debug)]
+struct CombineArgs {
+
+    /// The input LTSs for which the parallel composition should be computed.
+    lts: Vec<PathBuf>,
+
+    /// Specify the output LTS, if not given, output to stdout.
+    output: Option<PathBuf>,
+
+    /// Determines the outermost hide operator.
+    #[arg(long)]
+    hide: Option<String>,
+
+    /// Determines the action names for the allow operator.
+    #[arg(long)]
+    allow: Option<String>,
+
+    /// Determines the communication expressions for the comm operator.
+    #[arg(long)]
+    comm: Option<String>,
+
+    /// Explicitly specify the LTS file format.
+    #[arg(long)]
+    format: Option<LtsFormat>,
+
+    /// List of actions that should be considered tau actions
+    #[arg(long, value_delimiter = ',')]
+    tau: Option<Vec<String>>,
+}
+
 fn main() -> Result<ExitCode, MercError> {
     let cli = Cli::parse();
 
@@ -189,6 +230,9 @@ fn main() -> Result<ExitCode, MercError> {
             }
             Commands::Convert(args) => {
                 handle_convert(args, &mut timing)?;
+            }
+            Commands::Combine(args) => {
+                handle_combine(args, &mut timing)?;
             }
         }
     }
@@ -419,6 +463,54 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
             }
         },
     }
+
+    Ok(())
+}
+
+fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercError> {
+    let format = if let Some(format) = args.format {
+        format
+    } else {
+        // Guess the format from the first LTS file.
+        guess_lts_format_from_extension(&args.lts[0], None).ok_or("Unknown LTS file format.")?
+    };
+
+    if format != LtsFormat::Aut {
+        return Err(MercError::from(
+            "The translate command only works for labelled transition systems in the .aut format.",
+        ));
+    }
+
+    let mut lts_list = args.lts.iter().map(|path| {
+        let file = File::open(path)?;
+        read_aut(&file, args.tau.clone().unwrap_or_default())
+    }).collect::<Result<Vec<_>, _>>()?;
+
+    // Parse the hide, allow and comm arguments, if they are provided.
+    let hide = match &args.hide {
+        Some(arg) => parse_action_names(&arg)?,
+        None => Vec::new(),
+    };
+
+    let allow = match &args.allow {
+        Some(arg) => parse_allow_action_names(&arg)?,
+        None => Vec::new(),
+    };
+
+    let comm = match &args.comm {
+        Some(arg) => parse_comm_expr_list(&arg)?,
+        None => Vec::new(),
+    };
+
+    let mut builder = AutStream::new(File::create("combined.aut")?);
+
+    let combined_lts = combine_lts(&mut builder,
+        lts_list,
+        &hide,
+        &allow,
+        &comm,
+        timing,
+    );
 
     Ok(())
 }
