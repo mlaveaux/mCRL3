@@ -39,12 +39,17 @@ use crate::compute_reachable;
 /// Translates a labelled transition system into a variability parity game.
 pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> Result<ParityGame, MercError> {
     // Parses all labels into MultiAction once
-    let labels =
-        lts.labels().iter().map(|label| if label.is_tau_label() {
-            Ok(MultiAction::tau())
-        } else {
-            MultiAction::parse(label)
-        }).collect::<Result<Vec<MultiAction>, MercError>>()?;
+    let labels = lts
+        .labels()
+        .iter()
+        .map(|label| {
+            if label.is_tau_label() {
+                Ok(MultiAction::tau())
+            } else {
+                MultiAction::parse(label)
+            }
+        })
+        .collect::<Result<Vec<MultiAction>, MercError>>()?;
 
     // Warn about any labels that are used in the formula but do not correspond to any label in the LTS.
     warn_unknown_action_labels(formula, &labels);
@@ -60,27 +65,11 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     algorithm.translate(lts.initial_state_index(), 0, |_| ())?;
 
     // Construct the parity game from the collected vertices and edges, where the `()` edge label is ignored.
+    let vertices = algorithm.vertices();
     let result = ParityGame::from_edges(
         VertexIndex::new(0),
-        algorithm
-            .vertices
-            .iter()
-            .map(|vertex| {
-                vertex
-                    .as_ref()
-                    .expect("All vertices must be assigned before constructing the parity game")
-                    .0
-            })
-            .collect(),
-        algorithm
-            .vertices
-            .into_iter()
-            .map(|vertex| {
-                vertex
-                    .expect("All vertices must be assigned before constructing the parity game")
-                    .1
-            })
-            .collect(),
+        vertices.iter().map(|(player, _)| *player).collect(),
+        vertices.iter().map(|(_, priority)| *priority).collect(),
         true,
         || algorithm.edges.iter().map(|(s, _, t)| (*s, *t)),
     );
@@ -316,7 +305,8 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             Formula::Equation(initial_equation_index),
             VertexIndex::new(0),
         )];
-        self.vertex_map.insert((initial_state, Formula::Equation(initial_equation_index)));
+        self.vertex_map
+            .insert((initial_state, Formula::Equation(initial_equation_index)));
         self.vertices.push(None); // Placeholder for the initial vertex
 
         while let Some((s, formula, vertex_index)) = self.queue.pop() {
@@ -342,7 +332,10 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             "All vertices should be assigned before retrieving the vertices"
         );
 
-        self.vertices.iter().filter_map(|vertex| vertex.as_ref().copied()).collect()
+        self.vertices
+            .iter()
+            .filter_map(|vertex| vertex.as_ref().copied())
+            .collect()
     }
 
     /// Returns the collected edges, where the edge label is ignored.
@@ -550,6 +543,9 @@ mod tests {
         let pg: ParityGame = translate(&lts, &formula.formula).unwrap();
 
         assert!(pg.is_total(), "The translated parity game should be total");
-        assert!(compute_reachable(&pg).1.iter().all(|v| v.is_some()), "All vertices should be reachable from the initial vertex");
+        assert!(
+            compute_reachable(&pg).1.iter().all(|v| v.is_some()),
+            "All vertices should be reachable from the initial vertex"
+        );
     }
 }

@@ -265,6 +265,9 @@ impl<L: TransitionLabel> TransitionLabel for FeaturedLabel<L> {
     }
 
     fn tau_label() -> Self {
+        // TODO: This is annoying, but we need a BDDManager to create the
+        // feature label. Perhaps this should be refactored to not require the
+        // tau label to be a constant.
         panic!("Cannot create a tau label for FeaturedLabel");
     }
 }
