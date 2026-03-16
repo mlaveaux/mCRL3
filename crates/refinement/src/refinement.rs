@@ -1,4 +1,5 @@
-use log::trace;
+use itertools::Itertools;
+use log::{trace, warn};
 use merc_lts::{LTS, StateIndex};
 use merc_reduction::{Equivalence, Partition, quotient_lts_block, reduce_lts, strong_bisim_sigref};
 use merc_utilities::Timing;
@@ -57,9 +58,9 @@ pub fn refines<L: LTS>(
 ) -> (bool, Option<CounterExample<L::Label>>) {
     let reduction = match refinement {
         RefinementType::Trace => Equivalence::StrongBisim,
-        RefinementType::Weaktrace | RefinementType::StableFailures | RefinementType::ImpossibleFutures => {
-            Equivalence::BranchingBisim
-        }
+        RefinementType::Weaktrace => Equivalence::BranchingBisim,
+        // TODO: Should be divergence preserving branching bisimulation, but this is not implemented yet.
+        RefinementType::StableFailures | RefinementType::ImpossibleFutures => Equivalence::BranchingBisim,
     };
 
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
@@ -84,12 +85,18 @@ pub fn refines<L: LTS>(
                     // After partitioning the block becomes the state in the reduced_lts.
                     (reduced_lts, StateIndex::new(*initial_spec))
                 }
-                _ => unimplemented!(),
+                _ => {
+                    warn!("Preprocessing for {reduction:?} is not implemented yet, skipping preprocessing.");
+                    (merged_lts, initial_spec)
+                },
             }
         }
     } else {
         impl_lts.merge_disjoint(&spec_lts)
     };
+
+    // Print the labels of the merged LTS for debugging purposes.
+    trace!("Merged LTS labels: {:?}", merged_lts.labels().iter().enumerate().format("\n"));
 
     timing.measure("refinement", || {
         if counter_example {
