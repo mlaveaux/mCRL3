@@ -444,6 +444,20 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+    fn test_random_impossible_futures_refinement() {
+        random_test(100, |rng| {
+            is_refinment_test(
+                "test_random_impossible_futures_refinement",
+                rng,
+                RefinementType::ImpossibleFutures,
+                ExplorationStrategy::BFS,
+                false,
+            );
+        });
+    }
+
+    #[test]
     fn test_example_2_12() {
         let _ = test_logger();
 

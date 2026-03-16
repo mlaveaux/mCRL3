@@ -39,47 +39,48 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
         CounterExample::WeakTrace(trace) => weaktrace_formula(trace, StateFrm::True, ModalityOperator::Diamond),
         CounterExample::StableFailures(trace, refusals) => {
             // Refused actions are characterized by box-false modalities.
-            let refusals_formula = refusals.iter().map(|l| {
-                StateFrm::Modality {
-                    operator: ModalityOperator::Box,
-                    formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
-                    expr: Box::new(StateFrm::False),
-                }
-            }).fold(StateFrm::True, |acc, expr| {
-                StateFrm::Binary { op: StateFrmOp::Conjunction, lhs: Box::new(acc), rhs: Box::new(expr) }
-            });
+            let inner = refusals
+                .iter()
+                .map(|l| {
+                    StateFrm::Modality {
+                        operator: ModalityOperator::Box,
+                        formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
+                        expr: Box::new(StateFrm::False),
+                    }
+                    // Stable failures are only observed in stable states, so make this the base case.
+                })
+                .fold(
+                    StateFrm::Modality {
+                        operator: ModalityOperator::Box,
+                        formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),
+                        expr: Box::new(StateFrm::False),
+                    },
+                    |acc, expr| StateFrm::Binary {
+                        op: StateFrmOp::Conjunction,
+                        lhs: Box::new(acc),
+                        rhs: Box::new(expr),
+                    },
+                );
 
-            // Stable failures are only observed in stable states.
-            let stable_formula = StateFrm::Modality {
-                operator: ModalityOperator::Box,
-                formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),
-                expr: Box::new(StateFrm::False),
-            };
-
-            let inner = StateFrm::Binary {
-                op: StateFrmOp::Conjunction,
-                lhs: Box::new(stable_formula),
-                rhs: Box::new(refusals_formula),
-            };
-
-            weaktrace_formula(
-                trace,
-                inner,
-                ModalityOperator::Diamond
-            )
-        },
+            weaktrace_formula(trace, inner, ModalityOperator::Diamond)
+        }
         CounterExample::ImpossibleFutures(trace, futures) => {
-            let expressions = futures.iter().map(|future| {
-                weaktrace_formula(future, StateFrm::False, ModalityOperator::Box)
-            }).collect::<Vec<_>>();
+            let expressions = futures
+                .iter()
+                .map(|future| weaktrace_formula(future, StateFrm::False, ModalityOperator::Box))
+                .collect::<Vec<_>>();
 
             // Generate a conjunction of the expressions for each future.
-            let expr = expressions.into_iter().fold(StateFrm::True, |acc, expr| {
-                StateFrm::Binary { op: StateFrmOp::Conjunction, lhs: Box::new(acc), rhs: Box::new(expr) }
-            });
+            let expr = expressions
+                .into_iter()
+                .fold(StateFrm::True, |acc, expr| StateFrm::Binary {
+                    op: StateFrmOp::Conjunction,
+                    lhs: Box::new(acc),
+                    rhs: Box::new(expr),
+                });
 
             weaktrace_formula(trace, expr, ModalityOperator::Diamond)
-        },
+        }
     }
 }
 
