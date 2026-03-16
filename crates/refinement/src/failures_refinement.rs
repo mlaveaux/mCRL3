@@ -182,7 +182,7 @@ where
 }
 
 /// This function checks that the refusals(impl) are contained in the refusals
-/// of spec, it returns Some(enabled) iff the inclusion fails.
+/// of spec, it returns Some(refusal) iff the inclusion fails for the maximal refusal set.
 ///  
 /// # Details
 ///
@@ -235,7 +235,7 @@ fn refusals_contained_in<L: LTS>(
 
     // No stable spec state can witness enabled(s) ⊆ enabled(impl), so refusal inclusion fails.
     debug_assert!(!refusals_contained_in_naive(lts, impl_state, spec_states));
-    Some(lts.outgoing_transitions(impl_state).map(|t| t.label).collect())
+    Some(maximal_refusals(lts, impl_state).to_vec())
 }
 
 /// A naive implementation for checking that the refusals of an implementation state are contained in the refusals of a set of specification states.
@@ -267,13 +267,12 @@ fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<Vec
     result
 }
 
-/// Naive implementation of refusals of a state s:
+/// Returns the maximal refusal set of a state s:
 ///
-/// A state s is stable, denoted by stable(s) iff `tau \not\in enabled(s)`, and
-/// refusals are defined for stable states s by:
+/// > maximal_refusals(s) = (Act \setminus enabled(s))
 ///
-/// > refusals(s) = { r | r \subseteq (Act \setminus enabled(s)) }.
-fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
+/// for stable states s. For unstable states this set is empty.
+fn maximal_refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<LabelIndex> {
     if !is_stable(lts, state) {
         return VecSet::new();
     }
@@ -282,21 +281,34 @@ fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
     let enabled_labels: VecSet<LabelIndex> =
         VecSet::from_vec(lts.outgoing_transitions(state).map(|t| t.label).collect());
 
-    // The refusal set of a stable state includes all subsets of the set of labels that are not enabled.
+    // The set of all visible actions.
     let all_labels: VecSet<LabelIndex> = VecSet::from_vec(
         lts.labels()
             .iter()
             .enumerate()
-            // We cannot refuse the tau action
+            // We cannot refuse the tau action.
             .filter(|(i, _)| !lts.is_hidden_label(LabelIndex::new(*i)))
             .map(|(i, _)| LabelIndex::new(i))
             .collect(),
     );
 
-    // Compute `Act \setminus enabled(s)` and then take the powerset to get all refusals.
+    VecSet::from_iter(all_labels.difference(&enabled_labels).cloned())
+}
+
+/// Naive implementation of refusals of a state s:
+///
+/// A state s is stable, denoted by stable(s) iff `tau \not\in enabled(s)`, and
+/// refusals are defined for stable states s by:
+///
+/// > refusals(s) = { r | r \subseteq (Act \setminus enabled(s)) }.
+fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
+    // The refusal set of a stable state includes all subsets of its maximal refusal set.
+    let maximal_refusal = maximal_refusals(lts, state);
+
+    // Take the powerset of `Act \setminus enabled(s)` to get all refusals.
     VecSet::from_iter(
-        all_labels
-            .difference(&enabled_labels)
+        maximal_refusal
+            .iter()
             .cloned()
             .powerset()
             .map(|subset| VecSet::from_iter(subset.into_iter())),

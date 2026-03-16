@@ -13,7 +13,7 @@ pub enum CounterExample<L: TransitionLabel> {
     Trace(Vec<L>),
     /// Represents a weak trace formula `<tau*><a0><tau*><a1>...<a_n>true`.
     WeakTrace(Vec<L>),
-    /// Represents a stable failures formula `<tau*><a0><tau*><a1>...<a_n>(<enabled_0>true && ... <enabled_k>true).
+    /// Represents a stable failures formula `<tau*><a0><tau*><a1>...<a_n>([refusal_0]false && ... [refusal_k]false).
     StableFailures(Vec<L>, Vec<L>),
     /// Represents an impossible futures formula `<tau*><a0><tau*><a1>...<a_n>(<future_0>false || ... <future_k>false)`.
     ImpossibleFutures(Vec<L>, Vec<Vec<L>>),
@@ -37,17 +37,30 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
             expr
         }
         CounterExample::WeakTrace(trace) => weaktrace_formula(trace, StateFrm::True, ModalityOperator::Diamond),
-        CounterExample::StableFailures(trace, enabled) => {
-            // The formula at the end.
-            let inner = enabled.iter().map(|l| {
+        CounterExample::StableFailures(trace, refusals) => {
+            // Refused actions are characterized by box-false modalities.
+            let refusals_formula = refusals.iter().map(|l| {
                 StateFrm::Modality {
-                    operator: ModalityOperator::Diamond,
+                    operator: ModalityOperator::Box,
                     formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
-                    expr: Box::new(StateFrm::True),
+                    expr: Box::new(StateFrm::False),
                 }
             }).fold(StateFrm::True, |acc, expr| {
                 StateFrm::Binary { op: StateFrmOp::Conjunction, lhs: Box::new(acc), rhs: Box::new(expr) }
             });
+
+            // Stable failures are only observed in stable states.
+            let stable_formula = StateFrm::Modality {
+                operator: ModalityOperator::Box,
+                formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),
+                expr: Box::new(StateFrm::False),
+            };
+
+            let inner = StateFrm::Binary {
+                op: StateFrmOp::Conjunction,
+                lhs: Box::new(stable_formula),
+                rhs: Box::new(refusals_formula),
+            };
 
             weaktrace_formula(
                 trace,
