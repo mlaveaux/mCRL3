@@ -9,9 +9,13 @@ use merc_syntax::StateFrmOp;
 
 /// Represents a counter example.
 pub enum CounterExample<L: TransitionLabel> {
+    /// Represents a simple trace formula `<a0><a1>..<a_n>true`.
     Trace(Vec<L>),
+    /// Represents a weak trace formula `<tau*><a0><tau*><a1>...<a_n>true`.
     WeakTrace(Vec<L>),
-    StableFailures(Vec<L>, L),
+    /// Represents a stable failures formula `<tau*><a0><tau*><a1>...<a_n>(<enabled_0>true && ... <enabled_k>true).
+    StableFailures(Vec<L>, Vec<L>),
+    /// Represents an impossible futures formula `<tau*><a0><tau*><a1>...<a_n>(<future_0>false || ... <future_k>false)`.
     ImpossibleFutures(Vec<L>, Vec<Vec<L>>),
 }
 
@@ -33,15 +37,24 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
             expr
         }
         CounterExample::WeakTrace(trace) => weaktrace_formula(trace, StateFrm::True, ModalityOperator::Diamond),
-        CounterExample::StableFailures(trace, refusal) => weaktrace_formula(
-            trace,
-            StateFrm::Modality {
-                operator: ModalityOperator::Box,
-                formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(refusal))),
-                expr: Box::new(StateFrm::False),
-            },
-            ModalityOperator::Diamond
-        ),
+        CounterExample::StableFailures(trace, enabled) => {
+            // The formula at the end.
+            let inner = enabled.iter().map(|l| {
+                StateFrm::Modality {
+                    operator: ModalityOperator::Diamond,
+                    formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
+                    expr: Box::new(StateFrm::True),
+                }
+            }).fold(StateFrm::True, |acc, expr| {
+                StateFrm::Binary { op: StateFrmOp::Conjunction, lhs: Box::new(acc), rhs: Box::new(expr) }
+            });
+
+            weaktrace_formula(
+                trace,
+                inner,
+                ModalityOperator::Diamond
+            )
+        },
         CounterExample::ImpossibleFutures(trace, futures) => {
             let expressions = futures.iter().map(|future| {
                 weaktrace_formula(future, StateFrm::False, ModalityOperator::Box)
