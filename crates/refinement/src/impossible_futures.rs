@@ -1,9 +1,10 @@
 use merc_lts::LTS;
 use merc_lts::StateIndex;
 
-use crate::is_refinement_generic;
+use crate::CounterExampleConstructor;
 use crate::CounterExampleTree;
 use crate::ExplorationStrategy;
+use crate::is_refinement_generic;
 use crate::is_stable;
 
 /// Checks for the various stable failures refinement relations.
@@ -13,18 +14,50 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
 ) -> (bool, Option<CE::Index>, Option<Vec<Vec<L::Label>>>) {
-    is_refinement_generic(strategy, lts, lts.initial_state_index(), initial_spec, |impl_state, spec_states| {
-        let result = is_stable(lts, impl_state) && !spec_states.iter().any(|t| {
-            is_weak_trace_refinement(lts, *t, impl_state, strategy, &mut ()).0
-        });
+    is_refinement_generic(
+        strategy,
+        lts,
+        lts.initial_state_index(),
+        initial_spec,
+        |impl_state, spec_states| {
+            if is_stable(lts, impl_state) {
+                // We can skip unstable states as an optimisation.
+                return None;
+            }
 
-        if !result {
-            // Generate a proper counter example.
-            return Some(Vec::new());
-        }
+            if !spec_states
+                .iter()
+                .any(|t| is_weak_trace_refinement(lts, *t, impl_state, strategy, &mut ()).0)
+            {
+                let mut futures = Vec::new();
 
-        None
-    }, true, counter_example)
+                for t in spec_states {
+                    // Run the weak trace refinement again with a counter example.
+                    let mut ce_constructor = CounterExampleConstructor::new();
+
+                    let (result, ce) = is_weak_trace_refinement(lts, *t, impl_state, strategy, &mut ce_constructor);
+                    debug_assert!(
+                        !result,
+                        "The weak trace refinement should fail according to the previous check."
+                    );
+
+                    let trace = ce_constructor
+                        .reconstruct_trace(ce.expect("A counter example was requested"))
+                        .iter()
+                        .map(|l| lts.labels()[*l].clone())
+                        .collect();
+
+                    futures.push(trace);
+                }
+
+                return Some(futures);
+            }
+
+            None
+        },
+        true,
+        counter_example,
+    )
 }
 
 /// Checks for the various stable failures refinement relations.
