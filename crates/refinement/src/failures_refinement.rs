@@ -17,9 +17,9 @@ use itertools::Itertools;
 use log::trace;
 
 use merc_collections::VecSet;
+use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
-use merc_lts::LTS;
 
 use crate::Antichain;
 use crate::CounterExampleTree;
@@ -33,7 +33,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
     refinement: RefinementType,
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>, Option<LabelIndex>) {
+) -> (bool, Option<CE::Index>, Option<Vec<LabelIndex>>) {
     match refinement {
         RefinementType::Trace => is_refinement_generic(
             strategy,
@@ -147,8 +147,7 @@ where
                         }
                     }
 
-                    spec_prime =
-                        VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache));
+                    spec_prime = VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache));
                 } else {
                     // Otherwise, simply consider direct transitions.
                     for s in &spec {
@@ -183,23 +182,32 @@ where
 }
 
 /// This function checks that the refusals(impl) are contained in the refusals
-/// of spec, it returns Some(action) iff the inclusion fails.
-/// 
-/// See [refusals_contained_in_naive] for its definition.
+/// of spec, it returns Some(enabled) iff the inclusion fails.
+///  
+/// # Details
+///
+/// See [refusals_contained_in_naive] for the definition of refusals.
+///
+/// In practice it can be more efficient to look at the enabled set of
+/// states:
+///
+/// > enabled(s) = { a | exists s' in S. s -a-> s' } if stable(s), and
+/// > enabled(spec) = { a | exists s in spec. a in enabled(s) && stable(s) }.
+///
+/// then we have that refusals(impl) ⊆ refusals(spec) iff enabled(spec) ⊆
+/// enabled(impl), and the enabled sets are more efficient to compute.
 fn refusals_contained_in<L: LTS>(
     lts: &L,
     impl_state: StateIndex,
     spec_states: &VecSet<StateIndex>,
-) -> Option<LabelIndex> {
+) -> Option<Vec<LabelIndex>> {
     if !is_stable(lts, impl_state) {
-        // If the implementation state is not stable, then it cannot have any refusals.
+        // If the implementation state is not stable, then it cannot have any refusals (or is maximally accepting).
         return None;
     }
 
     // refusals(impl) ⊆ refusals(spec) iff there exists a stable spec state s with enabled(s) ⊆ enabled(impl).
-    // Violation: no such witness exists.
-    let mut violation_label = None;
-    'outer: for s in spec_states.iter() {
+    for s in spec_states.iter() {
         if !is_stable(lts, *s) {
             // Unstable spec states do not contribute to the refusals of the specification, so we can ignore them.
             continue;
@@ -215,20 +223,18 @@ fn refusals_contained_in<L: LTS>(
             }
 
             // s has an action impl cannot do, so s is not a witness (enabled(s) ⊄ enabled(impl)).
-            violation_label = Some(transition_spec.label);
-            continue 'outer;
+            debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
+            return Some(
+                lts.outgoing_transitions(impl_state)
+                    .map(|t| t.label)
+                    .collect(),
+            );
         }
 
         // All of s's enabled actions are also enabled in impl: s is a witness.
         // Therefore refusals(impl) ⊆ refusals(s) ⊆ refusals_set(spec).
         debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
         return None;
-    }
-
-    if let Some(label) = violation_label {
-        // No witness found: the refusal set of impl is not contained in the refusal set of spec.
-        debug_assert!(!refusals_contained_in_naive(lts, impl_state, spec_states));
-        return Some(label);
     }
 
     debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
@@ -248,7 +254,7 @@ fn refusals_contained_in_naive<L: LTS>(lts: &L, impl_state: StateIndex, spec_sta
 }
 
 /// Naive implementation for the refusals of a set of states spec:
-/// 
+///
 /// > refusals(spec) = { r | exists s in spec. r in refusals(s) and stable(r) }
 fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<VecSet<LabelIndex>> {
     let mut result = VecSet::new();
@@ -264,7 +270,7 @@ fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<Vec
 
 /// Naive implementation of refusals of a state s:
 ///
-/// A state s is stable, denoted by stable(s) iff tau \not\in enabled(s), and
+/// A state s is stable, denoted by stable(s) iff `tau \not\in enabled(s)`, and
 /// refusals are defined for stable states s by:
 ///
 /// > refusals(s) = { r | r \subseteq (Act \setminus enabled(s)) }.
@@ -274,11 +280,8 @@ fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
     }
 
     // The set of actions enabled in the given state.
-    let enabled_labels: VecSet<LabelIndex> = VecSet::from_vec(
-        lts.outgoing_transitions(state)
-            .map(|t| t.label)
-            .collect(),
-    );
+    let enabled_labels: VecSet<LabelIndex> =
+        VecSet::from_vec(lts.outgoing_transitions(state).map(|t| t.label).collect());
 
     // The refusal set of a stable state includes all subsets of the set of labels that are not enabled.
     let all_labels: VecSet<LabelIndex> = VecSet::from_vec(
@@ -337,11 +340,7 @@ impl Default for ClosureCache {
 /// tau-closure is to be computed. The `extend` parameter indicates whether the
 /// closure should include the original states as well. The `cache` parameter is
 /// used to avoid repeated allocations.
-pub fn tau_closure<L: LTS>(
-    lts: &L,
-    mut states: Vec<StateIndex>,
-    cache: &mut ClosureCache,
-) -> Vec<StateIndex> {
+pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut ClosureCache) -> Vec<StateIndex> {
     debug_assert!(cache.working.is_empty(), "Closure cache not cleared before use.");
     debug_assert!(cache.visited.is_empty(), "Closure cache not cleared before use.");
 
@@ -377,17 +376,17 @@ mod tests {
     use merc_lts::random_lts;
     use merc_lts::read_aut;
     use merc_lts::write_aut;
-    use merc_utilities::random_test;
     use merc_utilities::Timing;
+    use merc_utilities::random_test;
     use merc_utilities::test_logger;
     use merc_vpg::solve_zielonka;
     use merc_vpg::translate;
     use rand::rngs::StdRng;
 
-    use crate::generate_formula;
-    use crate::refines;
     use crate::ExplorationStrategy;
     use crate::RefinementType;
+    use crate::generate_formula;
+    use crate::refines;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.

@@ -1,9 +1,9 @@
 use log::trace;
-use merc_lts::{StateIndex, LTS};
-use merc_reduction::{quotient_lts_block, reduce_lts, strong_bisim_sigref, Equivalence, Partition};
+use merc_lts::{LTS, StateIndex};
+use merc_reduction::{Equivalence, Partition, quotient_lts_block, reduce_lts, strong_bisim_sigref};
 use merc_utilities::Timing;
 
-use crate::{is_failures_refinement, is_impossible_futures_refinement, CounterExample, CounterExampleConstructor};
+use crate::{CounterExample, CounterExampleConstructor, is_failures_refinement, is_impossible_futures_refinement};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -112,15 +112,17 @@ pub fn refines<L: LTS>(
                             Some(match refinement {
                                 RefinementType::Trace => CounterExample::Trace(trace),
                                 RefinementType::Weaktrace => CounterExample::WeakTrace(trace),
-                                RefinementType::StableFailures => if let Some(inner) = ce_inner {
-                                    CounterExample::StableFailures(
-                                        trace,
-                                        merged_lts.labels()[inner].clone(),
-                                    )
-                                } else {
-                                    // The stable failures failed because of a weak trace difference.
-                                    CounterExample::WeakTrace(trace)
-                                },
+                                RefinementType::StableFailures => {
+                                    if let Some(inner) = ce_inner {
+                                        CounterExample::StableFailures(
+                                            trace,
+                                            inner.iter().map(|l| merged_lts.labels()[*l].clone()).collect(),
+                                        )
+                                    } else {
+                                        // The stable failures failed because of a weak trace difference.
+                                        CounterExample::WeakTrace(trace)
+                                    }
+                                }
                                 _ => unreachable!("Refinement {refinement:?} is not valid in this path"),
                             }),
                         )
