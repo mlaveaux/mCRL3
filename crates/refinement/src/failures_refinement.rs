@@ -191,7 +191,7 @@ where
 /// In practice it can be more efficient to look at the enabled set of
 /// states:
 ///
-/// > enabled(s) = { a | exists s' in S. s -a-> s' } if stable(s), and
+/// > enabled(s) = { a | exists s'. s -a-> s' } if stable(s), and
 /// > enabled(spec) = { a | exists s in spec. a in enabled(s) && stable(s) }.
 ///
 /// then we have that refusals(impl) ⊆ refusals(spec) iff enabled(spec) ⊆
@@ -213,32 +213,29 @@ fn refusals_contained_in<L: LTS>(
             continue;
         }
 
+        let mut is_witness = true;
         for transition_spec in lts.outgoing_transitions(*s) {
-            if lts
+            if !lts
                 .outgoing_transitions(impl_state)
                 .any(|transition_impl| transition_impl.label == transition_spec.label)
             {
-                // Label is enabled in spec, but also in impl, so it cannot be part of the refusal set of impl.
-                continue;
+                // s has an action impl cannot do, so s is not a witness (enabled(s) ⊄ enabled(impl)).
+                is_witness = false;
+                break;
             }
-
-            // s has an action impl cannot do, so s is not a witness (enabled(s) ⊄ enabled(impl)).
-            debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
-            return Some(
-                lts.outgoing_transitions(impl_state)
-                    .map(|t| t.label)
-                    .collect(),
-            );
         }
 
-        // All of s's enabled actions are also enabled in impl: s is a witness.
-        // Therefore refusals(impl) ⊆ refusals(s) ⊆ refusals_set(spec).
-        debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
-        return None;
+        if is_witness {
+            // All of s's enabled actions are also enabled in impl: s is a witness.
+            // Therefore refusals(impl) ⊆ refusals(s) ⊆ refusals_set(spec).
+            debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
+            return None;
+        }
     }
 
-    debug_assert!(refusals_contained_in_naive(lts, impl_state, spec_states));
-    None
+    // No stable spec state can witness enabled(s) ⊆ enabled(impl), so refusal inclusion fails.
+    debug_assert!(!refusals_contained_in_naive(lts, impl_state, spec_states));
+    Some(lts.outgoing_transitions(impl_state).map(|t| t.label).collect())
 }
 
 /// A naive implementation for checking that the refusals of an implementation state are contained in the refusals of a set of specification states.
@@ -250,12 +247,14 @@ fn refusals_contained_in_naive<L: LTS>(lts: &L, impl_state: StateIndex, spec_sta
 
     let impl_refusals = refusals(lts, impl_state);
     let spec_refusals = refusals_set(lts, spec_states);
+    trace!("impl refusals: {:?}, spec refusals: {:?}", impl_refusals, spec_refusals);
+
     impl_refusals.is_subset(&spec_refusals)
 }
 
 /// Naive implementation for the refusals of a set of states spec:
 ///
-/// > refusals(spec) = { r | exists s in spec. r in refusals(s) and stable(r) }
+/// > refusals(spec) = { r | exists s in spec. r in refusals(s) and stable(s) }
 fn refusals_set<L: LTS>(lts: &L, spec_states: &VecSet<StateIndex>) -> VecSet<VecSet<LabelIndex>> {
     let mut result = VecSet::new();
 
@@ -288,11 +287,13 @@ fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
         lts.labels()
             .iter()
             .enumerate()
+            // We cannot refuse the tau action
             .filter(|(i, _)| !lts.is_hidden_label(LabelIndex::new(*i)))
             .map(|(i, _)| LabelIndex::new(i))
             .collect(),
     );
 
+    // Compute `Act \setminus enabled(s)` and then take the powerset to get all refusals.
     VecSet::from_iter(
         all_labels
             .difference(&enabled_labels)
