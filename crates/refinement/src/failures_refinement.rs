@@ -115,10 +115,9 @@ where
         counter_example.root_index(),
     )]);
 
+    // pop (impl,spec) from working;
     while let Some((impl_state, spec, ce)) = working.pop_front() {
         trace!("Checking ({:?}, {:?})", impl_state, spec);
-        // pop (impl,spec) from working;
-
         if let Some(counter_example) = check(impl_state, &spec) {
             // if not check(impl,spec) then
             return (false, Some(ce), Some(counter_example));
@@ -126,6 +125,7 @@ where
 
         // for all impl-e->impl' do
         for impl_transition in merged_lts.outgoing_transitions(impl_state) {
+            trace!("label {:?}", impl_transition.label);
             let new_edge = counter_example.add_edge(impl_transition.label, ce);
 
             let spec_prime = if weak_transition && merged_lts.is_hidden_label(impl_transition.label) {
@@ -139,7 +139,7 @@ where
                     // For weak trace refinement we need to consider
                     // tau-closures `s => s1 -[e]-> s2 => s'`, but only include
                     // the states after the `e` transition.
-                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache, false);
+                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache, true);
 
                     for s in &closure {
                         for spec_transition in merged_lts.outgoing_transitions(*s) {
