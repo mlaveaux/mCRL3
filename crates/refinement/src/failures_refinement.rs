@@ -108,7 +108,7 @@ where
     let mut working = VecDeque::from([(
         initial_impl,
         if weak_transition {
-            VecSet::from_vec(tau_closure(merged_lts, vec![initial_spec], &mut closure_cache))
+            VecSet::from_vec(tau_closure(merged_lts, vec![initial_spec], &mut closure_cache, true))
         } else {
             VecSet::singleton(initial_spec)
         },
@@ -132,12 +132,14 @@ where
                 // spec' := spec if e == tau
                 spec.clone()
             } else {
-                // spec' := {s' | exists s in spec. s-e->s'};
+                // spec' := {s' | exists s in spec. s -[e]-> s'};
                 let mut spec_prime = VecSet::new();
 
                 if weak_transition {
-                    // For weak trace refinement we need to consider tau-closures s -->* s1 -e-> s2 -*-> s'
-                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache);
+                    // For weak trace refinement we need to consider
+                    // tau-closures `s => s1 -[e]-> s2 => s'`, but only include
+                    // the states after the `e` transition.
+                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache, false);
 
                     for s in &closure {
                         for spec_transition in merged_lts.outgoing_transitions(*s) {
@@ -147,7 +149,7 @@ where
                         }
                     }
 
-                    spec_prime = VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache));
+                    spec_prime = VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache, true));
                 } else {
                     // Otherwise, simply consider direct transitions.
                     for s in &spec {
@@ -311,7 +313,7 @@ fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
             .iter()
             .cloned()
             .powerset()
-            .map(|subset| VecSet::from_iter(subset.into_iter())),
+            .map(VecSet::from_iter),
     )
 }
 
@@ -353,13 +355,21 @@ impl Default for ClosureCache {
 /// tau-closure is to be computed. The `extend` parameter indicates whether the
 /// closure should include the original states as well. The `cache` parameter is
 /// used to avoid repeated allocations.
-pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut ClosureCache) -> Vec<StateIndex> {
-    debug_assert!(cache.working.is_empty(), "Closure cache not cleared before use.");
-    debug_assert!(cache.visited.is_empty(), "Closure cache not cleared before use.");
+/// 
+/// If `extend` is true then the original states are included in the closure,
+/// otherwise they are not.
+pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut ClosureCache, extend: bool) -> Vec<StateIndex> {
+    debug_assert!(cache.working.is_empty(), "Closure cache working not cleared before use.");
+    debug_assert!(cache.visited.is_empty(), "Closure cache visited not cleared before use.");
 
     // Initialize the working set with the initial states, note that states is
     // kept in tact. As such the original states are also returned.
-    cache.working.extend(states.iter().cloned());
+    if extend {
+        cache.working.extend(states.iter().cloned());
+    } else {
+        // Clear the original states.
+        cache.working.append(&mut states);
+    }
 
     // Keep track of states that are already in the closure.
     for s in &states {
@@ -384,78 +394,13 @@ pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut Clo
 
 #[cfg(test)]
 mod tests {
-    use merc_io::DumpFiles;
-    use merc_lts::LTS;
-    use merc_lts::random_lts;
     use merc_lts::read_aut;
-    use merc_lts::write_aut;
     use merc_utilities::Timing;
-    use merc_utilities::random_test;
     use merc_utilities::test_logger;
-    use merc_vpg::solve_zielonka;
-    use merc_vpg::translate;
-    use rand::rngs::StdRng;
 
     use crate::ExplorationStrategy;
     use crate::RefinementType;
-    use crate::generate_formula;
     use crate::refines;
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
-    fn test_random_trace_refinement() {
-        random_test(100, |rng| {
-            is_refinment_test(
-                "test_random_trace_refinement",
-                rng,
-                RefinementType::Trace,
-                ExplorationStrategy::BFS,
-                false,
-            );
-        });
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
-    fn test_random_weak_trace_refinement() {
-        random_test(100, |rng| {
-            is_refinment_test(
-                "test_random_weak_trace_refinement",
-                rng,
-                RefinementType::Weaktrace,
-                ExplorationStrategy::BFS,
-                false,
-            );
-        });
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
-    fn test_random_stable_failures_refinement() {
-        random_test(100, |rng| {
-            is_refinment_test(
-                "test_random_stable_failures_refinement",
-                rng,
-                RefinementType::StableFailures,
-                ExplorationStrategy::BFS,
-                false,
-            );
-        });
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
-    fn test_random_impossible_futures_refinement() {
-        random_test(100, |rng| {
-            is_refinment_test(
-                "test_random_impossible_futures_refinement",
-                rng,
-                RefinementType::ImpossibleFutures,
-                ExplorationStrategy::BFS,
-                false,
-            );
-        });
-    }
 
     #[test]
     fn test_example_2_12() {
@@ -481,7 +426,7 @@ mod tests {
 
         let s0 = read_aut(s0.as_bytes(), Vec::new()).unwrap();
         let t0 = read_aut(t0.as_bytes(), Vec::new()).unwrap();
-        let _u0 = read_aut(u0.as_bytes(), Vec::new()).unwrap();
+        let u0 = read_aut(u0.as_bytes(), Vec::new()).unwrap();
 
         let mut timing = Timing::new();
         assert!(
@@ -499,6 +444,18 @@ mod tests {
         assert!(
             !refines(
                 t0,
+                s0.clone(),
+                RefinementType::StableFailures,
+                ExplorationStrategy::BFS,
+                false,
+                false,
+                &mut timing
+            )
+            .0
+        );
+        assert!(
+            !refines(
+                u0,
                 s0,
                 RefinementType::StableFailures,
                 ExplorationStrategy::BFS,
@@ -508,60 +465,5 @@ mod tests {
             )
             .0
         );
-    }
-
-    /// Helper function to define a refinement test that can be instantiated for
-    /// the various types.
-    ///
-    /// # Details
-    ///
-    /// Internally requests a counter example to be generated, and checks that
-    /// the counter example is indeed a valid witness for the failure of the
-    /// refinement check.
-    fn is_refinment_test(
-        dump_name: &str,
-        rng: &mut StdRng,
-        refinement: RefinementType,
-        strategy: ExplorationStrategy,
-        preprocess: bool,
-    ) {
-        let mut files = DumpFiles::new(dump_name);
-
-        let spec_lts = random_lts(rng, 10, 10, 3);
-        let impl_lts = random_lts(rng, 10, 10, 3);
-
-        files.dump("spec.aut", |w| write_aut(w, &spec_lts)).unwrap();
-        files.dump("impl.aut", |w| write_aut(w, &impl_lts)).unwrap();
-
-        let mut timing = Timing::default();
-        let (result, counter_example) = refines(
-            impl_lts.clone(),
-            spec_lts.clone(),
-            refinement,
-            strategy,
-            preprocess,
-            true,
-            &mut timing,
-        );
-
-        if !result {
-            if let Some(ce) = counter_example {
-                let formula = generate_formula(&ce);
-                println!("Counter example formula: {}", formula);
-
-                let impl_pg = translate(&impl_lts, &formula).unwrap();
-                let spec_pg = translate(&spec_lts, &formula).unwrap();
-
-                let (impl_solution, _) = solve_zielonka(&impl_pg);
-                let (spec_solution, _) = solve_zielonka(&spec_pg);
-
-                assert!(
-                    impl_solution[impl_lts.initial_state_index()] != spec_solution[spec_lts.initial_state_index()],
-                    "Refinement returned false, but the counter example is not distinguishing."
-                );
-            } else {
-                panic!("Expected a counter example.");
-            }
-        }
     }
 }

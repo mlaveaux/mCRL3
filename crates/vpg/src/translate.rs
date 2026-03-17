@@ -126,10 +126,10 @@ pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
 /// > [a+]phi = [a](nu I. [a]I && phi)
 /// > [a+b]phi = [a]phi || [b]phi
 /// > [a.b]phi = [a][b]phi
-/// 
+///
 /// and symmetrical for the diamond operator:
 /// > <a*>phi = mu I. <a>I || phi
-/// > <a+>phi = <a>(mu I. <a>I || phi
+/// > <a+>phi = <a>(mu I. <a>I || phi)
 pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
     apply_statefrm(formula, |subformula| {
         if let StateFrm::Modality {
@@ -197,9 +197,9 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
 }
 
 /// Convert an iteration regular formula to a fixpoint formula
-/// 
+///
 /// # Details
-/// 
+///
 /// The `modality` is the modality of the outer formula.
 fn convert_regular_iteration(
     modality: ModalityOperator,
@@ -209,7 +209,11 @@ fn convert_regular_iteration(
     expr: &StateFrm,
 ) -> StateFrm {
     StateFrm::FixedPoint {
-        operator: FixedPointOperator::Greatest,
+        operator: if modality == ModalityOperator::Box {
+            FixedPointOperator::Greatest
+        } else {
+            FixedPointOperator::Least
+        },
         variable: StateVarDecl::new(iteration_var.clone(), Vec::new()),
         body: Box::new(StateFrm::Binary {
             op: if modality == ModalityOperator::Box {
