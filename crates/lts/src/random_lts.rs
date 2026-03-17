@@ -2,7 +2,11 @@
 
 use rand::Rng;
 use rand::RngExt;
+use rand::distr::Uniform;
 
+use merc_utilities::MercError;
+
+use crate::LTS;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilderFast;
 use crate::StateIndex;
@@ -83,6 +87,42 @@ pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
     }
 
     builder.finish(StateIndex::new(0), true)
+}
+
+/// Mutates the given LTS by randomly adding and removing transitions, and
+/// changing the labels of some transitions. The number of mutations is
+/// determined by the `num_of_mutations` parameter.
+pub fn mutate_lts<L: LTS, R: Rng>(
+    lts: &L,
+    rng: &mut R,
+    num_of_mutations: usize,
+) -> Result<LabelledTransitionSystem<L::Label>, MercError> {
+    let mut builder = LtsBuilderFast::new(lts.labels().to_vec(), Vec::new());
+    builder.require_num_of_states(lts.num_of_states());
+
+    let removed_transition = rng.random_range(0..num_of_mutations);
+
+    // The indices of the transitions to remove.
+    let to_remove = if lts.num_of_transitions() > 0 {
+        let uniform = Uniform::new(0, lts.num_of_transitions())?;
+        rng.sample_iter(uniform).take(removed_transition).collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+
+    let mut index = 0;
+    for state in lts.iter_states() {
+        for transition in lts.outgoing_transitions(state) {
+            // Skip this transition if it is one of the transitions to remove.
+            if !to_remove.contains(&index) {
+                builder.add_transition(state, &lts.labels()[transition.label], transition.to);
+            }
+
+            index += 1;
+        }
+    }
+
+    Ok(builder.finish(lts.initial_state_index(), true))
 }
 
 #[cfg(test)]
