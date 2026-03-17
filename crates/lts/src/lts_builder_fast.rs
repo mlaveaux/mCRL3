@@ -23,6 +23,9 @@ pub struct LtsBuilderFast<L> {
     labels_index: HashMap<L, LabelIndex>,
     labels: Vec<L>,
 
+    /// The hidden labels that should be mapped to the hidden action.
+    hidden_labels: Vec<String>,
+
     /// The number of states (derived from the transitions).
     num_of_states: usize,
 }
@@ -61,6 +64,7 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
             transitions: Vec::with_capacity(num_of_transitions),
             labels_index,
             labels,
+            hidden_labels,
             num_of_states: 0,
         }
     }
@@ -74,9 +78,16 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
         let label_index = if let Some(&index) = self.labels_index.get(label) {
             index
         } else {
-            let index = LabelIndex::new(self.labels.len());
-            self.labels_index.insert(label.to_owned(), index);
-            self.labels.push(label.to_owned());
+            // Label was not yet added, so add it to the labels and the index.
+            let label = label.to_owned();
+            let index = if self.hidden_labels.iter().any(|l| label.matches_label(l)) {
+                LabelIndex::new(0) // Map hidden labels to tau
+            } else {
+                let idx = LabelIndex::new(self.labels.len());
+                self.labels.push(label.clone());
+                idx
+            };
+            self.labels_index.insert(label, index);
             index
         };
 
