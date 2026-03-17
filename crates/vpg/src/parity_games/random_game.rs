@@ -28,23 +28,19 @@ pub fn random_parity_game<R: Rng>(
     assert!(num_of_vertices > 0, "Parity game must have at least one vertex");
     assert!(num_of_priorities > 0, "Parity game must have at least one priority");
 
-    // Randomly assign priorities to each vertex in range [0, num_of_priorities).
+    // Randomly assign priorities to each vertex within num_of_priorities.
     let priority: Vec<Priority> = (0..num_of_vertices)
         .map(|_| Priority::new(rng.random_range(0..num_of_priorities)))
         .collect();
 
-    // Option 1: owner based on parity of priority; Option 2: random owner.
-    // Mirror random_lts_monolithic style by using randomness.
+    // Assign every vertex to a random player (0 or 1).
     let owner: Vec<Player> = (0..num_of_vertices)
         .map(|_| Player::from_index(rng.random_range(0..2)))
         .collect();
 
-    // Build edges using a closure that can be iterated twice (as required by from_edges).
-    // We generate a deterministic set by capturing a precomputed edge list.
+    // For each vertex, generate 0..outdegree outgoing edges.
     let mut edge_list: Vec<(VertexIndex, VertexIndex)> = Vec::with_capacity(num_of_vertices * outdegree);
-
     for v in 0..num_of_vertices {
-        // For each vertex, generate 0..outdegree outgoing edges.
         for _ in 0..rng.random_range(0..outdegree) {
             let to = rng.random_range(0..num_of_vertices);
             edge_list.push((VertexIndex::new(v), VertexIndex::new(to)));
@@ -53,7 +49,6 @@ pub fn random_parity_game<R: Rng>(
 
     // Ensure at least the initial vertex exists.
     let initial_vertex = VertexIndex::new(0);
-
     ParityGame::from_edges(initial_vertex, owner, priority, make_total, || {
         edge_list.iter().cloned()
     })
@@ -143,8 +138,14 @@ mod tests {
         random_test(100, |rng| {
             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
             let vpg = random_variability_parity_game(&manager_ref, rng, true, 10, 5, 3, 3).unwrap();
-            assert!(vpg.num_of_vertices() >= 10 && vpg.num_of_vertices() <= 12, "At least 10 vertices, with 2 additional vertices for totality");
-            assert!(vpg.is_total(&manager_ref).unwrap(), "Generated variability parity game should be total");
+            assert!(
+                vpg.num_of_vertices() >= 10 && vpg.num_of_vertices() <= 12,
+                "At least 10 vertices, with 2 additional vertices for totality"
+            );
+            assert!(
+                vpg.is_total(&manager_ref).unwrap(),
+                "Generated variability parity game should be total"
+            );
         })
     }
 }

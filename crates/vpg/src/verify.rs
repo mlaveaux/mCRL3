@@ -28,6 +28,11 @@ use crate::check_partition;
 /// player, and computing the solution for the induced solitair game.
 pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy; 2]) {
     debug_assert!(pg.is_total(), "Verifying requires a total parity game");
+    debug_assert!(
+        pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Even)
+            || pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Odd),
+        "Verifying requires a parity game with only two players"
+    );
 
     // The set of all vertices in the game.
     let vertices = bitvec![usize, Lsb0; 1; pg.num_of_vertices()];
@@ -130,8 +135,8 @@ fn backward_reachability(predecessors: &Predecessors, mut initial: BitVec) -> Bi
     initial
 }
 
-/// A subgame of a parity game that is induced by taking the strategy for one of
-/// the players into account.
+/// A subgame of a parity game that is induced by taking the strategy for the
+/// given player into account.
 struct Restricted<'a, G: PG> {
     /// The game that is being restricted.
     game: &'a G,
@@ -178,7 +183,8 @@ impl<G: PG> PG for Restricted<'_, G> {
     }
 }
 
-/// A subgame Gi induced
+/// A subgame Gi induced by mapping all priorities equal to `max_priority` to
+/// the player's priority, and all other priorities to the opponent's priority.
 struct PrioSubgame<'a, G: PG> {
     restricted: Set,
 
@@ -277,5 +283,72 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
             fn num_of_edges(&self) -> usize;
             fn owner(&self, vertex: VertexIndex) -> Player;
         }
+    }
+}
+
+/// A parity game where every player is now owned by given player, making this a
+/// solitair game.
+#[cfg(test)]
+struct SolitairGame<'a, G: PG> {
+    game: &'a G,
+
+    player: Player,
+}
+
+#[cfg(test)]
+impl<G: PG> SolitairGame<'_, G> {
+    /// Create a new solitair game induced by the given strategy on the given game.
+    fn new<'a>(game: &'a G, player: Player) -> SolitairGame<'a, G> {
+        SolitairGame { game, player }
+    }
+}
+
+#[cfg(test)]
+impl<G: PG> PG for SolitairGame<'_, G> {
+    type Label = G::Label;
+
+    fn owner(&self, _vertex: VertexIndex) -> Player {
+        // All vertices are owned by the opponent, making this a solitair game for the player.
+        self.player
+    }
+
+    delegate! {
+        to self.game {
+            fn initial_vertex(&self) -> VertexIndex;
+            fn num_of_vertices(&self) -> usize;
+            fn num_of_edges(&self) -> usize;
+            fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
+            fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a;
+            fn priority(&self, vertex: VertexIndex) -> Priority;
+            fn is_total(&self) -> bool;
+            fn highest_priority(&self) -> Priority;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_utilities::random_test;
+
+    use crate::Player;
+    use crate::random_parity_game;
+    use crate::solve_zielonka;
+    use crate::verify::SolitairGame;
+    use crate::verify::solve_solitair_game;
+
+    #[test]
+    fn test_random_solitaire_game() {
+        random_test(100, |rng| {
+            let pg = random_parity_game(rng, true, 100, 3, 3);
+            let solitair = SolitairGame::new(&pg, Player::Even);
+
+            let solution = solve_solitair_game(&solitair, Player::Even);
+            let (expected_solution, _expected_strategy) = solve_zielonka(&pg);
+
+            assert_eq!(
+                solution, expected_solution[0],
+                "The winning set for the solitair game should match the winning set for the original game"
+            );
+        })
     }
 }
