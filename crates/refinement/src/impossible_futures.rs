@@ -7,7 +7,8 @@ use crate::ExplorationStrategy;
 use crate::is_refinement_generic;
 use crate::is_stable;
 
-/// Checks for the various stable failures refinement relations.
+/// Checks for the impossible futures refinement between the initial state of
+/// the `lts` and the `initial_spec` state.
 pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     lts: &L,
     initial_spec: StateIndex,
@@ -20,7 +21,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
         lts.initial_state_index(),
         initial_spec,
         |impl_state, spec_states| {
-            if is_stable(lts, impl_state) {
+            if !is_stable(lts, impl_state) {
                 // We can skip unstable states as an optimisation.
                 return None;
             }
@@ -60,7 +61,8 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     )
 }
 
-/// Checks for the various stable failures refinement relations.
+/// Checks for the various weak trace refinement. This is a helper function for
+/// the impossible futures refinement check.
 fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
     lts: &L,
     impl_state: StateIndex,

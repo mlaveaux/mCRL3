@@ -50,10 +50,6 @@ impl<T: Ord> VecSet<T> {
         Self { sorted_array: vec }
     }
 
-    pub fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Self::from_vec(iter.into_iter().collect())
-    }
-
     /// Returns the capacity of the set.
     pub fn capacity(&self) -> usize {
         self.sorted_array.capacity()
@@ -171,6 +167,12 @@ impl<T: Ord> VecSet<T> {
     }
 }
 
+impl<T: Ord> FromIterator<T> for VecSet<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from_vec(iter.into_iter().collect())
+    }
+}
+
 /// A lazy iterator that yields the difference of two sets. The elements are yielded in sorted order.
 struct Difference<'a, T, I> {
     self_iter: I,
@@ -191,7 +193,7 @@ where
             self.other_next = self.other_iter.next();
         }
 
-        while let Some(self_val) = self.self_iter.next() {
+        for self_val in self.self_iter.by_ref() {
             loop {
                 match self.other_next {
                     Some(other_val) => {
