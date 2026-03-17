@@ -54,7 +54,7 @@ ahash = "0.8"
 bitstream-io = "4.9"
 bitvec = "1.0"
 bumpalo = "3.20"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 dashmap = { version = "7.0.0-rc2", features = ["inline-more"] }
 delegate = "0.13"
 env_logger = { version = "0.11", features = ["kv"] }
@@ -105,7 +105,7 @@ indoc  = "2.0"
 test-case  = "3.3"
 test-log = "0.2"
 trybuild = "1.0"
-tempfile = "3.26"
+tempfile = "3.27"
 
 # Used for benchmarks
 criterion = "0.8"
