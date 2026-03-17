@@ -9,13 +9,13 @@ use merc_syntax::StateFrmOp;
 
 /// Represents a counter example.
 pub enum CounterExample<L: TransitionLabel> {
-    /// Represents a simple trace formula `<a0><a1>..<a_n>true`.
+    /// Represents a simple trace formula `<a0.a1. ... .a_n>true`.
     Trace(Vec<L>),
-    /// Represents a weak trace formula `<tau*><a0><tau*><a1>...<a_n>true`.
+    /// Represents a weak trace formula `<tau*.a0.tau*.a1. ... .a_n.tau*>true`.
     WeakTrace(Vec<L>),
-    /// Represents a stable failures formula `<tau*><a0><tau*><a1>...<a_n>([refusal_0]false && ... [refusal_k]false).
+    /// Represents a stable failures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([refusal_0]false && ... [refusal_k]false)`.
     StableFailures(Vec<L>, Vec<L>),
-    /// Represents an impossible futures formula `<tau*><a0><tau*><a1>...<a_n>(<future_0>false || ... <future_k>false)`.
+    /// Represents an impossible futures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([future_0. ...]false && ... [future_k. ...]false)`.
     ImpossibleFutures(Vec<L>, Vec<Vec<L>>),
 }
 
@@ -84,14 +84,23 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
     }
 }
 
-/// Generates a formula [tau* . label1 . tau* . label2 ...]expr that characterizes the weak trace counter example.
-fn weaktrace_formula<L: TransitionLabel>(trace: &Vec<L>, expr: StateFrm, modality: ModalityOperator) -> StateFrm {
+/// Generates a formula `[tau* . label1 . tau* . label2. ... . tau*]expr`, or
+/// diamond based on `modality`, that characterizes the weak trace.
+///
+/// Note that every hidden label in the given `trace` is ignored, to ensure that
+/// it is a valid weaktrace formula.
+fn weaktrace_formula<L: TransitionLabel>(trace: &[L], expr: StateFrm, modality: ModalityOperator) -> StateFrm {
     // Build the formula tau*
     let tau_star = RegFrm::Iteration(Box::new(RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![])))));
 
-    // We build the formula bottom up: tau* . label ...
-    let mut result = expr;
-    for label in trace.iter().rev() {
+    // We build the formula bottom up: tau* . label . ... . tau*
+    let mut result = StateFrm::Modality {
+        operator: modality,
+        formula: tau_star.clone(),
+        expr: Box::new(expr),
+    };
+
+    for label in trace.iter().rev().filter(|l| !l.is_tau_label()) {
         result = StateFrm::Modality {
             operator: modality,
             formula: tau_star.clone(),
