@@ -454,7 +454,7 @@ mod tests {
             .0
         );
         assert!(
-            !refines(
+            refines(
                 u0,
                 s0,
                 RefinementType::StableFailures,
