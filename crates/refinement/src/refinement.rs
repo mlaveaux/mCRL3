@@ -6,8 +6,10 @@ use merc_lts::StateIndex;
 use merc_reduction::Equivalence;
 use merc_reduction::Partition;
 use merc_reduction::quotient_lts_block;
+use merc_reduction::quotient_lts_naive;
 use merc_reduction::reduce_lts;
 use merc_reduction::strong_bisim_sigref;
+use merc_reduction::tau_scc_decomposition;
 use merc_utilities::Timing;
 
 use crate::CounterExample;
@@ -75,33 +77,43 @@ pub fn refines<L: LTS>(
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
     // together in case that some states are equivalent. So we do this in all branches.
     let (merged_lts, initial_spec) = if preprocess {
-        if counter_example {
-            // If a counter example is to be generated, we only reduce the
-            // specification LTS such that the resulting counter example remains valid.
-            let reduced_spec = reduce_lts(spec_lts, reduction, true, timing);
-            impl_lts.merge_disjoint(&reduced_spec)
-        } else {
-            let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
 
-            // Reduce all states in the merged LTS.
-            match reduction {
-                Equivalence::StrongBisim => {
-                    let (preprocess_lts, partition) = strong_bisim_sigref(merged_lts, timing);
+        // Reduce all states in the merged LTS.
+        match reduction {
+            Equivalence::StrongBisim => {
+                let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);                
+                let (preprocess_lts, partition) = strong_bisim_sigref(merged_lts, timing);
 
-                    let initial_spec = partition.block_number(initial_spec);
-                    let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
+                let initial_spec = partition.block_number(initial_spec);
+                let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
 
-                    // After partitioning the block becomes the state in the reduced_lts.
-                    (reduced_lts, StateIndex::new(*initial_spec))
-                }
-                _ => {
-                    warn!("Preprocessing for {reduction:?} is not implemented yet, skipping preprocessing.");
-                    (merged_lts, initial_spec)
+                // After partitioning the block becomes the state in the reduced_lts.
+                (reduced_lts, StateIndex::new(*initial_spec))
+            }
+            _ => {
+                warn!("Preprocessing for {reduction:?} is not implemented yet, skipping preprocessing.");
+                // TODO: When branching bisimulation is applied, this is no longer necessary.
+                if refinement == RefinementType::ImpossibleFutures {
+                    // For impossible futures we need to remove tau loops from the implementation.
+                    let scc_partition = tau_scc_decomposition(&impl_lts);
+                    let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true);
+
+                    tau_loop_free_lts.merge_disjoint(&spec_lts)
+                } else {
+                    impl_lts.merge_disjoint(&spec_lts)
                 }
             }
         }
     } else {
-        impl_lts.merge_disjoint(&spec_lts)
+        if refinement == RefinementType::ImpossibleFutures {
+            // For impossible futures we need to remove tau loops from the implementation.
+            let scc_partition = tau_scc_decomposition(&impl_lts);
+            let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true);
+
+            tau_loop_free_lts.merge_disjoint(&spec_lts)
+        } else {
+            impl_lts.merge_disjoint(&spec_lts)
+        }
     };
 
     // Print the labels of the merged LTS for debugging purposes.

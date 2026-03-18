@@ -91,12 +91,12 @@ pub fn is_refinement_generic<L: LTS, CE: CounterExampleTree, F, CC>(
     merged_lts: &L,
     initial_impl: StateIndex,
     initial_spec: StateIndex,
-    check: F,
+    mut check: F,
     weak_transition: bool,
     counter_example: &mut CE,
 ) -> (bool, Option<CE::Index>, Option<CC>)
 where
-    F: Fn(StateIndex, &VecSet<StateIndex>) -> Option<CC>,
+    F: FnMut(StateIndex, &VecSet<StateIndex>) -> Option<CC>,
 {
     // The antichain data structure is used for storing explored states. However, as opposed to a discovered set it
     // allows for pruning additional pairs based on the `antichain` property.
