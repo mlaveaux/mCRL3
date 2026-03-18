@@ -1,5 +1,6 @@
 use crate::is_abstraction;
 use crate::is_application;
+use crate::is_data_expression;
 use crate::is_function_symbol;
 use crate::is_machine_number;
 use crate::is_pbes_and;
@@ -132,6 +133,11 @@ pub trait PbesExpressionVisitor {
         None
     }
 
+    /// Visits a data expression. By default, this does nothing, but it can be overridden to also visit data expressions when visiting PBES expressions.
+    fn visit_data_expression(&mut self, _expr: &DataExpressionRef<'_>) -> Option<DataExpression> {
+        None
+    }
+
     fn visit(&mut self, expr: &PbesExpressionRef<'_>) -> Option<PbesExpression> {
         if is_pbes_propositional_variable_instantiation(&expr.copy()) {
             self.visit_propositional_variable_instantiation(&PbesPropositionalVariableInstantiationRef::from(
@@ -149,6 +155,8 @@ pub trait PbesExpressionVisitor {
             self.visit_forall(&PbesForallRef::from(expr.copy()))
         } else if is_pbes_exists(&expr.copy()) {
             self.visit_exists(&PbesExistsRef::from(expr.copy()))
+        } else if is_data_expression(&expr.copy()) {
+            self.visit_data_expression(&expr.copy().into()).map(|inner| inner.into())
         } else {
             unreachable!("Unknown pbes expression type");
         }
