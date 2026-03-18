@@ -59,30 +59,7 @@ pub struct SymmetryAlgorithm {
 impl SymmetryAlgorithm {
     /// Does the required preprocessing to analyse symmetries in the given PBES.
     pub fn new(pbes: &Pbes, print_srf: bool) -> Result<Self, MercError> {
-        // Apply various preproecessing necessary for symmetry detection
-        let mut srf = SrfPbes::from(pbes)?;
-        srf.unify_parameters(false, false)?;
-
-        if print_srf {
-            info!("==== SRF PBES ====");
-            info!("{}", srf.to_pbes());
-        }
-
-        let parameters = if let Some(equation) = srf.equations().first() {
-            equation.variable().parameters().to_vec()
-        } else {
-            // There are no equations, so no parameters.
-            Vec::new()
-        };
-
-        info!("Unified parameters: {}", parameters.iter().format(", "));
-
-        let state_graph = {
-            let mut pbes = srf.to_pbes();
-            pbes.normalize();
-            debug_assert!(pbes.is_well_typed(), "PBES should be well-typed after normalization.");
-            PbesStategraph::run(&pbes)?
-        };
+        let (srf, parameters, state_graph) = preprocess_symmetry(pbes, print_srf)?;
 
         let all_control_flow_parameters = state_graph
             .control_flow_graphs()
@@ -685,6 +662,31 @@ impl SymmetryAlgorithm {
     }
 }
 
+/// Applies the necessary preprocessing steps to use in the symmetry algorithm.
+pub fn preprocess_symmetry(pbes: &Pbes, print_srf: bool) -> Result<(SrfPbes, Vec<DataVariable>, PbesStategraph), MercError> {
+    let mut srf = SrfPbes::from(pbes)?;
+    srf.unify_parameters(false, false)?;
+    if print_srf {
+        info!("==== SRF PBES ====");
+        info!("{}", srf.to_pbes());
+    }
+    let parameters = if let Some(equation) = srf.equations().first() {
+        equation.variable().parameters().to_vec()
+    } else {
+        // There are no equations, so no parameters.
+        Vec::new()
+    };
+    info!("Unified parameters: {}", parameters.iter().format(", "));
+    let state_graph = {
+        let mut pbes = srf.to_pbes();
+        pbes.normalize();
+        debug_assert!(pbes.is_well_typed(), "PBES should be well-typed after normalization.");
+        PbesStategraph::run(&pbes)?
+    };
+
+    Ok((srf, parameters, state_graph))
+}
+
 /// Partition a vector into a number of sets based on a predicate.
 fn partition<T, I, P>(elements: I, predicate: P) -> Vec<Vec<T>>
 where
@@ -746,8 +748,8 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
 /// A constant representing an undefined vertex.
 const UNDEFINED_VERTEX: usize = usize::MAX;
 
-/// Returns the index of the variable that the control flow graph considers
-fn variable_index(cfg: &ControlFlowGraph) -> usize {
+/// Returns the index of the variable that the control flow graph represents.
+pub fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Find the first defined index
     let defined_index = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_VERTEX)
         .expect("Control flow graph should have defined variable index.")

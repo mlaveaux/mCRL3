@@ -18,6 +18,7 @@ use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
 
 mod clone_iterator;
+mod export;
 mod permutation;
 mod symmetry;
 
@@ -48,6 +49,8 @@ struct Cli {
 enum Commands {
     /// Analyze symmetries of a PBES
     Symmetry(SymmetryArgs),
+    /// Exports the control flow graphs of a PBES in JSON format.
+    Export(ExportArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -84,6 +87,20 @@ struct SymmetryArgs {
     print_srf: bool,
 }
 
+#[derive(clap::Args, Debug)]
+struct ExportArgs {
+    /// The input PBES file.
+    filename: String,
+
+    /// The JSON output file. If not provided, the output will be written to stdout.
+    #[arg(long)]
+    output: Option<String>,
+
+    /// Explicitly choose the format of the input PBES file.
+    #[arg(long, short('i'), value_enum)]
+    format: Option<PbesFormat>,
+}
+
 fn main() -> Result<ExitCode, MercError> {
     let cli = Cli::parse();
 
@@ -102,56 +119,10 @@ fn main() -> Result<ExitCode, MercError> {
 
     let timing = Timing::new();
 
-    if let Some(Commands::Symmetry(args)) = cli.commands {
-        let format = args.format.unwrap_or(PbesFormat::Pbes);
-
-        let pbes = match format {
-            PbesFormat::Pbes => Pbes::from_file(&args.filename)?,
-            PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
-        };
-
-        let algorithm = SymmetryAlgorithm::new(&pbes, args.print_srf)?;
-        if let Some(permutation) = &args.permutation {
-            let pi = if permutation.trim_start().starts_with("[") {
-                Permutation::from_mapping_notation(permutation)?
-            } else {
-                Permutation::from_cycle_notation(permutation)?
-            };
-
-            if let Err(x) = algorithm.is_valid_permutation(&pi) {
-                info!("The given permutation is not valid: {x}");
-                return Ok(ExitCode::FAILURE);
-            }
-
-            info!("Checking permutation: {}", pi);
-            if algorithm.check_symmetry(&pi) {
-                println!("true");
-            } else {
-                println!("false");
-            }
-        } else {
-            for candidate in algorithm.candidates(args.partition_data_sorts, args.partition_data_updates) {
-                debug!("Found candidate: {}", candidate);
-
-                if candidate.is_identity() {
-                    // Skip the identity permutation
-                    continue;
-                }
-
-                if algorithm.check_symmetry(&candidate) {
-                    if args.mapping_notation {
-                        info!("Found symmetry: {:?}", candidate);
-                    } else {
-                        info!("Found symmetry: {}", candidate);
-                    }
-
-                    if !args.all_symmetries {
-                        // Only search for the first symmetry
-                        info!("Stopping search after first non-trivial symmetry.");
-                        break;
-                    }
-                }
-            }
+    if let Some(command) = cli.commands {
+        match command {
+            Commands::Symmetry(args) => handle_symmetry(args)?,
+            Commands::Export(args) => handle_export(args)?,
         }
     }
 
@@ -160,4 +131,75 @@ fn main() -> Result<ExitCode, MercError> {
     }
 
     Ok(ExitCode::SUCCESS)
+}
+
+fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {
+    let format = args.format.unwrap_or(PbesFormat::Pbes);
+    let pbes = match format {
+        PbesFormat::Pbes => Pbes::from_file(&args.filename)?,
+        PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
+    };
+    let algorithm = SymmetryAlgorithm::new(&pbes, args.print_srf)?;
+    Ok(if let Some(permutation) = &args.permutation {
+        let pi = if permutation.trim_start().starts_with("[") {
+            Permutation::from_mapping_notation(permutation)?
+        } else {
+            Permutation::from_cycle_notation(permutation)?
+        };
+
+        if let Err(x) = algorithm.is_valid_permutation(&pi) {
+            return Err(format!("The given permutation is not valid: {x}").into());
+        }
+
+        info!("Checking permutation: {}", pi);
+        if algorithm.check_symmetry(&pi) {
+            println!("true");
+        } else {
+            println!("false");
+        }
+    } else {
+        for candidate in algorithm.candidates(args.partition_data_sorts, args.partition_data_updates) {
+            debug!("Found candidate: {}", candidate);
+
+            if candidate.is_identity() {
+                // Skip the identity permutation
+                continue;
+            }
+
+            if algorithm.check_symmetry(&candidate) {
+                if args.mapping_notation {
+                    info!("Found symmetry: {:?}", candidate);
+                } else {
+                    info!("Found symmetry: {}", candidate);
+                }
+
+                if !args.all_symmetries {
+                    // Only search for the first symmetry
+                    info!("Stopping search after first non-trivial symmetry.");
+                    break;
+                }
+            }
+        }
+    })
+}
+
+/// Handles the export command, which exports the control flow graphs of a PBES in JSON format.
+fn handle_export(args: ExportArgs) -> Result<(), MercError> {
+    let format = args.format.unwrap_or(PbesFormat::Pbes);
+    let pbes = match format {
+        PbesFormat::Pbes => Pbes::from_file(&args.filename)?,
+        PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
+    };
+    let (srf, _, stategraph) = symmetry::preprocess_symmetry(&pbes, true)?;
+    
+    if let Some(output_filename) = args.output {
+        let mut file = std::fs::File::create(output_filename)?;
+        export::export(&mut file, &srf, &stategraph)?;
+    } else {
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        export::export(&mut handle, &srf, &stategraph)?;
+    }
+
+    Ok(())
 }
