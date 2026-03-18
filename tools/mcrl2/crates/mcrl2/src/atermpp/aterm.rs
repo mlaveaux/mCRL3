@@ -218,9 +218,10 @@ pub struct ATerm {
 
 impl ATerm {
     /// Creates a new ATerm with the given symbol and arguments.
-    pub fn with_args<'a, 'b, S, T>(symbol: &S, arguments: &[T]) -> ATerm 
-        where S: Borrow<SymbolRef<'a>>, 
-              T: Borrow<ATermRef<'b>>,
+    pub fn with_args<'a, 'b, S, T>(symbol: &S, arguments: &[T]) -> ATerm
+    where
+        S: Borrow<SymbolRef<'a>>,
+        T: Borrow<ATermRef<'b>>,
     {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create(symbol, arguments))
     }
