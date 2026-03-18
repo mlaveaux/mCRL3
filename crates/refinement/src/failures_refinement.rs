@@ -123,9 +123,8 @@ where
             return (false, Some(ce), Some(counter_example));
         }
 
-        // for all impl-e->impl' do
+        // for every impl -[e]-> impl' do
         for impl_transition in merged_lts.outgoing_transitions(impl_state) {
-            trace!("label {:?}", impl_transition.label);
             let new_edge = counter_example.add_edge(impl_transition.label, ce);
 
             let spec_prime = if weak_transition && merged_lts.is_hidden_label(impl_transition.label) {
@@ -164,7 +163,7 @@ where
                 spec_prime
             };
 
-            trace!("spec' = {:?}", spec_prime);
+            trace!(" -[{}]-> ({}, {:?})", merged_lts.labels()[impl_transition.label], impl_transition.to, spec_prime);
             if spec_prime.is_empty() {
                 // if spec' = {} then
                 return (false, Some(new_edge), None);
@@ -172,6 +171,7 @@ where
 
             if antichain.insert(impl_transition.to, spec_prime.clone()) {
                 // if antichain_insert(impl,spec') then
+                trace!("Added ({:?}, {:?}) to working", impl_transition.to, spec_prime);
                 match strategy {
                     ExplorationStrategy::BFS => working.push_back((impl_transition.to, spec_prime, new_edge)),
                     ExplorationStrategy::DFS => working.push_front((impl_transition.to, spec_prime, new_edge)),

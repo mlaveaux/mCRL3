@@ -1,13 +1,15 @@
 use itertools::Itertools;
+use log::debug;
 use log::trace;
 use log::warn;
 use merc_lts::LTS;
 use merc_lts::StateIndex;
+use merc_lts::write_aut;
 use merc_reduction::Equivalence;
 use merc_reduction::Partition;
+use merc_reduction::branching_bisim_sigref;
 use merc_reduction::quotient_lts_block;
 use merc_reduction::quotient_lts_naive;
-use merc_reduction::reduce_lts;
 use merc_reduction::strong_bisim_sigref;
 use merc_reduction::tau_scc_decomposition;
 use merc_utilities::Timing;
@@ -67,42 +69,62 @@ pub fn refines<L: LTS>(
     counter_example: bool,
     timing: &mut Timing,
 ) -> (bool, Option<CounterExample<L::Label>>) {
-    let reduction = match refinement {
-        RefinementType::Trace => Equivalence::StrongBisim,
-        RefinementType::Weaktrace => Equivalence::BranchingBisim,
-        // TODO: Should be divergence preserving branching bisimulation, but this is not implemented yet.
-        RefinementType::StableFailures | RefinementType::ImpossibleFutures => Equivalence::BranchingBisim,
+    let (reduction, divergence_preserving) = match refinement {
+        RefinementType::Trace => (Equivalence::StrongBisim, false),
+        RefinementType::Weaktrace | RefinementType::ImpossibleFutures => (Equivalence::BranchingBisim, false),
+        RefinementType::StableFailures => (Equivalence::BranchingBisim, true),
     };
 
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
     // together in case that some states are equivalent. So we do this in all branches.
     let (merged_lts, initial_spec) = if preprocess {
-
         // Reduce all states in the merged LTS.
         match reduction {
             Equivalence::StrongBisim => {
-                let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);                
+                let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
                 let (preprocess_lts, partition) = strong_bisim_sigref(merged_lts, timing);
 
-                let initial_spec = partition.block_number(initial_spec);
-                let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
+                let impl_block = partition.block_number(preprocess_lts.initial_state_index());
+                let spec_block = partition.block_number(initial_spec);
+
+                if impl_block == spec_block {
+                    // The initial states are already in the same block, so we can skip the refinement check.
+                    debug!(
+                        "Initial states are in the same block after strong bisimulation reduction, skipping refinement check."
+                    );
+                    return (true, None);
+                }
 
                 // After partitioning the block becomes the state in the reduced_lts.
-                (reduced_lts, StateIndex::new(*initial_spec))
+                let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
+                (reduced_lts, StateIndex::new(*spec_block))
             }
-            _ => {
-                warn!("Preprocessing for {reduction:?} is not implemented yet, skipping preprocessing.");
-                // TODO: When branching bisimulation is applied, this is no longer necessary.
-                if refinement == RefinementType::ImpossibleFutures {
-                    // For impossible futures we need to remove tau loops from the implementation.
-                    let scc_partition = tau_scc_decomposition(&impl_lts);
-                    let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true);
-
-                    tau_loop_free_lts.merge_disjoint(&spec_lts)
-                } else {
+            Equivalence::BranchingBisim => {
+                if divergence_preserving {
+                    warn!(
+                        "Preprocessing for divergence preserving branching bisimulation has not been implemented yet."
+                    );
                     impl_lts.merge_disjoint(&spec_lts)
+                } else {
+                    let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
+                    let (preprocess_lts, partition) = branching_bisim_sigref(merged_lts, timing);
+
+                    let impl_block = partition.block_number(preprocess_lts.initial_state_index());
+                    let spec_block = partition.block_number(initial_spec);
+
+                    if impl_block == spec_block {
+                        // The initial states are already in the same block, so we can skip the refinement check.
+                        debug!(
+                            "Initial states are in the same block after branching bisimulation reduction, skipping refinement check."
+                        );
+                        return (true, None);
+                    }
+
+                    let reduced_lts = quotient_lts_block::<_, true>(&preprocess_lts, &partition);
+                    (reduced_lts, StateIndex::new(*spec_block))
                 }
             }
+            _ => unimplemented!("Preprocessing for refinement type {refinement:?} has not been implemented yet."),
         }
     } else {
         if refinement == RefinementType::ImpossibleFutures {
@@ -208,6 +230,10 @@ pub fn refines<L: LTS>(
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
+    use rand::rngs::StdRng;
+
     use merc_io::DumpFiles;
     use merc_lts::LTS;
     use merc_lts::mutate_lts;
@@ -217,7 +243,6 @@ mod tests {
     use merc_utilities::random_test;
     use merc_vpg::solve_zielonka;
     use merc_vpg::translate;
-    use rand::rngs::StdRng;
 
     use crate::ExplorationStrategy;
     use crate::RefinementType;
@@ -280,6 +305,62 @@ mod tests {
         });
     }
 
+    #[test]
+    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+    fn test_random_trace_refinement_preprocessed() {
+        random_test(100, |rng| {
+            is_refinement_test(
+                "test_random_trace_refinement",
+                rng,
+                RefinementType::Trace,
+                ExplorationStrategy::BFS,
+                true,
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+    fn test_random_weak_trace_refinement_preprocessed() {
+        random_test(100, |rng| {
+            is_refinement_test(
+                "test_random_weak_trace_refinement",
+                rng,
+                RefinementType::Weaktrace,
+                ExplorationStrategy::BFS,
+                true,
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+    fn test_random_stable_failures_refinement_preprocessed() {
+        random_test(100, |rng| {
+            is_refinement_test(
+                "test_random_stable_failures_refinement",
+                rng,
+                RefinementType::StableFailures,
+                ExplorationStrategy::BFS,
+                true,
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+    fn test_random_impossible_futures_refinement_preprocessed() {
+        random_test(100, |rng| {
+            is_refinement_test(
+                "test_random_impossible_futures_refinement",
+                rng,
+                RefinementType::ImpossibleFutures,
+                ExplorationStrategy::BFS,
+                true,
+            );
+        });
+    }
+
     /// Helper function to define a refinement test that can be instantiated for
     /// the various types.
     ///
@@ -318,6 +399,10 @@ mod tests {
             if let Some(ce) = counter_example {
                 let formula = generate_formula(&ce);
                 println!("Counter example formula: {}", formula);
+
+                files
+                    .dump("counter_example.mcf", |f| Ok(writeln!(f, "{}", formula)?))
+                    .unwrap();
 
                 let impl_pg = translate(&impl_lts, &formula).unwrap();
                 let spec_pg = translate(&spec_lts, &formula).unwrap();

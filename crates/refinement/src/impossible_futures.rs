@@ -94,7 +94,6 @@ fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
 
 /// Returns true iff the given state diverges, i.e., it can perform an infinite
 /// sequence of tau transitions.
-#[cfg(debug_assertions)]
 fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
     let mut visited = vec![false; lts.num_of_states()];
     let mut stack = vec![state];
