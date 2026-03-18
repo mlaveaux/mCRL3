@@ -54,7 +54,9 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
 
 /// Optimised implementation for block partitions.
 ///
-/// Chooses a single state in the block as representative. If BRANCHING then the chosen state is a bottom state.
+/// Chooses a single state in the block as representative. If `BRANCHING` then the
+/// chosen state is a bottom state. For `BRANCHING` it assumes that the input LTS
+/// is non-divergent.
 pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
     lts: &L,
     partition: &BlockPartition,
@@ -70,29 +72,29 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         };
 
         if BRANCHING {
-            // DFS into a bottom state.
-            let mut found = false;
-            while !found {
-                found = true;
-
+            // traverse any outgoing transition to find a bottom state.
+            'outer: loop {
                 if let Some(trans) = lts
                     .outgoing_transitions(candidate)
                     .find(|trans| lts.is_hidden_label(trans.label) && partition.block_number(trans.to) == block)
                 {
-                    found = false;
+                    debug_assert!(!diverges(lts, candidate), "The states of the given LTS should be non-divergent.");
                     candidate = trans.to;
+                    continue 'outer;
                 }
+
+                // No outgoing tau transition to the same block, so we found a bottom state.
+                break;
             }
         }
 
-        // Add all transitions from the representative state.
+        // Add all transitions from the representative state (or the bottom state if BRANCHING) to the quotient LTS.
         for transition in lts.outgoing_transitions(candidate) {
             if BRANCHING {
-                // Candidate is a bottom state, so add all transitions.
                 debug_assert!(
                     !(lts.is_hidden_label(transition.label) && partition.block_number(transition.to) == block),
-                    "This state is not bottom {}",
-                    block
+                    "The representative {} is not bottom state",
+                    candidate
                 );
             }
 
@@ -109,4 +111,74 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         StateIndex::new(partition.block_number(lts.initial_state_index()).value()),
         true,
     )
+}
+
+
+/// Returns true iff the given state diverges, i.e., it can perform an infinite
+/// sequence of tau transitions.
+pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
+    let mut visited = vec![false; lts.num_of_states()];
+    let mut stack = vec![state];
+
+    while let Some(current) = stack.pop() {
+        if visited[current] {
+            // We have found a tau loop, so the state diverges.
+            return true;
+        }
+
+        visited[current] = true;
+
+        for transition in lts.outgoing_transitions(current) {
+            if lts.is_hidden_label(transition.label) {
+                stack.push(transition.to);
+            }
+        }
+    }
+
+    // We have explored all reachable states via tau transitions without finding a loop, so the state does not diverge.
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_io::DumpFiles;
+    use merc_lts::write_aut;
+    use merc_utilities::Timing;
+    use merc_utilities::random_test;
+
+    use crate::Equivalence;
+    use crate::compare_lts;
+    use crate::reduce_lts;
+
+    #[test]
+    fn test_random_strong_bisimulation_quotient() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let mut files = DumpFiles::new("test_random_strong_bisimulation_quotient");
+
+            let lts = merc_lts::random_lts(rng, 10, 20, 5);
+            files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
+
+            let reduced = reduce_lts(lts.clone(), Equivalence::StrongBisim, false, &mut timing);
+            files.dump("quotient.aut", |w| write_aut(w, &lts)).unwrap();
+
+            assert!(compare_lts(Equivalence::StrongBisim, lts, reduced, false, &mut timing));
+        });
+    }
+    
+    #[test]
+    fn test_random_branching_bisimulation_quotient() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let mut files = DumpFiles::new("test_random_branching_bisimulation_quotient");
+
+            let lts = merc_lts::random_lts(rng, 10, 20, 5);
+            files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
+
+            let reduced = reduce_lts(lts.clone(), Equivalence::BranchingBisim, false, &mut timing);
+            files.dump("quotient.aut", |w| write_aut(w, &lts)).unwrap();
+            
+            assert!(compare_lts(Equivalence::BranchingBisim, lts, reduced, false, &mut timing));
+        });
+    }
 }
