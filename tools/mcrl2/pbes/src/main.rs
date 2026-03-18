@@ -191,7 +191,7 @@ fn handle_export(args: ExportArgs) -> Result<(), MercError> {
         PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
     };
     let (srf, _, stategraph) = symmetry::preprocess_symmetry(&pbes, true)?;
-    
+
     if let Some(output_filename) = args.output {
         let mut file = std::fs::File::create(output_filename)?;
         export::export(&mut file, &srf, &stategraph)?;

@@ -50,14 +50,13 @@ mod inner {
 
     use mcrl2_macros::mcrl2_term;
 
-    use crate::is_pbes_expression;
     use crate::ATerm;
     use crate::ATermListRef;
     use crate::ATermRef;
     use crate::ATermStringRef;
-    use crate::DataExpressionRef;
     use crate::Markable;
     use crate::Todo;
+    use crate::is_pbes_expression;
 
     /// mcrl2::pbes_system::pbes_expression
     #[mcrl2_term(is_pbes_expression)]

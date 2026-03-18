@@ -1,10 +1,17 @@
-use std::{collections::HashMap, io::Write};
+use std::collections::HashMap;
+use std::io::Write;
 
-use mcrl2::{
-    is_pbes_propositional_variable_instantiation, DataExpressionRef, DataExpressionVisitor, DataVariable,
-    PbesExpressionRef, PbesExpressionVisitor, PbesPropositionalVariableInstantiation,
-    PbesStategraph, SrfEquation, SrfPbes, SrfSummand,
-};
+use mcrl2::DataExpressionRef;
+use mcrl2::DataExpressionVisitor;
+use mcrl2::DataVariable;
+use mcrl2::PbesExpressionRef;
+use mcrl2::PbesExpressionVisitor;
+use mcrl2::PbesPropositionalVariableInstantiation;
+use mcrl2::PbesStategraph;
+use mcrl2::SrfEquation;
+use mcrl2::SrfPbes;
+use mcrl2::SrfSummand;
+use mcrl2::is_pbes_propositional_variable_instantiation;
 use merc_utilities::MercError;
 
 use crate::symmetry::variable_index;
