@@ -77,6 +77,26 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
 
         inserted
     }
+
+    /// Returns true iff the antichain is empty/
+    pub fn is_empty(&self) -> bool {
+        self.storage.is_empty()
+    }
+
+    /// Returns the size of the antichain.
+    pub fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Clears the antichain.
+    pub fn clear(&mut self) {
+        self.storage.clear();
+    }
+
+    /// Returns the metrics of this antichain
+    pub fn metrics(&self) -> (usize, usize, usize) {
+        (self.max_antichain, self.antichain_misses, self.antichain_inserts)
+    }
 }
 
 impl<K: Eq + Hash, V: Clone + Ord> Default for Antichain<K, V> {

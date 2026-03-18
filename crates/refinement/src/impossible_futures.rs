@@ -9,6 +9,12 @@ use crate::is_stable;
 
 /// Checks for the impossible futures refinement between the initial state of
 /// the `lts` and the `initial_spec` state.
+///
+/// # Details
+///
+/// Impossible futures are defined in the following article:
+///
+/// > Marc Voorhoeve, Sjouke Mauw. Impossible futures and determinism, Inf. Process. Lett. 80, 2001.
 pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     lts: &L,
     initial_spec: StateIndex,
@@ -23,6 +29,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
         |impl_state, spec_states| {
             if !is_stable(lts, impl_state) {
                 // We can skip unstable states as an optimisation.
+                debug_assert!(!diverges(lts, impl_state), "Implementation states should not diverge.");
                 return None;
             }
 
@@ -70,8 +77,7 @@ fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
 ) -> (bool, Option<CE::Index>) {
-    // The counter example from check is trivial.
-    let (result, counter_example, _) = is_refinement_generic(
+    let (result, counter_example, inner_ce) = is_refinement_generic(
         strategy,
         lts,
         impl_state,
@@ -81,5 +87,33 @@ fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
         counter_example,
     );
 
+    debug_assert!(inner_ce.is_none(), "The counter example from check is trivial");
+
     (result, counter_example)
+}
+
+/// Returns true iff the given state diverges, i.e., it can perform an infinite
+/// sequence of tau transitions.
+#[cfg(debug_assertions)]
+fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
+    let mut visited = vec![false; lts.num_of_states()];
+    let mut stack = vec![state];
+
+    while let Some(current) = stack.pop() {
+        if visited[current] {
+            // We have found a tau loop, so the state diverges.
+            return true;
+        }
+
+        visited[current] = true;
+
+        for transition in lts.outgoing_transitions(current) {
+            if lts.is_hidden_label(transition.label) {
+                stack.push(transition.to);
+            }
+        }
+    }
+
+    // We have explored all reachable states via tau transitions without finding a loop, so the state does not diverge.
+    false
 }
