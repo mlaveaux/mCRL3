@@ -84,7 +84,7 @@ mod inner {
         }
 
         /// Returns the arguments of the PVI.
-        pub fn arguments(&self) -> ATermListRef<'_, DataExpressionRef<'_>> {
+        pub fn arguments(&self) -> ATermListRef<'_, DataExpression> {
             self.arg(1).into()
         }
     }
