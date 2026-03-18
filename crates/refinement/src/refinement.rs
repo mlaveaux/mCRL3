@@ -4,7 +4,6 @@ use log::trace;
 use log::warn;
 use merc_lts::LTS;
 use merc_lts::StateIndex;
-use merc_lts::write_aut;
 use merc_reduction::Equivalence;
 use merc_reduction::Partition;
 use merc_reduction::branching_bisim_sigref;
