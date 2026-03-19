@@ -1,7 +1,7 @@
 [workspace.package]
 edition = "2024"
 homepage = "https://mercorg.github.io/merc-website/"
-repository = "https://github.com/mlaveaux/merc.git"
+repository = "https://github.com/MERCorg/merc.git"
 license = "BSL-1.0"
 rust-version = "1.91.0"
 version = "1.0.0"

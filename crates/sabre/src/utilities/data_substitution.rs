@@ -35,8 +35,8 @@ pub fn data_substitute_with(
 
 /// The recursive implementation for [data_substitute]
 ///
-/// 'depth'         -   Used to keep track of the depth in 't'. Function should be called with
-///                     'depth' = 0.
+/// Uses `depth to keep track of the depth in 't'. Function should be called
+/// with 'depth' = 0.
 fn substitute_rec(
     tp: &ThreadTermPool,
     t: &DataExpressionRef<'_>,
@@ -73,7 +73,7 @@ fn substitute_rec(
         let result = tp.create_term(&t.get_head_symbol(), &write_args);
         drop(write_args);
 
-        // TODO: When write is dropped we check whether all terms where inserted, but this clear violates that assumption.
+        // Clear the args buffer for reuse.
         args.write().clear();
         result.protect().into()
     }

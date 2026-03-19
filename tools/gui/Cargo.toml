@@ -2,7 +2,7 @@
 authors = ["Maurice Laveaux"]
 edition = "2024"
 license = "BSL-1.0"
-repository = "https://github.com/mlaveaux/merc.git"
+repository = "https://github.com/MERCorg/merc.git"
 rust-version = "1.92.0"
 version = "1.0.0"
 
