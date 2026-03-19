@@ -24,7 +24,7 @@ Various crates are also published on [crates.io](https://crates.io/users/mlaveau
 
 ## License
 
-The work is licensed under the Boost Software License, see the [`LICENSE`](./LICENSE) for details. Third party dependencies have additional license terms, which are included in the `3rd-party` directory. Furthermore, `cargo deny` is used to ensure that no `crates.io` dependencies with incompatible licenses are added.
+The work is licensed under the Boost Software License, see the [`LICENSE`](./LICENSE) for details. Furthermore, `cargo deny` is used to ensure that no `crates.io` dependencies with incompatible licenses are added.
 
 ## Related Work
 

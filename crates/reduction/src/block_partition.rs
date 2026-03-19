@@ -216,7 +216,6 @@ impl BlockPartition {
             }
         }
 
-        println!("{self:?}");
         self.assert_consistent();
     }
 

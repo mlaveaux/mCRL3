@@ -2,10 +2,10 @@
 
  > ⚠️ **important** This is an internal crate and is not intended for public use.
 
-Internal crate for the MERC toolset the provides utility types and functions for
+Internal crate for the MERC toolset that provides utility types and functions for
 the Merc toolset that are implemented using unsafe Rust.
 
-This is used to give a clear separateion between safe and unsafe utility code.
+This is used to give a clear separation between safe and unsafe utility code.
 
 ## Minimum Supported Rust Version
 

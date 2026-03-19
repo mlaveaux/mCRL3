@@ -2,7 +2,7 @@
 
  > ⚠️ **important** This is an internal crate and is not intended for public use.
 
-Internal crate for the MERC toolset the provides utility types and functions for
+Internal crate for the MERC toolset that provides utility types and functions for
 the Merc toolset.
 
 One important utility is the `MercError` type, which is a common error type used
