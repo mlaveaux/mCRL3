@@ -14,6 +14,12 @@ where
     G: Graph,
     G::VertexIndex: MercIndex<Target = usize>,
 {
+    // We assume that the graph is dense.
+    debug_assert!(
+        graph.iter_vertices().all(|v| v.index() < graph.num_of_vertices()),
+        "The graph contains vertices with indices larger than the number of vertices"
+    );
+
     let mut partition = IndexedPartition::new(graph.num_of_vertices());
 
     // The stack for the depth first search.

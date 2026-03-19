@@ -12,6 +12,9 @@ pub type BlockIndex = TagIndex<usize, BlockTag>;
 
 /// Defines a partition based on an explicit indexing of elements to their block
 /// number.
+/// 
+/// Note that the assumption is that the elements are dense, and the
+/// corresponding blocks as well.
 #[derive(Debug)]
 pub struct IndexedPartition {
     /// Stores a mapping from element index to block number.

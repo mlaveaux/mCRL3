@@ -73,7 +73,7 @@ fn substitute_rec<'a, 'b, T: Term<'a, 'b>>(
         let result = tp.create_term(&t.get_head_symbol(), &write_args);
         drop(write_args);
 
-        // TODO: When write is dropped we check whether all terms where inserted, but this clear violates that assumption.
+        // Clear the args buffer for reuse.
         args.write().clear();
         result.protect()
     }
