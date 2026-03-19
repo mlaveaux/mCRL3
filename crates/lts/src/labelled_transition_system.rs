@@ -39,10 +39,10 @@ pub struct LabelledTransitionSystem<Label> {
 }
 
 impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
-    /// Creates a new a labelled transition system with the given transitions,
+    /// Creates a new labelled transition system with the given transitions,
     /// labels, and hidden labels.
     ///
-    /// The initial state is the state with the given index. `num_of_states`` is
+    /// The initial state is the state with the given index. `num_of_states` is
     /// the number of states in the LTS, if known. If it is not known, pass
     /// `None`. However, in that case the number of states will be determined
     /// based on the maximum state index in the transitions. And all states that
@@ -140,7 +140,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         }
     }
 
-    /// Constructs a LTS by the the a successor function for every state.
+    /// Constructs a LTS by a successor function for every state.
     pub fn with_successors<F, I>(
         initial_state: StateIndex,
         num_of_states: usize,
@@ -258,32 +258,48 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         )
     }
 
-    /// Creates a labelled transition system from another one, given the permutation of state indices
+    /// Creates a labelled transition system from another one, given the permutation of state indices.
     ///
+    /// The permutation maps old state indices to new state indices, i.e.,
+    /// `permutation(old) = new`. The transition arrays are rebuilt so that
+    /// transitions are contiguous per new state index, and all transition
+    /// targets are updated to reference the new state indices.
     pub fn new_from_permutation<P>(lts: Self, permutation: P) -> Self
     where
         P: Fn(StateIndex) -> StateIndex + Copy,
     {
-        let mut states = bytevec![0; lts.num_of_states()];
-
+        // Build the inverse permutation: inverse[new_index] = old_index
+        let mut inverse = vec![StateIndex::new(0); lts.num_of_states()];
         for state_index in lts.iter_states() {
-            // Keep the transitions the same move the state indices around
-            let new_state_index = permutation(state_index);
-            let state = lts.states.index(*state_index);
-            states.update(*new_state_index, |entry| {
-                *entry = state;
-            });
+            inverse[*permutation(state_index)] = state_index;
+        }
+
+        // Rebuild transition arrays in the order of the new state indices.
+        let mut states = ByteCompressedVec::new();
+        let mut transition_labels = ByteCompressedVec::new();
+        let mut transition_to = ByteCompressedVec::new();
+
+        for old_index in &inverse {
+            states.push(transition_labels.len());
+
+            let start = lts.states.index(**old_index);
+            let end = lts.states.index(**old_index + 1);
+
+            for i in start..end {
+                transition_labels.push(lts.transition_labels.index(i));
+                transition_to.push(permutation(lts.transition_to.index(i)));
+            }
         }
 
         // Add the sentinel state.
-        states.push(lts.num_of_transitions());
+        states.push(transition_labels.len());
 
         LabelledTransitionSystem {
             initial_state: permutation(lts.initial_state),
             labels: lts.labels,
             states,
-            transition_labels: lts.transition_labels,
-            transition_to: lts.transition_to,
+            transition_labels,
+            transition_to,
         }
     }
 

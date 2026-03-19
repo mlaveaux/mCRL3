@@ -55,3 +55,45 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use merc_io::DumpFiles;
+    use merc_lts::LTS;
+    use merc_lts::LabelledTransitionSystem;
+    use merc_lts::StateIndex;
+    use merc_lts::random_lts;
+    use merc_lts::write_aut;
+    use merc_utilities::Timing;
+    use merc_utilities::random_test;
+    use rand::seq::IndexedRandom;
+
+    use crate::compare;
+    use crate::compare_lts;
+
+    #[test]
+    fn test_random_lts_permutation() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let mut files = DumpFiles::new("test_random_lts_permutation");
+
+            let lts = random_lts(rng, 10, 3, 3);
+            files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
+
+            // Generate a random permutation of the state indices.
+            let permutation = (0..lts.num_of_states())
+                .collect::<Vec<_>>()
+                .sample(rng, lts.num_of_states())
+                .map(|state| StateIndex::new(*state))
+                .collect::<Vec<_>>();
+
+            println!("Permutation: {:?}", permutation);
+
+            let permuted_lts = LabelledTransitionSystem::new_from_permutation(lts.clone(), |i| permutation[i]);
+            files.dump("permuted.aut", |w| write_aut(w, &permuted_lts)).unwrap();
+
+            // Check that the original and permuted LTS are bisimilar.
+            assert!(compare_lts(compare::Equivalence::StrongBisim, lts, permuted_lts, false, &mut timing));
+        })
+    }
+}
