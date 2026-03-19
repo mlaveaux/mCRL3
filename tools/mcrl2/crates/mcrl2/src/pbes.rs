@@ -243,8 +243,15 @@ impl fmt::Debug for ControlFlowGraphVertex {
 
 /// mcrl2::pbes_system::detail::predicate_variable
 pub struct PredicateVariable {
+    /// The set of variables used in this summand
     used: Vec<usize>,
     changed: Vec<usize>,
+
+    // TODO: These are now only the domain of the functions, not the actual functions.
+    // The functions indicating the source, target and copy of variables
+    source: Vec<usize>,
+    target: Vec<usize>,
+    copy: Vec<usize>,
 
     _variable: *const predicate_variable,
 }
@@ -260,6 +267,21 @@ impl PredicateVariable {
         &self.changed
     }
 
+    /// Returns the source function of the predicate variable.
+    pub fn source(&self) -> &Vec<usize> {
+        &self.source
+    }
+
+    /// Returns the target function of the predicate variable.
+    pub fn target(&self) -> &Vec<usize> {
+        &self.target
+    }
+
+    /// Returns the copy function of the predicate variable.
+    pub fn copy(&self) -> &Vec<usize> {
+        &self.copy
+    }
+
     /// Creates a new `PredicateVariable` from the given FFI variable pointer.
     pub(crate) fn new(variable: *const predicate_variable) -> Self {
         PredicateVariable {
@@ -272,6 +294,19 @@ impl PredicateVariable {
                     variable.as_ref().expect("Pointer should be valid"),
                 )
             },
+            source: unsafe {
+                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_source(
+                    variable.as_ref().expect("Pointer should be valid"),
+                )
+            },
+            target: unsafe {
+                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_target(
+                    variable.as_ref().expect("Pointer should be valid"),
+                )
+            },
+            copy: unsafe {
+                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_copy(variable.as_ref().expect("Pointer should be valid"))
+            }
         }
     }
 }
