@@ -41,6 +41,7 @@ use mcrl2_sys::pbes::ffi::stategraph_algorithm;
 use mcrl2_sys::pbes::ffi::stategraph_equation;
 use merc_utilities::MercError;
 
+use crate::lock_global;
 use crate::ATerm;
 use crate::ATermList;
 use crate::ATermString;
@@ -48,7 +49,7 @@ use crate::DataExpression;
 use crate::DataSpecification;
 use crate::DataVariable;
 use crate::PbesExpression;
-use crate::lock_global;
+use crate::PbesPropositionalVariableInstantiation;
 
 /// mcrl2::pbes_system::pbes
 pub struct Pbes {
@@ -253,10 +254,18 @@ pub struct PredicateVariable {
     target: Vec<usize>,
     copy: Vec<usize>,
 
+    pvi: PbesPropositionalVariableInstantiation,
+
+    /// The underlying FFI variable pointer.
     _variable: *const predicate_variable,
 }
 
 impl PredicateVariable {
+    /// Returns the variable associated with this predicate variable.
+    pub fn variable(&self) -> &PbesPropositionalVariableInstantiation {
+        &self.pvi
+    }
+
     /// Returns the used set of the predicate variable.
     pub fn used(&self) -> &Vec<usize> {
         &self.used
@@ -286,6 +295,11 @@ impl PredicateVariable {
     pub(crate) fn new(variable: *const predicate_variable) -> Self {
         PredicateVariable {
             _variable: variable,
+            pvi: PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(unsafe {
+                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(
+                    variable.as_ref().expect("Pointer should be valid"),
+                )
+            })),
             used: unsafe {
                 mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_used(variable.as_ref().expect("Pointer should be valid"))
             },
@@ -306,7 +320,7 @@ impl PredicateVariable {
             },
             copy: unsafe {
                 mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_copy(variable.as_ref().expect("Pointer should be valid"))
-            }
+            },
         }
     }
 }
@@ -499,7 +513,10 @@ impl fmt::Debug for PropositionalVariable {
 }
 
 /// Replace variables in the given PBES expression according to the given substitution sigma.
-pub fn substitute_data_expressions(expr: &PbesExpression, sigma: Vec<(DataExpression, DataExpression)>) -> PbesExpression {
+pub fn substitute_data_expressions(
+    expr: &PbesExpression,
+    sigma: Vec<(DataExpression, DataExpression)>,
+) -> PbesExpression {
     // Do not into_iter here, as we need to keep sigma alive for the call.
     let sigma: Vec<assignment_pair> = sigma
         .iter()

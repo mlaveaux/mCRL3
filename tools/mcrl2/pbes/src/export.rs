@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::io::Write;
 
+use log::debug;
+use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataExpressionVisitor;
 use mcrl2::DataVariable;
@@ -11,7 +13,6 @@ use mcrl2::PbesStategraph;
 use mcrl2::SrfEquation;
 use mcrl2::SrfPbes;
 use mcrl2::SrfSummand;
-use mcrl2::is_pbes_propositional_variable_instantiation;
 use merc_utilities::MercError;
 
 use crate::symmetry::variable_index;
@@ -63,17 +64,17 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
     let mut clauses = HashMap::new();
     let mut unique_index = mapping.len();
 
-    // Keep track of the variable mappings
+    // Keep track of the variable mappings derived from the SRF pbes.
     let mut uf = HashMap::new();
     let mut ui = HashMap::new();
     let mut cb = HashMap::new();
 
     for equation in srf.equations() {
         for (clause_index, clause) in equation.summands().iter().enumerate() {
-            clauses.insert((equation.variable().name(), clause.variable()), unique_index);
+            clauses.insert((equation.variable().name(), clause_index), unique_index);
             mapping.insert(
                 unique_index.to_string(),
-                format!("{}({})", equation.variable().name(), clause_index),
+                format!("{}[{}]", equation.variable().name(), clause_index),
             );
 
             // Compute used-for and map the variables back to their position in the variables.
@@ -107,6 +108,40 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
         }
     }
 
+    debug!("Clauses {:?}", clauses);
+
+    // Keep track of the source or target, and copy variables for each clause.
+    let mut src_tgt = HashMap::new();
+    let mut copy = HashMap::new();
+
+    for equation in state_graph.equations() {
+        for (clause_index, predicate) in equation.predicate_variables().iter().enumerate() {
+            let clause_index = *clauses
+                .get(&(equation.variable().name(), clause_index))
+                .expect("Clause must have been added before");
+
+            // Update the index for the source or target variables.
+            for variable in predicate.source().iter().chain(predicate.target().iter()) {
+                let vector = src_tgt
+                    .entry(variable.to_string())
+                    .or_insert_with(Vec::new);
+
+                if !vector.contains(&clause_index) {
+                    vector.push(clause_index);
+                }
+            }
+
+            for variable in predicate.copy().iter() {
+                let vector = copy.entry(variable.to_string())
+                    .or_insert_with(Vec::new);
+
+                if !vector.contains(&clause_index) {
+                    vector.push(clause_index);
+                }
+            }
+        }
+    }
+
     let output = Output {
         mapping,
 
@@ -121,6 +156,9 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
         uf,
         ui,
         cb,
+
+        src_tgt,
+        copy,
     };
 
     serde_json::to_writer_pretty(write, &output)?;
@@ -267,4 +305,10 @@ struct Output {
 
     /// Maps from clause indices to the parameter indices that are changed by the clause.
     cb: HashMap<String, Vec<usize>>,
+
+    /// Maps from source variable names to the clause indices where they occur as source or target variables.
+    src_tgt: HashMap<String, Vec<usize>>,
+
+    /// Maps from variable names to the clause indices where they occur as copy variables.
+    copy: HashMap<String, Vec<usize>>,
 }
