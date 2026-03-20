@@ -23,7 +23,7 @@ use mcrl2::PbesStategraph;
 use mcrl2::SrfPbes;
 use mcrl2::StategraphEquation;
 use mcrl2::Symbol;
-use mcrl2::data_expression_variables;
+use mcrl2::variable_occurrences_data_expression;
 use mcrl2::pbes_expression_pvi;
 use mcrl2::reorder_propositional_variables;
 use mcrl2::substitute_data_expressions;
@@ -719,7 +719,7 @@ where
 
 /// Replaces all variables in the expression by omega.
 fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
-    let variables = data_expression_variables(&expression.copy());
+    let variables = variable_occurrences_data_expression(&expression.copy());
 
     // Generate an omega variable.
     let omega = DataExpression::from(ATerm::with_args(

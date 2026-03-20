@@ -188,7 +188,7 @@ pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositiona
 }
 
 /// Returns all the variables occurring in the given data expression.
-pub fn data_expression_variables(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
+pub fn variable_occurrences_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
     let mut result = Vec::new();
 
     /// Local struct that is used to collect variable occurrences.
@@ -204,6 +204,38 @@ pub fn data_expression_variables(expr: &DataExpressionRef<'_>) -> Vec<DataVariab
     }
 
     let mut occurrences = VariableOccurrences { result: &mut result };
+    occurrences.visit(expr);
+    result
+}
+
+/// Returns all the free variables of the given data expression.
+pub fn free_variables_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
+    let mut result = Vec::new();
+
+    /// Local struct that is used to collect variable occurrences.
+    struct FreeVariableOccurrences<'a> {
+        result: &'a mut Vec<DataVariable>,
+
+        /// Keeps track of variables that are bound in the context, since these are not free.
+        context: Vec<DataVariable>,
+    }
+
+    impl DataExpressionVisitor for FreeVariableOccurrences<'_> {
+
+        fn visit_abstraction(&mut self, abstraction: &DataAbstractionRef<'_>) -> Option<DataExpression> {
+            self.context.extend(abstraction.variables().iter());
+            self.visit(&abstraction.body())
+        }
+
+        fn visit_variable(&mut self, var: &DataVariableRef<'_>) -> Option<DataExpression> {
+            if !self.context.contains(&var.protect()) {
+                self.result.push(var.protect());
+            }
+            None
+        }
+    }
+
+    let mut occurrences = FreeVariableOccurrences { result: &mut result, context: Vec::new() };
     occurrences.visit(expr);
     result
 }
