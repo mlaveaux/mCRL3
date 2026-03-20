@@ -21,8 +21,10 @@ where
 
 impl<T: Clone + 'static> Clone for Box<dyn CloneIterator<Item = T> + '_> {
     fn clone(&self) -> Self {
-        // Important! "recursive trait implementation" style
-        // TODO: This I don't understand fully, but it works.
+        // This delegates to clone_boxed(), which is implemented by the concrete
+        // iterator type via the CloneIterator blanket impl. The call chain is:
+        //   Box<dyn CloneIterator>::clone() -> clone_boxed() -> Box::new(self.clone())
+        // where the inner clone() calls Iterator::clone() on the concrete type.
         (**self).clone_boxed()
     }
 }

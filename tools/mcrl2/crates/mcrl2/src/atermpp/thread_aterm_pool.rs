@@ -296,6 +296,9 @@ impl Drop for ThreadTermPool {
 
         GLOBAL_TERM_POOL.lock().drop_thread_term_pool(self.index);
 
+        // On macOS, thread-local destructors may run after the global aterm pool
+        // has been deallocated, so dropping the FFI callback would access freed
+        // memory. We intentionally leak the callback on macOS to avoid this.
         #[cfg(not(target_os = "macos"))]
         unsafe {
             ManuallyDrop::drop(&mut self._callback);

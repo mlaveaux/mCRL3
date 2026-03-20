@@ -7,7 +7,7 @@ use log::info;
 
 use mcrl2::Pbes;
 use mcrl2::set_reporting_level;
-use mcrl2::verbosity_to_log_level_t;
+use mcrl2::verbosity_to_log_level;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -110,7 +110,7 @@ fn main() -> Result<ExitCode, MercError> {
         .init();
 
     // Enable logging on the mCRL2 side
-    set_reporting_level(verbosity_to_log_level_t(cli.verbosity.verbosity()));
+    set_reporting_level(verbosity_to_log_level(cli.verbosity.verbosity()));
 
     if cli.version.into() {
         eprintln!("{}", Version);

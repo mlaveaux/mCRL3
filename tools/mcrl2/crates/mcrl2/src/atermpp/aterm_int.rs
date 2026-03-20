@@ -37,8 +37,11 @@ mod inner {
         }
 
         /// Returns the integer value.
+        ///
+        /// TODO: Implement via FFI once mcrl2-sys exposes a function to retrieve the
+        /// integer value from an aterm_int (e.g. `mcrl2_aterm_int_value`).
         pub fn value(&self) -> u64 {
-            unimplemented!("Cannot retrieve integer value yet")
+            unimplemented!("Cannot retrieve integer value yet; mcrl2-sys FFI binding required")
         }
     }
 }
