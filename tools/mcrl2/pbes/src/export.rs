@@ -82,7 +82,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
                 unique_index.to_string(),
                 used_for(clause)
                     .iter()
-                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).unwrap())
+                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
                     .collect(),
             );
 
@@ -91,7 +91,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
                 unique_index.to_string(),
                 used_in(equation, clause)
                     .iter()
-                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).unwrap())
+                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
                     .collect(),
             );
 
@@ -100,7 +100,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
                 unique_index.to_string(),
                 changed_by(equation, clause)
                     .iter()
-                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).unwrap())
+                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
                     .collect(),
             );
 
@@ -190,13 +190,19 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
     let must_be_different = pvi.name() == equation.variable().name().copy();
 
     // We assume that all equations have the same parameters, so we can just use the parameters of the given equation.
+    let params = equation.variable().parameters();
+    let args = pvi.arguments();
+    debug_assert_eq!(
+        params.len(),
+        args.iter().count(),
+        "used_in: parameters and arguments must have the same length"
+    );
+
     let mut result = Vec::new();
-    for ((var_index, variable), (update_index, update)) in equation
-        .variable()
-        .parameters()
+    for ((var_index, variable), (update_index, update)) in params
         .iter()
         .enumerate()
-        .zip(pvi.arguments().iter().enumerate())
+        .zip(args.iter().enumerate())
     {
         if must_be_different && var_index == update_index {
             // This variable is not used in the clause, since it is updated to itself.
@@ -226,7 +232,15 @@ fn changed_by(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> 
     let mut result = Vec::new();
     if pvi.name() == equation.variable().name().copy() {
         // X = X_j, so we need to check which variables are changed by the clause.
-        for (variable, update) in equation.variable().parameters().iter().zip(pvi.arguments().iter()) {
+        let params = equation.variable().parameters();
+        let args = pvi.arguments();
+        debug_assert_eq!(
+            params.len(),
+            args.iter().count(),
+            "changed_by: parameters and arguments must have the same length"
+        );
+
+        for (variable, update) in params.iter().zip(args.iter()) {
             if Into::<DataExpressionRef<'_>>::into(variable.copy()) != update.copy() {
                 // This variable is changed by the clause.
                 result.push(variable);
