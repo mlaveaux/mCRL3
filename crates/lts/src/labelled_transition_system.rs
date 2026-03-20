@@ -8,6 +8,7 @@ use merc_collections::CompressedEntry;
 use merc_collections::CompressedVecMetrics;
 use merc_collections::bytevec;
 use merc_io::LargeFormatter;
+use merc_utilities::MercError;
 use merc_utilities::TagIndex;
 
 use crate::LTS;
@@ -291,20 +292,20 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     }
 
     /// Consumes the LTS and relabels its transition labels according to the given mapping.
-    pub fn relabel<L, F>(self, labelling: F) -> LabelledTransitionSystem<L>
+    pub fn relabel<L, F>(self, labelling: F) -> Result<LabelledTransitionSystem<L>, MercError>
     where
-        F: Fn(Label) -> L,
+        F: Fn(Label) -> Result<L, MercError>,
         L: TransitionLabel,
     {
-        let new_labels: Vec<L> = self.labels.into_iter().map(labelling).collect();
+        let new_labels: Vec<L> = self.labels.into_iter().map(labelling).collect::<Result<_, _>>()?;
 
-        LabelledTransitionSystem::from_raw_parts(
+        Ok(LabelledTransitionSystem::from_raw_parts(
             self.initial_state,
             self.states,
             self.transition_labels,
             self.transition_to,
             new_labels
-        )
+        ))
     }
 
     /// Constructs a [LabelledTransitionSystem] directly from its raw internal arrays.

@@ -37,6 +37,11 @@ pub struct LtsMultiAction {
 }
 
 impl LtsMultiAction {
+    /// Creates a new multi-action with the given set of action labels.
+    pub fn new(actions: VecSet<LtsAction>) -> Self {
+        LtsMultiAction { actions }
+    }
+
     /// Parses a multi-action from a string representation, typically found in the Aldebaran format.
     pub fn from_string(input: &str) -> Result<Self, MercError> {
         let mut actions = VecSet::new();
@@ -253,6 +258,16 @@ impl LtsAction {
     /// Creates a new action label with the given name and arguments.
     pub fn new(label: String, arguments: Vec<DataExpression>) -> Self {
         LtsAction { label, arguments }
+    }
+
+    /// Returns the name of the action label.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Returns the data arguments of the action.
+    pub fn arguments(&self) -> &[DataExpression] {
+        &self.arguments
     }
 }
 

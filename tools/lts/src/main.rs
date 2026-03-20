@@ -13,6 +13,7 @@ use merc_io::LargeFormatter;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
 use merc_lts::LtsFormat;
+use merc_lts::LtsMultiAction;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
@@ -420,14 +421,14 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
         GenericLts::Lts(lts) => match output_format {
             LtsFormat::Aut => {
                 if let Some(path) = &args.output {
-                    write_aut(&mut File::create(path)?, &lts.relabel(|label| label.to_string()))?;
+                    write_aut(&mut File::create(path)?, &lts.relabel(|label| Ok(label.to_string()))?)?;
                 } else {
-                    write_aut(&mut stdout(), &lts.relabel(|label| label.to_string()))?;
+                    write_aut(&mut stdout(), &lts.relabel(|label| Ok(label.to_string()))?)?;
                 }
             }
             LtsFormat::Bcg => {
                 if let Some(path) = &args.output {
-                    write_bcg(&lts.relabel(|label| label.to_string()), path)?;
+                    write_bcg(&lts.relabel(|label| Ok(label.to_string()))?, path)?;
                 } else {
                     return Err("Output path must be specified when writing BCG files.".into());
                 }
