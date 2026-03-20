@@ -194,7 +194,7 @@ pub fn is_valid_permutation(mapping: &Vec<(usize, usize)>) -> bool {
 impl fmt::Display for Permutation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Determine the maximum value in the permutation mapping.
-        let max_value = self.mapping.iter().map(|(d, e)| *d.max(e)).max().unwrap_or(0);
+        let max_value = self.mapping.iter().flat_map(|(d, e)| [*d, *e]).max().unwrap_or(0);
 
         let mut visited = vec![false; max_value + 1];
         let mut identity = true;
