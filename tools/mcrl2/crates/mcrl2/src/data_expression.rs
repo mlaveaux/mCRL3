@@ -1,6 +1,12 @@
 use mcrl2_macros::mcrl2_derive_terms;
 use mcrl2_sys::data::ffi::assignment_pair;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_abstraction;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_exists;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_forall;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_lambda;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_set_comp;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_bag_comp;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_untyped_set_bag_comp;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_application;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_data_expression;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_function_symbol;
@@ -26,6 +32,49 @@ pub fn is_application(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_application(term.get())
 }
+
+/// Checks if this term is a binding operator, i.e., lambda, forall, or exists.
+pub fn is_binding_operator(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    is_lambda_binder(term) || is_forall_binder(term) || is_exists_binder(term) || is_set_comprehension_binder(term) || is_bag_comprehension_binder(term)
+}
+
+/// Checks if this term is a lambda binder
+pub fn is_lambda_binder(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    mcrl2_data_expression_is_binder_lambda(term.get())
+}
+
+/// Checks if this term is a forall binder
+pub fn is_forall_binder(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    mcrl2_data_expression_is_binder_forall(term.get())
+}
+
+/// Checks if this term is a exists binder
+pub fn is_exists_binder(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    mcrl2_data_expression_is_binder_exists(term.get())
+}
+
+/// Checks if this term is a set comprehension binder
+pub fn is_set_comprehension_binder(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    mcrl2_data_expression_is_binder_set_comp(term.get())
+}
+
+/// Checks if this term is a bag comprehension binder
+pub fn is_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    mcrl2_data_expression_is_binder_bag_comp(term.get())
+}
+
+/// Checks if this term is an untyped set or bag comprehension binder
+pub fn is_untyped_set_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
+    term.require_valid();
+    mcrl2_data_expression_is_binder_untyped_set_bag_comp(term.get())
+}
+
 
 /// Checks if this term is a data abstraction.
 pub fn is_abstraction(term: &ATermRef<'_>) -> bool {
@@ -81,6 +130,7 @@ mod inner {
     use crate::ATerm;
     use crate::ATermArgs;
     use crate::ATermIntRef;
+    use crate::ATermList;
     use crate::ATermRef;
     use crate::ATermStringRef;
     use crate::Markable;
@@ -91,11 +141,11 @@ mod inner {
     ///     - a variable
     ///     - a function symbol, i.e. f without arguments.
     ///     - a term applied to a number of arguments, i.e., t_0(t1, ..., tn).
-    ///     - an abstraction lambda x: Sort . e, or forall and exists.
+    ///     - an abstraction, binding a list of variables to an expression. Can be lambda, forall, or exists, set or bag comprehension.
     ///     - machine number, a value [0, ..., 2^64-1].
     ///
     /// Not supported:
-    ///     - a where clause "e where [x := f, ...]"
+    ///     - a where clause `e whr [x := f, ...]`
     ///     - set enumeration
     ///     - bag enumeration
     ///
@@ -250,9 +300,19 @@ mod inner {
     }
 
     impl DataAbstraction {
+        /// Returns the binding operator of the abstraction, i.e., lambda, forall, or exists.
+        pub fn binding_operator(&self) -> DataFunctionSymbolRef<'_> {
+            self.term.arg(0).upgrade(&self.term).into()
+        }
+
+        /// Returns the list of variables
+        pub fn variables(&self) -> ATermList<DataVariable> {
+            self.term.arg(1).protect().into()
+        }
+
         /// Returns the body of the abstraction.
         pub fn body(&self) -> DataExpressionRef<'_> {
-            self.term.arg(1).into()
+            self.term.arg(2).into()
         }
     }
 

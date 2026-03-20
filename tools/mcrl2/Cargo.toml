@@ -14,6 +14,7 @@ debug = "line-tables-only"
 resolver = "3"
 members = [
     "crates/mcrl2",
+    "crates/mcrl2-macros",
     "crates/xtask",
     "pbes",
 ]
