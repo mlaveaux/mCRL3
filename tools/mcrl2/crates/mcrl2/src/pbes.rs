@@ -248,8 +248,9 @@ pub struct PredicateVariable {
     used: Vec<usize>,
     changed: Vec<usize>,
 
-    // TODO: These are now only the domain of the functions, not the actual functions.
-    // The functions indicating the source, target and copy of variables
+    // These fields currently store only the parameter
+    // indices (domain) of the source, target, and copy functions, not the
+    // full function mappings.
     source: Vec<usize>,
     target: Vec<usize>,
     copy: Vec<usize>,
@@ -293,34 +294,21 @@ impl PredicateVariable {
 
     /// Creates a new `PredicateVariable` from the given FFI variable pointer.
     pub(crate) fn new(variable: *const predicate_variable) -> Self {
+        // SAFETY: The pointer comes from the stategraph algorithm which keeps the
+        // predicate variables alive for the duration of the algorithm. We validate
+        // non-null once and reuse the reference for all FFI calls.
+        let var = unsafe { variable.as_ref() }.expect("Pointer should be valid");
+
         PredicateVariable {
             _variable: variable,
-            pvi: PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(unsafe {
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(
-                    variable.as_ref().expect("Pointer should be valid"),
-                )
-            })),
-            used: unsafe {
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_used(variable.as_ref().expect("Pointer should be valid"))
-            },
-            changed: unsafe {
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_changed(
-                    variable.as_ref().expect("Pointer should be valid"),
-                )
-            },
-            source: unsafe {
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_source(
-                    variable.as_ref().expect("Pointer should be valid"),
-                )
-            },
-            target: unsafe {
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_target(
-                    variable.as_ref().expect("Pointer should be valid"),
-                )
-            },
-            copy: unsafe {
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_copy(variable.as_ref().expect("Pointer should be valid"))
-            },
+            pvi: PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(
+                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(var)
+            )),
+            used: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_used(var),
+            changed: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_changed(var),
+            source: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_source(var),
+            target: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_target(var),
+            copy: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_copy(var),
         }
     }
 }
@@ -385,7 +373,7 @@ impl SrfPbes {
 
     /// Convert the SRF PBES back to a PBES.
     pub fn to_pbes(&self) -> Pbes {
-        Pbes::new(mcrl2_srf_pbes_to_pbes(self.srf_pbes.as_ref().unwrap()))
+        Pbes::new(mcrl2_srf_pbes_to_pbes(self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null")))
     }
 
     /// Unify all parameters of the equations.

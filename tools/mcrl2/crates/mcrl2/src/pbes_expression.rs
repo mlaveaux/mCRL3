@@ -352,15 +352,15 @@ impl<'a> From<PbesExpressionRef<'a>> for PbesExistsRef<'a> {
     }
 }
 
-impl Into<DataExpression> for PbesExpression {
-    fn into(self) -> DataExpression {
-        DataExpression::new(self.into())
+impl From<PbesExpression> for DataExpression {
+    fn from(expr: PbesExpression) -> DataExpression {
+        DataExpression::new(expr.into())
     }
 }
 
-impl<'a> Into<DataExpressionRef<'a>> for PbesExpressionRef<'a> {
-    fn into(self) -> DataExpressionRef<'a> {
-        DataExpressionRef::new(self.term)
+impl<'a> From<PbesExpressionRef<'a>> for DataExpressionRef<'a> {
+    fn from(expr: PbesExpressionRef<'a>) -> DataExpressionRef<'a> {
+        DataExpressionRef::new(expr.term)
     }
 }
 

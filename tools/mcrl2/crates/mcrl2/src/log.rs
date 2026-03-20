@@ -5,12 +5,12 @@ pub fn set_reporting_level(level: usize) {
     mcrl2_sys::log::ffi::mcrl2_set_reporting_level(level);
 }
 
-/// Convert a verbosity to a log level understood by mCRL2
-pub fn verbosity_to_log_level_t(verbosity: Verbosity) -> usize {
+/// Convert a verbosity to a log level understood by mCRL2.
+pub fn verbosity_to_log_level(verbosity: Verbosity) -> usize {
     match verbosity {
-        Verbosity::Quiet => 0,
-        Verbosity::Verbose => 5,
-        Verbosity::Debug => 6,
-        Verbosity::Trace => 7,
+        Verbosity::Quiet => 0,   // mcrl2::log::quiet
+        Verbosity::Verbose => 5, // mcrl2::log::verbose
+        Verbosity::Debug => 6,   // mcrl2::log::debug
+        Verbosity::Trace => 7,   // mcrl2::log::trace
     }
 }
