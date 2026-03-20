@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use log::debug;
+use mcrl2::free_variables_data_expression;
 use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::DataExpressionRef;
-use mcrl2::DataExpressionVisitor;
 use mcrl2::DataVariable;
 use mcrl2::PbesExpressionRef;
 use mcrl2::PbesExpressionVisitor;
@@ -78,13 +78,14 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
             );
 
             // Compute used-for and map the variables back to their position in the variables.
-            uf.insert(
-                unique_index.to_string(),
-                used_for(clause)
-                    .iter()
-                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
-                    .collect(),
-            );
+            let mut used_for_indices: Vec<usize> = used_for(clause)
+                .iter()
+                .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
+                .collect();
+            used_for_indices.sort_unstable();
+            used_for_indices.dedup();
+
+            uf.insert(unique_index.to_string(), used_for_indices);
 
             // Compute used-in and map the variables back to their position in the variables.
             ui.insert(
@@ -122,6 +123,11 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
 
             // Update the index for the source or target variables.
             for variable in predicate.source().iter().chain(predicate.target().iter()) {
+                if data_parameters.contains(&variable) {
+                    // This variable is a data parameter, so we are not interested in it for the source and target functions.
+                    continue;
+                }
+
                 let vector = src_tgt
                     .entry(variable.to_string())
                     .or_insert_with(Vec::new);
@@ -132,6 +138,11 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
             }
 
             for variable in predicate.copy().iter() {
+                if data_parameters.contains(&variable) {
+                    // This variable is a data parameter, we not interested in it for the copy function.
+                    continue;
+                }
+
                 let vector = copy.entry(variable.to_string())
                     .or_insert_with(Vec::new);
 
@@ -171,7 +182,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
 /// Given clause `j`, `used_for(j)` hold iff `d_k` in `fv(f_j)` for some data variable
 /// `d_k`.
 fn used_for(clause: &SrfSummand) -> Vec<DataVariable> {
-    variable_occurrences_pbes(&clause.condition().copy())
+    free_variables_pbes_expression(&clause.condition().copy())
 }
 
 /// returns the data variables that are used in a given clause, i.e., there is
@@ -209,7 +220,7 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
             continue;
         }
 
-        if variable_occurrences(&update.copy()).contains(&variable) {
+        if free_variables_data_expression(&update.copy()).contains(&variable) {
             // This variable is used in the clause.
             result.push(variable);
         }
@@ -252,43 +263,22 @@ fn changed_by(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> 
 }
 
 /// Returns all the data variables occurring in the given PBES expression.
-fn variable_occurrences_pbes(expr: &PbesExpressionRef<'_>) -> Vec<DataVariable> {
+fn free_variables_pbes_expression(expr: &PbesExpressionRef<'_>) -> Vec<DataVariable> {
     let mut result = Vec::new();
 
     /// Local struct that is used to collect data variable occurrences.
-    struct VariableOccurences<'a> {
+    struct FreeVariableOccurrences<'a> {
         result: &'a mut Vec<DataVariable>,
     }
 
-    impl PbesExpressionVisitor for VariableOccurences<'_> {
+    impl PbesExpressionVisitor for FreeVariableOccurrences<'_> {
         fn visit_data_expression(&mut self, expr: &mcrl2::DataExpressionRef<'_>) -> Option<mcrl2::DataExpression> {
-            self.result.extend(variable_occurrences(expr));
+            self.result.extend(free_variables_data_expression(expr));
             None
         }
     }
 
-    let mut occurrences = VariableOccurences { result: &mut result };
-    occurrences.visit(expr);
-    result
-}
-
-/// Returns all the data variables occurring in the given data expression.
-fn variable_occurrences(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
-    let mut result = Vec::new();
-
-    /// Local struct that is used to collect data variable occurrences.
-    struct VariableOccurences<'a> {
-        result: &'a mut Vec<DataVariable>,
-    }
-
-    impl DataExpressionVisitor for VariableOccurences<'_> {
-        fn visit_variable(&mut self, var: &mcrl2::DataVariableRef<'_>) -> Option<mcrl2::DataExpression> {
-            self.result.push(var.protect());
-            None
-        }
-    }
-
-    let mut occurrences = VariableOccurences { result: &mut result };
+    let mut occurrences = FreeVariableOccurrences { result: &mut result };
     occurrences.visit(expr);
     result
 }
@@ -320,9 +310,9 @@ struct Output {
     /// Maps from clause indices to the parameter indices that are changed by the clause.
     cb: HashMap<String, Vec<usize>>,
 
-    /// Maps from source variable names to the clause indices where they occur as source or target variables.
+    /// Maps from parameter indices (as strings) to the clause indices where they occur as source or target variables.
     src_tgt: HashMap<String, Vec<usize>>,
 
-    /// Maps from variable names to the clause indices where they occur as copy variables.
+    /// Maps from parameter indices (as strings) to the clause indices where they occur as copy variables.
     copy: HashMap<String, Vec<usize>>,
 }
