@@ -122,14 +122,13 @@ impl FromTransition {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
+    use crate::IncomingTransitions;
+    use crate::LTS;
     use crate::random_lts;
     use crate::write_aut;
 

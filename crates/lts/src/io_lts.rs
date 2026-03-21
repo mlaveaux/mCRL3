@@ -234,12 +234,13 @@ fn probabilistic_transition_mark() -> ATerm {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use merc_utilities::random_test;
 
     use crate::LTS;
+    use crate::LtsMultiAction;
     use crate::random_lts_monolithic;
+    use crate::read_lts;
+    use crate::write_lts;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.

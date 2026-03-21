@@ -153,12 +153,14 @@ impl<Label: TransitionLabel> fmt::Debug for LtsBuilderFast<Label> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use itertools::Itertools;
     use rand::RngExt;
 
     use merc_utilities::random_test;
+
+    use crate::LabelIndex;
+    use crate::LtsBuilderFast;
+    use crate::StateIndex;
 
     #[test]
     fn test_random_remove_duplicates() {
