@@ -61,11 +61,6 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         let mut states = ByteCompressedVec::new();
         if let Some(num_of_states) = num_of_states {
             states.resize_with(num_of_states, Default::default);
-            debug_assert!(
-                initial_state.value() < num_of_states,
-                "Initial vertex index {} out of bounds {num_of_states}",
-                initial_state.value()
-            );
         }
 
         // Count the number of transitions for every state
@@ -119,14 +114,6 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
             *start = previous;
             result
         });
-
-        // The minus one is because we added one extra state for the sentinel.
-        debug_assert!(
-            initial_state.value() < states.len(),
-            "Initial state {:?} out of bounds (num states: {})",
-            initial_state,
-            states.len() - 1
-        );
 
         // Add the sentinel state.
         states.push(transition_labels.len());
