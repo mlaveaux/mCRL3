@@ -131,13 +131,13 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         // Add the sentinel state.
         states.push(transition_labels.len());
 
-        LabelledTransitionSystem {
+        LabelledTransitionSystem::from_raw_parts(
             initial_state,
-            labels,
             states,
             transition_labels,
             transition_to,
-        }
+            labels,
+        )
     }
 
     /// Constructs a LTS by a successor function for every state.
@@ -180,13 +180,13 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         // Add the sentinel state.
         states.push(transition_labels.len());
 
-        LabelledTransitionSystem {
+        Self::from_raw_parts(
             initial_state,
-            labels,
             states,
             transition_labels,
             transition_to,
-        }
+            labels,
+        )
     }
 
     /// Consumes the current LTS and merges it with another one, returning the merged LTS.
@@ -247,13 +247,13 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         debug_assert_eq!(self.num_of_states(), total_number_of_states);
 
         (
-            Self {
-                initial_state: self.initial_state,
-                labels: all_labels,
-                states: self.states,
-                transition_labels: self.transition_labels,
-                transition_to: self.transition_to,
-            },
+            Self::from_raw_parts(
+                self.initial_state,
+                self.states,                
+                self.transition_labels,
+                self.transition_to,
+                all_labels
+            ),
             StateIndex::new(offset + other.initial_state_index().value()),
         )
     }
@@ -294,13 +294,13 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         // Add the sentinel state.
         states.push(transition_labels.len());
 
-        LabelledTransitionSystem {
-            initial_state: permutation(lts.initial_state),
-            labels: lts.labels,
+        Self::from_raw_parts(
+            permutation(lts.initial_state),
             states,
             transition_labels,
             transition_to,
-        }
+            lts.labels,
+        )
     }
 
     /// Consumes the LTS and relabels its transition labels according to the given mapping.
@@ -311,12 +311,97 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     {
         let new_labels: Vec<L> = self.labels.into_iter().map(labelling).collect();
 
-        LabelledTransitionSystem {
-            initial_state: self.initial_state,
-            labels: new_labels,
-            states: self.states,
-            transition_labels: self.transition_labels,
-            transition_to: self.transition_to,
+        LabelledTransitionSystem::from_raw_parts(
+            self.initial_state,
+            self.states,
+            self.transition_labels,
+            self.transition_to,
+            new_labels
+        )
+    }
+
+    /// Constructs a [LabelledTransitionSystem] directly from its raw internal arrays.
+    ///
+    /// The `states` array must contain one entry per state holding the start offset of that
+    /// state's transitions in the transition arrays, plus a sentinel entry at the end equal
+    /// to the total number of transitions. `transition_labels` and `transition_to` must have
+    /// equal length and all indices they contain must be in bounds.
+    ///
+    /// # Panics
+    ///
+    /// Panics (in debug mode) if the invariants of the internal representation are violated.
+    pub fn from_raw_parts(
+        initial_state: StateIndex,
+        states: ByteCompressedVec<usize>,
+        transition_labels: ByteCompressedVec<LabelIndex>,
+        transition_to: ByteCompressedVec<StateIndex>,
+        labels: Vec<Label>,
+    ) -> Self {
+        let lts = LabelledTransitionSystem {
+            initial_state,
+            states,
+            transition_labels,
+            transition_to,
+            labels,
+        };
+        lts.assert_valid();
+        lts
+    }
+
+    /// Checks that the internal representation satisfies all structural invariants.
+    pub fn assert_valid(&self) {
+        let num_states = self.num_of_states();
+        let num_transitions = self.num_of_transitions();
+
+        debug_assert!(
+            self.states.len() >= 1,
+            "states array must have at least one entry (the sentinel)"
+        );
+
+        debug_assert!(
+            self.initial_state.value() < num_states,
+            "initial_state {:?} is out of bounds (num_states: {})",
+            self.initial_state,
+            num_states
+        );
+
+        debug_assert_eq!(
+            self.states.index(num_states),
+            num_transitions,
+            "sentinel value must equal the number of transitions"
+        );
+
+        debug_assert_eq!(
+            self.transition_labels.len(),
+            self.transition_to.len(),
+            "transition_labels and transition_to must have equal length"
+        );
+
+        for i in 0..num_states {
+            debug_assert!(
+                self.states.index(i) <= self.states.index(i + 1),
+                "state {i} has offset {} which is greater than successor offset {}",
+                self.states.index(i),
+                self.states.index(i + 1)
+            );
+        }
+
+        for i in 0..num_transitions {
+            let label = self.transition_labels.index(i);
+            debug_assert!(
+                label.value() < self.labels.len(),
+                "transition {i} references label index {} which is out of bounds (num_labels: {})",
+                label.value(),
+                self.labels.len()
+            );
+
+            let to = self.transition_to.index(i);
+            debug_assert!(
+                to.value() < num_states,
+                "transition {i} references target state {} which is out of bounds (num_states: {})",
+                to.value(),
+                num_states
+            );
         }
     }
 
@@ -455,24 +540,36 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
+    use crate::LTS;
+    use crate::num_reachable_states;
     use crate::random_lts;
     use crate::write_aut;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_labelled_transition_system_merge() {
+    fn test_random_labelled_transition_system_merge_disjoint() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_labelled_transition_system_merge");
+            let mut files = DumpFiles::new("test_random_merge_disjoint");
 
-            let left = random_lts(rng, 5, 5, 10);
-            let right = random_lts(rng, 5, 10, 10);
+            let left = random_lts(rng, 10, 20, 2);
+            files.dump("left.aut", |w| write_aut(w, &left)).unwrap();
 
-            files.dump("left.aut", |f| write_aut(f, &left)).unwrap();
-            files.dump("right.aut", |f| write_aut(f, &right)).unwrap();
+            let right = random_lts(rng, 10, 20, 2);
+            files.dump("right.aut", |w| write_aut(w, &right)).unwrap();
 
-            let (merged, _offset) = left.clone().merge_disjoint_impl(&right);
+            let (merged, right_initial) = left.clone().merge_disjoint(&right);
+            files.dump("merged.aut", |w| write_aut(w, &merged)).unwrap();
 
-            files.dump("merged.aut", |f| write_aut(f, &merged)).unwrap();
-        })
+            assert_eq!(
+                num_reachable_states(&left, left.initial_state_index()),
+                num_reachable_states(&merged, merged.initial_state_index()),
+                "The left LTS should be fully reachable in the merged LTS"
+            );
+            assert_eq!(
+                num_reachable_states(&right, right.initial_state_index()),
+                num_reachable_states(&merged, right_initial),
+                "The right LTS should be fully reachable in the merged LTS"
+            );
+        });
     }
 }

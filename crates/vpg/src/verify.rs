@@ -28,11 +28,6 @@ use crate::check_partition;
 /// player, and computing the solution for the induced solitair game.
 pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy; 2]) {
     debug_assert!(pg.is_total(), "Verifying requires a total parity game");
-    debug_assert!(
-        pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Even)
-            || pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Odd),
-        "Verifying requires a parity game with only two players"
-    );
 
     // The set of all vertices in the game.
     let vertices = bitvec![usize, Lsb0; 1; pg.num_of_vertices()];
@@ -62,6 +57,12 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
 /// This is done by considering all subgames Gi restricted to priority `i`
 /// belonging to `player`, and solving the simple solitair game on each of these subgames.
 fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
+    debug_assert!(
+        pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Even)
+            || pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Odd),
+        "solve_solitair_game requires a solitair game"
+    );
+
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
 
     for priority in 0..=pg.highest_priority().value() {
