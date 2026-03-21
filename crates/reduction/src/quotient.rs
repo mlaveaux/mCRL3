@@ -78,7 +78,10 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
                     .outgoing_transitions(candidate)
                     .find(|trans| lts.is_hidden_label(trans.label) && partition.block_number(trans.to) == block)
                 {
-                    debug_assert!(!diverges(lts, candidate), "The states of the given LTS should be non-divergent.");
+                    debug_assert!(
+                        !diverges(lts, candidate),
+                        "The states of the given LTS should be non-divergent."
+                    );
                     candidate = trans.to;
                     continue 'outer;
                 }
@@ -113,7 +116,6 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
     )
 }
 
-
 /// Returns true iff the given state diverges, i.e., it can perform an infinite
 /// sequence of tau transitions.
 pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
@@ -142,43 +144,108 @@ pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
 #[cfg(test)]
 mod tests {
     use merc_io::DumpFiles;
+    use merc_lts::random_lts;
     use merc_lts::write_aut;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
+    use rand::rngs::StdRng;
 
     use crate::Equivalence;
     use crate::compare_lts;
     use crate::reduce_lts;
 
+    /// Generates a random LTS, reduces it under `equivalence`, and asserts
+    /// that the original and reduced LTS are equivalent.
+    fn check_quotient_equivalence(rng: &mut StdRng, equivalence: Equivalence, test_name: &str) {
+        let mut timing = Timing::new();
+        let mut files = DumpFiles::new(test_name);
+
+        let lts = random_lts(rng, 10, 20, 5);
+
+        files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
+
+        let reduced = reduce_lts(lts.clone(), equivalence, false, &mut timing);
+        files.dump("quotient.aut", |w| write_aut(w, &reduced)).unwrap();
+
+        assert!(
+            compare_lts(equivalence, lts, reduced, false, &mut timing),
+            "Quotient is not equivalent under {equivalence:?}",
+        );
+    }
+
     #[test]
-    fn test_random_strong_bisimulation_quotient() {
+    fn test_random_strong_bisim_quotient() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
-            let mut files = DumpFiles::new("test_random_strong_bisimulation_quotient");
-
-            let lts = merc_lts::random_lts(rng, 10, 20, 5);
-            files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
-
-            let reduced = reduce_lts(lts.clone(), Equivalence::StrongBisim, false, &mut timing);
-            files.dump("quotient.aut", |w| write_aut(w, &lts)).unwrap();
-
-            assert!(compare_lts(Equivalence::StrongBisim, lts, reduced, false, &mut timing));
+            check_quotient_equivalence(rng, Equivalence::StrongBisim, "test_random_strong_bisim_quotient");
         });
     }
-    
+
     #[test]
-    fn test_random_branching_bisimulation_quotient() {
+    fn test_random_strong_bisim_naive_quotient() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
-            let mut files = DumpFiles::new("test_random_branching_bisimulation_quotient");
+            check_quotient_equivalence(
+                rng,
+                Equivalence::StrongBisimNaive,
+                "test_random_strong_bisim_naive_quotient",
+            );
+        });
+    }
 
-            let lts = merc_lts::random_lts_monolithic::<String, _>(rng, 10, 20, 2);
-            files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
+    #[test]
+    fn test_random_branching_bisim_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(rng, Equivalence::BranchingBisim, "test_random_branching_bisim_quotient");
+        });
+    }
 
-            let quotient = reduce_lts(lts.clone(), Equivalence::BranchingBisim, false, &mut timing);
-            files.dump("quotient.aut", |w| write_aut(w, &quotient)).unwrap();
-            
-            assert!(compare_lts(Equivalence::BranchingBisim, lts, quotient, false, &mut timing));
+    #[test]
+    fn test_random_branching_bisim_naive_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::BranchingBisimNaive,
+                "test_random_branching_bisim_naive_quotient",
+            );
+        });
+    }
+
+    #[test]
+    fn test_random_weak_bisim_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(rng, Equivalence::WeakBisim, "test_random_weak_bisim_quotient");
+        });
+    }
+
+    #[test]
+    fn test_random_weak_bisim_parallel_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimParallel,
+                "test_random_weak_bisim_parallel_quotient",
+            );
+        });
+    }
+
+    #[test]
+    fn test_random_weak_bisim_sigref_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimSigref,
+                "test_random_weak_bisim_sigref_quotient",
+            );
+        });
+    }
+
+    #[test]
+    fn test_random_weak_bisim_sigref_naive_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimSigrefNaive,
+                "test_random_weak_bisim_sigref_naive_quotient",
+            );
         });
     }
 }

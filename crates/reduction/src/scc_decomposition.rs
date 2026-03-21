@@ -32,7 +32,9 @@ mod tests {
     use crate::Partition;
     use crate::quotient_lts_naive;
 
-    use super::*;
+    use super::LTS;
+    use super::has_tau_loop;
+    use super::tau_scc_decomposition;
 
     /// Returns the reachable states from the given state index.
     fn reachable_states<F, L>(lts: &L, state_index: StateIndex, filter: &F) -> Vec<usize>

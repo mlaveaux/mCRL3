@@ -93,7 +93,13 @@ mod tests {
             files.dump("permuted.aut", |w| write_aut(w, &permuted_lts)).unwrap();
 
             // Check that the original and permuted LTS are bisimilar.
-            assert!(compare_lts(compare::Equivalence::StrongBisim, lts, permuted_lts, false, &mut timing));
+            assert!(compare_lts(
+                compare::Equivalence::StrongBisim,
+                lts,
+                permuted_lts,
+                false,
+                &mut timing
+            ));
         })
     }
 }

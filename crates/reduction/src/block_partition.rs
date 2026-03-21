@@ -200,7 +200,9 @@ impl BlockPartition {
             }
         }
 
-        if let Some(new_block) = new_block && (updated_block.end - updated_block.begin) != 0 {
+        if let Some(new_block) = new_block
+            && (updated_block.end - updated_block.begin) != 0
+        {
             // A new block was introduced, so we need to update the current
             // block. Unless the current block is empty in which case
             // nothing changes.
@@ -547,9 +549,13 @@ impl Iterator for BlockIter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use merc_lts::StateIndex;
     use test_log::test;
+
+    use merc_collections::BlockIndex;
+
+    use crate::BlockPartition;
+    use crate::BlockPartitionBuilder;
 
     #[test]
     fn test_block_partition_split() {
