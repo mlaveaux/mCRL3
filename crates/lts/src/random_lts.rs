@@ -86,7 +86,7 @@ pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
         builder.require_num_of_states(1);
     }
 
-    builder.finish(StateIndex::new(0), true)
+    builder.finish(StateIndex::new(rng.random_range(0..num_of_states)), true)
 }
 
 /// Mutates the given LTS by randomly adding and removing transitions, and
@@ -127,7 +127,7 @@ pub fn mutate_lts<L: LTS, R: Rng>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::random_lts;
 
     use test_log::test;
 

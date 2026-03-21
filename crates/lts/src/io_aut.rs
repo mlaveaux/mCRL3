@@ -68,7 +68,7 @@ pub fn read_aut<R: Read>(reader: R, hidden_labels: Vec<String>) -> Result<Labell
 
     let mut builder = LtsBuilderMem::with_capacity(Vec::new(), hidden_labels, 16, num_of_states, num_of_transitions);
     builder.require_num_of_states(num_of_states);
-    
+
     let progress = TimeProgress::new(
         move |read: usize| {
             info!(
@@ -197,12 +197,13 @@ impl TransitionLabel for String {
 
 #[cfg(test)]
 mod tests {
-    use crate::random_lts_monolithic;
-
-    use super::*;
-
     use merc_utilities::random_test;
     use test_log::test;
+
+    use crate::LTS;
+    use crate::random_lts_monolithic;
+    use crate::read_aut;
+    use crate::write_aut;
 
     #[test]
     fn test_reading_aut() {

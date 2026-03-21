@@ -172,13 +172,13 @@ mod tests {
             let mut timing = Timing::new();
             let mut files = DumpFiles::new("test_random_branching_bisimulation_quotient");
 
-            let lts = merc_lts::random_lts(rng, 10, 20, 5);
+            let lts = merc_lts::random_lts_monolithic::<String, _>(rng, 10, 20, 2);
             files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
 
-            let reduced = reduce_lts(lts.clone(), Equivalence::BranchingBisim, false, &mut timing);
-            files.dump("quotient.aut", |w| write_aut(w, &lts)).unwrap();
+            let quotient = reduce_lts(lts.clone(), Equivalence::BranchingBisim, false, &mut timing);
+            files.dump("quotient.aut", |w| write_aut(w, &quotient)).unwrap();
             
-            assert!(compare_lts(Equivalence::BranchingBisim, lts, reduced, false, &mut timing));
+            assert!(compare_lts(Equivalence::BranchingBisim, lts, quotient, false, &mut timing));
         });
     }
 }
