@@ -218,9 +218,9 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
 
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_ {
         // Only consider vertices that are below the maximum priority.
-        self.game
-            .iter_vertices()
-            .filter(|v| self.restricted.get(**v).expect("Vertex must be in the restricted set") == true)
+        self.restricted
+            .iter_ones()
+            .map(|index| VertexIndex::new(index))
     }
 
     fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a {
