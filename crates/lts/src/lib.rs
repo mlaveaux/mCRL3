@@ -13,6 +13,7 @@ mod lts_builder_fast;
 mod multi_action;
 mod product_lts;
 mod random_lts;
+mod reachability;
 
 pub use incoming_transitions::*;
 pub use io::*;
@@ -27,3 +28,4 @@ pub use lts_builder_fast::*;
 pub use multi_action::*;
 pub use product_lts::*;
 pub use random_lts::*;
+pub use reachability::*;

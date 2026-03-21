@@ -131,15 +131,14 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::random_lts;
-    use crate::write_aut;
-
-    use super::*;
-
-    use merc_io::DumpFiles;
     use test_log::test;
 
+    use merc_io::DumpFiles;
     use merc_utilities::random_test;
+
+    use crate::product_lts;
+    use crate::random_lts;
+    use crate::write_aut;
 
     #[test]
     #[cfg_attr(miri, ignore)]
