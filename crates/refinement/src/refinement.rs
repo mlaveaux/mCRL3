@@ -231,10 +231,10 @@ pub fn refines<L: LTS>(
 mod tests {
     use std::io::Write;
 
+    use merc_vpg::PG;
     use rand::rngs::StdRng;
 
     use merc_io::DumpFiles;
-    use merc_lts::LTS;
     use merc_lts::mutate_lts;
     use merc_lts::random_lts_monolithic;
     use merc_lts::write_aut;
@@ -410,7 +410,7 @@ mod tests {
                 let (spec_solution, _) = solve_zielonka(&spec_pg);
 
                 assert!(
-                    impl_solution[impl_lts.initial_state_index()] != spec_solution[spec_lts.initial_state_index()],
+                    impl_solution[impl_pg.initial_vertex()] != spec_solution[spec_pg.initial_vertex()],
                     "Refinement returned false, but the counter example is not distinguishing."
                 );
             } else {
