@@ -39,14 +39,15 @@ impl MarkedBlockPartition {
 
     /// Splits a block into two blocks according to the given predicate. If
     /// a split occurs both blocks are marked as unstable.
-    /// 
+    ///
     /// If the predicate holds for all or none of the elements, no split occurs.
     pub fn split_block(
         &mut self,
         block_index: BlockIndex,
         predicate: impl Fn(StateIndex) -> bool,
     ) -> Option<BlockIndex> {
-        let result = self.partition
+        let result = self
+            .partition
             .split_block(block_index, |element| predicate(StateIndex::new(element)));
 
         if let Some(new_block_index) = result {
@@ -84,7 +85,7 @@ impl fmt::Display for MarkedBlockPartition {
     }
 }
 
-impl Partition for MarkedBlockPartition {    
+impl Partition for MarkedBlockPartition {
     fn block_number(&self, state_index: StateIndex) -> BlockIndex {
         // Note that this is O(n) in the number of blocks. This could be improved
         // by storing a mapping from state index to block index. However, this

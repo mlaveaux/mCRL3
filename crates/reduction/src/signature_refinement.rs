@@ -728,15 +728,24 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use merc_io::DumpFiles;
-    use merc_lts::write_aut;
     use test_log::test;
 
+    use merc_io::DumpFiles;
     use merc_lts::random_lts;
+    use merc_lts::write_aut;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
+
+    use super::BlockIndex;
+    use super::LTS;
+    use super::Partition;
+    use super::StateIndex;
+    use super::branching_bisim_sigref;
+    use super::branching_bisim_sigref_naive;
+    use super::strong_bisim_sigref;
+    use super::strong_bisim_sigref_naive;
+    use super::weak_bisim_sigref_inductive_naive;
+    use super::weak_bisim_sigref_naive;
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
     fn equal_partitions<P: Partition, Q: Partition>(left: &P, right: &Q) -> bool {

@@ -161,7 +161,10 @@ mod tests {
     use rand::seq::SliceRandom;
     use test_log::test;
 
-    use super::*;
+    use super::LTS;
+    use super::StateIndex;
+    use super::is_topologically_sorted;
+    use super::sort_topological;
 
     #[test]
     fn test_random_sort_topological_with_cycles() {
