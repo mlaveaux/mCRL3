@@ -124,3 +124,41 @@ impl Transition {
         Self { label, to }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use merc_io::DumpFiles;
+    use merc_utilities::random_test;
+
+    use crate::LTS;
+    use crate::num_reachable_states;
+    use crate::random_lts_monolithic;
+    use crate::write_aut;
+
+    #[test]
+    fn test_random_merge_disjoint() {
+        random_test(100, |rng| {
+            let mut files = DumpFiles::new("test_random_merge_disjoint");
+
+            let left = random_lts_monolithic::<String, _>(rng, 10, 20, 2);
+            files.dump("left.aut", |w| write_aut(w, &left)).unwrap();
+
+            let right = random_lts_monolithic::<String, _>(rng, 10, 20, 2);
+            files.dump("right.aut", |w| write_aut(w, &right)).unwrap();
+
+            let (merged, right_initial) = left.clone().merge_disjoint(&right);
+            files.dump("merged.aut", |w| write_aut(w, &merged)).unwrap();
+
+            assert_eq!(
+                num_reachable_states(&left, left.initial_state_index()),
+                num_reachable_states(&merged, merged.initial_state_index()),
+                "The left LTS should be fully reachable in the merged LTS"
+            );
+            assert_eq!(
+                num_reachable_states(&left, left.initial_state_index()),
+                num_reachable_states(&merged, right_initial),
+                "The left LTS should be fully reachable in the merged LTS"
+            );
+        });
+    }
+}
