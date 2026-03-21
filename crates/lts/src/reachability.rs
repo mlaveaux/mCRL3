@@ -1,3 +1,5 @@
+use log::trace;
+
 use crate::{LTS, StateIndex};
 
 /// Performs a reachability analysis on the given LTS using a depth-first search
@@ -10,19 +12,20 @@ pub fn reachability<L: LTS>(lts: &L, state: StateIndex) -> Vec<bool> {
     let mut stack = vec![state];
 
     while let Some(state) = stack.pop() {
-        if reachable[state] {
-            continue;
-        }
+        debug_assert!(!reachable[state], "State {} is already marked as reachable", state);
+        trace!("Visiting {}", state);
 
         reachable[state] = true;
 
         for transition in lts.outgoing_transitions(state) {
             if !reachable[transition.to] {
+                trace!("Transition -[{}]-> {}", transition.label, transition.to);
                 stack.push(transition.to);
             }
         }
     }
 
+    trace!("Finished reachability");
     reachable
 }
 

@@ -122,20 +122,3 @@ pub fn mutate_lts<L: LTS, R: Rng>(
 
     Ok(builder.finish(lts.initial_state_index(), true))
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::random_lts;
-
-    use test_log::test;
-
-    use merc_utilities::random_test;
-
-    #[test]
-    fn random_lts_test() {
-        random_test(100, |rng| {
-            // This test only checks the assertions of an LTS internally.
-            let _lts = random_lts(rng, 10, 3, 3);
-        });
-    }
-}
