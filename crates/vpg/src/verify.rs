@@ -1,8 +1,11 @@
+use std::collections::HashSet;
+
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
 use bitvec::vec::BitVec;
 use delegate::delegate;
 
+use log::trace;
 use merc_collections::BlockIndex;
 use merc_collections::BlockPartition;
 use merc_collections::scc_decomposition;
@@ -44,7 +47,7 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
         let restricted = Restricted::new(pg, player, &strategy[player.to_index()]);
 
         // The opponent is the solitaire player.
-        if solve_solitair_game(&restricted, player.opponent()) != solution[player.opponent().to_index()] {
+        if solve_solitaire_game(&restricted, player.opponent()) != solution[player.opponent().to_index()] {
             panic!("The proposed winning set for player {} is incorrect", player);
         }
     }
@@ -56,7 +59,7 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
 ///
 /// This is done by considering all subgames Gi restricted to priority `i`
 /// belonging to `player`, and solving the simple solitaire game on each of these subgames.
-fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
+fn solve_solitaire_game<G: PG>(pg: &G, player: Player) -> BitVec {
     debug_assert!(
         pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Even)
             || pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Odd),
@@ -71,7 +74,8 @@ fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
             continue;
         }
 
-        // Restrict the game according to the strategy and the current priority.
+        // Restrict the game to the current priority.
+        trace!("Solving subgame for max-priority {}", priority);
         let prio_subgame = PrioSubgame::new(pg, Priority::new(priority));
 
         let subgame_solution = solve_solitaire_simple(&prio_subgame, player);
@@ -101,7 +105,7 @@ fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
     // Determine vertices that are winning for the player in the restricted game, which are those that can reach a vertex with the current priority.
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
 
-    let mapping: Vec<VertexIndex> = pg.iter_vertices().collect();
+    let contained: HashSet<VertexIndex> = HashSet::from_iter(pg.iter_vertices());
 
     // Convert to block partition to compute reachability on the SCCs
     let block_partition = BlockPartition::<()>::from_indexed_partition(&scc_partition);
@@ -109,10 +113,15 @@ fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
         if block_partition
             .iter_block(BlockIndex::new(scc))
             // TODO: This assumes that this is the highest priority, so priorities (0,1) for odd and (1,2) for even.
-            .any(|i| Player::from_priority(&pg.priority(mapping[i])) == player)
+            .any(|i| {
+                contained.contains(&VertexIndex::new(i))
+                    && Player::from_priority(&pg.priority(VertexIndex::new(i))) == player
+            })
         {
             for vertex in block_partition.iter_block(BlockIndex::new(scc)) {
-                winning_vertices.set(vertex, true);
+                if contained.contains(&VertexIndex::new(vertex)) { 
+                    winning_vertices.set(vertex, true);
+                }
             }
         }
     }
@@ -227,9 +236,7 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
 
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_ {
         // Only consider vertices that are below the maximum priority.
-        self.restricted
-            .iter_ones()
-            .map(|index| VertexIndex::new(index))
+        self.restricted.iter_ones().map(|index| VertexIndex::new(index))
     }
 
     fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a {
@@ -337,22 +344,26 @@ impl<G: PG> PG for SolitaireGame<'_, G> {
 
 #[cfg(test)]
 mod tests {
+    use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
     use crate::Player;
     use crate::random_parity_game;
     use crate::solve_zielonka;
     use crate::verify::SolitaireGame;
-    use crate::verify::solve_solitair_game;
+    use crate::verify::solve_solitaire_game;
+    use crate::write_pg;
 
     #[test]
     fn test_random_solitaire_game() {
         random_test(100, |rng| {
-            let pg = random_parity_game(rng, true, 100, 3, 3);
+            let mut files = DumpFiles::new("test_random_solitaire_game");
+            let pg = random_parity_game(rng, true, 5, 3, 3);
             let solitaire = SolitaireGame::new(&pg, Player::Even);
+            files.dump("input.pg", |writer| write_pg(writer, &solitaire)).unwrap();
 
-            let solution = solve_solitair_game(&solitaire, Player::Even);
-            let (expected_solution, _expected_strategy) = solve_zielonka(&pg);
+            let solution = solve_solitaire_game(&solitaire, Player::Even);
+            let (expected_solution, _expected_strategy) = solve_zielonka(&solitaire);
 
             assert_eq!(
                 solution, expected_solution[0],

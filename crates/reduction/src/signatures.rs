@@ -390,6 +390,6 @@ pub fn tau_loop_elimination_and_reorder<L: LTS>(
 
     (
         LabelledTransitionSystem::new_from_permutation(tau_loop_free_lts, |i| topological_permutation[i]),
-        mapped_state,
+        topological_permutation[mapped_state],
     )
 }
