@@ -290,6 +290,9 @@ pub trait PG {
     fn highest_priority(&self) -> Priority;
 
     /// Returns an iterator over all vertices in the parity game.
+    /// 
+    /// Assumes that the returned vertices are in the range 0 to
+    /// num_of_vertices() - 1.
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
 
     /// Returns an iterator over the outgoing edges for the given vertex.

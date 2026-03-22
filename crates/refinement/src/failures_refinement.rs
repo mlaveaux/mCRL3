@@ -193,11 +193,11 @@ where
 /// In practice it can be more efficient to look at the enabled set of
 /// states:
 ///
-/// > enabled(s) = { a | exists s'. s -a-> s' } if stable(s), and
-/// > enabled(spec) = { a | exists s in spec. a in enabled(s) && stable(s) }.
+/// > enabled(s) = { a | exists s'. s -a-> s' } if stable(s)
 ///
-/// then we have that refusals(impl) ⊆ refusals(spec) iff enabled(spec) ⊆
-/// enabled(impl), and the enabled sets are more efficient to compute.
+/// then we have that refusals(impl) ⊆ refusals(spec) iff there exists a stable
+/// s in spec such that enabled(s) ⊆ enabled(impl), and the enabled sets are
+/// more efficient to compute.
 fn refusals_contained_in<L: LTS>(
     lts: &L,
     impl_state: StateIndex,
