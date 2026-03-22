@@ -22,19 +22,19 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
     // Reduce the merged LTS modulo the given equivalence and return the partition
     match equivalence {
         Equivalence::WeakBisim => {
-            let (lts, partition) = weak_bisimulation(merged, preprocess, timing);
+            let (lts, rhs_initial, partition) = weak_bisimulation(merged, rhs_initial, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimParallel => {
-            let (lts, partition) = weak_bisimulation_parallel(merged, preprocess, timing);
+            let (lts, rhs_initial, partition) = weak_bisimulation_parallel(merged, rhs_initial, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigref => {
-            let (lts, partition) = weak_bisim_sigref_inductive_naive(merged, preprocess, timing);
+            let (lts, rhs_initial, partition) = weak_bisim_sigref_inductive_naive(merged, rhs_initial, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigrefNaive => {
-            let (lts, partition) = weak_bisim_sigref_naive(merged, preprocess, timing);
+            let (lts, rhs_initial, partition) = weak_bisim_sigref_naive(merged, rhs_initial, preprocess, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::StrongBisim => {
@@ -46,11 +46,11 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::BranchingBisim => {
-            let (lts, partition) = branching_bisim_sigref(merged, timing);
+            let (lts, rhs_initial, partition) = branching_bisim_sigref(merged, rhs_initial, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::BranchingBisimNaive => {
-            let (lts, partition) = branching_bisim_sigref_naive(merged, timing);
+            let (lts, rhs_initial, partition) = branching_bisim_sigref_naive(merged, rhs_initial, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
     }
