@@ -34,6 +34,8 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
                 return None;
             }
 
+            // Observe that the weak trace inclusion is inverted, this exactly
+            // corresponds to checking for impossible futures.
             if !spec_states
                 .iter()
                 .any(|t| is_weak_trace_refinement(lts, *t, impl_state, strategy, &mut ()).0)

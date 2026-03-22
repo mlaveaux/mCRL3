@@ -70,6 +70,7 @@ pub fn refines<L: LTS>(
 ) -> (bool, Option<CounterExample<L::Label>>) {
     let (reduction, divergence_preserving) = match refinement {
         RefinementType::Trace => (Equivalence::StrongBisim, false),
+        // Note that for impossible futures we use branching bisimulation, which also removes tau loops.
         RefinementType::Weaktrace | RefinementType::ImpossibleFutures => (Equivalence::BranchingBisim, false),
         RefinementType::StableFailures => (Equivalence::BranchingBisim, true),
     };
