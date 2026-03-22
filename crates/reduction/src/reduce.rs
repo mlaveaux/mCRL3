@@ -37,21 +37,22 @@ pub fn reduce_lts<L: LTS>(
     preprocess: bool,
     timing: &Timing,
 ) -> LabelledTransitionSystem<L::Label> {
+    let state = lts.initial_state_index();
     match equivalence {
         Equivalence::WeakBisim => {
-            let (lts, partition) = weak_bisimulation(lts, preprocess, timing);
+            let (lts, _, partition) = weak_bisimulation(lts, state, preprocess, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimParallel => {
-            let (lts, partition) = weak_bisimulation_parallel(lts, preprocess, timing);
+            let (lts, _, partition) = weak_bisimulation_parallel(lts, state, preprocess, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigref => {
-            let (lts, partition) = weak_bisim_sigref_inductive_naive(lts, preprocess, timing);
+            let (lts, _, partition) = weak_bisim_sigref_inductive_naive(lts, state, preprocess, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigrefNaive => {
-            let (lts, partition) = weak_bisim_sigref_naive(lts, preprocess, timing);
+            let (lts, _, partition) = weak_bisim_sigref_naive(lts, state, preprocess, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::StrongBisim => {
@@ -63,11 +64,11 @@ pub fn reduce_lts<L: LTS>(
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, false))
         }
         Equivalence::BranchingBisim => {
-            let (lts, partition) = branching_bisim_sigref(lts, timing);
+            let (lts, _, partition) = branching_bisim_sigref(lts, state, timing);
             timing.measure("quotient", || quotient_lts_block::<_, true>(&lts, &partition))
         }
         Equivalence::BranchingBisimNaive => {
-            let (lts, partition) = branching_bisim_sigref_naive(lts, timing);
+            let (lts, _, partition) = branching_bisim_sigref_naive(lts, state, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
     }

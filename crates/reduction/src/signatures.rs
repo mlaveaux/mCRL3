@@ -368,10 +368,17 @@ pub fn weak_bisim_signature_sorted_taus<L: LTS, P: Partition>(
 /// tau-SCCs, and then sorts the states according to a reverse topological order
 /// of the tau transitions, i.e., if there is a tau-transition from state s to
 /// state t, then t appears before s in the ordering.
-pub fn tau_loop_elimination_and_reorder<L: LTS>(lts: L) -> LabelledTransitionSystem<L::Label> {
+/// 
+/// Returns the state of the preprocessed LTS corresponding to the given state.
+pub fn tau_loop_elimination_and_reorder<L: LTS>(
+    lts: L,
+    state: StateIndex,
+) -> (LabelledTransitionSystem<L::Label>, StateIndex) {
     let scc_partition = tau_scc_decomposition(&lts);
     let tau_loop_free_lts = quotient_lts_naive(&lts, &scc_partition, true);
+    let mapped_state = StateIndex::new(*scc_partition.block_number(state));
     drop(lts);
+    drop(scc_partition);
 
     // Sort the states according to the topological order of the tau transitions.
     let topological_permutation = sort_topological(
@@ -381,5 +388,8 @@ pub fn tau_loop_elimination_and_reorder<L: LTS>(lts: L) -> LabelledTransitionSys
     )
     .expect("After quotienting, the LTS should not contain cycles");
 
-    LabelledTransitionSystem::new_from_permutation(tau_loop_free_lts, |i| topological_permutation[i])
+    (
+        LabelledTransitionSystem::new_from_permutation(tau_loop_free_lts, |i| topological_permutation[i]),
+        mapped_state,
+    )
 }

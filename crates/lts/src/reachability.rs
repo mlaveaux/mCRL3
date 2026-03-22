@@ -9,17 +9,19 @@ use crate::{LTS, StateIndex};
 /// state i is reachable.
 pub fn reachability<L: LTS>(lts: &L, state: StateIndex) -> Vec<bool> {
     let mut reachable = vec![false; lts.num_of_states()];
+    reachable[state] = true;
+
     let mut stack = vec![state];
 
     while let Some(state) = stack.pop() {
-        debug_assert!(!reachable[state], "State {} is already marked as reachable", state);
+        debug_assert!(reachable[state], "State {} must already be marked as reachable", state);
         trace!("Visiting {}", state);
 
-        reachable[state] = true;
 
         for transition in lts.outgoing_transitions(state) {
             if !reachable[transition.to] {
                 trace!("Transition -[{}]-> {}", transition.label, transition.to);
+                reachable[transition.to] = true;
                 stack.push(transition.to);
             }
         }
