@@ -31,6 +31,11 @@ pub fn bdd_from_cube(
     variables: &[BDDFunction],
     cube: &[OptBool],
 ) -> Result<BDDFunction, OutOfMemory> {
+    assert_eq!(
+        variables.len(),
+        cube.len(),
+        "variables and cube must have the same length"
+    );
     let mut bdd = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
     for (i, bit) in cube.iter().enumerate() {
         let var = variables[i].clone();

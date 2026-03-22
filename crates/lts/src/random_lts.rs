@@ -98,7 +98,7 @@ pub fn mutate_lts<L: LTS, R: Rng>(
     let mut builder = LtsBuilderFast::new(lts.labels().to_vec(), Vec::new());
     builder.require_num_of_states(lts.num_of_states());
 
-    let removed_transition = rng.random_range(0..num_of_mutations);
+    let removed_transition = if num_of_mutations > 0 { rng.random_range(0..num_of_mutations) } else { 0 };
 
     // The indices of the transitions to remove.
     let to_remove = if lts.num_of_transitions() > 0 {
@@ -117,6 +117,19 @@ pub fn mutate_lts<L: LTS, R: Rng>(
             }
 
             index += 1;
+        }
+    }
+
+    // Add new random transitions for the remaining mutations.
+    let added_transitions = num_of_mutations - removed_transition;
+    if lts.num_of_states() > 0 && lts.labels().len() > 0 {
+        let state_uniform = Uniform::new(0, lts.num_of_states())?;
+        let label_uniform = Uniform::new(0, lts.labels().len())?;
+        for _ in 0..added_transitions {
+            let from = StateIndex::new(rng.sample(state_uniform));
+            let label = rng.sample(label_uniform);
+            let to = StateIndex::new(rng.sample(state_uniform));
+            builder.add_transition(from, &lts.labels()[label], to);
         }
     }
 

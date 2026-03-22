@@ -1,5 +1,6 @@
 use merc_lts::LTS;
 use merc_lts::StateIndex;
+use merc_reduction::diverges;
 
 use crate::CounterExampleConstructor;
 use crate::CounterExampleTree;
@@ -90,29 +91,4 @@ fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
     debug_assert!(inner_ce.is_none(), "The counter example from check is trivial");
 
     (result, counter_example)
-}
-
-/// Returns true iff the given state diverges, i.e., it can perform an infinite
-/// sequence of tau transitions.
-fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
-    let mut visited = vec![false; lts.num_of_states()];
-    let mut stack = vec![state];
-
-    while let Some(current) = stack.pop() {
-        if visited[current] {
-            // We have found a tau loop, so the state diverges.
-            return true;
-        }
-
-        visited[current] = true;
-
-        for transition in lts.outgoing_transitions(current) {
-            if lts.is_hidden_label(transition.label) {
-                stack.push(transition.to);
-            }
-        }
-    }
-
-    // We have explored all reachable states via tau transitions without finding a loop, so the state does not diverge.
-    false
 }

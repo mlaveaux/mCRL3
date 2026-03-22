@@ -25,7 +25,7 @@ use crate::check_partition;
 /// # Details
 ///
 /// This is done by restricting the `pg` according to the strategy for each
-/// player, and computing the solution for the induced solitair game.
+/// player, and computing the solution for the induced solitaire game.
 pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy; 2]) {
     debug_assert!(pg.is_total(), "Verifying requires a total parity game");
 
@@ -50,17 +50,17 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
     }
 }
 
-/// Solves a solitair game for the given player.
+/// Solves a solitaire game for the given player.
 ///
 /// # Details
 ///
 /// This is done by considering all subgames Gi restricted to priority `i`
-/// belonging to `player`, and solving the simple solitair game on each of these subgames.
+/// belonging to `player`, and solving the simple solitaire game on each of these subgames.
 fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
     debug_assert!(
         pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Even)
             || pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Odd),
-        "solve_solitair_game requires a solitair game"
+        "solve_solitair_game requires a solitaire game"
     );
 
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
@@ -73,27 +73,35 @@ fn solve_solitair_game<G: PG>(pg: &G, player: Player) -> BitVec {
 
         // Restrict the game according to the strategy and the current priority.
         let prio_subgame = PrioSubgame::new(pg, Priority::new(priority));
-        winning_vertices |= solve_solitair_simple(&prio_subgame, player);
+
+        let subgame_solution = solve_solitaire_simple(&prio_subgame, player);
+        for (i, vertex) in prio_subgame.iter_vertices().enumerate() {
+            if subgame_solution[i] {
+                winning_vertices.set(*vertex, true)
+            }
+        }
     }
 
     let predecessors = Predecessors::new(pg);
     backward_reachability(&predecessors, winning_vertices)
 }
 
-/// Solves a solitair game that only contains two priorities, where `player`
+/// Solves a solitaire game that only contains two priorities, where `player`
 /// should be the player that makes decisions.
 ///
 /// # Details
 ///
-/// For a solitair game with only two priorities, the winning set for the player
+/// For a solitaire game with only two priorities, the winning set for the player
 /// is exactly those vertices that can reach a strongly connected component that
 /// contains the highest priority. Note that the highest priority should belong
 /// to the player.
-fn solve_solitair_simple<G: PG>(pg: &G, player: Player) -> BitVec {
+fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
     let scc_partition = scc_decomposition(&AsGraph(pg), |_, _, _| true);
 
     // Determine vertices that are winning for the player in the restricted game, which are those that can reach a vertex with the current priority.
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
+
+    let mapping: Vec<VertexIndex> = pg.iter_vertices().collect();
 
     // Convert to block partition to compute reachability on the SCCs
     let block_partition = BlockPartition::<()>::from_indexed_partition(&scc_partition);
@@ -101,7 +109,7 @@ fn solve_solitair_simple<G: PG>(pg: &G, player: Player) -> BitVec {
         if block_partition
             .iter_block(BlockIndex::new(scc))
             // TODO: This assumes that this is the highest priority, so priorities (0,1) for odd and (1,2) for even.
-            .any(|v| Player::from_priority(&pg.priority(VertexIndex::new(v))) == player)
+            .any(|i| Player::from_priority(&pg.priority(mapping[i])) == player)
         {
             for vertex in block_partition.iter_block(BlockIndex::new(scc)) {
                 winning_vertices.set(vertex, true);
@@ -288,28 +296,28 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
 }
 
 /// A parity game where every player is now owned by given player, making this a
-/// solitair game.
+/// solitaire game.
 #[cfg(test)]
-struct SolitairGame<'a, G: PG> {
+struct SolitaireGame<'a, G: PG> {
     game: &'a G,
 
     player: Player,
 }
 
 #[cfg(test)]
-impl<G: PG> SolitairGame<'_, G> {
-    /// Create a new solitair game induced by the given strategy on the given game.
-    fn new<'a>(game: &'a G, player: Player) -> SolitairGame<'a, G> {
-        SolitairGame { game, player }
+impl<G: PG> SolitaireGame<'_, G> {
+    /// Create a new solitaire game induced by the given strategy on the given game.
+    fn new<'a>(game: &'a G, player: Player) -> SolitaireGame<'a, G> {
+        SolitaireGame { game, player }
     }
 }
 
 #[cfg(test)]
-impl<G: PG> PG for SolitairGame<'_, G> {
+impl<G: PG> PG for SolitaireGame<'_, G> {
     type Label = G::Label;
 
     fn owner(&self, _vertex: VertexIndex) -> Player {
-        // All vertices are owned by the opponent, making this a solitair game for the player.
+        // All vertices are owned by the given player, making it a solitaire game.
         self.player
     }
 
@@ -334,21 +342,21 @@ mod tests {
     use crate::Player;
     use crate::random_parity_game;
     use crate::solve_zielonka;
-    use crate::verify::SolitairGame;
+    use crate::verify::SolitaireGame;
     use crate::verify::solve_solitair_game;
 
     #[test]
     fn test_random_solitaire_game() {
         random_test(100, |rng| {
             let pg = random_parity_game(rng, true, 100, 3, 3);
-            let solitair = SolitairGame::new(&pg, Player::Even);
+            let solitaire = SolitaireGame::new(&pg, Player::Even);
 
-            let solution = solve_solitair_game(&solitair, Player::Even);
+            let solution = solve_solitair_game(&solitaire, Player::Even);
             let (expected_solution, _expected_strategy) = solve_zielonka(&pg);
 
             assert_eq!(
                 solution, expected_solution[0],
-                "The winning set for the solitair game should match the winning set for the original game"
+                "The winning set for the solitaire game should match the winning set for the original game"
             );
         })
     }

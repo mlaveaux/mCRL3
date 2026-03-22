@@ -78,7 +78,7 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
         inserted
     }
 
-    /// Returns true iff the antichain is empty/
+    /// Returns true iff the antichain is empty.
     pub fn is_empty(&self) -> bool {
         self.storage.is_empty()
     }
