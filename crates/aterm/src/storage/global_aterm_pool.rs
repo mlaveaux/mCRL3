@@ -48,7 +48,7 @@ pub struct GlobalTermPool {
     /// The symbol pool for managing function symbols.
     symbol_pool: SymbolPool,
     /// The thread-specific protection sets.
-    thread_pools: Vec<Option<Arc<UnsafeCell<SharedTermProtection>>>>,
+    thread_pools: ThreadPoolList,
 
     // Data structures used for garbage collection
     /// Used to avoid reallocations for the markings of all terms - uses pointers as keys
@@ -70,11 +70,11 @@ pub struct GlobalTermPool {
     list_symbol: SymbolRef<'static>,
 }
 
-unsafe impl Send for GlobalTermPool {}
+// unsafe impl Send for GlobalTermPool {}
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
-        // Insert the default symbols.
+        // Insert the default symbols, mirros the symbols defined in mCRL2.
         let symbol_pool = SymbolPool::new();
         let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<aterm_int>", 0)) };
         let list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<list_constructor>", 2)) };
@@ -83,7 +83,7 @@ impl GlobalTermPool {
         GlobalTermPool {
             terms: ATermStorage::new(),
             symbol_pool,
-            thread_pools: Vec::new(),
+            thread_pools: ThreadPoolList(Vec::new()),
             marked_terms: HashSet::new(),
             marked_symbols: HashSet::new(),
             stack: Vec::new(),
@@ -364,6 +364,35 @@ impl fmt::Display for TermPoolMetrics<'_> {
     }
 }
 
+/// A newtype wrapping the per-thread protection-set list stored inside
+/// [`GlobalTermPool`].
+/// 
+/// # Safety
+/// 
+/// Note that [`UnsafeCell`] is not [`Sync`], but we explicitly only use this in
+/// `&mut self` contexts, so we can safely implement `Sync` for this wrapper.
+struct ThreadPoolList(Vec<Option<Arc<UnsafeCell<SharedTermProtection>>>>);
+
+// SAFETY: See the safety documentation on `ThreadPoolList`.
+unsafe impl Sync for ThreadPoolList {}
+unsafe impl Send for ThreadPoolList {}
+
+impl std::ops::Deref for ThreadPoolList {
+    type Target = Vec<Option<Arc<UnsafeCell<SharedTermProtection>>>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ThreadPoolList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// A struct that contains the protection sets for a thread, as well as the
+/// index of the thread pool in the global term pool.
 pub struct SharedTermProtection {
     /// Protection set for terms
     pub protection_set: ProtectionSet<ATermIndex>,
