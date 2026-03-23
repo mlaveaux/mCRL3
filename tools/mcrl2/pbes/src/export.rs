@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use log::debug;
+use mcrl2::Pbes;
 use mcrl2::free_variables_data_expression;
 use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::DataExpressionRef;
@@ -9,12 +10,11 @@ use mcrl2::DataVariable;
 use mcrl2::PbesExpressionRef;
 use mcrl2::PbesExpressionVisitor;
 use mcrl2::PbesPropositionalVariableInstantiation;
-use mcrl2::PbesStategraph;
 use mcrl2::SrfEquation;
-use mcrl2::SrfPbes;
 use mcrl2::SrfSummand;
 use merc_utilities::MercError;
 
+use crate::symmetry::SymmetryAlgorithm;
 use crate::symmetry::variable_index;
 
 /// Exports the information from the given PBES and its stategraph output in
@@ -25,8 +25,10 @@ use crate::symmetry::variable_index;
 /// The output contains the identification of the control flow and data
 /// parameters, and a mapping from clauses of each equation to the parameters
 /// that are used-for, used-in and changed-by them.
-pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategraph) -> Result<(), MercError> {
-    let parameters = if let Some(equation) = srf.equations().first() {
+pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
+    let symmetries = SymmetryAlgorithm::new(&pbes, false)?;
+
+    let parameters = if let Some(equation) = symmetries.srf_pbes().equations().first() {
         equation.variable().parameters().to_vec()
     } else {
         // There are no equations, so no parameters.
@@ -34,7 +36,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
     };
 
     // Figure out the control flow parameters.
-    let all_control_flow_parameters = state_graph
+    let all_control_flow_parameters = symmetries.state_graph()
         .control_flow_graphs()
         .iter()
         .map(variable_index)
@@ -69,7 +71,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
     let mut ui = HashMap::new();
     let mut cb = HashMap::new();
 
-    for equation in srf.equations() {
+    for equation in symmetries.srf_pbes().equations() {
         for (clause_index, clause) in equation.summands().iter().enumerate() {
             clauses.insert((equation.variable().name(), clause_index), unique_index);
             mapping.insert(
@@ -115,7 +117,7 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
     let mut src_tgt = HashMap::new();
     let mut copy = HashMap::new();
 
-    for equation in state_graph.equations() {
+    for equation in symmetries.state_graph().equations() {
         for (clause_index, predicate) in equation.predicate_variables().iter().enumerate() {
             let clause_index = *clauses
                 .get(&(equation.variable().name(), clause_index))
@@ -153,8 +155,17 @@ pub fn export<W: Write>(write: &mut W, srf: &SrfPbes, state_graph: &PbesStategra
         }
     }
 
+    let mut cliques = HashMap::new();
+    for (clique_index, clique) in symmetries.cliques().iter().enumerate() {
+        for parameter_index in clique.iter() {
+            cliques.insert(*parameter_index, format!("clique{}", clique_index));
+        }
+        
+    }
+
     let output = Output {
         mapping,
+        cliques,
 
         pars: (0..parameters.len()).collect(),
 
@@ -315,4 +326,7 @@ struct Output {
 
     /// Maps from parameter indices (as strings) to the clause indices where they occur as copy variables.
     copy: HashMap<String, Vec<usize>>,
+
+    /// a mapping from control flow parameter indices to the clique they belong to.
+    cliques: HashMap<usize, String>,
 }

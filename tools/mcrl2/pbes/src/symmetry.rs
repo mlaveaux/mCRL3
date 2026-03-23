@@ -84,6 +84,16 @@ impl SymmetryAlgorithm {
         })
     }
 
+    /// Returns the SRF PBES after unifying parameters.
+    pub fn srf_pbes(&self) -> &SrfPbes {
+        &self.srf
+    }
+
+    /// Returns the state graph of the PBES.
+    pub fn state_graph(&self) -> &PbesStategraph {
+        &self.state_graph
+    }
+
     /// Returns compliant permutations.
     ///
     /// See [clique_candidates] for the parameters.
@@ -204,7 +214,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Determine the cliques in the given control flow graphs.
-    fn cliques(&self) -> Vec<Vec<usize>> {
+    pub fn cliques(&self) -> Vec<Vec<usize>> {
         let mut cal_I = Vec::new();
 
         for (i, cfg) in self.state_graph.control_flow_graphs().iter().enumerate() {
@@ -663,7 +673,7 @@ impl SymmetryAlgorithm {
 }
 
 /// Applies the necessary preprocessing steps to use in the symmetry algorithm.
-pub fn preprocess_symmetry(pbes: &Pbes, print_srf: bool) -> Result<(SrfPbes, Vec<DataVariable>, PbesStategraph), MercError> {
+fn preprocess_symmetry(pbes: &Pbes, print_srf: bool) -> Result<(SrfPbes, Vec<DataVariable>, PbesStategraph), MercError> {
     let mut srf = SrfPbes::from(pbes)?;
     srf.unify_parameters(false, false)?;
     if print_srf {
