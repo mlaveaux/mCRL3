@@ -168,7 +168,6 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                         fn iter(&'b self) -> TermIterator<'a>;
                                         fn index(&self) -> usize;
                                         fn shared(&self) -> &ATermIndex;
-                                        fn annotation(&self) -> Option<usize>;
                                     }
                                 }
                             }
@@ -222,7 +221,6 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                         fn iter(&self) -> TermIterator<'a>;
                                         fn index(&self) -> usize;
                                         fn shared(&self) -> &ATermIndex;
-                                        fn annotation(&self) -> Option<usize>;
                                     }
                                 }
                             }

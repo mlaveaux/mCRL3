@@ -133,7 +133,6 @@ where
             fn iter(&'b self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
-            fn annotation(&self) -> Option<usize>;
         }
     }
 }

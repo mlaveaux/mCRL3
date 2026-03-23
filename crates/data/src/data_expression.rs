@@ -38,7 +38,7 @@ mod inner {
 
     use std::iter;
 
-    use merc_aterm::ATermStringRef;
+    use merc_aterm::{ATermIntRef, ATermStringRef};
     use merc_utilities::MercError;
 
     use super::*;
@@ -344,10 +344,7 @@ mod inner {
     impl MachineNumber {
         /// Obtain the underlying value of a machine number.
         pub fn value(&self) -> u64 {
-            self.term
-                .copy()
-                .annotation()
-                .expect("MachineNumber must have an integer annotation") as u64
+            Into::<ATermIntRef<'_>>::into(self.term.copy()).value() as u64
         }
     }
 

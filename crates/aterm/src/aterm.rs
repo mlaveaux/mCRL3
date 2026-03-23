@@ -66,9 +66,6 @@ pub trait Term<'a, 'b> {
 
     /// Returns the shared ptr of the term in the term pool
     fn shared(&self) -> &ATermIndex;
-
-    /// Returns the annotation of the term
-    fn annotation(&self) -> Option<usize>;
 }
 
 /// Type alias for [ATerm] indices, representing a non-zero index into the term pool.
@@ -144,10 +141,6 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
 
     fn shared(&self) -> &ATermIndex {
         &self.shared
-    }
-
-    fn annotation(&self) -> Option<usize> {
-        self.shared().annotation()
     }
 }
 
@@ -331,7 +324,6 @@ where
             fn iter(&self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
-            fn annotation(&self) -> Option<usize>;
         }
     }
 }
@@ -471,7 +463,6 @@ where
             fn iter(&self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
-            fn annotation(&self) -> Option<usize>;
         }
     }
 }
@@ -521,7 +512,6 @@ where
             fn iter(&self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
-            fn annotation(&self) -> Option<usize>;
         }
     }
 }
@@ -655,9 +645,5 @@ impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b T {
 
     fn shared(&self) -> &ATermIndex {
         (*self).shared()
-    }
-
-    fn annotation(&self) -> Option<usize> {
-        (*self).annotation()
     }
 }
