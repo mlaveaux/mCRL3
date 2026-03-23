@@ -327,9 +327,11 @@ impl<T> GlobalBfSharedMutex<T> {
     }
 }
 
-// Can be Send and Sync, because it cannot be mutated anyway.
+// SAFETY: Sending a GlobalBfSharedMutex<T> to another thread requires T: Send, same as RwLock<T>.
 unsafe impl<T: Send> Send for GlobalBfSharedMutex<T> {}
-unsafe impl<T: Send> Sync for GlobalBfSharedMutex<T> {}
+
+// SAFETY: Multiple threads holding &GlobalBfSharedMutex<T> can call share() concurrently
+unsafe impl<T: Send + Sync> Sync for GlobalBfSharedMutex<T> {}
 
 #[cfg(test)]
 mod tests {

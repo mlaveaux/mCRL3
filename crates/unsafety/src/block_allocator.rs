@@ -1,9 +1,11 @@
 use std::alloc::Layout;
 use std::array;
-use std::cell::RefCell;
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::Ordering;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
@@ -15,15 +17,28 @@ use itertools::Itertools;
 ///
 /// Behaves like `Allocator`, except that it only allocates for layouts of `T`.
 ///
+/// This allocator is lock-free for the common allocation/deallocation paths
+/// (freelist pop/push) and only takes a lock when a new block needs to be
+/// allocated.
+///
 /// # Details
 ///
 /// Internally stores blocks of `N` elements
 pub struct BlockAllocator<T, const N: usize> {
-    /// This is the block that contains unoccupied entries.
+    /// Blocks and bump pointer are protected by a mutex (cold path only — new block allocation).
+    blocks: Mutex<BlockList<T, N>>,
+
+    /// The head of the lock-free freelist (Treiber stack). Null means empty.
+    free: AtomicPtr<Entry<T>>,
+}
+
+/// The block list and bump pointer, protected by the blocks mutex.
+struct BlockList<T, const N: usize> {
+    /// The block that is currently being bump-allocated from.
     head_block: Option<Box<Block<T, N>>>,
 
-    /// The start of the freelist
-    free: Option<NonNull<Entry<T>>>,
+    /// Current bump offset within the head block.
+    bump_offset: usize,
 }
 
 impl<T, const N: usize> Default for BlockAllocator<T, N> {
@@ -35,68 +50,126 @@ impl<T, const N: usize> Default for BlockAllocator<T, N> {
 impl<T, const N: usize> BlockAllocator<T, N> {
     pub fn new() -> Self {
         Self {
-            head_block: None,
-            free: None,
+            blocks: Mutex::new(BlockList {
+                head_block: None,
+                bump_offset: 0,
+            }),
+            free: AtomicPtr::new(std::ptr::null_mut()),
         }
     }
 
-    /// Similar to the [Allocator] trait, but instead of passing a layout we allocate just an object of type `T`.
-    pub fn allocate_object(&mut self) -> Result<NonNull<T>, AllocError> {
-        if let Some(free) = self.free {
-            unsafe {
-                // Safety: By invariant of the freelist, next is either a valid entry pointer or null (end of list).
-                self.free = NonNull::new(free.as_ref().next);
+    /// Allocates a slot for one object of type `T`.
+    ///
+    /// The fast path pops from the lock-free freelist; the slow path
+    /// bump-allocates from blocks (taking a lock only when a new block
+    /// must be allocated).
+    pub fn allocate_object(&self) -> Result<NonNull<T>, AllocError> {
+        // Fast path: pop from the lock-free freelist (Treiber stack).
+        let mut head = self.free.load(Ordering::Acquire);
+        loop {
+            if head.is_null() {
+                break;
             }
-            return Ok(free.cast::<T>());
+
+            // Safety: `head` is a valid freed entry in our freelist. Reading `next` is safe
+            // because no other thread can reclaim this node until our CAS succeeds (the
+            // entry is logically owned by whoever read `head` before the CAS).
+            let next = unsafe { (*head).next };
+
+            match self.free.compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => {
+                    // Safety: `head` was a valid entry pointer; cast back to T.
+                    return Ok(unsafe { NonNull::new_unchecked(head as *mut T) });
+                }
+                Err(actual) => {
+                    head = actual;
+                }
+            }
         }
 
-        // After this the block definitely has space for at least one element
-        let block = match &mut self.head_block {
-            Some(block) => {
-                if block.is_full() {
-                    let mut new_block = Box::new(Block::new());
-                    std::mem::swap(block, &mut new_block);
-                    block.next = Some(new_block);
+        // Slow path: bump-allocate from a block.
+        self.allocate_from_block()
+    }
+
+    /// Slow path: allocate from the block list, potentially allocating a new block.
+    #[cold]
+    fn allocate_from_block(&self) -> Result<NonNull<T>, AllocError> {
+        let mut blocks = self.blocks.lock().map_err(|_| AllocError)?;
+
+        // Ensure we have a block with space.
+        match &blocks.head_block {
+            Some(block) if blocks.bump_offset < N => {
+                // Current block has room.
+                let _ = block;
+            }
+            _ => {
+                // Either no block exists, or the current one is full.
+                let mut new_block = Box::new(Block::new());
+                if let Some(old_block) = blocks.head_block.take() {
+                    new_block.next = Some(old_block);
                 }
-
-                block
+                blocks.head_block = Some(new_block);
+                blocks.bump_offset = 0;
             }
-            None => {
-                let block = Box::new(Block::new());
-                self.head_block = Some(block);
-                self.head_block.as_mut().expect("Is initialized in the previous line")
-            }
-        };
+        }
 
-        let length = block.length;
-        block.length += 1;
+        let offset = blocks.bump_offset;
+        blocks.bump_offset += 1;
+        let block = blocks.head_block.as_mut().expect("block was just ensured");
+
         unsafe {
-            // Safety: We take a pointer (value does not have to be initialized) to a ManuallDrop<T>, which has the same layout as T.
+            // Safety: offset < N, so the index is in bounds. We take a pointer to
+            // ManuallDrop<T>, which has the same layout as T.
             Ok(NonNull::new_unchecked(
-                &mut block.data[length].data as *mut ManuallyDrop<T> as *mut T,
+                &mut block.data[offset].data as *mut ManuallyDrop<T> as *mut T,
             ))
         }
     }
 
-    /// Deallocate the given pointer.
-    pub fn deallocate_object(&mut self, ptr: NonNull<T>) {
-        unsafe {
-            // Safety: ptr is a valid, live allocation from this allocator.
-            // Link it to the current head of the freelist (null if the list was empty).
-            (ptr.cast::<Entry<_>>()).as_mut().next = self.free.map_or(std::ptr::null_mut(), NonNull::as_ptr);
+    /// Deallocates a previously-allocated pointer (lock-free push onto freelist).
+    pub fn deallocate_object(&self, ptr: NonNull<T>) {
+        let entry = ptr.as_ptr() as *mut Entry<T>;
+
+        let mut head = self.free.load(Ordering::Relaxed);
+        loop {
+            // Safety: `entry` is a valid freed allocation; writing `next` is safe because
+            // we own this slot (the caller guarantees it is no longer in use).
+            unsafe {
+                (*entry).next = head;
+            }
+
+            match self.free.compare_exchange_weak(head, entry, Ordering::AcqRel, Ordering::Relaxed) {
+                Ok(_) => return,
+                Err(actual) => {
+                    head = actual;
+                }
+            }
         }
-        self.free = Some(ptr.cast());
     }
 
     /// Returns an iterator over the free list entries.
-    fn iter_free(&self) -> FreeListIterator<T> {
-        FreeListIterator { current: self.free }
+    ///
+    /// # Safety
+    ///
+    /// This is only safe when no concurrent allocations or deallocations are in progress
+    /// (e.g., in single-threaded tests or with `&mut self`).
+    unsafe fn iter_free(&self) -> FreeListIterator<T> {
+        FreeListIterator {
+            current: NonNull::new(self.free.load(Ordering::Relaxed)),
+        }
     }
 }
 
-/// A type that can implement `Allocator` using the underlying `BlockAllocator`.
+// SAFETY: BlockAllocator uses atomic operations for the freelist and a Mutex for
+// block allocation. No unsynchronised mutable state is exposed through &self.
+unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
+unsafe impl<T: Send, const N: usize> Sync for BlockAllocator<T, N> {}
+
+/// `AllocBlock` implements the [`Allocator`] trait using the underlying [`BlockAllocator`].
+///
+/// Because [`BlockAllocator`] is lock-free and `Sync`, no `RefCell` is needed.
 pub struct AllocBlock<T, const N: usize> {
-    block_allocator: RefCell<BlockAllocator<T, N>>,
+    block_allocator: BlockAllocator<T, N>,
 }
 
 impl<T, const N: usize> Default for AllocBlock<T, N> {
@@ -109,20 +182,20 @@ impl<T, const N: usize> AllocBlock<T, N> {
     /// Creates a new `AllocBlock`.
     pub fn new() -> Self {
         Self {
-            block_allocator: RefCell::new(BlockAllocator::new()),
+            block_allocator: BlockAllocator::new(),
         }
     }
 }
 
-unsafe impl<T, const N: usize> Allocator for AllocBlock<T, N> {
-    fn allocate(&self, layout: std::alloc::Layout) -> Result<NonNull<[u8]>, AllocError> {
+unsafe impl<T: Send, const N: usize> Allocator for AllocBlock<T, N> {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         debug_assert_eq!(
             layout,
             Layout::new::<T>(),
             "The requested layout should match the type T"
         );
 
-        let ptr = self.block_allocator.borrow_mut().allocate_object()?;
+        let ptr = self.block_allocator.allocate_object()?;
 
         // Convert NonNull<T> to NonNull<[u8]> with the correct size
         let byte_ptr = ptr.cast::<u8>();
@@ -137,7 +210,7 @@ unsafe impl<T, const N: usize> Allocator for AllocBlock<T, N> {
             Layout::new::<T>(),
             "The requested layout should match the type T"
         );
-        self.block_allocator.borrow_mut().deallocate_object(ptr.cast::<T>());
+        self.block_allocator.deallocate_object(ptr.cast::<T>());
     }
 }
 
@@ -149,12 +222,9 @@ union Entry<T> {
     next: *mut Entry<T>,
 }
 
-/// We maintain a list of a blocks that store N elements each.
+/// We maintain a list of blocks that store N elements each.
 struct Block<T, const N: usize> {
     data: [Entry<T>; N],
-
-    /// Keeps track of the number of elements in the block that are used.
-    length: usize,
 
     /// Pointer to the next block.
     next: Option<Box<Block<T, N>>>,
@@ -166,14 +236,8 @@ impl<T, const N: usize> Block<T, N> {
             data: array::from_fn(|_i| Entry {
                 next: std::ptr::null_mut(),
             }),
-            length: 0,
             next: None,
         }
-    }
-
-    /// Returns true iff this block is full.
-    fn is_full(&self) -> bool {
-        self.length == N
     }
 }
 
@@ -200,23 +264,26 @@ impl<T> Iterator for FreeListIterator<T> {
 
 impl<T, const N: usize> fmt::Debug for BlockAllocator<T, N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "freelist = {:?}", self.iter_free().format(", "))
+        // Safety: Debug is only meaningful in single-threaded / non-concurrent contexts.
+        write!(f, "freelist = {:?}", unsafe { self.iter_free() }.format(", "))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::ptr::NonNull;
 
     use rand::RngExt;
 
     use merc_utilities::random_test;
 
+    use super::BlockAllocator;
+
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_block_allocator() {
         random_test(100, |rng| {
-            let mut allocator: BlockAllocator<u64, 256> = BlockAllocator::new();
+            let allocator: BlockAllocator<u64, 256> = BlockAllocator::new();
 
             // Allocate 1000 elements, recording each pointer alongside its written value.
             let mut allocated: Vec<(NonNull<u64>, u64)> = Vec::new();
