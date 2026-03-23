@@ -83,7 +83,7 @@ impl<T> RecursiveLock<T> {
             // If we are not already holding a read lock, we acquire one.
             // Acquire the read guard, but forget it to prevent it from being dropped.
             self.recursive_depth.set(1);
-            mem::forget(self.inner.read());
+            mem::forget(self.inner.read()?);
             Ok(RecursiveLockReadGuard { mutex: self })
         } else {
             // If we are already holding a read lock, we just increment the depth.
@@ -132,7 +132,8 @@ impl<T> Drop for RecursiveLockReadGuard<'_, T> {
             // If we are not holding a read lock anymore, we release the mutex.
             // This will allow other threads to acquire a read lock.
             unsafe {
-                self.mutex.inner.create_read_guard_unchecked();
+                // Drop the guard immediately to release busy=false via its Drop impl.
+                let _ = self.mutex.inner.create_read_guard_unchecked();
             }
         }
     }
@@ -149,7 +150,7 @@ impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // There can only be shared guards, which only provide immutable access to the object.
+        // We hold the write guard, so immutable access is safe.
         self.guard.deref()
     }
 }
@@ -157,7 +158,7 @@ impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
 /// Allow dereferences the underlying object.
 impl<T> DerefMut for RecursiveLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // There can only be shared guards, which only provide immutable access to the object.
+        // We hold the write guard exclusively, so mutable access is safe.
         self.guard.deref_mut()
     }
 }

@@ -177,7 +177,11 @@ impl<T> Drop for BfVecShared<T> {
     }
 }
 
-unsafe impl<T> Send for BfVec<T> {}
+// It is safe to transfer ownership to another thread when T: Send.
+unsafe impl<T: Send> Send for BfVecShared<T> {}
+
+// SAFETY: The underlying data of can be Send.
+unsafe impl<T: Send> Send for BfVec<T> {}
 
 #[cfg(test)]
 mod tests {
