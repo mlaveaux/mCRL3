@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::Write;
 
 use log::debug;
@@ -56,24 +56,29 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
         })
         .collect();
 
-    let mut mapping = HashMap::from_iter(
+    let mut mapping = BTreeMap::from_iter(
         parameters
             .iter()
             .enumerate()
             .map(|(index, param)| (index, param.name().to_string())),
     );
 
-    let mut clauses = HashMap::new();
+    let mut clauses = BTreeMap::new();
+    let mut clause_indices = Vec::new();
     let mut unique_index = mapping.len();
 
     // Keep track of the variable mappings derived from the SRF pbes.
-    let mut uf = HashMap::new();
-    let mut ui = HashMap::new();
-    let mut cb = HashMap::new();
+    let mut uf = BTreeMap::new();
+    let mut ui = BTreeMap::new();
+    let mut cb = BTreeMap::new();
 
     for equation in symmetries.srf_pbes().equations() {
         for (clause_index, clause) in equation.summands().iter().enumerate() {
-            clauses.insert((equation.variable().name(), clause_index), unique_index);
+            clauses.insert(
+                (equation.variable().name().to_string(), clause_index),
+                unique_index,
+            );
+            clause_indices.push(unique_index);
             mapping.insert(
                 unique_index,
                 format!("{}[{}]", equation.variable().name(), clause_index),
@@ -114,13 +119,13 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     debug!("Clauses {:?}", clauses);
 
     // Keep track of the source or target, and copy variables for each clause.
-    let mut src_tgt = HashMap::new();
-    let mut copy = HashMap::new();
+    let mut src_tgt = BTreeMap::new();
+    let mut copy = BTreeMap::new();
 
     for equation in symmetries.state_graph().equations() {
         for (clause_index, predicate) in equation.predicate_variables().iter().enumerate() {
             let clause_index = *clauses
-                .get(&(equation.variable().name(), clause_index))
+                .get(&(equation.variable().name().to_string(), clause_index))
                 .expect("Clause must have been added before");
 
             // Update the index for the source or target variables.
@@ -155,12 +160,22 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
         }
     }
 
-    let mut cliques = HashMap::new();
-    for (clique_index, clique) in symmetries.cliques().iter().enumerate() {
+    let symmetry_cliques = symmetries.cliques();
+    let mut cliques = BTreeMap::new();
+    for (clique_index, clique) in symmetry_cliques.iter().enumerate() {
         for parameter_index in clique.iter() {
             cliques.insert(all_control_flow_parameters[*parameter_index], format!("clique{}", clique_index));
         }
-        
+    }
+
+    let mut next_clique_index = symmetry_cliques.len();
+    for parameter_index in &all_control_flow_parameters {
+        if cliques.contains_key(parameter_index) {
+            continue;
+        }
+
+        cliques.insert(*parameter_index, format!("clique{}", next_clique_index));
+        next_clique_index += 1;
     }
 
     let output = Output {
@@ -169,7 +184,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
 
         pars: (0..parameters.len()).collect(),
 
-        clauses: clauses.values().cloned().collect(),
+        clauses: clause_indices,
 
         cfp: all_control_flow_parameters.clone(),
 
@@ -298,7 +313,7 @@ fn free_variables_pbes_expression(expr: &PbesExpressionRef<'_>) -> Vec<DataVaria
 #[derive(serde::Serialize)]
 struct Output {
     /// Stores the mapping from indices to parameters names.
-    mapping: HashMap<usize, String>,
+    mapping: BTreeMap<usize, String>,
 
     /// Stores the indices of parameters (used in the uf, ui and cb fields).
     pars: Vec<usize>,
@@ -313,20 +328,62 @@ struct Output {
     dp: Vec<usize>,
 
     /// Maps from clause indices to the parameter indices that are used for.
-    uf: HashMap<usize, Vec<usize>>,
+    uf: BTreeMap<usize, Vec<usize>>,
 
     /// Maps from clause indices to the parameter indices that are used in.
-    ui: HashMap<usize, Vec<usize>>,
+    ui: BTreeMap<usize, Vec<usize>>,
 
     /// Maps from clause indices to the parameter indices that are changed by the clause.
-    cb: HashMap<usize, Vec<usize>>,
+    cb: BTreeMap<usize, Vec<usize>>,
 
     /// Maps from parameter indices to the clause indices where they occur as source or target variables.
-    src_tgt: HashMap<usize, Vec<usize>>,
+    src_tgt: BTreeMap<usize, Vec<usize>>,
 
     /// Maps from parameter indices to the clause indices where they occur as copy variables.
-    copy: HashMap<usize, Vec<usize>>,
+    copy: BTreeMap<usize, Vec<usize>>,
 
     /// a mapping from control flow parameter indices to the clique they belong to.
-    cliques: HashMap<usize, String>,
+    cliques: BTreeMap<usize, String>,
+}
+
+#[cfg(test)]
+mod tests {
+
+    use mcrl2::Pbes;
+
+    use crate::export::export;
+
+    fn assert_export_matches_snapshot(input: &str, expected: &str) {
+        let input = Pbes::from_text(input).unwrap();
+
+        let mut buffer = Vec::new();
+        export(&mut buffer, &input).unwrap();
+
+        let output = String::from_utf8(buffer).unwrap();
+        assert_eq!(output, expected, "The exported JSON does not match the expected output");
+    }
+
+    #[test]
+    fn test_a_text_pbes_export() {
+        assert_export_matches_snapshot(
+            include_str!("../../../../examples/pbes/a.text.pbes"),
+            include_str!("./snapshots/a.text.pbes.json"),
+        );
+    }
+
+    #[test]
+    fn test_b_text_pbes_export() {
+        assert_export_matches_snapshot(
+            include_str!("../../../../examples/pbes/b.text.pbes"),
+            include_str!("./snapshots/b.text.pbes.json"),
+        );
+    }
+
+    #[test]
+    fn test_c_text_pbes_export() {
+        assert_export_matches_snapshot(
+            include_str!("../../../../examples/pbes/c.text.pbes"),
+            include_str!("./snapshots/c.text.pbes.json"),
+        );
+    }
 }
