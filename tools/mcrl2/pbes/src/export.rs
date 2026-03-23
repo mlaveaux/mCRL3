@@ -60,7 +60,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
         parameters
             .iter()
             .enumerate()
-            .map(|(index, param)| (index.to_string(), param.name().to_string())),
+            .map(|(index, param)| (index, param.name().to_string())),
     );
 
     let mut clauses = HashMap::new();
@@ -75,7 +75,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
         for (clause_index, clause) in equation.summands().iter().enumerate() {
             clauses.insert((equation.variable().name(), clause_index), unique_index);
             mapping.insert(
-                unique_index.to_string(),
+                unique_index,
                 format!("{}[{}]", equation.variable().name(), clause_index),
             );
 
@@ -87,11 +87,11 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
             used_for_indices.sort_unstable();
             used_for_indices.dedup();
 
-            uf.insert(unique_index.to_string(), used_for_indices);
+            uf.insert(unique_index, used_for_indices);
 
             // Compute used-in and map the variables back to their position in the variables.
             ui.insert(
-                unique_index.to_string(),
+                unique_index,
                 used_in(equation, clause)
                     .iter()
                     .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
@@ -100,7 +100,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
 
             // Compute changed-by and map the variables back to their position in the variables.
             cb.insert(
-                unique_index.to_string(),
+                unique_index,
                 changed_by(equation, clause)
                     .iter()
                     .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
@@ -131,7 +131,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                 }
 
                 let vector = src_tgt
-                    .entry(variable.to_string())
+                    .entry(*variable)
                     .or_insert_with(Vec::new);
 
                 if !vector.contains(&clause_index) {
@@ -145,7 +145,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                     continue;
                 }
 
-                let vector = copy.entry(variable.to_string())
+                let vector = copy.entry(*variable)
                     .or_insert_with(Vec::new);
 
                 if !vector.contains(&clause_index) {
@@ -298,7 +298,7 @@ fn free_variables_pbes_expression(expr: &PbesExpressionRef<'_>) -> Vec<DataVaria
 #[derive(serde::Serialize)]
 struct Output {
     /// Stores the mapping from indices to parameters names.
-    mapping: HashMap<String, String>,
+    mapping: HashMap<usize, String>,
 
     /// Stores the indices of parameters (used in the uf, ui and cb fields).
     pars: Vec<usize>,
@@ -313,19 +313,19 @@ struct Output {
     dp: Vec<usize>,
 
     /// Maps from clause indices to the parameter indices that are used for.
-    uf: HashMap<String, Vec<usize>>,
+    uf: HashMap<usize, Vec<usize>>,
 
     /// Maps from clause indices to the parameter indices that are used in.
-    ui: HashMap<String, Vec<usize>>,
+    ui: HashMap<usize, Vec<usize>>,
 
     /// Maps from clause indices to the parameter indices that are changed by the clause.
-    cb: HashMap<String, Vec<usize>>,
+    cb: HashMap<usize, Vec<usize>>,
 
-    /// Maps from parameter indices (as strings) to the clause indices where they occur as source or target variables.
-    src_tgt: HashMap<String, Vec<usize>>,
+    /// Maps from parameter indices to the clause indices where they occur as source or target variables.
+    src_tgt: HashMap<usize, Vec<usize>>,
 
-    /// Maps from parameter indices (as strings) to the clause indices where they occur as copy variables.
-    copy: HashMap<String, Vec<usize>>,
+    /// Maps from parameter indices to the clause indices where they occur as copy variables.
+    copy: HashMap<usize, Vec<usize>>,
 
     /// a mapping from control flow parameter indices to the clique they belong to.
     cliques: HashMap<usize, String>,
