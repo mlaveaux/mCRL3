@@ -42,10 +42,9 @@ impl Eq for SharedTerm {}
 unsafe impl SliceDst for SharedTerm {
     fn layout_for(len: usize) -> Result<Layout, LayoutError> {
         let header_layout = Layout::new::<SymbolRef<'static>>();
-        let annotated_layout = Layout::new::<bool>();
         let slice_layout = Layout::array::<ATermRef<'static>>(len)?;
 
-        repr_c(&[header_layout, annotated_layout, slice_layout])
+        repr_c(&[header_layout, slice_layout])
     }
 
     fn retype(ptr: std::ptr::NonNull<[()]>) -> NonNull<Self> {
@@ -100,30 +99,21 @@ impl SharedTerm {
 
     /// Returns the length for a [SharedTermLookup]
     pub(crate) fn length_for(object: &SharedTermLookup) -> usize {
-        object.arguments.len() + if object.annotation.is_some() { 1 } else { 0 }
+        object.arguments.len()
     }
 
     /// Constructs an uninitialised ptr from a [SharedTermLookup]
     pub(crate) unsafe fn construct(ptr: *mut SharedTerm, object: &SharedTermLookup) {
         let header_layout = Layout::new::<SymbolRef<'static>>();
-        let annotated_layout = Layout::new::<bool>();
         let slice_layout =
             Layout::array::<ATermRef<'static>>(object.arguments.len()).expect("Layout should not exceed isize");
 
-        let (header_layout, annotated_offset) = header_layout
-            .extend(annotated_layout)
-            .expect("Layout should not exceed isize");
         let (_, slice_offset) = header_layout
             .extend(slice_layout)
             .expect("Layout should not exceed isize");
-
         unsafe {
             ptr.cast::<SymbolRef<'static>>()
                 .write(SymbolRef::from_index(object.symbol.shared()));
-            let annotated = object.annotation.is_some();
-            ptr.byte_offset(annotated_offset as isize)
-                .cast::<bool>()
-                .write(annotated);
 
             for (index, argument) in object.arguments.iter().enumerate() {
                 ptr.byte_offset(slice_offset as isize)
@@ -147,7 +137,6 @@ impl Hash for SharedTerm {
 pub(crate) struct SharedTermLookup<'a> {
     pub(crate) symbol: SymbolRef<'a>,
     pub(crate) arguments: &'a [ATermRef<'a>],
-    pub(crate) annotation: Option<usize>,
 }
 
 impl Equivalent<SharedTerm> for SharedTermLookup<'_> {
@@ -161,7 +150,6 @@ impl Hash for SharedTermLookup<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.symbol.hash(state);
         self.arguments.hash(state);
-        self.annotation.hash(state);
     }
 }
 
@@ -176,25 +164,26 @@ mod tests {
 
     use super::*;
 
-    // #[test]
-    // fn test_shared_symbol_size() {
-    //     // Cannot be a const assertion since the size depends on the length.
-    //     assert_eq!(
-    //         SharedTerm::layout_for(0)
-    //             .expect("The layout should not overflow")
-    //             .size(),
-    //         1 * std::mem::size_of::<usize>(),
-    //         "A SharedTerm without arguments should be the same size as the Symbol"
-    //     );
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn test_shared_symbol_size() {
+        // Cannot be a const assertion since the size depends on the length.
+        assert_eq!(
+            SharedTerm::layout_for(0)
+                .expect("The layout should not overflow")
+                .size(),
+            1 * std::mem::size_of::<usize>(),
+            "A SharedTerm without arguments should be the same size as the Symbol"
+        );
 
-    //     assert_eq!(
-    //         SharedTerm::layout_for(2)
-    //             .expect("The layout should not overflow")
-    //             .size(),
-    //         3 * std::mem::size_of::<usize>(),
-    //         "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
-    //     );
-    // }
+        assert_eq!(
+            SharedTerm::layout_for(2)
+                .expect("The layout should not overflow")
+                .size(),
+            3 * std::mem::size_of::<usize>(),
+            "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
+        );
+    }
 
     #[test]
     fn test_shared_term_lookup() {
@@ -205,7 +194,6 @@ mod tests {
         let lookup = SharedTermLookup {
             symbol: symbol.copy(),
             arguments: &[term.copy(), term.copy()],
-            annotation: None,
         };
 
         let ptr = Global.allocate_slice_dst(2).expect("Could not allocate slice dst");
