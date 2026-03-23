@@ -108,17 +108,9 @@ impl GlobalTermPool {
 
     /// Creates a term storing a single integer value.
     pub fn create_int(&self, value: usize) -> (StablePointer<SharedTerm>, bool) {
-        let shared_term = SharedTermLookup {
-            symbol: unsafe { SymbolRef::from_index(self.int_symbol.shared()) },
-            arguments: &[],
-            annotation: Some(value),
-        };
-
         let (index, inserted) = unsafe {
             self.terms
-                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
-                    SharedTerm::construct(ptr, key)
-                })
+                .insert_int_term(SymbolRef::from_index(self.int_symbol.shared()), value)
         };
 
         (index, inserted)
@@ -133,7 +125,6 @@ impl GlobalTermPool {
         let shared_term = SharedTermLookup {
             symbol: SymbolRef::from_symbol(symbol),
             arguments: args,
-            annotation: None,
         };
 
         debug_assert_eq!(
