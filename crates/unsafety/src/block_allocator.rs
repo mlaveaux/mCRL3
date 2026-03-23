@@ -44,8 +44,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     pub fn allocate_object(&mut self) -> Result<NonNull<T>, AllocError> {
         if let Some(free) = self.free {
             unsafe {
-                // Safety: By invariant of the freelist the next must point to the next free element.
-                self.free = Some(free.as_ref().next);
+                // Safety: By invariant of the freelist, next is either a valid entry pointer or null (end of list).
+                self.free = NonNull::new(free.as_ref().next);
             }
             return Ok(free.cast::<T>());
         }
@@ -80,10 +80,11 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
     /// Deallocate the given pointer.
     pub fn deallocate_object(&mut self, ptr: NonNull<T>) {
-        if let Some(free) = self.free {
-            unsafe { (ptr.cast::<Entry<_>>()).as_mut().next = free }
+        unsafe {
+            // Safety: ptr is a valid, live allocation from this allocator.
+            // Link it to the current head of the freelist (null if the list was empty).
+            (ptr.cast::<Entry<_>>()).as_mut().next = self.free.map_or(std::ptr::null_mut(), NonNull::as_ptr);
         }
-
         self.free = Some(ptr.cast());
     }
 
@@ -144,8 +145,8 @@ union Entry<T> {
     /// Stores the actual element.
     data: ManuallyDrop<T>,
 
-    /// If the element is free, this points to the next entry in the freelist.
-    next: NonNull<Entry<T>>,
+    /// If the element is free, this points to the next entry in the freelist, or null if this is the last entry.
+    next: *mut Entry<T>,
 }
 
 /// We maintain a list of a blocks that store N elements each.
@@ -163,7 +164,7 @@ impl<T, const N: usize> Block<T, N> {
     fn new() -> Self {
         Self {
             data: array::from_fn(|_i| Entry {
-                next: NonNull::dangling(),
+                next: std::ptr::null_mut(),
             }),
             length: 0,
             next: None,
@@ -186,9 +187,9 @@ impl<T> Iterator for FreeListIterator<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(current) = self.current {
-            // Safety: We assume the free list is properly constructed and current points to a valid Entry
+            // Safety: current is a valid entry in the freelist; next is either a valid pointer or null.
             unsafe {
-                self.current = Some(current.as_ref().next);
+                self.current = NonNull::new(current.as_ref().next);
             }
             Some(current)
         } else {
@@ -217,16 +218,50 @@ mod tests {
         random_test(100, |rng| {
             let mut allocator: BlockAllocator<u64, 256> = BlockAllocator::new();
 
-            let mut allocated = Vec::new();
+            // Allocate 1000 elements, recording each pointer alongside its written value.
+            let mut allocated: Vec<(NonNull<u64>, u64)> = Vec::new();
             for _ in 0..1000 {
                 let ptr = allocator.allocate_object().unwrap();
+                let value: u64 = rng.random();
                 unsafe {
-                    ptr.as_ptr().write(rng.random());
+                    ptr.as_ptr().write(value);
                 }
-                allocated.push(ptr);
+                allocated.push((ptr, value));
             }
 
-            // Remove various elements and check whether all the remaining elements are valid
+            // Deallocate a random subset and keep track of which entries remain live.
+            let mut remaining = Vec::new();
+            for (ptr, value) in allocated {
+                if rng.random_bool(0.5) {
+                    allocator.deallocate_object(ptr);
+                } else {
+                    remaining.push((ptr, value));
+                }
+            }
+
+            // All surviving elements must still hold their original values.
+            for (ptr, expected) in &remaining {
+                unsafe {
+                    assert_eq!(*ptr.as_ref(), *expected);
+                }
+            }
+
+            // Reallocate 500 elements to exercise the freelist and verify no aliasing.
+            for _ in 0..500 {
+                let ptr = allocator.allocate_object().unwrap();
+                let value: u64 = rng.random();
+                unsafe {
+                    ptr.as_ptr().write(value);
+                }
+                remaining.push((ptr, value));
+            }
+
+            // All elements (old survivors and newly allocated) must hold their correct values.
+            for (ptr, expected) in &remaining {
+                unsafe {
+                    assert_eq!(*ptr.as_ref(), *expected);
+                }
+            }
         })
     }
 }
