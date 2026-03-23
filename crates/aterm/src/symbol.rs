@@ -19,7 +19,7 @@ use crate::storage::THREAD_TERM_POOL;
 /// The public interface for a function symbol. Can be used to write generic
 /// functions that accept both [Symbol] and [SymbolRef].
 ///
-/// See [Term] for more information on how to use this trait with two lifetimes.
+/// See [crate::Term] for more information on how to use this trait with two lifetimes.
 pub trait Symb<'a, 'b> {
     /// Obtain the symbol's name.
     fn name(&'b self) -> &'a str;
@@ -163,7 +163,7 @@ impl Symbol {
         }
     }
 
-    /// Returns the root index, i.e., the index in the protection set. See [SharedTermProtection].
+    /// Returns the root index, i.e., the index in the protection set. See [crate::storage::SharedTermProtection].
     pub fn root(&self) -> ProtectionIndex {
         self.root
     }

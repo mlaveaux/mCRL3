@@ -150,7 +150,7 @@ impl<W: Write> BinaryATermWriter<W> {
     /// * `writer` - The underlying writer to write binary data to
     ///
     /// # Returns
-    /// A new [BinaryATermOutputStream] instance or an error if header writing fails
+    /// A new [BinaryATermWriter] instance or an error if header writing fails
     pub fn new(writer: W) -> Result<Self, MercError> {
         let mut stream = BitStreamWriter::new(writer);
 
