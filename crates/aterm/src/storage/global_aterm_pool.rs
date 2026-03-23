@@ -28,7 +28,7 @@ use crate::storage::SharedTerm;
 use crate::storage::SharedTermLookup;
 use crate::storage::SymbolPool;
 
-/// This is the global set of protection sets that are managed by the [super::ThreadTermPool].
+/// This is the global set of protection sets that are managed by the [ThreadTermPool].
 pub static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>> =
     LazyLock::new(|| GlobalBfSharedMutex::new(GlobalTermPool::new()));
 
@@ -71,7 +71,6 @@ pub struct GlobalTermPool {
 }
 
 unsafe impl Send for GlobalTermPool {}
-unsafe impl Sync for GlobalTermPool {}
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {

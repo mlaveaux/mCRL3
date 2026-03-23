@@ -36,8 +36,11 @@ pub struct BfSharedMutex<T> {
     shared: Arc<CachePadded<SharedData<T>>>,
 }
 
-// Can only be send, but is not sync
-unsafe impl<T> Send for BfSharedMutex<T> {}
+// SAFETY: Sending a BfSharedMutex to another thread transfers ownership of the
+// protected T; T: Send is required for that. BfSharedMutex is deliberately !Sync:
+// every thread must own its own clone — sharing &BfSharedMutex across threads is
+// not part of the protocol.
+unsafe impl<T: Send> Send for BfSharedMutex<T> {}
 
 /// The busy and forbidden flags used to implement the protocol.
 #[derive(Default)]
@@ -131,11 +134,18 @@ impl<T> Drop for BfSharedMutexWriteGuard<'_, T> {
     }
 }
 
+// SAFETY: Sharing &WriteGuard across threads only exposes &T.
+unsafe impl<T: Sync> Sync for BfSharedMutexWriteGuard<'_, T> {}
+
+#[must_use = "Dropping the guard unlocks the shared mutex immediately"]
 pub struct BfSharedMutexReadGuard<'a, T> {
     mutex: &'a BfSharedMutex<T>,
 }
 
-/// Allow dereferences the underlying object.
+// SAFETY: Sharing &ReadGuard across threads only exposes &T.
+unsafe impl<T: Sync> Sync for BfSharedMutexReadGuard<'_, T> {}
+
+/// Allows dereferencing the underlying object.
 impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
     type Target = T;
 
@@ -158,7 +168,6 @@ impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
 
 impl<T> BfSharedMutex<T> {
     /// Provides read access to the underlying object, allowing multiple immutable references to it.
-    #[inline]
     pub fn read<'a>(&'a self) -> Result<BfSharedMutexReadGuard<'a, T>, Box<dyn Error + 'a>> {
         debug_assert!(
             !self.control.busy.load(Ordering::SeqCst),
@@ -170,7 +179,7 @@ impl<T> BfSharedMutex<T> {
             self.control.busy.store(false, Ordering::SeqCst);
 
             // Wait for the mutex of the writer.
-            let mut _guard = self.shared.other.lock()?;
+            let _guard = self.shared.other.lock()?;
 
             self.control.busy.store(true, Ordering::SeqCst);
         }
@@ -188,7 +197,6 @@ impl<T> BfSharedMutex<T> {
     /// This function does not increment the read count of the lock. Calling this function when a
     /// guard has already been produced is undefined behaviour unless the guard was forgotten
     /// with `mem::forget`.
-    #[inline]
     pub unsafe fn create_read_guard_unchecked(&self) -> BfSharedMutexReadGuard<'_, T> {
         BfSharedMutexReadGuard { mutex: self }
     }
@@ -196,22 +204,20 @@ impl<T> BfSharedMutex<T> {
     /// Returns a raw pointer to the underlying data.
     ///
     /// This is useful when combined with `mem::forget` to hold a lock without
-    /// the need to maintain a `RwLockReadGuard` or `RwLockWriteGuard` object
+    /// the need to maintain a [`BfSharedMutexReadGuard`] or [`BfSharedMutexWriteGuard`] object
     /// alive, for example when dealing with FFI.
     ///
     /// # Safety
     ///
     /// You must ensure that there are no data races when dereferencing the
     /// returned pointer, for example if the current thread logically owns a
-    /// `RwLockReadGuard` or `RwLockWriteGuard` but that guard has been discarded
+    /// [`BfSharedMutexReadGuard`] or [`BfSharedMutexWriteGuard`] but that guard has been discarded
     /// using `mem::forget`.
-    #[inline]
     pub fn data_ptr(&self) -> *mut T {
         self.shared.object.get()
     }
 
     /// Provide write access to the underlying object, only a single mutable reference to the object exists.
-    #[inline]
     pub fn write<'a>(&'a self) -> Result<BfSharedMutexWriteGuard<'a, T>, Box<dyn Error + 'a>> {
         let other = self.shared.other.lock()?;
 
@@ -252,12 +258,16 @@ impl<T> BfSharedMutex<T> {
         })
     }
 
-    /// Check if the shared mutex is locked shared, meaning no other thread has a read lock.
+    /// Check if this instance's read lock is currently held (i.e., this instance's `busy` flag is set).
+    ///
+    /// Note: this only reflects the state of **this** clone of the shared mutex. Other clones
+    /// may independently hold their own read locks.
     pub fn is_locked(&self) -> bool {
         self.control.busy.load(Ordering::Relaxed)
     }
 
-    /// Check if the shared mutex is locked exclusively, meaning no other thread has a lock.
+    /// Check if this instance has been forbidden from acquiring a read lock, which indicates
+    /// that another clone is holding or acquiring a write lock.
     pub fn is_locked_exclusive(&self) -> bool {
         self.control.forbidden.load(Ordering::Relaxed)
     }
