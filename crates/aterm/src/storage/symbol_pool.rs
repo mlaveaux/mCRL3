@@ -17,7 +17,7 @@ use crate::Symb;
 use crate::SymbolIndex;
 use crate::SymbolRef;
 
-/// Pool for maximal sharing of function symbols, see [crate::SymbolRef]. Ensures that function symbols
+/// Pool for maximal sharing of function symbols, see [SymbolRef]. Ensures that function symbols
 /// with the same name and arity point to the same [SharedSymbol] object.
 /// Returns [crate::Symbol] that can be used to refer to the shared symbol, avoiding
 /// garbage collection of the underlying shared symbol.

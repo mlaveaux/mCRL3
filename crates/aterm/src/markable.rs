@@ -9,17 +9,18 @@ use crate::aterm::ATermRef;
 use crate::storage::GcMutex;
 use crate::storage::Marker;
 
-/// This trait should be used on all objects and containers related to storing unprotected terms, or unprotected symmbols.
+/// This trait should be used on all objects and containers related to storing unprotected terms, or unprotected symbols.
 ///
-/// The implementation should mark all contained aterms and symbols that must be kept alive using the provided `Marker`.
+/// The implementation should mark all contained [ATermRef] and [SymbolRef] values that must be
+/// kept alive using the provided [Marker].
 pub trait Markable {
-    /// Marks all the ATermRefs to prevent them from being garbage collected.
+    /// Marks all contained [ATermRef] values with the given [Marker] to prevent garbage collection.
     fn mark(&self, marker: &mut Marker);
 
-    /// Should return true iff the given term is contained in the object. Used for runtime checks.
+    /// Should return true iff the given [ATermRef] is contained in the object. Used for runtime checks.
     fn contains_term(&self, term: &ATermRef<'_>) -> bool;
 
-    /// Should return true iff the given symbol is contained in the object. Used for runtime checks.
+    /// Should return true iff the given [SymbolRef] is contained in the object. Used for runtime checks.
     fn contains_symbol(&self, symbol: &SymbolRef<'_>) -> bool;
 
     /// Returns the number of terms in the instance, used to delay garbage collection.

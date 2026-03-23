@@ -28,7 +28,7 @@ use crate::storage::SharedTerm;
 use crate::storage::SharedTermLookup;
 use crate::storage::SymbolPool;
 
-/// This is the global set of protection sets that are managed by the ThreadTermPool
+/// This is the global set of protection sets that are managed by the [ThreadTermPool].
 pub static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>> =
     LazyLock::new(|| GlobalBfSharedMutex::new(GlobalTermPool::new()));
 
@@ -41,7 +41,7 @@ pub(crate) type GlobalTermPoolGuard<'a> = RecursiveLockReadGuard<'a, GlobalTermP
 /// A type alias for deletion hooks
 type DeletionHook = Box<dyn Fn(&ATermIndex) + Sync + Send>;
 
-/// The single global (singleton) term pool.
+/// The single global (singleton) term pool, accessed via [GLOBAL_TERM_POOL].
 pub struct GlobalTermPool {
     /// Unique table of all terms with stable pointers for references
     terms: ATermStorage,

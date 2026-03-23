@@ -2,6 +2,7 @@ use std::alloc::Layout;
 use std::alloc::LayoutError;
 use std::fmt;
 use std::hash::Hash;
+use std::mem::offset_of;
 use std::ptr;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
@@ -22,8 +23,9 @@ use crate::Term;
 /// # Details
 ///
 /// Uses a C representation and is a dynamically sized type for compact memory
-/// usage. This allows us to avoid storing the length and capacity of an
-/// underlying vector. As such this is even more compact than `smallvec`.
+/// usage, implementing [SliceDst] and [Erasable]. This allows us to avoid
+/// storing the length and capacity of an underlying vector. As such this is
+/// even more compact than `smallvec`. Arguments are stored as [ATermRef] slices.
 #[repr(C)]
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
@@ -132,7 +134,7 @@ impl Hash for SharedTerm {
     }
 }
 
-/// A cheap reference to the elements of a shared term that can be used for
+/// A cheap reference to the elements of a [SharedTerm] that can be used for
 /// lookup of terms without allocating.
 pub(crate) struct SharedTermLookup<'a> {
     pub(crate) symbol: SymbolRef<'a>,
@@ -152,6 +154,9 @@ impl Hash for SharedTermLookup<'_> {
         self.arguments.hash(state);
     }
 }
+
+// `symbol` must be at offset 0 in all term representations so that any pointer to a term.
+const _: () = assert!(offset_of!(SharedTerm, symbol) == 0);
 
 #[cfg(test)]
 mod tests {

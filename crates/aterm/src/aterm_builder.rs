@@ -22,7 +22,7 @@ pub struct TermBuilder<I, C> {
 
 /// Applies the given function to every subterm of the given term using the [TermBuilder].
 ///     function(subterm) returns:
-///         None   , in which case subterm is kept and it is recursed into its argments.
+///         None   , in which case subterm is kept and it is recursed into its arguments.
 ///         Some(x), in which case subterm is replaced by x.
 pub fn apply<F>(tp: &ThreadTermPool, t: &ATerm, function: &F) -> ATerm
 where

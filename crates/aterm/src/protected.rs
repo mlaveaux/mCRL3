@@ -21,8 +21,8 @@ use crate::storage::GcMutexGuard;
 use crate::storage::THREAD_TERM_POOL;
 
 /// A container of objects, typically either terms or objects containing terms,
-/// that are of trait Markable. These store ATermRef<'static> that are protected
-/// during garbage collection by being in the container itself.
+/// that implement [Markable]. These store [ATermRef]`<'static>` values that are
+/// protected during garbage collection by being in the container itself.
 pub struct Protected<C> {
     container: Arc<GcMutex<C>>,
     root: ProtectionIndex,
@@ -46,13 +46,13 @@ impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
         }
     }
 
-    /// Provides mutable access to the underlying container.
+    /// Provides mutable access to the underlying container, returning a [ProtectedWriteGuard].
     pub fn write(&mut self) -> ProtectedWriteGuard<'_, C> {
         // The lifetime of ATermRef can be derived from self since it is protected by self, so transmute 'static into 'a.
         ProtectedWriteGuard::new(self.container.write())
     }
 
-    /// Provides immutable access to the underlying container.
+    /// Provides immutable access to the underlying container, returning a [ProtectedReadGuard].
     pub fn read(&self) -> ProtectedReadGuard<'_, C> {
         ProtectedReadGuard::new(self.container.read())
     }
