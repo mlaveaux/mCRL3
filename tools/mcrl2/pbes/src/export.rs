@@ -158,7 +158,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     let mut cliques = HashMap::new();
     for (clique_index, clique) in symmetries.cliques().iter().enumerate() {
         for parameter_index in clique.iter() {
-            cliques.insert(*parameter_index, format!("clique{}", clique_index));
+            cliques.insert(all_control_flow_parameters[*parameter_index], format!("clique{}", clique_index));
         }
         
     }
