@@ -53,7 +53,7 @@ mod inner {
         /// Returns the value of the integer term.
         pub fn value(&self) -> usize {
             unsafe {
-                self.shared().ptr().cast::<SharedTermInt>().read().value()
+                self.shared().ptr().cast::<SharedTermInt>().as_ref().value()
             }
         }
     }
