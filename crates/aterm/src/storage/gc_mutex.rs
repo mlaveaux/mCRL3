@@ -6,7 +6,8 @@ use std::ops::DerefMut;
 use crate::storage::GlobalTermPoolGuard;
 use crate::storage::THREAD_TERM_POOL;
 
-/// Global mutex that prevents garbage collection.
+/// A mutex that prevents garbage collection by holding a shared read lock on the [GlobalTermPool]
+/// for the duration of the guard's lifetime. Returns a [GcMutexGuard] on access.
 pub struct GcMutex<T> {
     inner: UnsafeCell<T>,
 }
@@ -21,7 +22,7 @@ impl<T> GcMutex<T> {
         }
     }
 
-    /// Provides mutable access to the underlying value.
+    /// Provides mutable access to the underlying value, returning a [GcMutexGuard].
     pub fn write(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
@@ -31,7 +32,7 @@ impl<T> GcMutex<T> {
         }
     }
 
-    /// Provides immutable access to the underlying value.
+    /// Provides immutable access to the underlying value, returning a [GcMutexGuard].
     pub fn read(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,

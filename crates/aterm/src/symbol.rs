@@ -19,7 +19,7 @@ use crate::storage::THREAD_TERM_POOL;
 /// The public interface for a function symbol. Can be used to write generic
 /// functions that accept both [Symbol] and [SymbolRef].
 ///
-/// See [crate::Term] for more information on how to use this trait with two lifetimes.
+/// See [Term] for more information on how to use this trait with two lifetimes.
 pub trait Symb<'a, 'b> {
     /// Obtain the symbol's name.
     fn name(&'b self) -> &'a str;
@@ -37,7 +37,7 @@ pub trait Symb<'a, 'b> {
     fn shared(&self) -> &SymbolIndex;
 }
 
-/// An alias for the type that is used to reference into the symbol set.
+/// An alias for the type that is used to reference into the [SharedSymbol] set.
 pub type SymbolIndex = StablePointer<SharedSymbol>;
 
 /// A reference to a function symbol in the symbol pool.
@@ -63,7 +63,7 @@ impl<'a> SymbolRef<'a> {
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
     }
 
-    /// Internal constructor to create a `SymbolRef` from a `SymbolIndex`.
+    /// Internal constructor to create a [SymbolRef] from a [SymbolIndex].
     ///
     /// # Safety
     ///
@@ -163,7 +163,7 @@ impl Symbol {
         }
     }
 
-    /// Returns the root index, i.e., the index in the protection set. See `SharedTermProtection`.
+    /// Returns the root index, i.e., the index in the protection set. See [SharedTermProtection].
     pub fn root(&self) -> ProtectionIndex {
         self.root
     }

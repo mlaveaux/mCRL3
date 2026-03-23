@@ -43,32 +43,32 @@ use crate::storage::THREAD_TERM_POOL;
 /// [ATermRef<'a>] from methods of [Term<'a, 'b>]. Further explanation can be
 /// found on the website.
 pub trait Term<'a, 'b> {
-    /// Protects the term from garbage collection
+    /// Protects the term from garbage collection, returning an owned [ATerm].
     fn protect(&self) -> ATerm;
 
-    /// Returns the indexed argument of the term
+    /// Returns the indexed argument of the term as an [ATermRef].
     fn arg(&'b self, index: usize) -> ATermRef<'a>;
 
-    /// Returns the list of arguments as a collection
+    /// Returns the list of arguments as an [ATermArgs] collection.
     fn arguments(&'b self) -> ATermArgs<'a>;
 
-    /// Makes a copy of the term with the same lifetime as itself.
+    /// Makes a copy of the term, returning an [ATermRef] with the same lifetime as itself.
     fn copy(&'b self) -> ATermRef<'a>;
 
-    /// Returns the function of an ATermRef
+    /// Returns the head symbol of the term as a [SymbolRef].
     fn get_head_symbol(&'b self) -> SymbolRef<'a>;
 
-    /// Returns an iterator over all arguments of the term that runs in pre order traversal of the term trees.
+    /// Returns a [TermIterator] over all arguments of the term in pre-order traversal.
     fn iter(&'b self) -> TermIterator<'a>;
 
-    /// Returns a unique index of the term in the term pool
+    /// Returns a unique index of the term in the term pool.
     fn index(&self) -> usize;
 
-    /// Returns the shared ptr of the term in the term pool
+    /// Returns the [ATermIndex] of the term in the term pool.
     fn shared(&self) -> &ATermIndex;
 }
 
-/// Type alias for [ATerm] indices, representing a non-zero index into the term pool.
+/// Type alias for [ATerm] indices, representing a stable pointer to a [SharedTerm] in the term pool.
 pub type ATermIndex = StablePointer<SharedTerm>;
 
 /// This represents a lifetime bound reference to an existing [ATerm].
@@ -92,7 +92,7 @@ unsafe impl Send for ATermRef<'_> {}
 unsafe impl Sync for ATermRef<'_> {}
 
 impl ATermRef<'_> {
-    /// Creates a new term reference from the given index.
+    /// Creates a new term reference from the given [ATermIndex].
     ///
     /// # Safety
     ///
@@ -263,7 +263,7 @@ impl ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter_head(symbol, head, iter))
     }
 
-    /// Creates a new term using the pool
+    /// Creates a new constant term (arity 0) for the given [SymbolRef].
     pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_constant(symbol))
     }
@@ -273,7 +273,7 @@ impl ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(text))
     }
 
-    /// Returns a borrow from the term
+    /// Returns the term as a borrowed [ATermRef].
     pub fn get(&self) -> ATermRef<'_> {
         self.term.copy()
     }

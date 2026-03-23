@@ -19,12 +19,12 @@ use crate::Term;
 use crate::TermIterator;
 use crate::storage::THREAD_TERM_POOL;
 
-/// Returns true iff the term is a list term.
+/// Returns true iff the term is a [ATermList] list term.
 pub fn is_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.list_symbol() == t.get_head_symbol())
 }
 
-/// Returns true iff the term is an empty list.
+/// Returns true iff the term is an empty [ATermList].
 pub fn is_empty_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     THREAD_TERM_POOL.with_borrow(|tp| *tp.empty_list_symbol() == t.get_head_symbol())
 }
@@ -108,12 +108,12 @@ impl<T> ATermList<T> {
         is_empty_list_term(&self.term)
     }
 
-    /// Obtain the tail, i.e. the remainder, of the list.
+    /// Obtain the tail, i.e. the remainder, of the list as a new [ATermList].
     pub fn tail(&self) -> ATermList<T> {
         self.term.arg(1).into()
     }
 
-    /// Returns an iterator over all elements in the list.
+    /// Returns an [ATermListIter] over all elements in the list.
     pub fn iter(&self) -> ATermListIter<T> {
         ATermListIter { current: self.clone() }
     }

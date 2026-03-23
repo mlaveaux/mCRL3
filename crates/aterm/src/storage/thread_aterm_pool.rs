@@ -34,19 +34,19 @@ use crate::storage::SharedTermProtection;
 use crate::storage::global_aterm_pool::GLOBAL_TERM_POOL;
 
 thread_local! {
-    /// Thread-specific term pool that manages protection sets.
+    /// Thread-specific [ThreadTermPool] that manages protection sets for the current thread.
     pub static THREAD_TERM_POOL: RefCell<ThreadTermPool> = RefCell::new(ThreadTermPool::new());
 }
 
-/// Per-thread term pool managing local protection sets.
+/// Per-thread term pool managing local protection sets for interaction with the [GlobalTermPool].
 pub struct ThreadTermPool {
     /// A reference to the protection set of this thread pool.
     protection_set: Arc<UnsafeCell<SharedTermProtection>>,
 
-    /// The number of times termms have been created before garbage collection is triggered.
+    /// The number of times terms have been created before garbage collection is triggered.
     garbage_collection_counter: Cell<usize>,
 
-    /// A vector of terms that are used to store the arguments of a term for loopup.
+    /// A vector of terms that are used to store the arguments of a term for lookup.
     tmp_arguments: RefCell<Vec<ATermRef<'static>>>,
 
     /// A local view for the global term pool.
@@ -84,7 +84,7 @@ impl ThreadTermPool {
         }
     }
 
-    /// Creates a term without arguments.
+    /// Creates a constant [ATerm] (arity 0) for the given [SymbolRef].
     pub fn create_constant(&self, symbol: &SymbolRef<'_>) -> ATerm {
         assert!(symbol.arity() == 0, "A constant should not have arity > 0");
 
