@@ -320,11 +320,10 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
             .map_err(|e| e.to_string())?;
 
         let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
-        let mut order = reorder(&kahypar_path, &graph)?;
+        let order = reorder(&kahypar_path, &graph)?;
 
-        // Ensure that the first variable is 0 by removing it and keeping the rest
-        order.retain(|&x| x != 0);
-        println!("Computed variable order: 0, {:?}", order);
+        // Ensure that the first variable is 0 by removing it from order and printing it explicitly
+        println!("Computed variable order: 0 {}", order.iter().filter(|&x| *x != 0).format(" "));
     } else {
         return Err("Input file must be either a .lps or .pbes file".into());
     }

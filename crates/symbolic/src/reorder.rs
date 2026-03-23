@@ -211,11 +211,17 @@ fn partition(
     }
 
     // Create a file to write the hypergraph to disk in hMetis format.
-    let mut file = File::create_new("reorder.hgr")?;
+    let mut file =
+        File::create_new("reorder.hgr").map_err(|e| format!("Failed to create file 'reorder.hgr': {}", e))?;
 
     // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
     // type 10 is vertex weights only.
-    writeln!(&mut file, "{} {} 10", hypergraph.indices.len() - 1, hypergraph.weights.len())?;
+    writeln!(
+        &mut file,
+        "{} {} 10",
+        hypergraph.indices.len() - 1,
+        hypergraph.weights.len()
+    )?;
 
     for (from, to) in hypergraph.indices.iter().tuple_windows() {
         let edge = &hypergraph.edges[*from..*to];
