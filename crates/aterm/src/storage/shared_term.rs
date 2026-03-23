@@ -2,7 +2,6 @@ use std::alloc::Layout;
 use std::alloc::LayoutError;
 use std::fmt;
 use std::hash::Hash;
-use std::mem::ManuallyDrop;
 use std::ptr;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
@@ -18,7 +17,7 @@ use crate::Symb;
 use crate::SymbolRef;
 use crate::Term;
 
-/// The underlying type of terms that are actually shared.
+/// The underlying type of terms that are maximally shared.
 ///
 /// # Details
 ///
@@ -28,37 +27,16 @@ use crate::Term;
 #[repr(C)]
 pub struct SharedTerm {
     symbol: SymbolRef<'static>,
-    annotated: bool,
-    arguments: [TermOrAnnotation],
-}
-
-impl Drop for SharedTerm {
-    fn drop(&mut self) {
-        // Drop all term arguments by manually calling drop on ManuallyDrop wrappers
-        // We only need to drop terms, not the annotation index
-        let length = self.arguments().len();
-        for arg in &mut self.arguments[0..length] {
-            unsafe {
-                ManuallyDrop::drop(&mut arg.term);
-            }
-        }
-    }
+    arguments: [ATermRef<'static>],
 }
 
 impl PartialEq for SharedTerm {
     fn eq(&self, other: &Self) -> bool {
-        self.symbol == other.symbol && self.annotation() == other.annotation() && self.arguments() == other.arguments()
+        self.symbol == other.symbol && self.arguments() == other.arguments()
     }
 }
 
 impl Eq for SharedTerm {}
-
-/// This is used to store the annotation as argument of a term without consuming additional memory for terms that have no annotation.
-#[repr(C)]
-pub union TermOrAnnotation {
-    term: ManuallyDrop<ATermRef<'static>>,
-    index: usize,
-}
 
 /// Note that the length is stored in the symbol's arity
 unsafe impl SliceDst for SharedTerm {
@@ -99,10 +77,9 @@ impl fmt::Debug for SharedTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SharedTerm {{ symbol: {:?}, arguments: {:?}, annotation: {:?} }}",
+            "SharedTerm {{ symbol: {:?}, arguments: {:?}",
             self.symbol,
-            self.arguments(),
-            self.annotation()
+            self.arguments()
         )
     }
 }
@@ -113,30 +90,7 @@ impl SharedTerm {
     }
 
     pub fn arguments(&self) -> &[ATermRef<'static>] {
-        unsafe {
-            if self.annotated {
-                std::mem::transmute::<&[TermOrAnnotation], &[ATermRef<'static>]>(
-                    &self.arguments[0..self.arguments.len() - 1],
-                )
-            } else {
-                std::mem::transmute::<&[TermOrAnnotation], &[ATermRef<'static>]>(&self.arguments)
-            }
-        }
-    }
-
-    pub fn annotation(&self) -> Option<usize> {
-        if self.annotated {
-            unsafe {
-                Some(
-                    self.arguments
-                        .last()
-                        .expect("For annotated terms the last argument should store the annotation")
-                        .index,
-                )
-            }
-        } else {
-            None
-        }
+        unsafe { std::mem::transmute::<&[ATermRef<'static>], &[ATermRef<'static>]>(&self.arguments) }
     }
 
     /// Returns a unique index for this shared term.
@@ -173,18 +127,9 @@ impl SharedTerm {
 
             for (index, argument) in object.arguments.iter().enumerate() {
                 ptr.byte_offset(slice_offset as isize)
-                    .cast::<TermOrAnnotation>()
+                    .cast::<ATermRef<'static>>()
                     .add(index)
-                    .write(TermOrAnnotation {
-                        term: ManuallyDrop::new(ATermRef::from_index(argument.shared())),
-                    });
-            }
-
-            if let Some(value) = object.annotation {
-                ptr.byte_offset(slice_offset as isize)
-                    .cast::<TermOrAnnotation>()
-                    .add(object.arguments.len())
-                    .write(TermOrAnnotation { index: value });
+                    .write(ATermRef::from_index(argument.shared()));
             }
         }
     }
@@ -194,7 +139,6 @@ impl Hash for SharedTerm {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.symbol.hash(state);
         self.arguments().hash(state);
-        self.annotation().hash(state);
     }
 }
 
@@ -208,7 +152,7 @@ pub(crate) struct SharedTermLookup<'a> {
 
 impl Equivalent<SharedTerm> for SharedTermLookup<'_> {
     fn equivalent(&self, other: &SharedTerm) -> bool {
-        self.symbol == other.symbol && self.arguments == other.arguments() && self.annotation == other.annotation()
+        self.symbol == other.symbol && self.arguments == other.arguments()
     }
 }
 

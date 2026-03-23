@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::fmt;
 
 use delegate::delegate;
@@ -34,6 +32,8 @@ pub fn is_int_symbol<'a, 'b, S: Symb<'a, 'b>>(f: &'b S) -> bool {
 mod inner {
     use merc_macros::merc_ignore;
 
+    use crate::storage::SharedTermInt;
+
     use super::*;
 
     /// This is a wrapper around the [ATerm] type that stores a single `u64` using an annotation.
@@ -52,7 +52,9 @@ mod inner {
 
         /// Returns the value of the integer term.
         pub fn value(&self) -> usize {
-            self.term.annotation().unwrap()
+            unsafe {
+                self.shared().ptr().cast::<SharedTermInt>().read().value()
+            }
         }
     }
 }
