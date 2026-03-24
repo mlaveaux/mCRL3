@@ -28,7 +28,7 @@ members = [
 clap = { version = "4.5", features = ["derive"] }
 cosmic-text = "0.18"
 env_logger = "0.11"
-femtovg = { version = "0.20", features = ["wgpu"] }
+femtovg = { version = "0.21", features = ["wgpu"] }
 glam = "0.32"
 log = "0.4"
 rfd = { version = "0.17" }
