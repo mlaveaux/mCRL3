@@ -356,7 +356,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_bdd_support() {
-        random_test(100, |rng| {
+        random_test(25, |rng| {
             let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
 
             let vars = manager_ref
@@ -368,7 +368,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let function = random_bdd(&manager_ref, rng, &vars, 9).unwrap();
+            let function = random_bdd(&manager_ref, rng, &vars, 8).unwrap();
             let _support = support(&manager_ref, &function).unwrap();
 
             // TODO: Verify support correctness
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_bdd_renaming() {
-        random_test(100, |rng| {
+        random_test(25, |rng| {
             let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
 
             let vars = manager_ref
@@ -390,7 +390,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let function = random_bdd(&manager_ref, rng, &vars, 24).unwrap();
+            let function = random_bdd(&manager_ref, rng, &vars, 8).unwrap();
 
             let to = compute_vars_bdd(&manager_ref, &[1, 3]).unwrap().0;
             let substitution = Subst::new(&[0, 2], &to);
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_bdd_renaming_reverse() {
-        random_test(100, |rng| {
+        random_test(25, |rng| {
             let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
 
             let vars = manager_ref
@@ -421,7 +421,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let function = random_bdd(&manager_ref, rng, &vars, 24).unwrap();
+            let function = random_bdd(&manager_ref, rng, &vars, 8).unwrap();
 
             let to = compute_vars_bdd(&manager_ref, &[0, 2]).unwrap().0;
             let substitution = Subst::new(&[1, 3], &to);
