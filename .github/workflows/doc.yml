@@ -70,7 +70,7 @@ jobs:
 
       - name: Build Documentation
         run: |
-          cargo doc --no-deps
+          cargo doc --no-deps --deny warnings
           cp -r target/coverage/html target/doc/coverage/
           echo "<meta http-equiv=\"refresh\" content=\"0; url=merc_aterm\">" > target/doc/index.html
         env:
