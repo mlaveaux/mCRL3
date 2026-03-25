@@ -74,15 +74,25 @@ impl<T> BfSharedMutex<T> {
 
 impl<T> Clone for BfSharedMutex<T> {
     fn clone(&self) -> Self {
-        // Register a new instance in the other list.
+        // Register a new instance in the other list
         let control = Arc::new(CachePadded::new(SharedMutexControl::default()));
 
         let mut other = self.shared.other.lock().expect("Failed to lock mutex");
-        other.push(Some(control.clone()));
+        let index = match other.iter().position(|slot| slot.is_none()) {
+            Some(index) => {
+                // Reuse an empty slot if available.
+                other[index] = Some(control.clone());
+                index
+            }
+            None => {
+                other.push(Some(control.clone()));
+                other.len() - 1
+            }
+        };
 
         Self {
             control,
-            index: other.len() - 1,
+            index,
             shared: self.shared.clone(),
         }
     }
@@ -94,6 +104,11 @@ impl<T> Drop for BfSharedMutex<T> {
 
         // Remove ourselves from the table.
         other[self.index] = None;
+
+        // Trim trailing None slots to keep the vec compact.
+        while other.last().is_some_and(|slot| slot.is_none()) {
+            other.pop();
+        }
     }
 }
 
@@ -124,8 +139,9 @@ impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
 impl<T> Drop for BfSharedMutexWriteGuard<'_, T> {
     fn drop(&mut self) {
         // Allow other threads to acquire access to the shared mutex.
+        // Release is sufficient: readers spin on forbidden.load(SeqCst).
         for control in self.guard.iter().flatten() {
-            control.forbidden.store(false, std::sync::atomic::Ordering::SeqCst);
+            control.forbidden.store(false, std::sync::atomic::Ordering::Release);
         }
 
         // The mutex guard is then dropped here.
@@ -160,7 +176,8 @@ impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
             "Cannot unlock shared lock that was not acquired"
         );
 
-        self.mutex.control.busy.store(false, Ordering::SeqCst);
+        // Release is sufficient: this is a pure unlock store.
+        self.mutex.control.busy.store(false, Ordering::Release);
     }
 }
 
@@ -174,7 +191,8 @@ impl<T> BfSharedMutex<T> {
 
         self.control.busy.store(true, Ordering::SeqCst);
         while self.control.forbidden.load(Ordering::SeqCst) {
-            self.control.busy.store(false, Ordering::SeqCst);
+            // Release is sufficient here: this is a pure back-off store.
+            self.control.busy.store(false, Ordering::Release);
 
             // Wait for the mutex of the writer.
             let _guard = self.shared.other.lock()?;
@@ -278,16 +296,18 @@ impl<T> BfSharedMutex<T> {
 
 impl<T: Debug> Debug for BfSharedMutex<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let other = self.shared.other.lock().unwrap();
+
         f.debug_map()
             .entry(&"busy", &self.control.busy.load(Ordering::SeqCst))
             .entry(&"forbidden", &self.control.forbidden.load(Ordering::SeqCst))
             .entry(&"index", &self.index)
-            .entry(&"len(other)", &self.shared.other.lock().unwrap().len())
+            .entry(&"len(other)", &other.len())
             .finish()?;
 
         writeln!(f)?;
         writeln!(f, "other values: [")?;
-        for control in self.shared.other.lock().unwrap().iter().flatten() {
+        for control in other.iter().flatten() {
             f.debug_map()
                 .entry(&"busy", &control.busy.load(Ordering::SeqCst))
                 .entry(&"forbidden", &control.forbidden.load(Ordering::SeqCst))
