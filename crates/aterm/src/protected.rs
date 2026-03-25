@@ -7,7 +7,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use merc_collections::ProtectionIndex;
+use merc_unsafety::ProtectionIndex;
 use merc_utilities::PhantomUnsend;
 
 use crate::Markable;

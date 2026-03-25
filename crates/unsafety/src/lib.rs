@@ -5,6 +5,7 @@ mod counting_allocator;
 mod erasable;
 mod global_allocator;
 mod index_edge;
+mod protection_set;
 mod slice_dst;
 mod stable_pointer_set;
 
@@ -13,5 +14,6 @@ pub use counting_allocator::*;
 pub use erasable::*;
 pub use global_allocator::*;
 pub use index_edge::*;
+pub use protection_set::*;
 pub use slice_dst::*;
 pub use stable_pointer_set::*;

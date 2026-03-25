@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use delegate::delegate;
 
-use merc_collections::ProtectionIndex;
 use merc_sharedmutex::RecursiveLockReadGuard;
+use merc_unsafety::ProtectionIndex;
 use merc_unsafety::StablePointer;
 use merc_utilities::MercError;
 use merc_utilities::PhantomUnsend;

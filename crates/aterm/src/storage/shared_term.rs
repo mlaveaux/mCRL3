@@ -78,7 +78,7 @@ impl fmt::Debug for SharedTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SharedTerm {{ symbol: {:?}, arguments: {:?}",
+            "SharedTerm {{ symbol: {:?}, arguments: {:?} }}",
             self.symbol,
             self.arguments()
         )
@@ -86,12 +86,14 @@ impl fmt::Debug for SharedTerm {
 }
 
 impl SharedTerm {
+    /// Returns the symbol of the term.
     pub fn symbol(&self) -> &SymbolRef<'_> {
         &self.symbol
     }
 
+    /// Returns the arguments of the term.
     pub fn arguments(&self) -> &[ATermRef<'static>] {
-        unsafe { std::mem::transmute::<&[ATermRef<'static>], &[ATermRef<'static>]>(&self.arguments) }
+        &self.arguments
     }
 
     /// Returns a unique index for this shared term.
