@@ -37,9 +37,7 @@ pub struct BfSharedMutex<T> {
 }
 
 // SAFETY: Sending a BfSharedMutex to another thread transfers ownership of the
-// protected T; T: Send is required for that. BfSharedMutex is deliberately !Sync:
-// every thread must own its own clone — sharing &BfSharedMutex across threads is
-// not part of the protocol.
+// protected T.
 unsafe impl<T: Send> Send for BfSharedMutex<T> {}
 
 /// The busy and forbidden flags used to implement the protocol.

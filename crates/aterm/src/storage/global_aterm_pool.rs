@@ -70,8 +70,6 @@ pub struct GlobalTermPool {
     list_symbol: SymbolRef<'static>,
 }
 
-// unsafe impl Send for GlobalTermPool {}
-
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
         // Insert the default symbols, mirros the symbols defined in mCRL2.
@@ -121,25 +119,36 @@ impl GlobalTermPool {
         symbol: &'b S,
         args: &'c [ATermRef<'c>],
     ) -> (StablePointer<SharedTerm>, bool) {
-        let shared_term = SharedTermLookup {
-            symbol: SymbolRef::from_symbol(symbol),
-            arguments: args,
-        };
-
         debug_assert_eq!(
-            symbol.shared().arity(),
-            shared_term.arguments.len(),
+            symbol.arity(),
+            args.len(),
             "The number of arguments does not match the arity of the symbol"
         );
 
-        let (index, inserted) = unsafe {
-            self.terms
-                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
-                    SharedTerm::construct(ptr, key)
-                })
-        };
+        match symbol.arity() {
+            2 => {
+                let shared_term = SharedTermLookup {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    arguments: args,
+                };
 
-        (index, inserted)
+                self.terms
+                    .insert_equiv_2(&shared_term)
+            },
+            _ => {
+                let shared_term = SharedTermLookup {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    arguments: args,
+                };
+
+                unsafe {
+                    self.terms
+                        .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
+                            SharedTerm::construct(ptr, key)
+                        })
+                }
+            }
+        }
     }
 
     /// Create a function symbol
