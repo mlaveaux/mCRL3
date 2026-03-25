@@ -1092,6 +1092,7 @@ dependencies = [
  "merc_collections",
  "merc_io",
  "merc_number",
+ "merc_unsafety",
  "merc_utilities",
  "rand",
  "rustc-hash 2.1.2",

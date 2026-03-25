@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use log::debug;
 
-use merc_collections::ProtectionIndex;
 use merc_pest_consume::Parser;
 use merc_sharedmutex::RecursiveLock;
 use merc_sharedmutex::RecursiveLockReadGuard;
 use merc_unsafety::StablePointer;
+use merc_unsafety::ProtectionIndex;
 use merc_utilities::MercError;
 use merc_utilities::debug_trace;
 

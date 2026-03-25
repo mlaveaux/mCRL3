@@ -8,7 +8,7 @@ use std::ops::Deref;
 
 use delegate::delegate;
 
-use merc_collections::ProtectionIndex;
+use merc_unsafety::ProtectionIndex;
 use merc_unsafety::StablePointer;
 
 use crate::Markable;
@@ -77,7 +77,7 @@ impl<'a> SymbolRef<'a> {
 }
 
 impl SymbolRef<'_> {
-    /// Internal constructo to convert any `Symb` to a `SymbolRef`.
+    /// Internal constructor to convert any `Symb` to a `SymbolRef`.
     pub(crate) fn from_symbol<'a, 'b, S: Symb<'a, 'b>>(symbol: &'b S) -> Self {
         SymbolRef {
             shared: symbol.shared().copy(),

@@ -1,6 +1,6 @@
-use core::panic;
 use std::fmt;
 use std::hash::Hash;
+use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ops::Index;
 
@@ -35,22 +35,16 @@ impl fmt::Display for ProtectionIndex {
 /// A collection that assigns a unique index to every object added to it, and allows
 /// removing objects while reusing their indices later. This is useful for managing
 /// objects that must not be garbage collected, and as such it is called a protection set.
-/// Is is similar to a [ `crate::IndexedSet`], except that we cannot look up elements by value.
-#[derive(Debug, Default)]
+/// Is is similar to a [`crate::IndexedSet`], except that we cannot look up elements by value.
+#[derive(Default)]
 pub struct ProtectionSet<T> {
     roots: Vec<Entry<T>>, // The set of root active nodes.
     free: Option<usize>,
     number_of_insertions: u64,
     size: usize,
+
     /// The number of generations
     generation_counter: GenerationCounter,
-}
-
-/// TODO: Is it possible to get the size of entries down to a sizeof(NonZero<usize>)?
-#[derive(Debug)]
-enum Entry<T> {
-    Filled(T),
-    Free(usize),
 }
 
 impl<T> ProtectionSet<T> {
@@ -85,20 +79,6 @@ impl<T> ProtectionSet<T> {
         self.len() == 0
     }
 
-    /// Returns an iterator over all root indices in the protection set.
-    pub fn iter(&self) -> ProtSetIter<'_, T> {
-        ProtSetIter {
-            current: 0,
-            protection_set: self,
-            generation_counter: &self.generation_counter,
-        }
-    }
-
-    /// Returns whether the protection set contains the given index.
-    pub fn contains_root(&self, index: ProtectionIndex) -> bool {
-        matches!(self.roots[self.generation_counter.get_index(index.0)], Entry::Filled(_))
-    }
-
     /// Adds the given object to the protection set and returns its index.
     pub fn protect(&mut self, object: T) -> ProtectionIndex {
         self.number_of_insertions += 1;
@@ -106,35 +86,22 @@ impl<T> ProtectionSet<T> {
 
         let index = match self.free {
             Some(first) => {
-                match &self.roots[first] {
-                    Entry::Free(next) => {
-                        if first == *next {
-                            // The list is empty as its first element points to itself.
-                            self.free = None;
-                        } else {
-                            // Update free to be the next element in the list.
-                            self.free = Some(*next);
-                        }
-                    }
-                    Entry::Filled(_) => {
-                        panic!("The free list should not point a filled entry");
-                    }
+                let next = unsafe { self.roots[first].next };
+                if first == next {
+                    // The list is empty as its first element points to itself.
+                    self.free = None;
+                } else {
+                    // Update free to be the next element in the list.
+                    self.free = Some(next);
                 }
 
-                self.roots[first] = Entry::Filled(object);
+                self.roots[first] = Entry { object: ManuallyDrop::new(object) };
                 first
             }
             None => {
                 // If free list is empty insert new entry into roots.
-                self.roots.push(Entry::Filled(object));
+                self.roots.push(Entry { object: ManuallyDrop::new(object) });
                 let index = self.roots.len() - 1;
-
-                // Postcondition: verify the object was correctly added
-                debug_assert!(
-                    matches!(self.roots[index], Entry::Filled(_)),
-                    "Failed to add object to protection set"
-                );
-
                 index
             }
         };
@@ -146,20 +113,14 @@ impl<T> ProtectionSet<T> {
     /// index returned by the [ProtectionSet::protect] call.
     pub fn unprotect(&mut self, index: ProtectionIndex) {
         let index = self.generation_counter.get_index(index.0);
-
-        debug_assert!(
-            matches!(self.roots[index], Entry::Filled(_)),
-            "Index {index} is does not point to a filled entry"
-        );
-
         self.size -= 1;
 
         match self.free {
             Some(next) => {
-                self.roots[index] = Entry::Free(next);
+                self.roots[index] = Entry { next };
             }
             None => {
-                self.roots[index] = Entry::Free(index);
+                self.roots[index] = Entry { next: index };
             }
         };
 
@@ -167,7 +128,7 @@ impl<T> ProtectionSet<T> {
 
         // Postcondition: verify the object was correctly removed from protection
         debug_assert!(
-            matches!(self.roots[index], Entry::Free(_)),
+            self.freelist_iter().any(|free_idx| free_idx == index),
             "Failed to unprotect object"
         );
     }
@@ -177,31 +138,91 @@ impl<T> ProtectionSet<T> {
         let index = self.generation_counter.get_index(index.0);
 
         debug_assert!(
-            matches!(self.roots[index], Entry::Filled(_)),
-            "Index {index} is does not point to a filled entry"
+            !self.freelist_iter().any(|free_idx| free_idx == index),
+            "Index {index} does not point to a filled entry"
         );
 
-        self.roots[index] = Entry::Filled(object);
+        self.roots[index] = Entry { object: ManuallyDrop::new(object) };
     }
+    
+    /// Returns an iterator over all root indices in the protection set.
+    /// 
+    /// This is an O(n) operation in the size of the freelist, so it should be
+    /// used with care. It is intended for debugging and testing purposes.
+    pub fn iter(&self) -> ProtSetIter<'_, T> {
+        let mut free_indices: Vec<usize> = self.freelist_iter().collect();
+        free_indices.sort_unstable();
+        ProtSetIter {
+            current: 0,
+            protection_set: self,
+            generation_counter: &self.generation_counter,
+            free_indices,
+        }
+    }
+
+    /// Returns an iterator over all free indices in the freelist.
+    ///
+    /// This is intended for use in `debug_assert!`s to verify that an entry is
+    /// filled (not in the freelist) or free (in the freelist).
+    fn freelist_iter(&self) -> FreeListIter<'_, T> {
+        FreeListIter {
+            current: self.free,
+            protection_set: self,
+        }
+    }
+
+    /// Returns whether the protection set contains the given index.
+    ///
+    /// This operation is O(n) in the size of the freelist.
+    #[cfg(any(debug_assertions, test))]
+    pub fn contains_root(&self, index: ProtectionIndex) -> bool {
+        let idx = self.generation_counter.get_index(index.0);
+        !self.freelist_iter().any(|free_idx| free_idx == idx)
+    }
+
 }
 
 impl<T> Index<ProtectionIndex> for ProtectionSet<T> {
     type Output = T;
 
     fn index(&self, index: ProtectionIndex) -> &Self::Output {
-        match &self.roots[*index] {
-            Entry::Filled(value) => value,
-            Entry::Free(_) => {
-                panic!("Attempting to index free spot {}", index);
-            }
-        }
+        let idx = *index;
+        debug_assert!(
+            !self.freelist_iter().any(|free_idx| free_idx == idx),
+            "Attempting to index free spot {}",
+            index,
+        );
+        // SAFETY: The generational index ensures this slot was not freed after the index was issued.
+        unsafe { &*self.roots[idx].object }
     }
 }
 
+impl<T: fmt::Debug> fmt::Debug for ProtectionSet<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+/// An entry in the protection set, which can either be filled with an object or
+/// free and point to the next free entry.
+union Entry<T> {
+    object: ManuallyDrop<T>,
+
+    // The next free entry in the free list. If this points to itself, the free list is empty.
+    next: usize,
+}
+
+/// Check that the Entry is the same size as a usize.
+#[cfg(not(debug_assertions))]
+const _: () = assert!(std::mem::size_of::<Entry<usize>>() == std::mem::size_of::<usize>());
+
+/// An iterator over the filled entries in a protection set.
 pub struct ProtSetIter<'a, T> {
     current: usize,
     protection_set: &'a ProtectionSet<T>,
     generation_counter: &'a GenerationCounter,
+    /// Sorted free indices collected at iterator construction to skip free slots.
+    free_indices: Vec<usize>,
 }
 
 impl<'a, T> Iterator for ProtSetIter<'a, T> {
@@ -213,12 +234,37 @@ impl<'a, T> Iterator for ProtSetIter<'a, T> {
             let idx = self.current;
             self.current += 1;
 
-            if let Entry::Filled(object) = &self.protection_set.roots[idx] {
+            if self.free_indices.binary_search(&idx).is_err() {
+                // SAFETY: idx is not in the free list, so it holds a valid filled object.
+                let object = unsafe { &*self.protection_set.roots[idx].object };
                 return Some((ProtectionIndex(self.generation_counter.recall_index(idx)), object));
             }
         }
 
         None
+    }
+}
+
+/// An iterator over the free indices in the protection set freelist.
+struct FreeListIter<'a, T> {
+    current: Option<usize>,
+    protection_set: &'a ProtectionSet<T>,
+}
+
+impl<'a, T> Iterator for FreeListIter<'a, T> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let curr = self.current?;
+        // SAFETY: curr is a valid index in the free list, so it stores a `next` pointer.
+        let next = unsafe { self.protection_set.roots[curr].next };
+        if next == curr {
+            // Sentinel: last free entry points to itself.
+            self.current = None;
+        } else {
+            self.current = Some(next);
+        }
+        Some(curr)
     }
 }
 

@@ -11,6 +11,7 @@ use merc_unsafety::StablePointerSet;
 use rustc_hash::FxBuildHasher;
 
 use crate::ATermIndex;
+use crate::Symb;
 use crate::SymbolRef;
 use crate::storage::SharedTerm;
 
@@ -74,7 +75,7 @@ impl ATermStorage {
     ) -> (StablePointer<SharedTerm>, bool) {
         unsafe {
             let (result, inserted) = self.int_terms.insert(SharedTermInt {
-                symbol: std::mem::transmute::<SymbolRef<'_>, SymbolRef<'static>>(symbol),
+                symbol: SymbolRef::from_index(symbol.shared()),
                 annotation: value,
             });
 

@@ -343,6 +343,12 @@ mod inner {
 
     impl MachineNumber {
         /// Obtain the underlying value of a machine number.
+        /// 
+        /// # Safety
+        /// 
+        /// This method assumes that the term is indeed an integer term, which
+        /// should be guaranteed by the constructor and the
+        /// `is_data_machine_number` function.
         pub fn value(&self) -> u64 {
             Into::<ATermIntRef<'_>>::into(self.term.copy()).value() as u64
         }
