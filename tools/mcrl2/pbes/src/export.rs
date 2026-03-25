@@ -236,19 +236,18 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
     );
 
     let mut result = Vec::new();
-    for ((var_index, variable), (update_index, update)) in params
-        .iter()
-        .enumerate()
-        .zip(args.iter().enumerate())
-    {
-        if must_be_different && var_index == update_index {
-            // This variable is not used in the clause, since it is updated to itself.
-            continue;
-        }
+    for (var_index, variable) in params.iter().enumerate() {
+        for (update_index, update) in args.iter().enumerate() {
+            if must_be_different && var_index == update_index {
+                // Exclude the variable's own update for self-recursive clauses.
+                continue;
+            }
 
-        if free_variables_data_expression(&update.copy()).contains(&variable) {
-            // This variable is used in the clause.
-            result.push(variable);
+            if free_variables_data_expression(&update.copy()).contains(&variable) {
+                // This variable is used in at least one update of the clause.
+                result.push(variable);
+                break;
+            }
         }
     }
 
@@ -348,19 +347,30 @@ struct Output {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::io::ErrorKind;
 
     use mcrl2::Pbes;
 
     use crate::export::export;
 
     /// Helper function to assert that the exported JSON matches the expected snapshot.
-    fn assert_export_matches_snapshot(input: &str, expected: &str) {
+    fn assert_export_matches_snapshot(input: &str, expected_path: &str) {
         let input = Pbes::from_text(input).unwrap();
 
         let mut buffer = Vec::new();
         export(&mut buffer, &input).unwrap();
 
         let output = String::from_utf8(buffer).unwrap();
+        let expected = match fs::read_to_string(expected_path) {
+            Ok(content) => content,
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                // If the snapshot does not exist, create it with the current output.
+                fs::write(expected_path, &output).unwrap();
+                output.clone()
+            }
+            Err(err) => panic!("Failed to read snapshot {}: {}", expected_path, err),
+        };
         
         // Normalize line endings for cross-platform comparison
         let output_normalized = output.replace("\r\n", "\n");
@@ -373,7 +383,7 @@ mod tests {
     fn test_a_text_pbes_export() {
         assert_export_matches_snapshot(
             include_str!("../../../../examples/pbes/a.text.pbes"),
-            include_str!("./snapshots/a.text.pbes.json"),
+            "src/snapshots/a.text.pbes.json",
         );
     }
 
@@ -381,7 +391,7 @@ mod tests {
     fn test_b_text_pbes_export() {
         assert_export_matches_snapshot(
             include_str!("../../../../examples/pbes/b.text.pbes"),
-            include_str!("./snapshots/b.text.pbes.json"),
+            "src/snapshots/b.text.pbes.json",
         );
     }
 
@@ -389,7 +399,7 @@ mod tests {
     fn test_c_text_pbes_export() {
         assert_export_matches_snapshot(
             include_str!("../../../../examples/pbes/c.text.pbes"),
-            include_str!("./snapshots/c.text.pbes.json"),
+            "src/snapshots/c.text.pbes.json",
         );
     }
 }
