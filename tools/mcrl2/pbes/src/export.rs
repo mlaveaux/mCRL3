@@ -353,6 +353,7 @@ mod tests {
 
     use crate::export::export;
 
+    /// Helper function to assert that the exported JSON matches the expected snapshot.
     fn assert_export_matches_snapshot(input: &str, expected: &str) {
         let input = Pbes::from_text(input).unwrap();
 
@@ -360,7 +361,12 @@ mod tests {
         export(&mut buffer, &input).unwrap();
 
         let output = String::from_utf8(buffer).unwrap();
-        assert_eq!(output, expected, "The exported JSON does not match the expected output");
+        
+        // Normalize line endings for cross-platform comparison
+        let output_normalized = output.replace("\r\n", "\n");
+        let expected_normalized = expected.replace("\r\n", "\n");
+        
+        assert_eq!(output_normalized, expected_normalized, "The exported JSON does not match the expected output");
     }
 
     #[test]
