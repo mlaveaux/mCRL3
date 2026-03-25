@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::ErrorKind;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
@@ -210,69 +211,107 @@ fn partition(
         return Ok(vertices.to_vec());
     }
 
-    // Create a file to write the hypergraph to disk in hMetis format.
-    let mut file =
-        File::create_new("reorder.hgr").map_err(|e| format!("Failed to create file 'reorder.hgr': {}", e))?;
-
-    // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
-    // type 10 is vertex weights only.
-    writeln!(
-        &mut file,
-        "{} {} 10",
-        hypergraph.indices.len() - 1,
-        hypergraph.weights.len()
-    )?;
-
-    for (from, to) in hypergraph.indices.iter().tuple_windows() {
-        let edge = &hypergraph.edges[*from..*to];
-        writeln!(&mut file, "{}", edge.iter().map(|i| i + 1).format(" "))?;
-    }
-
-    for weight in &hypergraph.weights {
-        writeln!(&mut file, "{} ", weight)?;
-    }
-
-    // Get path relative to the current executable
+    // Get path relative to the current executable, and obtain a path to the `kahypar.ini` configuration file.
     let mut kahypar_ini_path = std::env::current_exe()?;
     kahypar_ini_path.pop(); // remove the executable filename
     kahypar_ini_path.push("kahypar.ini");
 
-    file.flush()?;
-    cmd!(
-        kahypar_path,
-        "-h",
-        "reorder.hgr",
-        "-k",
-        "2",
-        "--objective",
-        "cut",
-        "--mode",
-        "direct",
-        "--epsilon",
-        "0.01",
-        "-w",
-        "1",
-        "-p",
-        kahypar_ini_path
-    )
-    .run()?;
-
-    // Clean up the hypergraph file.
-    std::fs::remove_file("reorder.hgr")?;
-
-    // Read the partitioning result from the output file.
-    let partition_file = File::open("reorder.hgr.part2.epsilon0.01.seed-1.KaHyPar")?;
-
-    let mut partition = Vec::new();
-    for line in BufReader::new(partition_file).lines() {
-        let line = line?;
-        let block_id: usize = line.trim().parse()?;
-        partition.push(block_id);
+    if !kahypar_ini_path.is_file() {
+        return Err(format!(
+            "Could not find '{}'. The 'kahypar.ini' file must be present next to the executable.",
+            kahypar_ini_path.display()
+        )
+        .into());
     }
 
-    // Clean up the partition file.
-    std::fs::remove_file("reorder.hgr.part2.epsilon0.01.seed-1.KaHyPar")?;
+    run_kahypar(kahypar_path, &kahypar_ini_path, &hypergraph)?;
+
+    let partition = read_partition_file()?;
 
     debug_assert!(partition.iter().all(|x| *x <= 1), "MINCE only supports bipartitioning");
     Ok(partition)
+}
+
+/// Writes `reorder.hgr`, runs KaHyPar, and removes the temporary file again.
+fn run_kahypar(kahypar_path: &Path, kahypar_ini_path: &Path, hypergraph: &Hypergraph) -> Result<(), MercError> {
+    const HYPERGRAPH_FILE: &str = "reorder.hgr";
+
+    let result = (|| {
+        // Create a file to write the hypergraph to disk in hMetis format.
+        let mut file = File::create_new(HYPERGRAPH_FILE)
+            .map_err(|e| format!("Failed to create file '{HYPERGRAPH_FILE}': {e}"))?;
+
+        // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
+        // type 10 is vertex weights only.
+        writeln!(
+            &mut file,
+            "{} {} 10",
+            hypergraph.indices.len() - 1,
+            hypergraph.weights.len()
+        )?;
+
+        for (from, to) in hypergraph.indices.iter().tuple_windows() {
+            let edge = &hypergraph.edges[*from..*to];
+            writeln!(&mut file, "{}", edge.iter().map(|i| i + 1).format(" "))?;
+        }
+
+        for weight in &hypergraph.weights {
+            writeln!(&mut file, "{} ", weight)?;
+        }
+
+        file.flush()?;
+        cmd!(
+            kahypar_path,
+            "-h",
+            HYPERGRAPH_FILE,
+            "-k",
+            "2",
+            "--objective",
+            "cut",
+            "--mode",
+            "direct",
+            "--epsilon",
+            "0.01",
+            "-w",
+            "1",
+            "-p",
+            kahypar_ini_path
+        )
+        .run()?;
+
+        Ok::<(), MercError>(())
+    })();
+
+    remove_file_if_exists(HYPERGRAPH_FILE)?;
+    result
+}
+
+/// Reads KaHyPar's partition output and removes the temporary file again.
+fn read_partition_file() -> Result<Vec<usize>, MercError> {
+    const PARTITION_FILE: &str = "reorder.hgr.part2.epsilon0.01.seed-1.KaHyPar";
+
+    let result = (|| {
+        let partition_file = File::open(PARTITION_FILE)?;
+        let mut partition = Vec::new();
+
+        for line in BufReader::new(partition_file).lines() {
+            let line = line?;
+            let block_id: usize = line.trim().parse()?;
+            partition.push(block_id);
+        }
+
+        Ok::<Vec<usize>, MercError>(partition)
+    })();
+
+    remove_file_if_exists(PARTITION_FILE)?;
+    result
+}
+
+/// Removes the specified file if it exists, ignoring "file not found" errors.
+fn remove_file_if_exists(path: &str) -> Result<(), MercError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
