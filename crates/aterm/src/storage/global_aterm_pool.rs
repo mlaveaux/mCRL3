@@ -126,15 +126,6 @@ impl GlobalTermPool {
         );
 
         match symbol.arity() {
-            2 => {
-                let shared_term = SharedTermLookup {
-                    symbol: SymbolRef::from_symbol(symbol),
-                    arguments: args,
-                };
-
-                self.terms
-                    .insert_equiv_2(&shared_term)
-            },
             _ => {
                 let shared_term = SharedTermLookup {
                     symbol: SymbolRef::from_symbol(symbol),
