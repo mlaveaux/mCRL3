@@ -4,16 +4,18 @@ use std::hash::Hash;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
-use equivalent::Equivalent;
 use merc_unsafety::AllocBlock;
 use merc_unsafety::StablePointer;
 use merc_unsafety::StablePointerSet;
 use rustc_hash::FxBuildHasher;
 
 use crate::ATermIndex;
+use crate::ATermRef;
 use crate::Symb;
 use crate::SymbolRef;
+use crate::Term;
 use crate::storage::SharedTerm;
+use crate::storage::SharedTermLookup;
 
 /// The actual storage for [crate::ATerm]. Terms are stored in separated
 /// `StablePointerSet`s based on their arity, and whether they have annotations
@@ -24,6 +26,16 @@ pub(crate) struct ATermStorage {
 
     /// Stores the fixed size [SharedTermInt] integer terms.
     int_terms: StablePointerSet<SharedTermInt, FxBuildHasher, AllocBlock<SharedTermInt, 1024>>,
+
+    /// Stores terms of fixed arity, see [SharedTermFixed].
+    terms_0: StablePointerSet<SharedTermFixed<0>, FxBuildHasher, AllocBlock<SharedTermFixed<0>, 1024>>,
+    terms_1: StablePointerSet<SharedTermFixed<1>, FxBuildHasher, AllocBlock<SharedTermFixed<1>, 1024>>,
+    terms_2: StablePointerSet<SharedTermFixed<2>, FxBuildHasher, AllocBlock<SharedTermFixed<2>, 1024>>,
+    terms_3: StablePointerSet<SharedTermFixed<3>, FxBuildHasher, AllocBlock<SharedTermFixed<3>, 1024>>,
+    terms_4: StablePointerSet<SharedTermFixed<4>, FxBuildHasher, AllocBlock<SharedTermFixed<4>, 1024>>,
+    terms_5: StablePointerSet<SharedTermFixed<5>, FxBuildHasher, AllocBlock<SharedTermFixed<5>, 1024>>,
+    terms_6: StablePointerSet<SharedTermFixed<6>, FxBuildHasher, AllocBlock<SharedTermFixed<6>, 1024>>,
+    terms_7: StablePointerSet<SharedTermFixed<7>, FxBuildHasher, AllocBlock<SharedTermFixed<7>, 1024>>,
 }
 
 impl ATermStorage {
@@ -32,58 +44,210 @@ impl ATermStorage {
         Self {
             terms: StablePointerSet::new(),
             int_terms: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_0: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_1: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_2: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_3: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_4: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_5: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_6: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms_7: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
         }
     }
 
-    /// Returns the number of stored terms.
-    pub fn len(&self) -> usize {
-        self.int_terms.len() + self.terms.len()
-    }
+    /// Inserts a term with the given symbol and arguments into the storage,
+    /// returning a pointer to the stored term and whether it was newly
+    /// inserted.
+    pub fn insert<'a, 'b, 'c, S: Symb<'a, 'b>>(
+        &'c self,
+        symbol: &'b S,
+        args: &'c [ATermRef<'c>],
+    ) -> (StablePointer<SharedTerm>, bool) {
+        debug_assert_eq!(
+            symbol.arity(),
+            args.len(),
+            "The number of arguments does not match the arity of the symbol"
+        );
 
-    /// Retains only the terms for which the given predicate returns `true`.
-    pub fn retain<F>(&self, mut f: F)
-    where
-        F: FnMut(&StablePointer<SharedTerm>) -> bool,
-    {
-        // self.int_terms.retain(|term| f(term));
-        self.terms.retain(|term| f(term));
-    }
+        match symbol.arity() {
+            0 => {
+                let (result, inserted) = self.terms_0.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 0), inserted) }
+            }
+            1 => {
+                let (result, inserted) = self.terms_1.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [args[0].shared().copy()],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 1), inserted) }
+            }
+            2 => {
+                let (result, inserted) = self.terms_2.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [args[0].shared().copy(), args[1].shared().copy()],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 2), inserted) }
+            }
+            3 => {
+                let (result, inserted) = self.terms_3.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [
+                        args[0].shared().copy(),
+                        args[1].shared().copy(),
+                        args[2].shared().copy(),
+                    ],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 3), inserted) }
+            }
+            4 => {
+                let (result, inserted) = self.terms_4.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [
+                        args[0].shared().copy(),
+                        args[1].shared().copy(),
+                        args[2].shared().copy(),
+                        args[3].shared().copy(),
+                    ],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 4), inserted) }
+            }
+            5 => {
+                let (result, inserted) = self.terms_5.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [
+                        args[0].shared().copy(),
+                        args[1].shared().copy(),
+                        args[2].shared().copy(),
+                        args[3].shared().copy(),
+                        args[4].shared().copy(),
+                    ],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 5), inserted) }
+            }
+            6 => {
+                let (result, inserted) = self.terms_6.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [
+                        args[0].shared().copy(),
+                        args[1].shared().copy(),
+                        args[2].shared().copy(),
+                        args[3].shared().copy(),
+                        args[4].shared().copy(),
+                        args[5].shared().copy(),
+                    ],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 6), inserted) }
+            }
+            7 => {
+                let (result, inserted) = self.terms_7.insert(SharedTermFixed {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    args: [
+                        args[0].shared().copy(),
+                        args[1].shared().copy(),
+                        args[2].shared().copy(),
+                        args[3].shared().copy(),
+                        args[4].shared().copy(),
+                        args[5].shared().copy(),
+                        args[6].shared().copy(),
+                    ],
+                });
+                unsafe { (cast_to_shared_term_ptr(&result, 7), inserted) }
+            }
+            _ => {
+                let shared_term = SharedTermLookup {
+                    symbol: SymbolRef::from_symbol(symbol),
+                    arguments: args,
+                };
 
-    /// Inserts a term into the storage, returning a pointer to the stored term
-    /// and whether it was newly inserted.
-    ///
-    /// The given term should not be a [SharedTermInt] integer term.
-    pub unsafe fn insert_equiv_dst<'a, Q, C>(
-        &self,
-        value: &'a Q,
-        length: usize,
-        construct: C,
-    ) -> (StablePointer<SharedTerm>, bool)
-    where
-        Q: Hash + Equivalent<SharedTerm>,
-        C: Fn(*mut SharedTerm, &'a Q),
-    {
-        unsafe { self.terms.insert_equiv_dst(value, length, construct) }
+                unsafe {
+                    self.terms
+                        .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
+                            SharedTerm::construct(ptr, key)
+                        })
+                }
+            }
+        }
     }
 
     /// Inserts an integer term into the storage, returning a pointer to the stored term
     /// and whether it was newly inserted.
-    pub unsafe fn insert_int_term<'a>(
-        &self,
-        symbol: SymbolRef<'_>,
-        value: usize,
-    ) -> (StablePointer<SharedTerm>, bool) {
+    pub unsafe fn insert_int_term<'a>(&self, symbol: SymbolRef<'_>, value: usize) -> (StablePointer<SharedTerm>, bool) {
         unsafe {
             let (result, inserted) = self.int_terms.insert(SharedTermInt {
                 symbol: SymbolRef::from_index(symbol.shared()),
                 annotation: value,
             });
 
-            // Convert into a StablePointer<SharedTerm> by transmuting the pointer and adjusting the layout.
-            let ptr = slice_from_raw_parts_mut(result.ptr().as_ptr(), 0) as *mut SharedTerm;
-            (StablePointer::from_ptr(NonNull::new_unchecked(ptr)), inserted)
+            (cast_to_shared_term_ptr(&result, 0), inserted)
         }
     }
+
+    /// Retains only the terms for which the given predicate returns `true`.
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&StablePointer<SharedTerm>) -> bool,
+    {
+        self.terms.retain(|term| f(term));
+
+        self.int_terms
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 0) }));
+        self.terms_0
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 0) }));
+
+        self.terms_1
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 1) }));
+        self.terms_2
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 2) }));
+        self.terms_3
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 3) }));
+        self.terms_4
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 4) }));
+        self.terms_5
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 5) }));
+        self.terms_6
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 6) }));
+        self.terms_7
+            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 7) }));
+
+        // Removes empty blocks after removing entries.
+        self.int_terms.allocator_mut().remove_free_blocks();
+        self.terms_0.allocator_mut().remove_free_blocks();
+        self.terms_1.allocator_mut().remove_free_blocks();
+        self.terms_2.allocator_mut().remove_free_blocks();
+        self.terms_3.allocator_mut().remove_free_blocks();
+        self.terms_4.allocator_mut().remove_free_blocks();
+        self.terms_5.allocator_mut().remove_free_blocks();
+        self.terms_6.allocator_mut().remove_free_blocks();
+        self.terms_7.allocator_mut().remove_free_blocks();
+    }
+
+    /// Returns the number of stored terms.
+    pub fn len(&self) -> usize {
+        self.int_terms.len()
+            + self.terms_0.len()
+            + self.terms_1.len()
+            + self.terms_2.len()
+            + self.terms_3.len()
+            + self.terms_4.len()
+            + self.terms_5.len()
+            + self.terms_6.len()
+            + self.terms_7.len()
+            + self.terms.len()
+    }
+}
+
+/// Casts a pointer to a term in a fixed-size storage to a pointer to a
+/// [`SharedTerm`].
+/// 
+/// SAFETY: The caller must ensure that the given pointer points to a valid term
+/// of the given arity.
+unsafe fn cast_to_shared_term_ptr<T>(ptr: &StablePointer<T>, arity: usize) -> StablePointer<SharedTerm> {
+    // Build a fat pointer for SharedTerm with metadata equal to the term arity.
+    let raw = slice_from_raw_parts_mut(ptr.ptr().as_ptr(), arity) as *mut SharedTerm;
+    unsafe { StablePointer::from_ptr(NonNull::new_unchecked(raw)) }
 }
 
 /// Storage for ATerms with a fixed number of arguments.
@@ -91,9 +255,9 @@ impl ATermStorage {
 /// Should be the same layout as [`crate::SharedTerm`] for the shared fields.
 #[repr(C)]
 #[derive(Hash, Eq, PartialEq)]
-struct SharedTermFixed<const N: usize> {
-    symbol: SymbolRef<'static>,
-    args: [ATermIndex; N],
+pub(crate) struct SharedTermFixed<const N: usize> {
+    pub(crate) symbol: SymbolRef<'static>,
+    pub(crate) args: [ATermIndex; N],
 }
 
 /// Storage for integer ATerms.

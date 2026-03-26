@@ -172,7 +172,7 @@ impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
 impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
     fn drop(&mut self) {
         debug_assert!(
-            self.mutex.control.busy.load(Ordering::SeqCst),
+            self.mutex.control.busy.load(Ordering::Relaxed),
             "Cannot unlock shared lock that was not acquired"
         );
 
@@ -185,7 +185,7 @@ impl<T> BfSharedMutex<T> {
     /// Provides read access to the underlying object, allowing multiple immutable references to it.
     pub fn read<'a>(&'a self) -> Result<BfSharedMutexReadGuard<'a, T>, Box<dyn Error + 'a>> {
         debug_assert!(
-            !self.control.busy.load(Ordering::SeqCst),
+            !self.control.busy.load(Ordering::Relaxed),
             "Cannot acquire read access again inside a reader section"
         );
 
@@ -238,18 +238,18 @@ impl<T> BfSharedMutex<T> {
         let other = self.shared.other.lock()?;
 
         debug_assert!(
-            !self.control.busy.load(std::sync::atomic::Ordering::SeqCst),
+            !self.control.busy.load(std::sync::atomic::Ordering::Relaxed),
             "Can only exclusive lock outside of a shared lock, no upgrading!"
         );
         debug_assert!(
-            !self.control.forbidden.load(std::sync::atomic::Ordering::SeqCst),
+            !self.control.forbidden.load(std::sync::atomic::Ordering::Relaxed),
             "Can not acquire exclusive lock inside of exclusive section"
         );
 
         // Make all instances wait due to forbidden access.
         for control in other.iter().flatten() {
             debug_assert!(
-                !control.forbidden.load(std::sync::atomic::Ordering::SeqCst),
+                !control.forbidden.load(std::sync::atomic::Ordering::Relaxed),
                 "Other instance is already forbidden, this cannot happen"
             );
 
@@ -261,7 +261,9 @@ impl<T> BfSharedMutex<T> {
             if index != self.index
                 && let Some(object) = option
             {
-                while object.busy.load(std::sync::atomic::Ordering::SeqCst) {
+                // Acquire is sufficient: we just need to synchronize with the
+                // matching Release store in BfSharedMutexReadGuard::drop.
+                while object.busy.load(std::sync::atomic::Ordering::Acquire) {
                     std::hint::spin_loop();
                 }
             }
@@ -299,8 +301,8 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
         let other = self.shared.other.lock().unwrap();
 
         f.debug_map()
-            .entry(&"busy", &self.control.busy.load(Ordering::SeqCst))
-            .entry(&"forbidden", &self.control.forbidden.load(Ordering::SeqCst))
+            .entry(&"busy", &self.control.busy.load(Ordering::Relaxed))
+            .entry(&"forbidden", &self.control.forbidden.load(Ordering::Relaxed))
             .entry(&"index", &self.index)
             .entry(&"len(other)", &other.len())
             .finish()?;
@@ -309,8 +311,8 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
         writeln!(f, "other values: [")?;
         for control in other.iter().flatten() {
             f.debug_map()
-                .entry(&"busy", &control.busy.load(Ordering::SeqCst))
-                .entry(&"forbidden", &control.forbidden.load(Ordering::SeqCst))
+                .entry(&"busy", &control.busy.load(Ordering::Relaxed))
+                .entry(&"forbidden", &control.forbidden.load(Ordering::Relaxed))
                 .finish()?;
             writeln!(f)?;
         }
