@@ -122,11 +122,11 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
 
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
-    let shared_term = Arc::new(ATermSend::from(create_nested_function::<2>("f", "c", SIZE)));
-    assert_eq!(inspect(&shared_term.copy(), 1), 4194302);
-
     for num_threads in THREADS {
         c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
+            let shared_term = Arc::new(ATermSend::from(create_nested_function::<2>("f", "c", SIZE)));
+            assert_eq!(inspect(&shared_term.copy(), 1), 4194302);
+
             b.iter(|| {
                 let term = shared_term.clone();
 
@@ -146,22 +146,24 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
 
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
-    // Keep one protected instance
-    let term = create_nested_function::<2>("f", "c", SIZE);
 
     for num_threads in THREADS {
         c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
+            // Keep one protected instance
+            let term = create_nested_function::<2>("f", "c", SIZE);
+
             b.iter(|| {
                 benchmark_threads(num_threads, move |_id| {
                     for _ in 0..ITERATIONS / num_threads {
                         black_box(create_nested_function::<2>("f", "c", SIZE));
                     }
                 });
-            })
+            });
+
+            drop(term);
         });
     }
 
-    drop(term);
 }
 
 // In these three benchmarks all threads operate on their own separate term.
@@ -192,13 +194,13 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
-        let terms: Arc<Vec<ATermSend>> = Arc::new(
-            (0..num_threads)
-                .map(|id| ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE)))
-                .collect(),
-        );
-
         c.bench_function(&format!("unique_inspect_{}", num_threads), |b| {
+            let terms: Arc<Vec<ATermSend>> = Arc::new(
+                (0..num_threads)
+                    .map(|id| ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE)))
+                    .collect(),
+            );
+
             b.iter(|| {
                 let terms = terms.clone();
 
