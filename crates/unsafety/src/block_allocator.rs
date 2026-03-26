@@ -149,36 +149,36 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// Removes empty blocks from the block list. Should be called periodically
     /// to prevent memory usage from growing indefinitely.
     pub fn remove_free_blocks(&mut self) {
-        let mut blocks = self.blocks.lock().expect("poisoned lock");
+        // let mut blocks = self.blocks.lock().expect("poisoned lock");
 
-        // We can only safely remove a block if all its entries are on the freelist.
-        // This is a bit tricky to check without additional metadata, so for simplicity
-        // we just check if all entries in the block are in the freelist by iterating
-        // over the freelist and counting how many entries belong to each block.
-        let mut free_counts: Vec<usize> = Vec::new();
-        for entry_ptr in unsafe { self.iter_free() } {
-            let entry_addr = entry_ptr.as_ptr() as usize;
+        // // We can only safely remove a block if all its entries are on the freelist.
+        // // This is a bit tricky to check without additional metadata, so for simplicity
+        // // we just check if all entries in the block are in the freelist by iterating
+        // // over the freelist and counting how many entries belong to each block.
+        // let mut free_counts: Vec<usize> = Vec::new();
+        // for entry_ptr in unsafe { self.iter_free() } {
+        //     let entry_addr = entry_ptr.as_ptr() as usize;
 
-            // Check which block this entry belongs to.
-            let mut current_block = &blocks.head_block;
-            let mut block_index = 0;
-            while let Some(block) = current_block {
-                let block_start = &block.data[0] as *const Entry<T> as usize;
-                let block_end = &block.data[N - 1] as *const Entry<T> as usize + std::mem::size_of::<Entry<T>>();
+        //     // Check which block this entry belongs to.
+        //     let mut current_block = &blocks.head_block;
+        //     let mut block_index = 0;
+        //     while let Some(block) = current_block {
+        //         let block_start = &block.data[0] as *const Entry<T> as usize;
+        //         let block_end = &block.data[N - 1] as *const Entry<T> as usize + std::mem::size_of::<Entry<T>>();
 
-                if entry_addr >= block_start && entry_addr < block_end {
-                    // This entry belongs to the current block.
-                    if block_index >= free_counts.len() {
-                        free_counts.resize(block_index + 1, 0);
-                    }
-                    free_counts[block_index] += 1;
-                    break;
-                }
+        //         if entry_addr >= block_start && entry_addr < block_end {
+        //             // This entry belongs to the current block.
+        //             if block_index >= free_counts.len() {
+        //                 free_counts.resize(block_index + 1, 0);
+        //             }
+        //             free_counts[block_index] += 1;
+        //             break;
+        //         }
 
-                current_block = &block.next;
-                block_index += 1;
-            }
-        }
+        //         current_block = &block.next;
+        //         block_index += 1;
+        //     }
+        // }
 
         // Now we know how many free entries each block has. We can remove any block that is completely free.
         // let mut current_block = &mut blocks.head_block;
