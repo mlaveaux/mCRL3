@@ -417,6 +417,11 @@ where
         });
     }
 
+    /// Returns mutable access to the underlying allocator.
+    pub fn allocator_mut(&mut self) -> &mut A {
+        &mut self.allocator
+    }
+
     /// Drops the element at the given pointer and deallocates its memory.
     ///
     /// # Safety

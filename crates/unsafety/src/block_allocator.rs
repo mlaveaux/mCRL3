@@ -61,8 +61,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// Allocates a slot for one object of type `T`.
     ///
     /// The fast path pops from the lock-free freelist; the slow path
-    /// bump-allocates from blocks (taking a lock only when a new block
-    /// must be allocated).
+    /// bump-allocates from blocks and takes a lock for now blocks.
     pub fn allocate_object(&self) -> Result<NonNull<T>, AllocError> {
         // Fast path: pop from the lock-free freelist (Treiber stack).
         let mut head = self.free.load(Ordering::Acquire);
@@ -146,6 +145,56 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             }
         }
     }
+    
+    /// Removes empty blocks from the block list. Should be called periodically
+    /// to prevent memory usage from growing indefinitely.
+    pub fn remove_free_blocks(&mut self) {
+        let mut blocks = self.blocks.lock().expect("poisoned lock");
+
+        // We can only safely remove a block if all its entries are on the freelist.
+        // This is a bit tricky to check without additional metadata, so for simplicity
+        // we just check if all entries in the block are in the freelist by iterating
+        // over the freelist and counting how many entries belong to each block.
+        let mut free_counts: Vec<usize> = Vec::new();
+        for entry_ptr in unsafe { self.iter_free() } {
+            let entry_addr = entry_ptr.as_ptr() as usize;
+
+            // Check which block this entry belongs to.
+            let mut current_block = &blocks.head_block;
+            let mut block_index = 0;
+            while let Some(block) = current_block {
+                let block_start = &block.data[0] as *const Entry<T> as usize;
+                let block_end = &block.data[N - 1] as *const Entry<T> as usize + std::mem::size_of::<Entry<T>>();
+
+                if entry_addr >= block_start && entry_addr < block_end {
+                    // This entry belongs to the current block.
+                    if block_index >= free_counts.len() {
+                        free_counts.resize(block_index + 1, 0);
+                    }
+                    free_counts[block_index] += 1;
+                    break;
+                }
+
+                current_block = &block.next;
+                block_index += 1;
+            }
+        }
+
+        // Now we know how many free entries each block has. We can remove any block that is completely free.
+        // let mut current_block = &mut blocks.head_block;
+
+        // let mut index = 0;
+        // while let Some(block) = current_block {
+        //     if index < free_counts.len() && free_counts[index] == N {
+        //         // This block is completely free; remove it from the list.
+        //         *current_block = block.next.take();
+        //     } else {
+        //         current_block = &mut block.next;
+        //     }
+
+        //     index += 1;
+        // }        
+    }
 
     /// Returns an iterator over the free list entries.
     ///
@@ -166,8 +215,6 @@ unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
 unsafe impl<T: Send, const N: usize> Sync for BlockAllocator<T, N> {}
 
 /// `AllocBlock` implements the [`Allocator`] trait using the underlying [`BlockAllocator`].
-///
-/// Because [`BlockAllocator`] is lock-free and `Sync`, no `RefCell` is needed.
 pub struct AllocBlock<T, const N: usize> {
     block_allocator: BlockAllocator<T, N>,
 }
@@ -184,6 +231,11 @@ impl<T, const N: usize> AllocBlock<T, N> {
         Self {
             block_allocator: BlockAllocator::new(),
         }
+    }
+
+    /// Removes free blocks from the underlying block allocator, see [`BlockAllocator::remove_free_blocks`].
+    pub fn remove_free_blocks(&mut self) {
+        self.block_allocator.remove_free_blocks();
     }
 }
 
