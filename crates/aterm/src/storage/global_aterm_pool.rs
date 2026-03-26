@@ -25,7 +25,6 @@ use crate::SymbolRef;
 use crate::Term;
 use crate::storage::ATermStorage;
 use crate::storage::SharedTerm;
-use crate::storage::SharedTermLookup;
 use crate::storage::SymbolPool;
 
 /// This is the global set of protection sets that are managed by the [ThreadTermPool].
@@ -119,27 +118,7 @@ impl GlobalTermPool {
         symbol: &'b S,
         args: &'c [ATermRef<'c>],
     ) -> (StablePointer<SharedTerm>, bool) {
-        debug_assert_eq!(
-            symbol.arity(),
-            args.len(),
-            "The number of arguments does not match the arity of the symbol"
-        );
-
-        match symbol.arity() {
-            _ => {
-                let shared_term = SharedTermLookup {
-                    symbol: SymbolRef::from_symbol(symbol),
-                    arguments: args,
-                };
-
-                unsafe {
-                    self.terms
-                        .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
-                            SharedTerm::construct(ptr, key)
-                        })
-                }
-            }
-        }
+        self.terms.insert(symbol, args)
     }
 
     /// Create a function symbol
@@ -488,7 +467,7 @@ mod tests {
 
     use merc_utilities::random_test;
 
-    use crate::random_term;
+    use crate::{ATerm, Symbol, Term, random_term};
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -507,5 +486,13 @@ mod tests {
                 }
             }
         });
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_term_out_of_bound_arity() {
+        let c = ATerm::constant(&Symbol::new("a", 0));
+
+        let _ = ATerm::with_args(&Symbol::new("f", 1), &[c.copy(), c.copy()]);
     }
 }
