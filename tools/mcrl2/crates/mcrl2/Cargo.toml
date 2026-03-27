@@ -10,6 +10,7 @@ mcrl2-macros.workspace = true
 mcrl2-sys.workspace = true
 merc_collections.workspace = true
 merc_tools.workspace = true
+merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
 itertools.workspace = true

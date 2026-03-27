@@ -19,7 +19,7 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_is_list;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_print;
 use mcrl2_sys::cxx::Exception;
 use mcrl2_sys::cxx::UniquePtr;
-use merc_collections::ProtectionIndex;
+use merc_unsafety::ProtectionIndex;
 use merc_utilities::PhantomUnsend;
 
 use crate::atermpp::SymbolRef;
