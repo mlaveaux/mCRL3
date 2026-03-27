@@ -5,14 +5,14 @@ use std::sync::LazyLock;
 
 use log::info;
 use log::trace;
+use parking_lot::Mutex;
+
+use mcrl2_sys::atermpp::ffi;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_mark_address;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_garbage_collection;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
-use parking_lot::Mutex;
-
-use mcrl2_sys::atermpp::ffi;
-use merc_collections::ProtectionSet;
+use merc_unsafety::ProtectionSet;
 
 use crate::atermpp::BfTermPool;
 
