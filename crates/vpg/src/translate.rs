@@ -423,8 +423,6 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                         for transition in self.lts.outgoing_transitions(s) {
                             let action = &self.parsed_labels[*transition.label];
 
-                            trace!("Matching action {} against formula {}", action, formula);
-
                             if match_regular_formula(formula, action) {
                                 let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
 

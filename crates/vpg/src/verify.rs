@@ -156,7 +156,7 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     block: BlockIndex,
     subgame_vertices: &HashSet<VertexIndex>,
 ) -> bool {
-    let vertices_in_subgame: Vec<usize> = partition
+    if partition
         .iter_block(block)
         .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
         .count() != 1 
