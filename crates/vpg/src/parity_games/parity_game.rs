@@ -1,5 +1,5 @@
 //! Authors: Maurice Laveaux and Sjef van Loo
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 use itertools::Itertools;
 
@@ -37,36 +37,6 @@ pub struct ParityGame {
 }
 
 impl ParityGame {
-    /// Construct a new parity game from an iterator over transitions.
-    pub fn new(
-        initial_vertex: VertexIndex,
-        owner: Vec<Player>,
-        priority: Vec<Priority>,
-        vertices: Vec<usize>,
-        edges_to: Vec<VertexIndex>,
-    ) -> Self {
-        // Check that the sizes are consistent
-        debug_assert_eq!(
-            owner.len(),
-            priority.len(),
-            "There should an owner and priority for every vertex"
-        );
-        debug_assert_eq!(
-            vertices.len(),
-            owner.len() + 1,
-            "There should be an offset for every vertex, and the sentinel state"
-        );
-        debug_assert_eq!(initial_vertex, 0, "The initial vertex should be vertex 0");
-
-        Self {
-            owner,
-            priority,
-            vertices,
-            edges_to,
-            initial_vertex,
-        }
-    }
-
     /// Constructs a new parity game from an iterator over edges.
     ///
     /// The vertices are given by their owner and priority. The `edges` iterator
@@ -172,14 +142,26 @@ impl ParityGame {
         });
 
         vertices.push(num_of_edges); // Sentinel vertex
+        Self::new(initial_vertex, owner, priority, vertices, edges_to)
+    }
 
-        Self {
-            initial_vertex,
+    /// Constructs a parity game directly from the given arrays.
+    pub(crate) fn new(
+        initial_vertex: VertexIndex,
+        owner: Vec<Player>,
+        priority: Vec<Priority>,
+        vertices: Vec<usize>,
+        edges_to: Vec<VertexIndex>,
+    ) -> Self {
+        let result = Self {
             owner,
             priority,
             vertices,
             edges_to,
-        }
+            initial_vertex,
+        };
+        result.assert_consistent();
+        result
     }
 
     /// Returns the vertices array.
@@ -200,6 +182,32 @@ impl ParityGame {
     /// Returns the priorities array.
     pub(crate) fn priorities(&self) -> &Vec<Priority> {
         &self.priority
+    }
+
+    /// Asserts that the internal data structures are consistent with each other.
+    fn assert_consistent(&self) {
+        // Check that the sizes are consistent
+        debug_assert_eq!(
+            self.owner.len(),
+            self.priority.len(),
+            "There should an owner and priority for every vertex"
+        );
+        debug_assert_eq!(
+            self.vertices.len(),
+            self.owner.len() + 1,
+            "There should be an offset for every vertex, and the sentinel state"
+        );
+        debug_assert_eq!(self.initial_vertex, 0, "The initial vertex should be vertex 0");
+        
+        // Check that there are no duplicate edges
+        for vertex in self.iter_vertices() {
+            let mut seen = HashSet::new();
+            for edge in self.outgoing_edges(vertex) {
+                if !seen.insert(edge.to()) {
+                    panic!("Duplicate edge from vertex {:?} to vertex {:?}", vertex, edge.to());
+                }
+            }
+        }
     }
 }
 

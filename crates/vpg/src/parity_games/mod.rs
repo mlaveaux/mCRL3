@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod builder;
 mod display_dot;
 mod io;
 mod io_pg;
@@ -18,6 +19,7 @@ mod variability_make_total;
 mod variability_parity_game;
 mod variability_predecessors;
 
+pub use builder::*;
 pub use display_dot::*;
 pub use io::*;
 pub use io_pg::*;
