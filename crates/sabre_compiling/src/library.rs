@@ -70,8 +70,7 @@ impl RuntimeLibrary {
                 version = \"1.0.0\"
                 [workspace]
                 
-                [dependencies]
-            "}
+                [dependencies]"}
             )?;
 
             for dependency in &dependencies {
