@@ -43,28 +43,6 @@ pub struct VariabilityParityGame {
 }
 
 impl VariabilityParityGame {
-    /// Construct a new variability parity game from an iterator over edges.
-    pub fn new(
-        parity_game: ParityGame,
-        configuration: BDDFunction,
-        variables: Vec<BDDFunction>,
-        edges_configuration: Vec<BDDFunction>,
-    ) -> Self {
-        // Check that the sizes are consistent
-        debug_assert_eq!(
-            edges_configuration.len(),
-            parity_game.num_of_edges(),
-            "There should be a configuration BDD for every edge"
-        );
-
-        Self {
-            game: parity_game,
-            configuration,
-            variables,
-            edges_configuration,
-        }
-    }
-
     /// Constructs a new variability parity game from an iterator over edges.
     ///
     /// The vertices are given by their owner and priority.
@@ -151,6 +129,28 @@ impl VariabilityParityGame {
 
         Self {
             game: ParityGame::new(initial_vertex, owner, priority, vertices, edges_to),
+            configuration,
+            variables,
+            edges_configuration,
+        }
+    }
+
+    /// Construct a new variability parity game from the given components.
+    pub(crate) fn new(
+        parity_game: ParityGame,
+        configuration: BDDFunction,
+        variables: Vec<BDDFunction>,
+        edges_configuration: Vec<BDDFunction>,
+    ) -> Self {
+        // Check that the sizes are consistent
+        debug_assert_eq!(
+            edges_configuration.len(),
+            parity_game.num_of_edges(),
+            "There should be a configuration BDD for every edge"
+        );
+
+        Self {
+            game: parity_game,
             configuration,
             variables,
             edges_configuration,
