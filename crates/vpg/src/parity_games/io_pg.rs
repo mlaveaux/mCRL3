@@ -15,6 +15,7 @@ use merc_utilities::MercError;
 
 use crate::PG;
 use crate::ParityGame;
+use crate::ParityGameBuilder;
 use crate::Player;
 use crate::Priority;
 use crate::VertexIndex;
@@ -59,12 +60,11 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
         1,
     );
 
-    // Collect that data into the parity game structure
-    let mut owner: Vec<Player> = vec![Player::Even; num_of_vertices];
-    let mut priority: Vec<Priority> = vec![Priority::new(0); num_of_vertices];
-
-    let mut vertices: Vec<usize> = Vec::with_capacity(num_of_vertices + 1);
-    let mut transitions_to: Vec<VertexIndex> = Vec::with_capacity(num_of_vertices);
+    // Collect the data in a builder and remove duplicate edges at the end.
+    let mut builder = ParityGameBuilder::with_capacity(VertexIndex::new(0), num_of_vertices);
+    if num_of_vertices > 0 {
+        builder.add_vertex(VertexIndex::new(num_of_vertices - 1), Player::Even, Priority::new(0));
+    }
 
     let mut vertex_count = 0;
     while let Some(line) = lines.next() {
@@ -86,11 +86,8 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
             ))?
             .parse()?;
 
-        owner[index] = Player::from_index(vertex_owner);
-        priority[index] = Priority::new(vertex_priority);
-
-        // Store the offset for the vertex
-        vertices.push(transitions_to.len());
+        let vertex = VertexIndex::new(index);
+        builder.add_vertex(vertex, Player::from_index(vertex_owner), Priority::new(vertex_priority));
 
         for successors in parts {
             // Parse successors (remaining parts, removing trailing semicolon)
@@ -101,7 +98,7 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
                 .map(|s| s.trim().parse())
             {
                 let successor = successor?;
-                transitions_to.push(VertexIndex::new(successor));
+                builder.add_edge(vertex, VertexIndex::new(successor));
             }
         }
 
@@ -109,16 +106,7 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
         vertex_count += 1;
     }
 
-    // Add the sentinel state.
-    vertices.push(transitions_to.len());
-
-    Ok(ParityGame::new(
-        VertexIndex::new(0),
-        owner,
-        priority,
-        vertices,
-        transitions_to,
-    ))
+    Ok(builder.finish(false, true))
 }
 
 /// Writes the given parity game to the given writer in .pg format.
