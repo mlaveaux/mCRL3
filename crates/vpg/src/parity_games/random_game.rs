@@ -11,6 +11,7 @@ use rand::RngExt;
 
 use crate::PG;
 use crate::ParityGame;
+use crate::ParityGameBuilder;
 use crate::Player;
 use crate::Priority;
 use crate::VariabilityParityGame;
@@ -28,30 +29,23 @@ pub fn random_parity_game<R: Rng>(
     assert!(num_of_vertices > 0, "Parity game must have at least one vertex");
     assert!(num_of_priorities > 0, "Parity game must have at least one priority");
 
-    // Randomly assign priorities to each vertex within num_of_priorities.
-    let priority: Vec<Priority> = (0..num_of_vertices)
-        .map(|_| Priority::new(rng.random_range(0..num_of_priorities)))
-        .collect();
+    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
 
-    // Assign every vertex to a random player (0 or 1).
-    let owner: Vec<Player> = (0..num_of_vertices)
-        .map(|_| Player::from_index(rng.random_range(0..2)))
-        .collect();
-
+    for v in 0..num_of_vertices {
+        let priority = Priority::new(rng.random_range(0..num_of_priorities));
+        let owner = Player::from_index(rng.random_range(0..2));
+        builder.add_vertex(VertexIndex::new(v), owner, priority);
+    }
+    
     // For each vertex, generate 0..outdegree outgoing edges.
-    let mut edge_list: Vec<(VertexIndex, VertexIndex)> = Vec::with_capacity(num_of_vertices * outdegree);
     for v in 0..num_of_vertices {
         for _ in 0..rng.random_range(0..outdegree) {
             let to = rng.random_range(0..num_of_vertices);
-            edge_list.push((VertexIndex::new(v), VertexIndex::new(to)));
+            builder.add_edge(VertexIndex::new(v), VertexIndex::new(to));
         }
     }
 
-    // Ensure at least the initial vertex exists.
-    let initial_vertex = VertexIndex::new(0);
-    ParityGame::from_edges(initial_vertex, owner, priority, make_total, || {
-        edge_list.iter().cloned()
-    })
+    builder.finish(make_total, true)
 }
 
 /// Creates a random parity game with the given number of vertices, priorities, and outdegree.

@@ -25,8 +25,8 @@ pub struct ParityGameBuilder {
     /// The initial vertex of the game.
     initial_vertex: VertexIndex,
 
-    /// The number of states discovered so far.
-    num_of_states: usize,
+    /// The number of vertices discovered so far.
+    num_of_vertices: usize,
 }
 
 impl ParityGameBuilder {
@@ -42,7 +42,7 @@ impl ParityGameBuilder {
             owners: HashMap::new(),
             priorities: HashMap::new(),
             initial_vertex,
-            num_of_states: initial_vertex.value() + 1,
+            num_of_vertices: initial_vertex.value() + 1,
         }
     }
 
@@ -50,13 +50,13 @@ impl ParityGameBuilder {
     pub fn add_vertex(&mut self, vertex: VertexIndex, owner: Player, priority: Priority) {
         self.owners.insert(vertex.value(), owner);
         self.priorities.insert(vertex.value(), priority);
-        self.num_of_states = self.num_of_states.max(vertex.value() + 1);
+        self.num_of_vertices = self.num_of_vertices.max(vertex.value() + 1);
     }
 
     /// Adds an edge to the builder.
     pub fn add_edge(&mut self, from: VertexIndex, to: VertexIndex) {
         self.edges.push((from, to));
-        self.num_of_states = self.num_of_states.max(from.value() + 1).max(to.value() + 1);
+        self.num_of_vertices = self.num_of_vertices.max(from.value() + 1).max(to.value() + 1);
     }
 
     /// Returns the number of edges added to the builder.
@@ -64,9 +64,9 @@ impl ParityGameBuilder {
         self.edges.len()
     }
 
-    /// Returns the number of states that the builder currently found.
-    pub fn num_of_states(&self) -> usize {
-        self.num_of_states
+    /// Returns the number of vertices that the builder currently found.
+    pub fn num_of_vertices(&self) -> usize {
+        self.num_of_vertices
     }
 
     /// Finalizes the builder and returns the constructed parity game.
@@ -76,18 +76,18 @@ impl ParityGameBuilder {
         }
 
         // Initialize vertices and priorities with defaults
-        let mut owner = vec![Player::Even; self.num_of_states];
-        let mut priority = vec![Priority::new(0); self.num_of_states];
+        let mut owner = vec![Player::Even; self.num_of_vertices];
+        let mut priority = vec![Priority::new(0); self.num_of_vertices];
 
         // Set the owners and priorities from the map
         for (vertex_idx, player) in &self.owners {
-            if *vertex_idx < self.num_of_states {
+            if *vertex_idx < self.num_of_vertices {
                 owner[*vertex_idx] = *player;
             }
         }
 
         for (vertex_idx, prio) in &self.priorities {
-            if *vertex_idx < self.num_of_states {
+            if *vertex_idx < self.num_of_vertices {
                 priority[*vertex_idx] = *prio;
             }
         }
@@ -121,8 +121,8 @@ pub struct VariabilityParityGameBuilder {
     /// The initial vertex of the game.
     initial_vertex: VertexIndex,
 
-    /// The number of states discovered so far.
-    num_of_states: usize,
+    /// The number of vertices discovered so far.
+    num_of_vertices: usize,
 }
 
 impl VariabilityParityGameBuilder {
@@ -138,7 +138,7 @@ impl VariabilityParityGameBuilder {
             owners: HashMap::new(),
             priorities: HashMap::new(),
             initial_vertex,
-            num_of_states: initial_vertex.value() + 1,
+            num_of_vertices: initial_vertex.value() + 1,
         }
     }
 
@@ -146,13 +146,13 @@ impl VariabilityParityGameBuilder {
     pub fn add_vertex(&mut self, vertex: VertexIndex, owner: Player, priority: Priority) {
         self.owners.insert(vertex.value(), owner);
         self.priorities.insert(vertex.value(), priority);
-        self.num_of_states = self.num_of_states.max(vertex.value() + 1);
+        self.num_of_vertices = self.num_of_vertices.max(vertex.value() + 1);
     }
 
     /// Adds an edge to the builder with its configuration.
     pub fn add_edge(&mut self, from: VertexIndex, configuration: oxidd::bdd::BDDFunction, to: VertexIndex) {
         self.edges.push((from, configuration, to));
-        self.num_of_states = self.num_of_states.max(from.value() + 1).max(to.value() + 1);
+        self.num_of_vertices = self.num_of_vertices.max(from.value() + 1).max(to.value() + 1);
     }
 
     /// Returns the number of edges added to the builder.
@@ -160,9 +160,9 @@ impl VariabilityParityGameBuilder {
         self.edges.len()
     }
 
-    /// Returns the number of states that the builder currently found.
-    pub fn num_of_states(&self) -> usize {
-        self.num_of_states
+    /// Returns the number of vertices that the builder currently found.
+    pub fn num_of_vertices(&self) -> usize {
+        self.num_of_vertices
     }
 
     /// Finalizes the builder and returns the constructed variability parity game.
@@ -178,18 +178,18 @@ impl VariabilityParityGameBuilder {
         }
 
         // Initialize vertices and priorities with defaults
-        let mut owner = vec![Player::Even; self.num_of_states];
-        let mut priority = vec![Priority::new(0); self.num_of_states];
+        let mut owner = vec![Player::Even; self.num_of_vertices];
+        let mut priority = vec![Priority::new(0); self.num_of_vertices];
 
         // Set the owners and priorities from the map
         for (vertex_idx, player) in &self.owners {
-            if *vertex_idx < self.num_of_states {
+            if *vertex_idx < self.num_of_vertices {
                 owner[*vertex_idx] = *player;
             }
         }
 
         for (vertex_idx, prio) in &self.priorities {
-            if *vertex_idx < self.num_of_states {
+            if *vertex_idx < self.num_of_vertices {
                 priority[*vertex_idx] = *prio;
             }
         }
