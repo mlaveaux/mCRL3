@@ -13,12 +13,12 @@ use merc_io::LineIterator;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 
-use crate::PG;
 use crate::ParityGame;
 use crate::ParityGameBuilder;
 use crate::Player;
 use crate::Priority;
 use crate::VertexIndex;
+use crate::PG;
 
 #[derive(Error, Debug)]
 pub enum IOError {
@@ -106,7 +106,7 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
         vertex_count += 1;
     }
 
-    Ok(builder.finish(false, true))
+    Ok(builder.finish(false, false))
 }
 
 /// Writes the given parity game to the given writer in .pg format.
@@ -138,6 +138,10 @@ pub fn write_pg<W: Write, G: PG>(mut writer: W, game: &G) -> Result<(), MercErro
 
 #[cfg(test)]
 mod tests {
+    use merc_utilities::random_test;
+
+    use crate::random_parity_game;
+
     use super::*;
 
     #[test]
@@ -146,5 +150,29 @@ mod tests {
         let parity_game = read_pg(include_bytes!("../../../../examples/vpg/example.pg") as &[u8]).unwrap();
         assert_eq!(parity_game.num_of_vertices(), 3002);
         assert_eq!(parity_game.num_of_edges(), 3968);
+    }
+
+    #[test]
+    fn test_random_io_pg() {
+        random_test(100, |rng| {
+            let game = random_parity_game(rng, true, 50, 10, 5);
+
+            let mut buffer = Vec::new();
+            write_pg(&mut buffer, &game).unwrap();
+
+            let read_game = read_pg(buffer.as_slice()).unwrap();
+            assert_eq!(game.num_of_vertices(), read_game.num_of_vertices());
+            assert_eq!(game.num_of_edges(), read_game.num_of_edges());
+
+            for vertex in game.iter_vertices() {
+                let original_successors: Vec<_> = game.outgoing_edges(vertex).map(|e| e.to()).collect();
+                let read_successors: Vec<_> = read_game.outgoing_edges(vertex).map(|e| e.to()).collect();
+                assert_eq!(original_successors.len(), read_successors.len());
+                assert_eq!(
+                    original_successors.into_iter().sorted().collect::<Vec<_>>(),
+                    read_successors.into_iter().sorted().collect::<Vec<_>>()
+                );
+            }
+        });
     }
 }
