@@ -402,7 +402,8 @@ impl Ord for ATerm {
 
 impl Eq for ATerm {}
 
-/// This is a wrapper around a term that indicates it is being returned from a function.
+/// This is a wrapper around a term that indicates it is being returned from a
+/// function.
 ///
 /// The resulting term can have a lifetime tied to the thread-local term pool.
 pub struct Return<T> {
