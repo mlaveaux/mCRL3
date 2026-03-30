@@ -45,7 +45,7 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
             let end = block.end;
             block.begin = start;
             block.end = start; // This will be updated when adding elements.
-            start = end;
+            start += end;
         }
 
         // Create the elements vector.
@@ -253,6 +253,9 @@ impl Iterator for BlockIter<'_> {
 
 #[cfg(test)]
 mod tests {
+    use merc_utilities::random_test;
+    use rand::RngExt;
+
     use super::*;
 
     #[test]
@@ -271,23 +274,30 @@ mod tests {
         assert_eq!(partition.block(block_index).len(), 5);
     }
 
-    // #[test]
-    // fn test_random_from_indexed_partition() {
-    //     random_test(100, |rng| {
-    //         let mut partition = IndexedPartition::new(100);
+    #[test]
+    fn test_random_from_indexed_partition() {
+        random_test(100, |rng| {
+            let mut partition = IndexedPartition::new(100);
 
-    //         for element in 0..partition.len() {
-    //             partition.set_block(element, BlockIndex::new(rng.random_range(0..10)));
-    //         }
+            for element in 0..partition.len() {
+                partition.set_block(element, BlockIndex::new(rng.random_range(0..10)));
+            }
+            trace!("Input partition {partition}");
 
-    //         let block_partition: BlockPartition<()> = BlockPartition::from_indexed_partition(&partition);
+            let block_partition: BlockPartition<()> = BlockPartition::from_indexed_partition(&partition);
+            trace!("Output partition {block_partition}");
 
-    //         // Check that the results are consistent with the indexed partition.
-    //         for block in 0..block_partition.num_of_blocks() {
-    //             for element in block_partition.iter_block(BlockIndex::new(block)) {
-    //                 assert_eq!(partition.block(element), block);
-    //             }
-    //         }
-    //     })
-    // }
+            // Check that each block in the block partition contains only
+            // elements from the same indexed-partition block.
+            for block in 0..block_partition.num_of_blocks() {
+                let mut elements = block_partition.iter_block(BlockIndex::new(block));
+                let first = elements.next().unwrap();
+                let expected_block = partition.block(first);
+
+                for element in elements {
+                    assert_eq!(partition.block(element), expected_block, "Block {block} contains elements from different indexed-partition blocks");
+                }
+            }
+        })
+    }
 }
