@@ -22,10 +22,10 @@ use merc_utilities::MercError;
 
 use crate::IOError;
 use crate::PG;
-use crate::ParityGame;
 use crate::Player;
 use crate::Priority;
 use crate::VariabilityParityGame;
+use crate::VariabilityParityGameBuilder;
 use crate::VertexIndex;
 
 /// Reads a variability parity game in an extended PGSolver `.vpg` format from the given reader.
@@ -79,13 +79,11 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
 
     let num_of_vertices: usize = num_of_vertices_txt.parse()?;
 
-    // Collect that data into the parity game structure
-    let mut owner: Vec<Player> = vec![Player::Even; num_of_vertices];
-    let mut priority: Vec<Priority> = vec![Priority::new(0); num_of_vertices];
-
-    let mut vertices: Vec<usize> = Vec::with_capacity(num_of_vertices + 1);
-    let mut edges_to: Vec<VertexIndex> = Vec::with_capacity(num_of_vertices);
-    let mut edges_configuration: Vec<BDDFunction> = Vec::with_capacity(num_of_vertices);
+    // Collect the data in a builder and remove duplicate edges at the end.
+    let mut builder = VariabilityParityGameBuilder::with_capacity(VertexIndex::new(0), num_of_vertices);
+    if num_of_vertices > 0 {
+        builder.add_vertex(VertexIndex::new(num_of_vertices - 1), Player::Even, Priority::new(0));
+    }
 
     // Print progress messages
     let progress = TimeProgress::new(
@@ -114,11 +112,8 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
                 .parse()?,
         );
 
-        owner[index] = vertex_owner;
-        priority[index] = Priority::new(vertex_priority);
-
-        // Store the offset for the vertex
-        vertices.push(edges_configuration.len());
+        let vertex = VertexIndex::new(index);
+        builder.add_vertex(vertex, vertex_owner, Priority::new(vertex_priority));
 
         for successors in parts {
             // Parse successors (remaining parts, removing trailing semicolon)
@@ -129,15 +124,17 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
             {
                 let parts: Vec<&str> = successor.trim().split('|').collect();
                 let successor_index: usize = parts[0].trim().parse()?;
-                edges_to.push(VertexIndex::new(successor_index));
+                let successor = VertexIndex::new(successor_index);
 
+                let edge_configuration =
                 if parts.len() > 1 {
-                    let config = parse_configuration_set(manager, &variables, parts[1].trim())?;
-                    edges_configuration.push(config);
+                    parse_configuration_set(manager, &variables, parts[1].trim())?
                 } else {
                     // No configuration specified, use true (all configurations)
-                    edges_configuration.push(manager.with_manager_shared(|m| BDDFunction::t(m)));
-                }
+                    manager.with_manager_shared(|m| BDDFunction::t(m))
+                };
+
+                builder.add_edge(vertex, edge_configuration, successor);
             }
         }
 
@@ -145,15 +142,7 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
         vertex_count += 1;
     }
 
-    // Add the sentinel state.
-    vertices.push(edges_configuration.len());
-
-    Ok(VariabilityParityGame::new(
-        ParityGame::new(VertexIndex::new(0), owner, priority, vertices, edges_to),
-        configurations,
-        variables,
-        edges_configuration,
-    ))
+    Ok(builder.finish(manager, configurations, variables, true))
 }
 
 /// Parses a configuration set from a string representation into a BDD function, but also creates the necessary variables.
@@ -274,6 +263,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(parity_game.num_of_vertices(), 3002);
-        assert_eq!(parity_game.num_of_edges(), 4409);
+        assert_eq!(parity_game.num_of_edges(), 4408);
     }
 }
