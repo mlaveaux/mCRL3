@@ -174,7 +174,6 @@ impl<T> ProtectionSet<T> {
     /// Returns whether the protection set contains the given index.
     ///
     /// This operation is O(n) in the size of the freelist.
-    #[cfg(any(debug_assertions, test))]
     pub fn contains_root(&self, index: ProtectionIndex) -> bool {
         let idx = self.generation_counter.get_index(index.0);
         !self.freelist_iter().any(|free_idx| free_idx == idx)
