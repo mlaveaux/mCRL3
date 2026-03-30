@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
-use std::collections::HashMap;
-
+use oxidd::BooleanFunction;
+use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
 use crate::ParityGame;
@@ -17,10 +17,10 @@ pub struct ParityGameBuilder {
     edges: Vec<(VertexIndex, VertexIndex)>,
 
     /// The owner of each vertex, indexed by vertex index.
-    owners: HashMap<usize, Player>,
+    owners: Vec<Player>,
 
     /// The priority of each vertex, indexed by vertex index.
-    priorities: HashMap<usize, Priority>,
+    priorities: Vec<Priority>,
 
     /// The initial vertex of the game.
     initial_vertex: VertexIndex,
@@ -37,26 +37,31 @@ impl ParityGameBuilder {
 
     /// Initializes the builder with pre-allocated capacity for edges.
     pub fn with_capacity(initial_vertex: VertexIndex, num_of_edges: usize) -> Self {
+        let num_of_vertices = initial_vertex.value() + 1;
         Self {
             edges: Vec::with_capacity(num_of_edges),
-            owners: HashMap::new(),
-            priorities: HashMap::new(),
+            owners: vec![Player::Even; num_of_vertices],
+            priorities: vec![Priority::new(0); num_of_vertices],
             initial_vertex,
-            num_of_vertices: initial_vertex.value() + 1,
+            num_of_vertices,
         }
     }
 
     /// Adds a vertex to the builder with its owner and priority.
     pub fn add_vertex(&mut self, vertex: VertexIndex, owner: Player, priority: Priority) {
-        self.owners.insert(vertex.value(), owner);
-        self.priorities.insert(vertex.value(), priority);
-        self.num_of_vertices = self.num_of_vertices.max(vertex.value() + 1);
+        let num_of_vertices = vertex.value() + 1;
+        self.ensure_vertex_capacity(num_of_vertices);
+        self.owners[vertex.value()] = owner;
+        self.priorities[vertex.value()] = priority;
+        self.num_of_vertices = self.num_of_vertices.max(num_of_vertices);
     }
 
     /// Adds an edge to the builder.
     pub fn add_edge(&mut self, from: VertexIndex, to: VertexIndex) {
         self.edges.push((from, to));
-        self.num_of_vertices = self.num_of_vertices.max(from.value() + 1).max(to.value() + 1);
+        let num_of_vertices = self.num_of_vertices.max(from.value() + 1).max(to.value() + 1);
+        self.ensure_vertex_capacity(num_of_vertices);
+        self.num_of_vertices = num_of_vertices;
     }
 
     /// Returns the number of edges added to the builder.
@@ -75,30 +80,31 @@ impl ParityGameBuilder {
             self.remove_duplicates();
         }
 
-        // Initialize vertices and priorities with defaults
-        let mut owner = vec![Player::Even; self.num_of_vertices];
-        let mut priority = vec![Priority::new(0); self.num_of_vertices];
-
-        // Set the owners and priorities from the map
-        for (vertex_idx, player) in &self.owners {
-            if *vertex_idx < self.num_of_vertices {
-                owner[*vertex_idx] = *player;
-            }
-        }
-
-        for (vertex_idx, prio) in &self.priorities {
-            if *vertex_idx < self.num_of_vertices {
-                priority[*vertex_idx] = *prio;
-            }
-        }
+        self.ensure_vertex_capacity(self.num_of_vertices);
 
         // Build the parity game using the from_edges method
         let edges = self.edges.clone();
-        ParityGame::from_edges(self.initial_vertex, owner, priority, make_total, || {
+        ParityGame::from_edges(
+            self.initial_vertex,
+            self.owners.clone(),
+            self.priorities.clone(),
+            make_total,
+            || {
             edges.iter().cloned()
-        })
+        },
+        )
     }
     
+    /// Ensures that the owners and priorities vectors have enough capacity for the given number of vertices.
+    fn ensure_vertex_capacity(&mut self, num_of_vertices: usize) {
+        if self.owners.len() < num_of_vertices {
+            self.owners.resize(num_of_vertices, Player::Even);
+        }
+        if self.priorities.len() < num_of_vertices {
+            self.priorities.resize(num_of_vertices, Priority::new(0));
+        }
+    }
+
     /// Removes duplicated edges from the added edges.
     fn remove_duplicates(&mut self) {
         self.edges.sort();
@@ -113,10 +119,10 @@ pub struct VariabilityParityGameBuilder {
     edges: Vec<(VertexIndex, oxidd::bdd::BDDFunction, VertexIndex)>,
 
     /// The owner of each vertex, indexed by vertex index.
-    owners: HashMap<usize, Player>,
+    owners: Vec<Player>,
 
     /// The priority of each vertex, indexed by vertex index.
-    priorities: HashMap<usize, Priority>,
+    priorities: Vec<Priority>,
 
     /// The initial vertex of the game.
     initial_vertex: VertexIndex,
@@ -133,26 +139,31 @@ impl VariabilityParityGameBuilder {
 
     /// Initializes the builder with pre-allocated capacity for edges.
     pub fn with_capacity(initial_vertex: VertexIndex, num_of_edges: usize) -> Self {
+        let num_of_vertices = initial_vertex.value() + 1;
         Self {
             edges: Vec::with_capacity(num_of_edges),
-            owners: HashMap::new(),
-            priorities: HashMap::new(),
+            owners: vec![Player::Even; num_of_vertices],
+            priorities: vec![Priority::new(0); num_of_vertices],
             initial_vertex,
-            num_of_vertices: initial_vertex.value() + 1,
+            num_of_vertices,
         }
     }
 
     /// Adds a vertex to the builder with its owner and priority.
     pub fn add_vertex(&mut self, vertex: VertexIndex, owner: Player, priority: Priority) {
-        self.owners.insert(vertex.value(), owner);
-        self.priorities.insert(vertex.value(), priority);
-        self.num_of_vertices = self.num_of_vertices.max(vertex.value() + 1);
+        let num_of_vertices = vertex.value() + 1;
+        self.ensure_vertex_capacity(num_of_vertices);
+        self.owners[vertex.value()] = owner;
+        self.priorities[vertex.value()] = priority;
+        self.num_of_vertices = self.num_of_vertices.max(num_of_vertices);
     }
 
     /// Adds an edge to the builder with its configuration.
     pub fn add_edge(&mut self, from: VertexIndex, configuration: oxidd::bdd::BDDFunction, to: VertexIndex) {
         self.edges.push((from, configuration, to));
-        self.num_of_vertices = self.num_of_vertices.max(from.value() + 1).max(to.value() + 1);
+        let num_of_vertices = self.num_of_vertices.max(from.value() + 1).max(to.value() + 1);
+        self.ensure_vertex_capacity(num_of_vertices);
+        self.num_of_vertices = num_of_vertices;
     }
 
     /// Returns the number of edges added to the builder.
@@ -177,41 +188,51 @@ impl VariabilityParityGameBuilder {
             self.remove_duplicates();
         }
 
-        // Initialize vertices and priorities with defaults
-        let mut owner = vec![Player::Even; self.num_of_vertices];
-        let mut priority = vec![Priority::new(0); self.num_of_vertices];
-
-        // Set the owners and priorities from the map
-        for (vertex_idx, player) in &self.owners {
-            if *vertex_idx < self.num_of_vertices {
-                owner[*vertex_idx] = *player;
-            }
-        }
-
-        for (vertex_idx, prio) in &self.priorities {
-            if *vertex_idx < self.num_of_vertices {
-                priority[*vertex_idx] = *prio;
-            }
-        }
+        self.ensure_vertex_capacity(self.num_of_vertices);
 
         // Build the variability parity game using the from_edges method
         let edges = self.edges.clone();
         VariabilityParityGame::from_edges(
             manager_ref,
             self.initial_vertex,
-            owner,
-            priority,
+            self.owners.clone(),
+            self.priorities.clone(),
             configuration,
             variables,
             || edges.iter().cloned(),
         )
     }
     
+    /// Ensures that the owners and priorities vectors have enough capacity for the given number of vertices.
+    fn ensure_vertex_capacity(&mut self, num_of_vertices: usize) {
+        if self.owners.len() < num_of_vertices {
+            self.owners.resize(num_of_vertices, Player::Even);
+        }
+        if self.priorities.len() < num_of_vertices {
+            self.priorities.resize(num_of_vertices, Priority::new(0));
+        }
+    }
+
     /// Removes duplicated edges from the added edges.
-    ///
-    /// Note: This requires comparing BDD functions, which might be expensive.
     fn remove_duplicates(&mut self) {
         self.edges.sort_by_key(|(from, _, to)| (*from, *to));
-        self.edges.dedup_by_key(|(from, _, to)| (*from, *to));
+
+        let mut merged: Vec<(VertexIndex, BDDFunction, VertexIndex)> =
+            Vec::with_capacity(self.edges.len());
+        for (from, configuration, to) in self.edges.drain(..) {
+            if let Some((last_from, last_configuration, last_to)) = merged.last_mut()
+                && *last_from == from
+                && *last_to == to
+            {
+                *last_configuration = last_configuration
+                    .or(&configuration)
+                    .expect("Duplicate edges should have compatible BDD managers");
+                continue;
+            }
+
+            merged.push((from, configuration, to));
+        }
+
+        self.edges = merged;
     }
 }
