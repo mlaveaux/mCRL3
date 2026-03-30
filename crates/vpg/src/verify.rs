@@ -159,14 +159,23 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     let vertices_in_subgame: Vec<usize> = partition
         .iter_block(block)
         .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
-        .collect();
-
-    if vertices_in_subgame.len() != 1 {
+        .count() != 1 
+    {
+        // Contains at least 2 vertices, so non trivial.
         return false;
     }
 
-    let vertex = VertexIndex::new(vertices_in_subgame[0]);
-    !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
+    // Otherwise, must have a self loop.
+    let vertex = VertexIndex::new(partition
+        .iter_block(block)
+        .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
+        .next()
+        .expect("Block must contain at least one vertex"));
+    trace!("Vertex {vertex}");
+    !pg.outgoing_edges(vertex).any(|edge| {
+        trace!("Checking edge {} -> {} for self-loop", vertex, edge.to());    
+        edge.to() == vertex
+    })
 }
 
 /// Computes the set of vertices reachable from the given initial vertices in
