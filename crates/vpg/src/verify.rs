@@ -1,26 +1,28 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
 use bitvec::vec::BitVec;
 use delegate::delegate;
 
+use itertools::Itertools;
 use log::trace;
+use merc_collections::scc_decomposition;
 use merc_collections::BlockIndex;
 use merc_collections::BlockPartition;
-use merc_collections::scc_decomposition;
 use merc_utilities::MercIndex;
 
+use crate::check_partition;
 use crate::AsGraph;
 use crate::Edge;
-use crate::PG;
 use crate::Player;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Set;
 use crate::Strategy;
 use crate::VertexIndex;
-use crate::check_partition;
+use crate::PG;
 
 /// Verifies that a proposed solution is valid for the given parity game and
 /// strategies.
@@ -79,8 +81,8 @@ fn solve_solitaire_game<G: PG>(pg: &G, player: Player) -> BitVec {
         let prio_subgame = PrioSubgame::new(pg, Priority::new(priority));
 
         let subgame_solution = solve_solitaire_simple(&prio_subgame, player);
-        for (i, vertex) in prio_subgame.iter_vertices().enumerate() {
-            if subgame_solution[i] {
+        for vertex in prio_subgame.iter_vertices() {
+            if subgame_solution[*vertex] {
                 winning_vertices.set(*vertex, true)
             }
         }
@@ -100,27 +102,40 @@ fn solve_solitaire_game<G: PG>(pg: &G, player: Player) -> BitVec {
 /// contains the highest priority. Note that the highest priority should belong
 /// to the player.
 fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
+    trace!("Subgame {{ {:?} }}, player {}", pg.iter_vertices().format(", "), player);
+
     let scc_partition = scc_decomposition(&AsGraph(pg), |_, _, _| true);
 
     // Determine vertices that are winning for the player in the restricted game, which are those that can reach a vertex with the current priority.
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
 
-    let contained: HashSet<VertexIndex> = HashSet::from_iter(pg.iter_vertices());
+    let subgame_vertices: HashSet<VertexIndex> = HashSet::from_iter(pg.iter_vertices());
 
     // Convert to block partition to compute reachability on the SCCs
     let block_partition = BlockPartition::<()>::from_indexed_partition(&scc_partition);
-    for scc in 0..scc_partition.num_of_blocks() {
+    for scc in (0..scc_partition.num_of_blocks()).map(BlockIndex::new) {
+        if is_trivial_scc(pg, &block_partition, scc, &subgame_vertices) {
+            trace!("SCC {} is trivial, skipping", scc);
+            continue;
+        }
+
         if block_partition
-            .iter_block(BlockIndex::new(scc))
+            .iter_block(scc)
             // TODO: This assumes that this is the highest priority, so priorities (0,1) for odd and (1,2) for even.
             .any(|i| {
-                contained.contains(&VertexIndex::new(i))
+                subgame_vertices.contains(&VertexIndex::new(i))
                     && Player::from_priority(&pg.priority(VertexIndex::new(i))) == player
             })
         {
-            for vertex in block_partition.iter_block(BlockIndex::new(scc)) {
-                if contained.contains(&VertexIndex::new(vertex)) { 
+            for vertex in block_partition.iter_block(scc) {
+                if subgame_vertices.contains(&VertexIndex::new(vertex)) {
                     winning_vertices.set(vertex, true);
+                    trace!(
+                        "Player {} wins {} in SCC {}",
+                        player,
+                        vertex,
+                        scc
+                    );
                 }
             }
         }
@@ -128,6 +143,30 @@ fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
 
     let predecessors = Predecessors::new(pg);
     backward_reachability(&predecessors, winning_vertices)
+}
+
+/// Returns true if the given SCC is trivial, i.e., it does not contain any
+/// cycles. This is the case if the SCC contains only one vertex and that vertex
+/// does not have a self-loop.
+///
+/// Only vertices contained in `subgame_vertices` are considered part of the SCC.
+fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
+    pg: &G,
+    partition: &BlockPartition<T>,
+    block: BlockIndex,
+    subgame_vertices: &HashSet<VertexIndex>,
+) -> bool {
+    let vertices_in_subgame: Vec<usize> = partition
+        .iter_block(block)
+        .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
+        .collect();
+
+    if vertices_in_subgame.len() != 1 {
+        return false;
+    }
+
+    let vertex = VertexIndex::new(vertices_in_subgame[0]);
+    !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
 }
 
 /// Computes the set of vertices reachable from the given initial vertices in
@@ -144,6 +183,7 @@ fn backward_reachability(predecessors: &Predecessors, mut initial: BitVec) -> Bi
     while let Some(v) = queue.pop() {
         for w in predecessors.predecessors(v) {
             if !visited.get(w.index()).expect("Vertex must be in the reachable vector") {
+                trace!("Reached vertex {} from vertex {}", w, v);
                 visited.set(w.index(), true);
                 queue.push(w);
             }
@@ -347,12 +387,12 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
-    use crate::Player;
     use crate::random_parity_game;
     use crate::solve_zielonka;
-    use crate::verify::SolitaireGame;
     use crate::verify::solve_solitaire_game;
+    use crate::verify::SolitaireGame;
     use crate::write_pg;
+    use crate::Player;
 
     #[test]
     fn test_random_solitaire_game() {
@@ -367,7 +407,7 @@ mod tests {
 
             assert_eq!(
                 solution, expected_solution[0],
-                "The winning set for the solitaire game should match the winning set for the original game"
+                "The solution for the solitaire solver should match the zielonka solution"
             );
         })
     }
