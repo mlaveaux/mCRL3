@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use merc_aterm::ATermIndex;
-use merc_utilities::ProtectionIndex;
+use merc_collections::ProtectionIndex;
 
 #[cfg(feature = "import")]
 mod import;

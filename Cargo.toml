@@ -33,6 +33,8 @@ members = [
     "crates/rec-tests",
     "crates/reduction",
     "crates/refinement",
+    "crates/sabre_compiling",
+    "crates/sabre_compiling/sabre_ffi",
     "crates/sabre",
     "crates/sabre/benchmarks",
     "crates/sharedmutex",
@@ -81,6 +83,9 @@ smallvec = "1.15"
 thiserror = "2.0"
 toml = "1.1"
 winapi = { version = "0.3", features = ["consoleapi"] }
+
+# Used for the compiling rewriter
+libloading = "0.9"
 
 # Used by the lower level crates
 allocator-api2 =  "0.4"
@@ -131,6 +136,8 @@ merc_refinement = { version = "2.0", path = "crates/refinement" }
 merc_rec-tests = { path = "crates/rec-tests" }
 merc_reduction = { version = "2.0", path = "crates/reduction" }
 merc_sabre = { version = "2.0", path = "crates/sabre" }
+merc_sabre-compiling = { path = "crates/sabre_compiling" }
+merc_sabre-ffi = { path = "crates/sabre_compiling/sabre_ffi" }
 merc_sharedmutex = { version = "2.0", path = "crates/sharedmutex" }
 merc_symbolic = { version = "3.0", path = "crates/symbolic", features = ["clap"] }
 merc_syntax = { version = "2.0", path = "crates/syntax" }
