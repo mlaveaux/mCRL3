@@ -145,12 +145,6 @@ pub struct BinaryATermWriter<W: Write> {
 
 impl<W: Write> BinaryATermWriter<W> {
     /// Creates a new binary ATerm output stream with the given writer.
-    ///
-    /// # Arguments
-    /// * `writer` - The underlying writer to write binary data to
-    ///
-    /// # Returns
-    /// A new [BinaryATermWriter] instance or an error if header writing fails
     pub fn new(writer: W) -> Result<Self, MercError> {
         let mut stream = BitStreamWriter::new(writer);
 
@@ -190,9 +184,6 @@ impl<W: Write> BinaryATermWriter<W> {
     }
 
     /// Returns the current bit width needed to encode a function symbol index.
-    ///
-    /// In debug builds, this asserts that the cached width equals the
-    /// computed width based on the current number of function symbols.
     fn function_symbol_index_width(&self) -> u8 {
         let expected = bits_for_value(self.function_symbols.len());
         debug_assert_eq!(
@@ -204,9 +195,6 @@ impl<W: Write> BinaryATermWriter<W> {
     }
 
     /// Returns the current bit width needed to encode a term index.
-    ///
-    /// In debug builds, this asserts that the cached width equals the
-    /// computed width based on the current number of terms.
     fn term_index_width(&self) -> u8 {
         let expected = bits_for_value(self.terms.len());
         debug_assert_eq!(

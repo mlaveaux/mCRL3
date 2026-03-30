@@ -396,11 +396,6 @@ impl ThreadTermPool {
         }
     }
 
-    /// Returns access to the shared protection set.
-    pub(crate) fn get_protection_set(&self) -> &Arc<UnsafeCell<SharedTermProtection>> {
-        &self.protection_set
-    }
-
     /// Returns a reference to the global term pool.
     pub(crate) fn term_pool(&self) -> &RecursiveLock<GlobalTermPool> {
         &self.term_pool

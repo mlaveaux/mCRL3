@@ -132,6 +132,30 @@ let expr = DataExpression::with_sort(ATerm::constant(&Symbol::new("42", 0)), ATe
 let expr_ref: DataExpressionRef = expr.copy();
 ```
 
+## Safety
+
+This crate does use `unsafe` for some of the more intricrate parts of the
+library, but every module that only uses safe Rust is marked with
+`#![forbid(unsafe_code)]`. This crate is a full reimplementation of the ATerm
+library used in the [mCRL2](https://mcrl2.org) toolset.
+
+Misuse of `GcMutex`, used by the `Protected` struct, can lead to undefined
+behaviour in safe code. Ensure that the guards returned from `GcMutex` are not
+used after the `THREAD_TERM_POOL` is dropped, which happens when the thread
+terminates. The same applies to the `Return<T>` struct, which also holds a
+reference to the thread local term pool. Alternatively, we could have required
+access to `THREAD_TERM_POOL` to only be called through the closures, but this
+would have made the API more cumbersome to use.
+
+Furthermore, the `protect` and `protect_symbol` methods of `Protected` must be
+used in a way that the resulting term or symbol is inserted into the container,
+otherwise undefined behaviour may occur after garbage collection. This is
+checked in debug mode, but the checks are far too expensive to be performed in
+release mode.
+
+Reading the `value()` of an `ATermInt` that is not actually a valid integer term
+leads to undefined behaviour. This is also only checked in debug mode.
+
 ## Changelog
 
 ### Current
@@ -139,13 +163,6 @@ let expr_ref: DataExpressionRef = expr.copy();
 Removed the `ahash`, `arbitrary`, `arbtest`, and `rayon` dependencies since
 their use was only minimal. Fixed a bug where garbage collection of terms was
 not triggered properly.
-
-## Safety
-
-This crate does use `unsafe` for some of the more intricrate parts of the
-library, but every module that only uses safe Rust is marked with
-`#![forbid(unsafe_code)]`. This crate is a full reimplementation of the ATerm
-library used in the [mCRL2](https://mcrl2.org) toolset.
 
 ## Related work
 
