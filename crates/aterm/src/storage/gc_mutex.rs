@@ -31,18 +31,7 @@ impl<T> GcMutex<T> {
     }
 
     /// Provides mutable access to the underlying value, returning a [GcMutexGuard].
-    pub fn write(&self) -> GcMutexGuard<'_, T> {
-        GcMutexGuard {
-            mutex: self,
-            // This is only safe if the called maintains the above contract.
-            guard: ManuallyDrop::new(THREAD_TERM_POOL.with_borrow(|tp| unsafe {
-                std::mem::transmute::<_, GlobalTermPoolGuard<'_>>(tp.term_pool().read_recursive().expect("Lock poisoned!"))
-            })),
-        }
-    }
-
-    /// Provides immutable access to the underlying value, returning a [GcMutexGuard].
-    pub fn read(&self) -> GcMutexGuard<'_, T> {
+    pub fn lock(&self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
             // This is only safe if the called maintains the above contract.

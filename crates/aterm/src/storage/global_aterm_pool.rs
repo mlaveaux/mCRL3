@@ -14,6 +14,7 @@ use merc_sharedmutex::RecursiveLockReadGuard;
 use merc_unsafety::ProtectionSet;
 use merc_unsafety::StablePointer;
 use merc_utilities::debug_trace;
+use parking_lot::Mutex;
 
 use crate::ATermIndex;
 use crate::ATermRef;
@@ -48,6 +49,8 @@ pub struct GlobalTermPool {
     symbol_pool: SymbolPool,
     /// The thread-specific protection sets.
     thread_pools: ThreadPoolList,
+    /// A separate protection set for sendable terms, see [crate::ATermSend].
+    send_term_protection_sets: Vec<Option<Arc<Mutex<ProtectionSet<ATermIndex>>>>>,
 
     // Data structures used for garbage collection
     /// Used to avoid reallocations for the markings of all terms - uses pointers as keys
@@ -81,6 +84,7 @@ impl GlobalTermPool {
             terms: ATermStorage::new(),
             symbol_pool,
             thread_pools: ThreadPoolList(Vec::new()),
+            send_term_protection_sets: Vec::new(),
             marked_terms: HashSet::new(),
             marked_symbols: HashSet::new(),
             stack: Vec::new(),
@@ -137,9 +141,9 @@ impl GlobalTermPool {
     /// Note that the returned `Arc<UnsafeCell<...>>` is not Send or Sync, so it
     /// *must* be protected through other means.
     #[allow(clippy::arc_with_non_send_sync)]
-    pub(crate) fn register_thread_term_pool(&mut self) -> Arc<UnsafeCell<SharedTermProtection>> {
+    pub(crate) fn register_thread_term_pool(&mut self) -> (Arc<UnsafeCell<SharedTermProtection>>, Arc<Mutex<ProtectionSet<ATermIndex>>>) {
         let protection = Arc::new(UnsafeCell::new(SharedTermProtection {
-            protection_set: ProtectionSet::new(),
+            term_protection_set: ProtectionSet::new(),
             symbol_protection_set: ProtectionSet::new(),
             container_protection_set: ProtectionSet::new(),
             index: self.thread_pools.len(),
@@ -148,7 +152,10 @@ impl GlobalTermPool {
         debug!("Registered thread_local protection set(s) {}", self.thread_pools.len());
         self.thread_pools.push(Some(protection.clone()));
 
-        protection
+        let protection_set = Arc::new(Mutex::new(ProtectionSet::new()));
+        self.send_term_protection_sets.push(Some(protection_set.clone()));
+
+        (protection, protection_set)
     }
 
     /// Deregisters a thread pool.
@@ -229,7 +236,7 @@ impl GlobalTermPool {
                 marker.marked_symbols.insert(symbol.copy());
             }
 
-            for (_root, term) in pool.protection_set.iter() {
+            for (_root, term) in pool.term_protection_set.iter() {
                 debug_trace!("Marking root {_root} term {term:?}");
                 unsafe {
                     ATermRef::from_index(term).mark(&mut marker);
@@ -374,7 +381,7 @@ impl std::ops::DerefMut for ThreadPoolList {
 /// index of the thread pool in the global term pool.
 pub struct SharedTermProtection {
     /// Protection set for terms
-    pub protection_set: ProtectionSet<ATermIndex>,
+    pub term_protection_set: ProtectionSet<ATermIndex>,
     /// Protection set to prevent garbage collection of symbols
     pub symbol_protection_set: ProtectionSet<SymbolIndex>,
     /// Protection set for containers
@@ -399,9 +406,9 @@ impl fmt::Display for ProtectionMetrics<'_> {
             f,
             "Protection set {} has {} roots, max {} and {} insertions",
             self.0.index,
-            LargeFormatter(self.0.protection_set.len()),
-            LargeFormatter(self.0.protection_set.maximum_size()),
-            LargeFormatter(self.0.protection_set.number_of_insertions())
+            LargeFormatter(self.0.term_protection_set.len()),
+            LargeFormatter(self.0.term_protection_set.maximum_size()),
+            LargeFormatter(self.0.term_protection_set.number_of_insertions())
         )?;
 
         writeln!(

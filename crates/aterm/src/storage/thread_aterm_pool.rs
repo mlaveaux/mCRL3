@@ -11,11 +11,14 @@ use log::debug;
 use merc_pest_consume::Parser;
 use merc_sharedmutex::RecursiveLock;
 use merc_sharedmutex::RecursiveLockReadGuard;
-use merc_unsafety::StablePointer;
 use merc_unsafety::ProtectionIndex;
+use merc_unsafety::ProtectionSet;
+use merc_unsafety::StablePointer;
 use merc_utilities::MercError;
 use merc_utilities::debug_trace;
+use parking_lot::Mutex;
 
+use crate::ATermIndex;
 use crate::Markable;
 use crate::Return;
 use crate::Rule;
@@ -40,8 +43,11 @@ thread_local! {
 
 /// Per-thread term pool managing local protection sets for interaction with the [GlobalTermPool].
 pub struct ThreadTermPool {
-    /// A reference to the protection set of this thread pool.
-    protection_set: Arc<UnsafeCell<SharedTermProtection>>,
+    /// Contains all the protection sets for this thread.
+    protection_sets: Arc<UnsafeCell<SharedTermProtection>>,
+
+    /// A separate protection set for sendable terms, see [crate::ATermSend].
+    send_term_protection_set: Arc<Mutex<ProtectionSet<ATermIndex>>>,
 
     /// The number of times terms have been created before garbage collection is triggered.
     garbage_collection_counter: Cell<usize>,
@@ -66,7 +72,7 @@ impl ThreadTermPool {
 
         let mut pool = term_pool.write().expect("Lock poisoned!");
 
-        let protection_set = pool.register_thread_term_pool();
+        let (protection_sets, send_term_protection_set) = pool.register_thread_term_pool();
         let int_symbol = pool.get_int_symbol().copy();
         let empty_list_symbol = pool.get_empty_list_symbol().copy();
         let list_symbol = pool.get_list_symbol().copy();
@@ -74,7 +80,8 @@ impl ThreadTermPool {
 
         // Arbitrary value to trigger garbage collection
         Self {
-            protection_set,
+            protection_sets,
+            send_term_protection_set,
             garbage_collection_counter: Cell::new(if AGGRESSIVE_GC { 1 } else { 1000 }),
             tmp_arguments: RefCell::new(Vec::new()),
             int_symbol,
@@ -256,7 +263,10 @@ impl ThreadTermPool {
     /// Protect the term by adding its index to the protection set
     pub fn protect(&self, term: &ATermRef<'_>) -> ATerm {
         // Protect the term by adding its index to the protection set
-        let root = self.lock_protection_set().protection_set.protect(term.shared().copy());
+        let root = self
+            .lock_protection_set()
+            .term_protection_set
+            .protect(term.shared().copy());
 
         // Return the protected term
         let result = ATerm::from_index(term.shared(), root);
@@ -275,8 +285,8 @@ impl ThreadTermPool {
     pub fn protect_guard(&self, _guard: RecursiveLockReadGuard<'_, GlobalTermPool>, term: &ATermRef<'_>) -> ATerm {
         // Protect the term by adding its index to the protection set
         // SAFETY: If the global term pool is locked, so we can safely access the protection set.
-        let root = unsafe { &mut *self.protection_set.get() }
-            .protection_set
+        let root = unsafe { &mut *self.protection_sets.get() }
+            .term_protection_set
             .protect(term.shared().copy());
 
         // Return the protected term
@@ -294,7 +304,7 @@ impl ThreadTermPool {
 
     /// Unprotects a term from this thread's protection set.
     pub fn drop(&self, term: &ATerm) {
-        self.lock_protection_set().protection_set.unprotect(term.root());
+        self.lock_protection_set().term_protection_set.unprotect(term.root());
 
         debug_trace!(
             "Unprotected term {:?}, root {}, protection set {}",
@@ -396,6 +406,11 @@ impl ThreadTermPool {
         }
     }
 
+    /// Returns a refernece to the send term protection set.
+    pub fn send_term_protection_set(&self) -> &Arc<Mutex<ProtectionSet<ATermIndex>>> {
+        &self.send_term_protection_set
+    }
+
     /// Returns a reference to the global term pool.
     pub(crate) fn term_pool(&self) -> &RecursiveLock<GlobalTermPool> {
         &self.term_pool
@@ -410,8 +425,8 @@ impl ThreadTermPool {
     ) {
         // Protect the term by adding its index to the protection set
         // SAFETY: If the global term pool is locked, so we can safely access the protection set.
-        unsafe { &mut *self.protection_set.get() }
-            .protection_set
+        unsafe { &mut *self.protection_sets.get() }
+            .term_protection_set
             .replace(root, term);
     }
 
@@ -441,7 +456,7 @@ impl ThreadTermPool {
     /// The protection set is locked by the global read-write lock
     fn lock_protection_set(&self) -> ProtectionSetGuard<'_> {
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-        let protection_set = unsafe { &mut *self.protection_set.get() };
+        let protection_set = unsafe { &mut *self.protection_sets.get() };
 
         ProtectionSetGuard::new(guard, protection_set)
     }
@@ -454,7 +469,7 @@ impl Drop for ThreadTermPool {
         debug!("{}", write.metrics());
         write.deregister_thread_pool(self.index());
 
-        debug!("{}", unsafe { &mut *self.protection_set.get() }.metrics());
+        debug!("{}", unsafe { &mut *self.protection_sets.get() }.metrics());
         debug!(
             "Acquired {} read locks and {} write locks",
             self.term_pool.read_recursive_call_count(),
@@ -512,7 +527,11 @@ mod tests {
 
                     // Verify protection
                     THREAD_TERM_POOL.with_borrow(|tp| {
-                        assert!(tp.lock_protection_set().protection_set.contains_root(protected.root()));
+                        assert!(
+                            tp.lock_protection_set()
+                                .term_protection_set
+                                .contains_root(protected.root())
+                        );
                     });
 
                     // Unprotect
@@ -520,7 +539,7 @@ mod tests {
                     drop(protected);
 
                     THREAD_TERM_POOL.with_borrow(|tp| {
-                        assert!(!tp.lock_protection_set().protection_set.contains_root(root));
+                        assert!(!tp.lock_protection_set().term_protection_set.contains_root(root));
                     });
                 });
             }
