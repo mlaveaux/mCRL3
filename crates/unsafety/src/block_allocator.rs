@@ -4,32 +4,33 @@ use std::fmt;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::Ordering;
+use std::sync::MutexGuard;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
 use itertools::Itertools;
 
+use crate::FreeList;
+use crate::FreeListEntry;
+
 /// This is a slab allocator or also called block allocator for a concrete type
-/// `T`. It stores blocks of `Size` to minimize the overhead of individual
-/// memory allocations (which are typically in the range of one or two words).
+/// `T`. It stores blocks of `N` to minimize the overhead of individual memory
+/// allocations, which are typically in the range of one or two words.
 ///
 /// Behaves like `Allocator`, except that it only allocates for layouts of `T`.
 ///
-/// This allocator is lock-free for the common allocation/deallocation paths
-/// (freelist pop/push) and only takes a lock when a new block needs to be
-/// allocated.
+/// This allocator is lock-free for the common allocation/deallocation paths and
+/// only takes a lock when a new block needs to be allocated.
 ///
 /// # Details
 ///
-/// Internally stores blocks of `N` elements
+/// Internally stores blocks of `N` elements.
 pub struct BlockAllocator<T, const N: usize> {
     /// Blocks and bump pointer are protected by a mutex (cold path only — new block allocation).
     blocks: Mutex<BlockList<T, N>>,
 
-    /// The head of the lock-free freelist (Treiber stack). Null means empty.
-    free: AtomicPtr<Entry<T>>,
+    /// Recycled entries managed in a lock-free Treiber stack.
+    free: FreeList<Entry<T>>,
 }
 
 /// The block list and bump pointer, protected by the blocks mutex.
@@ -54,7 +55,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 head_block: None,
                 bump_offset: 0,
             }),
-            free: AtomicPtr::new(std::ptr::null_mut()),
+            free: FreeList::new(),
         }
     }
 
@@ -64,26 +65,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// bump-allocates from blocks and takes a lock for now blocks.
     pub fn allocate_object(&self) -> Result<NonNull<T>, AllocError> {
         // Fast path: pop from the lock-free freelist (Treiber stack).
-        let mut head = self.free.load(Ordering::Acquire);
-        loop {
-            if head.is_null() {
-                break;
-            }
-
-            // Safety: `head` is a valid freed entry in our freelist. Reading `next` is safe
-            // because no other thread can reclaim this node until our CAS succeeds (the
-            // entry is logically owned by whoever read `head` before the CAS).
-            let next = unsafe { (*head).next };
-
-            match self.free.compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire) {
-                Ok(_) => {
-                    // Safety: `head` was a valid entry pointer; cast back to T.
-                    return Ok(unsafe { NonNull::new_unchecked(head as *mut T) });
-                }
-                Err(actual) => {
-                    head = actual;
-                }
-            }
+        if let Some(entry) = self.free.try_pop() {
+            return Ok(entry.cast());
         }
 
         // Slow path: bump-allocate from a block.
@@ -93,7 +76,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// Slow path: allocate from the block list, potentially allocating a new block.
     #[cold]
     fn allocate_from_block(&self) -> Result<NonNull<T>, AllocError> {
-        let mut blocks = self.blocks.lock().map_err(|_| AllocError)?;
+        let mut blocks = self.blocks.lock().expect("Lock poisoned");
 
         // Ensure we have a block with space.
         match &blocks.head_block {
@@ -127,73 +110,99 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
     /// Deallocates a previously-allocated pointer (lock-free push onto freelist).
     pub fn deallocate_object(&self, ptr: NonNull<T>) {
-        let entry = ptr.as_ptr() as *mut Entry<T>;
-
-        let mut head = self.free.load(Ordering::Relaxed);
-        loop {
-            // Safety: `entry` is a valid freed allocation; writing `next` is safe because
-            // we own this slot (the caller guarantees it is no longer in use).
-            unsafe {
-                (*entry).next = head;
-            }
-
-            match self.free.compare_exchange_weak(head, entry, Ordering::AcqRel, Ordering::Relaxed) {
-                Ok(_) => return,
-                Err(actual) => {
-                    head = actual;
-                }
-            }
-        }
+        self.free.push(ptr.cast());
     }
     
     /// Removes empty blocks from the block list. Should be called periodically
     /// to prevent memory usage from growing indefinitely.
-    pub fn remove_free_blocks(&mut self) {
-        // let mut blocks = self.blocks.lock().expect("poisoned lock");
+    pub fn remove_free_blocks(&mut self) -> usize {
+        // A special value that must not occur in the values of `T`.
+        let nonexisting_value = std::ptr::dangling_mut();
+        
+        for block in unsafe { self.iter() } {
+            // Check that none of the entries contain the special value.
+            debug_assert!(block.data.iter().all(|entry| {
+                    unsafe { entry.next != nonexisting_value }
+            }), "The special value used to mark free entries must not be present in any live entry");
+        }
 
-        // // We can only safely remove a block if all its entries are on the freelist.
-        // // This is a bit tricky to check without additional metadata, so for simplicity
-        // // we just check if all entries in the block are in the freelist by iterating
-        // // over the freelist and counting how many entries belong to each block.
-        // let mut free_counts: Vec<usize> = Vec::new();
-        // for entry_ptr in unsafe { self.iter_free() } {
-        //     let entry_addr = entry_ptr.as_ptr() as usize;
+        let mut guard = self.blocks.lock().expect("Lock poisoned");        
+        let removed = if let Some(head_block) = guard.head_block.as_mut() {
+            // Mark all elements in the free list with a special value that none of the live entries can have (e.g., a non-canonical pointer).
+            unsafe {
+                let mut previous: Option<NonNull<Entry<T>>> = None;
+                for current in self.free.iter() {
+                    if let Some(previous) = previous {
+                        (*previous.as_ptr()).next = nonexisting_value;
+                    }
+                    previous = Some(current);
+                }
 
-        //     // Check which block this entry belongs to.
-        //     let mut current_block = &blocks.head_block;
-        //     let mut block_index = 0;
-        //     while let Some(block) = current_block {
-        //         let block_start = &block.data[0] as *const Entry<T> as usize;
-        //         let block_end = &block.data[N - 1] as *const Entry<T> as usize + std::mem::size_of::<Entry<T>>();
+                if let Some(previous) = previous {
+                    (*previous.as_ptr()).next = nonexisting_value;
+                }
+            }
 
-        //         if entry_addr >= block_start && entry_addr < block_end {
-        //             // This entry belongs to the current block.
-        //             if block_index >= free_counts.len() {
-        //                 free_counts.resize(block_index + 1, 0);
-        //             }
-        //             free_counts[block_index] += 1;
-        //             break;
-        //         }
+            // We will rebuild the freelist from the remaining blocks below.
+            self.free.clear();
+            
+            // Remove blocks that are now empty, i.e., all their entries have no nonexisting_value
+            let mut previous_block: Option<*mut Box<Block<T, N>>> = None;
+            let mut block = head_block as *mut Box<Block<T, N>>;
+            let mut removed_blocks = 0;
 
-        //         current_block = &block.next;
-        //         block_index += 1;
-        //     }
-        // }
+            loop {
+                if unsafe { (*block).data.iter().all(|entry| entry.next == nonexisting_value) } {
+                    // Remove block from the list, by making the previous block point to the next block.
+                    if let Some(previous_block) = previous_block {
+                        unsafe {
+                            (*previous_block).next = (*block).next.take();
+                        }
+                    } else {
+                        guard.head_block = unsafe { (*block).next.take() };
+                    }
 
-        // Now we know how many free entries each block has. We can remove any block that is completely free.
-        // let mut current_block = &mut blocks.head_block;
+                    removed_blocks += 1;
+                }
 
-        // let mut index = 0;
-        // while let Some(block) = current_block {
-        //     if index < free_counts.len() && free_counts[index] == N {
-        //         // This block is completely free; remove it from the list.
-        //         *current_block = block.next.take();
-        //     } else {
-        //         current_block = &mut block.next;
-        //     }
+                previous_block = Some(block);
+                block = match unsafe { &mut (*block).next } {
+                    Some(next_block) => next_block,
+                    None => break,
+                };
+            }   
 
-        //     index += 1;
-        // }        
+            // Recreate the free list by pushing all entries of the remaining blocks back onto the free list.
+            
+            removed_blocks
+        } else {
+            // No blocks, nothing to remove.
+            0
+        };
+
+        drop(guard);
+
+        for block in unsafe { self.iter() } {
+            for entry in block.data.iter() {
+                // Safety: we only push entries that were marked with the special value, which means they are not live.
+                unsafe {
+                    if entry.next == nonexisting_value {
+                        self.free.push(NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>));
+                    }
+                }
+            }
+        }
+
+        removed
+    }
+
+    /// Returns an iterator over the blocks
+    unsafe fn iter<'a>(&'a self) -> BlockIter<'a, T, N> {
+        let guard = self.blocks.lock().expect("Lock poisoned");
+        BlockIter {
+            current: guard.head_block.as_ref().map(|b| b as *const _),
+            _guard: guard,
+        }
     }
 
     /// Returns an iterator over the free list entries.
@@ -202,9 +211,9 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     ///
     /// This is only safe when no concurrent allocations or deallocations are in progress
     /// (e.g., in single-threaded tests or with `&mut self`).
-    unsafe fn iter_free(&self) -> FreeListIterator<T> {
-        FreeListIterator {
-            current: NonNull::new(self.free.load(Ordering::Relaxed)),
+    unsafe fn iter_free(&self) -> impl Iterator<Item = NonNull<T>> + '_ {
+        unsafe {
+            self.free.iter().map(|entry| entry.cast())
         }
     }
 }
@@ -274,6 +283,43 @@ union Entry<T> {
     next: *mut Entry<T>,
 }
 
+// Safety: `Entry<T>` stores a single intrusive next-pointer in `next` used only
+// while the slot is on the freelist.
+unsafe impl<T> FreeListEntry for Entry<T> {
+    unsafe fn get_next(ptr: *mut Self) -> *mut Self {
+        // Safety: caller ensures `ptr` is a valid freelist node.
+        unsafe { (*ptr).next }
+    }
+
+    unsafe fn set_next(ptr: *mut Self, next: *mut Self) {
+        // Safety: caller ensures `ptr` is a valid freelist node.
+        unsafe {
+            (*ptr).next = next;
+        }
+    }
+}
+
+/// An iterator over the blocks in the block allocator.
+struct BlockIter<'a, T, const N: usize> {
+    current: Option<*const Box<Block<T, N>>>,
+    _guard: MutexGuard<'a, BlockList<T, N>>,
+}
+
+impl<'a, T, const N: usize> Iterator for BlockIter<'a, T, N> {
+    type Item = &'a Box<Block<T, N>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current_block = self.current?;
+
+        // Move to the next block for the next iteration.
+        self.current = unsafe {
+            (*current_block).next.as_ref()
+        }.map(|b| b as *const _);
+
+        Some(unsafe { &*current_block })
+    }
+}
+
 /// We maintain a list of blocks that store N elements each.
 struct Block<T, const N: usize> {
     data: [Entry<T>; N],
@@ -289,27 +335,6 @@ impl<T, const N: usize> Block<T, N> {
                 next: std::ptr::null_mut(),
             }),
             next: None,
-        }
-    }
-}
-
-/// Iterator over the free list entries in a BlockAllocator.
-struct FreeListIterator<T> {
-    current: Option<NonNull<Entry<T>>>,
-}
-
-impl<T> Iterator for FreeListIterator<T> {
-    type Item = NonNull<Entry<T>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.current {
-            // Safety: current is a valid entry in the freelist; next is either a valid pointer or null.
-            unsafe {
-                self.current = NonNull::new(current.as_ref().next);
-            }
-            Some(current)
-        } else {
-            None
         }
     }
 }
@@ -332,10 +357,10 @@ mod tests {
     use super::BlockAllocator;
 
     #[test]
-    #[cfg_attr(miri, ignore)]
+    // #[cfg_attr(miri, ignore)]
     fn test_block_allocator() {
         random_test(100, |rng| {
-            let allocator: BlockAllocator<u64, 256> = BlockAllocator::new();
+            let mut allocator: BlockAllocator<u64, 32> = BlockAllocator::new();
 
             // Allocate 1000 elements, recording each pointer alongside its written value.
             let mut allocated: Vec<(NonNull<u64>, u64)> = Vec::new();
@@ -364,6 +389,8 @@ mod tests {
                     assert_eq!(*ptr.as_ref(), *expected);
                 }
             }
+
+            println!("{} removed", allocator.remove_free_blocks());
 
             // Reallocate 500 elements to exercise the freelist and verify no aliasing.
             for _ in 0..500 {
