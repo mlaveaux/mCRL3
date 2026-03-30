@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::cell::UnsafeCell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fmt;
@@ -13,9 +12,11 @@ use delegate::delegate;
 
 use merc_sharedmutex::RecursiveLockReadGuard;
 use merc_unsafety::ProtectionIndex;
+use merc_unsafety::ProtectionSet;
 use merc_unsafety::StablePointer;
 use merc_utilities::MercError;
 use merc_utilities::PhantomUnsend;
+use parking_lot::Mutex;
 
 use crate::ATermIntRef;
 use crate::ATermList;
@@ -28,7 +29,6 @@ use crate::is_list_term;
 use crate::storage::GlobalTermPool;
 use crate::storage::Marker;
 use crate::storage::SharedTerm;
-use crate::storage::SharedTermProtection;
 use crate::storage::THREAD_TERM_POOL;
 
 /// The ATerm trait represents a first-order term in the ATerm library.
@@ -402,6 +402,70 @@ impl Ord for ATerm {
 
 impl Eq for ATerm {}
 
+
+/// A sendable variant of an `ATerm`.
+///
+/// # Details
+///
+/// Keeps track of an internal reference to the protection set it was protected from to ensure proper cleanup.
+pub struct ATermSend {
+    term: ATermRef<'static>,
+
+    /// The root of the term in the protection set
+    root: ProtectionIndex,
+
+    /// A shared reference to the protection set that this term was created in.
+    protection_set: Arc<Mutex<ProtectionSet<ATermIndex>>>,
+}
+
+unsafe impl Send for ATermSend {}
+unsafe impl Sync for ATermSend {}
+
+impl ATermSend {
+    /// Takes ownership of an `ATerm` and makes it send.
+    pub fn from(term: ATerm) -> Self {
+        // We need to insert the term into the protection set of the current
+        // thread, and keep track of the root index to properly unprotect it on
+        // drop.
+        let protection_set = THREAD_TERM_POOL.with_borrow(|tp| tp.send_term_protection_set().clone());
+        let term_ref: ATermRef<'static> = unsafe { ATermRef::from_index(&term.term.shared) };
+        let root = protection_set.lock().protect(term.shared().copy());
+
+        Self {
+            term: term_ref,
+            root,
+            protection_set,
+        }
+    }
+}
+
+impl Drop for ATermSend {
+    fn drop(&mut self) {
+        self
+            .protection_set
+            .lock()
+            .unprotect(self.root);
+    }
+}
+
+impl<'a, 'b> Term<'a, 'b> for ATermSend
+where
+    'b: 'a,
+{
+    delegate! {
+        to self.term {
+            fn protect(&self) -> ATerm;
+            fn arg(&self, index: usize) -> ATermRef<'a>;
+            fn arguments(&self) -> ATermArgs<'a>;
+            fn copy(&self) -> ATermRef<'a>;
+            fn get_head_symbol(&self) -> SymbolRef<'a>;
+            fn iter(&self) -> TermIterator<'a>;
+            fn index(&self) -> usize;
+            fn shared(&self) -> &ATermIndex;
+        }
+    }
+}
+
 /// This is a wrapper around a term that indicates it is being returned from a
 /// function.
 ///
@@ -581,5 +645,40 @@ impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b T {
 
     fn shared(&self) -> &ATermIndex {
         (*self).shared()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use parking_lot::Mutex;
+
+    use crate::{ATerm, ATermSend, Symbol};
+
+    #[test]
+    fn test_send_terms() {
+        // Run two threads that create and drop sendable terms, and check that the protection set is properly cleaned up.
+        let symbol = Symbol::new("a", 0);
+        let term = Arc::new(Mutex::new(ATermSend::from(ATerm::constant(&symbol))));
+
+        let thread_a = {
+            let term = term.clone();
+            let thread_a = std::thread::spawn(move || {
+                let symbol = Symbol::new("a", 0);
+
+                for _ in 0..100000 {
+                    *term.lock() = ATermSend::from(ATerm::constant(&symbol));
+                }
+            });
+
+            thread_a
+        };
+
+        for _ in 0..100000 {
+            *term.lock() = ATermSend::from(ATerm::constant(&symbol));
+        }
+
+        thread_a.join().unwrap();
     }
 }

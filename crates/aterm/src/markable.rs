@@ -74,19 +74,19 @@ impl<T: Markable> Markable for VecDeque<T> {
 
 impl<T: Markable> Markable for GcMutex<T> {
     fn mark(&self, marker: &mut Marker) {
-        self.write().mark(marker);
+        self.lock().mark(marker);
     }
 
     fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        self.read().contains_term(term)
+        self.lock().contains_term(term)
     }
 
     fn contains_symbol(&self, symbol: &SymbolRef<'_>) -> bool {
-        self.read().contains_symbol(symbol)
+        self.lock().contains_symbol(symbol)
     }
 
     fn len(&self) -> usize {
-        self.read().len()
+        self.lock().len()
     }
 }
 

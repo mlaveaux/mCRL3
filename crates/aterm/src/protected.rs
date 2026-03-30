@@ -48,12 +48,12 @@ impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
 
     /// Provides mutable access to the underlying container, returning a [ProtectedWriteGuard].
     pub fn write(&mut self) -> ProtectedWriteGuard<'_, C> {
-        ProtectedWriteGuard::new(self.container.write())
+        ProtectedWriteGuard::new(self.container.lock())
     }
 
     /// Provides immutable access to the underlying container, returning a [ProtectedReadGuard].
     pub fn read(&self) -> ProtectedReadGuard<'_, C> {
-        ProtectedReadGuard::new(self.container.read())
+        ProtectedReadGuard::new(self.container.lock())
     }
 }
 
@@ -65,32 +65,32 @@ impl<C: Default + Markable + Send + Transmutable + 'static> Default for Protecte
 
 impl<C: Clone + Markable + Send + Transmutable + 'static> Clone for Protected<C> {
     fn clone(&self) -> Self {
-        Protected::new(self.container.read().clone())
+        Protected::new(self.container.lock().clone())
     }
 }
 
 impl<C: Hash + Markable> Hash for Protected<C> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.container.read().hash(state)
+        self.container.lock().hash(state)
     }
 }
 
 impl<C: PartialEq + Markable> PartialEq for Protected<C> {
     fn eq(&self, other: &Self) -> bool {
-        self.container.read().eq(&other.container.read())
+        self.container.lock().eq(&other.container.lock())
     }
 }
 
 impl<C: PartialOrd + Markable> PartialOrd for Protected<C> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let c: &C = &other.container.read();
-        self.container.read().partial_cmp(c)
+        let c: &C = &other.container.lock();
+        self.container.lock().partial_cmp(c)
     }
 }
 
 impl<C: Debug + Markable> Debug for Protected<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let c: &C = &self.container.read();
+        let c: &C = &self.container.lock();
         write!(f, "{c:?}")
     }
 }
@@ -98,8 +98,8 @@ impl<C: Debug + Markable> Debug for Protected<C> {
 impl<C: Eq + PartialEq + Markable> Eq for Protected<C> {}
 impl<C: Ord + PartialEq + PartialOrd + Markable> Ord for Protected<C> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let c: &C = &other.container.read();
-        self.container.read().partial_cmp(c).unwrap()
+        let c: &C = &other.container.lock();
+        self.container.lock().partial_cmp(c).unwrap()
     }
 }
 
