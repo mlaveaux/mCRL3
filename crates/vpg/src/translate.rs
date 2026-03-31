@@ -1,9 +1,9 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::ControlFlow;
 
 use log::debug;
 use log::info;
-use log::trace;
 
 use log::warn;
 use merc_collections::IndexedSet;
@@ -62,7 +62,7 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     debug!("{}", equation_system);
 
     let mut algorithm: Translation<'_, _, ()> = Translation::new(lts, &labels, &equation_system);
-    algorithm.translate(lts.initial_state_index(), 0, |_| ())?;
+    algorithm.translate(lts.initial_state_index(), 0, |_| (), |_, _| Ok(()))?;
 
     // Construct the parity game from the collected vertices and edges, where the `()` edge label is ignored.
     let vertices = algorithm.vertices();
@@ -262,7 +262,10 @@ pub(crate) struct Translation<'a, L, E> {
     vertices: Vec<Option<(Player, Priority)>>,
     edges: Vec<(VertexIndex, E, VertexIndex)>,
 
-    // Used for the breadth first search.
+    /// Temporary storage used to check for duplicated outgoing edges.
+    seen_modality_targets: HashMap<VertexIndex, usize>,
+
+    /// Used for the breadth first search.
     queue: Vec<(StateIndex, Formula<'a>, VertexIndex)>,
 
     /// The parsed labels of the LTS.
@@ -292,6 +295,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             vertex_map: IndexedSet::new(),
             vertices: Vec::new(),
             edges: Vec::new(),
+            seen_modality_targets: HashMap::new(),
             queue: Vec::new(),
             lts,
             parsed_labels,
@@ -306,14 +310,16 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     /// outgoing edges of this vertex. The argument is the transition
     /// corresponding to the modality, or None if there is no modality (e.g.,
     /// for conjunctions).
-    pub fn translate<F>(
+    pub fn translate<F, C>(
         &mut self,
         initial_state: StateIndex,
         initial_equation_index: usize,
         labelling: F,
+        combine_labelling: C,
     ) -> Result<(), MercError>
     where
         F: Fn(Option<Transition>) -> E,
+        C: Fn(&mut E, E) -> Result<(), MercError>,
     {
         // We store (state, formula, N) into the queue, where N is the vertex number assigned to this pair. This means
         // that during the traversal we can assume this N to exist.
@@ -331,7 +337,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
             self.progress.print(self.vertices.len());
             match formula {
                 Formula::StateFrm(f) => {
-                    self.translate_vertex(s, f, vertex_index, &labelling);
+                    self.translate_vertex(s, f, vertex_index, &labelling, &combine_labelling)?;
                 }
                 Formula::Equation(i) => {
                     self.translate_equation(s, i, vertex_index, &labelling);
@@ -362,9 +368,17 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
 
     /// Translate a single vertex (s, Ψ) into the variability parity game vertex
     /// and its outgoing edges.
-    fn translate_vertex<F>(&mut self, s: StateIndex, formula: &'a StateFrm, vertex_index: VertexIndex, labelling: &F)
+    fn translate_vertex<F, C>(
+        &mut self,
+        s: StateIndex,
+        formula: &'a StateFrm,
+        vertex_index: VertexIndex,
+        labelling: &F,
+        combine_labelling: &C,
+    ) -> Result<(), MercError>
     where
         F: Fn(Option<Transition>) -> E,
+        C: Fn(&mut E, E) -> Result<(), MercError>,
     {
         match formula {
             StateFrm::True => {
@@ -415,43 +429,64 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                 formula,
                 expr,
             } => {
-                match operator {
-                    ModalityOperator::Box => {
-                        // (s, [a] Ψ) → odd, (s', Ψ) for all s' with s -a-> s', 0
-                        self.set_vertex(vertex_index, Player::Odd, Priority::new(0));
-
-                        for transition in self.lts.outgoing_transitions(s) {
-                            let action = &self.parsed_labels[*transition.label];
-
-                            if match_regular_formula(formula, action) {
-                                let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
-
-                                self.edges
-                                    .push((vertex_index, labelling(Some(transition)), s_prime_psi));
-                            }
-                        }
-                    }
-                    ModalityOperator::Diamond => {
-                        // (s, <a> Ψ) → even, (s', Ψ) for all s' with s -a-> s', 0
-                        self.set_vertex(vertex_index, Player::Even, Priority::new(0));
-
-                        for transition in self.lts.outgoing_transitions(s) {
-                            let action = &self.parsed_labels[*transition.label];
-
-                            if match_regular_formula(formula, action) {
-                                let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
-
-                                self.edges
-                                    .push((vertex_index, labelling(Some(transition)), s_prime_psi));
-                            }
-                        }
-                    }
-                }
+                self.translate_modality_vertex(s, *operator, formula, expr, vertex_index, labelling, combine_labelling)?;
             }
             _ => {
                 unimplemented!("Cannot translate formula {}", formula);
             }
         }
+
+        Ok(())
+    }
+
+    /// Translates a modality vertex (s, [a]Ψ) or (s, <a>Ψ) into the variability parity game vertex and its outgoing edges.
+    /// 
+    /// # Details
+    /// 
+    /// Applies the following transformations:
+    /// 
+    /// > (s, [a] Ψ) → odd, (s', Ψ) for all s' with s -a-> s', 0
+    /// > (s, <a> Ψ) → even, (s', Ψ) for all s' with s -a-> s', 0
+    fn translate_modality_vertex<F, C>(
+        &mut self,
+        s: StateIndex,
+        operator: ModalityOperator,
+        formula: &'a RegFrm,
+        expr: &'a StateFrm,
+        vertex_index: VertexIndex,
+        labelling: &F,
+        combine_labelling: &C,
+    ) -> Result<(), MercError>
+    where
+        F: Fn(Option<Transition>) -> E,
+        C: Fn(&mut E, E) -> Result<(), MercError>,
+    {
+        let player = match operator {
+            ModalityOperator::Box => Player::Odd,
+            ModalityOperator::Diamond => Player::Even,
+        };
+
+        self.set_vertex(vertex_index, player, Priority::new(0));
+        self.seen_modality_targets.clear();
+
+        for transition in self.lts.outgoing_transitions(s) {
+            let action = &self.parsed_labels[*transition.label];
+
+            if match_regular_formula(formula, action) {
+                let s_prime_psi = self.queue_vertex(transition.to, Formula::StateFrm(expr));
+                let label = labelling(Some(transition));
+
+                if let Some(edge_index) = self.seen_modality_targets.get(&s_prime_psi).copied() {
+                    combine_labelling(&mut self.edges[edge_index].1, label)?;
+                } else {
+                    let edge_index = self.edges.len();
+                    self.edges.push((vertex_index, label, s_prime_psi));
+                    self.seen_modality_targets.insert(s_prime_psi, edge_index);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Applies the translation to the given (s, equation) vertex.
@@ -541,6 +576,10 @@ fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use merc_lts::LTS;
+    use merc_lts::LtsBuilder;
+    use merc_lts::LtsBuilderMem;
+    use merc_lts::StateIndex;
     use merc_lts::read_aut;
     use merc_macros::merc_test;
     use merc_syntax::UntypedStateFrmSpec;
@@ -562,5 +601,26 @@ mod tests {
             compute_reachable(&pg).1.iter().all(|v| v.is_some()),
             "All vertices should be reachable from the initial vertex"
         );
+    }
+
+    #[merc_test]
+    fn test_modality_deduplicates_target_vertices() {
+        let mut builder = LtsBuilderMem::new(Vec::<String>::new(), Vec::new());
+        let source = StateIndex::new(0);
+        let target = StateIndex::new(1);
+
+        builder.add_transition(source, "a", target).unwrap();
+        builder.add_transition(source, "a", target).unwrap();
+
+        let lts = builder.finish(source).unwrap();
+        let formula = UntypedStateFrmSpec::parse("nu X. <a>X").unwrap();
+
+        let pg = translate(&lts, &formula.formula).unwrap();
+        let equation_vertex = pg.initial_vertex();
+        let modality_vertex = pg.outgoing_edges(equation_vertex).next().unwrap().to();
+
+        assert_eq!(pg.outgoing_edges(modality_vertex).count(), 1);
+        assert_eq!(pg.outgoing_edges(modality_vertex).next().unwrap().to(), equation_vertex);
+        assert_eq!(lts.outgoing_transitions(source).count(), 2);
     }
 }
