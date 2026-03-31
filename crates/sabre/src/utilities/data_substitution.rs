@@ -35,8 +35,7 @@ pub fn data_substitute_with(
 
 /// The recursive implementation for [data_substitute]
 ///
-/// Uses `depth to keep track of the depth in 't'. Function should be called
-/// with 'depth' = 0.
+/// Uses `depth` to keep track of the depth in 't', initially 0.
 fn substitute_rec(
     tp: &ThreadTermPool,
     t: &DataExpressionRef<'_>,

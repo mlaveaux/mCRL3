@@ -1,4 +1,3 @@
-use core::panic;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -47,11 +46,11 @@ impl Strategy {
     }
 
     /// Extends the strategy with an arbitrary strategy for the given `player` on the given `vertices`.
-    pub fn extend_arbitrary<G: PG>(mut self, pg: &G, vertices: &Set, player: Player) -> Strategy {
+    pub fn extend_arbitrary<G: PG>(mut self, pg: &G, vertices: &Set, subgame: &Set, player: Player) -> Strategy {
         for vertex in vertices.iter_ones().map(VertexIndex::new) {
             if pg.owner(vertex) == player && self.get(vertex).is_none() {
                 // Add an arbitrary mapping for this vertex, we can just take the first outgoing edge.
-                if let Some(edge) = pg.outgoing_edges(vertex).next() {
+                if let Some(edge) = pg.outgoing_edges(vertex).find(|edge| subgame[*edge.to()]) {
                     self.set(vertex, edge.to());
                 }
             }

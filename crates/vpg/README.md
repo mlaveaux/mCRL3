@@ -61,7 +61,7 @@ The implementation of this crate was developed by Sjef van Loo and Maurice
 Laveaux. The theoretical foundations were laid by Maurice Ter Beek, Erik de Vink
 and Tim A.C. Willemse, in the following publication:
 
-  > "Family-Based Model Checking Using Variability Parity Games". Maurice Ter Beek, Maurice Laveaux, Sjef van Loo, Erik de Vink and Tim A.C. Willemse. XXX.
+  > Maurice Ter Beek, Maurice Laveaux, Sjef van Loo, Erik de Vink and Tim A.C. Willemse. "Family-Based Model Checking Using Variability Parity Games". XXX.
 
 ## Safety
 

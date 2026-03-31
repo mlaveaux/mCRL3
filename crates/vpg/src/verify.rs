@@ -43,7 +43,9 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
         // Restricted game according to the strategy for the current player
         let restricted = Restricted::new(pg, player, &strategy[player.to_index()]);
 
-        // The opponent is the solitaire player.
+        // The opponent is the solitaire player, so invert the solution.
+        // Furthermore, only consider the vertices that are in the solution for
+        // the current player.
         let expected = !solve_solitaire_game(&restricted) & solution[player.to_index()].clone();
         if expected != solution[player.to_index()] {
             panic!("The strategy for player {} is incorrect, expected solution {}, got {}", player, expected, solution[player.to_index()]);

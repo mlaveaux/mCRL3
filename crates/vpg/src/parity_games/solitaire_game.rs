@@ -22,15 +22,16 @@ use crate::Priority;
 use crate::Set;
 use crate::VertexIndex;
 
-/// Solves a solitaire game for the given player. We assume that the input game
-/// is a trivial solitaire game, i.e., all vertices are owned by the same
-/// player, and that the game is total. This could be weakened to allow the
-/// other player to only do trivial moves, but that is not yet necessary for our
-/// use case.
-///
+/// Solves a solitaire game for the given player. 
+/// 
 /// # Details
+/// 
+/// We assume that the input game is a trivial solitaire game, i.e., all
+/// vertices are owned by the same player, and that the game is total. This
+/// could be weakened to allow the other player to only do trivial moves, but
+/// that is not yet necessary for our use case.
 ///
-/// This is done by considering all subgames Gi restricted to priority `i`
+/// Solving is done by considering all subgames Gi restricted to priority `i`
 /// belonging to `player`, and solving the simple solitaire game on each of
 /// these subgames.
 pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
