@@ -49,7 +49,12 @@ pub fn solve_zielonka<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Opt
     }
 
     if compute_strategy {
-        ([W0, W1], Some([S0.expect("Strategy not computed"), S1.expect("Strategy not computed")]))
+        // One of the strategies must be `Some`, but it could also be both.
+        debug_assert!(S0.is_some() || S1.is_some(), "At least one strategy should be computed if compute_strategy is true");
+        let S0 = S0.unwrap_or_default();
+        let S1 = S1.unwrap_or_default();
+
+        ([W0, W1], Some([S0, S1]))
     } else {
         ([W0, W1], None)
     }
@@ -139,14 +144,19 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         debug!("{}zielonka(V \\ A) |A| = {}", indent, A.count_ones());
         let (W1_0, S1_0, W1_1, S1_1) = self.zielonka_rec(V.clone().bitand(!A.clone()), depth + 1);
 
-        let (mut W1_alpha, mut S1_alpha, W1_not_alpha, _S1_not_alpha) =
+        let (mut W1_alpha, mut S1_alpha, W1_not_alpha, S1_not_alpha) =
             x_and_not_x_strategy(W1_0, S1_0, W1_1, S1_1, alpha);
 
         if !W1_not_alpha.any() {
             W1_alpha |= A;
-            // Combine the strategy from the attractor with the recursive strategy
-            S1_alpha = self.combine_strategies(S1_alpha, A_strategy);
-            combine_strategy(W1_alpha, S1_alpha, W1_not_alpha, Some(Strategy::new()), alpha)
+            // Combine the strategy from the attractor with the recursive strategy.
+            S1_alpha = self.union_strategies(S1_alpha, A_strategy).map_or_else(
+                || {
+                    Some(Strategy::new().extend_arbitrary(self.game, &V, alpha))
+                },
+                |s| Some(s.extend_arbitrary(self.game, &V, alpha)),
+            );
+            combine_with_strategy(W1_alpha, S1_alpha, W1_not_alpha, None, alpha)
         } else {
             let (B, B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
 
@@ -159,9 +169,10 @@ impl<G: PG> ZielonkaSolver<'_, G> {
 
             W2_not_alpha |= B;
             // Combine the strategy from the attractor with the recursive strategy
-            S2_not_alpha = self.combine_strategies(S2_not_alpha, B_strategy);
+            S2_not_alpha = self.union_strategies(self.union_strategies(S2_not_alpha, B_strategy), S1_not_alpha);
+
             check_partition(&W2_alpha, &W2_not_alpha, &full_V);
-            combine_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
+            combine_with_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
         }
     }
 
@@ -225,10 +236,10 @@ impl<G: PG> ZielonkaSolver<'_, G> {
 
     /// Combines two (possibly empty) strategies by overwriting the mappings in
     /// the first strategy with those in the second strategy, if they exist.
-    fn combine_strategies(&self, strategy1: Option<Strategy>, strategy2: Option<Strategy>) -> Option<Strategy> {
+    fn union_strategies(&self, strategy1: Option<Strategy>, strategy2: Option<Strategy>) -> Option<Strategy> {
         if let Some(s1) = strategy1 {
             if let Some(s2) = strategy2 {
-                Some(s1.combine(s2))
+                Some(s1.union(s2))
             } else {
                 Some(s1)
             }
@@ -287,7 +298,7 @@ pub fn x_and_not_x_strategy<U, V>(
 }
 
 /// Combines a pair of submaps ordered by player into a pair even, odd.
-pub fn combine_strategy<U, V>(
+pub fn combine_with_strategy<U, V>(
     omega_x: U,
     strategy_x: Option<V>,
     omega_not_x: U,
@@ -311,16 +322,21 @@ impl fmt::Display for DisplaySet<'_> {
 
 #[cfg(test)]
 mod tests {
+    use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
     use crate::random_parity_game;
     use crate::verify_solution;
+    use crate::write_pg;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow for this test.
     fn test_random_zielonka_solver() {
         random_test(100, |rng| {
-            let game = random_parity_game(rng, true, 100, 6, 3);
+            let mut files = DumpFiles::new("test_random_zielonka_solver");
+            let game = random_parity_game(rng, true, 5, 3, 3);
+
+            files.dump("input.pg", |writer| write_pg(writer, &game)).unwrap();
 
             let (solution, strategy) = super::solve_zielonka(&game, true);
 

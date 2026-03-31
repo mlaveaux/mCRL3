@@ -122,7 +122,7 @@ pub fn mutate_lts<L: LTS, R: Rng>(
 
     // Add new random transitions for the remaining mutations.
     let added_transitions = num_of_mutations - removed_transition;
-    if lts.num_of_states() > 0 && lts.labels().len() > 0 {
+    if lts.num_of_states() > 0 && !lts.labels().is_empty() {
         let state_uniform = Uniform::new(0, lts.num_of_states())?;
         let label_uniform = Uniform::new(0, lts.labels().len())?;
         for _ in 0..added_transitions {

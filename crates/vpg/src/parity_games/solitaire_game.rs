@@ -22,13 +22,18 @@ use crate::Priority;
 use crate::Set;
 use crate::VertexIndex;
 
-/// Solves a solitaire game for the given player.
+/// Solves a solitaire game for the given player. We assume that the input game
+/// is a trivial solitaire game, i.e., all vertices are owned by the same
+/// player, and that the game is total. This could be weakened to allow the
+/// other player to only do trivial moves, but that is not yet necessary for our
+/// use case.
 ///
 /// # Details
 ///
 /// This is done by considering all subgames Gi restricted to priority `i`
-/// belonging to `player`, and solving the simple solitaire game on each of these subgames.
-pub fn solve_solitaire_game<G: PG>(pg: &G, player: Player) -> BitVec {
+/// belonging to `player`, and solving the simple solitaire game on each of
+/// these subgames.
+pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
     debug_assert!(
         pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Even)
             || pg.iter_vertices().all(|vertex| pg.owner(vertex) == Player::Odd),
@@ -36,6 +41,9 @@ pub fn solve_solitaire_game<G: PG>(pg: &G, player: Player) -> BitVec {
     );
 
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
+
+    // The game is solitaire, so all vertices are owned by the same player.
+    let player = pg.owner(pg.initial_vertex());
 
     for priority in 0..=pg.highest_priority().value() {
         if Player::from_priority(&(Priority::new(priority))) != player {
@@ -318,11 +326,11 @@ mod tests {
     fn test_random_solitaire_game() {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_solitaire_game");
-            let pg = random_parity_game(rng, true, 5, 3, 3);
+            let pg = random_parity_game(rng, true, 100, 3, 3);
             let solitaire = SolitaireGame::new(&pg, Player::Even);
             files.dump("input.pg", |writer| write_pg(writer, &solitaire)).unwrap();
 
-            let solution = solve_solitaire_game(&solitaire, Player::Even);
+            let solution = solve_solitaire_game(&solitaire);
             let (expected_solution, _expected_strategy) = solve_zielonka(&solitaire, false);
 
             assert_eq!(
