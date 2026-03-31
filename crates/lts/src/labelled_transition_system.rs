@@ -341,7 +341,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         let num_transitions = self.num_of_transitions();
 
         debug_assert!(
-            self.states.len() >= 1,
+            !self.states.is_empty(),
             "states array must have at least one entry (the sentinel)"
         );
 

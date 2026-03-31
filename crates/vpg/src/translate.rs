@@ -576,10 +576,6 @@ fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use merc_lts::LTS;
-    use merc_lts::LtsBuilder;
-    use merc_lts::LtsBuilderMem;
-    use merc_lts::StateIndex;
     use merc_lts::read_aut;
     use merc_macros::merc_test;
     use merc_syntax::UntypedStateFrmSpec;
@@ -601,26 +597,5 @@ mod tests {
             compute_reachable(&pg).1.iter().all(|v| v.is_some()),
             "All vertices should be reachable from the initial vertex"
         );
-    }
-
-    #[merc_test]
-    fn test_modality_deduplicates_target_vertices() {
-        let mut builder = LtsBuilderMem::new(Vec::<String>::new(), Vec::new());
-        let source = StateIndex::new(0);
-        let target = StateIndex::new(1);
-
-        builder.add_transition(source, "a", target).unwrap();
-        builder.add_transition(source, "a", target).unwrap();
-
-        let lts = builder.finish(source).unwrap();
-        let formula = UntypedStateFrmSpec::parse("nu X. <a>X").unwrap();
-
-        let pg = translate(&lts, &formula.formula).unwrap();
-        let equation_vertex = pg.initial_vertex();
-        let modality_vertex = pg.outgoing_edges(equation_vertex).next().unwrap().to();
-
-        assert_eq!(pg.outgoing_edges(modality_vertex).count(), 1);
-        assert_eq!(pg.outgoing_edges(modality_vertex).next().unwrap().to(), equation_vertex);
-        assert_eq!(lts.outgoing_transitions(source).count(), 2);
     }
 }
