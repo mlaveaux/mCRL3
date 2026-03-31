@@ -82,7 +82,7 @@ pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
     }
 
     // Ensure there is at least one state (otherwise it would be an LTS without initial state).
-    builder.require_num_of_states(num_of_states);
+    builder.require_num_of_states(num_of_states.max(1));
 
     builder.finish(StateIndex::new(rng.random_range(0..num_of_states)), true)
 }

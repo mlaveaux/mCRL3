@@ -178,8 +178,8 @@ impl VariabilityParityGameBuilder {
     pub fn finish(
         mut self,
         manager_ref: &BDDManagerRef,
-        configuration: oxidd::bdd::BDDFunction,
-        variables: Vec<oxidd::bdd::BDDFunction>,
+        configuration: BDDFunction,
+        variables: Vec<BDDFunction>,
         remove_duplicates: bool,
     ) -> VariabilityParityGame {
         if remove_duplicates {

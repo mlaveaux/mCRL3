@@ -1,6 +1,6 @@
 [package]
 name = "merc_vpg"
-description = "Crate for manipulating (variability) parity games, including I/O in the PGSolver format"
+description = "Crate for solving (variability) parity games, including I/O in the PGSolver format"
 keywords = ["parity-games"]
 categories = ["algorithms", "data-structures", "science"]
 readme = "README.md"
