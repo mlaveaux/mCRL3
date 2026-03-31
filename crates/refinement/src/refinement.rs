@@ -407,8 +407,8 @@ mod tests {
                 let impl_pg = translate(&impl_lts, &formula).unwrap();
                 let spec_pg = translate(&spec_lts, &formula).unwrap();
 
-                let (impl_solution, _) = solve_zielonka(&impl_pg);
-                let (spec_solution, _) = solve_zielonka(&spec_pg);
+                let (impl_solution, _) = solve_zielonka(&impl_pg, false);
+                let (spec_solution, _) = solve_zielonka(&spec_pg, false);
 
                 assert!(
                     impl_solution[impl_pg.initial_vertex()] != spec_solution[spec_pg.initial_vertex()],

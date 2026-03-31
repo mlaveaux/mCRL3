@@ -33,12 +33,13 @@ impl Strategy {
         self.mapping.get(&from)
     }
 
-    /// Combines two strategies, preferring mappings from the second strategy.
+    /// Combines two strategies by overwriting the mappings in the base strategy with those in the extension strategy.
     pub fn combine(mut self, extension: Strategy) -> Strategy {
         // Add all mappings from the extension strategy to the base strategy
         for (&from, &to) in extension.iter() {
             self.set(from, to);
         }
+        
         self
     }
 
