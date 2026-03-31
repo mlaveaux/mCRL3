@@ -325,7 +325,7 @@ mod tests {
             files.dump("input.pg", |writer| write_pg(writer, &solitaire)).unwrap();
 
             let solution = solve_solitaire_game(&solitaire, Player::Even);
-            let (expected_solution, _expected_strategy) = solve_zielonka(&solitaire);
+            let (expected_solution, _expected_strategy) = solve_zielonka(&solitaire, false);
 
             assert_eq!(
                 solution, expected_solution[0],
