@@ -8,19 +8,19 @@ use delegate::delegate;
 
 use itertools::Itertools;
 use log::trace;
-use merc_collections::scc_decomposition;
 use merc_collections::BlockIndex;
 use merc_collections::BlockPartition;
+use merc_collections::scc_decomposition;
 use merc_utilities::MercIndex;
 
 use crate::AsGraph;
 use crate::Edge;
+use crate::PG;
 use crate::Player;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Set;
 use crate::VertexIndex;
-use crate::PG;
 
 /// Solves a solitaire game for the given player.
 ///
@@ -97,12 +97,7 @@ fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
             for vertex in block_partition.iter_block(scc) {
                 if subgame_vertices.contains(&VertexIndex::new(vertex)) {
                     winning_vertices.set(vertex, true);
-                    trace!(
-                        "Player {} wins {} in SCC {}",
-                        player,
-                        vertex,
-                        scc
-                    );
+                    trace!("Player {} wins {} in SCC {}", player, vertex, scc);
                 }
             }
         }
@@ -126,18 +121,21 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     if partition
         .iter_block(block)
         .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
-        .count() != 1 
+        .count()
+        != 1
     {
         // Contains at least 2 vertices, so non trivial.
         return false;
     }
 
     // Otherwise, must have a self loop.
-    let vertex = VertexIndex::new(partition
-        .iter_block(block)
-        .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
-        .next()
-        .expect("Block must contain at least one vertex"));
+    let vertex = VertexIndex::new(
+        partition
+            .iter_block(block)
+            .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
+            .next()
+            .expect("Block must contain at least one vertex"),
+    );
     !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
 }
 
@@ -150,10 +148,6 @@ fn backward_reachability(predecessors: &Predecessors, mut initial: BitVec) -> Bi
 
     for v in visited.iter_ones() {
         queue.push(VertexIndex::new(v));
-    }
-
-    for vertex in 0..5 {
-        trace!("Predecessors {vertex}: {:?}", predecessors.predecessors(VertexIndex::new(vertex)).collect::<Vec<_>>());
     }
 
     while let Some(v) = queue.pop() {
@@ -315,12 +309,12 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
+    use crate::Player;
     use crate::parity_games::solitaire_game::SolitaireGame;
     use crate::random_parity_game;
     use crate::solve_solitaire_game;
     use crate::solve_zielonka;
     use crate::write_pg;
-    use crate::Player;
 
     #[test]
     fn test_random_solitaire_game() {
