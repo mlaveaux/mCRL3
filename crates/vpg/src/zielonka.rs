@@ -195,8 +195,8 @@ impl<G: PG> ZielonkaSolver<'_, G> {
                     };
 
                     if attracted && !A[*v] {
-                        if self.game.owner(v) == alpha {
-                            strategy.as_mut().map(|s| s.set(v, w));
+                        if let Some(s) = strategy.as_mut() && self.game.owner(v) == alpha {
+                            s.set(v, w);
                         }
 
                         A.set(*v, true);
@@ -232,11 +232,7 @@ impl<G: PG> ZielonkaSolver<'_, G> {
             } else {
                 Some(s1)
             }
-        } else if let Some(s2) = strategy2 {
-            Some(s2)
-        } else {
-            None
-        }
+        } else { strategy2 }
     }
 }
 

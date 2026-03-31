@@ -131,9 +131,7 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     // Otherwise, must have a self loop.
     let vertex = VertexIndex::new(
         partition
-            .iter_block(block)
-            .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
-            .next()
+            .iter_block(block).find(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
             .expect("Block must contain at least one vertex"),
     );
     !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
@@ -198,7 +196,7 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
 
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_ {
         // Only consider vertices that are below the maximum priority.
-        self.restricted.iter_ones().map(|index| VertexIndex::new(index))
+        self.restricted.iter_ones().map(VertexIndex::new)
     }
 
     fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a {
