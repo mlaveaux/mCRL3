@@ -61,19 +61,9 @@ impl VariabilityParityGame {
         I: Iterator<Item = (VertexIndex, BDDFunction, VertexIndex)>,
     {
         let num_of_vertices = owner.len();
-        debug_assert_eq!(
-            priority.len(),
-            num_of_vertices,
-            "Owner and priority vectors should have the same length"
-        );
 
         let mut vertices = Vec::new();
         vertices.resize_with(num_of_vertices, Default::default);
-        debug_assert!(
-            initial_vertex.value() < num_of_vertices,
-            "Initial vertex index {} out of bounds {num_of_vertices}",
-            initial_vertex.value()
-        );
 
         // Count the number of transitions for every state
         let mut num_of_edges = 0;
@@ -127,12 +117,12 @@ impl VariabilityParityGame {
 
         vertices.push(num_of_edges); // Sentinel vertex
 
-        Self {
-            game: ParityGame::new(initial_vertex, owner, priority, vertices, edges_to),
+        Self::new(
+            ParityGame::new(initial_vertex, owner, priority, vertices, edges_to),
             configuration,
             variables,
             edges_configuration,
-        }
+        )
     }
 
     /// Construct a new variability parity game from the given components.
@@ -142,19 +132,14 @@ impl VariabilityParityGame {
         variables: Vec<BDDFunction>,
         edges_configuration: Vec<BDDFunction>,
     ) -> Self {
-        // Check that the sizes are consistent
-        debug_assert_eq!(
-            edges_configuration.len(),
-            parity_game.num_of_edges(),
-            "There should be a configuration BDD for every edge"
-        );
-
-        Self {
+        let result = Self {
             game: parity_game,
             configuration,
             variables,
             edges_configuration,
-        }
+        };
+        result.assert_consistent();
+        result
     }
 
     /// Returns true iff the parity game is total, checks all vertices have at least one outgoing edge.
@@ -201,6 +186,30 @@ impl VariabilityParityGame {
     /// Returns the priorities of the vertices in the variability parity game.
     pub(crate) fn priorities(&self) -> &Vec<Priority> {
         self.game.priorities()
+    }
+
+    /// Asserts that the internal state of the variability parity game is consistent.
+    fn assert_consistent(&self) {
+        debug_assert!(
+            self.initial_vertex().value() < self.num_of_vertices(),
+            "Initial vertex index {} out of bounds {}",
+            self.initial_vertex().value(),
+            self.num_of_vertices()
+        );
+
+        debug_assert_eq!(
+            self.priorities().len(),
+            self.num_of_vertices(),
+            "Owner and priority vectors should have the same length"
+        );
+
+        debug_assert_eq!(
+            self.game.num_of_edges(),
+            self.edges_configuration.len(),
+            "There should be a configuration BDD for every edge"
+        );
+        
+        // Edge duplicates are already checked in the underlying parity game.
     }
 }
 
