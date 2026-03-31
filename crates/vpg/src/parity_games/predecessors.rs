@@ -2,11 +2,11 @@
 
 use std::marker::PhantomData;
 
-use merc_collections::bytevec;
 use merc_collections::ByteCompressedVec;
+use merc_collections::bytevec;
 
-use crate::VertexIndex;
 use crate::PG;
+use crate::VertexIndex;
 
 /// Stores the predecessors for a given parity game.
 pub struct Predecessors<'a> {
@@ -68,7 +68,7 @@ impl<'a> Predecessors<'a> {
     }
 
     /// Returns an iterator over the predecessors the given vertex.
-    pub fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
+    pub fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + use<'_> {
         let start = self.vertex_to_predecessors.index(vertex_index.value());
         let end = self.vertex_to_predecessors.index(vertex_index.value() + 1);
         (start..end).map(move |i| self.edges_from.index(i))
@@ -80,7 +80,11 @@ mod tests {
     use itertools::Itertools;
     use merc_utilities::random_test;
 
-    use crate::{random_parity_game, Predecessors, PG};
+    use crate::PG;
+    use crate::Predecessors;
+    use crate::PrioSubgame;
+    use crate::Priority;
+    use crate::random_parity_game;
 
     #[test]
     fn test_random_predecessors() {
@@ -96,7 +100,33 @@ mod tests {
                     .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
                     .collect();
                 let actual_predecessors: Vec<_> = predecessors.predecessors(vertex).collect();
-                
+
+                assert_eq!(
+                    expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
+                    actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
+                    "Predecessors of vertex {} do not match",
+                    vertex.value()
+                );
+            }
+        })
+    }
+
+    #[test]
+    fn test_random_predecessors_subgame() {
+        random_test(100, |rng| {
+            let pg = random_parity_game(rng, true, 50, 10, 5);
+            let game = PrioSubgame::new(&pg, Priority::new(0));
+
+            let predecessors = Predecessors::new(&game);
+
+            for vertex in game.iter_vertices() {
+                // Compute the expected predecessors by iterating over all vertices and their outgoing edges.
+                let expected_predecessors: Vec<_> = game
+                    .iter_vertices()
+                    .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
+                    .collect();
+                let actual_predecessors: Vec<_> = predecessors.predecessors(vertex).collect();
+
                 assert_eq!(
                     expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
                     actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
