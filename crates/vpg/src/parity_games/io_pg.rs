@@ -106,7 +106,7 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
         vertex_count += 1;
     }
 
-    Ok(builder.finish(false, false))
+    Ok(builder.finish(true, true))
 }
 
 /// Writes the given parity game to the given writer in .pg format.
