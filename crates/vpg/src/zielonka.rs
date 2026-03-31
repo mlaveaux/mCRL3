@@ -106,6 +106,12 @@ impl<G: PG> ZielonkaSolver<'_, G> {
     }
 
     /// Recursively solves the parity game for the given set of vertices V.
+    /// 
+    /// # Details
+    /// 
+    /// The strategy computation is taken from the following paper:
+    /// 
+    /// >  Oliver Friedmann. Recursive algorithm for parity games requires exponential time. RAIRO Theor. Informatics Appl. 45(4): 449-457 (2011) [DOI](https://doi.org/10.1051/ita/2011124).
     fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, Option<Strategy>, Set, Option<Strategy>) {
         self.recursive_calls += 1;
         let full_V = V.clone(); // Used for debugging
@@ -138,6 +144,13 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         );
         trace!("{}Vertices in U: {}", indent, DisplaySet(&U));
 
+        // This copy of U is only necessary whenever a strategy is computed, see below.
+        let U_clone = if self.compute_strategy {
+            U.clone()
+        } else {
+            Set::default()
+        };
+
         let (A, A_strategy) = self.attractor(alpha, &V, U);
 
         trace!("{}Vertices in A: {}", indent, DisplaySet(&A));
@@ -150,12 +163,15 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         if !W1_not_alpha.any() {
             W1_alpha |= A;
             // Combine the strategy from the attractor with the recursive strategy.
-            S1_alpha = self.union_strategies(S1_alpha, A_strategy).map_or_else(
+            S1_alpha = if self.compute_strategy { self.union_strategies(S1_alpha, A_strategy).map_or_else(
                 || {
-                    Some(Strategy::new().extend_arbitrary(self.game, &V, alpha))
+                    Some(Strategy::new().extend_arbitrary(self.game, &U_clone, &V, alpha))
                 },
-                |s| Some(s.extend_arbitrary(self.game, &V, alpha)),
-            );
+                |s| Some(s.extend_arbitrary(self.game, &U_clone, &V, alpha)),
+            ) } else {
+                // Ignore strategy
+                None
+            };
             combine_with_strategy(W1_alpha, S1_alpha, W1_not_alpha, None, alpha)
         } else {
             let (B, B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
@@ -334,7 +350,7 @@ mod tests {
     fn test_random_zielonka_solver() {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_zielonka_solver");
-            let game = random_parity_game(rng, true, 5, 3, 3);
+            let game = random_parity_game(rng, true, 100, 5, 3);
 
             files.dump("input.pg", |writer| write_pg(writer, &game)).unwrap();
 
