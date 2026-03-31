@@ -269,7 +269,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         // Read and solve a standard parity game.
         let game = timing.measure("read_pg", || read_pg(&mut file))?;
 
-        let (solution, strategy) = timing.measure("solve_zielonka", || solve_zielonka(&game));
+        let (solution, strategy) = timing.measure("solve_zielonka", || solve_zielonka(&game, args.verify_solution));
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -280,7 +280,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             println!("{}", Player::Odd.solution())
         }
 
-        if args.verify_solution {
+        if let Some(strategy) = strategy && args.verify_solution {
             verify_solution(&game, &solution, &strategy);
         }
     } else {
