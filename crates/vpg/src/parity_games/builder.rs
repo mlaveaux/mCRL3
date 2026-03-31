@@ -75,7 +75,7 @@ impl ParityGameBuilder {
     }
 
     /// Finalizes the builder and returns the constructed parity game.
-    pub fn finish(&mut self, make_total: bool, remove_duplicates: bool) -> ParityGame {
+    pub fn finish(mut self, make_total: bool, remove_duplicates: bool) -> ParityGame {
         if remove_duplicates {
             self.remove_duplicates();
         }
@@ -86,15 +86,13 @@ impl ParityGameBuilder {
         let edges = self.edges.clone();
         ParityGame::from_edges(
             self.initial_vertex,
-            self.owners.clone(),
-            self.priorities.clone(),
+            self.owners,
+            self.priorities,
             make_total,
-            || {
-            edges.iter().cloned()
-        },
+            || edges.iter().cloned(),
         )
     }
-    
+
     /// Ensures that the owners and priorities vectors have enough capacity for the given number of vertices.
     fn ensure_vertex_capacity(&mut self, num_of_vertices: usize) {
         if self.owners.len() < num_of_vertices {
@@ -176,9 +174,9 @@ impl VariabilityParityGameBuilder {
         self.num_of_vertices
     }
 
-    /// Finalizes the builder and returns the constructed variability parity game.
+    /// Consumes the builder and returns the constructed variability parity game.
     pub fn finish(
-        &mut self,
+        mut self,
         manager_ref: &BDDManagerRef,
         configuration: oxidd::bdd::BDDFunction,
         variables: Vec<oxidd::bdd::BDDFunction>,
@@ -195,14 +193,14 @@ impl VariabilityParityGameBuilder {
         VariabilityParityGame::from_edges(
             manager_ref,
             self.initial_vertex,
-            self.owners.clone(),
-            self.priorities.clone(),
+            self.owners,
+            self.priorities,
             configuration,
             variables,
             || edges.iter().cloned(),
         )
     }
-    
+
     /// Ensures that the owners and priorities vectors have enough capacity for the given number of vertices.
     fn ensure_vertex_capacity(&mut self, num_of_vertices: usize) {
         if self.owners.len() < num_of_vertices {
@@ -217,8 +215,7 @@ impl VariabilityParityGameBuilder {
     fn remove_duplicates(&mut self) {
         self.edges.sort_by_key(|(from, _, to)| (*from, *to));
 
-        let mut merged: Vec<(VertexIndex, BDDFunction, VertexIndex)> =
-            Vec::with_capacity(self.edges.len());
+        let mut merged: Vec<(VertexIndex, BDDFunction, VertexIndex)> = Vec::with_capacity(self.edges.len());
         for (from, configuration, to) in self.edges.drain(..) {
             if let Some((last_from, last_configuration, last_to)) = merged.last_mut()
                 && *last_from == from

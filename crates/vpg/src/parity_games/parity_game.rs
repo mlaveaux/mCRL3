@@ -1,5 +1,6 @@
 //! Authors: Maurice Laveaux and Sjef van Loo
-use std::{collections::HashSet, fmt};
+use std::collections::HashSet;
+use std::fmt;
 
 use itertools::Itertools;
 
@@ -198,13 +199,17 @@ impl ParityGame {
             "There should be an offset for every vertex, and the sentinel state"
         );
         debug_assert_eq!(self.initial_vertex, 0, "The initial vertex should be vertex 0");
-        
+
         // Check that there are no duplicate edges
-        for vertex in self.iter_vertices() {
+        #[cfg(debug_assertions)]
+        {
             let mut seen = HashSet::new();
-            for edge in self.outgoing_edges(vertex) {
-                if !seen.insert(edge.to()) {
-                    panic!("Duplicate edge from vertex {:?} to vertex {:?}", vertex, edge.to());
+            for vertex in self.iter_vertices() {
+                seen.clear();
+                for edge in self.outgoing_edges(vertex) {
+                    if !seen.insert(edge.to()) {
+                        panic!("Duplicate edge from vertex {:?} to vertex {:?}", vertex, edge.to());
+                    }
                 }
             }
         }
@@ -298,7 +303,7 @@ pub trait PG {
     fn highest_priority(&self) -> Priority;
 
     /// Returns an iterator over all vertices in the parity game.
-    /// 
+    ///
     /// Assumes that the returned vertices are in the range 0 to
     /// num_of_vertices() - 1.
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
