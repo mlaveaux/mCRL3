@@ -126,8 +126,7 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
                 let successor_index: usize = parts[0].trim().parse()?;
                 let successor = VertexIndex::new(successor_index);
 
-                let edge_configuration =
-                if parts.len() > 1 {
+                let edge_configuration = if parts.len() > 1 {
                     parse_configuration_set(manager, &variables, parts[1].trim())?
                 } else {
                     // No configuration specified, use true (all configurations)
