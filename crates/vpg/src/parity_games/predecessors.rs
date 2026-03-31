@@ -51,14 +51,15 @@ impl<'a> Predecessors<'a> {
             }
         }
 
+        let mut offset = 0usize;
         vertex_to_predecessors.fold(0, |previous, start| {
             let result = *start;
             *start = previous;
+            offset = result;
             result
         });
 
-        // Add sentinel vertex
-        vertex_to_predecessors.push(edges_from.len());
+        vertex_to_predecessors.push(offset);
 
         Self {
             edges_from,
@@ -90,24 +91,7 @@ mod tests {
     fn test_random_predecessors() {
         random_test(100, |rng| {
             let game = random_parity_game(rng, true, 50, 10, 5);
-
-            let predecessors = Predecessors::new(&game);
-
-            for vertex in game.iter_vertices() {
-                // Compute the expected predecessors by iterating over all vertices and their outgoing edges.
-                let expected_predecessors: Vec<_> = game
-                    .iter_vertices()
-                    .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
-                    .collect();
-                let actual_predecessors: Vec<_> = predecessors.predecessors(vertex).collect();
-
-                assert_eq!(
-                    expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
-                    actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
-                    "Predecessors of vertex {} do not match",
-                    vertex.value()
-                );
-            }
+            check_predecessors(game);
         })
     }
 
@@ -117,23 +101,29 @@ mod tests {
             let pg = random_parity_game(rng, true, 50, 10, 5);
             let game = PrioSubgame::new(&pg, Priority::new(0));
 
-            let predecessors = Predecessors::new(&game);
-
-            for vertex in game.iter_vertices() {
-                // Compute the expected predecessors by iterating over all vertices and their outgoing edges.
-                let expected_predecessors: Vec<_> = game
-                    .iter_vertices()
-                    .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
-                    .collect();
-                let actual_predecessors: Vec<_> = predecessors.predecessors(vertex).collect();
-
-                assert_eq!(
-                    expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
-                    actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
-                    "Predecessors of vertex {} do not match",
-                    vertex.value()
-                );
-            }
+            check_predecessors(game);
         })
+    }
+
+    /// Checks that the predecessors computed by the `Predecessors` structure
+    /// match the expected predecessors computed by iterating over all vertices
+    /// and their outgoing edges.
+    fn check_predecessors<G: PG>(game: G) {
+        let predecessors = Predecessors::new(&game);
+        for vertex in game.iter_vertices() {
+            // Compute the expected predecessors by iterating over all vertices and their outgoing edges.
+            let expected_predecessors: Vec<_> = game
+                .iter_vertices()
+                .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
+                .collect();
+            let actual_predecessors: Vec<_> = predecessors.predecessors(vertex).collect();
+    
+            assert_eq!(
+                expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
+                actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
+                "Predecessors of vertex {} do not match",
+                vertex.value()
+            );
+        }
     }
 }
