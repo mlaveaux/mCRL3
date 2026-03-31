@@ -1,8 +1,10 @@
+use core::panic;
 use std::collections::HashMap;
 use std::fmt;
 
 use crate::PG;
 use crate::Player;
+use crate::Set;
 use crate::VertexIndex;
 
 /// Keeps track of a strategy for a player in a parity game.
@@ -33,13 +35,28 @@ impl Strategy {
         self.mapping.get(&from)
     }
 
-    /// Combines two strategies by overwriting the mappings in the base strategy with those in the extension strategy.
-    pub fn combine(mut self, extension: Strategy) -> Strategy {
+    /// Computes the union of two strategies, assumes that they do not overlap.
+    pub fn union(mut self, other: Strategy) -> Strategy {
         // Add all mappings from the extension strategy to the base strategy
-        for (&from, &to) in extension.iter() {
+        for (&from, &to) in other.iter() {
+            debug_assert!(!self.mapping.contains_key(&from), "Cannot combine strategies with overlapping domains");
             self.set(from, to);
         }
         
+        self
+    }
+
+    /// Extends the strategy with an arbitrary strategy for the given `player` on the given `vertices`.
+    pub fn extend_arbitrary<G: PG>(mut self, pg: &G, vertices: &Set, player: Player) -> Strategy {
+        for vertex in vertices.iter_ones().map(VertexIndex::new) {
+            if pg.owner(vertex) == player && self.get(vertex).is_none() {
+                // Add an arbitrary mapping for this vertex, we can just take the first outgoing edge.
+                if let Some(edge) = pg.outgoing_edges(vertex).next() {
+                    self.set(vertex, edge.to());
+                }
+            }
+        }
+
         self
     }
 
@@ -49,13 +66,21 @@ impl Strategy {
     }
 
     /// Checks that the strategy is only defined for the vertices owned by the
-    /// given player.
-    pub fn check_consistent<G: PG>(&self, pg: &G, player: Player) {
+    /// given player. Furthermore, ensure that the strategy is defined for all
+    /// vertices won in the solution for the given player
+    pub fn check_consistent<G: PG>(&self, pg: &G, solution: &Set, player: Player) {
         for vertex in pg.iter_vertices() {
+            if solution[*vertex] && pg.owner(vertex) == player && self.get(vertex).is_none() {
+                panic!(
+                    "Strategy is not defined for vertex {:?} owned by {:?}, but is in the winning set.",
+                    vertex,
+                    pg.owner(vertex),
+                );
+            }           
+            
             if self.get(vertex).is_some() && pg.owner(vertex) != player {
                 panic!(
-                    "Strategy is defined for vertex {:?} owned by {:?}, \
-                        but should only be defined for vertices owned by {:?}",
+                    "Strategy is defined for vertex {:?} owned by {:?}, but it should be owned by {:?}.",
                     vertex,
                     pg.owner(vertex),
                     player

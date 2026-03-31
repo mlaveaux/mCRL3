@@ -201,7 +201,7 @@ impl ParityGame {
         debug_assert_eq!(self.initial_vertex, 0, "The initial vertex should be vertex 0");
 
         // Check that there are no duplicate edges
-        #[cfg(debug_assertions)]
+        // #[cfg(debug_assertions)]
         {
             let mut seen = HashSet::new();
             for vertex in self.iter_vertices() {

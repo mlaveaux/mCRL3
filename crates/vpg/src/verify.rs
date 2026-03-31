@@ -1,6 +1,7 @@
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
 use delegate::delegate;
+use log::trace;
 
 use crate::check_partition;
 use crate::solve_solitaire_game;
@@ -22,6 +23,12 @@ use crate::PG;
 pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy; 2]) {
     debug_assert!(pg.is_total(), "Verifying requires a total parity game");
 
+    trace!("Solution for even: {}", solution[Player::Even.to_index()]);
+    trace!("Solution for odd: {}", solution[Player::Odd.to_index()]);
+
+    trace!("Strategy for even: {:?}", strategy[Player::Even.to_index()]);
+    trace!("Strategy for odd: {:?}", strategy[Player::Odd.to_index()]);
+
     // The set of all vertices in the game.
     let vertices = bitvec![usize, Lsb0; 1; pg.num_of_vertices()];
 
@@ -31,14 +38,15 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
     // We check both players' strategies
     for player in [Player::Even, Player::Odd] {
         // Check that the strategies are consistent with the ownership of the vertices
-        strategy[player.to_index()].check_consistent(pg, player);
+        strategy[player.to_index()].check_consistent(pg, &solution[player.to_index()], player);
 
         // Restricted game according to the strategy for the current player
         let restricted = Restricted::new(pg, player, &strategy[player.to_index()]);
 
         // The opponent is the solitaire player.
-        if solve_solitaire_game(&restricted, player.opponent()) != solution[player.opponent().to_index()] {
-            panic!("The proposed winning set for player {} is incorrect", player);
+        let expected = !solve_solitaire_game(&restricted) & solution[player.to_index()].clone();
+        if expected != solution[player.to_index()] {
+            panic!("The strategy for player {} is incorrect, expected solution {}, got {}", player, expected, solution[player.to_index()]);
         }
     }
 }
@@ -66,6 +74,11 @@ impl<G: PG> Restricted<'_, G> {
 impl<G: PG> PG for Restricted<'_, G> {
     type Label = G::Label;
 
+    fn owner(&self, _vertex_index: VertexIndex) -> Player {
+        // We know that player only makes moves according to the strategy, so we can treat all vertices in the game as if they were owned by the opponent.
+        self.player.opponent()
+    }
+
     fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a {
         self.game.outgoing_edges(vertex_index).filter(move |edge| {
             // Only consider edges that follow the strategy.
@@ -83,7 +96,6 @@ impl<G: PG> PG for Restricted<'_, G> {
             fn initial_vertex(&self) -> VertexIndex;
             fn num_of_vertices(&self) -> usize;
             fn num_of_edges(&self) -> usize;
-            fn owner(&self, vertex: VertexIndex) -> Player;
             fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
             fn priority(&self, vertex: VertexIndex) -> Priority;
             fn highest_priority(&self) -> Priority;
