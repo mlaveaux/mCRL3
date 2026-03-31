@@ -45,12 +45,18 @@ pub fn translate_vpg(
     debug!("{}", equation_system);
     let mut algorithm: Translation<'_, _, BDDFunction> = Translation::new(fts, &simplified_labels, &equation_system);
 
-    algorithm.translate(fts.initial_state_index(), 0, |transition| {
-        match transition {
+    algorithm.translate(
+        fts.initial_state_index(),
+        0,
+        |transition| match transition {
             Some(transition) => fts.labels()[transition.label].feature_expr().clone(),
             None => true_bdd.clone(), // The label does not matter, allow all configurations.
-        }
-    })?;
+        },
+        |existing, new| {
+            *existing = existing.or(&new)?;
+            Ok(())
+        },
+    )?;
 
     // Convert the feature diagram (with names) to a VPG
     let variables: Vec<BDDFunction> = fts.features().values().cloned().collect();
