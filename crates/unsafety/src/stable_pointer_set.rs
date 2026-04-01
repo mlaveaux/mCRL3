@@ -569,8 +569,19 @@ where
 
         // First add to storage, then to index
         let inserted = self.index.insert(entry);
+        if !inserted {
+            let entry = Entry::new(ptr.ptr());
+            let element = self
+                .index
+                .get(&entry)
+                .expect("Insertion failed, so entry must be in the set");
 
-        debug_assert!(inserted, "Value should not already exist in the index");
+            // Drop and deallocate the allocation we created since it was not inserted.
+            unsafe { std::ptr::drop_in_place(ptr.ptr().as_ptr()) };
+            unsafe { self.allocator.deallocate(ptr.ptr().cast(), Layout::new::<T>()) };
+
+            return (StablePointer::from_entry(&element), false);
+        }
 
         (ptr, true)
     }
