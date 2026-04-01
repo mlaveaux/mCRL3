@@ -5,6 +5,10 @@ on:
   push:
     branches: ["main"]
 
+  # Runs on pull requests
+  pull_request:
+    branches: [ main ]
+
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -24,12 +28,7 @@ env:
   SCCACHE_GHA_ENABLED: on
 
 jobs:
-  deploy:
-    if: github.repository == 'MERCorg/merc'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-      
+  build:      
     runs-on: ubuntu-latest
     
     steps:
@@ -54,9 +53,6 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
       - name: Checkout the repository
         uses: actions/checkout@v6
         with:
@@ -79,13 +75,25 @@ jobs:
           echo "<meta http-equiv=\"refresh\" content=\"0; url=merc_aterm\">" > target/doc/index.html
         env:
           RUSTC_WRAPPER: sccache
+          RUSTDOCFLAGS: "-D warnings"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
           # Upload the documentation directory
           path: 'target/doc/'
-          
+
+  deploy:
+    # Only deploy if we're on the main branch and the build job succeeded
+    if: github.repository == 'MERCorg/merc' && github.ref == 'refs/heads/main'
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
