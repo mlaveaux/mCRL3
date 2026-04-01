@@ -153,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_io_pg() {
         random_test(100, |rng| {
             let game = random_parity_game(rng, true, 50, 10, 5);

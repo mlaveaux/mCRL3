@@ -29,6 +29,7 @@ mod tests {
     use rand::seq::SliceRandom;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_is_valid_permutation() {
         random_test(100, |rng| {
             // Generate a valid permutation.

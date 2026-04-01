@@ -235,6 +235,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_weak_bisim_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(rng, Equivalence::WeakBisim, "test_random_weak_bisim_quotient");
@@ -242,6 +243,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_weak_bisim_parallel_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(
@@ -253,6 +255,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_weak_bisim_sigref_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(

@@ -324,6 +324,7 @@ mod tests {
     use crate::write_pg;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_solitaire_game() {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_solitaire_game");

@@ -72,6 +72,7 @@ mod tests {
     use crate::compare_lts;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_lts_permutation() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
