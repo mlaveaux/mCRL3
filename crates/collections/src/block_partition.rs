@@ -32,7 +32,7 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
 impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create a block partition from an indexed partition.
     pub fn from_indexed_partition(partition: &IndexedPartition) -> Self {
-        let mut blocks = vec![Block::new_unchecked(0, 0); partition.num_of_blocks()];
+        let mut blocks = vec![Block::new_empty(); partition.num_of_blocks()];
 
         // Figure out the number of elements per block.
         for element in partition.iter() {
@@ -183,11 +183,11 @@ impl<A: Clone + fmt::Debug + Default> Block<A> {
         }
     }
 
-    /// Variant of [new] that can be used to initialize empty blocks.
-    fn new_unchecked(begin: usize, end: usize) -> Self {
+    /// Create an empty block at the given position.
+    fn new_empty() -> Self {
         Block {
-            begin,
-            end,
+            begin: 0,
+            end: 0,
             annotation: Default::default(),
         }
     }
@@ -221,7 +221,6 @@ impl<A: Clone + fmt::Debug> Block<A> {
 
     /// Returns true iff the block is empty.
     pub fn is_empty(&self) -> bool {
-        self.assert_consistent();
         self.begin == self.end
     }
 
