@@ -1,4 +1,5 @@
 //! Authors: Maurice Laveaux and Sjef van Loo
+#[cfg(debug_assertions)]
 use std::collections::HashSet;
 use std::fmt;
 

@@ -511,7 +511,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                 self.edges.push((vertex_index, labelling(None), s_psi));
             }
             FixedPointOperator::Greatest => {
-                // (s, ν X. Ψ) →_P even, (s, Ψ[x := ν X. Ψ]), 2 * (AD(Ψ)/2). In Rust division is already floor.
+                // (s, ν X. Ψ) →_P even, (s, Ψ[x := ν X. Ψ]), 2 * floor(AD(Ψ)/2). In Rust division is already floor.
                 self.set_vertex(
                     vertex_index,
                     Player::Even,

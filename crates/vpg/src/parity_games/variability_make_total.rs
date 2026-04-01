@@ -57,7 +57,7 @@ pub fn make_vpg_total(
                     true_node = Some(node);
                     node
                 };
-                builder.add_edge(vertex, missing, node);
+                builder.add_edge(vertex, universe.clone(), node);
             } else {
                 // Even player deadlock: add edge to false node for the remaining configurations.
                 let node = if let Some(node) = false_node {
@@ -68,7 +68,7 @@ pub fn make_vpg_total(
                     false_node = Some(node);
                     node
                 };
-                builder.add_edge(vertex, missing, node);
+                builder.add_edge(vertex, universe.clone(), node);
             }
         }
     }
