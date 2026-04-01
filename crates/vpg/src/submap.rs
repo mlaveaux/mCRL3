@@ -71,7 +71,7 @@ impl Submap {
 
     /// Sets the function for the given vertex index.
     ///
-    /// Takes an internal manager to avoid repeated calls to [oxidd:Manager::with_manager_shared].
+    /// Takes an internal manager to avoid repeated calls to `oxidd::Manager::with_manager_shared`.
     pub fn set<'id>(
         &mut self,
         manager: &<BDDFunction as Function>::Manager<'id>,

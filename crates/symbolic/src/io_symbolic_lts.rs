@@ -26,6 +26,8 @@ use crate::SymbolicLts;
 /// # Details
 ///
 /// The stream contains
+///
+/// ```plain
 /// <marker>: ATerm
 /// <data specification>
 /// <process parameters>: ATermList<ATerm>
@@ -44,13 +46,14 @@ use crate::SymbolicLts;
 ///
 /// <number of summand groups>: u64
 /// For each summand group:
-///  <number of read parameters>: u64
-///  For each read parameter:
-///    <read parameter>: ATerm
+///   <number of read parameters>: u64
+///   For each read parameter:
+///     <read parameter>: ATerm
 ///
-/// <number of write parameters>: u64
-/// For each write parameter:
-///  <write parameter>: ATerm
+///   <number of write parameters>: u64
+///   For each write parameter:
+///     <write parameter>: ATerm
+/// ```
 pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<SymbolicLts, MercError> {
     info!("Reading symbolic LTS in the mCRL2 symbolic format...");
 

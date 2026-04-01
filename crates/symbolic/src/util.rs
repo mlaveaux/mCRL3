@@ -70,8 +70,8 @@ pub type Substitution = [(VarNo, VarNo)];
 /// only renaming variables from 'x' to 'x+1' allows for a more efficient
 /// implementation, as follows:
 ///
-/// > f[x <- x+1] = (!x+1 ∧ f[x <- false]) ∨ (x+1 ∧ f[x <- true])
-/// >             = make_node(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])
+/// > `f[x <- x+1] = (!x+1 ∧ f[x <- false]) ∨ (x+1 ∧ f[x <- true])`
+/// > `            = make_node(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])`
 ///
 /// This function checks whether the inputs satisfy this restriction and then
 /// performs the renaming.
@@ -182,8 +182,8 @@ pub fn variable_rename_edge<'id>(
 ///
 /// We can derive the following:
 ///
-/// > f[x+1 <- x] = (!x ∧ f[x+1 <- false]) ∨ (x ∧ f[x+1 <- true])
-/// >             = make_node(x, f[x <- true][x+1 <- true] , f[x <- false][x+1 <- false])
+/// > `f[x+1 <- x] = (!x ∧ f[x+1 <- false]) ∨ (x ∧ f[x+1 <- true])`
+/// > `            = make_node(x, f[x <- true][x+1 <- true] , f[x <- false][x+1 <- false])`
 pub fn variable_rename_reverse(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,

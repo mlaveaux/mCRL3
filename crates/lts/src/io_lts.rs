@@ -154,7 +154,7 @@ pub fn read_lts<R: Read>(
 /// ```
 ///
 /// state_label (index derived from order of appearance):
-///    state_label: ATermList::<DataExpression>
+///    `state_label: ATermList::<DataExpression>`
 pub fn write_lts<L, W>(writer: &mut W, lts: &L) -> Result<(), MercError>
 where
     L: LTS<Label = LtsMultiAction>,

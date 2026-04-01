@@ -122,14 +122,18 @@ pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
 ///
 /// Applies these transformations:
 ///
-/// > [a*]phi = nu I. [a]I && phi
-/// > [a+]phi = [a](nu I. [a]I && phi)
-/// > [a+b]phi = [a]phi || [b]phi
-/// > [a.b]phi = [a][b]phi
+/// ```plain
+/// [a*]phi = nu I. [a]I && phi
+/// [a+]phi = [a](nu I. [a]I && phi)
+/// [a+b]phi = [a]phi || [b]phi
+/// [a.b]phi = [a][b]phi
+/// ```
 ///
 /// and symmetrical for the diamond operator:
-/// > <a*>phi = mu I. <a>I || phi
-/// > <a+>phi = <a>(mu I. <a>I || phi)
+/// ```plain
+/// <a*>phi = mu I. <a>I || phi
+/// <a+>phi = <a>(mu I. <a>I || phi)
+/// ```
 pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
     apply_statefrm(formula, |subformula| {
         if let StateFrm::Modality {

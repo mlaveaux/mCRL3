@@ -1,4 +1,4 @@
-//! Implementation of the [ATerm] related data structure.
+//! Implementation of the [`crate::ATerm`] related data structure.
 //!
 //! An aterm is a first-order term of the following form:
 //!
