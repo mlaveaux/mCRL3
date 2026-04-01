@@ -19,8 +19,43 @@ use crate::FeatureDiagram;
 use crate::FeatureTransitionSystem;
 use crate::FeaturedLabel;
 
-/// Projects a variability parity game into a standard parity game by removing
-/// edges that are not enabled by the given feature selection.
+/// Projects all configurations of a featured transition system into standard labelled transition systems.
+pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
+    fts: &'a FeatureTransitionSystem<L>,
+    fd: &'a FeatureDiagram,
+    timing: &'a Timing,
+) -> impl Iterator<Item = Result<(ProjectedLts<FeaturedLabel<L>>, &'a Timing), MercError>> {
+    let variables = fd.feature_names().iter().map(|name| {
+        fd.features()
+            .get(name)
+            .expect("Feature diagram should contain all features defined in the feature names")
+            .clone()
+    }).collect::<Vec<_>>();
+
+    CubeIterAll::new(fd.configuration()).map(move |cube| {
+        let cube = cube?;
+
+        let bdd = match bits_to_bdd(&fd.configuration().manager_ref(), &variables, &cube) {
+            Ok(bdd) => bdd,
+            Err(e) => return Err(MercError::from(e)),
+        };
+
+        let lts = timing.measure("project", || -> Result<_, MercError> {
+            project_feature_transition_system(fts, &bdd)
+        })?;
+
+        Ok((ProjectedLts { bits: cube, bdd, lts }, timing))
+    })
+}
+
+/// A projected configuration of a featured transition system.
+pub struct ProjectedLts<L: TransitionLabel> {
+    pub bits: Vec<OptBool>,
+    pub bdd: BDDFunction,
+    pub lts: LabelledTransitionSystem<L>,
+}
+
+/// Projects a featured transition system onto a specific feature selection, resulting in a standard labelled transition system.
 pub fn project_feature_transition_system<L: TransitionLabel>(
     fts: &FeatureTransitionSystem<L>,
     feature_selection: &BDDFunction,
@@ -50,40 +85,4 @@ pub fn project_feature_transition_system<L: TransitionLabel>(
     }
 
     Ok(builder.finish(fts.initial_state_index(), false))
-}
-
-/// A projected configuration of a featured transition system.
-pub struct ProjectedLts<L: TransitionLabel> {
-    pub bits: Vec<OptBool>,
-    pub bdd: BDDFunction,
-    pub lts: LabelledTransitionSystem<L>,
-}
-
-/// Projects all configurations of a variability parity game into standard parity games.
-pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
-    fts: &'a FeatureTransitionSystem<L>,
-    fd: &'a FeatureDiagram,
-    timing: &'a Timing,
-) -> impl Iterator<Item = Result<(ProjectedLts<FeaturedLabel<L>>, &'a Timing), MercError>> {
-    let variables = fd.feature_names().iter().map(|name| {
-        fd.features()
-            .get(name)
-            .expect("Feature diagram should contain all features defined in the feature names")
-            .clone()
-    }).collect::<Vec<_>>();
-
-    CubeIterAll::new(fd.configuration()).map(move |cube| {
-        let cube = cube?;
-
-        let bdd = match bits_to_bdd(&fd.configuration().manager_ref(), &variables, &cube) {
-            Ok(bdd) => bdd,
-            Err(e) => return Err(MercError::from(e)),
-        };
-
-        let lts = timing.measure("project", || -> Result<_, MercError> {
-            project_feature_transition_system(fts, &bdd)
-        })?;
-
-        Ok((ProjectedLts { bits: cube, bdd, lts }, timing))
-    })
 }

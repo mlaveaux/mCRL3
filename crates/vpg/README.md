@@ -31,7 +31,7 @@ let parity_game = read_pg(b"parity 3;
 " as &[u8]).unwrap();
 
 // Solve the game, produces a full solution for all vertices.
-let solution = solve_zielonka(&parity_game);
+let (_solution, _strategy) = solve_zielonka(&parity_game, false);
 ```
 
 ## Changelog

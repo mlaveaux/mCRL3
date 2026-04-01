@@ -10,8 +10,9 @@ the [FDR4](https://cocotec.io/fdr/); the CSP refinement checker.
 use merc_lts::read_aut;
 use merc_utilities::Timing;
 
-use merc_refinement::refines;
+use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
+use merc_refinement::refines;
 
 let impl_lts = read_aut(b"des (0,8,6)                                        
 (0,newday,1)
@@ -33,7 +34,7 @@ let spec_lts = read_aut(b"des (0,5,4)
 " as &[u8], Vec::new()).unwrap();
 
 // Note that this is strong trace refinement, and we request no counter example.
-let (result, counter_example) = refines(impl_lts, spec_lts, RefinementType::Trace, true, false, &mut Timing::new());
+let (result, counter_example) = refines(impl_lts, spec_lts, RefinementType::Trace, ExplorationStrategy::DFS, true, false, &mut Timing::new());
 assert!(!result);
 assert!(counter_example.is_none());
 ```
