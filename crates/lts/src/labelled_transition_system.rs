@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 
 use merc_collections::ByteCompressedVec;
@@ -410,6 +411,26 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
                 to.value(),
                 num_states
             );
+        }
+
+        for state in 0..num_states {
+            let start = self.states.index(state);
+            let end = self.states.index(state + 1);
+            let mut seen = HashSet::with_capacity(end.saturating_sub(start));
+
+            for i in start..end {
+                let edge = (
+                    self.transition_labels.index(i).value(),
+                    self.transition_to.index(i).value(),
+                );
+
+                debug_assert!(
+                    seen.insert(edge),
+                    "state {state} has duplicate outgoing transition with label {} to state {}",
+                    edge.0,
+                    edge.1
+                );
+            }
         }
     }
 
