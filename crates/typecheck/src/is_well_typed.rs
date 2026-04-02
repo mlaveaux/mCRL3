@@ -35,7 +35,7 @@ pub fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellTypedErr
 
     // Check that all sorts are syntactically non-empty.
     for sort in &spec.sort_declarations {
-        if is_nonempty_sort(&sort.identifier, spec) {
+        if !is_nonempty_sort(&sort.identifier, spec) {
             return Err(WellTypedError::EmptySort {
                 sort: sort.identifier.clone(),
             });
@@ -88,7 +88,7 @@ fn are_constructors_and_mappings_disjoint(spec: &UntypedDataSpecification) -> Re
         if let Some(map) = spec
             .map_declarations
             .iter()
-            .find(|map| map.identifier == constructor.identifier && map.sort == constructor.sort)
+            .find(|map| map.identifier == constructor.identifier)
         {
             return Err(WellTypedError::ConstructorAndMappingConflict {
                 constructor: constructor.identifier.clone(),

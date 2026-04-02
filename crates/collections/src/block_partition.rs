@@ -29,7 +29,7 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
 
 impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create a block partition from an indexed partition.
-    /// 
+    ///
     /// This function creates a new partition that is dense, i.e. it does not
     /// contain empty blocks, and the blocks are indexed from 0 to n-1 even if the
     /// indexed partition is sparse.
@@ -328,6 +328,11 @@ mod tests {
                 let expected_block = partition.block(first);
 
                 for element in elements {
+                    assert_eq!(
+                        partition.block(element),
+                        expected_block,
+                        "Block {block} contains elements from different indexed-partition blocks"
+                    );
                     assert_eq!(
                         partition.block(element),
                         expected_block,

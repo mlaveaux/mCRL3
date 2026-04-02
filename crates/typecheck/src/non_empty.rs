@@ -47,14 +47,17 @@ fn is_nonempty_sort_rec(sort: DefId, constructors: &Vec<IdDecl>, seen: &mut Hash
 
         seen.insert(sort); // Mark the current sort as seen to avoid cycles.
 
-        if argument_sorts(&constructor.sort).iter().all(|_arg| true) {
+        if argument_sorts(&constructor.sort).iter().all(|arg| match arg {
+            SortExpression::Resolved(_, id) => is_nonempty_sort_rec(*id, constructors, seen),
+            _ => true,
+        }) {
             return true; // All argument sorts are non-empty, so the sort is non-empty.
         }
 
         seen.remove(&sort); // Unmark the current sort as seen to allow other paths to explore it.        
     }
 
-    true
+    false
 }
 
 #[cfg(test)]
