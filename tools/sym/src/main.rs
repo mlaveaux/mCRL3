@@ -117,6 +117,10 @@ struct ReorderArgs {
     #[arg(long)]
     kahypar_path: Option<PathBuf>,
 
+    /// Explicit path to the kahypar.ini file to use.
+    #[arg(long)]
+    kahypar_ini_path: Option<PathBuf>,
+
     /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
 }
@@ -287,6 +291,31 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
         which::which("KaHyPar").map_err(|_e| "Cannot find KaHyPar in PATH")?
     };
 
+    let kahypar_ini_path = if let Some(path) = &args.kahypar_ini_path {
+        if !path.is_file() {
+            return Err(format!(
+                "The specified kahypar.ini path '{}' does not exist or is not a file.",
+                path.display()
+            )
+            .into());
+        }
+        path.clone()
+    } else {
+        // Get path relative to the current executable, and obtain a path to the `kahypar.ini` configuration file.
+        let mut default_kahypar_ini_path = std::env::current_exe()?;
+        default_kahypar_ini_path.pop(); // remove the executable filename
+        default_kahypar_ini_path.push("kahypar.ini");
+
+        if !default_kahypar_ini_path.is_file() {
+            return Err(format!(
+                "Could not find '{}'. The 'kahypar.ini' file must be present next to the executable, or passed via --kahypar-ini-path.",
+                default_kahypar_ini_path.display()
+            )
+            .into());
+        }
+        default_kahypar_ini_path
+    };
+
     if args.filename.extension() == Some(OsStr::new("lps")) {
         // Find lpsreach
         let lpsreach_path = if let Some(path) = &args.mcrl2_path {
@@ -303,7 +332,7 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
 
         let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
 
-        let order = reorder(&kahypar_path, &graph)?;
+        let order = reorder(&kahypar_path, &kahypar_ini_path, &graph)?;
         println!("Computed variable order: {}", order.iter().format(" "));
     } else if args.filename.extension() == Some(OsStr::new("pbes")) {
         // Find pbessolvesymbolic
@@ -320,7 +349,7 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
             .map_err(|e| e.to_string())?;
 
         let graph = parse_compacted_dependency_graph(str::from_utf8(&proc.stdout)?);
-        let order = reorder(&kahypar_path, &graph)?;
+        let order = reorder(&kahypar_path, &kahypar_ini_path, &graph)?;
 
         // Ensure that the first variable is 0 by removing it from order and printing it explicitly
         println!("Computed variable order: 0 {}", order.iter().filter(|&x| *x != 0).format(" "));

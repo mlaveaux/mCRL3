@@ -15,11 +15,11 @@ use merc_utilities::MercError;
 use crate::DependencyGraph;
 
 /// Default implementation of reorder when `kahypar` feature is not enabled.
-pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path,graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     debug!("Total span: {}", graph.total_span());
 
     let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-    let result = mince(kahypar_path, &vertices, &[], graph)?;
+    let result = mince(kahypar_path, kahypar_ini_path,&vertices, &[], graph)?;
     debug!("Reordered total span: {}", graph.reorder(&result).total_span());
     Ok(result)
 }
@@ -31,12 +31,13 @@ pub fn reorder(kahypar_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize
 /// The `vertices` are the indices of the subgraph that we are considering
 fn mince(
     kahypar_path: &Path,
+    kahypar_ini_path: &Path,
     vertices: &[usize],
     left_context: &[usize],
     graph: &DependencyGraph,
 ) -> Result<Vec<usize>, MercError> {
     trace!("MINCE called with vertices: {:?}", vertices);
-    let partition = partition(kahypar_path, vertices, left_context, graph)?;
+    let partition = partition(kahypar_path, kahypar_ini_path, vertices, left_context, graph)?;
 
     if partition.len() <= 2 {
         // Base case: a single vertex is already "ordered"
@@ -64,11 +65,11 @@ fn mince(
         return Ok(vertices.to_vec());
     }
 
-    let mut left = mince(kahypar_path, &left_vertices, left_context, graph)?;
+    let mut left = mince(kahypar_path, kahypar_ini_path, &left_vertices, left_context, graph)?;
 
     let mut new_left_context = left_context.to_vec();
     new_left_context.extend(&left_vertices);
-    let mut right = mince(kahypar_path, &right_vertices, &new_left_context, graph)?;
+    let mut right = mince(kahypar_path, kahypar_ini_path, &right_vertices, &new_left_context, graph)?;
     left.append(&mut right);
 
     // Check that the result is a valid permutation
@@ -201,6 +202,7 @@ fn add_edge(
 /// Partitions the given hypergraph using the `kahypar` tool.
 fn partition(
     kahypar_path: &Path,
+    kahypar_ini_path: &Path,
     vertices: &[usize],
     left_context: &[usize],
     graph: &DependencyGraph,
@@ -209,19 +211,6 @@ fn partition(
 
     if vertices.len() <= 2 || hypergraph.edges.len() <= 1 {
         return Ok(vertices.to_vec());
-    }
-
-    // Get path relative to the current executable, and obtain a path to the `kahypar.ini` configuration file.
-    let mut kahypar_ini_path = std::env::current_exe()?;
-    kahypar_ini_path.pop(); // remove the executable filename
-    kahypar_ini_path.push("kahypar.ini");
-
-    if !kahypar_ini_path.is_file() {
-        return Err(format!(
-            "Could not find '{}'. The 'kahypar.ini' file must be present next to the executable.",
-            kahypar_ini_path.display()
-        )
-        .into());
     }
 
     run_kahypar(kahypar_path, &kahypar_ini_path, &hypergraph)?;

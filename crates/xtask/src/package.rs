@@ -91,5 +91,10 @@ pub fn package() -> Result<(), Box<dyn Error>> {
     let license_dest = package_dir.join("LICENSE");
     copy(&license_src, &license_dest)?;
 
+    // Add KaHyPar configuration used by the symbolic crate
+    let kahypar_ini_src = workspace_root.join("crates/symbolic/data/kahypar.ini");
+    let kahypar_ini_dest = package_dir.join("kahypar.ini");
+    copy(&kahypar_ini_src, &kahypar_ini_dest)?;
+
     Ok(())
 }
