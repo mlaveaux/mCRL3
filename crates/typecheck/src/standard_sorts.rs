@@ -140,6 +140,6 @@ pub fn structured_sort_spec(
 
         UntypedDataSpecification::parse(&spec)
     } else {
-        unreachable!("structure_sort_spec should only be called on structured sorts");
+        unreachable!("structured_sort_spec should only be called on structured sorts");
     }
 }

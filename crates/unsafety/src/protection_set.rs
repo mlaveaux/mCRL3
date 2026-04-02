@@ -318,8 +318,8 @@ mod tests {
     use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
-    use crate::ProtectionIndex;
-    use crate::ProtectionSet;
+    use super::ProtectionIndex;
+    use super::ProtectionSet;
 
     #[test]
     #[cfg_attr(miri, ignore)]

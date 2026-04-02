@@ -61,21 +61,25 @@ impl Graph for SortGraph {
     type LabelIndex = ();
 
     fn num_of_vertices(&self) -> usize {
-        self.mapping.len()
+        self.mapping
+            .keys()
+            .map(|id| **id)
+            .max()
+            .map_or(0, |max_id| max_id + 1)
     }
 
     fn iter_vertices(&self) -> impl Iterator<Item = Self::VertexIndex> {
-        self.mapping.keys().map(|id| SortIndex::new(**id))
+        (0..self.num_of_vertices()).map(SortIndex::new)
     }
 
     fn outgoing_edges(
         &self,
-        _vertex: Self::VertexIndex,
+        vertex: Self::VertexIndex,
     ) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
         self.mapping
-            .get(&DefId::new(*_vertex))
-            .expect("Vertex must be in the graph")
-            .iter()
+            .get(&DefId::new(*vertex))
+            .into_iter()
+            .flat_map(|targets| targets.iter())
             .map(|id| ((), SortIndex::new(**id)))
     }
 }
