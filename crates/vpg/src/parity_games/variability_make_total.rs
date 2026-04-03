@@ -81,10 +81,5 @@ pub fn make_vpg_total(
         builder.add_edge(node, universe.clone(), node);
     }
 
-    Ok(builder.finish(
-        manager_ref,
-        vpg.configuration().clone(),
-        vpg.variables().clone(),
-        false,
-    ))
+    Ok(builder.finish(manager_ref, vpg.configuration().clone(), vpg.variables().clone(), false))
 }

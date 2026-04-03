@@ -13,13 +13,13 @@ use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
+use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
-use merc_lts::LTS;
-use merc_lts::read_aut;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
 use merc_lts::TransitionLabel;
+use merc_lts::read_aut;
 use merc_symbolic::FormatConfigSet;
 use merc_syntax::DataExpr;
 use merc_syntax::MultiAction;
@@ -310,7 +310,8 @@ impl<L: TransitionLabel> LTS for FeatureTransitionSystem<L> {
 mod tests {
     use merc_macros::merc_test;
 
-    use super::*;
+    use crate::FeatureDiagram;
+    use crate::read_fts;
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not support miri (specifically the crossbeam-epoch dependency)

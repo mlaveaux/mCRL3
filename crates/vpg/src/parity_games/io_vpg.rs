@@ -248,7 +248,8 @@ pub fn write_vpg<W: Write>(writer: &mut W, game: &VariabilityParityGame) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::PG;
+    use super::read_vpg;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri

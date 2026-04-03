@@ -433,7 +433,15 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                 formula,
                 expr,
             } => {
-                self.translate_modality_vertex(s, *operator, formula, expr, vertex_index, labelling, combine_labelling)?;
+                self.translate_modality_vertex(
+                    s,
+                    *operator,
+                    formula,
+                    expr,
+                    vertex_index,
+                    labelling,
+                    combine_labelling,
+                )?;
             }
             _ => {
                 unimplemented!("Cannot translate formula {}", formula);
@@ -444,11 +452,11 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     }
 
     /// Translates a modality vertex (s, [a]Ψ) or (s, <a>Ψ) into the variability parity game vertex and its outgoing edges.
-    /// 
+    ///
     /// # Details
-    /// 
+    ///
     /// Applies the following transformations:
-    /// 
+    ///
     /// > (s, [a] Ψ) → odd, (s', Ψ) for all s' with s -a-> s', 0
     /// > (s, <a> Ψ) → even, (s', Ψ) for all s' with s -a-> s', 0
     fn translate_modality_vertex<F, C>(
@@ -585,8 +593,8 @@ mod tests {
     use merc_syntax::UntypedStateFrmSpec;
 
     use crate::PG;
-
-    use super::*;
+    use crate::compute_reachable;
+    use crate::translate;
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -594,7 +602,7 @@ mod tests {
         let lts = read_aut(include_bytes!("../../../examples/lts/abp.aut") as &[u8], Vec::new()).unwrap();
         let formula = UntypedStateFrmSpec::parse(include_str!("../../../examples/vpg/running_example.mcf")).unwrap();
 
-        let pg: ParityGame = translate(&lts, &formula.formula).unwrap();
+        let pg = translate(&lts, &formula.formula).unwrap();
 
         assert!(pg.is_total(), "The translated parity game should be total");
         assert!(

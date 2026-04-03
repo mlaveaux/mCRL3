@@ -1,17 +1,17 @@
 use log::debug;
-use oxidd::bdd::BDDFunction;
 use oxidd::BooleanFunction;
 use oxidd::Function;
+use oxidd::bdd::BDDFunction;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
 
-use merc_lts::LabelledTransitionSystem;
 use merc_lts::LTS;
+use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilderFast;
 use merc_lts::TransitionLabel;
-use merc_symbolic::bits_to_bdd;
 use merc_symbolic::CubeIterAll;
 use merc_symbolic::FormatConfigSet;
+use merc_symbolic::bits_to_bdd;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -25,12 +25,16 @@ pub fn project_feature_transition_system_iter<'a, L: TransitionLabel>(
     fd: &'a FeatureDiagram,
     timing: &'a Timing,
 ) -> impl Iterator<Item = Result<(ProjectedLts<FeaturedLabel<L>>, &'a Timing), MercError>> {
-    let variables = fd.feature_names().iter().map(|name| {
-        fd.features()
-            .get(name)
-            .expect("Feature diagram should contain all features defined in the feature names")
-            .clone()
-    }).collect::<Vec<_>>();
+    let variables = fd
+        .feature_names()
+        .iter()
+        .map(|name| {
+            fd.features()
+                .get(name)
+                .expect("Feature diagram should contain all features defined in the feature names")
+                .clone()
+        })
+        .collect::<Vec<_>>();
 
     CubeIterAll::new(fd.configuration()).map(move |cube| {
         let cube = cube?;

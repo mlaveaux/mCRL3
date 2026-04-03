@@ -84,13 +84,9 @@ impl ParityGameBuilder {
 
         // Build the parity game using the from_edges method
         let edges = self.edges.clone();
-        ParityGame::from_edges(
-            self.initial_vertex,
-            self.owners,
-            self.priorities,
-            make_total,
-            || edges.iter().cloned(),
-        )
+        ParityGame::from_edges(self.initial_vertex, self.owners, self.priorities, make_total, || {
+            edges.iter().cloned()
+        })
     }
 
     /// Ensures that the owners and priorities vectors have enough capacity for the given number of vertices.

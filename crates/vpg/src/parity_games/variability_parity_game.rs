@@ -208,7 +208,7 @@ impl VariabilityParityGame {
             self.edges_configuration.len(),
             "There should be a configuration BDD for every edge"
         );
-        
+
         // Edge duplicates are already checked in the underlying parity game.
     }
 }

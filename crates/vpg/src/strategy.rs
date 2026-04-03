@@ -38,10 +38,13 @@ impl Strategy {
     pub fn union(mut self, other: Strategy) -> Strategy {
         // Add all mappings from the extension strategy to the base strategy
         for (&from, &to) in other.iter() {
-            debug_assert!(!self.mapping.contains_key(&from), "Cannot combine strategies with overlapping domains");
+            debug_assert!(
+                !self.mapping.contains_key(&from),
+                "Cannot combine strategies with overlapping domains"
+            );
             self.set(from, to);
         }
-        
+
         self
     }
 
@@ -75,8 +78,8 @@ impl Strategy {
                     vertex,
                     pg.owner(vertex),
                 );
-            }           
-            
+            }
+
             if self.get(vertex).is_some() && pg.owner(vertex) != player {
                 panic!(
                     "Strategy is defined for vertex {:?} owned by {:?}, but it should be owned by {:?}.",

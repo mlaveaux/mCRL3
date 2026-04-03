@@ -17,15 +17,16 @@ use crate::AsGraph;
 use crate::Edge;
 use crate::PG;
 use crate::Player;
+use crate::Pred;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Set;
 use crate::VertexIndex;
 
-/// Solves a solitaire game for the given player. 
-/// 
+/// Solves a solitaire game for the given player.
+///
 /// # Details
-/// 
+///
 /// We assume that the input game is a trivial solitaire game, i.e., all
 /// vertices are owned by the same player, and that the game is total. This
 /// could be weakened to allow the other player to only do trivial moves, but
@@ -45,6 +46,7 @@ pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
 
     // The game is solitaire, so all vertices are owned by the same player.
     let player = pg.owner(pg.initial_vertex());
+    let predecessors = Predecessors::new(pg);
 
     for priority in 0..=pg.highest_priority().value() {
         if Player::from_priority(&(Priority::new(priority))) != player {
@@ -54,7 +56,7 @@ pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
 
         // Restrict the game to the current priority.
         trace!("Solving subgame for max-priority {}", priority);
-        let prio_subgame = PrioSubgame::new(pg, Priority::new(priority));
+        let prio_subgame = PrioSubgame::with_predecessors(pg, Priority::new(priority), &predecessors);
 
         let subgame_solution = solve_solitaire_simple(&prio_subgame, player);
         for vertex in prio_subgame.iter_vertices() {
@@ -64,7 +66,6 @@ pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
         }
     }
 
-    let predecessors = Predecessors::new(pg);
     backward_reachability(&predecessors, winning_vertices)
 }
 
@@ -77,7 +78,7 @@ pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
 /// is exactly those vertices that can reach a strongly connected component that
 /// contains the highest priority. Note that the highest priority should belong
 /// to the player.
-fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
+fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
     trace!("Subgame {{ {:?} }}, player {}", pg.iter_vertices().format(", "), player);
 
     let scc_partition = scc_decomposition(&AsGraph(pg), |_, _, _| true);
@@ -112,8 +113,7 @@ fn solve_solitaire_simple<G: PG>(pg: &G, player: Player) -> BitVec {
         }
     }
 
-    let predecessors = Predecessors::new(pg);
-    backward_reachability(&predecessors, winning_vertices)
+    backward_reachability(pg, winning_vertices)
 }
 
 /// Returns true if the given SCC is trivial, i.e., it does not contain any
@@ -140,7 +140,8 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     // Otherwise, must have a self loop.
     let vertex = VertexIndex::new(
         partition
-            .iter_block(block).find(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
+            .iter_block(block)
+            .find(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
             .expect("Block must contain at least one vertex"),
     );
     !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
@@ -148,7 +149,7 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
 
 /// Computes the set of vertices reachable from the given initial vertices in
 /// the given graph.
-fn backward_reachability(predecessors: &Predecessors, mut initial: BitVec) -> BitVec {
+fn backward_reachability<P: Pred>(predecessors: &P, mut initial: BitVec) -> BitVec {
     // The set of vertices that are already visited.
     let visited = &mut initial;
     let mut queue: Vec<VertexIndex> = Vec::new();
@@ -170,41 +171,39 @@ fn backward_reachability(predecessors: &Predecessors, mut initial: BitVec) -> Bi
     initial
 }
 
-/// A subgame Gi induced by mapping all priorities equal to `max_priority` to
-/// the player's priority, and all other priorities to the opponent's priority.
-pub struct PrioSubgame<'a, G: PG> {
+/// A subgame induced by restricting vertices to a given set.
+pub struct Subgame<'a, G: PG, P: Pred> {
+    /// Vertices that are part of the subgame.
     restricted: Set,
 
     /// The game that is being restricted.
     game: &'a G,
 
-    /// The maximum priority in the sub-game.
-    max_priority: Priority,
+    /// Predecessor provider for the original game.
+    predecessors: P,
 }
 
-impl<G: PG> PrioSubgame<'_, G> {
-    /// Create a new sub-game induced by the given strategy on the given game.
-    pub fn new<'a>(game: &'a G, max_priority: Priority) -> PrioSubgame<'a, G> {
-        let mut restricted = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
-        for vertex in game.iter_vertices() {
-            if game.priority(vertex) <= max_priority {
-                restricted.set(vertex.value(), true);
-            }
-        }
+impl<'a, G: PG, P: Pred> Subgame<'a, G, P> {
+    /// Create a new subgame induced by the given restricted-vertex set.
+    pub fn new(game: &'a G, restricted: Set, predecessors: P) -> Subgame<'a, G, P> {
+        debug_assert_eq!(
+            restricted.len(),
+            game.num_of_vertices(),
+            "Restricted set must have one bit per vertex"
+        );
 
-        PrioSubgame {
-            game,
+        Subgame {
             restricted,
-            max_priority,
+            game,
+            predecessors,
         }
     }
 }
 
-impl<G: PG> PG for PrioSubgame<'_, G> {
+impl<G: PG, P: Pred> PG for Subgame<'_, G, P> {
     type Label = G::Label;
 
     fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_ {
-        // Only consider vertices that are below the maximum priority.
         self.restricted.iter_ones().map(VertexIndex::new)
     }
 
@@ -217,7 +216,6 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
         );
 
         self.game.outgoing_edges(vertex_index).filter(move |edge| {
-            // Only consider edges to vertices that are in the restricted set and follow the strategy.
             self.restricted
                 .get(*edge.to())
                 .expect("Vertex must be in the restricted set")
@@ -226,25 +224,91 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
     }
 
     fn highest_priority(&self) -> Priority {
-        // Determine the highest priority in the restricted set.
         self.iter_vertices()
             .fold(Priority::new(0), |max, p| max.max(self.game.priority(p)))
     }
 
     fn is_total(&self) -> bool {
-        // The sub-game is total if every vertex in the restricted set has at least one outgoing edge.
         self.iter_vertices().all(|v| self.outgoing_edges(v).next().is_some())
     }
 
-    fn priority(&self, vertex: VertexIndex) -> Priority {
+    delegate! {
+        to self.game {
+            fn initial_vertex(&self) -> VertexIndex;
+            fn num_of_vertices(&self) -> usize;
+            fn num_of_edges(&self) -> usize;
+            fn owner(&self, vertex: VertexIndex) -> Player;
+            fn priority(&self, vertex: VertexIndex) -> Priority;
+        }
+    }
+}
+
+impl<G: PG, P: Pred> Pred for Subgame<'_, G, P> {
+    fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
         debug_assert!(
             self.restricted
+                .get(vertex_index.value())
+                .expect("Vertex must be in the restricted set"),
+            "Vertex must be in the restricted set"
+        );
+
+        self.predecessors.predecessors(vertex_index).filter(move |from| {
+            self.restricted
+                .get(from.value())
+                .expect("Vertex must be in the restricted set")
+                == true
+        })
+    }
+}
+
+/// A subgame Gi induced by mapping all priorities equal to `max_priority` to
+/// the player's priority, and all other priorities to the opponent's priority.
+pub struct PrioSubgame<'a, G: PG, P: Pred = Predecessors<'a>> {
+    /// The restricted subgame.
+    subgame: Subgame<'a, G, P>,
+
+    /// The maximum priority in the sub-game.
+    max_priority: Priority,
+}
+
+impl<'a, G: PG> PrioSubgame<'a, G, Predecessors<'a>> {
+    /// Create a new sub-game induced by the given strategy on the given game.
+    pub fn new(game: &'a G, max_priority: Priority) -> PrioSubgame<'a, G, Predecessors<'a>> {
+        PrioSubgame::with_predecessors(game, max_priority, Predecessors::new(game))
+    }
+}
+
+impl<'a, G: PG, P: Pred> PrioSubgame<'a, G, P> {
+    /// Create a new sub-game induced by the given strategy on the given game,
+    /// using the given predecessor provider.
+    pub fn with_predecessors(game: &'a G, max_priority: Priority, predecessors: P) -> PrioSubgame<'a, G, P> {
+        let mut restricted = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
+        for vertex in game.iter_vertices() {
+            if game.priority(vertex) <= max_priority {
+                restricted.set(vertex.value(), true);
+            }
+        }
+
+        PrioSubgame {
+            subgame: Subgame::new(game, restricted, predecessors),
+            max_priority,
+        }
+    }
+}
+
+impl<G: PG, P: Pred> PG for PrioSubgame<'_, G, P> {
+    type Label = G::Label;
+
+    fn priority(&self, vertex: VertexIndex) -> Priority {
+        debug_assert!(
+            self.subgame
+                .restricted
                 .get(vertex.value())
                 .expect("Vertex must be in the restricted set"),
             "Vertex must be in the restricted set"
         );
 
-        if self.game.priority(vertex) == self.max_priority {
+        if self.subgame.game.priority(vertex) == self.max_priority {
             // Return the priority for the opponent.
             if self.max_priority.is_multiple_of(2) {
                 Priority::new(2)
@@ -262,7 +326,11 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
     }
 
     delegate! {
-        to self.game {
+        to self.subgame {
+            fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
+            fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a;
+            fn highest_priority(&self) -> Priority;
+            fn is_total(&self) -> bool;
             fn initial_vertex(&self) -> VertexIndex;
             fn num_of_vertices(&self) -> usize;
             fn num_of_edges(&self) -> usize;
@@ -271,53 +339,24 @@ impl<G: PG> PG for PrioSubgame<'_, G> {
     }
 }
 
-/// A parity game where every player is now owned by given player, making this a
-/// solitaire game.
-#[cfg(test)]
-struct SolitaireGame<'a, G: PG> {
-    game: &'a G,
-
-    player: Player,
-}
-
-#[cfg(test)]
-impl<G: PG> SolitaireGame<'_, G> {
-    /// Create a new solitaire game induced by the given strategy on the given game.
-    fn new<'a>(game: &'a G, player: Player) -> SolitaireGame<'a, G> {
-        SolitaireGame { game, player }
-    }
-}
-
-#[cfg(test)]
-impl<G: PG> PG for SolitaireGame<'_, G> {
-    type Label = G::Label;
-
-    fn owner(&self, _vertex: VertexIndex) -> Player {
-        // All vertices are owned by the given player, making it a solitaire game.
-        self.player
-    }
-
-    delegate! {
-        to self.game {
-            fn initial_vertex(&self) -> VertexIndex;
-            fn num_of_vertices(&self) -> usize;
-            fn num_of_edges(&self) -> usize;
-            fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
-            fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a;
-            fn priority(&self, vertex: VertexIndex) -> Priority;
-            fn is_total(&self) -> bool;
-            fn highest_priority(&self) -> Priority;
-        }
+impl<G: PG, P: Pred> Pred for PrioSubgame<'_, G, P> {
+    fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
+        self.subgame.predecessors(vertex_index)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use delegate::delegate;
+
     use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
+    use crate::Edge;
+    use crate::PG;
     use crate::Player;
-    use crate::parity_games::solitaire_game::SolitaireGame;
+    use crate::Priority;
+    use crate::VertexIndex;
     use crate::random_parity_game;
     use crate::solve_solitaire_game;
     use crate::solve_zielonka;
@@ -340,5 +379,42 @@ mod tests {
                 "The solution for the solitaire solver should match the zielonka solution"
             );
         })
+    }
+
+    /// A parity game where every player is now owned by given player, making this a
+    /// solitaire game.
+    struct SolitaireGame<'a, G: PG> {
+        game: &'a G,
+
+        player: Player,
+    }
+
+    impl<G: PG> SolitaireGame<'_, G> {
+        /// Create a new solitaire game induced by the given strategy on the given game.
+        fn new<'a>(game: &'a G, player: Player) -> SolitaireGame<'a, G> {
+            SolitaireGame { game, player }
+        }
+    }
+
+    impl<G: PG> PG for SolitaireGame<'_, G> {
+        type Label = G::Label;
+
+        fn owner(&self, _vertex: VertexIndex) -> Player {
+            // All vertices are owned by the given player, making it a solitaire game.
+            self.player
+        }
+
+        delegate! {
+            to self.game {
+                fn initial_vertex(&self) -> VertexIndex;
+                fn num_of_vertices(&self) -> usize;
+                fn num_of_edges(&self) -> usize;
+                fn iter_vertices(&self) -> impl Iterator<Item = VertexIndex> + '_;
+                fn outgoing_edges<'a>(&'a self, vertex_index: VertexIndex) -> impl Iterator<Item = Edge<'a, G::Label>> + 'a;
+                fn priority(&self, vertex: VertexIndex) -> Priority;
+                fn is_total(&self) -> bool;
+                fn highest_priority(&self) -> Priority;
+            }
+        }
     }
 }

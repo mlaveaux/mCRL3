@@ -17,6 +17,7 @@ use log::trace;
 
 use crate::PG;
 use crate::Player;
+use crate::Pred;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Repeat;
@@ -27,7 +28,7 @@ use crate::VertexIndex;
 pub type Set = BitVec<usize, Lsb0>;
 
 /// Solves the given parity game using the Zielonka algorithm.
-/// 
+///
 /// If `compute_strategy` is true, also computes the winning strategy for both
 /// players. Otherwise, returns `None` strategies.
 pub fn solve_zielonka<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Option<[Strategy; 2]>) {
@@ -50,7 +51,10 @@ pub fn solve_zielonka<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Opt
 
     if compute_strategy {
         // One of the strategies must be `Some`, but it could also be both.
-        debug_assert!(S0.is_some() || S1.is_some(), "At least one strategy should be computed if compute_strategy is true");
+        debug_assert!(
+            S0.is_some() || S1.is_some(),
+            "At least one strategy should be computed if compute_strategy is true"
+        );
         let S0 = S0.unwrap_or_default();
         let S1 = S1.unwrap_or_default();
 
@@ -106,11 +110,11 @@ impl<G: PG> ZielonkaSolver<'_, G> {
     }
 
     /// Recursively solves the parity game for the given set of vertices V.
-    /// 
+    ///
     /// # Details
-    /// 
+    ///
     /// The strategy computation is taken from the following paper:
-    /// 
+    ///
     /// >  Oliver Friedmann. Recursive algorithm for parity games requires exponential time. RAIRO Theor. Informatics Appl. 45(4): 449-457 (2011) [DOI](https://doi.org/10.1051/ita/2011124).
     fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, Option<Strategy>, Set, Option<Strategy>) {
         self.recursive_calls += 1;
@@ -163,12 +167,12 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         if !W1_not_alpha.any() {
             W1_alpha |= A;
             // Combine the strategy from the attractor with the recursive strategy.
-            S1_alpha = if self.compute_strategy { self.union_strategies(S1_alpha, A_strategy).map_or_else(
-                || {
-                    Some(Strategy::new().extend_arbitrary(self.game, &U_clone, &V, alpha))
-                },
-                |s| Some(s.extend_arbitrary(self.game, &U_clone, &V, alpha)),
-            ) } else {
+            S1_alpha = if self.compute_strategy {
+                self.union_strategies(S1_alpha, A_strategy).map_or_else(
+                    || Some(Strategy::new().extend_arbitrary(self.game, &U_clone, &V, alpha)),
+                    |s| Some(s.extend_arbitrary(self.game, &U_clone, &V, alpha)),
+                )
+            } else {
                 // Ignore strategy
                 None
             };
@@ -222,7 +226,9 @@ impl<G: PG> ZielonkaSolver<'_, G> {
                     };
 
                     if attracted && !A[*v] {
-                        if let Some(s) = strategy.as_mut() && self.game.owner(v) == alpha {
+                        if let Some(s) = strategy.as_mut()
+                            && self.game.owner(v) == alpha
+                        {
                             s.set(v, w);
                         }
 
@@ -259,7 +265,9 @@ impl<G: PG> ZielonkaSolver<'_, G> {
             } else {
                 Some(s1)
             }
-        } else { strategy2 }
+        } else {
+            strategy2
+        }
     }
 }
 

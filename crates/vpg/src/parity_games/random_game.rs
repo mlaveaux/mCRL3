@@ -36,7 +36,7 @@ pub fn random_parity_game<R: Rng>(
         let owner = Player::from_index(rng.random_range(0..2));
         builder.add_vertex(VertexIndex::new(v), owner, priority);
     }
-    
+
     // For each vertex, generate 0..outdegree outgoing edges.
     for v in 0..num_of_vertices {
         for _ in 0..rng.random_range(0..outdegree) {

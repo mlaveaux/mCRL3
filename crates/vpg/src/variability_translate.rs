@@ -27,16 +27,19 @@ pub fn translate_vpg(
     formula: &StateFrm,
 ) -> Result<VariabilityParityGame, MercError> {
     // Parses all labels into MultiAction once
-    let parsed_labels: Result<Vec<MultiAction>, MercError> =
-        fts.labels().iter().map(|label| MultiAction::parse(label.label())).collect();
-        
+    let parsed_labels: Result<Vec<MultiAction>, MercError> = fts
+        .labels()
+        .iter()
+        .map(|label| MultiAction::parse(label.label()))
+        .collect();
+
     // Simplify the labels by stripping BDD information
     let simplified_labels: Vec<MultiAction> = parsed_labels?
         .iter()
         .map(strip_feature_configuration_from_multi_action)
         .collect();
 
-    // Warn about any labels that are used in the formula but do not correspond to any label in the LTS. 
+    // Warn about any labels that are used in the formula but do not correspond to any label in the LTS.
     warn_unknown_action_labels(formula, &simplified_labels);
 
     let true_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::t(manager));
@@ -112,9 +115,9 @@ mod tests {
     use merc_syntax::UntypedStateFrmSpec;
 
     use crate::FeatureDiagram;
+    use crate::compute_reachable;
     use crate::read_fts;
-
-    use super::*;
+    use crate::translate_vpg;
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -137,7 +140,13 @@ mod tests {
 
         let vpg = translate_vpg(&manager_ref, &fts, fd.configuration().clone(), &formula.formula).unwrap();
 
-        assert!(vpg.is_total(&manager_ref).unwrap(), "The translated VPG should be total");
-        assert!(compute_reachable(&vpg).1.iter().all(|v| v.is_some()), "All vertices should be reachable from the initial vertex");
+        assert!(
+            vpg.is_total(&manager_ref).unwrap(),
+            "The translated VPG should be total"
+        );
+        assert!(
+            compute_reachable(&vpg).1.iter().all(|v| v.is_some()),
+            "All vertices should be reachable from the initial vertex"
+        );
     }
 }

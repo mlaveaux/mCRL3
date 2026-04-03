@@ -3,15 +3,15 @@ use bitvec::order::Lsb0;
 use delegate::delegate;
 use log::trace;
 
-use crate::check_partition;
-use crate::solve_solitaire_game;
 use crate::Edge;
+use crate::PG;
 use crate::Player;
 use crate::Priority;
 use crate::Set;
 use crate::Strategy;
 use crate::VertexIndex;
-use crate::PG;
+use crate::check_partition;
+use crate::solve_solitaire_game;
 
 /// Verifies that a proposed solution is valid for the given parity game and
 /// strategies.
@@ -48,7 +48,12 @@ pub fn verify_solution<G: PG>(pg: &G, solution: &[Set; 2], strategy: &[Strategy;
         // the current player.
         let expected = !solve_solitaire_game(&restricted) & solution[player.to_index()].clone();
         if expected != solution[player.to_index()] {
-            panic!("The strategy for player {} is incorrect, expected solution {}, got {}", player, expected, solution[player.to_index()]);
+            panic!(
+                "The strategy for player {} is incorrect, expected solution {}, got {}",
+                player,
+                expected,
+                solution[player.to_index()]
+            );
         }
     }
 }

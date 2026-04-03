@@ -13,12 +13,12 @@ use merc_io::LineIterator;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 
+use crate::PG;
 use crate::ParityGame;
 use crate::ParityGameBuilder;
 use crate::Player;
 use crate::Priority;
 use crate::VertexIndex;
-use crate::PG;
 
 #[derive(Error, Debug)]
 pub enum IOError {
@@ -142,7 +142,10 @@ mod tests {
 
     use crate::random_parity_game;
 
-    use super::*;
+    use super::Itertools;
+    use super::PG;
+    use super::read_pg;
+    use super::write_pg;
 
     #[test]
     #[cfg_attr(miri, ignore)]

@@ -8,7 +8,19 @@ use merc_collections::bytevec;
 use crate::PG;
 use crate::VertexIndex;
 
-/// Stores the predecessors for a given parity game.
+/// A trait for providing the predecessors of a parity game.
+pub trait Pred {
+    /// Returns an iterator over the predecessors the given vertex.
+    fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_;
+}
+
+impl<T: Pred + ?Sized> Pred for &T {
+    fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
+        (*self).predecessors(vertex_index)
+    }
+}
+
+/// Stores the predecessors for a given parity game, implements [Pred].
 pub struct Predecessors<'a> {
     /// A flat list of all predecessors in the game.
     edges_from: ByteCompressedVec<VertexIndex>,
@@ -67,9 +79,10 @@ impl<'a> Predecessors<'a> {
             _marker: PhantomData,
         }
     }
+}
 
-    /// Returns an iterator over the predecessors the given vertex.
-    pub fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + use<'_> {
+impl Pred for Predecessors<'_> {
+    fn predecessors(&self, vertex_index: VertexIndex) -> impl Iterator<Item = VertexIndex> + '_ {
         let start = self.vertex_to_predecessors.index(vertex_index.value());
         let end = self.vertex_to_predecessors.index(vertex_index.value() + 1);
         (start..end).map(move |i| self.edges_from.index(i))
@@ -78,13 +91,17 @@ impl<'a> Predecessors<'a> {
 
 #[cfg(test)]
 mod tests {
+    use bitvec::bitvec;
+    use bitvec::order::Lsb0;
     use itertools::Itertools;
     use merc_utilities::random_test;
 
     use crate::PG;
+    use crate::Pred;
     use crate::Predecessors;
     use crate::PrioSubgame;
     use crate::Priority;
+    use crate::Subgame;
     use crate::random_parity_game;
 
     #[test]
@@ -107,6 +124,26 @@ mod tests {
         })
     }
 
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_random_pred_trait_subgame() {
+        random_test(100, |rng| {
+            let pg = random_parity_game(rng, true, 50, 10, 5);
+
+            let mut restricted = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
+            for vertex in pg.iter_vertices() {
+                if pg.priority(vertex) <= Priority::new(2) {
+                    restricted.set(vertex.value(), true);
+                }
+            }
+
+            let predecessors = Predecessors::new(&pg);
+            let subgame = Subgame::new(&pg, restricted, predecessors);
+
+            check_pred_trait(&subgame);
+        })
+    }
+
     /// Checks that the predecessors computed by the `Predecessors` structure
     /// match the expected predecessors computed by iterating over all vertices
     /// and their outgoing edges.
@@ -119,7 +156,26 @@ mod tests {
                 .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
                 .collect();
             let actual_predecessors: Vec<_> = predecessors.predecessors(vertex).collect();
-    
+
+            assert_eq!(
+                expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
+                actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
+                "Predecessors of vertex {} do not match",
+                vertex.value()
+            );
+        }
+    }
+
+    /// Checks that the `Pred` trait implementation for a game matches
+    /// predecessors computed from outgoing edges.
+    fn check_pred_trait<G: PG + Pred>(game: &G) {
+        for vertex in game.iter_vertices() {
+            let expected_predecessors: Vec<_> = game
+                .iter_vertices()
+                .filter(|&v| game.outgoing_edges(v).any(|e| e.to() == vertex))
+                .collect();
+            let actual_predecessors: Vec<_> = game.predecessors(vertex).collect();
+
             assert_eq!(
                 expected_predecessors.into_iter().sorted().collect::<Vec<_>>(),
                 actual_predecessors.into_iter().sorted().collect::<Vec<_>>(),
