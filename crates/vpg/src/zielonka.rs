@@ -21,6 +21,7 @@ use crate::Pred;
 use crate::Predecessors;
 use crate::Priority;
 use crate::Repeat;
+use crate::Strat;
 use crate::Strategy;
 use crate::VertexIndex;
 
@@ -32,6 +33,18 @@ pub type Set = BitVec<usize, Lsb0>;
 /// If `compute_strategy` is true, also computes the winning strategy for both
 /// players. Otherwise, returns `None` strategies.
 pub fn solve_zielonka<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Option<[Strategy; 2]>) {
+    if compute_strategy {
+        let (solution, strategy) = solve_zielonka_impl::<G, Strategy>(game);
+        (solution, Some(strategy))
+    } else {
+        let (solution, _) = solve_zielonka_impl::<G, ()>(game);
+        (solution, None)
+    }
+}
+
+/// Solves the given parity game using the Zielonka algorithm, computing a
+/// strategy representation of type `S`.
+fn solve_zielonka_impl<G: PG, S: Strat>(game: &G) -> ([Set; 2], [S; 2]) {
     debug_assert!(game.is_total(), "Zielonka solver requires a total parity game");
 
     // Initial set of vertices V = all vertices
@@ -39,7 +52,7 @@ pub fn solve_zielonka<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Opt
     V.set_elements(usize::MAX);
     let full_V = V.clone(); // Used for debugging.
 
-    let mut zielonka = ZielonkaSolver::new(game, compute_strategy);
+    let mut zielonka = ZielonkaSolver::<_, S>::new(game);
 
     let (W0, S0, W1, S1) = zielonka.zielonka_rec(V, 0);
 
@@ -49,22 +62,10 @@ pub fn solve_zielonka<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Opt
         check_partition(&W0, &W1, &full_V);
     }
 
-    if compute_strategy {
-        // One of the strategies must be `Some`, but it could also be both.
-        debug_assert!(
-            S0.is_some() || S1.is_some(),
-            "At least one strategy should be computed if compute_strategy is true"
-        );
-        let S0 = S0.unwrap_or_default();
-        let S1 = S1.unwrap_or_default();
-
-        ([W0, W1], Some([S0, S1]))
-    } else {
-        ([W0, W1], None)
-    }
+    ([W0, W1], [S0, S1])
 }
 
-struct ZielonkaSolver<'a, G: PG> {
+struct ZielonkaSolver<'a, G: PG, S: Strat> {
     game: &'a G,
 
     /// Reused temporary queue for attractor computation.
@@ -79,13 +80,13 @@ struct ZielonkaSolver<'a, G: PG> {
     /// Keeps track of the total number of recursive calls.
     recursive_calls: usize,
 
-    /// If true, also computes the winning strategy for both players. Otherwise, returns `None` strategies.
-    compute_strategy: bool,
+    /// The `S` is not actually stored in the struct, but we need to keep track of the type for the recursive calls.
+    _strategy: std::marker::PhantomData<S>,
 }
 
-impl<G: PG> ZielonkaSolver<'_, G> {
+impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
     /// Creates a new Zielonka solver for the given parity game.
-    fn new<'a>(game: &'a G, compute_strategy: bool) -> ZielonkaSolver<'a, G> {
+    fn new<'a>(game: &'a G) -> ZielonkaSolver<'a, G, S> {
         // Keep track of the vertices for each priority
         let mut priority_vertices = Vec::new();
 
@@ -105,7 +106,7 @@ impl<G: PG> ZielonkaSolver<'_, G> {
             priority_vertices,
             temp_queue: Vec::new(),
             recursive_calls: 0,
-            compute_strategy,
+            _strategy: std::marker::PhantomData,
         }
     }
 
@@ -116,13 +117,13 @@ impl<G: PG> ZielonkaSolver<'_, G> {
     /// The strategy computation is taken from the following paper:
     ///
     /// >  Oliver Friedmann. Recursive algorithm for parity games requires exponential time. RAIRO Theor. Informatics Appl. 45(4): 449-457 (2011) [DOI](https://doi.org/10.1051/ita/2011124).
-    fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, Option<Strategy>, Set, Option<Strategy>) {
+    fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, S, Set, S) {
         self.recursive_calls += 1;
         let full_V = V.clone(); // Used for debugging
         let indent = Repeat::new(" ", depth);
 
         if !V.any() {
-            return (V.clone(), None, V.clone(), None);
+            return (V.clone(), S::new(), V.clone(), S::new());
         }
 
         let (highest_prio, lowest_prio) = self.get_highest_lowest_prio(&V);
@@ -148,12 +149,7 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         );
         trace!("{}Vertices in U: {}", indent, DisplaySet(&U));
 
-        // This copy of U is only necessary whenever a strategy is computed, see below.
-        let U_clone = if self.compute_strategy {
-            U.clone()
-        } else {
-            Set::default()
-        };
+        let U_clone = U.clone();
 
         let (A, A_strategy) = self.attractor(alpha, &V, U);
 
@@ -167,16 +163,8 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         if !W1_not_alpha.any() {
             W1_alpha |= A;
             // Combine the strategy from the attractor with the recursive strategy.
-            S1_alpha = if self.compute_strategy {
-                self.union_strategies(S1_alpha, A_strategy).map_or_else(
-                    || Some(Strategy::new().extend_arbitrary(self.game, &U_clone, &V, alpha)),
-                    |s| Some(s.extend_arbitrary(self.game, &U_clone, &V, alpha)),
-                )
-            } else {
-                // Ignore strategy
-                None
-            };
-            combine_with_strategy(W1_alpha, S1_alpha, W1_not_alpha, None, alpha)
+            S1_alpha = S1_alpha.union(A_strategy).extend_arbitrary(self.game, &U_clone, &V, alpha);
+            combine_with_strategy(W1_alpha, S1_alpha, W1_not_alpha, S::new(), alpha)
         } else {
             let (B, B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
 
@@ -189,7 +177,7 @@ impl<G: PG> ZielonkaSolver<'_, G> {
 
             W2_not_alpha |= B;
             // Combine the strategy from the attractor with the recursive strategy
-            S2_not_alpha = self.union_strategies(self.union_strategies(S2_not_alpha, B_strategy), S1_not_alpha);
+            S2_not_alpha = S2_not_alpha.union(B_strategy).union(S1_not_alpha);
 
             check_partition(&W2_alpha, &W2_not_alpha, &full_V);
             combine_with_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
@@ -197,13 +185,9 @@ impl<G: PG> ZielonkaSolver<'_, G> {
     }
 
     /// Computes the attractor for `alpha` to the set `U` within the vertices `V`.
-    fn attractor(&mut self, alpha: Player, V: &Set, mut A: Set) -> (Set, Option<Strategy>) {
+    fn attractor(&mut self, alpha: Player, V: &Set, mut A: Set) -> (Set, S) {
         // 1. strategy := empty
-        let mut strategy = if self.compute_strategy {
-            Some(Strategy::new())
-        } else {
-            None
-        };
+        let mut strategy = S::new();
 
         // 2. Q = {v \in A}
         self.temp_queue.clear();
@@ -226,10 +210,8 @@ impl<G: PG> ZielonkaSolver<'_, G> {
                     };
 
                     if attracted && !A[*v] {
-                        if let Some(s) = strategy.as_mut()
-                            && self.game.owner(v) == alpha
-                        {
-                            s.set(v, w);
+                        if self.game.owner(v) == alpha {
+                            strategy.set(v, w);
                         }
 
                         A.set(*v, true);
@@ -254,20 +236,6 @@ impl<G: PG> ZielonkaSolver<'_, G> {
         }
 
         (Priority::new(highest), Priority::new(lowest))
-    }
-
-    /// Combines two (possibly empty) strategies by overwriting the mappings in
-    /// the first strategy with those in the second strategy, if they exist.
-    fn union_strategies(&self, strategy1: Option<Strategy>, strategy2: Option<Strategy>) -> Option<Strategy> {
-        if let Some(s1) = strategy1 {
-            if let Some(s2) = strategy2 {
-                Some(s1.union(s2))
-            } else {
-                Some(s1)
-            }
-        } else {
-            strategy2
-        }
     }
 }
 
@@ -324,11 +292,11 @@ pub fn x_and_not_x_strategy<U, V>(
 /// Combines a pair of submaps ordered by player into a pair even, odd.
 pub fn combine_with_strategy<U, V>(
     omega_x: U,
-    strategy_x: Option<V>,
+    strategy_x: V,
     omega_not_x: U,
-    strategy_not_x: Option<V>,
+    strategy_not_x: V,
     player: Player,
-) -> (U, Option<V>, U, Option<V>) {
+) -> (U, V, U, V) {
     match player {
         Player::Even => (omega_x, strategy_x, omega_not_x, strategy_not_x),
         Player::Odd => (omega_not_x, strategy_not_x, omega_x, strategy_x),

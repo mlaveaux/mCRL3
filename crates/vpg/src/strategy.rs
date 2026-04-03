@@ -6,6 +6,24 @@ use crate::Player;
 use crate::Set;
 use crate::VertexIndex;
 
+/// A strategy abstraction used by Zielonka.
+///
+/// This allows running the solver with either full strategy construction
+/// (`Strategy`) or with a zero-cost no-op strategy (`()`).
+pub trait Strat: Sized {
+    /// Creates a new empty strategy value.
+    fn new() -> Self;
+
+    /// Records a strategy move from `from` to `to`.
+    fn set(&mut self, from: VertexIndex, to: VertexIndex);
+
+    /// Combines two strategy values.
+    fn union(self, other: Self) -> Self;
+
+    /// Extends with arbitrary choices on unresolved owned vertices.
+    fn extend_arbitrary<G: PG>(self, pg: &G, vertices: &Set, subgame: &Set, player: Player) -> Self;
+}
+
 /// Keeps track of a strategy for a player in a parity game.
 ///
 /// # Details
@@ -90,6 +108,34 @@ impl Strategy {
             }
         }
     }
+}
+
+impl Strat for Strategy {
+    fn new() -> Self {
+        Self::new()
+    }
+
+    fn set(&mut self, from: VertexIndex, to: VertexIndex) {
+        self.set(from, to);
+    }
+
+    fn union(self, other: Self) -> Self {
+        self.union(other)
+    }
+
+    fn extend_arbitrary<G: PG>(self, pg: &G, vertices: &Set, subgame: &Set, player: Player) -> Self {
+        self.extend_arbitrary(pg, vertices, subgame, player)
+    }
+}
+
+impl Strat for () {
+    fn new() -> Self {}
+
+    fn set(&mut self, _from: VertexIndex, _to: VertexIndex) {}
+
+    fn union(self, _other: Self) -> Self {}
+
+    fn extend_arbitrary<G: PG>(self, _pg: &G, _vertices: &Set, _subgame: &Set, _player: Player) -> Self {}
 }
 
 impl Default for Strategy {
