@@ -28,7 +28,7 @@ export component Application inherits Window {
     forward-focus: key-handler;
 
     /// Render the simulation to an image.
-    pure callback update_canvas(length, length, bool) -> image;
+    pure callback update_canvas(width: length, height: length, refresh: bool) -> image;
 
     /// Request the canvas to be redrawn.
     pure callback request_redraw();
@@ -39,11 +39,14 @@ export component Application inherits Window {
     /// Trigger a file dialog to open to select another LTS.
     pure callback open_filedialog();
 
+    /// Show an about dialog.
+    pure callback show_about_dialog();
+
     /// Moves the camera to focus on the loaded LTS.
     pure callback focus_view();
 
     /// Used to pause the simulation.
-    pure callback run_simulation(bool);
+    pure callback run_simulation(enabled: bool);
 
     /// Used to quit the application.
     pure callback quit();
@@ -60,6 +63,15 @@ export component Application inherits Window {
             MenuItem {
                 title: @tr("Exit");
                 activated => { quit(); }
+            }
+        }
+
+        Menu {
+            title: @tr("Help");
+
+            MenuItem {
+                title: @tr("About");
+                activated => { show_about_dialog(); }
             }
         }
     }
@@ -276,4 +288,11 @@ export component ErrorDialog inherits Dialog {
     }
 
     StandardButton { kind: ok; }
+}
+
+import { AboutSlint } from "std-widgets.slint";
+
+export component AboutDialog inherits Window {
+    height: 175px;
+    AboutSlint {}
 }

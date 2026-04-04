@@ -525,7 +525,7 @@ async fn main() -> Result<ExitCode, MercError> {
                     render_handle.resume();
                     Ok(())
                 }
-                Err(x) => Ok(show_error_dialog("Failed to load LTS!", &format!("{x}"))),
+                Err(x) => show_error_dialog("Failed to load LTS!", &format!("{x}")),
             }
         }
     };
@@ -628,6 +628,14 @@ async fn main() -> Result<ExitCode, MercError> {
                 }
             }
         });
+    }
+
+    // Show the about dialog
+    {
+        app.on_show_about_dialog(|| {            
+            let dialog = AboutDialog::new().expect("Creating the AboutDialog failed");
+            dialog.show().expect("Showing the AboutDialog failed");
+        })
     }
 
     app.on_quit(move || {
