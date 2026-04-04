@@ -86,12 +86,10 @@ fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
     // Determine vertices that are winning for the player in the restricted game, which are those that can reach a vertex with the current priority.
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
 
-    let subgame_vertices: HashSet<VertexIndex> = HashSet::from_iter(pg.iter_vertices());
-
     // Convert to block partition to compute reachability on the SCCs
     let block_partition = BlockPartition::<()>::from_indexed_partition(&scc_partition);
     for scc in (0..scc_partition.num_of_blocks()).map(BlockIndex::new) {
-        if is_trivial_scc(pg, &block_partition, scc, &subgame_vertices) {
+        if is_trivial_scc(pg, &block_partition, scc) {
             trace!("SCC {} is trivial, skipping", scc);
             continue;
         }
@@ -100,15 +98,12 @@ fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
             .iter_block(scc)
             // TODO: This assumes that this is the highest priority, so priorities (0,1) for odd and (1,2) for even.
             .any(|i| {
-                subgame_vertices.contains(&VertexIndex::new(i))
-                    && Player::from_priority(&pg.priority(VertexIndex::new(i))) == player
+                Player::from_priority(&pg.priority(VertexIndex::new(i))) == player
             })
         {
             for vertex in block_partition.iter_block(scc) {
-                if subgame_vertices.contains(&VertexIndex::new(vertex)) {
-                    winning_vertices.set(vertex, true);
-                    trace!("Player {} wins {} in SCC {}", player, vertex, scc);
-                }
+                winning_vertices.set(vertex, true);
+                trace!("Player {} wins {} in SCC {}", player, vertex, scc);
             }
         }
     }
@@ -119,17 +114,13 @@ fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
 /// Returns true if the given SCC is trivial, i.e., it does not contain any
 /// cycles. This is the case if the SCC contains only one vertex and that vertex
 /// does not have a self-loop.
-///
-/// Only vertices contained in `subgame_vertices` are considered part of the SCC.
 fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     pg: &G,
     partition: &BlockPartition<T>,
-    block: BlockIndex,
-    subgame_vertices: &HashSet<VertexIndex>,
+    block: BlockIndex
 ) -> bool {
     if partition
         .iter_block(block)
-        .filter(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
         .count()
         != 1
     {
@@ -141,8 +132,9 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
     let vertex = VertexIndex::new(
         partition
             .iter_block(block)
-            .find(|&i| subgame_vertices.contains(&VertexIndex::new(i)))
-            .expect("Block must contain at least one vertex"),
+            .next()
+            .expect("Block must contain at least one vertex")
+
     );
     !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
 }
