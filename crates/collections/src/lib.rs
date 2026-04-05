@@ -8,6 +8,7 @@ mod indexed_partition;
 mod indexed_set;
 mod protection_set;
 mod scc_decomposition;
+mod vecbag;
 mod vecset;
 
 pub use block_partition::*;
@@ -17,4 +18,5 @@ pub use indexed_partition::*;
 pub use indexed_set::*;
 pub use protection_set::*;
 pub use scc_decomposition::*;
+pub use vecbag::*;
 pub use vecset::*;

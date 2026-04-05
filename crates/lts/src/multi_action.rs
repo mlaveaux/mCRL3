@@ -19,7 +19,7 @@ use merc_aterm::Term;
 use merc_aterm::TermIterator;
 use merc_aterm::Transmutable;
 use merc_aterm::storage::Marker;
-use merc_collections::VecSet;
+use merc_collections::VecBag;
 use merc_data::DataExpression;
 use merc_data::DataVariable;
 use merc_data::DataVariableRef;
@@ -30,21 +30,21 @@ use merc_utilities::MercError;
 
 use crate::TransitionLabel;
 
-/// Represents a multi-action, i.e., a set of action labels
+/// Represents a multi-action, i.e., a multi set of action labels
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct LtsMultiAction {
-    actions: VecSet<LtsAction>,
+    actions: VecBag<LtsAction>,
 }
 
 impl LtsMultiAction {
     /// Creates a new multi-action with the given set of action labels.
-    pub fn new(actions: VecSet<LtsAction>) -> Self {
+    pub fn new(actions: VecBag<LtsAction>) -> Self {
         LtsMultiAction { actions }
     }
 
     /// Parses a multi-action from a string representation, typically found in the Aldebaran format.
     pub fn from_string(input: &str) -> Result<Self, MercError> {
-        let mut actions = VecSet::new();
+        let mut actions = VecBag::new();
 
         for part in input.split('|') {
             let part = part.trim();
@@ -115,7 +115,7 @@ impl LtsMultiAction {
                 return Err("Timed multi-actions are not supported.".into());
             }
 
-            let mut actions = VecSet::new();
+            let mut actions = VecBag::new();
             for action in multi_action.actions() {
                 let arguments = action.arguments().to_vec();
 
@@ -131,6 +131,17 @@ impl LtsMultiAction {
             Err(format!("Expected TimedMultAction symbol, got {}.", term).into())
         }
     }
+
+    /// Returns true iff the multi-action is a tau action, i.e., it contains no action labels.
+    pub fn is_tau_label(&self) -> bool {
+        self.actions.is_empty()
+    }
+
+    /// Returns the set of action labels contained in the multi-action.
+    pub fn actions(&self) -> &VecBag<LtsAction> {
+        &self.actions
+    }
+
 }
 
 #[merc_derive_terms]
@@ -277,7 +288,7 @@ impl TransitionLabel for LtsMultiAction {
     }
 
     fn tau_label() -> Self {
-        LtsMultiAction { actions: VecSet::new() }
+        LtsMultiAction { actions: VecBag::new() }
     }
 
     fn matches_label(&self, label: &str) -> bool {
@@ -288,7 +299,7 @@ impl TransitionLabel for LtsMultiAction {
     fn from_index(i: usize) -> Self {
         // For now we only generate single actions, but these could become multiactions as well
         LtsMultiAction {
-            actions: VecSet::singleton(LtsAction::new(
+            actions: VecBag::singleton(LtsAction::new(
                 char::from_digit(i as u32, 36)
                     .expect("Radix is less than 37, so should not panic")
                     .to_string(),
