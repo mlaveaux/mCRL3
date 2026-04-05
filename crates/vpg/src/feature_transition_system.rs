@@ -79,11 +79,11 @@ pub fn read_fts<R: Read>(
         let associated_feature = feature_labels[original_labels
             .iter()
             .position(|orig| *orig == label)
-            .expect("label must have an associated feature")]
+            .ok_or("label must have an associated feature")?]
         .clone();
 
-        FeaturedLabel::new(label, associated_feature)
-    });
+        Ok(FeaturedLabel::new(label, associated_feature))
+    })?;
 
     Ok(FeatureTransitionSystem::new(aut, features))
 }
