@@ -1,25 +1,25 @@
 use log::debug;
 use log::info;
 use log::trace;
-use merc_ldd::height;
-use merc_lts::LtsBuilder;
 use rustc_hash::FxBuildHasher;
+use rustc_hash::FxHashSet;
+use streaming_iterator::StreamingIterator;
 
 use merc_collections::IndexedSet;
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
-use merc_ldd::Storage;
+use merc_ldd::height;
 use merc_ldd::iterators::iter;
 use merc_ldd::len;
+use merc_ldd::Storage;
+use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
-use rustc_hash::FxHashSet;
-use streaming_iterator::StreamingIterator;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
 
-/// Converts a symbolic LTS to an explicit LTS.
+/// Converts a symbolic BDD LTS to an explicit LTS.
 ///
 /// # Details
 ///
@@ -30,12 +30,6 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     output: &mut B,
     lts: &L,
 ) -> Result<B::LTS, MercError> {
-    for group in lts.transition_groups() {
-        if group.action_label_index().is_none() {
-            return Err("Cannot convert a symbolic LTS with transition groups without action labels".into());
-        }
-    }
-
     // Compute for every read and write index its position in the transition vector.
     let mut read_positions = Vec::new();
     let mut write_positions = Vec::new();
@@ -212,8 +206,9 @@ mod tests {
     use merc_lts::LtsBuilderMem;
     use merc_utilities::test_logger;
 
-    use crate::convert_symbolic_lts;
     use crate::read_symbolic_lts;
+    
+    use super::convert_symbolic_lts;
 
     #[test]
     fn test_convert_symbolic_lts() {
