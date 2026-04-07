@@ -33,10 +33,11 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create a block partition from an indexed partition.
     pub fn from_indexed_partition(partition: &IndexedPartition) -> Self {
         let mut blocks = vec![Block::new_empty(); partition.num_of_blocks()];
+        let num_of_blocks = partition.iter().count();
 
         // Figure out the number of elements per block.
-        for element in partition.iter() {
-            blocks[element].end += 1;
+        for (_, block_index) in partition.iter_elements() {
+            blocks[block_index].end += 1;
         }
 
         // Compute the start index for each block.
@@ -49,8 +50,8 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
         }
 
         // Create the elements vector.
-        let mut elements = vec![0; partition.len()];
-        for (element_index, block_index) in partition.iter().enumerate() {
+        let mut elements = vec![0; num_of_blocks];
+        for (element_index, block_index) in partition.iter_elements() {
             // Add the element to the block, and update the end index.
             let block = &mut blocks[block_index];
             let pos = block.end;
@@ -253,7 +254,7 @@ impl Iterator for BlockIter<'_> {
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
-    use rand::RngExt;
+    use rand::{RngExt, seq::IteratorRandom};
 
     use super::*;
 
@@ -276,9 +277,10 @@ mod tests {
     #[test]
     fn test_random_from_indexed_partition() {
         random_test(100, |rng| {
-            let mut partition = IndexedPartition::new(100);
+            let subset = (0..100).sample(rng, 25);
+            let mut partition = IndexedPartition::with_subset(100, subset.iter().copied());
 
-            for element in 0..partition.len() {
+            for element in subset {
                 partition.set_block(element, BlockIndex::new(rng.random_range(0..10)));
             }
             trace!("Input partition {partition}");

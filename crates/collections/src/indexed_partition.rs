@@ -16,8 +16,11 @@ pub const NOT_IN_PARTITION: usize = usize::MAX;
 /// Defines a partition based on an explicit indexing of elements to their block
 /// number.
 ///
-/// Note that the assumption is that the elements are dense, and the
-/// corresponding blocks as well.
+/// # Details
+/// 
+/// This partition always stores 0..max_value elements in the partition, but it
+/// uses a special value to indicate that an element is not in the partition. So
+/// this is not memory efficient.
 #[derive(Clone, Debug)]
 pub struct IndexedPartition {
     /// Stores a mapping from element index to block number.
@@ -68,24 +71,25 @@ impl IndexedPartition {
         }
     }
 
-    /// Iterates over the blocks in the partition.
+    /// Iterates over the blocks in the partition, blocks can be repeated.
     pub fn iter(&self) -> impl Iterator<Item = BlockIndex> + '_ {
-        self.partition.iter().copied()
+        self.iter_elements().map(|(_, block)| block)
     }
 
-    /// Iterates over the element indices that are part of the partition.
-    pub fn included_indices(&self) -> impl Iterator<Item = usize> + '_ {
+    /// Iterates over element-block pairs in the partition.
+    pub fn iter_elements(&self) -> impl Iterator<Item = (usize, BlockIndex)> + '_ {
         self.partition
             .iter()
             .enumerate()
-            .filter_map(|(index, block)| (block.value() != NOT_IN_PARTITION).then_some(index))
+            .filter_map(|(element_index, &block)| (block.value() != NOT_IN_PARTITION).then_some((element_index, block)))
     }
 
     /// Sets the block number of the given element
     ///
     /// # Details
     ///
-    /// This assumes that the blocks are dense, otherwise the partition overestimates the total number of blocks present returned from `len`.
+    /// This assumes that the blocks numbers are dense, otherwise the partition
+    /// overestimates the total number of blocks present returned from [Self::num_of_blocks].
     pub fn set_block(&mut self, element_index: usize, block_number: BlockIndex) {
         debug_assert!(block_number.value() != NOT_IN_PARTITION, "Block number cannot be NOT_IN_PARTITION");
 
@@ -98,7 +102,7 @@ impl IndexedPartition {
         self.partition[element_index]
     }
 
-    /// Returns the number of blocks in the partition.
+    /// Returns the number of elements in the partition.
     pub fn len(&self) -> usize {
         self.partition.len()
     }
@@ -112,11 +116,6 @@ impl IndexedPartition {
     pub fn num_of_blocks(&self) -> usize {
         self.num_of_blocks
     }
-
-    /// Returns the underlying partition vector.
-    pub fn partition(&self) -> &Vec<BlockIndex> {
-        &self.partition
-    }
 }
 
 /// Reorders the blocks of the given partition according to the given permutation.
@@ -124,12 +123,10 @@ pub fn reorder_partition<P>(partition: IndexedPartition, permutation: P) -> Inde
 where
     P: Fn(BlockIndex) -> BlockIndex,
 {
-    let mut new_partition = IndexedPartition::with_subset(partition.partition.len(), partition.included_indices());
+    let mut new_partition = partition.clone();
 
-    for (element_index, block) in partition.iter().enumerate() {
-        if block.value() != NOT_IN_PARTITION {
-            new_partition.set_block(element_index, permutation(block));
-        }
+    for (element_index, block) in partition.iter_elements() {
+        new_partition.set_block(element_index, permutation(block));
     }
 
     new_partition
@@ -141,10 +138,10 @@ impl fmt::Display for IndexedPartition {
 
         let mut first = true;
 
-        for block_index in 0..self.partition.len() {
+        for block_index in self.iter() {
             // Print all elements with the same block number.
             let mut first_block = true;
-            for (element_index, _) in self.iter().enumerate().filter(|(_, value)| *value == block_index) {
+            for (element_index, _) in self.iter_elements().filter(|&(_, value)| value == block_index) {
                 if !first_block {
                     write!(f, ", ")?;
                 } else {

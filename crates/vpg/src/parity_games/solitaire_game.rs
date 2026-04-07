@@ -1,13 +1,12 @@
-use std::collections::HashSet;
 use std::fmt::Debug;
 
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
 use bitvec::vec::BitVec;
 use delegate::delegate;
-
 use itertools::Itertools;
 use log::trace;
+
 use merc_collections::BlockIndex;
 use merc_collections::BlockPartition;
 use merc_collections::scc_decomposition;
@@ -204,7 +203,7 @@ impl<G: PG, P: Pred> PG for Subgame<'_, G, P> {
             self.restricted
                 .get(vertex_index.value())
                 .expect("Vertex must be in the restricted set"),
-            "Vertex must be in the restricted set"
+            "Vertex {vertex_index} is not in the restricted set"
         );
 
         self.game.outgoing_edges(vertex_index).filter(move |edge| {

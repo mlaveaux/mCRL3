@@ -25,7 +25,7 @@ pub trait Partition {
 
 impl Partition for IndexedPartition {
     fn block_number(&self, state_index: StateIndex) -> BlockIndex {
-        self.partition()[state_index.value()]
+        self.block(state_index.value())
     }
 
     fn num_of_blocks(&self) -> usize {
@@ -41,7 +41,7 @@ impl Partition for IndexedPartition {
 pub fn combine_partition<P: Partition>(left: IndexedPartition, right: &P) -> IndexedPartition {
     let mut combined_partition = left.clone();
 
-    for (element_index, block) in left.partition().iter().enumerate() {
+    for (element_index, block) in left.iter_elements() {
         let new_block = right.block_number(StateIndex::new(block.value()));
 
         combined_partition.set_block(element_index, new_block);
