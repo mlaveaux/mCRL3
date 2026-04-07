@@ -154,7 +154,7 @@ DeclarationParameter = _{ "param" ~ ID ~ "=" ~ Expression ~ ";" }
 DeclarationConstant = _{ "const" ~ ID ~ "=" ~ Expression ~ ";" }
 
 // Expressions using prefix-primary-postfix with infix chaining
-Expression = _{ ExpressionPrefix* ~ Primary ~ ExpressionPostfix* ~ (ExpressionInfix ~ ExpressionPrefix* ~ Primary ~ ExpressionPostfix*)* }
+Expression = _{ ExpressionPrefix* ~ ExpressionPrimary ~ ExpressionPostfix* ~ (ExpressionInfix ~ ExpressionPrefix* ~ ExpressionPrimary ~ ExpressionPostfix*)* }
 
 // Prefix operators for Expression
 ExpressionPrefix = _{ ExpressionNot | ExpressionUnaryPlus | ExpressionUnaryMinus }
@@ -166,37 +166,37 @@ ExpressionPrefix = _{ ExpressionNot | ExpressionUnaryPlus | ExpressionUnaryMinus
 ExpressionInfix = _{
       ExpressionPow
     | ExpressionMult
-    | ExpressionDiv
     | ExpressionIntDiv
+    | ExpressionDiv
     | ExpressionAdd
     | ExpressionSubtract
     | ExpressionMod
-    | ExpressionLess
     | ExpressionLeq
+    | ExpressionLess
     | ExpressionEq
     | ExpressionGeq
     | ExpressionGreater
-    | ExpressionBitAnd
     | ExpressionAnd
-    | ExpressionBitOr
+    | ExpressionBitAnd
     | ExpressionOr
+    | ExpressionBitOr
 }
     ExpressionPow = { "^" }
     ExpressionMult = { "*" }
-    ExpressionDiv = { "/" }
     ExpressionIntDiv = { "//" }
+    ExpressionDiv = { "/" }
     ExpressionAdd = { "+" }
     ExpressionSubtract = { "-" }
     ExpressionMod = { "%" }
-    ExpressionLess = { "<" }
     ExpressionLeq = { "<=" }
+    ExpressionLess = { "<" }
     ExpressionEq = { "==" }
     ExpressionGeq = { ">=" }
     ExpressionGreater = { ">" }
-    ExpressionBitAnd = { "&" }
     ExpressionAnd = { "&&" }
-    ExpressionBitOr = { "|" }
+    ExpressionBitAnd = { "&" }
     ExpressionOr = { "||" }
+    ExpressionBitOr = { "|" }
 
 // Postfix operators for Expression
 ExpressionPostfix = _{ ExpressionCall | ExpressionAggregate }
@@ -204,7 +204,7 @@ ExpressionPostfix = _{ ExpressionCall | ExpressionAggregate }
     ExpressionAggregate = { "." ~ ExpressionAggregateOp ~ "(" ~ (Expression)? ~ ")" }
     ExpressionAggregateOp = { "count" | "min" | "max" | "mean" }
 
-Primary = _{
+ExpressionPrimary = _{
       "(" ~ Expression ~ ")"
     | "false"
     | "true"
@@ -212,8 +212,8 @@ Primary = _{
     | "U" ~ "[" ~ Expression ~ ("," ~ Expression)* ~ "]"
     | "R" ~ ("[" ~ Expression ~ "," ~ Expression ~ "]")?
     | "it"
-    | INTEGER
     | REAL
+    | INTEGER
     | ID
 }
 
@@ -241,8 +241,8 @@ DistanceExprThreshold = _{ DistanceExprUntil ~ (("<" | "<=" | ">=" | ">") ~ Expr
 DistanceExprUntil = _{ DistanceExprPrefix ~ ("\\U" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix)* }
 
 DistanceExprPrefix = _{
-      "F" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
-    | "G" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
+      "\\F" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
+    | "\\G" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
     | DistanceExprPrimary
 }
 

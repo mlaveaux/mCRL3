@@ -1382,6 +1382,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "merc_stark"
+version = "1.0.0"
+dependencies = [
+ "merc_pest_consume",
+ "merc_utilities",
+ "pest",
+ "pest_derive",
+]
+
+[[package]]
 name = "merc_symbolic"
 version = "3.0.0"
 dependencies = [
