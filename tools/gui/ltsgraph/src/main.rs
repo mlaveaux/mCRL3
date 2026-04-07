@@ -498,7 +498,9 @@ async fn main() -> Result<ExitCode, MercError> {
                 Ok(lts) => {
                     // Ensure that the labels are strings, such that they can displayed.
                     let lts: Arc<LabelledTransitionSystem<String>> =
-                        apply_lts!(lts, (), |lts, _| { Arc::new(lts.relabel(|label| label.to_string())) });
+                        apply_lts!(lts, (), |lts, _| -> Result<_, MercError> {
+                            Ok(Arc::new(lts.relabel(|label| Ok(label.to_string()))?))
+                        })?;
 
                     info!(
                         "Loaded lts with {} states and {} transitions",
@@ -632,7 +634,7 @@ async fn main() -> Result<ExitCode, MercError> {
 
     // Show the about dialog
     {
-        app.on_show_about_dialog(|| {            
+        app.on_show_about_dialog(|| {
             let dialog = AboutDialog::new().expect("Creating the AboutDialog failed");
             dialog.show().expect("Showing the AboutDialog failed");
         })
