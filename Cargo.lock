@@ -1302,6 +1302,7 @@ dependencies = [
  "merc_io",
  "merc_ldd",
  "merc_lts",
+ "merc_reduction",
  "merc_utilities",
  "oxidd",
  "oxidd-core",

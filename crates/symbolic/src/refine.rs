@@ -1,3 +1,5 @@
+use log::info;
+use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
@@ -50,22 +52,28 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
     }
 
     // B_0(p, b) = 1 where |b| is 0.
-    let mut blocks = lts.states().clone();    
+    let blocks = lts.states().clone();    
+
+    let progress = TimeProgress::new(|iteration: usize| {
+        info!("iteration {}", iteration);
+    }, 1);
 
     let mut iteration = 0;
     loop {
         // Check if B_i is stable w.r.t. all the transition relations.
-        for group in &split_groups {
+        for _group in &split_groups {
             
             // Forall b, p, p', q: B_i(p, b) and B_i(q,b) and Ta(p, p')
 
             // If the predicate is not satisfied, we split the blocks to obtain B_{i+1}(p, b b1 b2) = B_i(p, b1) and (b <=> exists p': Ra(p, p') and B_i(p', b2))
-            let additional_b = manager_ref.with_manager_exclusive(|manager| {
+            let _additional_b = manager_ref.with_manager_exclusive(|manager| {
                 manager.add_named_vars((0..5).map(|index| format!("b_{iteration}_{index}")))
             }).map_err(|e| e.to_string())?;
         }
 
         iteration += 1;
+        progress.print(iteration);
+        break;
     }
 
     Ok(blocks)
