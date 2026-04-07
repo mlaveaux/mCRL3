@@ -1,10 +1,10 @@
 use log::info;
 use log::trace;
-use oxidd::BooleanFunction;
-use oxidd::VarNo;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
 use oxidd::util::SatCountCache;
+use oxidd::BooleanFunction;
+use oxidd::VarNo;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -16,9 +16,9 @@ use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
 
+use crate::to_value;
 use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
-use crate::to_value;
 
 fn concretize_cube(cube: &mut [OptBool]) {
     for bit in cube {
@@ -126,9 +126,10 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
     }
 
     // Total number of states for progress reporting.
-    let total_number_of_states: u64 = lts
-        .states()
-        .sat_count(lts.state_variables().len() as VarNo, &mut SatCountCache::<u64, FxBuildHasher>::default());
+    let total_number_of_states: u64 = lts.states().sat_count(
+        lts.state_variables().len() as VarNo,
+        &mut SatCountCache::<u64, FxBuildHasher>::default(),
+    );
     info!(
         "Converting symbolic LTS to explicit LTS with {} states",
         LargeFormatter(total_number_of_states)
@@ -193,7 +194,9 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
 
                 // Try to match the read parameters of this vector.
                 let mut matches = true;
-                for (&read_variable, &read_position) in group.read_variables().iter().zip(read_positions[group_index].iter()) {
+                for (&read_variable, &read_position) in
+                    group.read_variables().iter().zip(read_positions[group_index].iter())
+                {
                     let state_pos = *state_variable_indices
                         .get(&read_variable)
                         .expect("Read variable was not found in state variables");
@@ -210,7 +213,9 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
                 // Apply the transition writes to the state vector.
                 target.clone_from_slice(&cube);
                 trace!("transition {:?}", transition);
-                for (&write_variable, &write_position) in group.write_variables().iter().zip(write_positions[group_index].iter()) {
+                for (&write_variable, &write_position) in
+                    group.write_variables().iter().zip(write_positions[group_index].iter())
+                {
                     let state_pos = *next_state_variable_indices
                         .get(&write_variable)
                         .expect("Write variable was not found in next-state variables");
@@ -231,7 +236,9 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
                 if outgoing.insert((*state_index, *target_index)) {
                     trace!(
                         " Found transition in {group_index} from {:?} to {:?} with label {:?}",
-                        cube, target, label
+                        cube,
+                        target,
+                        label
                     );
 
                     output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
@@ -257,7 +264,6 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
 
     output.finish(StateIndex::new(*initial_state_index))
 }
-
 
 /// Computes the positions of the read and write indices in the transition vector.
 fn compute_positions(
@@ -301,17 +307,23 @@ fn compute_positions(
 #[cfg(test)]
 mod tests {
     use merc_ldd::Storage;
-    use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
+    use merc_lts::LTS;
+    use merc_reduction::compare_lts;
+    use merc_reduction::Equivalence;
+    use merc_utilities::random_test;
     use merc_utilities::test_logger;
+    use merc_utilities::Timing;
 
-    use crate::SymbolicLtsBdd;
+    use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
+    use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
+    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_convert_symbolic_lts_bdd() {
+    fn test_convert_symbolic_lts_bdd_abp() {
         test_logger();
 
         let input = include_bytes!("../../../examples/lts/abp.sym");
@@ -328,4 +340,34 @@ mod tests {
         assert_eq!(lts.num_of_transitions(), 92);
     }
 
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_convert_symbolic_lts_bdd() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+
+            // We don't really check anything here, just ensure that reachability runs without errors.
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts_bdd = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &lts_bdd).unwrap();
+
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_lts,
+                    explicit_lts_bdd,
+                    false,
+                    &mut Timing::new()
+                ),
+                "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
+            );
+        });
+    }
 }
