@@ -598,9 +598,9 @@ mod tests {
 
     #[merc_test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_running_example() {
+    fn test_translate_abp_infinitely_often_receive_d1() {
         let lts = read_aut(include_bytes!("../../../examples/lts/abp.aut") as &[u8], Vec::new()).unwrap();
-        let formula = UntypedStateFrmSpec::parse(include_str!("../../../examples/vpg/running_example.mcf")).unwrap();
+        let formula = UntypedStateFrmSpec::parse(include_str!("../../../examples/pbes/infinitely_often_receive_d1.mcf")).unwrap();
 
         let pg = translate(&lts, &formula.formula).unwrap();
 

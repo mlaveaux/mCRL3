@@ -13,7 +13,6 @@ use merc_io::LargeFormatter;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
 use merc_lts::LtsFormat;
-use merc_lts::LtsMultiAction;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
