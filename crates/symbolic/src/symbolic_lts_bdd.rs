@@ -235,6 +235,24 @@ impl SymbolicLtsBdd {
         })
     }
 
+    /// Constructs a new symbolic LTS with the given transition groups.
+    pub fn with_transition_groups(
+        lts: &Self,
+        transition_groups: Vec<SummandGroupBdd>,
+    ) -> Self {
+        Self {
+            states: lts.states.clone(),
+            initial_state: lts.initial_state.clone(),
+            state_variable_num_of_bits: lts.state_variable_num_of_bits.clone(),
+            state_variable_indices: lts.state_variable_indices.clone(),
+            next_state_variables_indices: lts.next_state_variables_indices.clone(),
+            action_variable_indices: lts.action_variable_indices.clone(),
+            action_labels: lts.action_labels.clone(),
+            parameter_values: lts.parameter_values.clone(),
+            transition_groups,
+        }
+    }
+
     /// Returns the BDD representing the set of states.
     pub fn states(&self) -> &BDDFunction {
         &self.states
@@ -349,7 +367,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_symbolic_lts_bdd() {
+    fn test_from_symbolic_lts_bdd_abp() {
         test_logger();
 
         let input = include_bytes!("../../../examples/lts/abp.sym");
@@ -358,6 +376,7 @@ mod tests {
         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
         let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
 
+        // This only tests that the conversion does not panic.
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
     }
 }

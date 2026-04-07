@@ -976,6 +976,9 @@ mod tests {
     use std::ops::Range;
 
     use merc_ldd::Storage;
+    use merc_lts::LtsBuilderMem;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
     use merc_utilities::Timing;
     use oxidd::bdd::BDDFunction;
     use oxidd::error::DuplicateVarName;
@@ -990,6 +993,9 @@ mod tests {
 
     use merc_utilities::random_test;
 
+    use crate::convert_symbolic_lts;
+    use crate::convert_symbolic_lts_bdd;
+    use crate::quotient_symbolic;
     use crate::random_bdd;
     use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
@@ -1052,7 +1058,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_random_sigref() {
+    fn test_random_sigref_split_signature() {
         random_test(100, |rng| {
             let mut storage = Storage::new();
 
@@ -1146,5 +1152,41 @@ mod tests {
                 );
             })
         })
+    }
+
+    
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_sigref() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+            let (partition, block_vars, _num_of_blocks) =
+                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+
+            let quotient = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
+
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient).unwrap();
+            
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_lts,
+                    explicit_lts_reduced,
+                    false,
+                    &mut Timing::new()
+                ),
+                "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
+            );
+        });
     }
 }

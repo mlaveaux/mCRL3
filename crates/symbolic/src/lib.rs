@@ -18,6 +18,7 @@ mod reorder;
 mod sigref;
 mod symbolic_lts;
 mod symbolic_lts_bdd;
+mod symbolic_quotient;
 mod util;
 
 pub use convert_bdd::*;
@@ -38,4 +39,5 @@ pub use reorder::*;
 pub use sigref::*;
 pub use symbolic_lts::*;
 pub use symbolic_lts_bdd::*;
+pub use symbolic_quotient::*;
 pub use util::*;
