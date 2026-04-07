@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::Range;
 
@@ -8,6 +9,13 @@ use log::trace;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
+use oxidd::util::Borrowed;
+use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
+use oxidd::util::SatCountCache;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -18,13 +26,6 @@ use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Node;
 use oxidd::VarNo;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::error::DuplicateVarName;
-use oxidd::util::Borrowed;
-use oxidd::util::OptBool;
-use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
 use oxidd_dump::Visualizer;
@@ -32,15 +33,15 @@ use oxidd_rules_bdd::simple::BDDTerminal;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
-use crate::CubeIterAll;
-use crate::SymbolicLtsBdd;
-use crate::ValuesIter;
 use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::reduce;
 use crate::required_bits_64;
 use crate::to_value;
 use crate::variable_rename;
+use crate::CubeIterAll;
+use crate::SymbolicLtsBdd;
+use crate::ValuesIter;
 
 /// Computes the reduction of the given symbolic LTS using symbolic signature
 /// refinement.
@@ -57,7 +58,7 @@ pub fn sigref_symbolic(
     timing: &Timing,
     split_signature: bool,
     visualize: bool,
-) -> Result<BDDFunction, MercError> {
+) -> Result<(BDDFunction, Vec<VarNo>, usize), MercError> {
     // There can only be one block per state, so we need as many bits as required to
     // represent all states.
     let number_of_states = lts
@@ -251,6 +252,7 @@ pub fn sigref_symbolic(
                 &mut signature_to_block,
                 &block_variables_bdds,
                 lts.next_state_variables(),
+                &block_variable_indices,
                 &signature,
                 &partition,
             )
@@ -304,7 +306,7 @@ pub fn sigref_symbolic(
         iteration, num_of_blocks
     );
 
-    Ok(partition)
+    Ok((partition, block_variable_indices, num_of_blocks))
 }
 
 /// Computes a partitioning of the transition groups for the given LTS based on the split signature option.
@@ -398,9 +400,15 @@ fn refine(
     signature_to_block: &mut FxHashMap<BDDFunction, u64>,
     block_variables_bdds: &[BDDFunction],
     state_variables: &[VarNo],
+    block_variables: &[VarNo],
     signature: &BDDFunction,
     partition: &BDDFunction,
 ) -> Result<BDDFunction, MercError> {
+    debug_assert!(
+        check_partition_function(manager_ref, partition, state_variables, block_variables)?,
+        "The given partition function is not a valid partition function"
+    );
+
     manager_ref.with_manager_shared(|manager| {
         let mut cache = FxHashMap::default();
 
@@ -544,6 +552,68 @@ fn refine_edge<'id>(
         BDDFunction::from_edge(manager, manager.clone_edge(&result)),
     );
 
+    Ok(result)
+}
+
+/// Checks if the given BDD contains a function from `domain` to `range`.
+///
+/// # Details
+///
+/// Assumes that the domain variables all occur strictly before the range
+/// variables.
+fn check_partition_function(
+    manager_ref: &BDDManagerRef,
+    bdd: &BDDFunction,
+    domain: &[VarNo],
+    range: &[VarNo],
+) -> Result<bool, MercError> {
+    manager_ref.with_manager_shared(|manager| {
+        let mut cache = HashMap::new();
+
+        check_partition_function_edge(manager, &mut cache, bdd.as_edge(manager).borrowed(), domain, range)
+    })
+}
+
+/// The recursive implementation of [check_partition_function] on edges.
+fn check_partition_function_edge<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    cache: &mut HashMap<BDDFunction, bool>,
+    bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+    domain: &[VarNo],
+    range: &[VarNo],
+) -> Result<bool, MercError> {
+    if let Some(result) = cache.get(&BDDFunction::from_edge(manager, manager.clone_edge(&bdd))) {
+        return Ok(*result);
+    }
+
+    let bdd_level = match manager.get_node(&bdd) {
+        Node::Terminal(_terminal) => {
+            return Ok(true);
+        }
+        Node::Inner(node) => node.level(),
+    };
+
+    let result = if let Some(domain_var) = domain.first() {
+        if bdd_level > *domain_var {
+            // Skipped levels, so catch up in the domain.
+            check_partition_function_edge(manager, cache, bdd.borrowed(), &domain[1..], range)
+        } else if bdd_level == *domain_var {
+            let (high, low) = collect_children(manager.get_node(&bdd).unwrap_inner());
+
+            let high_result = check_partition_function_edge(manager, cache, high, &domain[1..], range)?;
+            let low_result = check_partition_function_edge(manager, cache, low, &domain[1..], range)?;
+            Ok(high_result && low_result)
+        } else {
+            // There are variables in the range that are not in the domain, so this cannot be a function from domain to range.
+            return Ok(false);
+        }
+    } else {
+        // The domain was completely visited, so now we check whether there is
+        // exactly one assignment to the range variables.
+        is_bdd_cube_edge(manager, bdd.borrowed(), range)
+    }?;
+
+    cache.insert(BDDFunction::from_edge(manager, manager.clone_edge(&bdd)), result);
     Ok(result)
 }
 
@@ -804,24 +874,28 @@ mod tests {
 
     use merc_ldd::Storage;
     use merc_utilities::Timing;
-    use oxidd::BooleanFunction;
-    use oxidd::Manager;
-    use oxidd::ManagerRef;
-    use oxidd::VarNo;
     use oxidd::bdd::BDDFunction;
     use oxidd::error::DuplicateVarName;
     use oxidd::util::Borrowed;
+    use oxidd::BooleanFunction;
+    use oxidd::Edge;
+    use oxidd::Function;
+    use oxidd::Manager;
+    use oxidd::ManagerRef;
+    use oxidd::VarNo;
     use rand::RngExt;
 
     use merc_utilities::random_test;
 
-    use crate::SymbolicLtsBdd;
+    use crate::random_bdd;
     use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
+    use crate::sigref::is_bdd_cube_edge;
     use crate::sigref_symbolic;
+    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -914,7 +988,8 @@ mod tests {
         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
 
-        let _partition = sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
+        let (_, _, num_of_blocks) = sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
+        assert_eq!(num_of_blocks, 1791, "The Szymanski example has 1791 bisimulation blocks");
     }
 
     #[test]
@@ -926,7 +1001,8 @@ mod tests {
         let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-        let _expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+        let (_, _, num_of_blocks) = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+        assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
     }
 
     #[test]
@@ -951,7 +1027,7 @@ mod tests {
 
             manager.with_manager_shared(|manager| {
                 assert!(
-                    is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed(), &vars).unwrap(),
+                    !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed(), &vars).unwrap(),
                     "The bdd was created as a cube, so it should be a cube"
                 );
             })
