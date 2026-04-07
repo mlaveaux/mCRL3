@@ -26,6 +26,7 @@ use merc_reduction::reduce_lts;
 use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
 use merc_refinement::refines;
+use merc_syntax::parse_action_names;
 use merc_syntax::generate_formula;
 use merc_syntax::parse_allow_action_names;
 use merc_syntax::parse_comm_expr_list;
@@ -36,7 +37,6 @@ use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use merc_syntax::parse_action_names;
 
 use crate::combine::combine_lts;
 
@@ -170,7 +170,6 @@ struct RefinesArgs {
 
 #[derive(clap::Args, Debug)]
 struct CombineArgs {
-
     /// The input LTSs for which the parallel composition should be computed.
     lts: Vec<PathBuf>,
 
@@ -481,10 +480,16 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         ));
     }
 
-    let mut lts_list = args.lts.iter().map(|path| {
-        let file = File::open(path)?;
-        read_aut(&file, args.tau.clone().unwrap_or_default())
-    }).collect::<Result<Vec<_>, _>>()?;
+    let lts_list = args
+        .lts
+        .iter()
+        .map(|path| {
+            let file = File::open(path)?;
+            let lts = read_aut(&file, args.tau.clone().unwrap_or_default())?;
+
+            lts.relabel(|label| LtsMultiAction::from_string(&label))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Parse the hide, allow and comm arguments, if they are provided.
     let hide = match &args.hide {
@@ -504,13 +509,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
 
     let mut builder = AutStream::new(File::create("combined.aut")?);
 
-    let combined_lts = combine_lts(&mut builder,
-        lts_list,
-        &hide,
-        &allow,
-        &comm,
-        timing,
-    );
+    combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
 
     Ok(())
 }

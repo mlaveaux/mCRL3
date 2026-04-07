@@ -141,6 +141,19 @@ impl LtsMultiAction {
     pub fn actions(&self) -> &VecBag<LtsAction> {
         &self.actions
     }
+
+    /// Consumes the multi-action and returns the set of action labels contained in it.
+    pub fn into_actions(self) -> VecBag<LtsAction> {
+        self.actions
+    }
+
+    /// Retains only the actions in the multi-action that satisfy the given predicate.
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&LtsAction) -> bool,
+    {
+        self.actions.retain(|action| f(action));
+    }
 }
 
 #[merc_derive_terms]

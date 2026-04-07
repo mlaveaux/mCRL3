@@ -972,6 +972,7 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "merc_collections",
  "merc_io",
  "merc_ldd",
  "merc_lts",
@@ -981,6 +982,7 @@ dependencies = [
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
+ "streaming-iterator",
 ]
 
 [[package]]
