@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
-mod convert;
+mod convert_bdd;
+mod convert_ldd;
 mod cube_iter;
 mod dependency_graph;
 mod format;
@@ -19,7 +20,8 @@ mod symbolic_lts;
 mod symbolic_lts_bdd;
 mod util;
 
-pub use convert::*;
+pub use convert_bdd::*;
+pub use convert_ldd::*;
 pub use cube_iter::*;
 pub use dependency_graph::*;
 pub use format::*;

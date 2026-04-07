@@ -780,6 +780,7 @@ fn to_block_index(bits: &[OptBool]) -> u64 {
 mod tests {
     use std::ops::Range;
 
+    use merc_ldd::Storage;
     use merc_utilities::Timing;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
@@ -794,6 +795,7 @@ mod tests {
 
     use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
+    use crate::read_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
@@ -853,7 +855,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_sigref() {
         random_test(100, |rng| {
-            let mut storage = merc_ldd::Storage::new();
+            let mut storage = Storage::new();
 
             // We don't really check anything here, just ensure that reachability runs without errors.
             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
@@ -861,20 +863,31 @@ mod tests {
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            let _expected_partition =
-                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+            let expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
 
             // Create a separate manager since sigref_symbolic creates new block variables.
             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
-            let _split_partition =
+            let split_partition =
                 sigref_symbolic(&manager_ref_split, &lts_bdd_split, &mut Timing::new(), false, false).unwrap();
 
             // Apparently this works even when the BDDs are created in different managers.
-            // assert!(
-            //     split_partition == expected_partition,
-            //     "Split signature approach does not match actual signature refinement"
-            // );
+            assert!(
+                split_partition == expected_partition,
+                "Split signature approach does not match actual signature refinement"
+            );
         });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_szymanski_symbolic_refinement() {
+        let mut storage = Storage::new();
+        let lts_bdd = read_symbolic_lts(&mut storage, include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8]).unwrap();
+
+        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
+
+        let _partition = sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
     }
 }
