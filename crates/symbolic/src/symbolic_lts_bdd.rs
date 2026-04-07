@@ -310,12 +310,12 @@ impl SummandGroupBdd {
     }
 
     /// Returns the indices of the read variables for this summand group.
-    pub fn read_variables(&self) -> &Vec<VarNo> {
+    pub fn read_variables(&self) -> &[VarNo] {
         &self.read_variables
     }
 
     /// Returns the indices of the write variables for this summand group.
-    pub fn write_variables(&self) -> &Vec<VarNo> {
+    pub fn write_variables(&self) -> &[VarNo] {
         &self.write_variables
     }
 }

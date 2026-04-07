@@ -47,7 +47,7 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
             let cube = cube?;
             let label_bdd = bdd_from_cube(manager_ref, &action_vars, &cube)?;
 
-            split_groups.push(SummandGroupBdd::new(group.relation().clone().and(&label_bdd)?, group.read_variables().clone(), group.write_variables().clone()));            
+            split_groups.push(SummandGroupBdd::new(group.relation().clone().and(&label_bdd)?, group.read_variables().to_vec(), group.write_variables().to_vec()));            
         }
     }
 
