@@ -547,6 +547,28 @@ fn refine_edge<'id>(
     Ok(result)
 }
 
+/// Checks if the given BDD is a cube, i.e., it represents a single bitvector over the given variables.
+fn is_bdd_cube_edge<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+    vars: &[VarNo],
+) -> Result<bool, MercError> {
+    match manager.get_node(&bdd) {
+        Node::Terminal(terminal) => match terminal {
+            BDDTerminal::True => Ok(true),
+            BDDTerminal::False => Ok(false),
+        },
+        Node::Inner(node) => {
+            let (high, low) = collect_children(node);
+
+            let high_is_cube = is_bdd_cube_edge(manager, high, vars)?;
+            let low_is_cube = is_bdd_cube_edge(manager, low, vars)?;
+
+            Ok(high_is_cube ^ low_is_cube) // Exactly one of them should be a cube.
+        }
+    }
+}
+
 /// Encodes the given block number into a BDD using the given variables as bits.
 ///
 /// # Details
@@ -883,11 +905,56 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_szymanski_symbolic_refinement() {
         let mut storage = Storage::new();
-        let lts_bdd = read_symbolic_lts(&mut storage, include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8]).unwrap();
+        let lts_bdd = read_symbolic_lts(
+            &mut storage,
+            include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
+        )
+        .unwrap();
 
         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
 
         let _partition = sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_symbolic_signature_refinement_abp() {
+        let mut storage = Storage::new();
+        let lts = read_symbolic_lts(&mut storage, include_bytes!("../../../examples/lts/abp.sym") as &[u8]).unwrap();
+
+        let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+        let _expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_is_cube() {
+        random_test(100, |rng| {
+            let manager = oxidd::bdd::new_manager(2048, 1024, 1);
+
+            // Create variables in the BDD manager
+            let vars: Vec<VarNo> =
+                manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
+
+            let bdd_vars = manager
+                .with_manager_exclusive(|manager| {
+                    vars.iter()
+                        .map(|v| BDDFunction::var(manager, *v))
+                        .collect::<Result<Vec<BDDFunction>, _>>()
+                })
+                .unwrap();
+
+            let bdd = random_bdd(&manager, rng, &bdd_vars, 1).unwrap();
+
+            manager.with_manager_shared(|manager| {
+                assert!(
+                    is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed(), &vars).unwrap(),
+                    "The bdd was created as a cube, so it should be a cube"
+                );
+            })
+        })
     }
 }
