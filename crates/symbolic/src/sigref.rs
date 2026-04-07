@@ -57,6 +57,8 @@ pub fn sigref_symbolic(
     lts: &SymbolicLtsBdd,
     timing: &Timing,
     split_signature: bool,
+    extend_relation: bool,
+    merge_transitions: bool,
     visualize: bool,
 ) -> Result<(BDDFunction, Vec<VarNo>, usize), MercError> {
     // There can only be one block per state, so we need as many bits as required to
@@ -66,12 +68,18 @@ pub fn sigref_symbolic(
         .sat_count::<u64, FxBuildHasher>(lts.state_variables().len() as u32, &mut SatCountCache::default());
     debug!("Number of states: {}", number_of_states);
 
-    let split_partition_groups = if split_signature {
+    let use_split_signature = split_signature && !merge_transitions;
+    let split_partition_groups = if use_split_signature {
         combine_transition_groups(manager_ref, lts)?
     } else {
         // We do not use the grouping
         Vec::new()
     };
+
+    let use_extended_relations = extend_relation || merge_transitions;
+    if merge_transitions && !extend_relation {
+        debug!("merge_transitions requires full-domain transition relations; enabling relation extension");
+    }
 
     let num_of_block_bits = required_bits_64(number_of_states);
     debug!("Number of block bits: {}", num_of_block_bits);
@@ -162,16 +170,52 @@ pub fn sigref_symbolic(
         )
     );
 
-    // Determine the write variables BDDs for all transition groups.
-    let write_variable_bdd = lts
+    // Determine quantification variables for the full next-state domain.
+    let full_next_state_vars_bdd = compute_vars_bdd(manager_ref, lts.next_state_variables())?.1;
+
+    // Optionally extend each transition relation with x = x' for variables that are not written.
+    let mut transition_relations = lts
         .transition_groups()
         .iter()
-        .map(|group| -> Result<_, MercError> {
-            let variables = group.write_variables().to_vec();
-
-            Ok(compute_vars_bdd(manager_ref, &variables)?.1)
+        .map(|group| {
+            if use_extended_relations {
+                crate::sigref::extend_relation(
+                    manager_ref,
+                    group.relation(),
+                    lts.state_variables(),
+                    lts.next_state_variables(),
+                    group.write_variables(),
+                )
+                .map_err(MercError::from)
+            } else {
+                Ok(group.relation().clone())
+            }
         })
         .collect::<Result<Vec<BDDFunction>, MercError>>()?;
+
+    // Determine the quantification variables used per transition relation.
+    let mut relation_quantified_next_state_vars = if use_extended_relations {
+        vec![full_next_state_vars_bdd.clone(); transition_relations.len()]
+    } else {
+        lts.transition_groups()
+            .iter()
+            .map(|group| -> Result<_, MercError> {
+                let variables = group.write_variables().to_vec();
+                Ok(compute_vars_bdd(manager_ref, &variables)?.1)
+            })
+            .collect::<Result<Vec<BDDFunction>, MercError>>()?
+    };
+
+    if merge_transitions && !transition_relations.is_empty() {
+        // Convert into a single vector containing the full transition relation.
+        let mut merged_relation = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
+        for relation in &transition_relations {
+            merged_relation = merged_relation.or(relation)?;
+        }
+
+        transition_relations = vec![merged_relation];
+        relation_quantified_next_state_vars = vec![full_next_state_vars_bdd.clone()];
+    }
 
     let mut signature_index = 0;
     loop {
@@ -183,13 +227,13 @@ pub fn sigref_symbolic(
         let signature = timing.measure("signature", || -> Result<BDDFunction, OutOfMemory> {
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
 
-            if split_signature && !split_partition_groups.is_empty() {
+            if use_split_signature && !split_partition_groups.is_empty() {
                 // Only compute the signature w.r.t. all transition groups that share actions.
                 for index in &split_partition_groups[signature_index] {
                     let group_signature = signature_strong(
                         &partition,
-                        lts.transition_groups()[*index].relation(),
-                        &write_variable_bdd[*index],
+                        &transition_relations[*index],
+                        &relation_quantified_next_state_vars[*index],
                     )?;
 
                     let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
@@ -197,10 +241,9 @@ pub fn sigref_symbolic(
                 }
             } else {
                 // Compute the full signature by combining all transition groups.
-                for (index, (group, write_vars)) in lts
-                    .transition_groups()
+                for (index, (relation, write_vars)) in transition_relations
                     .iter()
-                    .zip(write_variable_bdd.iter())
+                    .zip(relation_quantified_next_state_vars.iter())
                     .enumerate()
                 {
                     // Compute the signature for this transition group.
@@ -211,7 +254,7 @@ pub fn sigref_symbolic(
                     // and then after substituting next state variables with current
                     // state variables, they would lead to spurious states.
                     let group_signature = timing.measure(&format!("group_signature_{}", index), || {
-                        signature_strong(&partition, group.relation(), write_vars)
+                        signature_strong(&partition, relation, write_vars)
                     })?;
 
                     // Substitute next state variables with current state variables to align
@@ -282,7 +325,7 @@ pub fn sigref_symbolic(
         progress.print((iteration, num_of_blocks));
         iteration += 1;
 
-        if split_signature {
+        if use_split_signature {
             if signature_index == 0 && num_of_blocks == old_num_of_blocks {
                 // We only reached a fixed point if after a full cycle no changes occurred.
                 break;
@@ -639,6 +682,66 @@ fn is_bdd_cube_edge<'id>(
     }
 }
 
+/// Extend a transition relation to a larger domain by introducing x = x' for
+/// the irrelevant variables.
+///
+/// # Details
+///
+/// The resulting transition can then be used without considering the support
+/// explicitly.
+fn extend_relation(
+    manager_ref: &BDDManagerRef,
+    relation: &BDDFunction,
+    state_variables: &[VarNo],
+    next_state_variables: &[VarNo],
+    write_variables: &[VarNo],
+) -> Result<BDDFunction, OutOfMemory> {
+    manager_ref.with_manager_shared(|manager| {
+        Ok(BDDFunction::from_edge(
+            manager,
+            extend_relation_edge(
+                manager,
+                relation.as_edge(manager).borrowed(),
+                state_variables,
+                next_state_variables,
+                write_variables,
+            )?,
+        ))
+    })
+}
+
+/// Extends a transition relation to the full domain by adding x = x' for every
+/// state variable that is not written by the transition group.
+fn extend_relation_edge<'id>(
+    manager: &<BDDFunction as Function>::Manager<'id>,
+    relation: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
+    state_variables: &[VarNo],
+    next_state_variables: &[VarNo],
+    write_variables: &[VarNo],
+) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
+    debug_assert_eq!(
+        state_variables.len(),
+        next_state_variables.len(),
+        "state and next-state domains should have matching arity"
+    );
+
+    // Build a single BDD encoding x = x' for all non-written variables.
+    let mut eq = EdgeDropGuard::new(manager, BDDFunction::t_edge(manager));
+    let f_edge = EdgeDropGuard::new(manager, BDDFunction::f_edge(manager));
+
+    for (state_var, next_state_var) in state_variables.iter().zip(next_state_variables.iter()).rev() {
+        if write_variables.contains(next_state_var) {
+            continue;
+        }
+
+        let low = EdgeDropGuard::new(manager, reduce(manager, *next_state_var, manager.clone_edge(&eq), manager.clone_edge(&f_edge))?);
+        let high = EdgeDropGuard::new(manager, reduce(manager, *next_state_var, manager.clone_edge(&f_edge), manager.clone_edge(&eq))?);
+        eq = EdgeDropGuard::new(manager, reduce(manager, *state_var, low.into_edge(), high.into_edge())?);
+    }
+
+    BDDFunction::and_edge(manager, &relation, &eq)
+}
+
 /// Encodes the given block number into a BDD using the given variables as bits.
 ///
 /// # Details
@@ -908,7 +1011,7 @@ mod tests {
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
+            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
         });
     }
 
@@ -959,13 +1062,22 @@ mod tests {
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            let expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+            let expected_partition =
+                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
 
             // Create a separate manager since sigref_symbolic creates new block variables.
             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
-            let split_partition =
-                sigref_symbolic(&manager_ref_split, &lts_bdd_split, &mut Timing::new(), false, false).unwrap();
+            let split_partition = sigref_symbolic(
+                &manager_ref_split,
+                &lts_bdd_split,
+                &mut Timing::new(),
+                false,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
 
             // Apparently this works even when the BDDs are created in different managers.
             assert!(
@@ -988,7 +1100,8 @@ mod tests {
         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
 
-        let (_, _, num_of_blocks) = sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false).unwrap();
+        let (_, _, num_of_blocks) =
+            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
         assert_eq!(num_of_blocks, 1791, "The Szymanski example has 1791 bisimulation blocks");
     }
 
@@ -1001,7 +1114,8 @@ mod tests {
         let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-        let (_, _, num_of_blocks) = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+        let (_, _, num_of_blocks) =
+            sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
         assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
     }
 

@@ -173,6 +173,14 @@ struct ReduceArgs {
     /// Split the signature per transition group.
     #[arg(long)]
     split_signature: bool,
+
+    /// Extend each transition relation to the full state and next-state domain.
+    #[arg(long)]
+    extend_relation: bool,
+
+    /// Merge transition relations into a single relation before signature computation.
+    #[arg(long)]
+    merge_transitions: bool,
 }
 
 /// Initializes the Oxidd BDD manager based on CLI arguments.
@@ -430,7 +438,16 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
 
     let _quotient = timing.measure("reduction", || -> Result<BDDFunction, MercError> {
         match args.equivalence {
-            Equivalence::StrongBisimSigref => sigref_symbolic(&manager_ref, &lts_bdd, timing, args.split_signature, args.visualize),
+            Equivalence::StrongBisimSigref => sigref_symbolic(
+                &manager_ref,
+                &lts_bdd,
+                timing,
+                args.split_signature,
+                args.extend_relation,
+                args.merge_transitions,
+                args.visualize,
+            )
+            .map(|(quotient, _, _)| quotient),
             Equivalence::StrongBisim => refine_bisimulation(&manager_ref, &lts_bdd),
         }
     })?;
