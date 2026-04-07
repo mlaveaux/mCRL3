@@ -1,9 +1,19 @@
 use log::info;
-use merc_collections::{IndexedSet, SetIndex, VecSet};
+use merc_collections::IndexedSet;
+use merc_collections::SetIndex;
+use merc_collections::VecBag;
 use merc_io::TimeProgress;
-use merc_lts::{LabelIndex, LtsAction, LtsBuilder, LtsMultiAction, StateIndex, Transition, LTS};
-use merc_syntax::{CommExpr, MultiActionLabel};
-use merc_utilities::{MercError, Timing};
+use merc_lts::LTS;
+use merc_lts::LabelIndex;
+use merc_lts::LtsAction;
+use merc_lts::LtsBuilder;
+use merc_lts::LtsMultiAction;
+use merc_lts::StateIndex;
+use merc_lts::Transition;
+use merc_syntax::CommExpr;
+use merc_syntax::MultiActionLabel;
+use merc_utilities::MercError;
+use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
 
 /// Computes the parallel composition hide(allow(comm(L1 || ... || Ln))).
@@ -59,7 +69,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
                 };
 
                 // Build the combined multi-action alpha = alpha_{j_0} | ... | alpha_{j_m}.
-                let mut actions = VecSet::new();
+                let mut actions = VecBag::new();
                 for (k, &lts_idx) in transition.subset_indices.iter().enumerate() {
                     let label_idx = transition.labels[k];
                     let label = &parallel_composition[lts_idx].labels()[label_idx];
@@ -118,7 +128,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
 /// repeatedly finds matching sub-multisets of actions (with equal arguments)
 /// and replaces them with the result action $c$.
 fn communicate(comm: &[CommExpr], action: LtsMultiAction) -> LtsMultiAction {
-    let mut actions = action.into_actions();
+    let mut actions = action.into_actions().to_vec();
 
     for expr in comm {
         loop {
@@ -131,7 +141,7 @@ fn communicate(comm: &[CommExpr], action: LtsMultiAction) -> LtsMultiAction {
         }
     }
 
-    LtsMultiAction::new(VecSet::from_vec(actions))
+    LtsMultiAction::new(VecBag::from_vec(actions))
 }
 
 /// Tries to find actions matching a single communication expression
