@@ -1,5 +1,6 @@
 //! Authors: Maurice Laveaux and Sjef van Loo
 
+use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
 
@@ -110,8 +111,9 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
 }
 
 /// Writes the given parity game to the given writer in .pg format.
-pub fn write_pg<W: Write, G: PG>(mut writer: W, game: &G) -> Result<(), MercError> {
+pub fn write_pg<W: Write, G: PG>(writer: W, game: &G) -> Result<(), MercError> {
     info!("Writing parity game to .pg format...");
+    let mut writer = BufWriter::new(writer);
 
     let progress = TimeProgress::new(
         |(index, total): (usize, usize)| info!("Wrote {} vertices ({}%)...", index, index * 100 / total),
