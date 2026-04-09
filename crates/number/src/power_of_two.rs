@@ -20,27 +20,20 @@ where
 /// assert_eq!(round_up_to_power_of_two(4u32), 4);
 /// assert_eq!(round_up_to_power_of_two(5u32), 8);
 /// ```
-pub fn round_up_to_power_of_two<T>(mut value: T) -> T
+pub fn round_up_to_power_of_two<T>(value: T) -> T
 where
     T: num::PrimInt,
 {
-    if is_power_of_two(value) {
-        return value;
-    }
-
     if value.is_zero() {
         return T::one();
     }
 
-    // Set all bits to the right of the highest 1-bit
-    let bits = std::mem::size_of::<T>() * 8;
-    for i in 0..bits {
-        value = value | (value >> i);
+    if is_power_of_two(value) {
+        return value;
     }
 
-    // Add one to get the next power of two
-    debug_assert!(is_power_of_two(value + T::one()));
-    value + T::one()
+    let bits = std::mem::size_of::<T>() * 8;
+    T::one() << (bits - value.leading_zeros() as usize)
 }
 
 #[cfg(test)]
