@@ -11,8 +11,7 @@ impl Hasher for NoHasher {
     }
 
     fn write(&mut self, _bytes: &[u8]) {
-        // This implementation only supports write_u64
-        debug_assert!(false, "NoHasher only supports write_u64");
+        unimplemented!("NoHasher only supports write_u64");
     }
 
     fn write_u64(&mut self, i: u64) {
