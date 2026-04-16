@@ -29,7 +29,6 @@ members = [
     "crates/lts/benchmarks",
     "crates/macros",
     "crates/number",
-    "crates/preorder",
     "crates/rec-tests",
     "crates/reduction",
     "crates/refinement",
