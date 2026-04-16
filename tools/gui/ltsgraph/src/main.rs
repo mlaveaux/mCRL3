@@ -353,7 +353,8 @@ async fn main() -> Result<ExitCode, MercError> {
                                     settings.label_text_size,
                                 )?;
 
-                                let buffer = femtovg_info.canvas.flush_to_surface(&femtovg_info.texture);
+                                let buffer = femtovg_info.canvas.flush_to_output(&femtovg_info.texture)
+                                    .ok_or("Failed to flush the output")?;
 
                                 // Copy the texture to a buffer such that it can be mapped on the CPU
                                 let copy = femtovg_info.texture.as_image_copy();
