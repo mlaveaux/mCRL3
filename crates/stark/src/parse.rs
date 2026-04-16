@@ -1,32 +1,28 @@
-
 use pest::Parser;
 use pest_derive::Parser;
 
 use merc_utilities::MercError;
 
 use crate::ast::StarkSpecification;
+use crate::consume::ParseNode;
 
 #[derive(Parser)]
 #[grammar = "stark_grammar.pest"]
 pub struct StarkParser;
 
-
 impl StarkSpecification {
     /// Parse the given stark specification into an AST.
     pub fn parse(input: &str) -> Result<Self, MercError> {
-        let pairs = StarkParser::parse(Rule::StarkSpecification, input)?;
-
-        Ok(Self {
-            controllers: Default::default(),
-        })
+        let mut result = StarkParser::parse(Rule::StarkSpecification, input)?;
+        let root = result.next().expect("Could not parse STARK specification");
+        Ok(StarkParser::StarkSpecification(ParseNode::new(root))?)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use crate::ast::StarkSpecification;
-    
+
     #[test]
     fn test_parse_engine_stark() {
         if let Err(x) = StarkSpecification::parse(include_str!("../../../examples/stark/engine.stark")) {
@@ -45,7 +41,6 @@ mod tests {
     fn test_parse_single_vehicle_stark() {
         if let Err(x) = StarkSpecification::parse(include_str!("../../../examples/stark/single_vehicle.stark")) {
             panic!("Failed to parse: {}", x);
-        
         }
     }
 

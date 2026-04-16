@@ -218,11 +218,15 @@ ExpressionPrimary = _{
 }
 
 // Perturbation expressions
-PerturbationExpression = _{ PerturbationSequence }
+PerturbationExpression = _{ PerturbationPrimary ~ PerturbationPostfix* ~ (PerturbationInfix ~ PerturbationPrimary ~ PerturbationPostfix*)* }
 
-PerturbationSequence = _{ PerturbationIter ~ (";" ~ PerturbationIter)* }
+// Infix operators for PerturbationExpression
+PerturbationInfix = _{ PerturbationSemicolon }
+    PerturbationSemicolon = { ";" }
 
-PerturbationIter = _{ PerturbationPrimary ~ ("^" ~ Expression)? }
+// Postfix operators for PerturbationExpression
+PerturbationPostfix = _{ PerturbationPow }
+    PerturbationPow = { "^" ~ Expression }
 
 PerturbationPrimary = _{
 	  "nil"
@@ -234,19 +238,22 @@ PerturbationPrimary = _{
 PerturbationAssignment = _{ ID ~ "<-" ~ Expression }
 
 // Distance expressions
-DistanceExpression = _{ DistanceExprThreshold }
+DistanceExpression = _{ DistancePrefix* ~ DistancePrimary ~ DistancePostfix* ~ (DistanceInfix ~ DistancePrefix* ~ DistancePrimary ~ DistancePostfix*)* }
 
-DistanceExprThreshold = _{ DistanceExprUntil ~ (("<" | "<=" | ">=" | ">") ~ Expression)? }
+// Prefix operators for DistanceExpression
+DistancePrefix = _{ DistancePrefixF | DistancePrefixG }
+    DistancePrefixF = { "\\F" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" }
+    DistancePrefixG = { "\\G" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" }
 
-DistanceExprUntil = _{ DistanceExprPrefix ~ ("\\U" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix)* }
+// Infix operators for DistanceExpression
+DistanceInfix = _{ DistanceInfixUntil }
+    DistanceInfixUntil = { "\\U" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" }
 
-DistanceExprPrefix = _{
-      "\\F" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
-    | "\\G" ~ "[" ~ Expression ~ "," ~ Expression ~ "]" ~ DistanceExprPrefix
-    | DistanceExprPrimary
-}
+// Postfix operators for DistanceExpression
+DistancePostfix = _{ DistancePostfixThreshold }
+    DistancePostfixThreshold = { ("<=" | "<" | ">=" | ">") ~ Expression }
 
-DistanceExprPrimary = _{
+DistancePrimary = _{
       "<" ~ ID
     | ">" ~ ID
     | "(" ~ DistanceExpression ~ ")"
