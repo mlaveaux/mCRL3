@@ -127,7 +127,7 @@ mod tests {
 
             // Rewind the buffer to the beginning before reading.
             buffer.set_position(0);
-            let result_lts = read_aut(&mut buffer, vec![]).unwrap();
+            let result_lts = read_aut(&mut buffer).unwrap();
 
             crate::check_equivalent(&lts, &result_lts);
         })
