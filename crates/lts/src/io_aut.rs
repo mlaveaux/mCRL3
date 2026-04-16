@@ -42,7 +42,7 @@ pub enum IOError {
 /// And one line for every transition either one of these cases:
 ///  `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///  `(<from>: Nat, <label>: Str, <to>: Nat)`
-pub fn read_aut<R: Read>(reader: R, hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem<String>, MercError> {
+pub fn read_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<String>, MercError> {
     info!("Reading LTS in .aut format...");
 
     let mut lines = LineIterator::new(reader);
@@ -66,7 +66,7 @@ pub fn read_aut<R: Read>(reader: R, hidden_labels: Vec<String>) -> Result<Labell
     let num_of_transitions: usize = num_of_transitions_txt.parse()?;
     let num_of_states: usize = num_of_states_txt.parse()?;
 
-    let mut builder = LtsBuilderMem::with_capacity(Vec::new(), hidden_labels, 16, num_of_states, num_of_transitions);
+    let mut builder = LtsBuilderMem::with_capacity(Vec::new(), 16, num_of_states, num_of_transitions);
     builder.require_num_of_states(num_of_states);
 
     let progress = TimeProgress::new(
@@ -209,7 +209,7 @@ mod tests {
     fn test_reading_aut() {
         let file = include_str!("../../../examples/lts/abp.aut");
 
-        let lts = read_aut(file.as_bytes(), vec![]).unwrap();
+        let lts = read_aut(file.as_bytes()).unwrap();
 
         assert_eq!(lts.initial_state_index().value(), 0);
         assert_eq!(lts.num_of_transitions(), 92);
@@ -223,7 +223,7 @@ mod tests {
             (0,\"r1(d2)\",2)
         ";
 
-        debug_assert!(read_aut(wrong_header.as_bytes(), vec![]).is_err());
+        debug_assert!(read_aut(wrong_header.as_bytes()).is_err());
 
         let wrong_transition = "
         des (0,2,3)                           
@@ -231,14 +231,14 @@ mod tests {
             (0,\"r1(d2)\",2)
         ";
 
-        debug_assert!(read_aut(wrong_transition.as_bytes(), vec![]).is_err());
+        debug_assert!(read_aut(wrong_transition.as_bytes()).is_err());
     }
 
     #[test]
     fn test_traversal_lts() {
         let file = include_str!("../../../examples/lts/abp.aut");
 
-        let lts = read_aut(file.as_bytes(), vec![]).unwrap();
+        let lts = read_aut(file.as_bytes()).unwrap();
 
         // Check the number of outgoing transitions of the initial state
         assert_eq!(lts.outgoing_transitions(lts.initial_state_index()).count(), 2);
@@ -247,13 +247,13 @@ mod tests {
     #[test]
     fn test_writing_lts() {
         let file = include_str!("../../../examples/lts/abp.aut");
-        let lts_original = read_aut(file.as_bytes(), vec![]).unwrap();
+        let lts_original = read_aut(file.as_bytes()).unwrap();
 
         // Check that it can be read after writing, and results in the same LTS.
         let mut buffer: Vec<u8> = Vec::new();
         write_aut(&mut buffer, &lts_original).unwrap();
 
-        let lts = read_aut(&buffer[0..], vec![]).unwrap();
+        let lts = read_aut(&buffer[0..]).unwrap();
 
         assert!(lts.num_of_states() == lts_original.num_of_states());
         assert!(lts.num_of_labels() == lts_original.num_of_labels());
@@ -269,7 +269,7 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             write_aut(&mut buffer, &lts).unwrap();
 
-            let result_lts = read_aut(&buffer[0..], vec![]).unwrap();
+            let result_lts = read_aut(&buffer[0..]).unwrap();
 
             crate::check_equivalent(&lts, &result_lts);
         })

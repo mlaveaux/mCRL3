@@ -91,7 +91,7 @@ impl<L: LTS> Graph for AsGraph<'_, L> {
 }
 
 /// A common trait for all transition labels. For various algorithms on LTSs we
-/// require that  they are orderable, comparable, and hashable. So we require that here
+/// require that they are orderable, comparable, and hashable. So we require that here
 /// instead of specifying these bounds on usage.
 pub trait TransitionLabel: Ord + Hash + Eq + Clone + fmt::Display + fmt::Debug {
     /// Returns the tau label for this transition label type.

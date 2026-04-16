@@ -43,7 +43,7 @@ pub fn read_fts<R: Read>(
     features: HashMap<String, BDDFunction>,
 ) -> Result<FeatureTransitionSystem<String>, MercError> {
     // Read the underlying LTS, where the labels are in plain text
-    let aut = read_aut(reader, Vec::new())?;
+    let aut = read_aut(reader)?;
 
     // Parse the labels as data expressions
     let mut feature_labels = Vec::new();
@@ -298,7 +298,6 @@ impl<L: TransitionLabel> LTS for FeatureTransitionSystem<L> {
             fn num_of_states(&self) -> usize;
             fn num_of_labels(&self) -> usize;
             fn num_of_transitions(&self) -> usize;
-            fn is_hidden_label(&self, label_index: LabelIndex) -> bool;
             fn labels(&self) -> &[FeaturedLabel<L>];
             fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition>;
             fn iter_states(&self) -> impl Iterator<Item = StateIndex> + '_;

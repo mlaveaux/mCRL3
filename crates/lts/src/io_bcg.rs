@@ -17,7 +17,7 @@ mod inner {
     use super::*;
 
     /// This is a stub implementation used when BCG support is not compiled in.
-    pub fn read_bcg(_path: &Path, _hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem<String>, MercError> {
+    pub fn read_bcg(_path: &Path) -> Result<LabelledTransitionSystem<String>, MercError> {
         Err("BCG format support not compiled in, see the 'cadp' feature.".into())
     }
 

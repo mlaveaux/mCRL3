@@ -33,7 +33,6 @@ use crate::StateIndex;
 /// Loads a labelled transition system from the binary 'lts' format of the mCRL2 toolset.
 pub fn read_lts<R: Read>(
     reader: R,
-    hidden_labels: Vec<String>,
     read_state_labels: bool,
 ) -> Result<LabelledTransitionSystem<LtsMultiAction>, MercError> {
     info!("Reading LTS in .lts format...");
@@ -54,7 +53,7 @@ pub fn read_lts<R: Read>(
 
     // The initial state is not known yet.
     let mut initial_state: Option<StateIndex> = None;
-    let mut builder = LtsBuilderMem::new(Vec::new(), hidden_labels);
+    let mut builder = LtsBuilderMem::new(Vec::new());
 
     let progress = TimeProgress::new(
         |num_of_transitions| {
@@ -245,7 +244,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
     fn test_read_lts() {
-        let lts = read_lts(include_bytes!("../../../examples/lts/abp.lts").as_ref(), vec![], true).unwrap();
+        let lts = read_lts(include_bytes!("../../../examples/lts/abp.lts").as_ref(), true).unwrap();
 
         assert_eq!(lts.num_of_states(), 74);
         assert_eq!(lts.num_of_transitions(), 92);
@@ -261,7 +260,7 @@ mod tests {
             let mut buffer: Vec<u8> = Vec::new();
             write_lts(&mut buffer, &lts).unwrap();
 
-            let result_lts = read_lts(&buffer[0..], vec![], false).unwrap();
+            let result_lts = read_lts(&buffer[0..], false).unwrap();
 
             crate::check_equivalent(&lts, &result_lts);
         })

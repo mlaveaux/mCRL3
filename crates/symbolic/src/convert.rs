@@ -224,7 +224,7 @@ mod tests {
         let mut storage = Storage::new();
         let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
 
-        let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+        let mut builder = LtsBuilderMem::new(Vec::new());
         let lts = convert_symbolic_lts(&mut storage, &mut builder, &symbolic_lts).unwrap();
 
         debug_assert_eq!(lts.num_of_states(), 74);
