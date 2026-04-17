@@ -267,12 +267,12 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                         added.push(Item::Verbatim(generated));
                     }
                 }
-                Item::Impl(implementation) => {
+                Item::Impl(implementation)
                     if !implementation
                         .attrs
                         .iter()
                         .any(|attr| attr.meta.path().is_ident("merc_ignore"))
-                    {
+                    => {
                         // Duplicate the implementation for the Ref struct that is generated above.
                         let mut ref_implementation = implementation.clone();
 
@@ -309,7 +309,6 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                             added.push(Item::Verbatim(ref_implementation.into_token_stream()));
                         }
                     }
-                }
                 _ => {
                     // Ignore the rest.
                 }

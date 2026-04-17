@@ -213,7 +213,7 @@ fn partition(
         return Ok(vertices.to_vec());
     }
 
-    run_kahypar(kahypar_path, &kahypar_ini_path, &hypergraph)?;
+    run_kahypar(kahypar_path, kahypar_ini_path, &hypergraph)?;
 
     let partition = read_partition_file()?;
 

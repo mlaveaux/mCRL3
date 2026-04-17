@@ -461,7 +461,7 @@ impl State {
                     }
                 }
 
-                new_obligations.sort_unstable_by(|mo1, mo2| mo1.position.len().cmp(&mo2.position.len()));
+                new_obligations.sort_unstable_by_key(|mo1| mo1.position.len());
                 mg.obligations = new_obligations;
                 mg.announcement.symbols_seen += 1;
 
