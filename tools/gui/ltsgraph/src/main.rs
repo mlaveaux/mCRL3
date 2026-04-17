@@ -14,6 +14,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use clap::ValueEnum;
+use femtovg::TextContext;
 use femtovg::renderer::WGPURenderer;
 use femtovg::Canvas;
 use log::debug;
@@ -228,8 +229,12 @@ async fn main() -> Result<ExitCode, MercError> {
                         *skia_renderer = Some(SkiaRenderer::new(lts.clone()));
 
                         *femtovg_info = if let Some((device, queue)) = &wgpu {
+                            // Ensure that we embed one font that can be used, since on Windows there are no default fonts.
+                            let text_context = TextContext::default();
+                            text_context.add_font_mem(include_bytes!("../data/NotoSans-Regular.ttf") as &[u8])?;
+
                             let gpu_renderer = WGPURenderer::new(device.clone(), queue.clone());
-                            let canvas = Canvas::new(gpu_renderer)?;
+                            let canvas = Canvas::new_with_text_context(gpu_renderer, text_context)?;
 
                             // Create the texture and buffer for the femtovg renderer
                             let texture = device.create_texture(&TextureDescriptor {
