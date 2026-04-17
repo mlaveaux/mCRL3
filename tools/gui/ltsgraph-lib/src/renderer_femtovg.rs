@@ -31,19 +31,23 @@ impl FemtovgRenderer {
         viewer: &Viewer,
         draw_actions_labels: bool,
         state_radius: f32,
-        _view_x: f32,
-        _view_y: f32,
+        view_x: f32,
+        view_y: f32,
         screen_x: u32,
         screen_y: u32,
-        _zoom_level: f32,
+        zoom_level: f32,
         label_text_size: f32,
     ) -> Result<(), femtovg::ErrorKind> {
+        canvas.set_size(screen_x, screen_y, 1.0);
+        canvas.reset();
+
         // Clear the canvas with white color
         canvas.clear_rect(0, 0, screen_x, screen_y, Color::white());
 
-        // Compute the view transform
-        //canvas.translate(screen_x as f32 / 2.0 + view_x, screen_y as f32 / 2.0 + view_y);
-        //canvas.scale(zoom_level, zoom_level);
+        canvas.save();
+        canvas.translate(view_x, view_y);
+        canvas.scale(zoom_level, zoom_level);
+        canvas.translate(screen_x as f32 / 2.0, screen_y as f32 / 2.0);
 
         // The color information for states
         let state_inner_paint = Paint::color(Color::white());
@@ -60,7 +64,7 @@ impl FemtovgRenderer {
         let mut edge_paint = Paint::color(Color::black());
         edge_paint.set_line_width(1.0);
 
-        let mut path = Path::new();
+        let mut edge_path = Path::new();
 
         // Draw the edges and the arrows on them
         for state_index in self.lts.iter_states() {
@@ -75,10 +79,8 @@ impl FemtovgRenderer {
 
                 let label_position = if transition.to != state_index {
                     // Draw the transition line
-                    let mut path = Path::new();
-                    path.move_to(state_view.position.x, state_view.position.y);
-                    path.line_to(to_state_view.position.x, to_state_view.position.y);
-                    canvas.stroke_path(&path, &edge_paint);
+                    edge_path.move_to(state_view.position.x, state_view.position.y);
+                    edge_path.line_to(to_state_view.position.x, to_state_view.position.y);
 
                     let direction = (state_view.position - to_state_view.position).normalize();
                     let _angle = -direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
@@ -88,7 +90,7 @@ impl FemtovgRenderer {
                     let handle_x = middle.x + transition_view.handle_offset.x;
                     let handle_y = middle.y + transition_view.handle_offset.y;
 
-                    path.circle(handle_x, handle_y, 1.0);
+                    edge_path.circle(handle_x, handle_y, 1.0);
 
                     middle
                 } else {
@@ -96,13 +98,13 @@ impl FemtovgRenderer {
                     let middle = (2.0 * state_view.position + transition_view.handle_offset) / 2.0;
                     let radius = transition_view.handle_offset.length() / 2.0;
 
-                    path.circle(middle.x, middle.y, radius);
+                    edge_path.circle(middle.x, middle.y, radius);
 
                     // Draw the edge handle
                     let handle_x = state_view.position.x + transition_view.handle_offset.x;
                     let handle_y = state_view.position.y + transition_view.handle_offset.y;
 
-                    path.circle(handle_x, handle_y, 1.0);
+                    edge_path.circle(handle_x, handle_y, 1.0);
 
                     state_view.position + transition_view.handle_offset
                 };
@@ -110,31 +112,37 @@ impl FemtovgRenderer {
                 // Draw the text label
                 if draw_actions_labels {
                     // Calculate the transformed position for text
-                    canvas.stroke_text(
+                    canvas.fill_text(
                         label_position.x,
                         label_position.y,
                         &self.lts.labels()[transition.label],
-                        &state_outer,
+                        &text_paint,
                     )?;
                 }
             }
         }
 
+        // Draw all edges first, then states on top.
+        canvas.stroke_path(&edge_path, &edge_paint);
+
         // Draw the states on top
+        let mut state_path = Path::new();
         let mut initial_state_path = Path::new();
         for (index, state_view) in viewer.state_view().iter().enumerate() {
             if index != *self.lts.initial_state_index() {
                 // Regular state
-                path.circle(state_view.position.x, state_view.position.y, state_radius);
+                state_path.circle(state_view.position.x, state_view.position.y, state_radius);
             } else {
                 // Initial state
                 initial_state_path.circle(state_view.position.x, state_view.position.y, state_radius);
             }
         }
 
-        canvas.fill_path(&path, &state_outer);
+        canvas.fill_path(&state_path, &state_inner_paint);
         canvas.fill_path(&initial_state_path, &initial_state_paint);
-        canvas.stroke_path(&path, &state_inner_paint);
+        canvas.stroke_path(&state_path, &state_outer);
+        canvas.stroke_path(&initial_state_path, &state_outer);
+        canvas.restore();
 
         Ok(())
     }
