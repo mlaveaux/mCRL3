@@ -8,16 +8,23 @@ use std::thread::JoinHandle;
 
 use merc_utilities::MercError;
 
-/// A thread that can be paused and stopped.
+/// A thread that continuously runs a closure in a loop that can be paused and stopped.
 pub struct PauseableThread {
+    /// Handle to the underlying thread.
     handle: Option<JoinHandle<()>>,
     shared: Arc<PauseableThreadShared>,
 }
 
+/// Data that is shared between the main thread and the pauseable thread.
 struct PauseableThreadShared {
+    /// Whether the thread should keep running. Set to false to signal the thread to stop.
     running: AtomicBool,
+    /// Whether the thread is paused. Set to true to pause the thread, and false to resume it.
     paused: Mutex<bool>,
+    /// Condition variable to notify the thread when it should resume.
     cond_var: Condvar,
+    /// Error stored by the thread if it terminates due to a failure.
+    error: Mutex<Option<MercError>>,
 }
 
 impl PauseableThread {
@@ -34,25 +41,39 @@ impl PauseableThread {
             running: AtomicBool::new(true),
             paused: Mutex::new(false),
             cond_var: Condvar::new(),
+            error: Mutex::new(None),
         });
 
         let thread = {
             let shared = shared.clone();
             Builder::new().name(name.to_string()).spawn(move || {
-                let mut init = init_function().expect("Initialisation failed!");
+                let mut init = match init_function() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        *shared.error.lock().unwrap_or_else(|e| e.into_inner()) = Some(e);
+                        return;
+                    }
+                };
 
                 while shared.running.load(std::sync::atomic::Ordering::Relaxed) {
                     // Check if paused is true and wait for it.
                     {
-                        let mut paused = shared.paused.lock().expect("No lock poisoning allowed");
+                        let mut paused = shared.paused.lock().unwrap_or_else(|e| e.into_inner());
                         while *paused {
-                            paused = shared.cond_var.wait(paused).expect("No lock poisoning allowed");
+                            paused = shared.cond_var.wait(paused).unwrap_or_else(|e| e.into_inner());
                         }
                     }
 
-                    if !loop_function(&mut init).expect("Loop function failed!") {
-                        // Pause the thread when requested by the loop function.
-                        *shared.paused.lock().expect("No lock poisoning allowed") = true;
+                    match loop_function(&mut init) {
+                        Ok(false) => {
+                            // Pause the thread when requested by the loop function.
+                            *shared.paused.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                        }
+                        Ok(true) => {}
+                        Err(e) => {
+                            *shared.error.lock().unwrap_or_else(|e| e.into_inner()) = Some(e);
+                            return;
+                        }
                     }
                 }
             })
@@ -72,16 +93,26 @@ impl PauseableThread {
 
     /// Pause the thread on the next iteration.
     pub fn pause(&self) {
-        *self.shared.paused.lock().expect("No lock poisoning allowed") = true;
+        *self.shared.paused.lock().unwrap_or_else(|e| e.into_inner()) = true;
         // We notify the condvar that the value has changed.
         self.shared.cond_var.notify_one();
     }
 
     /// Resume the thread.
     pub fn resume(&self) {
-        *self.shared.paused.lock().expect("No lock poisoning allowed") = false;
+        *self.shared.paused.lock().unwrap_or_else(|e| e.into_inner()) = false;
         // We notify the condvar that the value has changed.
         self.shared.cond_var.notify_one();
+    }
+
+    /// Returns the error stored by the thread if it has terminated with an error, or `None` if
+    /// the thread is still running or terminated successfully.
+    pub fn poll_error(&mut self) -> Option<MercError> {
+        if self.handle.as_ref().map_or(true, |h| h.is_finished()) {
+            self.shared.error.lock().ok()?.take()
+        } else {
+            None
+        }
     }
 
     /// Joins the thread and returns its result
