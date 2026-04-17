@@ -210,8 +210,8 @@ fn main() -> Result<ExitCode, MercError> {
 fn handle_info(args: &InfoArgs, timing: &Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
-    let format = guess_format_from_extension(&args.filename, args.format)
-        .ok_or("Cannot determine input symbolic LTS format")?;
+    let format =
+        guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
 
     if format != SymFormat::Sym {
         return Err("Currently only the .sym format is supported for info".into());
@@ -283,7 +283,7 @@ fn explore_impl<L: SymbolicLTS>(
 }
 
 /// Computes a variable reordering for the output of lpsreach.
-fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError> {  
+fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError> {
     // Find kahypar
     let kahypar_path = if let Some(path) = &args.kahypar_path {
         which_in("KaHyPar", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find KaHyPar")?
@@ -337,7 +337,8 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
     } else if args.filename.extension() == Some(OsStr::new("pbes")) {
         // Find pbessolvesymbolic
         let pbessolvesymbolic = if let Some(path) = &args.mcrl2_path {
-            which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find pbessolvesymbolic")?
+            which_in("pbessolvesymbolic", Some(path), std::env::current_dir()?)
+                .map_err(|_e| "Cannot find pbessolvesymbolic")?
         } else {
             which::which("pbessolvesymbolic").map_err(|_e| "Cannot find pbessolvesymbolic in PATH")?
         };
@@ -352,7 +353,10 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
         let order = reorder(&kahypar_path, &kahypar_ini_path, &graph)?;
 
         // Ensure that the first variable is 0 by removing it from order and printing it explicitly
-        println!("Computed variable order: 0 {}", order.iter().filter(|&x| *x != 0).format(" "));
+        println!(
+            "Computed variable order: 0 {}",
+            order.iter().filter(|&x| *x != 0).format(" ")
+        );
     } else {
         return Err("Input file must be either a .lps or .pbes file".into());
     }
@@ -380,7 +384,7 @@ fn handle_convert(args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError>
         LtsFormat::Lts => {
             unimplemented!("Writing LTS format is not yet implemented");
         }
-        LtsFormat::Aut => {
+        LtsFormat::Aut | LtsFormat::AutMcrl2 => {
             let mut output = File::create(&args.output)?;
             let mut stream = AutStream::new(&mut output);
             convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
