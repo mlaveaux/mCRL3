@@ -539,7 +539,7 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
             e
         ))
     })?;
-    let lts = read_aut(&mut lts_file, Vec::new())?;
+    let lts = read_aut(&mut lts_file)?;
 
     // Read and validate formula (no actions/data specs supported here)
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {

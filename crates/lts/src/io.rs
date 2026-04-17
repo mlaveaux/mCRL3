@@ -52,6 +52,8 @@ macro_rules! apply_lts_pair {
 pub enum LtsFormat {
     /// The AUTomaton or ALDEBARAN format
     Aut,
+    /// The [Self::Aut] format with `tau` as hidden label instead of `i`, and multi-actions as labels, used in the mCRL2 toolset.
+    AutMcrl2,
     /// The mCRL2 binary LTS format
     Lts,
     /// The CADP BCG format (requires 'cadp' feature)
@@ -142,20 +144,26 @@ impl GenericLts {
 pub fn read_explicit_lts(
     path: &Path,
     format: LtsFormat,
-    hidden_labels: Vec<String>,
     timing: &mut Timing,
 ) -> Result<GenericLts, MercError> {
     timing.measure("read_explicit_lts", || {
         let result = match format {
             LtsFormat::Aut => {
                 let file = File::open(path)?;
-                GenericLts::Aut(read_aut(&file, hidden_labels)?)
+                GenericLts::Aut(read_aut(&file)?)
+            }
+            LtsFormat::AutMcrl2 => {
+                let file = File::open(path)?;
+                let lts = read_aut(&file)?;
+                GenericLts::Lts(lts.relabel(|label| {
+                    LtsMultiAction::from_string(&label)
+                })?)
             }
             LtsFormat::Lts => {
                 let file = File::open(path)?;
-                GenericLts::Lts(read_lts(&file, hidden_labels, false)?)
+                GenericLts::Lts(read_lts(&file, false)?)
             }
-            LtsFormat::Bcg => GenericLts::Bcg(read_bcg(path, hidden_labels)?),
+            LtsFormat::Bcg => GenericLts::Bcg(read_bcg(path)?),
         };
 
         Ok(result)

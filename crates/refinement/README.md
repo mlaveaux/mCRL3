@@ -57,11 +57,11 @@ The original implementation as part of the mCRL2 toolset was done by Jan Friso
 Groote, and this has been adapted to Rust by Maurice Laveaux. The
 failure-divergences refinement algorithms are based on the following article:
 
- > "Correct and efficient antichain algorithms for refinement checking". Maurice Laveaux, Jan Friso Groote and Tim A.C. Willemse. Logical Methods in Computer Science, 2021. [DOI](https://doi.org/10.23638/LMCS-17(1:8)2021).
+ > Maurice Laveaux, Jan Friso Groote and Tim A.C. Willemse. "Correct and efficient antichain algorithms for refinement checking". Logical Methods in Computer Science, 2021. [DOI](https://doi.org/10.23638/LMCS-17(1:8)2021).
 
 And the impossible futures algorithm is based on:
 
- > "Deciding Impossible Futures". Maurice Laveaux and Tim A.C. Willemse. SMLXV 2026.
+ > Maurice Laveaux and Tim A.C. Willemse. "Deciding Impossible Futures". SMLXV 2026.
 
 ## Safety
 

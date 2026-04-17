@@ -301,6 +301,7 @@ impl<L: TransitionLabel> LTS for FeatureTransitionSystem<L> {
             fn labels(&self) -> &[FeaturedLabel<L>];
             fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition>;
             fn iter_states(&self) -> impl Iterator<Item = StateIndex> + '_;
+            fn is_hidden_label(&self, label_index: LabelIndex) -> bool;
         }
     }
 }
