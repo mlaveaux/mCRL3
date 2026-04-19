@@ -28,6 +28,8 @@ pub enum Equivalence {
     StrongBisimNaive,
     BranchingBisim,
     BranchingBisimNaive,
+    BranchingBisimDivergencePreserving,
+    BranchingBisimDivergencePreservingNaive,
 }
 
 /// Reduces the given LTS modulo the given equivalence using signature refinement
@@ -64,11 +66,19 @@ pub fn reduce_lts<L: LTS>(
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, false))
         }
         Equivalence::BranchingBisim => {
-            let (lts, _, partition) = branching_bisim_sigref(lts, state, timing);
+            let (lts, _, partition) = branching_bisim_sigref(lts, state, false, timing);
             timing.measure("quotient", || quotient_lts_block::<_, true>(&lts, &partition))
         }
         Equivalence::BranchingBisimNaive => {
-            let (lts, _, partition) = branching_bisim_sigref_naive(lts, state, timing);
+            let (lts, _, partition) = branching_bisim_sigref_naive(lts, state, false, timing);
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+        }
+        Equivalence::BranchingBisimDivergencePreserving => {
+            let (lts, _, partition) = branching_bisim_sigref(lts, state, true, timing);
+            timing.measure("quotient", || quotient_lts_block::<_, true>(&lts, &partition))
+        }
+        Equivalence::BranchingBisimDivergencePreservingNaive => {
+            let (lts, _, partition) = branching_bisim_sigref_naive(lts, state, true, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
     }

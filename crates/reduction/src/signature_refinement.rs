@@ -31,7 +31,7 @@ use crate::is_tau_hat;
 use crate::longest_tau_path;
 use crate::reduce_lts;
 use crate::strong_bisim_signature;
-use crate::tau_loop_elimination_and_reorder;
+use crate::tau_cycle_elimination_and_reorder;
 use crate::weak_bisim_presignature_sorted;
 use crate::weak_bisim_signature_sorted;
 use crate::weak_bisim_signature_sorted_full;
@@ -68,9 +68,11 @@ pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, Indexed
 
 /// Computes a branching bisimulation partitioning using signature refinement.
 /// 
-/// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
-pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, timing: &Timing) -> (LabelledTransitionSystem<L::Label>, StateIndex, BlockPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts, state));
+/// The `state` is any state for which we return the equivalent state in the
+/// preprocessed LTS. And if `divergence_preserving` is true, we compute
+/// divergence preserving branching bisimulation instead.
+pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, divergence_preserving: bool, timing: &Timing) -> (LabelledTransitionSystem<L::Label>, StateIndex, BlockPartition) {
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
     
     let incoming = timing.measure("preprocess", || IncomingTransitions::new(&preprocessed_lts));
 
@@ -133,15 +135,19 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, timing: &Timing
     (preprocessed_lts, mapped_state, partition)
 }
 
-/// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
+/// Computes a branching bisimulation partitioning using signature refinement
+/// without dirty blocks.
 /// 
-/// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
+/// The `state` is any state for which we return the equivalent state in the
+/// preprocessed LTS. And if `divergence_preserving` is true, we compute
+/// divergence preserving branching bisimulation instead.
 pub fn branching_bisim_sigref_naive<L: LTS>(
     lts: L,
     state: StateIndex,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts, state));
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
 
     timing.measure("reduction", || {
         let mut expected_builder = SignatureBuilder::default();
@@ -213,7 +219,7 @@ pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts, state));
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
     let partition = timing.measure("reduction", || signature_refinement_weak(&preprocessed_lts));
     (preprocessed_lts, mapped_state, partition)
 }
@@ -248,7 +254,7 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts, state));
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
     let partition = timing.measure("reduction", || {
         signature_refinement_naive::<_, _, true>(
             &preprocessed_lts,
@@ -862,8 +868,8 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (result_lts, _, result_partition) = branching_bisim_sigref(lts.clone(), StateIndex::new(0), &mut timing);
-            let (expected_lts, _, expected_partition) = branching_bisim_sigref_naive(lts, StateIndex::new(0), &mut timing);
+            let (result_lts, _, result_partition) = branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &mut timing);
+            let (expected_lts, _, expected_partition) = branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -914,7 +920,7 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (preprocessed_lts, _, branching_partition) = branching_bisim_sigref_naive(lts, StateIndex::new(0), &mut timing);
+            let (preprocessed_lts, _, branching_partition) = branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
             files
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
@@ -940,7 +946,7 @@ mod tests {
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
 
-            let (_, _, branching_partition) = branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), &mut timing);
+            let (_, _, branching_partition) = branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false,&mut timing);
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
         });
     }

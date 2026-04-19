@@ -23,7 +23,7 @@ use merc_utilities::Timing;
 use crate::Equivalence;
 use crate::MarkedBlockPartition;
 use crate::reduce_lts;
-use crate::tau_loop_elimination_and_reorder;
+use crate::tau_cycle_elimination_and_reorder;
 
 /// Type alias because we use bitvec for marking states
 type BitArray = BitVec<u64, Lsb0>;
@@ -87,7 +87,7 @@ fn weak_bisimulation_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
-    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts, state));
+    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
 
     timing.measure("reduction", || {
         let mut blocks = MarkedBlockPartition::new(tau_loop_free_lts.num_of_states());
@@ -157,7 +157,7 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
-    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || tau_loop_elimination_and_reorder(lts, state));
+    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
 
     let progress = TimeProgress::new(
         |num_of_blocks: usize| {
