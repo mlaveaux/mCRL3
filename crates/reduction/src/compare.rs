@@ -46,11 +46,19 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::BranchingBisim => {
-            let (lts, rhs_initial, partition) = branching_bisim_sigref(merged, rhs_initial, timing);
+            let (lts, rhs_initial, partition) = branching_bisim_sigref(merged, rhs_initial, false, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::BranchingBisimNaive => {
-            let (lts, rhs_initial, partition) = branching_bisim_sigref_naive(merged, rhs_initial, timing);
+            let (lts, rhs_initial, partition) = branching_bisim_sigref_naive(merged, rhs_initial, false, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::BranchingBisimDivergencePreserving => {
+            let (lts, rhs_initial, partition) = branching_bisim_sigref(merged, rhs_initial, true, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::BranchingBisimDivergencePreservingNaive => {
+            let (lts, rhs_initial, partition) = branching_bisim_sigref_naive(merged, rhs_initial, true, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
     }

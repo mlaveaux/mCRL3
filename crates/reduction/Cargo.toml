@@ -24,6 +24,7 @@ merc_utilities.workspace = true
 
 bitvec.workspace = true
 bumpalo.workspace = true
+delegate.workspace = true
 itertools.workspace = true
 log.workspace = true
 rand.workspace = true
