@@ -65,8 +65,9 @@ itertools = "0.14"
 log = { version = "0.4", features = ["kv"] }
 num = "0.4"
 oxidd = { version = "0.11", features = ["manager-pointer"] }
-oxidd-dump = "0.6"
 oxidd-core = "0.11"
+oxidd-dump = "0.6"
+oxidd-reorder = "0.6"
 oxidd-rules-bdd = "0.11"
 parking_lot = "0.12"
 pest = "2.8"
