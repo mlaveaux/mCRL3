@@ -1307,6 +1307,7 @@ dependencies = [
  "oxidd",
  "oxidd-core",
  "oxidd-dump",
+ "oxidd-reorder",
  "oxidd-rules-bdd",
  "rand",
  "rustc-hash 2.1.2",
