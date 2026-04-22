@@ -31,6 +31,12 @@ pub enum IOError {
     InvalidTransition(String),
 }
 
+/// The label used for internal transitions in the mCRL2 format.
+const MCRL2_TAU_LABEL: &str = "tau";
+
+/// The label used for internal transitions in the Aldebaran format.
+const AUT_TAU_LABEL: &str = "i";
+
 /// Loads a labelled transition system in the [Aldebaran
 /// format](https://cadp.inria.fr/man/aldebaran.html) from the given reader.
 ///
@@ -43,6 +49,18 @@ pub enum IOError {
 ///  `(<from>: Nat, "<label>": Str, <to>: Nat)`
 ///  `(<from>: Nat, <label>: Str, <to>: Nat)`
 pub fn read_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<String>, MercError> {
+    read_aut_impl(reader, AUT_TAU_LABEL)
+}
+
+/// The same as [read_aut], but with the `tau` as the internal transition, instead of `i`.
+pub fn read_mcrl2_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<String>, MercError> {
+    read_aut_impl(reader, MCRL2_TAU_LABEL)
+}
+
+/// The implementation of [read_aut] and [read_aut_mcrl2].
+///
+/// The `tau_label` specifics which label is considered as the internal transition.
+fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransitionSystem<String>, MercError> {
     info!("Reading LTS in .aut format...");
 
     let mut lines = LineIterator::new(reader);
@@ -66,7 +84,13 @@ pub fn read_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<String>, 
     let num_of_transitions: usize = num_of_transitions_txt.parse()?;
     let num_of_states: usize = num_of_states_txt.parse()?;
 
-    let mut builder = LtsBuilderMem::with_capacity(Vec::new(), 16, num_of_states, num_of_transitions);
+    let mut builder = LtsBuilderMem::with_capacity(
+        Vec::new(),
+        vec![tau_label.to_string()],
+        16,
+        num_of_states,
+        num_of_transitions,
+    );
     builder.require_num_of_states(num_of_states);
 
     let progress = TimeProgress::new(
@@ -104,6 +128,16 @@ pub fn read_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<String>, 
 ///
 /// Note that the writer is buffered internally using a `BufWriter`.
 pub fn write_aut<W: Write, L: LTS>(writer: &mut W, lts: &L) -> Result<(), MercError> {
+    write_aut_impl(writer, lts, AUT_TAU_LABEL)
+}
+
+/// The same as [write_aut], but with the `tau` as the internal transition, instead of `i`.
+pub fn write_mcrl2_aut<W: Write, L: LTS>(writer: &mut W, lts: &L) -> Result<(), MercError> {
+    write_aut_impl(writer, lts, MCRL2_TAU_LABEL)
+}
+
+/// The implementation of [write_aut] and [write_mcrl2_aut].
+fn write_aut_impl<W: Write, L: LTS>(writer: &mut W, lts: &L, tau_label: &str) -> Result<(), MercError> {
     info!("Writing LTS in .aut format...");
 
     let mut writer = BufWriter::new(writer);
@@ -129,13 +163,17 @@ pub fn write_aut<W: Write, L: LTS>(writer: &mut W, lts: &L) -> Result<(), MercEr
     let mut transitions_written = 0usize;
     for state_index in lts.iter_states() {
         for transition in lts.outgoing_transitions(state_index) {
-            writeln!(
-                writer,
-                "({}, \"{}\", {})",
-                state_index,
-                lts.labels()[transition.label.value()],
-                transition.to
-            )?;
+            if lts.is_hidden_label(transition.label) {
+                writeln!(writer, "({}, \"{}\", {})", state_index, tau_label, transition.to)?;
+            } else {
+                writeln!(
+                    writer,
+                    "({}, \"{}\", {})",
+                    state_index,
+                    lts.labels()[transition.label.value()],
+                    transition.to
+                )?;
+            }
 
             progress.print(transitions_written);
             transitions_written += 1;
@@ -177,11 +215,11 @@ fn read_transition(input: &str) -> Option<(&str, &str, &str)> {
 /// A trait for labels that can be used in transitions.
 impl TransitionLabel for String {
     fn is_tau_label(&self) -> bool {
-        self == "i"
+        self == "τ"
     }
 
     fn tau_label() -> Self {
-        "i".to_string()
+        "τ".to_string()
     }
 
     fn matches_label(&self, label: &str) -> bool {
