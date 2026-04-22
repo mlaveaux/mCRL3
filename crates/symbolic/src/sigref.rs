@@ -487,7 +487,7 @@ fn refine_edge<'id>(
                 return Ok(manager.clone_edge(&partition));
             }
 
-            unreachable!();
+            unreachable!("There are always block variables, so cannot be true terminal");
         }
         Node::Inner(node) => node.level(),
     };
@@ -503,7 +503,7 @@ fn refine_edge<'id>(
     let lowest_level = {
         let slevel = match manager.get_node(&signature) {
             Node::Terminal(_terminal) => {
-                VarNo::MAX // Terminal node, so no variable.
+            unreachable!("The signature is always defined for every state variable in the partition");
             }
             Node::Inner(node) => node.level(),
         };
@@ -521,7 +521,7 @@ fn refine_edge<'id>(
                         (signature.borrowed(), signature.borrowed())
                     }
                 }
-                _ => (signature.borrowed(), signature.borrowed()),
+                _ => unreachable!("Not a terminal node"),
             }
         };
         let (p_high, p_low) = {
