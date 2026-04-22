@@ -442,13 +442,13 @@ fn refine(
     manager_ref: &BDDManagerRef,
     signature_to_block: &mut FxHashMap<BDDFunction, u64>,
     block_variables_bdds: &[BDDFunction],
-    state_variables: &[VarNo],
+    next_state_variables: &[VarNo],
     block_variables: &[VarNo],
     signature: &BDDFunction,
     partition: &BDDFunction,
 ) -> Result<BDDFunction, MercError> {
     debug_assert!(
-        check_partition_function(manager_ref, partition, state_variables, block_variables)?,
+        check_partition_function(manager_ref, partition, next_state_variables, block_variables)?,
         "The given partition function is not a valid partition function"
     );
 
@@ -462,7 +462,7 @@ fn refine(
                 &mut cache,
                 signature_to_block,
                 block_variables_bdds,
-                state_variables,
+                next_state_variables,
                 signature.as_edge(manager).borrowed(),
                 partition.as_edge(manager).borrowed(),
             )?,
@@ -476,7 +476,7 @@ fn refine_edge<'id>(
     cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
     signature_to_block: &mut FxHashMap<BDDFunction, u64>,
     block_variables_bdds: &[BDDFunction],
-    state_variables: &[VarNo],
+    next_state_variables: &[VarNo],
     signature: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     partition: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
@@ -503,19 +503,20 @@ fn refine_edge<'id>(
     let lowest_level = {
         let slevel = match manager.get_node(&signature) {
             Node::Terminal(_terminal) => {
-            unreachable!("The signature is always defined for every state variable in the partition");
+                unreachable!("The signature is always defined for every state variable in the partition");
             }
-            Node::Inner(node) => node.level(),
+            // Reinterpret the current state variable as the next state variable (this relies on their order being interleaved s, s').
+            Node::Inner(node) => node.level() + 1,
         };
         plevel.min(slevel)
     };
 
-    let result = if state_variables.contains(&lowest_level) {
+    let result = if next_state_variables.contains(&lowest_level) {
         // Match paths on the level s_i, for irrelevant variables we take both paths.
         let (s_high, s_low) = {
             match manager.get_node(&signature) {
                 Node::Inner(node) => {
-                    if node.level() == lowest_level {
+                    if node.level() + 1 == lowest_level {
                         collect_children(node)
                     } else {
                         (signature.borrowed(), signature.borrowed())
@@ -542,7 +543,7 @@ fn refine_edge<'id>(
             cache,
             signature_to_block,
             block_variables_bdds,
-            state_variables,
+            next_state_variables,
             s_low,
             p_low,
         )?;
@@ -551,7 +552,7 @@ fn refine_edge<'id>(
             cache,
             signature_to_block,
             block_variables_bdds,
-            state_variables,
+            next_state_variables,
             s_high,
             p_high,
         )?;
