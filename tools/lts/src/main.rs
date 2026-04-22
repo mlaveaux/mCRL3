@@ -73,10 +73,6 @@ struct InfoArgs {
     /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
-
-    /// List of actions that should be considered tau actions.
-    #[arg(short, long, value_delimiter = ',')]
-    tau: Option<Vec<String>>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -94,10 +90,6 @@ struct ReduceArgs {
     /// Specify the output LTS, if not given, output to stdout.
     #[arg(long)]
     output: Option<PathBuf>,
-
-    /// List of actions that should be considered tau actions.
-    #[arg(long, value_delimiter = ',')]
-    tau: Option<Vec<String>>,
 
     /// Disables preprocessing of the LTS before reducing.
     #[arg(long)]
@@ -119,10 +111,6 @@ struct CompareArgs {
     #[arg(long)]
     format: Option<LtsFormat>,
 
-    /// List of actions that should be considered tau actions.
-    #[arg(long, value_delimiter = ',')]
-    tau: Option<Vec<String>>,
-
     /// Disables preprocessing of the LTSs before checking equivalence.
     #[arg(long)]
     no_preprocess: bool,
@@ -143,10 +131,6 @@ struct ConvertArgs {
 
     /// Specify the output LTS.
     output: Option<PathBuf>,
-
-    /// List of actions that should be considered tau actions.
-    #[arg(long, value_delimiter = ',')]
-    tau: Option<Vec<String>>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -167,10 +151,6 @@ struct RefinesArgs {
     /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
-
-    /// List of actions that should be considered tau actions
-    #[arg(long, value_delimiter = ',')]
-    tau: Option<Vec<String>>,
 
     /// Disables preprocessing of the LTSs before checking refinement.
     #[arg(long)]
@@ -226,7 +206,7 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
 
     let format = guess_lts_format_from_extension(path, args.format).ok_or("Unknown LTS file format.")?;
-    let lts = read_explicit_lts(path, format, args.tau.clone().unwrap_or_default(), timing)?;
+    let lts = read_explicit_lts(path, format, timing)?;
     println!(
         "LTS has {} states and {} transitions.",
         LargeFormatter(lts.num_of_states()),
@@ -261,7 +241,7 @@ fn handle_reduce(args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError
     let path = Path::new(&args.filename);
     let format = guess_lts_format_from_extension(path, args.filetype).ok_or("Unknown LTS file format.")?;
 
-    let lts = read_explicit_lts(path, format, args.tau.clone().unwrap_or_default(), timing)?;
+    let lts = read_explicit_lts(path, format, timing)?;
     info!(
         "LTS has {} states and {} transitions.",
         LargeFormatter(lts.num_of_states()),
@@ -296,8 +276,8 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
     let spec_path = Path::new(&args.specification_filename);
     let format = guess_lts_format_from_extension(impl_path, args.format).ok_or("Unknown LTS file format.")?;
 
-    let impl_lts = read_explicit_lts(impl_path, format, args.tau.clone().unwrap_or_default(), timing)?;
-    let spec_lts = read_explicit_lts(spec_path, format, args.tau.clone().unwrap_or_default(), timing)?;
+    let impl_lts = read_explicit_lts(impl_path, format, timing)?;
+    let spec_lts = read_explicit_lts(spec_path, format, timing)?;
 
     info!(
         "Implementation LTS has {} states and {} transitions.",
@@ -351,18 +331,8 @@ fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercErr
     let format = guess_lts_format_from_extension(&args.left_filename, args.format).ok_or("Unknown LTS file format.")?;
 
     info!("Assuming format {:?} for both LTSs.", format);
-    let left_lts = read_explicit_lts(
-        &args.left_filename,
-        format,
-        args.tau.clone().unwrap_or_default(),
-        timing,
-    )?;
-    let right_lts = read_explicit_lts(
-        &args.right_filename,
-        format,
-        args.tau.clone().unwrap_or_default(),
-        timing,
-    )?;
+    let left_lts = read_explicit_lts(&args.left_filename, format, timing)?;
+    let right_lts = read_explicit_lts(&args.right_filename, format, timing)?;
 
     info!(
         "Left LTS has {} states and {} transitions.",
@@ -391,7 +361,7 @@ fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercErr
 /// Converts an LTS from one format to another, does not do any reduction, see [handle_reduce] for that.
 fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercError> {
     let format = guess_lts_format_from_extension(&args.filename, args.format).ok_or("Unknown LTS file format.")?;
-    let input_lts = read_explicit_lts(&args.filename, format, args.tau.clone().unwrap_or_default(), timing)?;
+    let input_lts = read_explicit_lts(&args.filename, format, timing)?;
 
     let output_format = if let Some(output) = &args.output {
         guess_lts_format_from_extension(output, args.output_format).ok_or("Unknown LTS file format.")?
@@ -418,7 +388,7 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
             }
         },
         GenericLts::Lts(lts) => match output_format {
-            LtsFormat::Aut => {
+            LtsFormat::Aut|LtsFormat::AutMcrl2 => {
                 if let Some(path) = &args.output {
                     write_aut(&mut File::create(path)?, &lts.relabel(|label| Ok(label.to_string()))?)?;
                 } else {

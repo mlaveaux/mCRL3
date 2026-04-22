@@ -63,20 +63,24 @@ pub struct LtsBuilderMem<L> {
     labels_index: HashMap<L, LabelIndex>,
     labels: Vec<L>,
 
+    /// The hidden labels that should be mapped to the hidden action.
+    hidden_labels: Vec<String>,
+
     /// The number of states (derived from the transitions).
     num_of_states: usize,
 }
 
 impl<L: TransitionLabel> LtsBuilderMem<L> {
     /// Initializes a new empty builder.
-    pub fn new(labels: Vec<L>) -> Self {
-        Self::with_capacity(labels, 0, 0, 0)
+    pub fn new(labels: Vec<L>, hidden_labels: Vec<String>) -> Self {
+        Self::with_capacity(labels, hidden_labels, 0, 0, 0)
     }
 
     /// Initializes the builder with pre-allocated capacity for states and transitions. The number of labels
     /// can be used when labels are added dynamically.
     pub fn with_capacity(
         mut labels: Vec<L>,
+        hidden_labels: Vec<String>,
         num_of_labels: usize,
         num_of_states: usize,
         num_of_transitions: usize,
@@ -96,7 +100,11 @@ impl<L: TransitionLabel> LtsBuilderMem<L> {
         let mut labels_index = HashMap::new();
         labels_index.insert(L::tau_label(), LabelIndex::new(0));
         for (index, label) in labels.iter().enumerate() {
-            labels_index.insert(label.clone(), LabelIndex::new(index));
+            if hidden_labels.iter().any(|l| label.matches_label(l)) {
+                labels_index.insert(label.clone(), LabelIndex::new(0)); // Map hidden labels to tau
+            } else {
+                labels_index.insert(label.clone(), LabelIndex::new(index));
+            }
         }
 
         Self {
@@ -108,6 +116,7 @@ impl<L: TransitionLabel> LtsBuilderMem<L> {
             transition_to: ByteCompressedVec::with_capacity(num_of_transitions, num_of_states.bytes_required()),
             labels_index,
             labels,
+            hidden_labels,
             num_of_states: 0,
         }
     }
@@ -142,8 +151,13 @@ impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderMem<L> {
         } else {
             // Label was not yet added, so add it to the labels and the index.
             let label = label.to_owned();
-            let index = LabelIndex::new(self.labels.len());
-            self.labels.push(label.clone());
+            let index = if self.hidden_labels.iter().any(|l| label.matches_label(l)) {
+                LabelIndex::new(0) // Map hidden labels to tau
+            } else {
+                let idx = LabelIndex::new(self.labels.len());
+                self.labels.push(label.clone());
+                idx
+            };
             self.labels_index.insert(label, index);
             index
         };

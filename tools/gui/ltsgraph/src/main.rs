@@ -500,7 +500,7 @@ async fn main() -> Result<ExitCode, MercError> {
 
             let format = guess_lts_format_from_extension(path, format).ok_or("Unknown LTS file format.")?;
             let mut timing = Timing::new();
-            match read_explicit_lts(path, format, vec![], &mut timing) {
+            match read_explicit_lts(path, format, &mut timing) {
                 Ok(lts) => {
                     // Ensure that the labels are strings, such that they can displayed.
                     let lts: Arc<LabelledTransitionSystem<String>> =

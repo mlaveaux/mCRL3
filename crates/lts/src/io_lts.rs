@@ -53,7 +53,7 @@ pub fn read_lts<R: Read>(
 
     // The initial state is not known yet.
     let mut initial_state: Option<StateIndex> = None;
-    let mut builder = LtsBuilderMem::new(Vec::new());
+    let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
 
     let progress = TimeProgress::new(
         |num_of_transitions| {

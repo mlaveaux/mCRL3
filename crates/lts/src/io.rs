@@ -13,6 +13,7 @@ use crate::LtsMultiAction;
 use crate::read_aut;
 use crate::read_bcg;
 use crate::read_lts;
+use crate::read_mcrl2_aut;
 
 /// Convenience macro to call `GenericLts::apply` with the same function for both variants.
 /// Useful with generic functions that can be monomorphized for both label types.
@@ -154,7 +155,7 @@ pub fn read_explicit_lts(
             }
             LtsFormat::AutMcrl2 => {
                 let file = File::open(path)?;
-                let lts = read_aut(&file)?;
+                let lts = read_mcrl2_aut(&file)?;
                 GenericLts::Lts(lts.relabel(|label| {
                     LtsMultiAction::from_string(&label)
                 })?)
