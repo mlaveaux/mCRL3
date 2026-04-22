@@ -72,10 +72,28 @@ pub struct PropVarDecl {
     pub span: Span,
 }
 
+impl PropVarDecl {
+    /// Creates a new propositional variable declaration with the given identifier and parameters.
+    pub fn new(identifier: String, parameters: Vec<IdDecl>) -> Self {
+        PropVarDecl {
+            identifier,
+            parameters,
+            span: Span::default(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct PropVarInst {
     pub identifier: String,
     pub arguments: Vec<DataExpr>,
+}
+
+impl PropVarInst {
+    /// Creates a new instance of a propositional variable with the given identifier and arguments.
+    pub fn new(identifier: String, arguments: Vec<DataExpr>) -> Self {
+        PropVarInst { identifier, arguments }
+    }
 }
 
 /// A declaration of an identifier with its sort.
@@ -658,7 +676,19 @@ pub struct PbesEquation {
     pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+impl PbesEquation {
+    /// Creates a new PBES equation with the given operator, variable and formula.
+    pub fn new(operator: FixedPointOperator, variable: PropVarDecl, formula: PbesExpr) -> Self {
+        PbesEquation {
+            operator,
+            variable,
+            formula,
+            span: Span::default()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum PbesExprBinaryOp {
     Implies,
     Disjunction,

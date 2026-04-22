@@ -68,11 +68,11 @@ pub fn refines<L: LTS>(
     counter_example: bool,
     timing: &mut Timing,
 ) -> (bool, Option<CounterExample<L::Label>>) {
-    let (reduction, divergence_preserving) = match refinement {
-        RefinementType::Trace => (Equivalence::StrongBisim, false),
+    let reduction = match refinement {
+        RefinementType::Trace => Equivalence::StrongBisim,
         // Note that for impossible futures we use branching bisimulation, which also removes tau loops.
-        RefinementType::Weaktrace | RefinementType::ImpossibleFutures => (Equivalence::BranchingBisim, false),
-        RefinementType::StableFailures => (Equivalence::BranchingBisim, true),
+        RefinementType::Weaktrace | RefinementType::ImpossibleFutures => Equivalence::BranchingBisim,
+        RefinementType::StableFailures => Equivalence::BranchingBisimDivergencePreserving,
     };
 
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
@@ -100,12 +100,6 @@ pub fn refines<L: LTS>(
                 (reduced_lts, StateIndex::new(*spec_block))
             }
             Equivalence::BranchingBisim => {
-                if divergence_preserving {
-                    warn!(
-                        "Preprocessing for divergence preserving branching bisimulation has not been implemented yet."
-                    );
-                    impl_lts.merge_disjoint(&spec_lts)
-                } else {
                     let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
                     let (preprocess_lts, initial_spec, partition) = branching_bisim_sigref(merged_lts, initial_spec, false, timing);
 
