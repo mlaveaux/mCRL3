@@ -1,11 +1,11 @@
 use merc_lts::TransitionLabel;
-use merc_syntax::ActFrm;
-use merc_syntax::Action;
-use merc_syntax::ModalityOperator;
-use merc_syntax::MultiAction;
-use merc_syntax::RegFrm;
-use merc_syntax::StateFrm;
-use merc_syntax::StateFrmOp;
+use crate::ActFrm;
+use crate::Action;
+use crate::ModalityOperator;
+use crate::MultiAction;
+use crate::RegFrm;
+use crate::StateFrm;
+use crate::StateFrmOp;
 
 /// Represents a counter example.
 pub enum CounterExample<L: TransitionLabel> {

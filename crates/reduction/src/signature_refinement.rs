@@ -753,6 +753,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::path::Path;
+    use std::process::Command;
+
+    use merc_lts::read_mcrl2_aut;
+    use merc_lts::write_mcrl2_aut;
     use test_log::test;
 
     use merc_io::DumpFiles;
@@ -760,6 +766,10 @@ mod tests {
     use merc_lts::write_aut;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
+
+    use crate::Equivalence;
+    use crate::compare_lts;
+    use crate::reduce_lts;
 
     use super::BlockIndex;
     use super::LTS;
@@ -950,4 +960,97 @@ mod tests {
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
         });
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_branching_bisim_sigref_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_branching_bisim_sigref_vs_ltsconvert", Equivalence::BranchingBisim, "branching-bisim");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert", Equivalence::BranchingBisimDivergencePreserving, "dpbranching-bisim");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_strong_bisim_sigref_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_strong_bisim_sigref_vs_ltsconvert", Equivalence::StrongBisim, "bisim");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_weak_bisim_sigref_vs_ltsconvert", Equivalence::WeakBisim, "weak-bisim");
+    }
+
+    /// Compares our approach to the one implemented in mCRL2's ltsconvert
+    fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equivalence, argument: &str) {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let ltsconvert = Path::new(&mcrl2_path).join("ltsconvert");
+
+        random_test(100, |rng| {
+            let mut files = DumpFiles::new(name);
+
+            let lts = random_lts(rng, 10, 3, 3);
+
+            // Write the random LTS to a temp file for ltsconvert to process.
+            let temp_dir = std::env::temp_dir();
+            let input_path = temp_dir.join("input.aut");
+            let output_path = temp_dir.join("output.aut");
+
+            {
+                let mut input_file = File::create(&input_path).unwrap();
+                write_mcrl2_aut(&mut input_file, &lts).unwrap();
+            }
+            files.dump("input.aut", |writer| write_mcrl2_aut(writer, &lts)).unwrap();
+
+            // Reduce the LTS using ltsconvert with branching bisimulation.
+            let status = Command::new(&ltsconvert)
+                .arg(format!("-e{}", argument))
+                .arg(&input_path)
+                .arg(&output_path)
+                .status()
+                .expect("Failed to run ltsconvert");
+            assert!(status.success(), "ltsconvert failed with status: {status}");
+
+            // Read back ltsconvert's reduced LTS.
+            let ltsconvert_reduced = read_mcrl2_aut(File::open(&output_path).unwrap()).unwrap();
+
+            // Reduce the same LTS using our branching bisimulation algorithm.
+            let mut timing = Timing::new();
+            let our_reduced = reduce_lts(lts, equivalence, false, &timing);
+
+            files.dump("reduced.aut", |writer| write_mcrl2_aut(writer, &our_reduced)).unwrap();
+            files.dump("ltsconvert_reduced.aut", |writer| write_mcrl2_aut(writer, &ltsconvert_reduced)).unwrap();
+
+            // Both reductions must have the same number of states and transitions.
+            assert_eq!(
+                our_reduced.num_of_states(),
+                ltsconvert_reduced.num_of_states(),
+                "Number of states differs: ours={}, ltsconvert={}",
+                our_reduced.num_of_states(),
+                ltsconvert_reduced.num_of_states()
+            );
+            assert_eq!(
+                our_reduced.num_of_transitions(),
+                ltsconvert_reduced.num_of_transitions(),
+                "Number of transitions differs: ours={}, ltsconvert={}",
+                our_reduced.num_of_transitions(),
+                ltsconvert_reduced.num_of_transitions()
+            );
+
+            // The two reductions must be strongly bisimilar.
+            assert!(
+                compare_lts(Equivalence::StrongBisim, our_reduced, ltsconvert_reduced, false, &mut timing),
+                "The reduced LTSs are not strongly bisimilar"
+            );
+        });
+    }
+
 }
