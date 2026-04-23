@@ -97,7 +97,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
 /// This is a combined antichain where we check both the positive and the outer
 /// antichain at the same time for inclusion. And in the end we integrate the
 /// positive antichain into the outer antichain when
-struct PositiveAntichain<'a> {
+struct PositiveAntichain {
     /// An antichain that is used for repeated weak trace inclusion checks,
     positive_antichain: Antichain<StateIndex, StateIndex>,
 
@@ -105,7 +105,7 @@ struct PositiveAntichain<'a> {
     antichain: Antichain<StateIndex, StateIndex>,
 }
 
-impl<'a> PositiveAntichain<'a> {
+impl PositiveAntichain {
     fn new() -> Self {
         Self {
             positive_antichain: Antichain::new(),
@@ -114,7 +114,7 @@ impl<'a> PositiveAntichain<'a> {
     }
 }
 
-impl<'a> AC<StateIndex, StateIndex> for PositiveAntichain<'a> {
+impl AC<StateIndex, StateIndex> for PositiveAntichain {
     fn insert(&mut self, key: StateIndex, value: VecSet<StateIndex>) -> bool {
         if self.positive_antichain.contains_superset(&key, &value) {
             // If the positive antichain contains a superset of the current pair, then we can immediately conclude that the check passes.
@@ -171,7 +171,7 @@ fn is_weak_trace_refinement<L: LTS>(
 }
 
 /// This is the [is_weak_trace_refinement] but can generate a counter example.
-fn is_weak_trace_refinement_ce<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterExampleTree>(
+fn is_weak_trace_refinement_ce<L: LTS, CE: CounterExampleTree>(
     lts: &L,
     impl_state: StateIndex,
     spec_state: StateIndex,
@@ -197,6 +197,9 @@ fn is_weak_trace_refinement_ce<L: LTS, A: AC<StateIndex, StateIndex>, CE: Counte
 #[cfg(test)]
 mod tests {
     use merc_lts::read_aut;
+    use merc_utilities::Timing;
+
+    use crate::{ExplorationStrategy, RefinementType, refines};
 
     #[test]
     fn test_impossible_futures_example() {
@@ -223,8 +226,16 @@ mod tests {
         )
         .unwrap();
 
-    
+        let mut timing= Timing::new();
 
-    
+        for preprocess in [false, true] {
+            // Both directions weak trace included.
+            assert!(refines(impl_lts.clone(), spec_lts.clone(), RefinementType::Weaktrace, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
+            assert!(refines(spec_lts.clone(), impl_lts.clone(), RefinementType::Weaktrace, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
+            
+            // However, not impossible futures included in one direction.
+            assert!(refines(impl_lts.clone(), spec_lts.clone(), RefinementType::ImpossibleFutures, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
+            assert!(!refines(spec_lts.clone(), impl_lts.clone(), RefinementType::ImpossibleFutures, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
+        }
     }
 }
