@@ -96,7 +96,7 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         for transition in lts.outgoing_transitions(candidate) {
             if BRANCHING {
                 debug_assert!(
-                    !(lts.is_hidden_label(transition.label) && partition.block_number(transition.to) == block),
+                    !(lts.is_hidden_label(transition.label) && candidate != transition.to && partition.block_number(transition.to) == block),
                     "The representative {} is not bottom state",
                     candidate
                 );
