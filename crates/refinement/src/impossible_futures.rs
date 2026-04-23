@@ -41,7 +41,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
             if !is_stable(lts, impl_state) {
                 // We can skip unstable states as an optimisation.
                 debug_assert!(!diverges(lts, impl_state), "Implementation states should not diverge.");
-                return None;
+                return (None, true);
             }
 
             // Observe that the weak trace inclusion is inverted, this exactly
@@ -77,10 +77,10 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
                     futures.push(trace);
                 }
 
-                return Some(futures);
+                return (Some(futures), true);
             }
 
-            None
+            (None, true)
         },
         true,
         counter_example,
@@ -141,10 +141,10 @@ fn is_weak_trace_refinement<L: LTS>(
         |impl_state, spec_states| {
             if negative_antichain.contains_superset(&impl_state, &spec_states) {
                 // If the negative antichain contains a superset of the current pair, then we can immediately conclude that the check fails.
-                return Some(());
+                return (Some(()), false);
             }
 
-            None
+            (None, true)
         },
         true,
         &mut (),
@@ -152,7 +152,6 @@ fn is_weak_trace_refinement<L: LTS>(
     );
 
     debug_assert!(inner_ce.is_none(), "The counter example from check is trivial");
-    positive_antichain.clear();
 
     if result {
         // If the check passed, then we can add the pair to the positive antichain, which is used for the impossible futures check.
@@ -163,6 +162,7 @@ fn is_weak_trace_refinement<L: LTS>(
         }
     }
 
+    positive_antichain.clear();
     result
 }
 
@@ -180,7 +180,7 @@ fn is_weak_trace_refinement_ce<L: LTS, CE: CounterExampleTree>(
         lts,
         impl_state,
         spec_state,
-        |_, _| Option::<()>::None,
+        |_, _| (Option::<()>::None, true),
         true,
         counter_example,
         &mut antichain,
