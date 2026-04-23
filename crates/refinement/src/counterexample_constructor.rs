@@ -1,8 +1,20 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use merc_lts::LabelIndex;
+use merc_lts::{LabelIndex, TransitionLabel};
 use merc_utilities::TagIndex;
+
+/// Represents a counter example.
+pub enum CounterExample<L: TransitionLabel> {
+    /// Represents a simple trace formula `<a0.a1. ... .a_n>true`.
+    Trace(Vec<L>),
+    /// Represents a weak trace formula `<tau*.a0.tau*.a1. ... .a_n.tau*>true`.
+    WeakTrace(Vec<L>),
+    /// Represents a stable failures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([refusal_0]false && ... [refusal_k]false)`.
+    StableFailures(Vec<L>, Vec<L>),
+    /// Represents an impossible futures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([future_0. ...]false && ... [future_k. ...]false)`.
+    ImpossibleFutures(Vec<L>, Vec<Vec<L>>),
+}
 
 /// A unique type for vertices in the counterexample tree.
 pub struct CounterTag {}

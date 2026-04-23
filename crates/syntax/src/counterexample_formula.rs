@@ -1,4 +1,5 @@
 use merc_lts::TransitionLabel;
+use merc_refinement::CounterExample;
 use crate::ActFrm;
 use crate::Action;
 use crate::ModalityOperator;
@@ -6,18 +7,6 @@ use crate::MultiAction;
 use crate::RegFrm;
 use crate::StateFrm;
 use crate::StateFrmOp;
-
-/// Represents a counter example.
-pub enum CounterExample<L: TransitionLabel> {
-    /// Represents a simple trace formula `<a0.a1. ... .a_n>true`.
-    Trace(Vec<L>),
-    /// Represents a weak trace formula `<tau*.a0.tau*.a1. ... .a_n.tau*>true`.
-    WeakTrace(Vec<L>),
-    /// Represents a stable failures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([refusal_0]false && ... [refusal_k]false)`.
-    StableFailures(Vec<L>, Vec<L>),
-    /// Represents an impossible futures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([future_0. ...]false && ... [future_k. ...]false)`.
-    ImpossibleFutures(Vec<L>, Vec<Vec<L>>),
-}
 
 /// Generates a formula that characterizes the counter example trace.
 pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {
