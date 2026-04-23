@@ -98,10 +98,10 @@ pub fn refines<L: LTS>(
                 let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
                 (reduced_lts, StateIndex::new(*spec_block))
             }
-            Equivalence::BranchingBisim => {
+            Equivalence::BranchingBisim|Equivalence::BranchingBisimDivergencePreserving => {
                 let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
                 let (preprocess_lts, initial_spec, partition) =
-                    branching_bisim_sigref(merged_lts, initial_spec, false, timing);
+                    branching_bisim_sigref(merged_lts, initial_spec, reduction == Equivalence::BranchingBisimDivergencePreserving, timing);
 
                 let impl_block = partition.block_number(preprocess_lts.initial_state_index());
                 let spec_block = partition.block_number(initial_spec);
