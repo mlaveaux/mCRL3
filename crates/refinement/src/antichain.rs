@@ -34,13 +34,84 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
         }
     }
 
+    /// Checks whether the antichain contains a pair (s, T') such that T > T'.
+    /// This is the inverse of the contains check, which checks for T < T'.
+    pub fn contains_superset(&self, key: &K, value: &VecSet<V>) -> bool {
+        self.storage
+            .get(key)
+            .map_or(false, |entry| entry.iter().any(|inner_value| value.is_subset(inner_value)))
+    }
+
+    /// Returns true iff the antichain is empty.
+    pub fn is_empty(&self) -> bool {
+        self.storage.is_empty()
+    }
+
+    /// Returns the size of the antichain.
+    pub fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Returns the metrics of this antichain
+    pub fn metrics(&self) -> (usize, usize, usize) {
+        (self.max_antichain, self.antichain_misses, self.antichain_inserts)
+    }
+
+    /// Returns an iterator over the pairs in the antichain.
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &VecSet<V>)> {
+        self.storage.iter().flat_map(|(key, values)| {
+            values.iter().map(move |value| (key, value))
+        })
+    }
+}
+
+impl<K: Eq + Hash, V: Clone + Ord> Default for Antichain<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V: fmt::Debug + Ord> Antichain<K, V> {
+    /// Checks the internal consistency of the antichain invariant.
+    #[cfg(test)]
+    fn check_consistency(&self) {
+        for (_key, values) in &self.storage {
+            for i in values.iter() {
+                for j in values.iter() {
+                    if i == j {
+                        // Ignore identical entries
+                        continue;
+                    }
+
+                    assert!(
+                        !i.is_subset(j) && !j.is_subset(i),
+                        "Antichain invariant violated: {:?} and {:?} are comparable.",
+                        i,
+                        j
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Represents the antichain data structure used in the refinement checks.
+pub trait AC<K: Eq + Hash, V: Clone + Ord> {
+
     /// Inserts the given (s, T) pair into the antichain and returns true iff it was
     /// not already present.
     /// 
     /// # Details
     /// 
     /// A pair (s, T) is `present` in `S` iff there exists a pair (s, T') in S such that T < T'.
-    pub fn insert(&mut self, key: K, value: VecSet<V>) -> bool {
+    fn insert(&mut self, key: K, value: VecSet<V>) -> bool;
+
+    /// Clears the antichain.
+    fn clear(&mut self);
+}
+
+impl<K: Eq + Hash, V: Clone + Ord> AC<K, V> for Antichain<K, V> {
+    fn insert(&mut self, key: K, value: VecSet<V>) -> bool {
         let mut inserted = false;
         self.storage
             .entry(key)
@@ -77,55 +148,9 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
 
         inserted
     }
-
-    /// Returns true iff the antichain is empty.
-    pub fn is_empty(&self) -> bool {
-        self.storage.is_empty()
-    }
-
-    /// Returns the size of the antichain.
-    pub fn len(&self) -> usize {
-        self.storage.len()
-    }
-
-    /// Clears the antichain.
-    pub fn clear(&mut self) {
+    
+    fn clear(&mut self) {
         self.storage.clear();
-    }
-
-    /// Returns the metrics of this antichain
-    pub fn metrics(&self) -> (usize, usize, usize) {
-        (self.max_antichain, self.antichain_misses, self.antichain_inserts)
-    }
-}
-
-impl<K: Eq + Hash, V: Clone + Ord> Default for Antichain<K, V> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<K, V: fmt::Debug + Ord> Antichain<K, V> {
-    /// Checks the internal consistency of the antichain invariant.
-    #[cfg(test)]
-    fn check_consistency(&self) {
-        for (_key, values) in &self.storage {
-            for i in values.iter() {
-                for j in values.iter() {
-                    if i == j {
-                        // Ignore identical entries
-                        continue;
-                    }
-
-                    assert!(
-                        !i.is_subset(j) && !j.is_subset(i),
-                        "Antichain invariant violated: {:?} and {:?} are comparable.",
-                        i,
-                        j
-                    );
-                }
-            }
-        }
     }
 }
 
@@ -145,7 +170,7 @@ mod tests {
     use merc_utilities::random_test;
     use rand::RngExt;
 
-    use crate::Antichain;
+    use crate::{AC, Antichain};
 
     #[test]
     fn test_antichain() {

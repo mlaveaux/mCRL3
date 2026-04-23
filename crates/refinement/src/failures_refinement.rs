@@ -21,6 +21,7 @@ use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
 
+use crate::AC;
 use crate::Antichain;
 use crate::CounterExampleTree;
 use crate::ExplorationStrategy;
@@ -34,6 +35,8 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
 ) -> (bool, Option<CE::Index>, Option<Vec<LabelIndex>>) {
+    let mut antichain = Antichain::new();
+
     match refinement {
         RefinementType::Trace => is_refinement_generic(
             strategy,
@@ -43,6 +46,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             |_, _| None,
             false,
             counter_example,
+            &mut antichain,
         ),
         RefinementType::Weaktrace => is_refinement_generic(
             strategy,
@@ -52,6 +56,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             |_, _| None,
             true,
             counter_example,
+            &mut antichain,
         ),
         RefinementType::StableFailures => is_refinement_generic(
             strategy,
@@ -61,6 +66,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             |impl_state, spec_states| refusals_contained_in(lts, impl_state, spec_states),
             true,
             counter_example,
+            &mut antichain,
         ),
         _ => unreachable!("This refinement variant {refinement:?} can not be checked by is_failures_refinement"),
     }
@@ -86,7 +92,11 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
 /// used to construct counter examples. If no counter examples are required,
 /// this can be set to `()`. Avoiding the cost for keeping track of counter
 /// example information.
-pub fn is_refinement_generic<L: LTS, CE: CounterExampleTree, F, CC>(
+/// 
+/// The antichain data structure is used for storing explored states. However,
+/// as opposed to a discovered set it allows for pruning additional pairs based
+/// on the `antichain` property.
+pub fn is_refinement_generic<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterExampleTree, F, CC>(
     strategy: ExplorationStrategy,
     merged_lts: &L,
     initial_impl: StateIndex,
@@ -94,14 +104,11 @@ pub fn is_refinement_generic<L: LTS, CE: CounterExampleTree, F, CC>(
     mut check: F,
     weak_transition: bool,
     counter_example: &mut CE,
+    antichain: &mut A,
 ) -> (bool, Option<CE::Index>, Option<CC>)
 where
     F: FnMut(StateIndex, &VecSet<StateIndex>) -> Option<CC>,
 {
-    // The antichain data structure is used for storing explored states. However, as opposed to a discovered set it
-    // allows for pruning additional pairs based on the `antichain` property.
-    let mut antichain = Antichain::new();
-
     // A local cache used for the tau closure computations.
     let mut closure_cache = ClosureCache::new();
 
