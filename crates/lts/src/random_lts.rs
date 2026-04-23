@@ -28,7 +28,7 @@ pub fn random_lts<R: Rng>(
         .collect();
 
     // Synchronize on some of the labels.
-    let synchronized_labels: Vec<String> = (1..num_of_labels.min(3))
+    let synchronized_labels: Vec<String> = (0..rng.random_range(0..num_of_labels))
         .map(|i| String::from_index(i as usize))
         .collect();
 

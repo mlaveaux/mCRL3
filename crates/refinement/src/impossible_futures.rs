@@ -206,11 +206,11 @@ mod tests {
         let impl_lts = read_aut(
             b"des (0,8,6)                                        
             (0,newday,1)
-            (1,tau,2)
-            (1,tau,3)
+            (1,i,2)
+            (1,i,3)
             (2,teach,4)
             (3,lindyhop,0)
-            (3,tau,5)
+            (3,i,5)
             (4,newday,2)
             (5,teach,0)" as &[u8],
         )
@@ -219,8 +219,8 @@ mod tests {
         let spec_lts = read_aut(
             b"des (0,5,4)                                        
             (0,newday,1)
-            (1,tau,2)
-            (1,tau,3)
+            (1,i,2)
+            (1,i,3)
             (2,teach,0)
             (3,lindyhop,0)" as &[u8],
         )

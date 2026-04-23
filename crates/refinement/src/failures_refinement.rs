@@ -20,6 +20,7 @@ use merc_collections::VecSet;
 use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::StateIndex;
+use merc_reduction::diverges;
 
 use crate::AC;
 use crate::Antichain;
@@ -64,6 +65,28 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts.initial_state_index(),
             initial_spec,
             |impl_state, spec_states| refusals_contained_in(lts, impl_state, spec_states),
+            true,
+            counter_example,
+            &mut antichain,
+        ),
+        RefinementType::FailuresDivergences => is_refinement_generic(
+            strategy,
+            lts,
+            lts.initial_state_index(),
+            initial_spec,
+            |impl_state, spec_states| {
+                if diverges(lts, impl_state) {
+                    // If the implementation state diverges, then it can refuse any set of actions, so we only need to check for divergence inclusion.
+                    if !spec_states.iter().any(|s| diverges(lts, *s)) {
+                        Some(Vec::new())
+                    } else {
+                        // TODO: Do not explore the outgoing edges.
+                        None
+                    }
+                } else {
+                    refusals_contained_in(lts, impl_state, spec_states)
+                }
+            },
             true,
             counter_example,
             &mut antichain,
@@ -366,8 +389,7 @@ impl Default for ClosureCache {
 /// If `extend` is true then the original states are included in the closure,
 /// otherwise they are not.
 pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut ClosureCache, extend: bool) -> Vec<StateIndex> {
-    debug_assert!(cache.working.is_empty(), "Closure cache working not cleared before use.");
-    debug_assert!(cache.visited.is_empty(), "Closure cache visited not cleared before use.");
+    debug_assert!(cache.working.is_empty() && cache.visited.is_empty(), "Closure cache working not cleared before use.");
 
     // Initialize the working set with the initial states, note that states is
     // kept in tact. As such the original states are also returned.
