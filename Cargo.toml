@@ -51,7 +51,7 @@ members = [
 
 [workspace.dependencies]
 ahash = "0.8"
-bitstream-io = "4.9"
+bitstream-io = "4.10"
 bitvec = "1.0"
 bumpalo = "3.20"
 clap = { version = "4.6", features = ["derive"] }
@@ -59,7 +59,7 @@ dashmap = { version = "7.0.0-rc2", features = ["inline-more"] }
 delegate = "0.13"
 env_logger = { version = "0.11", features = ["kv"] }
 equivalent = "1.0"
-hashbrown = "0.16"
+hashbrown = "0.17"
 html-escape = "0.2"
 itertools = "0.14"
 log = { version = "0.4", features = ["kv"] }
@@ -72,7 +72,7 @@ parking_lot = "0.12"
 pest = "2.8"
 pest_derive  = "2.8"
 rand = "0.10"
-rayon = "1.11"
+rayon = "1.12"
 regex = "1.12"
 rustc-hash = "2.1"
 smallvec = "1.15"
