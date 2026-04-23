@@ -26,6 +26,7 @@ struct Aggregate {
 
 impl Timing {
     /// Creates a new timing object to track timers.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             results: RefCell::new(Vec::new()),

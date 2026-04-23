@@ -10,6 +10,26 @@ pub struct MercError {
 
 impl MercError {
     /// Attempts to downcast the internal error to the given type.
+    ///
+    /// This is useful when you need to inspect or handle a specific error type
+    /// that may have been wrapped inside a `MercError`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merc_utilities::MercError;
+    /// use std::io;
+    ///
+    /// fn handle_error(err: MercError) {
+    ///     // Check if the underlying error is an IO error
+    ///     if let Some(io_err) = err.downcast_ref::<io::Error>() {
+    ///         println!("IO error occurred: {}", io_err.kind());
+    ///     } else {
+    ///         println!("Some other error occurred");
+    ///     }
+    /// }
+    /// ```
+    #[must_use]
     pub fn downcast_ref<E: Error + 'static>(&self) -> Option<&E> {
         self.inner.error.downcast_ref::<E>()
     }

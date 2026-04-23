@@ -105,7 +105,7 @@ impl<W: Write> BitStreamWrite for BitStreamWriter<W> {
 
 impl<R: Read> BitStreamRead for BitStreamReader<R> {
     fn read_bits(&mut self, number_of_bits: u8) -> Result<u64, MercError> {
-        assert!(number_of_bits <= 64);
+        debug_assert!(number_of_bits <= 64);
         Ok(self.reader.read_var(number_of_bits as u32)?)
     }
 
