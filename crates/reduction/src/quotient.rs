@@ -74,10 +74,11 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         if BRANCHING {
             // traverse any outgoing transition to find a bottom state.
             'outer: loop {
-                if let Some(trans) = lts
-                    .outgoing_transitions(candidate)
-                    .find(|trans| lts.is_hidden_label(trans.label) && partition.block_number(trans.to) == block)
-                {
+                if let Some(trans) = lts.outgoing_transitions(candidate).find(|trans| {
+                    lts.is_hidden_label(trans.label)
+                        && candidate != trans.to // Ignore self loops
+                        && partition.block_number(trans.to) == block
+                }) {
                     debug_assert!(
                         !diverges(lts, candidate),
                         "The states of the given LTS should be non-divergent."
@@ -134,8 +135,8 @@ pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
         }
 
         match color[current] {
-            DfsColor::Gray => return true,  // Back-edge: current is still on the DFS path → cycle found.
-            DfsColor::Black => continue,    // Already fully processed; no new information.
+            DfsColor::Gray => return true, // Back-edge: current is still on the DFS path → cycle found.
+            DfsColor::Black => continue,   // Already fully processed; no new information.
             DfsColor::White => {}
         }
 
@@ -144,7 +145,7 @@ pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
         stack.push((current, true));
 
         for transition in lts.outgoing_transitions(current) {
-            if lts.is_hidden_label(transition.label) {
+            if lts.is_hidden_label(transition.label) && current != transition.to {
                 stack.push((transition.to, false));
             }
         }
