@@ -1,7 +1,10 @@
+use merc_collections::VecSet;
 use merc_lts::LTS;
 use merc_lts::StateIndex;
 use merc_reduction::diverges;
 
+use crate::AC;
+use crate::Antichain;
 use crate::CounterExampleConstructor;
 use crate::CounterExampleTree;
 use crate::ExplorationStrategy;
@@ -22,6 +25,13 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
 ) -> (bool, Option<CE::Index>, Option<Vec<Vec<L::Label>>>) {
+    let mut antichain = Antichain::new();
+
+    // The inner antichain is reused between computations of the weak trace inclusion. The positive antichain contains all the
+    // pairs that have passed the check so far.
+    let mut negative_antichain = Antichain::new();
+    let mut positive_antichain = PositiveAntichain::new();
+
     is_refinement_generic(
         strategy,
         lts,
@@ -36,17 +46,29 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
 
             // Observe that the weak trace inclusion is inverted, this exactly
             // corresponds to checking for impossible futures.
-            if !spec_states
-                .iter()
-                .any(|t| is_weak_trace_refinement(lts, *t, impl_state, strategy, &mut ()).0)
-            {
+            if !spec_states.iter().any(|t| {
+                is_weak_trace_refinement(
+                    lts,
+                    *t,
+                    impl_state,
+                    strategy,
+                    &mut positive_antichain,
+                    &mut negative_antichain,
+                )
+            }) {
                 let mut futures = Vec::new();
 
                 for t in spec_states {
                     // Run the weak trace refinement again with a counter example.
                     let mut ce_constructor = CounterExampleConstructor::new();
 
-                    let (result, ce) = is_weak_trace_refinement(lts, *t, impl_state, strategy, &mut ce_constructor);
+                    let (result, ce) = is_weak_trace_refinement_ce(
+                        lts,
+                        *t,
+                        impl_state,
+                        strategy,
+                        &mut ce_constructor,
+                    );
                     debug_assert!(
                         !result,
                         "The weak trace refinement should fail according to the previous check."
@@ -68,18 +90,95 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
         },
         true,
         counter_example,
+        &mut antichain,
     )
+}
+
+/// This is a combined antichain where we check both the positive and the outer
+/// antichain at the same time for inclusion. And in the end we integrate the
+/// positive antichain into the outer antichain when
+struct PositiveAntichain<'a> {
+    /// An antichain that is used for repeated weak trace inclusion checks,
+    positive_antichain: Antichain<StateIndex, StateIndex>,
+
+    /// The antichain used for the current computation.
+    antichain: Antichain<StateIndex, StateIndex>,
+}
+
+impl<'a> PositiveAntichain<'a> {
+    fn new() -> Self {
+        Self {
+            positive_antichain: Antichain::new(),
+            antichain: Antichain::new(),
+        }
+    }
+}
+
+impl<'a> AC<StateIndex, StateIndex> for PositiveAntichain<'a> {
+    fn insert(&mut self, key: StateIndex, value: VecSet<StateIndex>) -> bool {
+        if self.positive_antichain.contains_superset(&key, &value) {
+            // If the positive antichain contains a superset of the current pair, then we can immediately conclude that the check passes.
+            return true;
+        }
+        
+        self.antichain.insert(key, value)
+    }
+
+    fn clear(&mut self) {
+        self.antichain.clear();
+    }
 }
 
 /// Checks for the various weak trace refinement. This is a helper function for
 /// the impossible futures refinement check.
-fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
+fn is_weak_trace_refinement<L: LTS>(
+    lts: &L,
+    impl_state: StateIndex,
+    spec_state: StateIndex,
+    strategy: ExplorationStrategy,
+    positive_antichain: &mut PositiveAntichain,
+    negative_antichain: &mut Antichain<StateIndex, StateIndex>,
+) -> bool {
+    let (result, _counter_example, inner_ce) = is_refinement_generic(
+        strategy,
+        lts,
+        impl_state,
+        spec_state,
+        |impl_state, spec_states| {
+            if negative_antichain.contains_superset(&impl_state, &spec_states) {
+                // If the negative antichain contains a superset of the current pair, then we can immediately conclude that the check fails.
+                return Some(());
+            }
+
+            None
+        },
+        true,
+        &mut (),
+        positive_antichain,
+    );
+
+    debug_assert!(inner_ce.is_none(), "The counter example from check is trivial");
+    positive_antichain.clear();
+
+    if result {
+        // If the check passed, then we can add the pair to the positive antichain, which is used for the impossible futures check.
+        for (impl_state, spec_states) in positive_antichain.antichain.iter() {
+            positive_antichain.positive_antichain.insert(*impl_state, spec_states.clone());
+        }
+    }
+
+    result
+}
+
+/// This is the [is_weak_trace_refinement] but can generate a counter example.
+fn is_weak_trace_refinement_ce<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterExampleTree>(
     lts: &L,
     impl_state: StateIndex,
     spec_state: StateIndex,
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>) {
+) -> (bool, Option<CE::Index>) {    
+    let mut antichain = Antichain::new();
     let (result, counter_example, inner_ce) = is_refinement_generic(
         strategy,
         lts,
@@ -88,9 +187,44 @@ fn is_weak_trace_refinement<L: LTS, CE: CounterExampleTree>(
         |_, _| Option::<()>::None,
         true,
         counter_example,
+        &mut antichain,
     );
 
     debug_assert!(inner_ce.is_none(), "The counter example from check is trivial");
-
     (result, counter_example)
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_lts::read_aut;
+
+    #[test]
+    fn test_impossible_futures_example() {
+        let impl_lts = read_aut(
+            b"des (0,8,6)                                        
+            (0,newday,1)
+            (1,tau,2)
+            (1,tau,3)
+            (2,teach,4)
+            (3,lindyhop,0)
+            (3,tau,5)
+            (4,newday,2)
+            (5,teach,0)" as &[u8],
+        )
+        .unwrap();
+
+        let spec_lts = read_aut(
+            b"des (0,5,4)                                        
+            (0,newday,1)
+            (1,tau,2)
+            (1,tau,3)
+            (2,teach,0)
+            (3,lindyhop,0)" as &[u8],
+        )
+        .unwrap();
+
+    
+
+    
+    }
 }
