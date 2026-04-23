@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use merc_lts::{LabelIndex, TransitionLabel};
+use merc_lts::LabelIndex;
+use merc_lts::TransitionLabel;
 use merc_utilities::TagIndex;
 
 /// Represents a counter example.

@@ -32,6 +32,5 @@ rustc-hash.workspace = true
 clap = { workspace = true, optional = true }
 
 [dev-dependencies]
-merc_vpg.workspace = true
-
+tempfile.workspace = true
 test-log.workspace = true

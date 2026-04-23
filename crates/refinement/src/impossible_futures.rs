@@ -62,13 +62,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
                     // Run the weak trace refinement again with a counter example.
                     let mut ce_constructor = CounterExampleConstructor::new();
 
-                    let (result, ce) = is_weak_trace_refinement_ce(
-                        lts,
-                        *t,
-                        impl_state,
-                        strategy,
-                        &mut ce_constructor,
-                    );
+                    let (result, ce) = is_weak_trace_refinement_ce(lts, *t, impl_state, strategy, &mut ce_constructor);
                     debug_assert!(
                         !result,
                         "The weak trace refinement should fail according to the previous check."
@@ -120,7 +114,7 @@ impl AC<StateIndex, StateIndex> for PositiveAntichain {
             // If the positive antichain contains a superset of the current pair, then we can immediately conclude that the check passes.
             return true;
         }
-        
+
         self.antichain.insert(key, value)
     }
 
@@ -163,7 +157,9 @@ fn is_weak_trace_refinement<L: LTS>(
     if result {
         // If the check passed, then we can add the pair to the positive antichain, which is used for the impossible futures check.
         for (impl_state, spec_states) in positive_antichain.antichain.iter() {
-            positive_antichain.positive_antichain.insert(*impl_state, spec_states.clone());
+            positive_antichain
+                .positive_antichain
+                .insert(*impl_state, spec_states.clone());
         }
     }
 
@@ -177,7 +173,7 @@ fn is_weak_trace_refinement_ce<L: LTS, CE: CounterExampleTree>(
     spec_state: StateIndex,
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>) {    
+) -> (bool, Option<CE::Index>) {
     let mut antichain = Antichain::new();
     let (result, counter_example, inner_ce) = is_refinement_generic(
         strategy,
@@ -199,7 +195,9 @@ mod tests {
     use merc_lts::read_aut;
     use merc_utilities::Timing;
 
-    use crate::{ExplorationStrategy, RefinementType, refines};
+    use crate::ExplorationStrategy;
+    use crate::RefinementType;
+    use crate::refines;
 
     #[test]
     fn test_impossible_futures_example() {
@@ -226,16 +224,48 @@ mod tests {
         )
         .unwrap();
 
-        let mut timing= Timing::new();
+        let mut timing = Timing::new();
 
         for preprocess in [false, true] {
             // Both directions weak trace included.
-            assert!(refines(impl_lts.clone(), spec_lts.clone(), RefinementType::Weaktrace, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
-            assert!(refines(spec_lts.clone(), impl_lts.clone(), RefinementType::Weaktrace, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
-            
+            assert!(
+                refines(
+                    impl_lts.clone(),
+                    spec_lts.clone(),
+                    RefinementType::Weaktrace,
+                    ExplorationStrategy::BFS,
+                    preprocess,
+                    false,
+                    &mut timing
+                )
+                .0
+            );
+            assert!(
+                refines(
+                    spec_lts.clone(),
+                    impl_lts.clone(),
+                    RefinementType::Weaktrace,
+                    ExplorationStrategy::BFS,
+                    preprocess,
+                    false,
+                    &mut timing
+                )
+                .0
+            );
+
             // However, not impossible futures included in one direction.
-            assert!(refines(impl_lts.clone(), spec_lts.clone(), RefinementType::ImpossibleFutures, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
-            assert!(!refines(spec_lts.clone(), impl_lts.clone(), RefinementType::ImpossibleFutures, ExplorationStrategy::BFS, preprocess, false, &mut timing).0);
+            assert!(
+                !refines(
+                    spec_lts.clone(),
+                    impl_lts.clone(),
+                    RefinementType::ImpossibleFutures,
+                    ExplorationStrategy::BFS,
+                    preprocess,
+                    false,
+                    &mut timing
+                )
+                .0
+            );
         }
     }
 }

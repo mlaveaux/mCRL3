@@ -64,6 +64,20 @@ fn test_random_stable_failures_refinement() {
 
 #[test]
 #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+fn test_random_failures_divergences_refinement() {
+    random_test(100, |rng| {
+        is_refinement_test(
+            "test_random_failures_divergences_refinement",
+            rng,
+            RefinementType::FailuresDivergences,
+            ExplorationStrategy::BFS,
+            false,
+        );
+    });
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Tests are too slow under miri.
 fn test_random_impossible_futures_refinement() {
     random_test(100, |rng| {
         is_refinement_test(
@@ -95,7 +109,7 @@ fn test_random_trace_refinement_preprocessed() {
 fn test_random_weak_trace_refinement_preprocessed() {
     random_test(100, |rng| {
         is_refinement_test(
-            "test_random_weak_trace_refinement",
+            "test_random_weak_trace_refinement_preprocessed",
             rng,
             RefinementType::Weaktrace,
             ExplorationStrategy::BFS,
@@ -109,9 +123,23 @@ fn test_random_weak_trace_refinement_preprocessed() {
 fn test_random_stable_failures_refinement_preprocessed() {
     random_test(100, |rng| {
         is_refinement_test(
-            "test_random_stable_failures_refinement",
+            "test_random_stable_failures_refinement_preprocessed",
             rng,
             RefinementType::StableFailures,
+            ExplorationStrategy::BFS,
+            true,
+        );
+    });
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Tests are too slow under miri.
+fn test_random_failures_divergences_refinement_preprocessed() {
+    random_test(100, |rng| {
+        is_refinement_test(
+            "test_random_failures_divergences_refinement_preprocessed",
+            rng,
+            RefinementType::FailuresDivergences,
             ExplorationStrategy::BFS,
             true,
         );
@@ -123,7 +151,7 @@ fn test_random_stable_failures_refinement_preprocessed() {
 fn test_random_impossible_futures_refinement_preprocessed() {
     random_test(100, |rng| {
         is_refinement_test(
-            "test_random_impossible_futures_refinement",
+            "test_random_impossible_futures_refinement_preprocessed",
             rng,
             RefinementType::ImpossibleFutures,
             ExplorationStrategy::BFS,
