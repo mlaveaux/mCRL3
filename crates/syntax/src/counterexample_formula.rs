@@ -1,12 +1,16 @@
-use merc_lts::TransitionLabel;
-use merc_refinement::CounterExample;
 use crate::ActFrm;
 use crate::Action;
+use crate::FixedPointOperator;
 use crate::ModalityOperator;
 use crate::MultiAction;
 use crate::RegFrm;
+use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmOp;
+use crate::StateVarAssignment;
+use crate::StateVarDecl;
+use merc_lts::TransitionLabel;
+use merc_refinement::CounterExample;
 
 /// Generates a formula that characterizes the counter example trace.
 pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {
@@ -26,6 +30,24 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
             expr
         }
         CounterExample::WeakTrace(trace) => weaktrace_formula(trace, StateFrm::True, ModalityOperator::Diamond),
+        CounterExample::Divergence(trace) => weaktrace_formula(
+            trace,
+            // For the divergence we use `nu X. <tau>X` to require an infinite tau path.
+            StateFrm::FixedPoint {
+                operator: FixedPointOperator::Greatest,
+                variable: StateVarDecl {
+                    identifier: "X".to_string(),
+                    arguments: Vec::new(),
+                    span: Span::default(),
+                },
+                body: Box::new(StateFrm::Modality {
+                    operator: ModalityOperator::Diamond,
+                    formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),
+                    expr: Box::new(StateFrm::Id("X".to_string(), Vec::new())),
+                }),
+            },
+            ModalityOperator::Diamond,
+        ),
         CounterExample::StableFailures(trace, refusals) => {
             // Refused actions are characterized by box-false modalities.
             let inner = refusals
