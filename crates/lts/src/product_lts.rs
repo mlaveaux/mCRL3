@@ -6,6 +6,7 @@ use merc_collections::IndexedSet;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
+use crate::LtsBuilder;
 use crate::LtsBuilderFast;
 use crate::StateIndex;
 use crate::TransitionLabel;
@@ -74,7 +75,7 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
                             StateIndex::new(*product_index),
                             &left.labels()[*left_transition.label],
                             StateIndex::new(*product_state),
-                        );
+                        ).expect("Adding transitions does not fail");
 
                         if inserted {
                             trace!("Adding ({}, {})", left_transition.to, right_transition.to);
@@ -90,7 +91,7 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
                     StateIndex::new(*product_index),
                     &left.labels()[*left_transition.label],
                     StateIndex::new(*left_index),
-                );
+                ).expect("Adding transitions does not fail");
 
                 if inserted {
                     trace!("Adding ({}, {})", left_transition.to, right_state);
@@ -111,7 +112,7 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
                 StateIndex::new(*product_index),
                 &right.labels()[*right_transition.label],
                 StateIndex::new(*right_index),
-            );
+            ).expect("Adding transitions does not fail");
 
             if inserted {
                 // New state discovered.
