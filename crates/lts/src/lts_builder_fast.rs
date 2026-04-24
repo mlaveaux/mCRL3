@@ -5,8 +5,11 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 
+use merc_utilities::MercError;
+
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;
+use crate::LtsBuilder;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
@@ -69,34 +72,6 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
         }
     }
 
-    /// Adds a transition to the builder.
-    pub fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex)
-    where
-        L: Borrow<Q>,
-        Q: ToOwned<Owned = L> + Eq + Hash,
-    {
-        let label_index = if let Some(&index) = self.labels_index.get(label) {
-            index
-        } else {
-            // Label was not yet added, so add it to the labels and the index.
-            let label = label.to_owned();
-            let index = if self.hidden_labels.iter().any(|l| label.matches_label(l)) {
-                LabelIndex::new(0) // Map hidden labels to tau
-            } else {
-                let idx = LabelIndex::new(self.labels.len());
-                self.labels.push(label.clone());
-                idx
-            };
-            self.labels_index.insert(label, index);
-            index
-        };
-
-        self.transitions.push((from, label_index, to));
-
-        // Update the number of states.
-        self.num_of_states = self.num_of_states.max(from.value() + 1).max(to.value() + 1);
-    }
-
     /// Finalizes the builder and returns the constructed labelled transition system.
     pub fn finish(&mut self, initial_state: StateIndex, remove_duplicates: bool) -> LabelledTransitionSystem<L> {
         if remove_duplicates {
@@ -109,16 +84,6 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
             || self.iter(),
             self.labels.clone(),
         )
-    }
-
-    /// Returns the number of transitions added to the builder.
-    pub fn num_of_transitions(&self) -> usize {
-        self.transitions.len()
-    }
-
-    /// Returns the number of states that the builder currently found.
-    pub fn num_of_states(&self) -> usize {
-        self.num_of_states
     }
 
     /// Sets the number of states to at least the given number. All states without transitions
@@ -141,6 +106,52 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
     }
 }
 
+impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderFast<L> {
+    type LTS = LabelledTransitionSystem<L>;
+    
+    fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash 
+    {            
+        let label_index = if let Some(&index) = self.labels_index.get(label) {
+            index
+        } else {
+            // Label was not yet added, so add it to the labels and the index.
+            let label = label.to_owned();
+            let index = if self.hidden_labels.iter().any(|l| label.matches_label(l)) {
+                LabelIndex::new(0) // Map hidden labels to tau
+            } else {
+                let idx = LabelIndex::new(self.labels.len());
+                self.labels.push(label.clone());
+                idx
+            };
+            self.labels_index.insert(label, index);
+            index
+        };
+
+        self.transitions.push((from, label_index, to));
+
+        // Update the number of states.
+        self.num_of_states = self.num_of_states.max(from.value() + 1).max(to.value() + 1);
+        Ok(())
+    }
+    
+    fn finish(&mut self, initial_state: StateIndex) -> Result<Self::LTS, MercError> {
+        Ok(self.finish(initial_state, false))
+    }
+    
+    fn num_of_transitions(&self) -> usize {
+        self.transitions.len()
+    }
+    
+    fn num_of_states(&self) -> usize {
+        self.num_of_states
+    }
+
+    
+}
+
 impl<Label: TransitionLabel> fmt::Debug for LtsBuilderFast<Label> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Transitions:")?;
@@ -159,6 +170,7 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::LabelIndex;
+    use crate::LtsBuilder;
     use crate::LtsBuilderFast;
     use crate::StateIndex;
 
@@ -172,7 +184,7 @@ mod tests {
                 let from = StateIndex::new(rng.random_range(0..10));
                 let label = LabelIndex::new(rng.random_range(0..2));
                 let to = StateIndex::new(rng.random_range(0..10));
-                builder.add_transition(from, &labels[label], to);
+                builder.add_transition(from, &labels[label], to).unwrap();
             }
 
             builder.remove_duplicates();

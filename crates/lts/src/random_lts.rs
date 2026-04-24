@@ -8,6 +8,7 @@ use merc_utilities::MercError;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
+use crate::LtsBuilder;
 use crate::LtsBuilderFast;
 use crate::StateIndex;
 use crate::TransitionLabel;
@@ -82,7 +83,7 @@ pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
                 StateIndex::new(state_index),
                 &labels[label as usize],
                 StateIndex::new(to),
-            );
+            ).expect("Adding transitions does not fail");
         }
     }
 
@@ -122,7 +123,7 @@ pub fn mutate_lts<L: LTS, R: Rng>(
         for transition in lts.outgoing_transitions(state) {
             // Skip this transition if it is one of the transitions to remove.
             if !to_remove.contains(&index) {
-                builder.add_transition(state, &lts.labels()[transition.label], transition.to);
+                builder.add_transition(state, &lts.labels()[transition.label], transition.to).expect("Adding transitions does not fail");
             }
 
             index += 1;
@@ -138,7 +139,7 @@ pub fn mutate_lts<L: LTS, R: Rng>(
             let from = StateIndex::new(rng.sample(state_uniform));
             let label = rng.sample(label_uniform);
             let to = StateIndex::new(rng.sample(state_uniform));
-            builder.add_transition(from, &lts.labels()[label], to);
+            builder.add_transition(from, &lts.labels()[label], to).unwrap();
         }
     }
 

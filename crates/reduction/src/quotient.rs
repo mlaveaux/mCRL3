@@ -5,6 +5,7 @@ use merc_collections::BlockIndex;
 use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
+use merc_lts::LtsBuilder;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
 
@@ -43,7 +44,7 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
                     StateIndex::new(block.value()),
                     &lts.labels()[transition.label],
                     StateIndex::new(to_block.value()),
-                );
+                ).expect("Adding transitions does not fail");
             }
         }
     }
@@ -189,7 +190,7 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
                 StateIndex::new(*block),
                 &lts.labels()[transition.label],
                 StateIndex::new(*partition.block_number(transition.to)),
-            );
+            ).expect("Adding transitions does not fail");
         }
     }
 
