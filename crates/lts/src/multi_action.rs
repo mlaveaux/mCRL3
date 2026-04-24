@@ -141,7 +141,6 @@ impl LtsMultiAction {
     pub fn actions(&self) -> &VecBag<LtsAction> {
         &self.actions
     }
-
 }
 
 #[merc_derive_terms]

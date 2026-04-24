@@ -31,10 +31,12 @@ pub fn translate_vpg(
     let parsed_labels: Result<Vec<MultiAction>, MercError> = fts
         .labels()
         .iter()
-        .map(|label| if label.is_tau_label() {
-            Ok(MultiAction::tau())
-        } else {
-            MultiAction::parse(label.label())
+        .map(|label| {
+            if label.is_tau_label() {
+                Ok(MultiAction::tau())
+            } else {
+                MultiAction::parse(label.label())
+            }
         })
         .collect();
 

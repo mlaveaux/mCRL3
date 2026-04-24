@@ -20,7 +20,8 @@ where
         "The graph contains vertices with indices larger than the number of vertices"
     );
 
-    let mut partition = IndexedPartition::with_subset(graph.num_of_vertices(), graph.iter_vertices().map(|v| v.index()));
+    let mut partition =
+        IndexedPartition::with_subset(graph.num_of_vertices(), graph.iter_vertices().map(|v| v.index()));
 
     // The stack for the depth first search.
     let mut stack = Vec::new();

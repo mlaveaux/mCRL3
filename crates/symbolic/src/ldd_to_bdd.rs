@@ -99,7 +99,14 @@ pub fn ldd_to_bdd_edge<'id>(
     // Recurse on down with the remaining variables after consuming this layer
     let mut down_bdd = EdgeDropGuard::new(
         manager,
-        ldd_to_bdd_edge(storage, manager, cache, &down, &bits_down, &bit_variables[needed_bits..])?,
+        ldd_to_bdd_edge(
+            storage,
+            manager,
+            cache,
+            &down,
+            &bits_down,
+            &bit_variables[needed_bits..],
+        )?,
     );
 
     // Encode current value using the variables for this layer (MSB to LSB)

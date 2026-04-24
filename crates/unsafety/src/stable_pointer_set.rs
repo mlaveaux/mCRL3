@@ -317,9 +317,10 @@ where
             // Call the drop function
             unsafe { std::ptr::drop_in_place(ptr.as_ptr()) };
 
-            // Remove the entry we just created since it was not inserted            
-            unsafe { self.allocator.deallocate(ptr.cast(), layout); }
-
+            // Remove the entry we just created since it was not inserted
+            unsafe {
+                self.allocator.deallocate(ptr.cast(), layout);
+            }
 
             return (StablePointer::from_entry(&element), false);
         }

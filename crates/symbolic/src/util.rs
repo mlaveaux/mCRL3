@@ -187,7 +187,7 @@ pub fn variable_rename_edge<'id>(
 pub fn variable_rename_reverse(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
-    substitution: &Substitution
+    substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
     // Every subsitution must be from a lower variable to a higher variable.
     for (from, to) in substitution {

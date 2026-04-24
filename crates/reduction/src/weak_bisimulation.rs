@@ -34,7 +34,7 @@ type BitArray = BitVec<u64, Lsb0>;
 ///
 /// The `preprocess` flag indicates whether to preprocess the LTS using
 /// branching bisimulation.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS.
 pub fn weak_bisimulation<L: LTS>(
@@ -61,7 +61,7 @@ pub fn weak_bisimulation<L: LTS>(
 ///
 /// The `preprocess` flag indicates whether to preprocess the LTS using
 /// branching bisimulation.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS.
 pub fn weak_bisimulation_parallel<L: LTS>(
@@ -87,7 +87,8 @@ fn weak_bisimulation_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
-    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+    let (tau_loop_free_lts, mapped_state) =
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
 
     timing.measure("reduction", || {
         let mut blocks = MarkedBlockPartition::new(tau_loop_free_lts.num_of_states());
@@ -157,7 +158,8 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
-    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+    let (tau_loop_free_lts, mapped_state) =
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
 
     let progress = TimeProgress::new(
         |num_of_blocks: usize| {

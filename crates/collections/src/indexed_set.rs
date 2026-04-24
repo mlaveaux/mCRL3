@@ -243,24 +243,25 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     {
         for (index, element) in self.table.iter_mut().enumerate() {
             if let IndexSetEntry::Filled(value) = element
-                && !f(SetIndex(self.generation_counter.recall_index(index)), value) {
-                    // Find and remove the IndexEntry from the index set
-                    let entry_to_remove = self.index.iter().find(|entry| entry.index == index).cloned();
+                && !f(SetIndex(self.generation_counter.recall_index(index)), value)
+            {
+                // Find and remove the IndexEntry from the index set
+                let entry_to_remove = self.index.iter().find(|entry| entry.index == index).cloned();
 
-                    if let Some(entry) = entry_to_remove {
-                        self.index.remove(&entry);
+                if let Some(entry) = entry_to_remove {
+                    self.index.remove(&entry);
+                }
+
+                match self.free {
+                    Some(next) => {
+                        *element = IndexSetEntry::Empty(next);
                     }
-
-                    match self.free {
-                        Some(next) => {
-                            *element = IndexSetEntry::Empty(next);
-                        }
-                        None => {
-                            *element = IndexSetEntry::Empty(index);
-                        }
-                    };
-                    self.free = Some(index);
+                    None => {
+                        *element = IndexSetEntry::Empty(index);
+                    }
                 };
+                self.free = Some(index);
+            };
         }
     }
 

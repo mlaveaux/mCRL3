@@ -75,7 +75,6 @@ where
     Ok(None)
 }
 
-
 fn visit_sort_expr_rec<T, F>(sort_expr: &SortExpression, function: &mut F) -> Result<Option<T>, MercError>
 where
     F: FnMut(&SortExpression) -> Result<ControlFlow<T>, MercError>,

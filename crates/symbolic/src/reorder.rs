@@ -1,7 +1,7 @@
 use std::fs::File;
-use std::io::ErrorKind;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
 
@@ -15,11 +15,11 @@ use merc_utilities::MercError;
 use crate::DependencyGraph;
 
 /// Default implementation of reorder when `kahypar` feature is not enabled.
-pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path,graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     debug!("Total span: {}", graph.total_span());
 
     let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-    let result = mince(kahypar_path, kahypar_ini_path,&vertices, &[], graph)?;
+    let result = mince(kahypar_path, kahypar_ini_path, &vertices, &[], graph)?;
     debug!("Reordered total span: {}", graph.reorder(&result).total_span());
     Ok(result)
 }
@@ -69,7 +69,13 @@ fn mince(
 
     let mut new_left_context = left_context.to_vec();
     new_left_context.extend(&left_vertices);
-    let mut right = mince(kahypar_path, kahypar_ini_path, &right_vertices, &new_left_context, graph)?;
+    let mut right = mince(
+        kahypar_path,
+        kahypar_ini_path,
+        &right_vertices,
+        &new_left_context,
+        graph,
+    )?;
     left.append(&mut right);
 
     // Check that the result is a valid permutation
@@ -227,8 +233,8 @@ fn run_kahypar(kahypar_path: &Path, kahypar_ini_path: &Path, hypergraph: &Hyperg
 
     let result = (|| {
         // Create a file to write the hypergraph to disk in hMetis format.
-        let mut file = File::create_new(HYPERGRAPH_FILE)
-            .map_err(|e| format!("Failed to create file '{HYPERGRAPH_FILE}': {e}"))?;
+        let mut file =
+            File::create_new(HYPERGRAPH_FILE).map_err(|e| format!("Failed to create file '{HYPERGRAPH_FILE}': {e}"))?;
 
         // Expected <num_hyperedges> <num_hypernodes> <type> (line 1)
         // type 10 is vertex weights only.

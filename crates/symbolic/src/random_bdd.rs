@@ -1,9 +1,8 @@
-
+use oxidd::BooleanFunction;
+use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
-use oxidd::BooleanFunction;
-use oxidd::ManagerRef;
 use oxidd::util::OutOfMemory;
 use rand::Rng;
 use rand::RngExt;

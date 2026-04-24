@@ -237,11 +237,12 @@ impl<T> BfSharedMutex<T> {
         // Wait for the instances to exit their busy status.
         for (index, option) in other.iter().enumerate() {
             if index != self.index
-                && let Some(object) = option {
-                    while object.busy.load(std::sync::atomic::Ordering::SeqCst) {
-                        std::hint::spin_loop();
-                    }
+                && let Some(object) = option
+            {
+                while object.busy.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::hint::spin_loop();
                 }
+            }
         }
 
         // We now have exclusive access to the object according to the protocol

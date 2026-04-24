@@ -17,7 +17,7 @@ pub const NOT_IN_PARTITION: usize = usize::MAX;
 /// number.
 ///
 /// # Details
-/// 
+///
 /// This partition always stores 0..max_value elements in the partition, but it
 /// uses a special value to indicate that an element is not in the partition. So
 /// this is not memory efficient.
@@ -61,7 +61,9 @@ impl IndexedPartition {
     /// Create a new partition with the given partitioning.
     pub fn with_partition(partition: Vec<BlockIndex>, num_of_blocks: usize) -> IndexedPartition {
         debug_assert!(
-            partition.iter().all(|&block| block.value() < num_of_blocks || block.value() == NOT_IN_PARTITION),
+            partition
+                .iter()
+                .all(|&block| block.value() < num_of_blocks || block.value() == NOT_IN_PARTITION),
             "Block numbers must be less than the number of blocks, or equal to NOT_IN_PARTITION"
         );
 
@@ -91,7 +93,10 @@ impl IndexedPartition {
     /// This assumes that the blocks numbers are dense, otherwise the partition
     /// overestimates the total number of blocks present returned from [Self::num_of_blocks].
     pub fn set_block(&mut self, element_index: usize, block_number: BlockIndex) {
-        debug_assert!(block_number.value() != NOT_IN_PARTITION, "Block number cannot be NOT_IN_PARTITION");
+        debug_assert!(
+            block_number.value() != NOT_IN_PARTITION,
+            "Block number cannot be NOT_IN_PARTITION"
+        );
 
         self.num_of_blocks = self.num_of_blocks.max(block_number.value() + 1);
         self.partition[element_index] = block_number;

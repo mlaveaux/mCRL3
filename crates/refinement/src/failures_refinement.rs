@@ -29,7 +29,7 @@ use crate::ExplorationStrategy;
 use crate::RefinementType;
 
 /// Checks for the various stable failures refinement relations.
-/// 
+///
 /// Returns the result, and the state in the counter example tree that witnesses
 /// the failure if the result is false. Finally, the result of the inner
 /// (impl,spec) check is returned as well, this is used to construct the counter
@@ -72,7 +72,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts.initial_state_index(),
             initial_spec,
             |impl_state, spec_states| (refusals_contained_in(lts, impl_state, spec_states), true),
-            |_, _| (),            
+            |_, _| (),
             true,
             counter_example,
             &mut antichain,

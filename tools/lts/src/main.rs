@@ -10,12 +10,12 @@ use clap::Subcommand;
 use log::info;
 
 use merc_io::LargeFormatter;
-use merc_lts::apply_lts_pair;
-use merc_lts::apply_lts;
 use merc_lts::GenericLts;
-use merc_lts::guess_lts_format_from_extension;
 use merc_lts::LTS;
 use merc_lts::LtsFormat;
+use merc_lts::apply_lts;
+use merc_lts::apply_lts_pair;
+use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
@@ -25,10 +25,10 @@ use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
 use merc_refinement::refines;
 use merc_syntax::generate_formula;
-use merc_tools::format_key_values_json;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -388,7 +388,7 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
             }
         },
         GenericLts::Lts(lts) => match output_format {
-            LtsFormat::Aut|LtsFormat::AutMcrl2 => {
+            LtsFormat::Aut | LtsFormat::AutMcrl2 => {
                 if let Some(path) = &args.output {
                     write_aut(&mut File::create(path)?, &lts.relabel(|label| Ok(label.to_string()))?)?;
                 } else {

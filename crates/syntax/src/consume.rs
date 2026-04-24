@@ -439,7 +439,9 @@ impl Mcrl2Parser {
                 Rule::ActSpec => {
                     action_declarations.append(&mut Mcrl2Parser::ActSpec(child)?);
                 }
-                Rule::ActionRenameRuleSpec => rename_declarations.append(&mut Mcrl2Parser::ActionRenameRuleSpec(child)?),
+                Rule::ActionRenameRuleSpec => {
+                    rename_declarations.append(&mut Mcrl2Parser::ActionRenameRuleSpec(child)?)
+                }
                 Rule::EOI => {
                     // End of input
                     break;

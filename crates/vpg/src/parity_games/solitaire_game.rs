@@ -96,9 +96,7 @@ fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
         if block_partition
             .iter_block(scc)
             // TODO: This assumes that this is the highest priority, so priorities (0,1) for odd and (1,2) for even.
-            .any(|i| {
-                Player::from_priority(&pg.priority(VertexIndex::new(i))) == player
-            })
+            .any(|i| Player::from_priority(&pg.priority(VertexIndex::new(i))) == player)
         {
             for vertex in block_partition.iter_block(scc) {
                 winning_vertices.set(vertex, true);
@@ -113,16 +111,8 @@ fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
 /// Returns true if the given SCC is trivial, i.e., it does not contain any
 /// cycles. This is the case if the SCC contains only one vertex and that vertex
 /// does not have a self-loop.
-fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
-    pg: &G,
-    partition: &BlockPartition<T>,
-    block: BlockIndex
-) -> bool {
-    if partition
-        .iter_block(block)
-        .count()
-        != 1
-    {
+fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(pg: &G, partition: &BlockPartition<T>, block: BlockIndex) -> bool {
+    if partition.iter_block(block).count() != 1 {
         // Contains at least 2 vertices, so non trivial.
         return false;
     }
@@ -132,8 +122,7 @@ fn is_trivial_scc<G: PG, T: Clone + Debug + Default>(
         partition
             .iter_block(block)
             .next()
-            .expect("Block must contain at least one vertex")
-
+            .expect("Block must contain at least one vertex"),
     );
     !pg.outgoing_edges(vertex).any(|edge| edge.to() == vertex)
 }

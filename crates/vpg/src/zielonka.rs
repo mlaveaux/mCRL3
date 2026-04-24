@@ -163,7 +163,9 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
         if !W1_not_alpha.any() {
             W1_alpha |= A;
             // Combine the strategy from the attractor with the recursive strategy.
-            S1_alpha = S1_alpha.union(A_strategy).extend_arbitrary(self.game, &U_clone, &V, alpha);
+            S1_alpha = S1_alpha
+                .union(A_strategy)
+                .extend_arbitrary(self.game, &U_clone, &V, alpha);
             combine_with_strategy(W1_alpha, S1_alpha, W1_not_alpha, S::new(), alpha)
         } else {
             let (B, B_strategy) = self.attractor(not_alpha, &V, W1_not_alpha);
