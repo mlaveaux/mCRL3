@@ -371,7 +371,7 @@ pub fn weak_bisim_signature_sorted_taus<L: LTS, P: Partition>(
 /// tau-SCCs, and then sorts the states according to a reverse topological order
 /// of the tau transitions, i.e., if there is a tau-transition from state s to
 /// state t, then t appears before s in the ordering.
-/// 
+///
 /// Returns the state of the preprocessed LTS corresponding to the given state.
 pub fn tau_cycle_elimination_and_reorder<L: LTS>(
     lts: L,
@@ -415,15 +415,24 @@ impl<'a, L: LTS> DivergencePreservingLts<'a, L> {
     pub fn new(lts: &'a L) -> Self {
         // We simply use the same tau label for the special label.
         let tau_self_loops = lts.num_of_labels();
-        let labels = lts.labels().iter().cloned().chain(std::iter::once(lts.labels()[0].clone())).collect();
+        let labels = lts
+            .labels()
+            .iter()
+            .cloned()
+            .chain(std::iter::once(lts.labels()[0].clone()))
+            .collect();
 
-        DivergencePreservingLts { tau_self_loops_label: LabelIndex::new(tau_self_loops), labels, lts }
+        DivergencePreservingLts {
+            tau_self_loops_label: LabelIndex::new(tau_self_loops),
+            labels,
+            lts,
+        }
     }
 }
 
 impl<L: LTS> LTS for DivergencePreservingLts<'_, L> {
     type Label = L::Label;
-    
+
     fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_ {
         self.lts.outgoing_transitions(state_index).map(move |transition| {
             // A self-loop with tau should be renamed to the special label.
@@ -437,15 +446,15 @@ impl<L: LTS> LTS for DivergencePreservingLts<'_, L> {
             }
         })
     }
-    
+
     fn num_of_labels(&self) -> usize {
         self.lts.num_of_labels() + 1
     }
-    
+
     fn labels(&self) -> &[Self::Label] {
         &self.labels
     }
-    
+
     fn merge_disjoint<U: LTS<Label = Self::Label>>(
         self,
         _other: &U,

@@ -49,7 +49,7 @@ pub fn read_fts<R: Read>(
     let mut feature_labels = Vec::new();
     for label in aut.labels() {
         let action = if label.is_tau_label() {
-            MultiAction::tau() 
+            MultiAction::tau()
         } else {
             MultiAction::parse(label)?
         };

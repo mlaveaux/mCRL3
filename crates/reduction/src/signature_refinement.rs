@@ -68,19 +68,26 @@ pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, Indexed
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS. And if `divergence_preserving` is true, we compute
 /// divergence preserving branching bisimulation instead.
-pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, divergence_preserving: bool, timing: &Timing) -> (LabelledTransitionSystem<L::Label>, StateIndex, BlockPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
-    
+pub fn branching_bisim_sigref<L: LTS>(
+    lts: L,
+    state: StateIndex,
+    divergence_preserving: bool,
+    timing: &Timing,
+) -> (LabelledTransitionSystem<L::Label>, StateIndex, BlockPartition) {
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || {
+        tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving)
+    });
+
     let partition = if divergence_preserving {
         branching_bisim_sigref_impl(&DivergencePreservingLts::new(&preprocessed_lts), timing)
     } else {
         branching_bisim_sigref_impl(&preprocessed_lts, timing)
     };
-    
+
     (preprocessed_lts, mapped_state, partition)
 }
 
@@ -148,7 +155,7 @@ fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) ->
 
 /// Computes a branching bisimulation partitioning using signature refinement
 /// without dirty blocks.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS. And if `divergence_preserving` is true, we compute
 /// divergence preserving branching bisimulation instead.
@@ -158,8 +165,10 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
     divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
-    
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || {
+        tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving)
+    });
+
     let partition = if divergence_preserving {
         branching_bisim_sigref_naive_impl(&DivergencePreservingLts::new(&preprocessed_lts), timing)
     } else {
@@ -170,10 +179,7 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
 }
 
 /// Implementation of [branching_bisim_sigref_naive].
-fn branching_bisim_sigref_naive_impl<L: LTS>(
-    preprocessed_lts: &L,
-    timing: &Timing,
-) -> IndexedPartition {
+fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) -> IndexedPartition {
     timing.measure("reduction", || {
         let mut expected_builder = SignatureBuilder::default();
         let mut visited = FxHashSet::default();
@@ -182,13 +188,7 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(
         let partition = signature_refinement_naive::<_, _, false>(
             preprocessed_lts,
             |state_index, partition, state_to_signature, builder| {
-                branching_bisim_signature_sorted(
-                    state_index,
-                    preprocessed_lts,
-                    partition,
-                    state_to_signature,
-                    builder,
-                );
+                branching_bisim_signature_sorted(state_index, preprocessed_lts, partition, state_to_signature, builder);
 
                 // Compute the expected signature, only used in debugging.
                 if cfg!(debug_assertions) {
@@ -217,7 +217,7 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
 pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
     lts: L,
@@ -237,20 +237,21 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
 }
 
 /// Implementation of [weak_bisim_sigref_inductive_naive] that deals with both preprocessed and regular LTSs.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
 pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     lts: L,
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+    let (preprocessed_lts, mapped_state) =
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
     let partition = timing.measure("reduction", || signature_refinement_weak(&preprocessed_lts));
     (preprocessed_lts, mapped_state, partition)
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
 pub fn weak_bisim_sigref_naive<L: LTS>(
     lts: L,
@@ -271,7 +272,7 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
 
 /// Implementation of [weak_bisim_sigref_naive] that deals with both
 /// preprocessed and regular LTSs.
-/// 
+///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS.
 fn weak_bisim_sigref_naive_impl<L: LTS>(
@@ -279,7 +280,8 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
     state: StateIndex,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+    let (preprocessed_lts, mapped_state) =
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
     let partition = timing.measure("reduction", || {
         signature_refinement_naive::<_, _, true>(
             &preprocessed_lts,
@@ -904,8 +906,10 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (result_lts, _, result_partition) = branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &mut timing);
-            let (expected_lts, _, expected_partition) = branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
+            let (result_lts, _, result_partition) =
+                branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &mut timing);
+            let (expected_lts, _, expected_partition) =
+                branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -930,8 +934,10 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (result_lts, _, result_partition) = weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, &mut timing);
-            let (expected_lts, _, expected_partition) = weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, &mut timing);
+            let (result_lts, _, result_partition) =
+                weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, &mut timing);
+            let (expected_lts, _, expected_partition) =
+                weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, &mut timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -956,7 +962,8 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (preprocessed_lts, _, branching_partition) = branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
+            let (preprocessed_lts, _, branching_partition) =
+                branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
             files
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
@@ -977,12 +984,14 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (preprocessed_lts, _, weak_partition) = weak_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
+            let (preprocessed_lts, _, weak_partition) =
+                weak_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
             files
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
 
-            let (_, _, branching_partition) = branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false,&mut timing);
+            let (_, _, branching_partition) =
+                branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false, &mut timing);
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
         });
     }
@@ -990,19 +999,31 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_mcrl2_branching_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_branching_bisim_sigref_vs_ltsconvert", Equivalence::BranchingBisim, "branching-bisim");
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_branching_bisim_sigref_vs_ltsconvert",
+            Equivalence::BranchingBisim,
+            "branching-bisim",
+        );
     }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert", Equivalence::BranchingBisimDivergencePreserving, "dpbranching-bisim");
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert",
+            Equivalence::BranchingBisimDivergencePreserving,
+            "dpbranching-bisim",
+        );
     }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_mcrl2_strong_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_strong_bisim_sigref_vs_ltsconvert", Equivalence::StrongBisim, "bisim");
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_strong_bisim_sigref_vs_ltsconvert",
+            Equivalence::StrongBisim,
+            "bisim",
+        );
     }
 
     // TODO: Our weak bisimulation quotient does not yet compute the minimal result.
@@ -1019,7 +1040,7 @@ mod tests {
             return;
         };
 
-        let ltsconvert = Path::new(&mcrl2_path).join("ltsconvert");        
+        let ltsconvert = Path::new(&mcrl2_path).join("ltsconvert");
 
         // Write the random LTS to a temp file for ltsconvert to process.
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1030,7 +1051,11 @@ mod tests {
             let mut files = DumpFiles::new(name);
 
             let lts = random_lts(rng, 10, 3, 3);
-            info!("Generated random LTS with {} states and {} transitions", lts.num_of_states(), lts.num_of_transitions());
+            info!(
+                "Generated random LTS with {} states and {} transitions",
+                lts.num_of_states(),
+                lts.num_of_transitions()
+            );
 
             {
                 let mut input_file = File::create(&input_path).unwrap();
@@ -1054,8 +1079,14 @@ mod tests {
             let mut timing = Timing::new();
             let our_reduced = reduce_lts(lts, equivalence, false, &timing);
 
-            files.dump("reduced.aut", |writer| write_mcrl2_aut(writer, &our_reduced)).unwrap();
-            files.dump("ltsconvert_reduced.aut", |writer| write_mcrl2_aut(writer, &ltsconvert_reduced)).unwrap();
+            files
+                .dump("reduced.aut", |writer| write_mcrl2_aut(writer, &our_reduced))
+                .unwrap();
+            files
+                .dump("ltsconvert_reduced.aut", |writer| {
+                    write_mcrl2_aut(writer, &ltsconvert_reduced)
+                })
+                .unwrap();
 
             // Both reductions must have the same number of states and transitions.
             assert_eq!(
@@ -1075,10 +1106,15 @@ mod tests {
 
             // The two reductions must be strongly bisimilar.
             assert!(
-                compare_lts(Equivalence::StrongBisim, our_reduced, ltsconvert_reduced, false, &mut timing),
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    our_reduced,
+                    ltsconvert_reduced,
+                    false,
+                    &mut timing
+                ),
                 "The reduced LTSs are not strongly bisimilar"
             );
         });
     }
-
 }

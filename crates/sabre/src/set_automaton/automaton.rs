@@ -518,7 +518,9 @@ impl State {
                 }
 
                 for obligation in &goal.obligations {
-                    if let Some(l) = &label && &obligation.position < l {
+                    if let Some(l) = &label
+                        && &obligation.position < l
+                    {
                         label = Some(obligation.position.clone());
                     }
                 }

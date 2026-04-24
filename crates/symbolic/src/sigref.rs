@@ -861,7 +861,8 @@ mod tests {
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            let _expected_partition = sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
+            let _expected_partition =
+                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false).unwrap();
 
             // Create a separate manager since sigref_symbolic creates new block variables.
             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);

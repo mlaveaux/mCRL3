@@ -280,7 +280,9 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             println!("{}", Player::Odd.solution())
         }
 
-        if let Some(strategy) = strategy && args.verify_solution {
+        if let Some(strategy) = strategy
+            && args.verify_solution
+        {
             verify_solution(&game, &solution, &strategy);
         }
     } else {
@@ -409,8 +411,12 @@ fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Res
 
 /// Projects a feature transition system to a set of transition systems and writes them to output.
 fn handle_project_fts(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Result<(), MercError> {
-    let format = guess_lts_format_from_extension(&args.filename, args.format)
-        .ok_or_else(|| format!("Unknown featured transition system format for '{}'.", args.filename.display()))?;
+    let format = guess_lts_format_from_extension(&args.filename, args.format).ok_or_else(|| {
+        format!(
+            "Unknown featured transition system format for '{}'.",
+            args.filename.display()
+        )
+    })?;
 
     if format != LtsFormat::Aut {
         return Err(MercError::from(

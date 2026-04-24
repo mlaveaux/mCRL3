@@ -254,7 +254,8 @@ impl Iterator for BlockIter<'_> {
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
-    use rand::{RngExt, seq::IteratorRandom};
+    use rand::RngExt;
+    use rand::seq::IteratorRandom;
 
     use super::*;
 
@@ -296,7 +297,11 @@ mod tests {
                 let expected_block = partition.block(first);
 
                 for element in elements {
-                    assert_eq!(partition.block(element), expected_block, "Block {block} contains elements from different indexed-partition blocks");
+                    assert_eq!(
+                        partition.block(element),
+                        expected_block,
+                        "Block {block} contains elements from different indexed-partition blocks"
+                    );
                 }
             }
         })

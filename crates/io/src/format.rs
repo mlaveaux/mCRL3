@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// Formats bytes into human-readable format using decimal units (GB, MB, KB, bytes)
-/// 
+///
 /// Note: This uses decimal units (1 KB = 1000 bytes) rather than binary units (1 KiB = 1024 bytes).
 pub struct BytesFormatter(pub usize);
 

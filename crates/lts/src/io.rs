@@ -142,11 +142,7 @@ impl GenericLts {
 }
 
 /// Reads an explicit labelled transition system from the given path and format.
-pub fn read_explicit_lts(
-    path: &Path,
-    format: LtsFormat,
-    timing: &mut Timing,
-) -> Result<GenericLts, MercError> {
+pub fn read_explicit_lts(path: &Path, format: LtsFormat, timing: &mut Timing) -> Result<GenericLts, MercError> {
     timing.measure("read_explicit_lts", || {
         let result = match format {
             LtsFormat::Aut => {
@@ -156,9 +152,7 @@ pub fn read_explicit_lts(
             LtsFormat::AutMcrl2 => {
                 let file = File::open(path)?;
                 let lts = read_mcrl2_aut(&file)?;
-                GenericLts::Lts(lts.relabel(|label| {
-                    LtsMultiAction::from_string(&label)
-                })?)
+                GenericLts::Lts(lts.relabel(|label| LtsMultiAction::from_string(&label))?)
             }
             LtsFormat::Lts => {
                 let file = File::open(path)?;

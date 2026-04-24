@@ -98,7 +98,11 @@ pub fn mutate_lts<L: LTS, R: Rng>(
     let mut builder = LtsBuilderFast::new(lts.labels().to_vec(), Vec::new());
     builder.require_num_of_states(lts.num_of_states());
 
-    let removed_transition = if num_of_mutations > 0 { rng.random_range(0..num_of_mutations) } else { 0 };
+    let removed_transition = if num_of_mutations > 0 {
+        rng.random_range(0..num_of_mutations)
+    } else {
+        0
+    };
 
     // The indices of the transitions to remove.
     let to_remove = if lts.num_of_transitions() > 0 {

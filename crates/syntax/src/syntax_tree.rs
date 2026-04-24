@@ -683,7 +683,7 @@ impl PbesEquation {
             operator,
             variable,
             formula,
-            span: Span::default()
+            span: Span::default(),
         }
     }
 }

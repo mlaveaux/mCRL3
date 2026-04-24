@@ -271,44 +271,44 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                     if !implementation
                         .attrs
                         .iter()
-                        .any(|attr| attr.meta.path().is_ident("merc_ignore"))
-                    => {
-                        // Duplicate the implementation for the Ref struct that is generated above.
-                        let mut ref_implementation = implementation.clone();
+                        .any(|attr| attr.meta.path().is_ident("merc_ignore")) =>
+                {
+                    // Duplicate the implementation for the Ref struct that is generated above.
+                    let mut ref_implementation = implementation.clone();
 
-                        // Remove ignored functions
-                        ref_implementation.items.retain(|item| match item {
-                            syn::ImplItem::Fn(func) => {
-                                !func.attrs.iter().any(|attr| attr.meta.path().is_ident("merc_ignore"))
-                            }
-                            _ => true,
-                        });
-
-                        if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                            let path = if let Some(identifier) = path.path.get_ident() {
-                                // Build an identifier with the postfix Ref<'_>
-                                let name_ref = format_ident!("{}Ref", identifier);
-                                parse_quote!(#name_ref <'_>)
-                            } else {
-                                let path_segments = &path.path.segments;
-
-                                let _name_ref = format_ident!(
-                                    "{}Ref",
-                                    path_segments
-                                        .first()
-                                        .expect("Path should at least have an identifier")
-                                        .ident
-                                );
-                                // let segments: Vec<syn::PathSegment> = path_segments.iter().skip(1).collect();
-                                // parse_quote!(#name_ref #segments)
-                                unimplemented!()
-                            };
-
-                            ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
-
-                            added.push(Item::Verbatim(ref_implementation.into_token_stream()));
+                    // Remove ignored functions
+                    ref_implementation.items.retain(|item| match item {
+                        syn::ImplItem::Fn(func) => {
+                            !func.attrs.iter().any(|attr| attr.meta.path().is_ident("merc_ignore"))
                         }
+                        _ => true,
+                    });
+
+                    if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
+                        let path = if let Some(identifier) = path.path.get_ident() {
+                            // Build an identifier with the postfix Ref<'_>
+                            let name_ref = format_ident!("{}Ref", identifier);
+                            parse_quote!(#name_ref <'_>)
+                        } else {
+                            let path_segments = &path.path.segments;
+
+                            let _name_ref = format_ident!(
+                                "{}Ref",
+                                path_segments
+                                    .first()
+                                    .expect("Path should at least have an identifier")
+                                    .ident
+                            );
+                            // let segments: Vec<syn::PathSegment> = path_segments.iter().skip(1).collect();
+                            // parse_quote!(#name_ref #segments)
+                            unimplemented!()
+                        };
+
+                        ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
+
+                        added.push(Item::Verbatim(ref_implementation.into_token_stream()));
                     }
+                }
                 _ => {
                     // Ignore the rest.
                 }

@@ -119,13 +119,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         // Add the sentinel state.
         states.push(transition_labels.len());
 
-        LabelledTransitionSystem::from_raw_parts(
-            initial_state,
-            states,
-            transition_labels,
-            transition_to,
-            labels,
-        )
+        LabelledTransitionSystem::from_raw_parts(initial_state, states, transition_labels, transition_to, labels)
     }
 
     /// Constructs a LTS by a successor function for every state.
@@ -168,13 +162,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         // Add the sentinel state.
         states.push(transition_labels.len());
 
-        Self::from_raw_parts(
-            initial_state,
-            states,
-            transition_labels,
-            transition_to,
-            labels,
-        )
+        Self::from_raw_parts(initial_state, states, transition_labels, transition_to, labels)
     }
 
     /// Consumes the current LTS and merges it with another one, returning the merged LTS.
@@ -237,10 +225,10 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         (
             Self::from_raw_parts(
                 self.initial_state,
-                self.states,                
+                self.states,
                 self.transition_labels,
                 self.transition_to,
-                all_labels
+                all_labels,
             ),
             StateIndex::new(offset + other.initial_state_index().value()),
         )
@@ -304,7 +292,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
             self.states,
             self.transition_labels,
             self.transition_to,
-            new_labels
+            new_labels,
         ))
     }
 
