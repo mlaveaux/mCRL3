@@ -13,6 +13,8 @@ pub enum CounterExample<L: TransitionLabel> {
     WeakTrace(Vec<L>),
     /// Represents a stable failures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([refusal_0]false && ... [refusal_k]false)`.
     StableFailures(Vec<L>, Vec<L>),
+    /// Represents a divergence formula `<tau*.a0.tau*.a1. ... .a_n.tau*>nu X. <tau>X`.
+    Divergence(Vec<L>),
     /// Represents an impossible futures formula `<tau*.a0.tau*.a1. ... .a_n.tau*>([future_0. ...]false && ... [future_k. ...]false)`.
     ImpossibleFutures(Vec<L>, Vec<Vec<L>>),
 }

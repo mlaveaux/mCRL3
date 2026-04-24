@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+
+use log::debug;
 use merc_collections::VecSet;
 use merc_lts::LTS;
 use merc_lts::StateIndex;
@@ -29,10 +32,10 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
 
     // The inner antichain is reused between computations of the weak trace inclusion. The positive antichain contains all the
     // pairs that have passed the check so far.
-    let mut negative_antichain = Antichain::new();
+    let negative_antichain = RefCell::new(Antichain::new());
     let mut positive_antichain = PositiveAntichain::new();
 
-    is_refinement_generic(
+    let result = is_refinement_generic(
         strategy,
         lts,
         lts.initial_state_index(),
@@ -53,7 +56,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
                     impl_state,
                     strategy,
                     &mut positive_antichain,
-                    &mut negative_antichain,
+                    &negative_antichain,
                 )
             }) {
                 let mut futures = Vec::new();
@@ -82,10 +85,16 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
 
             (None, true)
         },
+        |_, _| (),
         true,
         counter_example,
         &mut antichain,
-    )
+    );
+
+    debug!("Antichain stats: {:?}", antichain.metrics());
+    // debug!("Positive antichain stats: {:?}", positive_antichain.metrics());
+    debug!("Negative antichain stats: {:?}", negative_antichain.borrow().metrics());
+    result
 }
 
 /// This is a combined antichain where we check both the positive and the outer
@@ -131,7 +140,7 @@ fn is_weak_trace_refinement<L: LTS>(
     spec_state: StateIndex,
     strategy: ExplorationStrategy,
     positive_antichain: &mut PositiveAntichain,
-    negative_antichain: &mut Antichain<StateIndex, StateIndex>,
+    negative_antichain: &RefCell<Antichain<StateIndex, StateIndex>>,
 ) -> bool {
     let (result, _counter_example, inner_ce) = is_refinement_generic(
         strategy,
@@ -139,19 +148,21 @@ fn is_weak_trace_refinement<L: LTS>(
         impl_state,
         spec_state,
         |impl_state, spec_states| {
-            if negative_antichain.contains_superset(&impl_state, &spec_states) {
+            if negative_antichain.borrow().contains_superset(&impl_state, &spec_states) {
                 // If the negative antichain contains a superset of the current pair, then we can immediately conclude that the check fails.
                 return (Some(()), false);
             }
 
             (None, true)
         },
+        |impl_state, spec_states| {
+            // If the check fails, then we can add the pair to the negative antichain, which is used for the impossible futures check.
+            negative_antichain.borrow_mut().insert(impl_state, spec_states.clone());
+        },
         true,
         &mut (),
         positive_antichain,
     );
-
-    debug_assert!(inner_ce.is_none(), "The counter example from check is trivial");
 
     if result {
         // If the check passed, then we can add the pair to the positive antichain, which is used for the impossible futures check.
@@ -181,6 +192,7 @@ fn is_weak_trace_refinement_ce<L: LTS, CE: CounterExampleTree>(
         impl_state,
         spec_state,
         |_, _| (Option::<()>::None, true),
+        |_, _| (),
         true,
         counter_example,
         &mut antichain,

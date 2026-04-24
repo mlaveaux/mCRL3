@@ -29,6 +29,11 @@ use crate::ExplorationStrategy;
 use crate::RefinementType;
 
 /// Checks for the various stable failures refinement relations.
+/// 
+/// Returns the result, and the state in the counter example tree that witnesses
+/// the failure if the result is false. Finally, the result of the inner
+/// (impl,spec) check is returned as well, this is used to construct the counter
+/// example.
 pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
     lts: &L,
     initial_spec: StateIndex,
@@ -45,6 +50,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts.initial_state_index(),
             initial_spec,
             |_, _| (None, true),
+            |_, _| (),
             false,
             counter_example,
             &mut antichain,
@@ -55,6 +61,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts.initial_state_index(),
             initial_spec,
             |_, _| (None, true),
+            |_, _| (),
             true,
             counter_example,
             &mut antichain,
@@ -65,6 +72,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts.initial_state_index(),
             initial_spec,
             |impl_state, spec_states| (refusals_contained_in(lts, impl_state, spec_states), true),
+            |_, _| (),            
             true,
             counter_example,
             &mut antichain,
@@ -86,6 +94,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
                     (refusals_contained_in(lts, impl_state, spec_states), true)
                 }
             },
+            |_, _| (),
             true,
             counter_example,
             &mut antichain,
@@ -120,18 +129,20 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
 /// The antichain data structure is used for storing explored states. However,
 /// as opposed to a discovered set it allows for pruning additional pairs based
 /// on the `antichain` property.
-pub fn is_refinement_generic<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterExampleTree, F, CC>(
+pub fn is_refinement_generic<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterExampleTree, F, G, CC>(
     strategy: ExplorationStrategy,
     merged_lts: &L,
     initial_impl: StateIndex,
     initial_spec: StateIndex,
     mut check: F,
+    mut failing_trace: G,
     weak_transition: bool,
     counter_example: &mut CE,
     antichain: &mut A,
 ) -> (bool, Option<CE::Index>, Option<CC>)
 where
     F: FnMut(StateIndex, &VecSet<StateIndex>) -> (Option<CC>, bool),
+    G: FnMut(StateIndex, &VecSet<StateIndex>),
 {
     // A local cache used for the tau closure computations.
     let mut closure_cache = ClosureCache::new();
@@ -209,6 +220,7 @@ where
             );
             if spec_prime.is_empty() {
                 // if spec' = {} then
+                failing_trace(impl_state, &spec);
                 return (false, Some(new_edge), None);
             }
 
