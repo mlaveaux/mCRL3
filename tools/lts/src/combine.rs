@@ -3,13 +3,13 @@ use merc_collections::IndexedSet;
 use merc_collections::SetIndex;
 use merc_collections::VecBag;
 use merc_io::TimeProgress;
-use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LtsAction;
 use merc_lts::LtsBuilder;
 use merc_lts::LtsMultiAction;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
+use merc_lts::LTS;
 use merc_syntax::CommExpr;
 use merc_syntax::MultiActionLabel;
 use merc_utilities::MercError;
@@ -450,5 +450,125 @@ impl StreamingIterator for ParallelTransitionIter {
         } else {
             Some(&self.result)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs::File, path::Path, process::Command};
+    use std::io::Write;
+
+    use merc_io::DumpFiles;
+    use merc_lts::{random_lts, read_aut, write_aut, LtsBuilderFast, LtsMultiAction, StateIndex};
+    use merc_reduction::{compare_lts, Equivalence};
+    use merc_utilities::{random_test, Timing};
+
+    use crate::combine::combine_lts;
+
+    #[test]
+    fn test_mcrl2_ltscombine() {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let mcrl2_ltscombine = Path::new(&mcrl2_path).join("ltscombine");
+        let mcrl2_mcrl22lps = Path::new(&mcrl2_path).join("mcrl22lps");
+        let mcrl2_ltsconvert = Path::new(&mcrl2_path).join("ltsconvert");
+
+        let mut files = DumpFiles::new("test_mcrl2_ltscombine");
+
+        // Write the random LTS to a temp file for ltsconvert to process.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let left_path = temp_dir.path().join("left.aut");
+        let right_path = temp_dir.path().join("right.aut");
+        let left_lts_path = temp_dir.path().join("left.lts");
+        let right_lts_path = temp_dir.path().join("right.lts");
+
+        let spec_path = temp_dir.path().join("spec.mcrl2");
+        let lps_path = temp_dir.path().join("spec.lps");
+        let output_path = temp_dir.path().join("output.aut");
+
+        // Generate a dummy linear process specification to convert the .aut files to .lts format.
+        writeln!(
+            &mut File::create(&spec_path).unwrap(),
+            "act i, a, b, c; init delta;"
+        ).unwrap();
+
+        let status = Command::new(&mcrl2_mcrl22lps)
+            .arg(&spec_path)
+            .arg(&lps_path)
+            .status()
+            .expect("Failed to run ltsconvert");
+        assert!(status.success(), "ltsconvert failed with status: {status}");
+
+        random_test(100, |rng| {
+            let left_lts = random_lts(rng, 10, 3, 3)
+                .relabel(|label| LtsMultiAction::from_string(&label))
+                .unwrap();
+            let right_lts = random_lts(rng, 10, 3, 3)
+                .relabel(|label| LtsMultiAction::from_string(&label))
+                .unwrap();
+
+            write_aut(&mut File::create(&left_path).unwrap(), &left_lts).unwrap();
+            write_aut(&mut File::create(&right_path).unwrap(), &right_lts).unwrap();
+
+            files.dump("left.aut", |writer| write_aut(writer, &left_lts)).unwrap();
+            files.dump("right.aut", |writer| write_aut(writer, &right_lts)).unwrap();
+
+            // For mCRL2's ltscombine we need to convert the inputs to the mCRL2 LTS format.
+            let status = Command::new(&mcrl2_ltsconvert)
+                .arg("-enone")
+                .arg(&left_path)
+                .arg(&left_lts_path)
+                .arg("-l")
+                .arg(&lps_path)
+                .status()
+                .expect("Failed to run ltsconvert");
+            assert!(status.success(), "ltsconvert failed with status: {status}");
+
+            let status = Command::new(&mcrl2_ltsconvert)
+                .arg("-enone")
+                .arg(&right_path)
+                .arg(&right_lts_path)
+                .arg("-l")
+                .arg(&lps_path)
+                .status()
+                .expect("Failed to run ltsconvert");
+            assert!(status.success(), "ltsconvert failed with status: {status}");
+
+            // Use ltscombine to compute the combined LTS, which we will compare against our implementation's result.
+            let status = Command::new(&mcrl2_ltscombine)
+                .arg(&left_lts_path)
+                .arg(&right_lts_path)
+                .arg(&output_path)
+                .status()
+                .expect("Failed to run ltscombine");
+            assert!(status.success(), "ltscombine failed with status: {status}");
+
+            let expected_lts = read_aut(&File::open(&output_path).unwrap(), Vec::new()).unwrap()
+                .relabel(|label| LtsMultiAction::from_string(&label))
+                .unwrap();
+
+            let mut result: LtsBuilderFast<LtsMultiAction> = LtsBuilderFast::new(Vec::new(), Vec::new());
+            combine_lts(
+                &mut result,
+                vec![left_lts, right_lts],
+                &vec![],
+                &vec![],
+                &vec![],
+                &mut Timing::new(),
+            )
+            .unwrap();
+            let result_lts = result.finish(StateIndex::new(0), false);
+
+            assert!(compare_lts(
+                Equivalence::StrongBisim,
+                expected_lts,
+                result_lts,
+                false,
+                &mut Timing::new(),
+            ), "The resulting LTSs are not bisimilar.");
+        });
     }
 }

@@ -983,6 +983,7 @@ dependencies = [
  "merc_unsafety",
  "merc_utilities",
  "streaming-iterator",
+ "tempfile",
 ]
 
 [[package]]
