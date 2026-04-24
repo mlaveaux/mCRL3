@@ -142,7 +142,7 @@ fn is_weak_trace_refinement<L: LTS>(
     positive_antichain: &mut PositiveAntichain,
     negative_antichain: &RefCell<Antichain<StateIndex, StateIndex>>,
 ) -> bool {
-    let (result, _counter_example, inner_ce) = is_refinement_generic(
+    let (result, _counter_example, _inner_ce) = is_refinement_generic(
         strategy,
         lts,
         impl_state,

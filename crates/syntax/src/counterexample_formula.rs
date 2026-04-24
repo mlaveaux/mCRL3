@@ -7,7 +7,6 @@ use crate::RegFrm;
 use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmOp;
-use crate::StateVarAssignment;
 use crate::StateVarDecl;
 use merc_lts::TransitionLabel;
 use merc_refinement::CounterExample;
