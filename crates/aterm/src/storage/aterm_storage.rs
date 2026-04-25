@@ -241,7 +241,7 @@ impl ATermStorage {
 
 /// Casts a pointer to a term in a fixed-size storage to a pointer to a
 /// [`SharedTerm`].
-/// 
+///
 /// SAFETY: The caller must ensure that the given pointer points to a valid term
 /// of the given arity.
 unsafe fn cast_to_shared_term_ptr<T>(ptr: &StablePointer<T>, arity: usize) -> StablePointer<SharedTerm> {

@@ -51,16 +51,14 @@ mod inner {
         }
 
         /// Returns the value of the integer term.
-        /// 
+        ///
         /// # Safety
-        /// 
+        ///
         /// This method assumes that the term is indeed an integer term, which
         /// should be guaranteed by the constructor and the `is_int_term`
         /// function. Otherwise, it leads to undefined behaviour.
         pub fn value(&self) -> usize {
-            unsafe {
-                self.shared().ptr().cast::<SharedTermInt>().as_ref().value()
-            }
+            unsafe { self.shared().ptr().cast::<SharedTermInt>().as_ref().value() }
         }
     }
 }

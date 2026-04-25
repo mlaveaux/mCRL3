@@ -434,7 +434,7 @@ mod tests {
             let threads: Vec<_> = (0..3)
                 .map(|_| {
                     let block_allocator = block_allocator.clone();
-                    
+
                     loom::thread::spawn(move || {
                         for _ in 0..10 {
                             let ptr = block_allocator.allocate_object().unwrap();

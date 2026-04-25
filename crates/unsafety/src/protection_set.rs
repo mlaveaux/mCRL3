@@ -95,12 +95,16 @@ impl<T> ProtectionSet<T> {
                     self.free = Some(next);
                 }
 
-                self.roots[first] = Entry { object: ManuallyDrop::new(object) };
+                self.roots[first] = Entry {
+                    object: ManuallyDrop::new(object),
+                };
                 first
             }
             None => {
                 // If free list is empty insert new entry into roots.
-                self.roots.push(Entry { object: ManuallyDrop::new(object) });
+                self.roots.push(Entry {
+                    object: ManuallyDrop::new(object),
+                });
                 let index = self.roots.len() - 1;
                 index
             }
@@ -142,11 +146,13 @@ impl<T> ProtectionSet<T> {
             "Index {index} does not point to a filled entry"
         );
 
-        self.roots[index] = Entry { object: ManuallyDrop::new(object) };
+        self.roots[index] = Entry {
+            object: ManuallyDrop::new(object),
+        };
     }
-    
+
     /// Returns an iterator over all root indices in the protection set.
-    /// 
+    ///
     /// This is an O(n) operation in the size of the freelist, so it should be
     /// used with care. It is intended for debugging and testing purposes.
     pub fn iter(&self) -> ProtSetIter<'_, T> {
@@ -178,7 +184,6 @@ impl<T> ProtectionSet<T> {
         let idx = self.generation_counter.get_index(index.0);
         !self.freelist_iter().any(|free_idx| free_idx == idx)
     }
-
 }
 
 impl<T> Index<ProtectionIndex> for ProtectionSet<T> {

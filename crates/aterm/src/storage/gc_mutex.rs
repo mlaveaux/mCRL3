@@ -9,9 +9,9 @@ use crate::storage::THREAD_TERM_POOL;
 /// A mutex that prevents garbage collection by holding a shared read lock on
 /// the [super::GlobalTermPool] for the duration of the guard's lifetime.
 /// Returns a [GcMutexGuard] on access.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The `GcMutex` returns guards that are tied to the thread-local storage of
 /// [crate::storage::THREAD_TERM_POOL]. This means that the guard must be
 /// dropped before this thread-local storage is dropped. Otherwise
@@ -36,7 +36,9 @@ impl<T> GcMutex<T> {
             mutex: self,
             // This is only safe if the called maintains the above contract.
             guard: ManuallyDrop::new(THREAD_TERM_POOL.with_borrow(|tp| unsafe {
-                std::mem::transmute::<_, GlobalTermPoolGuard<'_>>(tp.term_pool().read_recursive().expect("Lock poisoned!"))
+                std::mem::transmute::<_, GlobalTermPoolGuard<'_>>(
+                    tp.term_pool().read_recursive().expect("Lock poisoned!"),
+                )
             })),
         }
     }

@@ -402,7 +402,6 @@ impl Ord for ATerm {
 
 impl Eq for ATerm {}
 
-
 /// A sendable variant of an `ATerm`.
 ///
 /// # Details
@@ -441,10 +440,7 @@ impl ATermSend {
 
 impl Drop for ATermSend {
     fn drop(&mut self) {
-        self
-            .protection_set
-            .lock()
-            .unprotect(self.root);
+        self.protection_set.lock().unprotect(self.root);
     }
 }
 
@@ -654,7 +650,9 @@ mod tests {
 
     use parking_lot::Mutex;
 
-    use crate::{ATerm, ATermSend, Symbol};
+    use crate::ATerm;
+    use crate::ATermSend;
+    use crate::Symbol;
 
     #[test]
     fn test_send_terms() {

@@ -146,7 +146,6 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
 
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
-
     for num_threads in THREADS {
         c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
             // Keep one protected instance
@@ -163,7 +162,6 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
             drop(term);
         });
     }
-
 }
 
 // In these three benchmarks all threads operate on their own separate term.
