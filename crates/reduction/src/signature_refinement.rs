@@ -104,8 +104,6 @@ fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) ->
     let mut visited = FxHashSet::default();
     let mut stack = Vec::new();
 
-    
-
     timing.measure("reduction", || {
         signature_refinement::<_, _, _, true>(
             preprocessed_lts,
@@ -184,8 +182,6 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
         let mut expected_builder = SignatureBuilder::default();
         let mut visited = FxHashSet::default();
         let mut stack = Vec::new();
-
-        
 
         signature_refinement_naive::<_, _, false>(
             preprocessed_lts,

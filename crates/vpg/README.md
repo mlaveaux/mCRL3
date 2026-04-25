@@ -1,7 +1,7 @@
 
 # Overview
 
-This crate provides functionality for working with variability parity games.
+This crate provides functionality for working with (variability) parity games.
 This includes reading and writing for parity games in the
 [PGSolver](https://github.com/tcsprojects/pgsolver) `.pg` format. For
 variability parity games this format is extended with feature configurations
@@ -11,9 +11,11 @@ can be solved using Zielonka's recursive algorithm, displayed in
 mu-calculus formulas.
 
 A central `PG` or parity game trait is used to allow writing generic algoritms
-for parity games. Various helpers are introduced for working with `strong` types
-for priorities, explicitly representing the even and odd players etc. This crate
-uses [OxiDD](https://oxidd.net/) for the binary decision diagrams.
+for (variability) parity games. Various helpers are introduced for working with
+`strong` types for priorities, explicitly representing the even and odd players
+etc. This crate uses [OxiDD](https://oxidd.net/) for the binary decision
+diagrams, which are used to represent feature configurations in variability
+parity games.
 
 ## Usage
 

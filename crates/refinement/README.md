@@ -23,7 +23,7 @@ let impl_lts = read_aut(b"des (0,8,6)
 (3,tau,5)
 (4,newday,2)
 (5,teach,0)
-" as &[u8], Vec::new()).unwrap();
+" as &[u8]).unwrap();
 
 let spec_lts = read_aut(b"des (0,5,4)                                        
 (0,newday,1)
@@ -31,7 +31,7 @@ let spec_lts = read_aut(b"des (0,5,4)
 (1,tau,3)
 (2,teach,0)
 (3,lindyhop,0)
-" as &[u8], Vec::new()).unwrap();
+" as &[u8]).unwrap();
 
 // Note that this is strong trace refinement, and we request no counter example.
 let (result, counter_example) = refines(impl_lts, spec_lts, RefinementType::Trace, ExplorationStrategy::DFS, true, false, &mut Timing::new());
