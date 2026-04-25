@@ -105,8 +105,8 @@ impl<T> ProtectionSet<T> {
                 self.roots.push(Entry {
                     object: ManuallyDrop::new(object),
                 });
-                let index = self.roots.len() - 1;
-                index
+                
+                self.roots.len() - 1
             }
         };
 
@@ -197,7 +197,7 @@ impl<T> Index<ProtectionIndex> for ProtectionSet<T> {
             index,
         );
         // SAFETY: The generational index ensures this slot was not freed after the index was issued.
-        unsafe { &*self.roots[idx].object }
+        unsafe { &self.roots[idx].object }
     }
 }
 

@@ -44,13 +44,7 @@ jobs:
         submodules: true
 
     - name: Build mCRL2 toolset
-      run: cmake -S mCRL2 \
-           -B mCRL2/build \
-           -DMCRL2_ENABLE_GUI_TOOLS=OFF \
-           -DCMAKE_BUILD_TYPE=Release \
-           -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-           -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
-           && cmake --build mCRL2/build --config Release
+      run: cmake -S mCRL2 -B mCRL2/build -DMCRL2_ENABLE_GUI_TOOLS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache && cmake --build mCRL2/build --config Release
     
     - name: Checkout the repository
       uses: actions/checkout@v6
