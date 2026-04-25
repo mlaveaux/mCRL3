@@ -104,7 +104,9 @@ fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) ->
     let mut visited = FxHashSet::default();
     let mut stack = Vec::new();
 
-    let partition = timing.measure("reduction", || {
+    
+
+    timing.measure("reduction", || {
         signature_refinement::<_, _, _, true>(
             preprocessed_lts,
             &incoming,
@@ -148,9 +150,7 @@ fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) ->
                 None
             },
         )
-    });
-
-    partition
+    })
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement
@@ -185,7 +185,9 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
         let mut visited = FxHashSet::default();
         let mut stack = Vec::new();
 
-        let partition = signature_refinement_naive::<_, _, false>(
+        
+
+        signature_refinement_naive::<_, _, false>(
             preprocessed_lts,
             |state_index, partition, state_to_signature, builder| {
                 branching_bisim_signature_sorted(state_index, preprocessed_lts, partition, state_to_signature, builder);
@@ -210,9 +212,7 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
                     );
                 }
             },
-        );
-
-        partition
+        )
     })
 }
 

@@ -28,7 +28,7 @@ let lts = read_aut(b"des(0, 6, 7)
 (1, c, 4)
 (2, b, 5)
 (2, c, 6)
-" as &[u8], Vec::new()).unwrap();
+" as &[u8]).unwrap();
 
 let mut timings = Timing::new();
 assert_eq!(lts.num_of_states(), 7); // The original has 7 states

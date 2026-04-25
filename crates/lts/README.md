@@ -60,10 +60,12 @@ enabled via the `cadp` feature flag.
 Added the `clap` feature to conditionally enable the `clap` dependency to derive
 some convenience traits.
 
-Made the AUT format compliant with the actual specification. In particular,
-the internal action is now represented by `i` instead of `tau`.
+Made the AUT format compliant with the actual specification. In particular, the
+internal action is now represented by `i` instead of `tau`. We introduced a
+`Mcrl2Aut` format that is compliant with the mCRL2 specification, which uses
+`tau` and multi-actions.
 
-Introduce a proper `MultiAction` type to represent multi-actions as they are
+Introduce a proper `LtsMultiAction` type to represent multi-actions as they are
 present in mCRL2. A multi-action is a multi-set of action labels that are
 executed simultaneously, i.e., an action `a|b` is a multi-action consisting of
 the actions `a` and `b`. Note that `a|b` is equivalent to `b|a` in this

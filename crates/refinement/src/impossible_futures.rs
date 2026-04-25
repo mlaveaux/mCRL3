@@ -148,7 +148,7 @@ fn is_weak_trace_refinement<L: LTS>(
         impl_state,
         spec_state,
         |impl_state, spec_states| {
-            if negative_antichain.borrow().contains_superset(&impl_state, &spec_states) {
+            if negative_antichain.borrow().contains_superset(&impl_state, spec_states) {
                 // If the negative antichain contains a superset of the current pair, then we can immediately conclude that the check fails.
                 return (Some(()), false);
             }
