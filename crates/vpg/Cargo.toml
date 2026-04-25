@@ -36,3 +36,6 @@ streaming-iterator.workspace = true
 thiserror.workspace = true
 
 clap = { workspace = true, optional = true }
+
+[dev-dependencies]
+merc_refinement.workspace = true
