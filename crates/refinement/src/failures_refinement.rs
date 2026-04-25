@@ -28,6 +28,12 @@ use crate::CounterExampleTree;
 use crate::ExplorationStrategy;
 use crate::RefinementType;
 
+/// The result of the inner check in the refinement algorithm.
+pub enum InnerCe {
+    Refusal(Vec<LabelIndex>),
+    Diverges,
+}
+
 /// Checks for the various stable failures refinement relations.
 ///
 /// Returns the result, and the state in the counter example tree that witnesses
@@ -40,7 +46,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
     refinement: RefinementType,
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>, Option<Vec<LabelIndex>>) {
+) -> (bool, Option<CE::Index>, Option<InnerCe>) {
     let mut antichain = Antichain::new();
 
     match refinement {
@@ -71,7 +77,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |impl_state, spec_states| (refusals_contained_in(lts, impl_state, spec_states), true),
+            |impl_state, spec_states| (refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal), true),
             |_, _| (),
             true,
             counter_example,
@@ -86,12 +92,12 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
                 if diverges(lts, impl_state) {
                     // If the implementation state diverges, then it can refuse any set of actions, so we only need to check for divergence inclusion.
                     if !spec_states.iter().any(|s| diverges(lts, *s)) {
-                        (Some(Vec::new()), true)
+                        (Some(InnerCe::Diverges), true)
                     } else {
                         (None, false)
                     }
                 } else {
-                    (refusals_contained_in(lts, impl_state, spec_states), true)
+                    (refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal), true)
                 }
             },
             |_, _| (),

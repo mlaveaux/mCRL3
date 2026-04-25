@@ -14,6 +14,7 @@ use merc_utilities::Timing;
 
 use crate::CounterExample;
 use crate::CounterExampleConstructor;
+use crate::InnerCe;
 use crate::is_failures_refinement;
 use crate::is_impossible_futures_refinement;
 
@@ -171,10 +172,13 @@ pub fn refines<L: LTS>(
                                 RefinementType::Weaktrace => CounterExample::WeakTrace(trace),
                                 RefinementType::StableFailures | RefinementType::FailuresDivergences => {
                                     if let Some(inner) = ce_inner {
-                                        CounterExample::StableFailures(
-                                            trace,
-                                            inner.iter().map(|l| merged_lts.labels()[*l].clone()).collect(),
-                                        )
+                                        match inner {
+                                            InnerCe::Diverges => CounterExample::Divergence(trace),
+                                            InnerCe::Refusal(refusal) => CounterExample::StableFailures(
+                                                trace,
+                                                refusal.iter().map(|l| merged_lts.labels()[*l].clone()).collect(),
+                                            ),
+                                        }
                                     } else {
                                         // The stable failures failed because of a weak trace difference.
                                         CounterExample::WeakTrace(trace)
