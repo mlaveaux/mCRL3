@@ -23,4 +23,7 @@ pest.workspace = true
 rand.workspace = true
 
 [build-dependencies]
-toml.workspace = true
+toml.workspace = true       
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }

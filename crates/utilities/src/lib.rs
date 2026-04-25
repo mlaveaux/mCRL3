@@ -8,6 +8,7 @@ mod debug_trace;
 mod error;
 mod generational_index;
 mod helper;
+mod kani_rng;
 mod no_hasher;
 mod permutation;
 mod pest_display_pair;
@@ -26,3 +27,6 @@ pub use random_test::*;
 pub use tagged_index::*;
 pub use test_logger::*;
 pub use timing::*;
+
+#[cfg(kani)]
+pub use kani_rng::*;
