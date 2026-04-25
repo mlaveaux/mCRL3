@@ -93,9 +93,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
         // Ensure we have a block with space.
         match &blocks.head_block {
-            Some(block) if blocks.bump_offset < N => {
+            Some(_block) if blocks.bump_offset < N => {
                 // Current block has room.
-                let _ = block;
             }
             _ => {
                 // Either no block exists, or the current one is full.
@@ -163,33 +162,50 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             // We will rebuild the freelist from the remaining blocks below.
             self.free.clear();
 
-            // Remove blocks that are now empty, i.e., all their entries have no nonexisting_value
+            // Remove blocks that are now empty, i.e., all their entries have nonexisting_value.
             let mut previous_block: Option<*mut Box<Block<T, N>>> = None;
             let mut block = head_block as *mut Box<Block<T, N>>;
             let mut removed_blocks = 0;
 
             loop {
-                if unsafe { (*block).data.iter().all(|entry| entry.next == nonexisting_value) } {
-                    // Remove block from the list, by making the previous block point to the next block.
+                let all_free = unsafe { (*block).data.iter().all(|entry| entry.next == nonexisting_value) };
+
+                if all_free {
+                    // Extract next before the current block is dropped.
+                    let next = unsafe { (*block).next.take() };
+
+                    // Unlink current block; the old Box is dropped here.
                     if let Some(previous_block) = previous_block {
                         unsafe {
-                            (*previous_block).next = (*block).next.take();
+                            (*previous_block).next = next;
                         }
                     } else {
-                        guard.head_block = unsafe { (*block).next.take() };
+                        guard.head_block = next;
                     }
 
                     removed_blocks += 1;
+
+                    // Advance to the next block, which now lives at previous's
+                    // next slot (or the head).
+                    let next_ref = if let Some(prev) = previous_block {
+                        unsafe { &mut (*prev).next }
+                    } else {
+                        &mut guard.head_block
+                    };
+                    block = match next_ref {
+                        Some(next_block) => next_block as *mut Box<Block<T, N>>,
+                        None => break,
+                    };
+                } else {
+                    // Keep this block; advance normally.
+                    let next = unsafe { &mut (*block).next };
+                    previous_block = Some(block);
+                    block = match next {
+                        Some(next_block) => next_block as *mut Box<Block<T, N>>,
+                        None => break,
+                    };
                 }
-
-                previous_block = Some(block);
-                block = match unsafe { &mut (*block).next } {
-                    Some(next_block) => next_block,
-                    None => break,
-                };
             }
-
-            // Recreate the free list by pushing all entries of the remaining blocks back onto the free list.
 
             removed_blocks
         } else {
@@ -199,6 +215,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
         drop(guard);
 
+        // Recreate the free list by pushing all entries of the remaining blocks back onto the free list.
         for block in unsafe { self.iter() } {
             for entry in block.data.iter() {
                 // Safety: we only push entries that were marked with the special value, which means they are not live.
