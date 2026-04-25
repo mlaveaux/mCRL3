@@ -11,10 +11,10 @@ mod inner {
     pub use std::hint::spin_loop;
 
     pub use std::sync::Arc;
-    pub use std::sync::atomic::AtomicBool;
-    pub use std::sync::atomic::Ordering;
     pub use std::sync::Mutex;
     pub use std::sync::MutexGuard;
+    pub use std::sync::atomic::AtomicBool;
+    pub use std::sync::atomic::Ordering;
 }
 
 // We replace the standard implementation by loom's implementation.
@@ -288,7 +288,7 @@ impl<T> BfSharedMutex<T> {
             if index != self.index
                 && let Some(object) = option
             {
-                // We just synchronize with the busy store of the other instances. 
+                // We just synchronize with the busy store of the other instances.
                 while object.busy.load(Ordering::Acquire) {
                     spin_loop();
                 }

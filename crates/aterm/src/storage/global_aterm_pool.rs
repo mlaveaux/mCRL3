@@ -141,7 +141,12 @@ impl GlobalTermPool {
     /// Note that the returned `Arc<UnsafeCell<...>>` is not Send or Sync, so it
     /// *must* be protected through other means.
     #[allow(clippy::arc_with_non_send_sync)]
-    pub(crate) fn register_thread_term_pool(&mut self) -> (Arc<UnsafeCell<SharedTermProtection>>, Arc<Mutex<ProtectionSet<ATermIndex>>>) {
+    pub(crate) fn register_thread_term_pool(
+        &mut self,
+    ) -> (
+        Arc<UnsafeCell<SharedTermProtection>>,
+        Arc<Mutex<ProtectionSet<ATermIndex>>>,
+    ) {
         let protection = Arc::new(UnsafeCell::new(SharedTermProtection {
             term_protection_set: ProtectionSet::new(),
             symbol_protection_set: ProtectionSet::new(),
@@ -352,9 +357,9 @@ impl fmt::Display for TermPoolMetrics<'_> {
 
 /// A newtype wrapping the per-thread protection-set list stored inside
 /// [`GlobalTermPool`].
-/// 
+///
 /// # Safety
-/// 
+///
 /// Note that [`UnsafeCell`] is not [`Sync`], but we explicitly only use this in
 /// `&mut self` contexts, so we can safely implement `Sync` for this wrapper.
 struct ThreadPoolList(Vec<Option<Arc<UnsafeCell<SharedTermProtection>>>>);
@@ -474,7 +479,10 @@ mod tests {
 
     use merc_utilities::random_test;
 
-    use crate::{ATerm, Symbol, Term, random_term};
+    use crate::ATerm;
+    use crate::Symbol;
+    use crate::Term;
+    use crate::random_term;
 
     #[test]
     #[cfg_attr(miri, ignore)]
