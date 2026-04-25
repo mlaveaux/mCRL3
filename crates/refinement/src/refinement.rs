@@ -107,7 +107,7 @@ pub fn refines<L: LTS>(
                     impl_lts.merge_disjoint(&spec_lts)
                 } else {
                     let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
-                    let (preprocess_lts, initial_spec, partition) = branching_bisim_sigref(merged_lts, initial_spec, timing);
+                    let (preprocess_lts, initial_spec, partition) = branching_bisim_sigref(merged_lts, initial_spec, false, timing);
 
                     let impl_block = partition.block_number(preprocess_lts.initial_state_index());
                     let spec_block = partition.block_number(initial_spec);

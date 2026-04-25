@@ -390,7 +390,7 @@ fn handle_convert(args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError>
             convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
         }
         LtsFormat::Bcg => {
-            let explicit_lts = convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new()), &lts)?;
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
             write_bcg(&explicit_lts, &args.output)?;
         }
     }
