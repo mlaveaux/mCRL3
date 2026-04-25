@@ -43,7 +43,7 @@ jobs:
         submodules: true
 
     - name: Build mCRL2
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release --target install
+      run: cmake -S . -B build -DMCRL2_ENABLE_GUI_TOOLS=OFF -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release
     
     - name: Checkout the repository
       uses: actions/checkout@v6
