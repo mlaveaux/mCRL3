@@ -119,9 +119,9 @@ impl PositiveAntichain {
 
 impl AC<StateIndex, StateIndex> for PositiveAntichain {
     fn insert(&mut self, key: StateIndex, value: VecSet<StateIndex>) -> bool {
-        if self.positive_antichain.contains_superset(&key, &value) {
-            // If the positive antichain contains a superset of the current pair, then we can immediately conclude that the check passes.
-            return true;
+        if self.positive_antichain.contains_subset(&key, &value) {
+            // If the positive antichain contains a subset of the current pair, then we can immediately conclude that the check passes.
+            return false;
         }
 
         self.antichain.insert(key, value)
@@ -206,6 +206,7 @@ fn is_weak_trace_refinement_ce<L: LTS, CE: CounterExampleTree>(
 mod tests {
     use merc_lts::read_aut;
     use merc_utilities::Timing;
+    use merc_utilities::test_logger;
 
     use crate::ExplorationStrategy;
     use crate::RefinementType;
@@ -213,6 +214,8 @@ mod tests {
 
     #[test]
     fn test_impossible_futures_example() {
+        test_logger();
+
         let impl_lts = read_aut(
             b"des (0,8,6)                                        
             (0,newday,1)
