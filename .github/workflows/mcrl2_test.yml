@@ -1,0 +1,94 @@
+name: Test
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: on
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+
+    steps:    
+    - name: Install Ubuntu Dependencies
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages:  build-essential, cmake, git, libboost-dev,  libfontconfig1-dev, libfreetype6-dev
+      version: 1.0
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+
+    - name: Install stable rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install nextest
+      uses: taiki-e/install-action@nextest
+      
+    - name: Checkout mCRL2
+      uses: actions/checkout@v6
+      with:
+        repository: mCRL2org/mCRL2
+        sha: 4f357eccc1e8b9105db95742f9dda03e069f0918
+        submodules: true
+
+    - name: Build mCRL2
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release --target install
+    
+    - name: Checkout the repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - name: Build
+      run: cargo build
+      env:        
+        RUSTC_WRAPPER: sccache
+
+    - name: Run tests
+      run: cargo nextest run --no-fail-fast -- --include-ignored
+      env:
+        RUST_BACKTRACE: full
+        RUST_LOG: debug
+        RUSTC_WRAPPER: sccache
+        MCRL2_PATH: ./mCRL2/build/stage/bin
+
+    - name: Build mCRL2 tools
+      run: cargo build
+      working-directory: tools/mcrl2
+      env:        
+        RUSTC_WRAPPER: sccache
+        
+    - name: Run mCRL2 tests
+      run: cargo nextest run --no-fail-fast -- --include-ignored
+      working-directory: tools/mcrl2
+      env:
+        RUST_BACKTRACE: full
+        RUST_LOG: debug
+        RUSTC_WRAPPER: sccache
+        MCRL2_PATH: ./mCRL2/build/stage/bin
+      
+    - name: Build GUI tools
+      run: cargo build
+      working-directory: tools/gui
+      env:        
+        RUSTC_WRAPPER: sccache
+
+    - name: Run GUI tests
+      run: cargo nextest run --no-fail-fast -- --include-ignored
+      working-directory: tools/gui
+      env:
+        RUST_BACKTRACE: full
+        RUST_LOG: debug
+        RUSTC_WRAPPER: sccache
+        MCRL2_PATH: ./mCRL2/build/stage/bin
