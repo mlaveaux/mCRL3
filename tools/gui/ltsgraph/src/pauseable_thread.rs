@@ -127,6 +127,11 @@ impl PauseableThread {
                     "Thread panicked with unknown error".to_string()
                 }
             })?;
+
+            // After the thread has finished, we can check if it stored an error.
+            if let Some(error) = self.poll_error() {
+                return Err(error);
+            }
         }
 
         Ok(())
