@@ -87,6 +87,7 @@ crossbeam-utils = "0.8"
 mimalloc = "0.1"
 streaming-iterator = "0.1"
 tikv-jemallocator = "0.6"
+loom = "0.7"
 
 # Used in macros
 proc-macro2 = "1.0"

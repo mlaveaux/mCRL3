@@ -5,11 +5,28 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
+
+#[cfg(not(loom))]
+mod inner {
+
+    pub use std::sync::Arc;
+    pub use std::sync::Mutex;
+    pub use std::sync::MutexGuard;
+    pub use std::sync::atomic::AtomicBool;
+    pub use std::sync::atomic::Ordering;
+}
+
+// We replace the standard implementation by loom's implementation.
+#[cfg(loom)]
+mod inner {
+    pub use loom::sync::Arc;
+    pub use loom::sync::Mutex;
+    pub use loom::sync::MutexGuard;
+    pub use loom::sync::atomic::AtomicBool;
+    pub use loom::sync::atomic::Ordering;
+}
+
+use inner::*;
 
 use crossbeam_utils::CachePadded;
 
@@ -355,12 +372,17 @@ unsafe impl<T: Send + Sync> Sync for GlobalBfSharedMutex<T> {}
 
 #[cfg(test)]
 mod tests {
-    use crate::bf_sharedmutex::BfSharedMutex;
     use rand::prelude::*;
     use std::hint::black_box;
 
     use merc_utilities::random_test_threads;
     use merc_utilities::test_threads;
+    
+    // We replace the standard implementation by loom's implementation.
+    #[cfg(loom)]
+    use loom::thread;
+
+    use super::BfSharedMutex;
 
     // These are just simple tests.
     #[test]
@@ -409,5 +431,31 @@ mod tests {
                 }
             },
         );
+    }
+
+    #[test]
+    #[cfg(loom)]
+    fn test_loom_bf_shared_mutex() {        
+        loom::model(|| {
+            let shared_mutex = BfSharedMutex::new(false);
+
+            let threads: Vec<_> = (0..2)
+                .map(|_| {
+                    let shared_mutex = shared_mutex.clone();
+                    thread::spawn(move || {
+                        // Just perform some operations on the shared mutex.
+                        let result = *std::hint::black_box(shared_mutex.read().unwrap());
+
+                        *shared_mutex.write().unwrap() = !result;
+
+                        let _ = *std::hint::black_box(shared_mutex.read().unwrap());
+                    })
+                })
+                .collect();
+
+            for th in threads {
+                th.join().unwrap();
+            }
+        });
     }
 }

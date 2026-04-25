@@ -3,8 +3,21 @@ use std::array;
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
+
+#[cfg(not(loom))]
+mod inner {
+    pub use std::sync::Mutex;
+    pub use std::sync::MutexGuard;
+}
+
+// We replace the standard implementation by loom's implementation.
+#[cfg(loom)]
+mod inner {
+    pub use loom::sync::Mutex;
+    pub use loom::sync::MutexGuard;
+}
+
+use inner::*;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
@@ -112,21 +125,25 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     pub fn deallocate_object(&self, ptr: NonNull<T>) {
         self.free.push(ptr.cast());
     }
-    
+
     /// Removes empty blocks from the block list. Should be called periodically
     /// to prevent memory usage from growing indefinitely.
     pub fn remove_free_blocks(&mut self) -> usize {
         // A special value that must not occur in the values of `T`.
         let nonexisting_value = std::ptr::dangling_mut();
-        
+
         for block in unsafe { self.iter() } {
             // Check that none of the entries contain the special value.
-            debug_assert!(block.data.iter().all(|entry| {
-                    unsafe { entry.next != nonexisting_value }
-            }), "The special value used to mark free entries must not be present in any live entry");
+            debug_assert!(
+                block
+                    .data
+                    .iter()
+                    .all(|entry| { unsafe { entry.next != nonexisting_value } }),
+                "The special value used to mark free entries must not be present in any live entry"
+            );
         }
 
-        let mut guard = self.blocks.lock().expect("Lock poisoned");        
+        let mut guard = self.blocks.lock().expect("Lock poisoned");
         let removed = if let Some(head_block) = guard.head_block.as_mut() {
             // Mark all elements in the free list with a special value that none of the live entries can have (e.g., a non-canonical pointer).
             unsafe {
@@ -145,7 +162,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
             // We will rebuild the freelist from the remaining blocks below.
             self.free.clear();
-            
+
             // Remove blocks that are now empty, i.e., all their entries have no nonexisting_value
             let mut previous_block: Option<*mut Box<Block<T, N>>> = None;
             let mut block = head_block as *mut Box<Block<T, N>>;
@@ -170,10 +187,10 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                     Some(next_block) => next_block,
                     None => break,
                 };
-            }   
+            }
 
             // Recreate the free list by pushing all entries of the remaining blocks back onto the free list.
-            
+
             removed_blocks
         } else {
             // No blocks, nothing to remove.
@@ -187,7 +204,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 // Safety: we only push entries that were marked with the special value, which means they are not live.
                 unsafe {
                     if entry.next == nonexisting_value {
-                        self.free.push(NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>));
+                        self.free
+                            .push(NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>));
                     }
                 }
             }
@@ -212,9 +230,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// This is only safe when no concurrent allocations or deallocations are in progress
     /// (e.g., in single-threaded tests or with `&mut self`).
     unsafe fn iter_free(&self) -> impl Iterator<Item = NonNull<T>> + '_ {
-        unsafe {
-            self.free.iter().map(|entry| entry.cast())
-        }
+        unsafe { self.free.iter().map(|entry| entry.cast()) }
     }
 }
 
@@ -312,9 +328,7 @@ impl<'a, T, const N: usize> Iterator for BlockIter<'a, T, N> {
         let current_block = self.current?;
 
         // Move to the next block for the next iteration.
-        self.current = unsafe {
-            (*current_block).next.as_ref()
-        }.map(|b| b as *const _);
+        self.current = unsafe { (*current_block).next.as_ref() }.map(|b| b as *const _);
 
         Some(unsafe { &*current_block })
     }
@@ -349,6 +363,9 @@ impl<T, const N: usize> fmt::Debug for BlockAllocator<T, N> {
 #[cfg(test)]
 mod tests {
     use std::ptr::NonNull;
+    // We replace the standard implementation by loom's implementation.
+    #[cfg(loom)]
+    use loom::thread;
 
     use rand::RngExt;
 
@@ -409,5 +426,27 @@ mod tests {
                 }
             }
         })
+    }
+
+    #[test]
+    #[cfg(loom)]
+    fn test_loom_block_allocator() {
+        loom::model(|| {
+            let block_allocator = Arc::new(BlockAllocator::<bool, 4>::new());
+
+            let threads: Vec<_> = (0..2)
+                .map(|_| {
+                    let block_allocator = block_allocator.clone();
+                    
+                    thread::spawn(move || {
+                        block_allocator.allocate_object().unwrap();
+                    })
+                })
+                .collect();
+
+            for th in threads {
+                th.join().unwrap();
+            }
+        });
     }
 }

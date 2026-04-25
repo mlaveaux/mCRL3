@@ -500,6 +500,9 @@ mod tests {
     fn test_term_out_of_bound_arity() {
         let c = ATerm::constant(&Symbol::new("a", 0));
 
-        let _ = ATerm::with_args(&Symbol::new("f", 1), &[c.copy(), c.copy()]);
+        let t = ATerm::with_args(&Symbol::new("f", 1), &[c.copy(), c.copy()]);
+
+        // Currently we check on access
+        let _ = t.arg(1);
     }
 }

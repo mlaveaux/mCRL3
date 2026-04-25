@@ -57,43 +57,8 @@ jobs:
       with:
         submodules: true
 
-    - name: Build
-      run: cargo build
-      env:        
-        RUSTC_WRAPPER: sccache
-
     - name: Run tests
-      run: cargo nextest run --no-fail-fast -- --include-ignored
-      env:
-        RUST_BACKTRACE: full
-        RUST_LOG: debug
-        RUSTC_WRAPPER: sccache
-        MCRL2_PATH: mCRL2/build/stage/bin
-
-    - name: Build mCRL2 tools
-      run: cargo build
-      working-directory: tools/mcrl2
-      env:        
-        RUSTC_WRAPPER: sccache
-        
-    - name: Run mCRL2 tests
-      run: cargo nextest run --no-fail-fast -- --include-ignored
-      working-directory: tools/mcrl2
-      env:
-        RUST_BACKTRACE: full
-        RUST_LOG: debug
-        RUSTC_WRAPPER: sccache
-        MCRL2_PATH: mCRL2/build/stage/bin
-      
-    - name: Build GUI tools
-      run: cargo build
-      working-directory: tools/gui
-      env:        
-        RUSTC_WRAPPER: sccache
-
-    - name: Run GUI tests
-      run: cargo nextest run --no-fail-fast -- --include-ignored
-      working-directory: tools/gui
+      run: cargo nextest run --no-fail-fast -- --include-ignored mcrl2
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug
