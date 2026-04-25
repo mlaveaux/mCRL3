@@ -47,7 +47,10 @@ impl<T> RecursiveLock<T> {
 
     delegate::delegate! {
         to self.inner {
+            #[cfg(not(loom))]
             pub fn data_ptr(&self) -> *const T;
+            #[cfg(loom)]
+            pub fn data_ptr(&self) -> loom::cell::ConstPtr<T>;
             pub fn is_locked(&self) -> bool;
             pub fn is_locked_exclusive(&self) -> bool;
         }
@@ -64,6 +67,8 @@ impl<T> RecursiveLock<T> {
         Ok(RecursiveLockWriteGuard {
             mutex: self,
             guard: self.inner.write()?,
+            #[cfg(loom)]
+            ptr: self.inner.data_ptr(),
         })
     }
 
@@ -84,11 +89,17 @@ impl<T> RecursiveLock<T> {
             // Acquire the read guard, but forget it to prevent it from being dropped.
             self.recursive_depth.set(1);
             mem::forget(self.inner.read()?);
-            Ok(RecursiveLockReadGuard { mutex: self })
+            Ok(RecursiveLockReadGuard { mutex: self,
+                #[cfg(loom)]
+                ptr: self.inner.data_ptr()            
+             })
         } else {
             // If we are already holding a read lock, we just increment the depth.
             self.recursive_depth.set(self.recursive_depth.get() + 1);
-            Ok(RecursiveLockReadGuard { mutex: self })
+            Ok(RecursiveLockReadGuard { mutex: self,
+                #[cfg(loom)]
+                ptr: self.inner.data_ptr()     
+            })
         }
     }
 
@@ -106,6 +117,9 @@ impl<T> RecursiveLock<T> {
 #[must_use = "Dropping the guard unlocks the recursive lock immediately"]
 pub struct RecursiveLockReadGuard<'a, T> {
     mutex: &'a RecursiveLock<T>,
+    
+    #[cfg(loom)]
+    ptr: loom::cell::ConstPtr<T>,
 }
 
 impl<T> RecursiveLockReadGuard<'_, T> {
@@ -121,7 +135,11 @@ impl<T> Deref for RecursiveLockReadGuard<'_, T> {
 
     fn deref(&self) -> &Self::Target {
         // There can only be shared guards, which only provide immutable access to the object.
-        unsafe { self.mutex.inner.data_ptr().as_ref().unwrap_unchecked() }
+        #[cfg(not(loom))]
+        unsafe { self.mutex.inner.data_ptr().as_ref_unchecked() }
+
+        #[cfg(loom)]
+        unsafe { self.ptr.deref() }
     }
 }
 
@@ -142,7 +160,11 @@ impl<T> Drop for RecursiveLockReadGuard<'_, T> {
 #[must_use = "Dropping the guard unlocks the recursive lock immediately"]
 pub struct RecursiveLockWriteGuard<'a, T> {
     mutex: &'a RecursiveLock<T>,
+
     guard: BfSharedMutexWriteGuard<'a, T>,
+
+    #[cfg(loom)]
+    ptr: loom::cell::ConstPtr<T>,
 }
 
 /// Allow dereferences the underlying object.
@@ -151,7 +173,12 @@ impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
 
     fn deref(&self) -> &Self::Target {
         // We hold the write guard, so immutable access is safe.
+        #[cfg(loom)]
+        unsafe { return self.ptr.deref(); }
+
+        #[cfg(not(loom))]
         self.guard.deref()
+
     }
 }
 

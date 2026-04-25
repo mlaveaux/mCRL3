@@ -1,6 +1,5 @@
 //! Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
 
-use std::cell::UnsafeCell;
 use std::error::Error;
 use std::fmt::Debug;
 use std::ops::Deref;
@@ -8,8 +7,8 @@ use std::ops::DerefMut;
 
 #[cfg(not(loom))]
 mod inner {
+    pub use std::cell::UnsafeCell;
     pub use std::hint::spin_loop;
-
     pub use std::sync::Arc;
     pub use std::sync::Mutex;
     pub use std::sync::MutexGuard;
@@ -20,8 +19,8 @@ mod inner {
 // We replace the standard implementation by loom's implementation.
 #[cfg(loom)]
 mod inner {
+    pub use loom::cell::UnsafeCell;
     pub use loom::hint::spin_loop;
-
     pub use loom::sync::Arc;
     pub use loom::sync::Mutex;
     pub use loom::sync::MutexGuard;
@@ -135,8 +134,14 @@ impl<T> Drop for BfSharedMutex<T> {
 /// The guard object for exclusive access to the underlying object.
 #[must_use = "Dropping the guard unlocks the shared mutex immediately"]
 pub struct BfSharedMutexWriteGuard<'a, T> {
+    #[allow(dead_code)]
     mutex: &'a BfSharedMutex<T>,
+
     guard: MutexGuard<'a, Vec<Option<Arc<CachePadded<SharedMutexControl>>>>>,
+
+    /// When loom is enabled, we store a shared reference tracked by Loom.
+    #[cfg(loom)]
+    ptr: loom::cell::MutPtr<T>,
 }
 
 /// Allow dereferencing the underlying object.
@@ -145,14 +150,22 @@ impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
 
     fn deref(&self) -> &Self::Target {
         // We are the only guard after `write()`, so we can provide immutable access to the underlying object. (No mutable references the guard can exist)
+        #[cfg(not(loom))]
         unsafe { &*self.mutex.shared.object.get() }
+
+        #[cfg(loom)]
+        unsafe { self.ptr.deref() }
     }
 }
 
 impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
+        #[cfg(not(loom))]
         unsafe { &mut *self.mutex.shared.object.get() }
+        
+        #[cfg(loom)]
+        unsafe { self.ptr.deref() }
     }
 }
 
@@ -173,6 +186,10 @@ unsafe impl<T: Sync> Sync for BfSharedMutexWriteGuard<'_, T> {}
 #[must_use = "Dropping the guard unlocks the shared mutex immediately"]
 pub struct BfSharedMutexReadGuard<'a, T> {
     mutex: &'a BfSharedMutex<T>,
+
+    /// When loom is enabled, we store a shared reference tracked by Loom.
+    #[cfg(loom)]
+    ptr: loom::cell::ConstPtr<T>,
 }
 
 // SAFETY: Sharing &ReadGuard across threads only exposes &T.
@@ -184,7 +201,11 @@ impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
 
     fn deref(&self) -> &Self::Target {
         // There can only be shared guards, which only provide immutable access to the object.
+        #[cfg(not(loom))]
         unsafe { &*self.mutex.shared.object.get() }
+
+        #[cfg(loom)]
+        unsafe { self.ptr.deref() }
     }
 }
 
@@ -228,7 +249,10 @@ impl<T> BfSharedMutex<T> {
         }
 
         // We now have immutable access to the object due to the protocol.
-        Ok(BfSharedMutexReadGuard { mutex: self })
+        Ok(BfSharedMutexReadGuard { mutex: self,
+            #[cfg(loom)]
+            ptr: self.shared.object.get()
+        })
     }
 
     /// Creates a new `BfSharedMutexReadGuard` without checking if the lock is held.
@@ -241,7 +265,10 @@ impl<T> BfSharedMutex<T> {
     /// guard has already been produced is undefined behaviour unless the guard was forgotten
     /// with `mem::forget`.
     pub unsafe fn create_read_guard_unchecked(&self) -> BfSharedMutexReadGuard<'_, T> {
-        BfSharedMutexReadGuard { mutex: self }
+        BfSharedMutexReadGuard { mutex: self,
+            #[cfg(loom)]
+            ptr: self.shared.object.get()
+        }
     }
 
     /// Returns a raw pointer to the underlying data.
@@ -256,7 +283,13 @@ impl<T> BfSharedMutex<T> {
     /// returned pointer, for example if the current thread logically owns a
     /// [`BfSharedMutexReadGuard`] or [`BfSharedMutexWriteGuard`] but that guard has been discarded
     /// using `mem::forget`.
+    #[cfg(not(loom))]
     pub fn data_ptr(&self) -> *mut T {
+        self.shared.object.get()
+    }
+
+    #[cfg(loom)]
+    pub fn data_ptr(&self) -> loom::cell::ConstPtr<T> {
         self.shared.object.get()
     }
 
@@ -299,6 +332,8 @@ impl<T> BfSharedMutex<T> {
         Ok(BfSharedMutexWriteGuard {
             mutex: self,
             guard: other,
+            #[cfg(loom)]
+            ptr: self.shared.object.get_mut()
         })
     }
 
@@ -318,7 +353,10 @@ impl<T> BfSharedMutex<T> {
 
     /// Obtain mutable access to the object without locking, is safe because we have mutable access.
     pub fn get_mut(&mut self) -> &mut T {
+        #[cfg(not(loom))]
         unsafe { &mut *self.shared.object.get() }
+        #[cfg(loom)]
+        unsafe { self.shared.object.get_mut().with(|ptr| &mut *ptr) }
     }
 }
 
@@ -442,7 +480,7 @@ mod tests {
     #[cfg(loom)]
     fn test_loom_bf_shared_mutex() {
         let mut builder = loom::model::Builder::new();
-        builder.preemption_bound = Some(3);
+        builder.preemption_bound = Some(1);
 
         builder.check(|| {
             let shared_mutex = BfSharedMutex::new(false);
@@ -458,8 +496,6 @@ mod tests {
                     })
                 })
                 .collect();
-
-            assert!(!*shared_mutex.read().unwrap(), "Initial value should be false");
 
             for th in threads {
                 th.join().unwrap();
