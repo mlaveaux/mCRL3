@@ -1,4 +1,4 @@
-name: Test
+name: Test with MCRL2_PATH
 
 permissions:
   contents: read
@@ -24,7 +24,7 @@ jobs:
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages:  build-essential, cmake, git, libboost-dev,  libfontconfig1-dev, libfreetype6-dev
-      version: 1.0
+        version: 1.0
 
     - name: Setup sccache
       uses: mozilla-actions/sccache-action@v0.0.9
