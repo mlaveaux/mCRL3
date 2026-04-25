@@ -40,10 +40,11 @@ jobs:
       with:
         repository: mCRL2org/mCRL2
         sha: 4f357eccc1e8b9105db95742f9dda03e069f0918
+        path: mCRL2
         submodules: true
 
-    - name: Build mCRL2
-      run: cmake -S . -B build -DMCRL2_ENABLE_GUI_TOOLS=OFF -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release
+    - name: Build mCRL2 toolset
+      run: cmake -S mCRL2 -B mCRL2/build -DMCRL2_ENABLE_GUI_TOOLS=OFF -DCMAKE_BUILD_TYPE=Release && cmake --build mCRL2/build --config Release
     
     - name: Checkout the repository
       uses: actions/checkout@v6
@@ -76,7 +77,7 @@ jobs:
         RUST_BACKTRACE: full
         RUST_LOG: debug
         RUSTC_WRAPPER: sccache
-        MCRL2_PATH: ./mCRL2/build/stage/bin
+        MCRL2_PATH: mCRL2/build/stage/bin
       
     - name: Build GUI tools
       run: cargo build
@@ -91,4 +92,4 @@ jobs:
         RUST_BACKTRACE: full
         RUST_LOG: debug
         RUSTC_WRAPPER: sccache
-        MCRL2_PATH: ./mCRL2/build/stage/bin
+        MCRL2_PATH: mCRL2/build/stage/bin
