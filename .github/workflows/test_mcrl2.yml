@@ -57,7 +57,7 @@ jobs:
       with:
         submodules: true
 
-    - name: Run tests
+    - name: Run mcrl2 specific tests
       run: cargo nextest run --no-fail-fast -- --include-ignored mcrl2
       env:
         RUST_BACKTRACE: full

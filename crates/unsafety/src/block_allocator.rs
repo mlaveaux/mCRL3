@@ -39,7 +39,7 @@ use crate::FreeListEntry;
 ///
 /// Internally stores blocks of `N` elements.
 pub struct BlockAllocator<T, const N: usize> {
-    /// Blocks and bump pointer are protected by a mutex (cold path only — new block allocation).
+    /// Blocks and bump pointer are protected by a mutex, for the cold path.
     blocks: Mutex<BlockList<T, N>>,
 
     /// Recycled entries managed in a lock-free Treiber stack.
@@ -363,9 +363,6 @@ impl<T, const N: usize> fmt::Debug for BlockAllocator<T, N> {
 #[cfg(test)]
 mod tests {
     use std::ptr::NonNull;
-    // We replace the standard implementation by loom's implementation.
-    #[cfg(loom)]
-    use loom::thread;
 
     use rand::RngExt;
 
@@ -432,14 +429,21 @@ mod tests {
     #[cfg(loom)]
     fn test_loom_block_allocator() {
         loom::model(|| {
-            let block_allocator = Arc::new(BlockAllocator::<bool, 4>::new());
+            let block_allocator = loom::sync::Arc::new(BlockAllocator::<bool, 4>::new());
 
-            let threads: Vec<_> = (0..2)
+            let threads: Vec<_> = (0..3)
                 .map(|_| {
                     let block_allocator = block_allocator.clone();
                     
-                    thread::spawn(move || {
-                        block_allocator.allocate_object().unwrap();
+                    loom::thread::spawn(move || {
+                        for _ in 0..10 {
+                            let ptr = block_allocator.allocate_object().unwrap();
+                            unsafe {
+                                ptr.as_ptr().write(true);
+                            }
+                            loom::thread::yield_now();
+                            block_allocator.deallocate_object(ptr);
+                        }
                     })
                 })
                 .collect();

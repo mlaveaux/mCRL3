@@ -34,8 +34,8 @@ jobs:
       with:
         submodules: true
 
-    - name: Run tests
-      run: cargo nextest run --no-fail-fast -- --include-ignored loom
+    - name: Run Loom tests
+      run: cargo nextest run --no-fail-fast --release -- --include-ignored loom
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug

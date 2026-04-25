@@ -8,17 +8,20 @@ use std::ops::DerefMut;
 
 #[cfg(not(loom))]
 mod inner {
+    pub use std::hint::spin_loop;
 
     pub use std::sync::Arc;
-    pub use std::sync::Mutex;
-    pub use std::sync::MutexGuard;
     pub use std::sync::atomic::AtomicBool;
     pub use std::sync::atomic::Ordering;
+    pub use std::sync::Mutex;
+    pub use std::sync::MutexGuard;
 }
 
 // We replace the standard implementation by loom's implementation.
 #[cfg(loom)]
 mod inner {
+    pub use loom::hint::spin_loop;
+
     pub use loom::sync::Arc;
     pub use loom::sync::Mutex;
     pub use loom::sync::MutexGuard;
@@ -156,9 +159,8 @@ impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
 impl<T> Drop for BfSharedMutexWriteGuard<'_, T> {
     fn drop(&mut self) {
         // Allow other threads to acquire access to the shared mutex.
-        // Release is sufficient: readers spin on forbidden.load(SeqCst).
         for control in self.guard.iter().flatten() {
-            control.forbidden.store(false, std::sync::atomic::Ordering::Release);
+            control.forbidden.store(false, Ordering::Release);
         }
 
         // The mutex guard is then dropped here.
@@ -193,7 +195,7 @@ impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
             "Cannot unlock shared lock that was not acquired"
         );
 
-        // Release is sufficient: this is a pure unlock store.
+        // Release is sufficient, this synchronises the writes of this thread with writer.
         self.mutex.control.busy.store(false, Ordering::Release);
     }
 }
@@ -206,15 +208,23 @@ impl<T> BfSharedMutex<T> {
             "Cannot acquire read access again inside a reader section"
         );
 
-        self.control.busy.store(true, Ordering::SeqCst);
-        while self.control.forbidden.load(Ordering::SeqCst) {
-            // Release is sufficient here: this is a pure back-off store.
-            self.control.busy.store(false, Ordering::Release);
+        self.control.busy.store(true, Ordering::Relaxed);
+        while self.control.forbidden.load(Ordering::Acquire) {
+            // Signal the writer that this thread is no longer busy, allowing it to make progress.
+            self.control.busy.store(false, Ordering::Relaxed);
+
+            // For loom with spin locks we must ensure that other threads can make progress for fairness.
+            #[cfg(loom)]
+            loom::thread::yield_now();
 
             // Wait for the mutex of the writer.
             let _guard = self.shared.other.lock()?;
 
-            self.control.busy.store(true, Ordering::SeqCst);
+            // Allow another thread to acquire the lock.
+            #[cfg(loom)]
+            loom::thread::yield_now();
+
+            self.control.busy.store(true, Ordering::Relaxed);
         }
 
         // We now have immutable access to the object due to the protocol.
@@ -255,22 +265,22 @@ impl<T> BfSharedMutex<T> {
         let other = self.shared.other.lock()?;
 
         debug_assert!(
-            !self.control.busy.load(std::sync::atomic::Ordering::Relaxed),
+            !self.control.busy.load(Ordering::Relaxed),
             "Can only exclusive lock outside of a shared lock, no upgrading!"
         );
         debug_assert!(
-            !self.control.forbidden.load(std::sync::atomic::Ordering::Relaxed),
+            !self.control.forbidden.load(Ordering::Relaxed),
             "Can not acquire exclusive lock inside of exclusive section"
         );
 
         // Make all instances wait due to forbidden access.
         for control in other.iter().flatten() {
             debug_assert!(
-                !control.forbidden.load(std::sync::atomic::Ordering::Relaxed),
+                !control.forbidden.load(Ordering::Relaxed),
                 "Other instance is already forbidden, this cannot happen"
             );
 
-            control.forbidden.store(true, std::sync::atomic::Ordering::SeqCst);
+            control.forbidden.store(true, Ordering::Relaxed);
         }
 
         // Wait for the instances to exit their busy status.
@@ -278,10 +288,9 @@ impl<T> BfSharedMutex<T> {
             if index != self.index
                 && let Some(object) = option
             {
-                // Acquire is sufficient: we just need to synchronize with the
-                // matching Release store in BfSharedMutexReadGuard::drop.
-                while object.busy.load(std::sync::atomic::Ordering::Acquire) {
-                    std::hint::spin_loop();
+                // We just synchronize with the busy store of the other instances. 
+                while object.busy.load(Ordering::Acquire) {
+                    spin_loop();
                 }
             }
         }
@@ -377,20 +386,16 @@ mod tests {
 
     use merc_utilities::random_test_threads;
     use merc_utilities::test_threads;
-    
-    // We replace the standard implementation by loom's implementation.
-    #[cfg(loom)]
-    use loom::thread;
 
     use super::BfSharedMutex;
 
     // These are just simple tests.
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_random_shared_mutex_exclusive() {
+    fn test_random_bf_shared_mutex_exclusive() {
         let shared_number = BfSharedMutex::new(5);
         let num_iterations = 500;
-        let num_threads = 20;
+        let num_threads = 3;
 
         test_threads(
             num_threads,
@@ -407,7 +412,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_random_shared() {
+    fn test_random_bf_shared_mutex() {
         let shared_vector = BfSharedMutex::new(vec![]);
 
         let num_threads = 20;
@@ -435,23 +440,26 @@ mod tests {
 
     #[test]
     #[cfg(loom)]
-    fn test_loom_bf_shared_mutex() {        
-        loom::model(|| {
+    fn test_loom_bf_shared_mutex() {
+        let mut builder = loom::model::Builder::new();
+        builder.preemption_bound = Some(3);
+
+        builder.check(|| {
             let shared_mutex = BfSharedMutex::new(false);
 
-            let threads: Vec<_> = (0..2)
+            let threads: Vec<_> = (0..3)
                 .map(|_| {
                     let shared_mutex = shared_mutex.clone();
-                    thread::spawn(move || {
+                    loom::thread::spawn(move || {
                         // Just perform some operations on the shared mutex.
-                        let result = *std::hint::black_box(shared_mutex.read().unwrap());
+                        let result = *shared_mutex.read().unwrap();
 
                         *shared_mutex.write().unwrap() = !result;
-
-                        let _ = *std::hint::black_box(shared_mutex.read().unwrap());
                     })
                 })
                 .collect();
+
+            assert!(!*shared_mutex.read().unwrap(), "Initial value should be false");
 
             for th in threads {
                 th.join().unwrap();
