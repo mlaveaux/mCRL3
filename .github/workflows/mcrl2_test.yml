@@ -44,7 +44,7 @@ jobs:
         submodules: true
 
     - name: Build mCRL2 toolset
-      run: cmake --source mCRL2 \
+      run: cmake --source-dir mCRL2 \
            --build-dir mCRL2/build \
            -DMCRL2_ENABLE_GUI_TOOLS=OFF \
            -DCMAKE_BUILD_TYPE=Release \
