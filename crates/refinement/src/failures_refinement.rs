@@ -44,7 +44,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |_, _| None,
+            |_, _| (None, true),
             false,
             counter_example,
             &mut antichain,
@@ -54,7 +54,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |_, _| None,
+            |_, _| (None, true),
             true,
             counter_example,
             &mut antichain,
@@ -64,7 +64,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |impl_state, spec_states| refusals_contained_in(lts, impl_state, spec_states),
+            |impl_state, spec_states| (refusals_contained_in(lts, impl_state, spec_states), true),
             true,
             counter_example,
             &mut antichain,
@@ -78,13 +78,12 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
                 if diverges(lts, impl_state) {
                     // If the implementation state diverges, then it can refuse any set of actions, so we only need to check for divergence inclusion.
                     if !spec_states.iter().any(|s| diverges(lts, *s)) {
-                        Some(Vec::new())
+                        (Some(Vec::new()), true)
                     } else {
-                        // TODO: Do not explore the outgoing edges.
-                        None
+                        (None, false)
                     }
                 } else {
-                    refusals_contained_in(lts, impl_state, spec_states)
+                    (refusals_contained_in(lts, impl_state, spec_states), true)
                 }
             },
             true,
@@ -109,7 +108,9 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
 ///
 /// The `check` function is applied to every pair (impl, spec) that is explored
 /// during the algorithm, it should return `None` if the pair is valid, and
-/// `Some(counter_example)` if the pair is invalid.
+/// `Some(counter_example)` if the pair is invalid. Furthermore, a boolean is
+/// returned to indicate that exploration should continue (true) for this pair.
+/// This only applies when no counter example is returned.
 ///
 /// The `CE` type parameter indicates the type of counter example tree that is
 /// used to construct counter examples. If no counter examples are required,
@@ -130,7 +131,7 @@ pub fn is_refinement_generic<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterE
     antichain: &mut A,
 ) -> (bool, Option<CE::Index>, Option<CC>)
 where
-    F: FnMut(StateIndex, &VecSet<StateIndex>) -> Option<CC>,
+    F: FnMut(StateIndex, &VecSet<StateIndex>) -> (Option<CC>, bool),
 {
     // A local cache used for the tau closure computations.
     let mut closure_cache = ClosureCache::new();
@@ -148,9 +149,15 @@ where
     // pop (impl,spec) from working;
     while let Some((impl_state, spec, ce)) = working.pop_front() {
         trace!("Checking ({:?}, {:?})", impl_state, spec);
-        if let Some(counter_example) = check(impl_state, &spec) {
-            // if not check(impl,spec) then
+        let (inner_counter_example, continue_exploration) = check(impl_state, &spec);
+        if let Some(counter_example) = inner_counter_example {
+            // if not check(impl,spec) then return false.
             return (false, Some(ce), Some(counter_example));
+        }
+
+        if !continue_exploration {
+            // If the check indicates that we should not continue exploration, then we can skip exploring the outgoing edges.
+            continue;
         }
 
         // for every impl -[e]-> impl' do
