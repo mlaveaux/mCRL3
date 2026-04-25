@@ -20,6 +20,7 @@ use merc_utilities::Timing;
 
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
+use crate::DivergencePreservingLts;
 use crate::Equivalence;
 use crate::Partition;
 use crate::Signature;
@@ -74,10 +75,21 @@ pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, Indexed
 pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, divergence_preserving: bool, timing: &Timing) -> (LabelledTransitionSystem<L::Label>, StateIndex, BlockPartition) {
     let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
     
-    let incoming = timing.measure("preprocess", || IncomingTransitions::new(&preprocessed_lts));
+    let partition = if divergence_preserving {
+        branching_bisim_sigref_impl(&DivergencePreservingLts::new(&preprocessed_lts), timing)
+    } else {
+        branching_bisim_sigref_impl(&preprocessed_lts, timing)
+    };
+    
+    (preprocessed_lts, mapped_state, partition)
+}
+
+/// Implementation of [branching_bisim_sigref].
+fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) -> BlockPartition {
+    let incoming = timing.measure("preprocess", || IncomingTransitions::new(preprocessed_lts));
 
     if log_enabled!(log::Level::Debug) {
-        let path = longest_tau_path(&preprocessed_lts);
+        let path = longest_tau_path(preprocessed_lts);
         debug!("longest_tau_path" = path.len(); "The longest tau path is {:?}", path);
     }
 
@@ -87,16 +99,16 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, divergence_pres
 
     let partition = timing.measure("reduction", || {
         signature_refinement::<_, _, _, true>(
-            &preprocessed_lts,
+            preprocessed_lts,
             &incoming,
             |state_index, partition, state_to_key, builder| {
-                branching_bisim_signature_inductive(state_index, &preprocessed_lts, partition, state_to_key, builder);
+                branching_bisim_signature_inductive(state_index, preprocessed_lts, partition, state_to_key, builder);
 
                 // Compute the expected signature, only used in debugging.
                 if cfg!(debug_assertions) {
                     branching_bisim_signature(
                         state_index,
-                        &preprocessed_lts,
+                        preprocessed_lts,
                         partition,
                         &mut expected_builder,
                         &mut visited,
@@ -115,13 +127,13 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, divergence_pres
             |signature, key_to_signature| {
                 // Inductive signatures.
                 for (label, key) in signature.iter().rev() {
-                    if is_tau_hat(*label, &preprocessed_lts)
+                    if is_tau_hat(*label, preprocessed_lts)
                         && key_to_signature[*key].is_subset_of(signature, (*label, *key))
                     {
                         return Some(*key);
                     }
 
-                    if !is_tau_hat(*label, &preprocessed_lts) {
+                    if !is_tau_hat(*label, preprocessed_lts) {
                         return None;
                     }
                 }
@@ -131,8 +143,7 @@ pub fn branching_bisim_sigref<L: LTS>(lts: L, state: StateIndex, divergence_pres
         )
     });
 
-    // Combine the SCC partition with the branching bisimulation partition.
-    (preprocessed_lts, mapped_state, partition)
+    partition
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement
@@ -148,18 +159,32 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+    
+    let partition = if divergence_preserving {
+        branching_bisim_sigref_naive_impl(&DivergencePreservingLts::new(&preprocessed_lts), timing)
+    } else {
+        branching_bisim_sigref_naive_impl(&preprocessed_lts, timing)
+    };
 
+    (preprocessed_lts, mapped_state, partition)
+}
+
+/// Implementation of [branching_bisim_sigref_naive].
+fn branching_bisim_sigref_naive_impl<L: LTS>(
+    preprocessed_lts: &L,
+    timing: &Timing,
+) -> IndexedPartition {
     timing.measure("reduction", || {
         let mut expected_builder = SignatureBuilder::default();
         let mut visited = FxHashSet::default();
         let mut stack = Vec::new();
 
         let partition = signature_refinement_naive::<_, _, false>(
-            &preprocessed_lts,
+            preprocessed_lts,
             |state_index, partition, state_to_signature, builder| {
                 branching_bisim_signature_sorted(
                     state_index,
-                    &preprocessed_lts,
+                    preprocessed_lts,
                     partition,
                     state_to_signature,
                     builder,
@@ -169,7 +194,7 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
                 if cfg!(debug_assertions) {
                     branching_bisim_signature(
                         state_index,
-                        &preprocessed_lts,
+                        preprocessed_lts,
                         partition,
                         &mut expected_builder,
                         &mut visited,
@@ -187,7 +212,7 @@ pub fn branching_bisim_sigref_naive<L: LTS>(
             },
         );
 
-        (preprocessed_lts, mapped_state, partition)
+        partition
     })
 }
 
@@ -1000,9 +1025,9 @@ mod tests {
             let lts = random_lts(rng, 10, 3, 3);
 
             // Write the random LTS to a temp file for ltsconvert to process.
-            let temp_dir = std::env::temp_dir();
-            let input_path = temp_dir.join("input.aut");
-            let output_path = temp_dir.join("output.aut");
+            let temp_dir = tempfile::tempdir().unwrap();
+            let input_path = temp_dir.path().join("input.aut");
+            let output_path = temp_dir.path().join("output.aut");
 
             {
                 let mut input_file = File::create(&input_path).unwrap();
