@@ -12,9 +12,9 @@ where
 
 /// Returns the smallest power of two that is larger than or equal to the given
 /// value.
-/// 
+///
 /// # Panics
-/// 
+///
 /// This function will panic if the value is larger than the largest power of
 /// two that can be represented by the type `T`.
 ///

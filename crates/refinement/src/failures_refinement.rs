@@ -77,7 +77,12 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts,
             lts.initial_state_index(),
             initial_spec,
-            |impl_state, spec_states| (refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal), true),
+            |impl_state, spec_states| {
+                (
+                    refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal),
+                    true,
+                )
+            },
             |_, _| (),
             true,
             counter_example,
@@ -97,7 +102,10 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
                         (None, false)
                     }
                 } else {
-                    (refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal), true)
+                    (
+                        refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal),
+                        true,
+                    )
                 }
             },
             |_, _| (),

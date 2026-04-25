@@ -40,9 +40,9 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
         self.storage.get(key).map_or(false, |entry| {
             entry.iter().any(|inner_value| value.is_subset(inner_value))
         })
-    } 
-    
-     /// Checks whether the antichain contains a pair (s, T') such that T < T'.
+    }
+
+    /// Checks whether the antichain contains a pair (s, T') such that T < T'.
     pub fn contains_subset(&self, key: &K, value: &VecSet<V>) -> bool {
         self.storage.get(key).map_or(false, |entry| {
             entry.iter().any(|inner_value| inner_value.is_subset(value))

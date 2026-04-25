@@ -459,7 +459,9 @@ impl<L: LTS> LTS for DivergencePreservingLts<'_, L> {
         self,
         _other: &U,
     ) -> (LabelledTransitionSystem<Self::Label>, StateIndex) {
-        unimplemented!("merge_disjoint is not implemented for DivergencePreservingLts, because this should only be used as a view on the original LTS.");
+        unimplemented!(
+            "merge_disjoint is not implemented for DivergencePreservingLts, because this should only be used as a view on the original LTS."
+        );
     }
 
     delegate! {
