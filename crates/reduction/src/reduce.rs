@@ -15,7 +15,7 @@ use crate::weak_bisim_sigref_naive;
 use crate::weak_bisimulation;
 use crate::weak_bisimulation_parallel;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum Equivalence {
     /// Partition based refinement algorithms.
