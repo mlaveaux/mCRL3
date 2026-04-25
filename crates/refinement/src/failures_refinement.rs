@@ -115,7 +115,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
 /// used to construct counter examples. If no counter examples are required,
 /// this can be set to `()`. Avoiding the cost for keeping track of counter
 /// example information.
-/// 
+///
 /// The antichain data structure is used for storing explored states. However,
 /// as opposed to a discovered set it allows for pruning additional pairs based
 /// on the `antichain` property.
@@ -178,7 +178,8 @@ where
                         }
                     }
 
-                    spec_prime = VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache, true));
+                    spec_prime =
+                        VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache, true));
                 } else {
                     // Otherwise, simply consider direct transitions.
                     for s in &spec {
@@ -193,7 +194,12 @@ where
                 spec_prime
             };
 
-            trace!(" -[{}]-> ({}, {:?})", merged_lts.labels()[impl_transition.label], impl_transition.to, spec_prime);
+            trace!(
+                " -[{}]-> ({}, {:?})",
+                merged_lts.labels()[impl_transition.label],
+                impl_transition.to,
+                spec_prime
+            );
             if spec_prime.is_empty() {
                 // if spec' = {} then
                 return (false, Some(new_edge), None);
@@ -338,13 +344,7 @@ fn refusals<L: LTS>(lts: &L, state: StateIndex) -> VecSet<VecSet<LabelIndex>> {
     let maximal_refusal = maximal_refusals(lts, state);
 
     // Take the powerset of `Act \setminus enabled(s)` to get all refusals.
-    VecSet::from_iter(
-        maximal_refusal
-            .iter()
-            .cloned()
-            .powerset()
-            .map(VecSet::from_iter),
-    )
+    VecSet::from_iter(maximal_refusal.iter().cloned().powerset().map(VecSet::from_iter))
 }
 
 /// Returns true iff the given state is stable, i.e., it has no outgoing tau transitions.
@@ -385,11 +385,19 @@ impl Default for ClosureCache {
 /// tau-closure is to be computed. The `extend` parameter indicates whether the
 /// closure should include the original states as well. The `cache` parameter is
 /// used to avoid repeated allocations.
-/// 
+///
 /// If `extend` is true then the original states are included in the closure,
 /// otherwise they are not.
-pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut ClosureCache, extend: bool) -> Vec<StateIndex> {
-    debug_assert!(cache.working.is_empty() && cache.visited.is_empty(), "Closure cache working not cleared before use.");
+pub fn tau_closure<L: LTS>(
+    lts: &L,
+    mut states: Vec<StateIndex>,
+    cache: &mut ClosureCache,
+    extend: bool,
+) -> Vec<StateIndex> {
+    debug_assert!(
+        cache.working.is_empty() && cache.visited.is_empty(),
+        "Closure cache working not cleared before use."
+    );
 
     // Initialize the working set with the initial states, note that states is
     // kept in tact. As such the original states are also returned.

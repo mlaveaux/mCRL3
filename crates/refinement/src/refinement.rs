@@ -26,6 +26,8 @@ pub enum RefinementType {
     Weaktrace,
     /// Checks for stable failures inclusion, i.e., whether all stable failures of the implementation are also stable failures of the specification.
     StableFailures,
+    /// Check for failures-divergences inclusion, i.e., whether all failures and divergences of the implementation are also failures and divergences of the specification.
+    FailuresDivergences,
     /// Checks for impossible futures inclusion, i.e., whether all impossible futures of the implementation are also impossible futures of the specification.
     ImpossibleFutures,
 }
@@ -71,7 +73,9 @@ pub fn refines<L: LTS>(
         RefinementType::Trace => Equivalence::StrongBisim,
         // Note that for impossible futures we use branching bisimulation, which also removes tau loops.
         RefinementType::Weaktrace | RefinementType::ImpossibleFutures => Equivalence::BranchingBisim,
-        RefinementType::StableFailures => Equivalence::BranchingBisimDivergencePreserving,
+        RefinementType::StableFailures | RefinementType::FailuresDivergences => {
+            Equivalence::BranchingBisimDivergencePreserving
+        }
     };
 
     // For the preprocessing/quotienting step it makes sense to merge both LTSs
@@ -98,10 +102,14 @@ pub fn refines<L: LTS>(
                 let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
                 (reduced_lts, StateIndex::new(*spec_block))
             }
-            Equivalence::BranchingBisim|Equivalence::BranchingBisimDivergencePreserving => {
+            Equivalence::BranchingBisim | Equivalence::BranchingBisimDivergencePreserving => {
                 let (merged_lts, initial_spec) = impl_lts.merge_disjoint(&spec_lts);
-                let (preprocess_lts, initial_spec, partition) =
-                    branching_bisim_sigref(merged_lts, initial_spec, reduction == Equivalence::BranchingBisimDivergencePreserving, timing);
+                let (preprocess_lts, initial_spec, partition) = branching_bisim_sigref(
+                    merged_lts,
+                    initial_spec,
+                    reduction == Equivalence::BranchingBisimDivergencePreserving,
+                    timing,
+                );
 
                 let impl_block = partition.block_number(preprocess_lts.initial_state_index());
                 let spec_block = partition.block_number(initial_spec);
@@ -142,7 +150,10 @@ pub fn refines<L: LTS>(
             // Construct a counter example tree, and return a trace.
             let mut ce_constructor = CounterExampleConstructor::new();
             let result = match refinement {
-                RefinementType::Trace | RefinementType::Weaktrace | RefinementType::StableFailures => {
+                RefinementType::Trace
+                | RefinementType::Weaktrace
+                | RefinementType::StableFailures
+                | RefinementType::FailuresDivergences => {
                     let (result, ce_state, ce_inner) =
                         is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ce_constructor);
 
@@ -158,7 +169,7 @@ pub fn refines<L: LTS>(
                             Some(match refinement {
                                 RefinementType::Trace => CounterExample::Trace(trace),
                                 RefinementType::Weaktrace => CounterExample::WeakTrace(trace),
-                                RefinementType::StableFailures => {
+                                RefinementType::StableFailures | RefinementType::FailuresDivergences => {
                                     if let Some(inner) = ce_inner {
                                         CounterExample::StableFailures(
                                             trace,
@@ -207,7 +218,10 @@ pub fn refines<L: LTS>(
         } else {
             // Run without constructing a counter example.
             match refinement {
-                RefinementType::Trace | RefinementType::Weaktrace | RefinementType::StableFailures => {
+                RefinementType::Trace
+                | RefinementType::Weaktrace
+                | RefinementType::StableFailures
+                | RefinementType::FailuresDivergences => {
                     let (result, _, _) =
                         is_failures_refinement(&merged_lts, initial_spec, refinement, strategy, &mut ());
                     (result, None)
@@ -219,4 +233,132 @@ pub fn refines<L: LTS>(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::path::Path;
+    use std::process::Command;
+
+    use merc_io::DumpFiles;
+    use merc_lts::mutate_lts;
+    use merc_lts::random_lts_monolithic;
+    use merc_lts::write_mcrl2_aut;
+    use merc_utilities::Timing;
+    use merc_utilities::random_test;
+
+    use crate::ExplorationStrategy;
+    use crate::RefinementType;
+    use crate::refines;
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_ltscompare_trace() {
+        test_mcrl2_ltscompare_refinement("test_mcrl2_ltscompare_trace", RefinementType::Trace, "trace-ac");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_ltscompare_weak_trace() {
+        test_mcrl2_ltscompare_refinement(
+            "test_mcrl2_ltscompare_weak_trace",
+            RefinementType::Weaktrace,
+            "weak-trace-ac",
+        );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_ltscompare_stable_failures() {
+        test_mcrl2_ltscompare_refinement(
+            "test_mcrl2_ltscompare_stable_failures",
+            RefinementType::StableFailures,
+            "weak-failures",
+        );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_ltscompare_failures_divergences() {
+        test_mcrl2_ltscompare_refinement(
+            "test_mcrl2_ltscompare_failures_divergences",
+            RefinementType::FailuresDivergences,
+            "failures-divergence",
+        );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_ltscompare_impossible_futures() {
+        test_mcrl2_ltscompare_refinement(
+            "test_mcrl2_ltscompare_impossible_futures",
+            RefinementType::ImpossibleFutures,
+            "impossible-futures",
+        );
+    }
+
+    /// Compares our approach to the one implemented in mCRL2's ltscompare
+    fn test_mcrl2_ltscompare_refinement(name: &str, refinement: RefinementType, argument: &str) {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let ltscompare = Path::new(&mcrl2_path).join("ltscompare");
+
+        // Write the random LTS to a temp file for ltscompare to process.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let impl_path = temp_dir.path().join("impl.aut");
+        let spec_path = temp_dir.path().join("spec.aut");
+
+        random_test(100, |rng| {
+            let mut files = DumpFiles::new(name);
+
+            let spec_lts = random_lts_monolithic::<String, _>(rng, 1000, 5, 3);
+            let impl_lts = mutate_lts(&spec_lts, rng, 100).unwrap();
+
+            write_mcrl2_aut(&mut File::create(&impl_path).unwrap(), &impl_lts).unwrap();
+            files
+                .dump("impl.aut", |writer| write_mcrl2_aut(writer, &impl_lts))
+                .unwrap();
+
+            write_mcrl2_aut(&mut File::create(&spec_path).unwrap(), &spec_lts).unwrap();
+            files
+                .dump("spec.aut", |writer| write_mcrl2_aut(writer, &spec_lts))
+                .unwrap();
+
+            // Reduce the LTS using ltsconvert with branching bisimulation.
+            let process = Command::new(&ltscompare)
+                .arg(format!("-p{}", argument))
+                .arg(&impl_path)
+                .arg(&spec_path)
+                .output()
+                .expect("Failed to execute ltscompare");
+
+            assert!(
+                process.status.success(),
+                "ltscompare failed with status: {}",
+                process.status
+            );
+
+            let expected_result = String::from_utf8_lossy(&process.stdout).contains("true");
+            let result = refines(
+                impl_lts,
+                spec_lts,
+                refinement,
+                ExplorationStrategy::BFS,
+                false,
+                false,
+                &mut Timing::new(),
+            )
+            .0;
+
+            // Check that the result is the same.
+            assert_eq!(
+                expected_result, result,
+                "Mismatch between ltsconvert and our implementation"
+            );
+        });
+    }
 }

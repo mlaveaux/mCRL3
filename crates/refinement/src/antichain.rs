@@ -8,9 +8,9 @@ use merc_collections::VecSet;
 /// for any s, t in S neither s < t nor t < s holds. In other words, all
 /// elements of S are incomparable under the preorder <. This is dual to to
 /// notion of a chain.
-/// 
+///
 /// # Details
-/// 
+///
 /// This implementation stores pairs (s, T) in S.
 pub struct Antichain<K, V> {
     storage: HashMap<K, VecSet<VecSet<V>>>,
@@ -37,9 +37,9 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
     /// Checks whether the antichain contains a pair (s, T') such that T > T'.
     /// This is the inverse of the contains check, which checks for T < T'.
     pub fn contains_superset(&self, key: &K, value: &VecSet<V>) -> bool {
-        self.storage
-            .get(key)
-            .map_or(false, |entry| entry.iter().any(|inner_value| value.is_subset(inner_value)))
+        self.storage.get(key).map_or(false, |entry| {
+            entry.iter().any(|inner_value| value.is_subset(inner_value))
+        })
     }
 
     /// Returns true iff the antichain is empty.
@@ -59,9 +59,9 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
 
     /// Returns an iterator over the pairs in the antichain.
     pub fn iter(&self) -> impl Iterator<Item = (&K, &VecSet<V>)> {
-        self.storage.iter().flat_map(|(key, values)| {
-            values.iter().map(move |value| (key, value))
-        })
+        self.storage
+            .iter()
+            .flat_map(|(key, values)| values.iter().map(move |value| (key, value)))
     }
 }
 
@@ -97,12 +97,11 @@ impl<K, V: fmt::Debug + Ord> Antichain<K, V> {
 
 /// Represents the antichain data structure used in the refinement checks.
 pub trait AC<K: Eq + Hash, V: Clone + Ord> {
-
     /// Inserts the given (s, T) pair into the antichain and returns true iff it was
     /// not already present.
-    /// 
+    ///
     /// # Details
-    /// 
+    ///
     /// A pair (s, T) is `present` in `S` iff there exists a pair (s, T') in S such that T < T'.
     fn insert(&mut self, key: K, value: VecSet<V>) -> bool;
 
@@ -148,7 +147,7 @@ impl<K: Eq + Hash, V: Clone + Ord> AC<K, V> for Antichain<K, V> {
 
         inserted
     }
-    
+
     fn clear(&mut self) {
         self.storage.clear();
     }
@@ -170,7 +169,8 @@ mod tests {
     use merc_utilities::random_test;
     use rand::RngExt;
 
-    use crate::{AC, Antichain};
+    use crate::AC;
+    use crate::Antichain;
 
     #[test]
     fn test_antichain() {

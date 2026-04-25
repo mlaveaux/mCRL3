@@ -1215,9 +1215,9 @@ dependencies = [
  "merc_lts",
  "merc_reduction",
  "merc_utilities",
- "merc_vpg",
  "rand",
  "rustc-hash 2.1.2",
+ "tempfile",
  "test-log",
 ]
 
