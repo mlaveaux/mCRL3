@@ -6,49 +6,49 @@ slint::include_modules!();
 use std::ops::Deref;
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use clap::Parser;
 use clap::ValueEnum;
+use femtovg::Canvas;
 use femtovg::TextContext;
 use femtovg::renderer::WGPURenderer;
-use femtovg::Canvas;
 use log::debug;
 use log::info;
 use log::warn;
-use slint::invoke_from_event_loop;
-use slint::quit_event_loop;
 use slint::Image;
 use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
+use slint::invoke_from_event_loop;
+use slint::quit_event_loop;
 use wgpu::TextureDescriptor;
 use wgpu::TextureFormat;
 use wgpu::TextureUsages;
 
 use merc_io::LargeFormatter;
+use merc_lts::LTS;
+use merc_lts::LabelledTransitionSystem;
+use merc_lts::LtsFormat;
 use merc_lts::apply_lts;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
-use merc_lts::LabelledTransitionSystem;
-use merc_lts::LtsFormat;
-use merc_lts::LTS;
 use merc_ltsgraph_lib::FemtovgRenderer;
 use merc_ltsgraph_lib::GraphLayout;
 use merc_ltsgraph_lib::SkiaRenderer;
 use merc_ltsgraph_lib::Viewer;
-use merc_tools::init_console;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
+use merc_tools::init_console;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use merc_ltsgraph::PauseableThread;
 use merc_ltsgraph::init_wgpu;
 use merc_ltsgraph::show_error_dialog;
-use merc_ltsgraph::PauseableThread;
 
 /// Aligns a number up to the next multiple of the given alignment.
 pub const fn align_up(num: u32, align: u32) -> u32 {
@@ -358,7 +358,9 @@ async fn main() -> Result<ExitCode, MercError> {
                                     settings.label_text_size,
                                 )?;
 
-                                let buffer = femtovg_info.canvas.flush_to_output(&femtovg_info.texture)
+                                let buffer = femtovg_info
+                                    .canvas
+                                    .flush_to_output(&femtovg_info.texture)
                                     .ok_or("Failed to flush the output")?;
 
                                 // Copy the texture to a buffer such that it can be mapped on the CPU
