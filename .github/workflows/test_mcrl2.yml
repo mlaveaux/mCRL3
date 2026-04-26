@@ -23,7 +23,7 @@ jobs:
     - name: Install Ubuntu Dependencies
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages:  build-essential, cmake, git, libboost-dev,  libfontconfig1-dev, libfreetype6-dev
+        packages: build-essential, cmake, git, libboost-dev,  libfontconfig1-dev, libfreetype6-dev
         version: 1.0
 
     - name: Setup sccache
@@ -35,6 +35,11 @@ jobs:
     - name: Install nextest
       uses: taiki-e/install-action@nextest
       
+    - name: Checkout the repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
+
     - name: Checkout mCRL2
       uses: actions/checkout@v6
       with:
@@ -45,11 +50,6 @@ jobs:
 
     - name: Build mCRL2 toolset
       run: cmake -S mCRL2 -B mCRL2/build -DMCRL2_ENABLE_GUI_TOOLS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache && cmake --build mCRL2/build --config Release
-    
-    - name: Checkout the repository
-      uses: actions/checkout@v6
-      with:
-        submodules: true
 
     - name: Run mcrl2 specific tests
       run: cargo nextest run --no-fail-fast -- --include-ignored mcrl2
