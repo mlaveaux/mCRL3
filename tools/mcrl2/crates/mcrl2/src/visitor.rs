@@ -1,18 +1,3 @@
-use crate::is_abstraction;
-use crate::is_application;
-use crate::is_data_expression;
-use crate::is_function_symbol;
-use crate::is_machine_number;
-use crate::is_pbes_and;
-use crate::is_pbes_exists;
-use crate::is_pbes_forall;
-use crate::is_pbes_imp;
-use crate::is_pbes_not;
-use crate::is_pbes_or;
-use crate::is_pbes_propositional_variable_instantiation;
-use crate::is_untyped_identifier;
-use crate::is_variable;
-use crate::is_where_clause;
 use crate::DataAbstractionRef;
 use crate::DataApplicationRef;
 use crate::DataExpression;
@@ -33,6 +18,21 @@ use crate::PbesNotRef;
 use crate::PbesOrRef;
 use crate::PbesPropositionalVariableInstantiation;
 use crate::PbesPropositionalVariableInstantiationRef;
+use crate::is_abstraction;
+use crate::is_application;
+use crate::is_data_expression;
+use crate::is_function_symbol;
+use crate::is_machine_number;
+use crate::is_pbes_and;
+use crate::is_pbes_exists;
+use crate::is_pbes_forall;
+use crate::is_pbes_imp;
+use crate::is_pbes_not;
+use crate::is_pbes_or;
+use crate::is_pbes_propositional_variable_instantiation;
+use crate::is_untyped_identifier;
+use crate::is_variable;
+use crate::is_where_clause;
 
 pub trait DataExpressionVisitor {
     fn visit_variable(&mut self, _var: &DataVariableRef<'_>) -> Option<DataExpression> {
@@ -156,7 +156,8 @@ pub trait PbesExpressionVisitor {
         } else if is_pbes_exists(&expr.copy()) {
             self.visit_exists(&PbesExistsRef::from(expr.copy()))
         } else if is_data_expression(&expr.copy()) {
-            self.visit_data_expression(&expr.copy().into()).map(|inner| inner.into())
+            self.visit_data_expression(&expr.copy().into())
+                .map(|inner| inner.into())
         } else {
             unreachable!("Unknown pbes expression type");
         }
@@ -221,7 +222,6 @@ pub fn free_variables_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataV
     }
 
     impl DataExpressionVisitor for FreeVariableOccurrences<'_> {
-
         fn visit_abstraction(&mut self, abstraction: &DataAbstractionRef<'_>) -> Option<DataExpression> {
             self.context.extend(abstraction.variables().iter());
             self.visit(&abstraction.body())
@@ -235,7 +235,10 @@ pub fn free_variables_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataV
         }
     }
 
-    let mut occurrences = FreeVariableOccurrences { result: &mut result, context: Vec::new() };
+    let mut occurrences = FreeVariableOccurrences {
+        result: &mut result,
+        context: Vec::new(),
+    };
     occurrences.visit(expr);
     result
 }

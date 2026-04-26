@@ -41,7 +41,6 @@ use mcrl2_sys::pbes::ffi::stategraph_algorithm;
 use mcrl2_sys::pbes::ffi::stategraph_equation;
 use merc_utilities::MercError;
 
-use crate::lock_global;
 use crate::ATerm;
 use crate::ATermList;
 use crate::ATermString;
@@ -50,6 +49,7 @@ use crate::DataSpecification;
 use crate::DataVariable;
 use crate::PbesExpression;
 use crate::PbesPropositionalVariableInstantiation;
+use crate::lock_global;
 
 /// mcrl2::pbes_system::pbes
 pub struct Pbes {
@@ -302,7 +302,7 @@ impl PredicateVariable {
         PredicateVariable {
             _variable: variable,
             pvi: PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(var)
+                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(var),
             )),
             used: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_used(var),
             changed: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_changed(var),
@@ -373,7 +373,9 @@ impl SrfPbes {
 
     /// Convert the SRF PBES back to a PBES.
     pub fn to_pbes(&self) -> Pbes {
-        Pbes::new(mcrl2_srf_pbes_to_pbes(self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null")))
+        Pbes::new(mcrl2_srf_pbes_to_pbes(
+            self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null"),
+        ))
     }
 
     /// Unify all parameters of the equations.

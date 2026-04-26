@@ -281,9 +281,9 @@ pub fn permutation_group_size(n: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use merc_utilities::random_test;
+    use rand::RngExt;
     use rand::seq::IteratorRandom;
     use rand::seq::SliceRandom;
-    use rand::RngExt;
 
     use super::*;
 
