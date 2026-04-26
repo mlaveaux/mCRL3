@@ -44,7 +44,7 @@ jobs:
       uses: actions/checkout@v6
       with:
         repository: mCRL2org/mCRL2
-        sha: 4f357eccc1e8b9105db95742f9dda03e069f0918
+        ref: 4f357eccc1e8b9105db95742f9dda03e069f0918
         path: mCRL2
         submodules: true
 
@@ -57,4 +57,4 @@ jobs:
         RUST_BACKTRACE: full
         RUST_LOG: debug
         RUSTC_WRAPPER: sccache
-        MCRL2_PATH: mCRL2/build/stage/bin
+        MCRL2_PATH: ${{ github.workspace }}/mCRL2/build/stage/bin

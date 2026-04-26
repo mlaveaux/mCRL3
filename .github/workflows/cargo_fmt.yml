@@ -1,0 +1,49 @@
+name: Cargo Fmt
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    
+env:
+  CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: on
+
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+
+    steps:    
+    - name: Install Ubuntu Dependencies
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: llvm, libfontconfig1-dev, libfreetype6-dev
+        version: 1.0
+      if: matrix.os == 'ubuntu-latest'
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+
+    - uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rustfmt
+
+    - name: Run cargo fmt --check
+      run: cargo +nightly fmt --all -- --check
+
+    - name: Run cargo fmt --check for GUI tools
+      run: cargo +nightly fmt --all -- --check
+      working-directory: tools/gui
+
+    - name: Run cargo fmt --check for mCRL2 tools
+      run: cargo +nightly fmt --all -- --check
+      working-directory: tools/mcrl2
