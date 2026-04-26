@@ -14,6 +14,7 @@ use merc_lts::AutStream;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
 use merc_lts::LtsFormat;
+use merc_lts::LtsMultiAction;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
@@ -485,7 +486,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         .iter()
         .map(|path| {
             let file = File::open(path)?;
-            let lts = read_aut(&file, args.tau.clone().unwrap_or_default())?;
+            let lts = read_aut(&file)?;
 
             lts.relabel(|label| LtsMultiAction::from_string(&label))
         })
