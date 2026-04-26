@@ -12,17 +12,17 @@ use std::sync::atomic::Ordering;
 /// a corresponding freelist.
 pub unsafe trait FreeListEntry: Sized {
     /// Returns the next pointer for `ptr` (or null).
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// `ptr` must be a valid pointer to a node managed by the corresponding
     /// freelist.
     unsafe fn get_next(ptr: *mut Self) -> *mut Self;
 
     /// Sets the next pointer for `ptr`.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// `ptr` must be a valid pointer to a node managed by the corresponding
     /// freelist, and `next` must be either null or a valid pointer to a node
     /// managed by the same freelist.

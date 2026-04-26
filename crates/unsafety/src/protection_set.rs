@@ -105,7 +105,7 @@ impl<T> ProtectionSet<T> {
                 self.roots.push(Entry {
                     object: ManuallyDrop::new(object),
                 });
-                
+
                 self.roots.len() - 1
             }
         };

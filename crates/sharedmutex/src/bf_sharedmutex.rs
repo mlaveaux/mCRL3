@@ -151,10 +151,14 @@ impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
     fn deref(&self) -> &Self::Target {
         // We are the only guard after `write()`, so we can provide immutable access to the underlying object. (No mutable references the guard can exist)
         #[cfg(not(loom))]
-        unsafe { &*self.mutex.shared.object.get() }
+        unsafe {
+            &*self.mutex.shared.object.get()
+        }
 
         #[cfg(loom)]
-        unsafe { self.ptr.deref() }
+        unsafe {
+            self.ptr.deref()
+        }
     }
 }
 
@@ -162,10 +166,14 @@ impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
         #[cfg(not(loom))]
-        unsafe { &mut *self.mutex.shared.object.get() }
-        
+        unsafe {
+            &mut *self.mutex.shared.object.get()
+        }
+
         #[cfg(loom)]
-        unsafe { self.ptr.deref() }
+        unsafe {
+            self.ptr.deref()
+        }
     }
 }
 
@@ -202,10 +210,14 @@ impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
     fn deref(&self) -> &Self::Target {
         // There can only be shared guards, which only provide immutable access to the object.
         #[cfg(not(loom))]
-        unsafe { &*self.mutex.shared.object.get() }
+        unsafe {
+            &*self.mutex.shared.object.get()
+        }
 
         #[cfg(loom)]
-        unsafe { self.ptr.deref() }
+        unsafe {
+            self.ptr.deref()
+        }
     }
 }
 
@@ -249,9 +261,10 @@ impl<T> BfSharedMutex<T> {
         }
 
         // We now have immutable access to the object due to the protocol.
-        Ok(BfSharedMutexReadGuard { mutex: self,
+        Ok(BfSharedMutexReadGuard {
+            mutex: self,
             #[cfg(loom)]
-            ptr: self.shared.object.get()
+            ptr: self.shared.object.get(),
         })
     }
 
@@ -265,9 +278,10 @@ impl<T> BfSharedMutex<T> {
     /// guard has already been produced is undefined behaviour unless the guard was forgotten
     /// with `mem::forget`.
     pub unsafe fn create_read_guard_unchecked(&self) -> BfSharedMutexReadGuard<'_, T> {
-        BfSharedMutexReadGuard { mutex: self,
+        BfSharedMutexReadGuard {
+            mutex: self,
             #[cfg(loom)]
-            ptr: self.shared.object.get()
+            ptr: self.shared.object.get(),
         }
     }
 
@@ -333,7 +347,7 @@ impl<T> BfSharedMutex<T> {
             mutex: self,
             guard: other,
             #[cfg(loom)]
-            ptr: self.shared.object.get_mut()
+            ptr: self.shared.object.get_mut(),
         })
     }
 
@@ -354,9 +368,13 @@ impl<T> BfSharedMutex<T> {
     /// Obtain mutable access to the object without locking, is safe because we have mutable access.
     pub fn get_mut(&mut self) -> &mut T {
         #[cfg(not(loom))]
-        unsafe { &mut *self.shared.object.get() }
+        unsafe {
+            &mut *self.shared.object.get()
+        }
         #[cfg(loom)]
-        unsafe { self.shared.object.get_mut().with(|ptr| &mut *ptr) }
+        unsafe {
+            self.shared.object.get_mut().with(|ptr| &mut *ptr)
+        }
     }
 }
 
