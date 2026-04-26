@@ -61,7 +61,7 @@ impl<T: FreeListEntry> FreeList<T> {
             let next = unsafe { T::get_next(head) };
             match self
                 .head
-                .compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire)
+                .compare_exchange_weak(head, next, Ordering::Acquire, Ordering::Relaxed)
             {
                 Ok(_) => {
                     // Safety: `head` was checked non-null above and was observed as list head.
