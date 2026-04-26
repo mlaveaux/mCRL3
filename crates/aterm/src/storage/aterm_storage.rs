@@ -22,7 +22,7 @@ use crate::storage::SharedTermLookup;
 /// or not.
 pub(crate) struct ATermStorage {
     /// Stores terms of any arity.
-    terms: StablePointerSet<SharedTerm>,
+    terms: StablePointerSet<SharedTerm, FxBuildHasher>,
 
     /// Stores the fixed size [SharedTermInt] integer terms.
     int_terms: StablePointerSet<SharedTermInt, FxBuildHasher, AllocBlock<SharedTermInt, 1024>>,
@@ -42,7 +42,7 @@ impl ATermStorage {
     /// Creates a new, empty storage.
     pub fn new() -> Self {
         Self {
-            terms: StablePointerSet::new(),
+            terms: StablePointerSet::with_hasher(FxBuildHasher),
             int_terms: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
             terms_0: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
             terms_1: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
@@ -196,7 +196,6 @@ impl ATermStorage {
             .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 0) }));
         self.terms_0
             .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 0) }));
-
         self.terms_1
             .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 1) }));
         self.terms_2
