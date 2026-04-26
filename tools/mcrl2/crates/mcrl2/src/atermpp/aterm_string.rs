@@ -46,4 +46,3 @@ impl fmt::Display for ATermStringRef<'_> {
         write!(f, "{}", self.str())
     }
 }
-

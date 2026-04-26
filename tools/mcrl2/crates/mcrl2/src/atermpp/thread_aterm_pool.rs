@@ -21,19 +21,19 @@ use mcrl2_sys::cxx::UniquePtr;
 use merc_unsafety::ProtectionIndex;
 use merc_unsafety::ProtectionSet;
 
-use crate::atermpp::BfTermPoolThreadWrite;
-use crate::atermpp::Symbol;
 use crate::ATerm;
 use crate::ATermRef;
+use crate::atermpp::BfTermPoolThreadWrite;
+use crate::atermpp::Symbol;
 
-use super::global_aterm_pool::mark_protection_sets;
-use super::global_aterm_pool::protection_set_size;
-use super::global_aterm_pool::ATermPtr;
-use super::global_aterm_pool::SharedContainerProtectionSet;
-use super::global_aterm_pool::SharedProtectionSet;
-use super::global_aterm_pool::GLOBAL_TERM_POOL;
 use super::Markable;
 use super::SymbolRef;
+use super::global_aterm_pool::ATermPtr;
+use super::global_aterm_pool::GLOBAL_TERM_POOL;
+use super::global_aterm_pool::SharedContainerProtectionSet;
+use super::global_aterm_pool::SharedProtectionSet;
+use super::global_aterm_pool::mark_protection_sets;
+use super::global_aterm_pool::protection_set_size;
 
 /// The number of times before garbage collection is tested again.
 const TEST_GC_INTERVAL: usize = 100;
@@ -213,9 +213,7 @@ impl ThreadTermPool {
             let mut protection_set = self.protection_set.write_exclusive();
             trace!(
                 "Dropped term {:?}, index {}, protection set {}",
-                term.term,
-                term.root,
-                self.index
+                term.term, term.root, self.index
             );
             protection_set.unprotect(term.root);
         }
@@ -227,8 +225,7 @@ impl ThreadTermPool {
             let mut container_protection_set = self.container_protection_set.write_exclusive();
             trace!(
                 "Dropped container index {}, protection set {}",
-                container_root,
-                self.index
+                container_root, self.index
             );
             container_protection_set.unprotect(container_root);
         }
@@ -261,9 +258,7 @@ impl ThreadTermPool {
         let term = ATermRef::new(term);
         trace!(
             "Protected term {:?}, index {}, protection set {}",
-            term,
-            root,
-            self.index
+            term, root, self.index
         );
 
         let result = ATerm::from_ref(term, root);
@@ -320,8 +315,8 @@ mod tests {
     use std::thread;
 
     use rand::RngExt;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     use crate::random_term;
 

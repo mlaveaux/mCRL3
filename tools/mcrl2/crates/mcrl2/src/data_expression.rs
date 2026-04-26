@@ -1,13 +1,13 @@
 use mcrl2_macros::mcrl2_derive_terms;
 use mcrl2_sys::data::ffi::assignment_pair;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_abstraction;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_application;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_bag_comp;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_exists;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_forall;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_lambda;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_set_comp;
-use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_bag_comp;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_binder_untyped_set_bag_comp;
-use mcrl2_sys::data::ffi::mcrl2_data_expression_is_application;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_data_expression;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_function_symbol;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_machine_number;
@@ -36,7 +36,11 @@ pub fn is_application(term: &ATermRef<'_>) -> bool {
 /// Checks if this term is a binding operator, i.e., lambda, forall, or exists.
 pub fn is_binding_operator(term: &ATermRef<'_>) -> bool {
     term.require_valid();
-    is_lambda_binder(term) || is_forall_binder(term) || is_exists_binder(term) || is_set_comprehension_binder(term) || is_bag_comprehension_binder(term)
+    is_lambda_binder(term)
+        || is_forall_binder(term)
+        || is_exists_binder(term)
+        || is_set_comprehension_binder(term)
+        || is_bag_comprehension_binder(term)
 }
 
 /// Checks if this term is a lambda binder
@@ -74,7 +78,6 @@ pub fn is_untyped_set_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_untyped_set_bag_comp(term.get())
 }
-
 
 /// Checks if this term is a data abstraction.
 pub fn is_abstraction(term: &ATermRef<'_>) -> bool {
@@ -188,7 +191,7 @@ mod inner {
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
         pub fn data_sort(&self) -> SortExpression {
             if is_function_symbol(&self.term) {
-                DataFunctionSymbolRef::from(self.term.copy()).sort().protect()        
+                DataFunctionSymbolRef::from(self.term.copy()).sort().protect()
             } else if is_variable(&self.term) {
                 DataVariableRef::from(self.term.copy()).sort().protect()
             } else {
@@ -227,7 +230,7 @@ mod inner {
     impl DataVariable {
         /// Returns the name of the variable.
         pub fn name(&self) -> ATermStringRef<'_> {
-           self.term.arg(0).into()
+            self.term.arg(0).into()
         }
 
         /// Returns the sort of the variable.
@@ -402,12 +405,14 @@ mod inner {
     pub struct DataUntypedIdentifier {
         pub term: ATerm,
     }
-
 }
 
 pub use inner::*;
 
-pub fn substitute_variables(data_expression: &DataExpressionRef, sigma: Vec<(DataExpression, DataExpression)>) -> DataExpression {
+pub fn substitute_variables(
+    data_expression: &DataExpressionRef,
+    sigma: Vec<(DataExpression, DataExpression)>,
+) -> DataExpression {
     // Do not into_iter here, as we need to keep sigma alive for the call.
     let sigma: Vec<assignment_pair> = sigma
         .iter()
@@ -423,19 +428,18 @@ pub fn substitute_variables(data_expression: &DataExpressionRef, sigma: Vec<(Dat
     )))
 }
 
-
-// Allowed conversions     
+// Allowed conversions
 impl From<DataVariable> for DataExpression {
     fn from(var: DataVariable) -> Self {
         Self::new(var.into())
     }
 }
-        
+
 impl From<DataAbstraction> for DataExpression {
     fn from(var: DataAbstraction) -> Self {
         Self::new(var.into())
     }
-}  
+}
 
 impl From<DataApplication> for DataExpression {
     fn from(var: DataApplication) -> Self {
@@ -467,18 +471,18 @@ impl From<DataUntypedIdentifier> for DataExpression {
     }
 }
 
-// Reference variants 
+// Reference variants
 impl<'a> From<DataVariableRef<'a>> for DataExpressionRef<'a> {
     fn from(var: DataVariableRef<'a>) -> Self {
         Self::new(var.into())
     }
 }
-        
+
 impl<'a> From<DataAbstractionRef<'a>> for DataExpressionRef<'a> {
     fn from(var: DataAbstractionRef<'a>) -> Self {
         Self::new(var.into())
     }
-}  
+}
 
 impl<'a> From<DataApplicationRef<'a>> for DataExpressionRef<'a> {
     fn from(var: DataApplicationRef<'a>) -> Self {
@@ -510,18 +514,18 @@ impl<'a> From<DataUntypedIdentifierRef<'a>> for DataExpressionRef<'a> {
     }
 }
 
-// Allowed conversions     
+// Allowed conversions
 impl From<DataExpression> for DataVariable {
     fn from(var: DataExpression) -> Self {
         Self::new(var.into())
     }
 }
-        
+
 impl From<DataExpression> for DataAbstraction {
     fn from(var: DataExpression) -> Self {
         Self::new(var.into())
     }
-}  
+}
 
 impl From<DataExpression> for DataApplication {
     fn from(var: DataExpression) -> Self {
@@ -553,18 +557,18 @@ impl From<DataExpression> for DataUntypedIdentifier {
     }
 }
 
-// Reference variants 
+// Reference variants
 impl<'a> From<DataExpressionRef<'a>> for DataVariableRef<'a> {
     fn from(var: DataExpressionRef<'a>) -> Self {
         Self::new(var.into())
     }
 }
-        
+
 impl<'a> From<DataExpressionRef<'a>> for DataAbstractionRef<'a> {
     fn from(var: DataExpressionRef<'a>) -> Self {
         Self::new(var.into())
     }
-}  
+}
 
 impl<'a> From<DataExpressionRef<'a>> for DataApplicationRef<'a> {
     fn from(var: DataExpressionRef<'a>) -> Self {

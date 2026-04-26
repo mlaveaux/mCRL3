@@ -190,7 +190,7 @@ fn handle_export(args: ExportArgs) -> Result<(), MercError> {
         PbesFormat::Pbes => Pbes::from_file(&args.filename)?,
         PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
     };
-    
+
     if let Some(output_filename) = args.output {
         let mut file = std::fs::File::create(output_filename)?;
         export::export(&mut file, &pbes)?;

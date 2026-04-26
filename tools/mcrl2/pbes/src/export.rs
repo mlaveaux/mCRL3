@@ -2,16 +2,16 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use log::debug;
-use mcrl2::Pbes;
-use mcrl2::free_variables_data_expression;
-use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataVariable;
+use mcrl2::Pbes;
 use mcrl2::PbesExpressionRef;
 use mcrl2::PbesExpressionVisitor;
 use mcrl2::PbesPropositionalVariableInstantiation;
 use mcrl2::SrfEquation;
 use mcrl2::SrfSummand;
+use mcrl2::free_variables_data_expression;
+use mcrl2::is_pbes_propositional_variable_instantiation;
 use merc_utilities::MercError;
 
 use crate::symmetry::SymmetryAlgorithm;
@@ -36,7 +36,8 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     };
 
     // Figure out the control flow parameters.
-    let all_control_flow_parameters = symmetries.state_graph()
+    let all_control_flow_parameters = symmetries
+        .state_graph()
         .control_flow_graphs()
         .iter()
         .map(variable_index)
@@ -74,10 +75,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
 
     for equation in symmetries.srf_pbes().equations() {
         for (clause_index, clause) in equation.summands().iter().enumerate() {
-            clauses.insert(
-                (equation.variable().name().to_string(), clause_index),
-                unique_index,
-            );
+            clauses.insert((equation.variable().name().to_string(), clause_index), unique_index);
             clause_indices.push(unique_index);
             mapping.insert(
                 unique_index,
@@ -87,7 +85,12 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
             // Compute used-for and map the variables back to their position in the variables.
             let mut used_for_indices: Vec<usize> = used_for(clause)
                 .iter()
-                .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
+                .map(|var| {
+                    parameters
+                        .iter()
+                        .position(|param| param.name() == var.name())
+                        .expect("variable must exist in unified parameters")
+                })
                 .collect();
             used_for_indices.sort_unstable();
             used_for_indices.dedup();
@@ -99,7 +102,12 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                 unique_index,
                 used_in(equation, clause)
                     .iter()
-                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
+                    .map(|var| {
+                        parameters
+                            .iter()
+                            .position(|param| param.name() == var.name())
+                            .expect("variable must exist in unified parameters")
+                    })
                     .collect(),
             );
 
@@ -108,7 +116,12 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                 unique_index,
                 changed_by(equation, clause)
                     .iter()
-                    .map(|var| parameters.iter().position(|param| param.name() == var.name()).expect("variable must exist in unified parameters"))
+                    .map(|var| {
+                        parameters
+                            .iter()
+                            .position(|param| param.name() == var.name())
+                            .expect("variable must exist in unified parameters")
+                    })
                     .collect(),
             );
 
@@ -135,9 +148,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                     continue;
                 }
 
-                let vector = src_tgt
-                    .entry(*variable)
-                    .or_insert_with(Vec::new);
+                let vector = src_tgt.entry(*variable).or_insert_with(Vec::new);
 
                 if !vector.contains(&clause_index) {
                     vector.push(clause_index);
@@ -150,8 +161,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                     continue;
                 }
 
-                let vector = copy.entry(*variable)
-                    .or_insert_with(Vec::new);
+                let vector = copy.entry(*variable).or_insert_with(Vec::new);
 
                 if !vector.contains(&clause_index) {
                     vector.push(clause_index);
@@ -164,7 +174,10 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     let mut cliques = BTreeMap::new();
     for (clique_index, clique) in symmetry_cliques.iter().enumerate() {
         for parameter_index in clique.iter() {
-            cliques.insert(all_control_flow_parameters[*parameter_index], format!("clique{}", clique_index));
+            cliques.insert(
+                all_control_flow_parameters[*parameter_index],
+                format!("clique{}", clique_index),
+            );
         }
     }
 
@@ -371,12 +384,15 @@ mod tests {
             }
             Err(err) => panic!("Failed to read snapshot {}: {}", expected_path, err),
         };
-        
+
         // Normalize line endings for cross-platform comparison
         let output_normalized = output.replace("\r\n", "\n");
         let expected_normalized = expected.replace("\r\n", "\n");
-        
-        assert_eq!(output_normalized, expected_normalized, "The exported JSON does not match the expected output");
+
+        assert_eq!(
+            output_normalized, expected_normalized,
+            "The exported JSON does not match the expected output"
+        );
     }
 
     #[test]

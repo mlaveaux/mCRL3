@@ -23,11 +23,11 @@ use mcrl2::PbesStategraph;
 use mcrl2::SrfPbes;
 use mcrl2::StategraphEquation;
 use mcrl2::Symbol;
-use mcrl2::variable_occurrences_data_expression;
 use mcrl2::pbes_expression_pvi;
 use mcrl2::reorder_propositional_variables;
 use mcrl2::substitute_data_expressions;
 use mcrl2::substitute_variables;
+use mcrl2::variable_occurrences_data_expression;
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
@@ -608,12 +608,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Checks whether the data parameters of two sets are equal under the given permutation.
-    fn equal_under_permutation(
-        &self,
-        pi: &Permutation,
-        left: &[usize],
-        right: &[usize],
-    ) -> Result<(), MercError> {
+    fn equal_under_permutation(&self, pi: &Permutation, left: &[usize], right: &[usize]) -> Result<(), MercError> {
         if left.len() != right.len() {
             return Err(format!(
                 "Cannot be equal: left has size {}, right has size {}",
@@ -673,7 +668,10 @@ impl SymmetryAlgorithm {
 }
 
 /// Applies the necessary preprocessing steps to use in the symmetry algorithm.
-fn preprocess_symmetry(pbes: &Pbes, print_srf: bool) -> Result<(SrfPbes, Vec<DataVariable>, PbesStategraph), MercError> {
+fn preprocess_symmetry(
+    pbes: &Pbes,
+    print_srf: bool,
+) -> Result<(SrfPbes, Vec<DataVariable>, PbesStategraph), MercError> {
     let mut srf = SrfPbes::from(pbes)?;
     srf.unify_parameters(false, false)?;
     if print_srf {
@@ -761,20 +759,20 @@ const UNDEFINED_VERTEX: usize = usize::MAX;
 /// Returns the index of the variable that the control flow graph represents.
 pub fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Find the first defined index
-    let defined_index = cfg.vertices().iter().find(|v| v.index() != UNDEFINED_VERTEX)
+    let defined_index = cfg
+        .vertices()
+        .iter()
+        .find(|v| v.index() != UNDEFINED_VERTEX)
         .expect("Control flow graph should have defined variable index.")
         .index();
 
     // Check that all the vertices have the same variable assigned for consistency
     cfg.vertices().iter().for_each(|v| {
-        if v.index() != UNDEFINED_VERTEX
-            && v.index()
-                != defined_index
-        {
+        if v.index() != UNDEFINED_VERTEX && v.index() != defined_index {
             panic!("Inconsistent variable index {} in control flow graph.", v.index());
         }
     });
-    
+
     defined_index
 }
 

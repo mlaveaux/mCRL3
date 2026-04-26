@@ -32,8 +32,8 @@ mod inner {
         #[mcrl2_ignore]
         pub fn with_value(value: u64) -> Self {
             Self {
-                term: THREAD_TERM_POOL.with_borrow(|tp| tp.create_int(value))   
-            }                     
+                term: THREAD_TERM_POOL.with_borrow(|tp| tp.create_int(value)),
+            }
         }
 
         /// Returns the integer value.
@@ -59,4 +59,3 @@ impl fmt::Display for ATermIntRef<'_> {
         write!(f, "{}", self.value())
     }
 }
-
