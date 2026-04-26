@@ -206,7 +206,7 @@ pub struct BfSharedMutexReadGuard<'a, T> {
     mutex: &'a BfSharedMutex<T>,
 
     /// When loom is enabled, we store a read reference tracked by Loom.
-   #[cfg(loom)]
+    #[cfg(loom)]
     ptr: ManuallyDrop<loom::cell::ConstPtr<T>>,
 }
 

@@ -406,7 +406,7 @@ impl ThreadTermPool {
         }
     }
 
-    /// Returns a refernece to the send term protection set.
+    /// Returns a reference to the send term protection set.
     pub fn send_term_protection_set(&self) -> &Arc<Mutex<ProtectionSet<ATermIndex>>> {
         &self.send_term_protection_set
     }
