@@ -134,7 +134,7 @@ let expr_ref: DataExpressionRef = expr.copy();
 
 ## Safety
 
-This crate does use `unsafe` for some of the more intricrate parts of the
+This crate does use `unsafe` for some of the more intricate parts of the
 library, but every module that only uses safe Rust is marked with
 `#![forbid(unsafe_code)]`. This crate is a full reimplementation of the ATerm
 library used in the [mCRL2](https://mcrl2.org) toolset.
