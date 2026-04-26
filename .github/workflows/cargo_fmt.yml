@@ -15,7 +15,7 @@ env:
   SCCACHE_GHA_ENABLED: on
 
 jobs:
-  clippy:
+  fmt:
     runs-on: ubuntu-latest
 
     steps:    

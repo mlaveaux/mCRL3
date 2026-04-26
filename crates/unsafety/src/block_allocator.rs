@@ -31,7 +31,7 @@ use crate::FreeListEntry;
 /// of `T`.
 ///
 /// # Safety
-/// 
+///
 /// Implementing this trait for a type `T` asserts that the special sentinel value
 /// used internally to mark free entries in the block allocator can never collide.
 pub unsafe trait BlockAllocatorSafe {}
