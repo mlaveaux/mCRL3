@@ -14,11 +14,14 @@ mod inner {
     pub use std::sync::MutexGuard;
     pub use std::sync::atomic::AtomicBool;
     pub use std::sync::atomic::Ordering;
+    pub use std::sync::atomic::fence;
 }
 
 // We replace the standard implementation by loom's implementation.
 #[cfg(loom)]
 mod inner {
+    pub use std::mem::ManuallyDrop;
+
     pub use loom::cell::UnsafeCell;
     pub use loom::hint::spin_loop;
     pub use loom::sync::Arc;
@@ -26,6 +29,7 @@ mod inner {
     pub use loom::sync::MutexGuard;
     pub use loom::sync::atomic::AtomicBool;
     pub use loom::sync::atomic::Ordering;
+    pub use loom::sync::atomic::fence;
 }
 
 use inner::*;
@@ -139,9 +143,9 @@ pub struct BfSharedMutexWriteGuard<'a, T> {
 
     guard: MutexGuard<'a, Vec<Option<Arc<CachePadded<SharedMutexControl>>>>>,
 
-    /// When loom is enabled, we store a shared reference tracked by Loom.
+    /// When loom is enabled, we store a write reference tracked by Loom.
     #[cfg(loom)]
-    ptr: loom::cell::MutPtr<T>,
+    ptr: ManuallyDrop<loom::cell::MutPtr<T>>,
 }
 
 /// Allow dereferencing the underlying object.
@@ -157,7 +161,7 @@ impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
 
         #[cfg(loom)]
         unsafe {
-            self.ptr.deref()
+            self.ptr.deref().deref()
         }
     }
 }
@@ -172,13 +176,19 @@ impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
 
         #[cfg(loom)]
         unsafe {
-            self.ptr.deref()
+            self.ptr.deref().deref()
         }
     }
 }
 
 impl<T> Drop for BfSharedMutexWriteGuard<'_, T> {
     fn drop(&mut self) {
+        // End Loom's write tracking before releasing the protocol.
+        #[cfg(loom)]
+        unsafe {
+            ManuallyDrop::drop(&mut self.ptr);
+        }
+
         // Allow other threads to acquire access to the shared mutex.
         for control in self.guard.iter().flatten() {
             control.forbidden.store(false, Ordering::Release);
@@ -195,9 +205,9 @@ unsafe impl<T: Sync> Sync for BfSharedMutexWriteGuard<'_, T> {}
 pub struct BfSharedMutexReadGuard<'a, T> {
     mutex: &'a BfSharedMutex<T>,
 
-    /// When loom is enabled, we store a shared reference tracked by Loom.
-    #[cfg(loom)]
-    ptr: loom::cell::ConstPtr<T>,
+    /// When loom is enabled, we store a read reference tracked by Loom.
+   #[cfg(loom)]
+    ptr: ManuallyDrop<loom::cell::ConstPtr<T>>,
 }
 
 // SAFETY: Sharing &ReadGuard across threads only exposes &T.
@@ -216,7 +226,7 @@ impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
 
         #[cfg(loom)]
         unsafe {
-            self.ptr.deref()
+            self.ptr.deref().deref()
         }
     }
 }
@@ -227,6 +237,12 @@ impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
             self.mutex.control.busy.load(Ordering::Relaxed),
             "Cannot unlock shared lock that was not acquired"
         );
+
+        // End Loom's read tracking before releasing the protocol.
+        #[cfg(loom)]
+        unsafe {
+            ManuallyDrop::drop(&mut self.ptr);
+        }
 
         // Release is sufficient, this synchronises the writes of this thread with writer.
         self.mutex.control.busy.store(false, Ordering::Release);
@@ -242,6 +258,7 @@ impl<T> BfSharedMutex<T> {
         );
 
         self.control.busy.store(true, Ordering::Relaxed);
+        fence(Ordering::SeqCst);
         while self.control.forbidden.load(Ordering::Acquire) {
             // Signal the writer that this thread is no longer busy, allowing it to make progress.
             self.control.busy.store(false, Ordering::Relaxed);
@@ -264,7 +281,7 @@ impl<T> BfSharedMutex<T> {
         Ok(BfSharedMutexReadGuard {
             mutex: self,
             #[cfg(loom)]
-            ptr: self.shared.object.get(),
+            ptr: ManuallyDrop::new(self.shared.object.get()),
         })
     }
 
@@ -281,7 +298,7 @@ impl<T> BfSharedMutex<T> {
         BfSharedMutexReadGuard {
             mutex: self,
             #[cfg(loom)]
-            ptr: self.shared.object.get(),
+            ptr: ManuallyDrop::new(self.shared.object.get()),
         }
     }
 
@@ -330,6 +347,8 @@ impl<T> BfSharedMutex<T> {
             control.forbidden.store(true, Ordering::Relaxed);
         }
 
+        fence(Ordering::SeqCst);
+
         // Wait for the instances to exit their busy status.
         for (index, option) in other.iter().enumerate() {
             if index != self.index
@@ -347,7 +366,7 @@ impl<T> BfSharedMutex<T> {
             mutex: self,
             guard: other,
             #[cfg(loom)]
-            ptr: self.shared.object.get_mut(),
+            ptr: ManuallyDrop::new(self.shared.object.get_mut()),
         })
     }
 
