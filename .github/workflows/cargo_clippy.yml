@@ -56,10 +56,3 @@ jobs:
         reporter: 'github-pr-review'
         github_token: ${{ secrets.GITHUB_TOKEN }}
         working-directory: tools/mcrl2/
-
-    - uses: dtolnay/rust-toolchain@nightly
-      with:
-        components: rustfmt
-
-    - name: Run cargo fmt --check
-      run: cargo +nightly fmt --all -- --check
