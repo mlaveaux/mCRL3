@@ -5,6 +5,7 @@ use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
 use merc_unsafety::AllocBlock;
+use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
 use merc_unsafety::StablePointerSet;
 use rustc_hash::FxBuildHasher;
@@ -259,6 +260,10 @@ pub(crate) struct SharedTermFixed<const N: usize> {
     pub(crate) args: [ATermIndex; N],
 }
 
+// Safety: The first field is a heap pointer. Heap pointers are always well above the small alignment value returned by
+// `std::ptr::dangling_mut()`, so the sentinel can never collide with a live entry.
+unsafe impl<const N: usize> BlockAllocatorSafe for SharedTermFixed<N> {}
+
 /// Storage for integer ATerms.
 ///
 /// Should be the same layout as [`crate::SharedTerm`] for the shared fields.
@@ -271,6 +276,9 @@ pub(crate) struct SharedTermInt {
     /// and has arity 0.
     annotation: usize,
 }
+
+// Safety: Same reasoning as `SharedTermFixed` — the first field is a heap pointer.
+unsafe impl BlockAllocatorSafe for SharedTermInt {}
 
 impl SharedTermInt {
     /// Returns the value of the integer term.
