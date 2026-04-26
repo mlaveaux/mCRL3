@@ -26,6 +26,16 @@ use itertools::Itertools;
 use crate::FreeList;
 use crate::FreeListEntry;
 
+/// Marker trait asserting that `std::ptr::dangling_mut::<Entry<T>>()` can never
+/// appear as the first `size_of::<*mut _>()` bytes of any valid value
+/// of `T`.
+///
+/// # Safety
+/// 
+/// Implementing this trait for a type `T` asserts that the special sentinel value
+/// used internally to mark free entries in the block allocator can never collide.
+pub unsafe trait BlockAllocatorSafe {}
+
 /// This is a slab allocator or also called block allocator for a concrete type
 /// `T`. It stores blocks of `N` to minimize the overhead of individual memory
 /// allocations, which are typically in the range of one or two words.
@@ -127,7 +137,10 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
     /// Removes empty blocks from the block list. Should be called periodically
     /// to prevent memory usage from growing indefinitely.
-    pub fn remove_free_blocks(&mut self) -> usize {
+    pub fn remove_free_blocks(&mut self) -> usize
+    where
+        T: BlockAllocatorSafe,
+    {
         // A special value that must not occur in the values of `T`.
         let nonexisting_value = std::ptr::dangling_mut();
 
@@ -276,7 +289,10 @@ impl<T, const N: usize> AllocBlock<T, N> {
     }
 
     /// Removes free blocks from the underlying block allocator, see [`BlockAllocator::remove_free_blocks`].
-    pub fn remove_free_blocks(&mut self) {
+    pub fn remove_free_blocks(&mut self)
+    where
+        T: BlockAllocatorSafe,
+    {
         self.block_allocator.remove_free_blocks();
     }
 }
@@ -386,6 +402,10 @@ mod tests {
     use merc_utilities::random_test;
 
     use super::BlockAllocator;
+    use super::BlockAllocatorSafe;
+
+    // In practice u64 is used only in tests; real clients must audit their types.
+    unsafe impl BlockAllocatorSafe for u64 {}
 
     #[test]
     // #[cfg_attr(miri, ignore)]
@@ -446,19 +466,33 @@ mod tests {
     #[cfg(loom)]
     fn test_loom_block_allocator() {
         loom::model(|| {
-            let block_allocator = loom::sync::Arc::new(BlockAllocator::<bool, 4>::new());
+            let block_allocator = loom::sync::Arc::new(BlockAllocator::<loom::cell::UnsafeCell<u32>, 4>::new());
 
             let threads: Vec<_> = (0..3)
                 .map(|_| {
                     let block_allocator = block_allocator.clone();
 
                     loom::thread::spawn(move || {
+                        let mut ptrs = Vec::new();
                         for _ in 0..10 {
                             let ptr = block_allocator.allocate_object().unwrap();
                             unsafe {
-                                ptr.as_ptr().write(true);
+                                // Construct a loom UnsafeCell in the allocated slot so
+                                // loom can instrument all subsequent accesses.
+                                ptr.as_ptr().write(loom::cell::UnsafeCell::new(0));
+                                (*ptr.as_ptr()).with_mut(|p| *p = 42);
                             }
-                            loom::thread::yield_now();
+                            ptrs.push(ptr);
+                        }
+
+                        loom::thread::yield_now();
+
+                        for ptr in ptrs {
+                            unsafe {
+                                (*ptr.as_ptr()).with(|p| assert_eq!(*p, 42));
+                                // Drop the UnsafeCell before returning the slot to the freelist.
+                                std::ptr::drop_in_place(ptr.as_ptr());
+                            }
                             block_allocator.deallocate_object(ptr);
                         }
                     })
