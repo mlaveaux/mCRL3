@@ -403,20 +403,30 @@ mod tests {
     use super::BlockAllocator;
     use super::BlockAllocatorSafe;
 
-    // In practice u64 is used only in tests; real clients must audit their types.
-    unsafe impl BlockAllocatorSafe for u64 {}
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct TestValue {
+        marker: NonZeroUsize,
+        value: u64,
+    }
+
+    // Safety: the first word is a NonZeroUsize, so the null sentinel can never
+    // coincide with a live TestValue.
+    unsafe impl BlockAllocatorSafe for TestValue {}
 
     #[test]
     // #[cfg_attr(miri, ignore)]
     fn test_block_allocator() {
         random_test(100, |rng| {
-            let mut allocator: BlockAllocator<u64, 32> = BlockAllocator::new();
+            let mut allocator: BlockAllocator<TestValue, 32> = BlockAllocator::new();
 
             // Allocate 1000 elements, recording each pointer alongside its written value.
-            let mut allocated: Vec<(NonNull<u64>, u64)> = Vec::new();
+            let mut allocated: Vec<(NonNull<TestValue>, TestValue)> = Vec::new();
             for _ in 0..1000 {
                 let ptr = allocator.allocate_object().unwrap();
-                let value: u64 = rng.random();
+                let value = TestValue {
+                    marker: NonZeroUsize::new(1).unwrap(),
+                    value: rng.random(),
+                };
                 unsafe {
                     ptr.as_ptr().write(value);
                 }
@@ -445,7 +455,10 @@ mod tests {
             // Reallocate 500 elements to exercise the freelist and verify no aliasing.
             for _ in 0..500 {
                 let ptr = allocator.allocate_object().unwrap();
-                let value: u64 = rng.random();
+                let value = TestValue {
+                    marker: NonZeroUsize::new(1).unwrap(),
+                    value: rng.random(),
+                };
                 unsafe {
                     ptr.as_ptr().write(value);
                 }

@@ -119,6 +119,12 @@ impl<T> ProtectionSet<T> {
         let index = self.generation_counter.get_index(index.0);
         self.size -= 1;
 
+        // SAFETY: `index` refers to an occupied entry. We must drop the stored
+        // object before overwriting the union slot with freelist metadata.
+        unsafe {
+            ManuallyDrop::drop(&mut self.roots[index].object);
+        }
+
         match self.free {
             Some(next) => {
                 self.roots[index] = Entry { next };
@@ -183,6 +189,22 @@ impl<T> ProtectionSet<T> {
     pub fn contains_root(&self, index: ProtectionIndex) -> bool {
         let idx = self.generation_counter.get_index(index.0);
         !self.freelist_iter().any(|free_idx| free_idx == idx)
+    }
+}
+
+impl<T> Drop for ProtectionSet<T> {
+    fn drop(&mut self) {
+        for index in 0..self.roots.len() {
+            if self.freelist_iter().any(|free_idx| free_idx == index) {
+                continue;
+            }
+
+            // SAFETY: indices not present in the freelist still contain a live
+            // protected object that must be dropped.
+            unsafe {
+                ManuallyDrop::drop(&mut self.roots[index].object);
+            }
+        }
     }
 }
 

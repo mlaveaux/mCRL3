@@ -66,6 +66,22 @@ impl<T: ?Sized> StablePointer<T> {
         }
     }
 
+    /// Creates a new StablePointer from a raw pointer while preserving the
+    /// debug reference counter from another StablePointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ptr` points to the same allocation as
+    /// `source` (potentially with a different pointee type/metadata) and
+    /// remains valid for at least as long as any derived StablePointer.
+    pub unsafe fn from_related_ptr<U: ?Sized>(ptr: NonNull<U>, source: &Self) -> StablePointer<U> {
+        StablePointer {
+            ptr,
+            #[cfg(debug_assertions)]
+            reference_counter: source.reference_counter.clone(),
+        }
+    }
+
     /// Returns public access to the underlying pointer.
     pub fn ptr(&self) -> NonNull<T> {
         self.ptr

@@ -247,7 +247,7 @@ impl ATermStorage {
 unsafe fn cast_to_shared_term_ptr<T>(ptr: &StablePointer<T>, arity: usize) -> StablePointer<SharedTerm> {
     // Build a fat pointer for SharedTerm with metadata equal to the term arity.
     let raw = slice_from_raw_parts_mut(ptr.ptr().as_ptr(), arity) as *mut SharedTerm;
-    unsafe { StablePointer::from_ptr(NonNull::new_unchecked(raw)) }
+    unsafe { StablePointer::from_related_ptr(NonNull::new_unchecked(raw), ptr) }
 }
 
 /// Storage for ATerms with a fixed number of arguments.
