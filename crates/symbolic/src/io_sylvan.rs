@@ -150,6 +150,11 @@ impl TransitionGroup for SylvanTransitionGroup {
     fn meta(&self) -> &Ldd {
         &self.meta
     }
+
+    fn learn_successors(&self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
+        // All states are already explored.
+        Ok(storage.protect(storage.empty_set()))
+    }
 }
 
 impl fmt::Debug for SylvanTransitionGroup {

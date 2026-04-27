@@ -26,7 +26,7 @@ use crate::symmetry::variable_index;
 /// parameters, and a mapping from clauses of each equation to the parameters
 /// that are used-for, used-in and changed-by them.
 pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
-    let symmetries = SymmetryAlgorithm::new(&pbes, false)?;
+    let symmetries = SymmetryAlgorithm::new(pbes, false)?;
 
     let parameters = if let Some(equation) = symmetries.srf_pbes().equations().first() {
         equation.variable().parameters().to_vec()
@@ -143,7 +143,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
 
             // Update the index for the source or target variables.
             for variable in predicate.source().iter().chain(predicate.target().iter()) {
-                if data_parameters.contains(&variable) {
+                if data_parameters.contains(variable) {
                     // This variable is a data parameter, so we are not interested in it for the source and target functions.
                     continue;
                 }
@@ -156,7 +156,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
             }
 
             for variable in predicate.copy().iter() {
-                if data_parameters.contains(&variable) {
+                if data_parameters.contains(variable) {
                     // This variable is a data parameter, we not interested in it for the copy function.
                     continue;
                 }

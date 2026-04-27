@@ -203,12 +203,12 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                         added.push(Item::Verbatim(generated));
                     }
                 }
-                Item::Impl(implementation) => {
+                Item::Impl(implementation)
                     if !implementation
                         .attrs
                         .iter()
                         .any(|attr| attr.meta.path().is_ident("mcrl2_ignore"))
-                    {
+                    => {
                         // Duplicate the implementation for the ATermRef struct that is generated above.
                         let mut ref_implementation = implementation.clone();
 
@@ -230,7 +230,6 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                             added.push(Item::Verbatim(ref_implementation.into_token_stream()));
                         }
                     }
-                }
                 _ => {
                     // Ignore the rest.
                 }

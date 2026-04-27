@@ -142,6 +142,11 @@ impl TransitionGroup for SummandGroup {
     fn action_label_index(&self) -> Option<usize> {
         Some(self.action_label_index)
     }
+
+    fn learn_successors(&self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
+        // All states are already explored.
+        Ok(storage.protect(storage.empty_set()))
+    }
 }
 
 impl SummandGroup {
