@@ -26,19 +26,10 @@ use itertools::Itertools;
 use crate::FreeList;
 use crate::FreeListEntry;
 
-/// Marker trait asserting that `std::ptr::dangling_mut::<Entry<T>>()` can never
-/// appear as the first `size_of::<*mut _>()` bytes of any valid value
-/// of `T`.
-///
-/// # Safety
-///
-/// Implementing this trait for a type `T` asserts that the special sentinel value
-/// used internally to mark free entries in the block allocator can never collide.
-pub unsafe trait BlockAllocatorSafe {}
-
-/// This is a slab allocator or also called block allocator for a concrete type
-/// `T`. It stores blocks of `N` to minimize the overhead of individual memory
-/// allocations, which are typically in the range of one or two words.
+/// This is a memory pool or also called fixed-size block allocator for a
+/// concrete type `T`. It stores blocks of `N` to minimize the overhead of
+/// individual memory allocations, which are typically in the range of one or
+/// two words.
 ///
 /// Behaves like `Allocator`, except that it only allocates for layouts of `T`.
 ///
@@ -142,7 +133,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         T: BlockAllocatorSafe,
     {
         // A special value that must not occur in the values of `T`.
-        let nonexisting_value = std::ptr::dangling_mut();
+        let nonexisting_value = std::ptr::null_mut();
 
         for block in unsafe { self.iter() } {
             // Check that none of the entries contain the special value.
@@ -264,8 +255,16 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     }
 }
 
-// SAFETY: BlockAllocator uses atomic operations for the freelist and a Mutex for
-// block allocation. No unsynchronised mutable state is exposed through &self.
+/// Marker trait asserting that `std::ptr::null_mut::<Entry<T>>()` can never
+/// appear as the first `size_of::<*mut _>()` bytes of any valid value of `T`.
+///
+/// # Safety
+///
+/// Implementing this trait for a type `T` asserts that the special sentinel
+/// value can be used.
+pub unsafe trait BlockAllocatorSafe {}
+
+/// The [BlockAllocator] is thread-safe.
 unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
 unsafe impl<T: Send, const N: usize> Sync for BlockAllocator<T, N> {}
 
