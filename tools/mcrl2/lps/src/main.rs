@@ -4,9 +4,9 @@ use clap::Parser;
 use clap::Subcommand;
 
 use mcrl2::read_lps;
-use mcrl2::read_lps_text;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
+use merc_ldd::Storage;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -19,7 +19,6 @@ mod explore;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum LpsFormat {
-    Text,
     Lps,
 }
 
@@ -91,10 +90,11 @@ fn handle_explore(args: ExploreArgs) -> Result<(), MercError> {
     let format = args.format.unwrap_or(LpsFormat::Lps);
     let lps = match format {
         LpsFormat::Lps => read_lps(&args.filename)?,
-        LpsFormat::Text => read_lps_text(&args.filename)?,
     };
 
-    explore_lps(&lps)?;
+    let mut storage = Storage::new();
+
+    explore_lps(&mut storage, &lps)?;
 
     Ok(())
 }

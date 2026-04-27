@@ -64,6 +64,9 @@ pub trait TransitionGroup: fmt::Debug {
 
     /// Returns the meta information for this summand group.
     fn meta(&self) -> &Ldd;
+
+    /// Learns the successors of the given set of states.
+    fn learn_successors(&self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError>;
 }
 
 /// Performs reachability analysis using the given initial state and transitions read from a Sylvan file.
@@ -84,6 +87,8 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &L) -> Result<us
         debug!("Iteration {}: todo size = {}", iteration, len(storage, &todo));
         let mut todo1 = storage.empty_set().clone();
         for transition in lts.transition_groups() {
+            let new_successors = transition.learn_successors(storage, &todo)?;
+            
             let result = relational_product(storage, &todo, transition.relation(), transition.meta());
             todo1 = union(storage, &todo1, &result);
         }
