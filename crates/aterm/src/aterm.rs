@@ -7,6 +7,7 @@ use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use delegate::delegate;
 
@@ -16,7 +17,6 @@ use merc_unsafety::ProtectionSet;
 use merc_unsafety::StablePointer;
 use merc_utilities::MercError;
 use merc_utilities::PhantomUnsend;
-use parking_lot::Mutex;
 
 use crate::ATermIntRef;
 use crate::ATermList;
@@ -428,7 +428,7 @@ impl ATermSend {
         // drop.
         let protection_set = THREAD_TERM_POOL.with_borrow(|tp| tp.send_term_protection_set().clone());
         let term_ref: ATermRef<'static> = unsafe { ATermRef::from_index(&term.term.shared) };
-        let root = protection_set.lock().protect(term.shared().copy());
+        let root = protection_set.lock().expect("Lock poisoned!").protect(term.shared().copy());
 
         Self {
             term: term_ref,
@@ -440,7 +440,7 @@ impl ATermSend {
 
 impl Drop for ATermSend {
     fn drop(&mut self) {
-        self.protection_set.lock().unprotect(self.root);
+        self.protection_set.lock().expect("Lock poisoned!").unprotect(self.root);
     }
 }
 
@@ -655,6 +655,7 @@ mod tests {
     use crate::Symbol;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test runs too slow under miri.
     fn test_send_terms() {
         // Run two threads that create and drop sendable terms, and check that the protection set is properly cleaned up.
         let symbol = Symbol::new("a", 0);

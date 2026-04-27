@@ -5,6 +5,7 @@ use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use log::debug;
 
@@ -16,7 +17,6 @@ use merc_unsafety::ProtectionSet;
 use merc_unsafety::StablePointer;
 use merc_utilities::MercError;
 use merc_utilities::debug_trace;
-use parking_lot::Mutex;
 
 use crate::ATermIndex;
 use crate::Markable;

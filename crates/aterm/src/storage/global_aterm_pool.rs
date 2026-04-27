@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use log::debug;
@@ -14,7 +15,6 @@ use merc_sharedmutex::RecursiveLockReadGuard;
 use merc_unsafety::ProtectionSet;
 use merc_unsafety::StablePointer;
 use merc_utilities::debug_trace;
-use parking_lot::Mutex;
 
 use crate::ATermIndex;
 use crate::ATermRef;
@@ -28,7 +28,7 @@ use crate::storage::ATermStorage;
 use crate::storage::SharedTerm;
 use crate::storage::SymbolPool;
 
-/// This is the global set of protection sets that are managed by the [ThreadTermPool].
+/// This is the global set of protection sets that are managed by the [crate::storage::ThreadTermPool].
 pub static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>> =
     LazyLock::new(|| GlobalBfSharedMutex::new(GlobalTermPool::new()));
 
