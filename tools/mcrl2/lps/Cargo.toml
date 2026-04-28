@@ -22,4 +22,5 @@ log.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+streaming-iterator.workspace = true
 thiserror.workspace = true
