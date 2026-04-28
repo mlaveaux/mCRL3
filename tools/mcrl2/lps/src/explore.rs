@@ -1,20 +1,23 @@
 use std::fmt;
 
-use mcrl2::LinearSummand;
 use merc_collections::IndexedSet;
-use merc_ldd::Ldd;
-use merc_ldd::Storage;
 use merc_ldd::compute_proj;
+use merc_ldd::iterators::iter;
+use merc_ldd::Ldd;
 use merc_ldd::project;
+use merc_ldd::Storage;
+use merc_ldd::union;
+use merc_symbolic::reachability;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::TransitionGroup;
-use merc_symbolic::reachability;
+use merc_utilities::MercError;
 
+use mcrl2::LinearSummand;
 use mcrl2::DataExpression;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::preprocess;
 
-use merc_utilities::MercError;
+use streaming_iterator::StreamingIterator;
 
 /// Explore the linear process specification using symbolic reachability.
 pub fn explore_lps(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<usize, MercError> {
@@ -65,6 +68,9 @@ struct SymbolicSummand {
     /// The LDD encoding the projection of the state space on the read variables of this summand.
     project_ldd: Ldd,
 
+    /// The relation encoding the transition relation of this summand.
+    relation: Ldd,
+
     /// The indices of the variables that are read by this summand, which is
     /// used to determine the projection of the state space for this summand.
     read_indices: Vec<u32>,
@@ -75,10 +81,13 @@ impl SymbolicSummand {
     pub fn new(storage: &mut Storage, _summand: &LinearSummand) -> Self {
         let read_indices = Vec::new();
 
+        let relation = storage.protect(storage.empty_set());
+
         let project_ldd = compute_proj(storage, &read_indices);
 
         Self {
             project_ldd,
+            relation,
             read_indices,
         }
     }
@@ -108,7 +117,7 @@ impl SymbolicLTS for SymbolicLinearProcessSpecification {
 
 impl TransitionGroup for SymbolicSummand {
     fn relation(&self) -> &Ldd {
-        todo!()
+        &self.relation
     }
 
     fn read_indices(&self) -> &[u32] {
@@ -129,6 +138,16 @@ impl TransitionGroup for SymbolicSummand {
 
     fn learn_successors(&self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError> {
         let proj = project(storage, todo, &self.project_ldd);
+        
+        let mut state_iter = iter(storage, &proj);
+        while let Some(state) = state_iter.next() {
+
+            
+            
+            union(storage, self.relation, )
+        }
+
+        
         Ok(proj)
     }
 }
