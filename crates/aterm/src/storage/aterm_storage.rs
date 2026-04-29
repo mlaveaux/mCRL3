@@ -4,7 +4,6 @@ use std::hash::Hash;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
-use merc_unsafety::AllocBlock;
 use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
 use merc_unsafety::StablePointerSet;
@@ -26,33 +25,33 @@ pub(crate) struct ATermStorage {
     terms: StablePointerSet<SharedTerm, FxBuildHasher>,
 
     /// Stores the fixed size [SharedTermInt] integer terms.
-    int_terms: StablePointerSet<SharedTermInt, FxBuildHasher, AllocBlock<SharedTermInt, 1024>>,
+    int_terms: StablePointerSet<SharedTermInt, FxBuildHasher>,
 
     /// Stores terms of fixed arity, see [SharedTermFixed].
-    terms_0: StablePointerSet<SharedTermFixed<0>, FxBuildHasher, AllocBlock<SharedTermFixed<0>, 1024>>,
-    terms_1: StablePointerSet<SharedTermFixed<1>, FxBuildHasher, AllocBlock<SharedTermFixed<1>, 1024>>,
-    terms_2: StablePointerSet<SharedTermFixed<2>, FxBuildHasher, AllocBlock<SharedTermFixed<2>, 1024>>,
-    terms_3: StablePointerSet<SharedTermFixed<3>, FxBuildHasher, AllocBlock<SharedTermFixed<3>, 1024>>,
-    terms_4: StablePointerSet<SharedTermFixed<4>, FxBuildHasher, AllocBlock<SharedTermFixed<4>, 1024>>,
-    terms_5: StablePointerSet<SharedTermFixed<5>, FxBuildHasher, AllocBlock<SharedTermFixed<5>, 1024>>,
-    terms_6: StablePointerSet<SharedTermFixed<6>, FxBuildHasher, AllocBlock<SharedTermFixed<6>, 1024>>,
-    terms_7: StablePointerSet<SharedTermFixed<7>, FxBuildHasher, AllocBlock<SharedTermFixed<7>, 1024>>,
+    terms_0: StablePointerSet<SharedTermFixed<0>, FxBuildHasher>,
+    terms_1: StablePointerSet<SharedTermFixed<1>, FxBuildHasher>,
+    terms_2: StablePointerSet<SharedTermFixed<2>, FxBuildHasher>,
+    terms_3: StablePointerSet<SharedTermFixed<3>, FxBuildHasher>,
+    terms_4: StablePointerSet<SharedTermFixed<4>, FxBuildHasher>,
+    terms_5: StablePointerSet<SharedTermFixed<5>, FxBuildHasher>,
+    terms_6: StablePointerSet<SharedTermFixed<6>, FxBuildHasher>,
+    terms_7: StablePointerSet<SharedTermFixed<7>, FxBuildHasher>,
 }
 
 impl ATermStorage {
     /// Creates a new, empty storage.
     pub fn new() -> Self {
         Self {
-            terms: StablePointerSet::with_hasher(FxBuildHasher),
-            int_terms: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_0: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_1: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_2: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_3: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_4: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_5: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_6: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
-            terms_7: StablePointerSet::with_capacity_in(1000, AllocBlock::new()),
+            terms: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            int_terms: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_0: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_1: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_2: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_3: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_4: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_5: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_6: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms_7: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
         }
     }
 
@@ -213,15 +212,15 @@ impl ATermStorage {
             .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 7) }));
 
         // Removes empty blocks after removing entries.
-        self.int_terms.allocator_mut().remove_free_blocks();
-        self.terms_0.allocator_mut().remove_free_blocks();
-        self.terms_1.allocator_mut().remove_free_blocks();
-        self.terms_2.allocator_mut().remove_free_blocks();
-        self.terms_3.allocator_mut().remove_free_blocks();
-        self.terms_4.allocator_mut().remove_free_blocks();
-        self.terms_5.allocator_mut().remove_free_blocks();
-        self.terms_6.allocator_mut().remove_free_blocks();
-        self.terms_7.allocator_mut().remove_free_blocks();
+        // self.int_terms.allocator_mut().remove_free_blocks();
+        // self.terms_0.allocator_mut().remove_free_blocks();
+        // self.terms_1.allocator_mut().remove_free_blocks();
+        // self.terms_2.allocator_mut().remove_free_blocks();
+        // self.terms_3.allocator_mut().remove_free_blocks();
+        // self.terms_4.allocator_mut().remove_free_blocks();
+        // self.terms_5.allocator_mut().remove_free_blocks();
+        // self.terms_6.allocator_mut().remove_free_blocks();
+        // self.terms_7.allocator_mut().remove_free_blocks();
     }
 
     /// Returns the number of stored terms.
