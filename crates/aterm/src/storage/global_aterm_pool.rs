@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 
 use log::debug;

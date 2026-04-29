@@ -428,7 +428,10 @@ impl ATermSend {
         // drop.
         let protection_set = THREAD_TERM_POOL.with_borrow(|tp| tp.send_term_protection_set().clone());
         let term_ref: ATermRef<'static> = unsafe { ATermRef::from_index(&term.term.shared) };
-        let root = protection_set.lock().expect("Lock poisoned!").protect(term.shared().copy());
+        let root = protection_set
+            .lock()
+            .expect("Lock poisoned!")
+            .protect(term.shared().copy());
 
         Self {
             term: term_ref,
