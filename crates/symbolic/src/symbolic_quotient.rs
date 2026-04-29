@@ -1,16 +1,16 @@
 use merc_utilities::MercError;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
 use oxidd::FunctionSubst;
 use oxidd::Subst;
 use oxidd::VarNo;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
 
-use crate::compute_vars_bdd;
-use crate::variable_rename_reverse;
 use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;
+use crate::compute_vars_bdd;
+use crate::variable_rename_reverse;
 
 /// Computes the symbolic quotient of the given partition.
 pub fn quotient_symbolic(

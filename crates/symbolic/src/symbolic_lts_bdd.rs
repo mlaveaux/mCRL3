@@ -236,10 +236,7 @@ impl SymbolicLtsBdd {
     }
 
     /// Constructs a new symbolic LTS with the given transition groups.
-    pub fn with_transition_groups(
-        lts: &Self,
-        transition_groups: Vec<SummandGroupBdd>,
-    ) -> Self {
+    pub fn with_transition_groups(lts: &Self, transition_groups: Vec<SummandGroupBdd>) -> Self {
         Self {
             states: lts.states.clone(),
             initial_state: lts.initial_state.clone(),

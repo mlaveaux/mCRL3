@@ -8,10 +8,10 @@ use streaming_iterator::StreamingIterator;
 use merc_collections::IndexedSet;
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
+use merc_ldd::Storage;
 use merc_ldd::height;
 use merc_ldd::iterators::iter;
 use merc_ldd::len;
-use merc_ldd::Storage;
 use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
@@ -207,7 +207,7 @@ mod tests {
     use merc_utilities::test_logger;
 
     use crate::read_symbolic_lts;
-    
+
     use super::convert_symbolic_lts;
 
     #[test]

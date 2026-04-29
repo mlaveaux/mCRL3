@@ -1,10 +1,10 @@
 use log::info;
 use log::trace;
+use oxidd::BooleanFunction;
+use oxidd::VarNo;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
 use oxidd::util::SatCountCache;
-use oxidd::BooleanFunction;
-use oxidd::VarNo;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -16,9 +16,9 @@ use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
 
-use crate::to_value;
 use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
+use crate::to_value;
 
 fn concretize_cube(cube: &mut [OptBool]) {
     for bit in cube {
@@ -236,9 +236,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
                 if outgoing.insert((*state_index, *target_index)) {
                     trace!(
                         " Found transition in {group_index} from {:?} to {:?} with label {:?}",
-                        cube,
-                        target,
-                        label
+                        cube, target, label
                     );
 
                     output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
@@ -307,19 +305,19 @@ fn compute_positions(
 #[cfg(test)]
 mod tests {
     use merc_ldd::Storage;
-    use merc_lts::LtsBuilderMem;
     use merc_lts::LTS;
-    use merc_reduction::compare_lts;
+    use merc_lts::LtsBuilderMem;
     use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
+    use merc_utilities::Timing;
     use merc_utilities::random_test;
     use merc_utilities::test_logger;
-    use merc_utilities::Timing;
 
+    use crate::SymbolicLtsBdd;
     use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
     use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
-    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
