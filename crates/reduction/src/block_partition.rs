@@ -241,6 +241,16 @@ impl BlockPartition {
 
             it -= 1;
         }
+
+        for element in block.iter_marked(&self.elements) {
+            debug_assert!(
+                incoming_transitions
+                    .incoming_silent_transitions(element)
+                    .all(|transition| self.block_number(transition.from) != block_index
+                        || self.is_element_marked(transition.from)),
+                "All silent transitions from marked elements should be marked"
+            );
+        }
     }
 
     /// Swaps the given blocks given by the indices.
