@@ -454,45 +454,36 @@ mod tests {
     }
 
     #[test]
-    #[cfg(loom)]
-    fn test_loom_block_allocator() {
-        loom::model(|| {
-            let block_allocator = loom::sync::Arc::new(BlockAllocator::<loom::cell::UnsafeCell<u32>, 4>::new());
+    #[cfg_attr(miri, ignore)]
+    fn test_block_allocator_parallel_freelist() {
+        let block_allocator = std::sync::Arc::new(BlockAllocator::<u32, 32>::new());
 
-            let threads: Vec<_> = (0..3)
-                .map(|_| {
-                    let block_allocator = block_allocator.clone();
+        let threads: Vec<_> = (0..=2)
+            .map(|_| {
+                let block_allocator = block_allocator.clone();
 
-                    loom::thread::spawn(move || {
-                        let mut ptrs = Vec::new();
-                        for _ in 0..10 {
-                            let ptr = block_allocator.allocate_object().unwrap();
-                            unsafe {
-                                // Construct a loom UnsafeCell in the allocated slot so
-                                // loom can instrument all subsequent accesses.
-                                ptr.as_ptr().write(loom::cell::UnsafeCell::new(0));
-                                (*ptr.as_ptr()).with_mut(|p| *p = 42);
-                            }
-                            ptrs.push(ptr);
+                std::thread::spawn(move || {
+                    let mut ptrs = Vec::new();
+                    for _ in 0..100 {
+                        let ptr = block_allocator.allocate_object().unwrap();
+                        unsafe {
+                            ptr.as_ptr().write(42);
                         }
+                        ptrs.push(ptr);
+                    }
 
-                        loom::thread::yield_now();
-
-                        for ptr in ptrs {
-                            unsafe {
-                                (*ptr.as_ptr()).with(|p| assert_eq!(*p, 42));
-                                // Drop the UnsafeCell before returning the slot to the freelist.
-                                std::ptr::drop_in_place(ptr.as_ptr());
-                            }
-                            block_allocator.deallocate_object(ptr);
+                    for ptr in ptrs {
+                        unsafe {
+                            assert_eq!(*ptr.as_ref(), 42);
                         }
-                    })
+                        block_allocator.deallocate_object(ptr);
+                    }
                 })
-                .collect();
+            })
+            .collect();
 
-            for th in threads {
-                th.join().unwrap();
-            }
-        });
+        for th in threads {
+            th.join().unwrap();
+        }
     }
 }

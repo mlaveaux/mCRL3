@@ -74,7 +74,7 @@ impl<T: ?Sized> StablePointer<T> {
     /// The caller must ensure that `ptr` points to the same allocation as
     /// `source` (potentially with a different pointee type/metadata) and
     /// remains valid for at least as long as any derived StablePointer.
-    pub unsafe fn from_related_ptr<U: ?Sized>(ptr: NonNull<U>, source: &Self) -> StablePointer<U> {
+    pub unsafe fn from_related_ptr<U: ?Sized>(ptr: NonNull<U>, #[allow(unused)] source: &Self) -> StablePointer<U> {
         StablePointer {
             ptr,
             #[cfg(debug_assertions)]
