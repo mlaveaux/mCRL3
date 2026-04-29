@@ -219,8 +219,7 @@ pub fn branching_bisim_signature_inductive<L: LTS>(
         let to_block = partition.block_number(transition.to);
 
         if partition.block_number(state_index) == to_block {
-            if lts.is_hidden_label(transition.label) {
-                debug_assert!(partition.is_element_marked(transition.to), "The state should be marked since it has an outgoing tau transition to the same block");
+            if lts.is_hidden_label(transition.label) && partition.is_element_marked(transition.to) {
                 // Inert tau transition, take signature from the outgoing tau-transition.
                 builder.push((tau_hat(lts), state_to_key[transition.to]));
             } else {
