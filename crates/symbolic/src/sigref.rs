@@ -9,13 +9,6 @@ use log::trace;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::error::DuplicateVarName;
-use oxidd::util::Borrowed;
-use oxidd::util::OptBool;
-use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
@@ -26,6 +19,13 @@ use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::Node;
 use oxidd::VarNo;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
+use oxidd::util::Borrowed;
+use oxidd::util::OptBool;
+use oxidd::util::OutOfMemory;
+use oxidd::util::SatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
 use oxidd_dump::Visualizer;
@@ -33,15 +33,15 @@ use oxidd_rules_bdd::simple::BDDTerminal;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
+use crate::CubeIterAll;
+use crate::SymbolicLtsBdd;
+use crate::ValuesIter;
 use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::reduce;
 use crate::required_bits_64;
 use crate::to_value;
 use crate::variable_rename;
-use crate::CubeIterAll;
-use crate::SymbolicLtsBdd;
-use crate::ValuesIter;
 
 /// Computes the reduction of the given symbolic LTS using symbolic signature
 /// refinement.
@@ -735,8 +735,24 @@ fn extend_relation_edge<'id>(
             continue;
         }
 
-        let low = EdgeDropGuard::new(manager, reduce(manager, *next_state_var, manager.clone_edge(&eq), manager.clone_edge(&f_edge))?);
-        let high = EdgeDropGuard::new(manager, reduce(manager, *next_state_var, manager.clone_edge(&f_edge), manager.clone_edge(&eq))?);
+        let low = EdgeDropGuard::new(
+            manager,
+            reduce(
+                manager,
+                *next_state_var,
+                manager.clone_edge(&eq),
+                manager.clone_edge(&f_edge),
+            )?,
+        );
+        let high = EdgeDropGuard::new(
+            manager,
+            reduce(
+                manager,
+                *next_state_var,
+                manager.clone_edge(&f_edge),
+                manager.clone_edge(&eq),
+            )?,
+        );
         eq = EdgeDropGuard::new(manager, reduce(manager, *state_var, low.into_edge(), high.into_edge())?);
     }
 
@@ -981,19 +997,20 @@ mod tests {
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
     use merc_utilities::Timing;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::error::DuplicateVarName;
-    use oxidd::util::Borrowed;
     use oxidd::BooleanFunction;
     use oxidd::Edge;
     use oxidd::Function;
     use oxidd::Manager;
     use oxidd::ManagerRef;
     use oxidd::VarNo;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::error::DuplicateVarName;
+    use oxidd::util::Borrowed;
     use rand::RngExt;
 
     use merc_utilities::random_test;
 
+    use crate::SymbolicLtsBdd;
     use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
     use crate::quotient_symbolic;
@@ -1005,7 +1022,6 @@ mod tests {
     use crate::sigref::encode_block;
     use crate::sigref::is_bdd_cube_edge;
     use crate::sigref_symbolic;
-    use crate::SymbolicLtsBdd;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -1109,7 +1125,10 @@ mod tests {
 
         let (_, _, num_of_blocks) =
             sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
-        assert_eq!(num_of_blocks, 1791, "The Szymanski example has 1791 bisimulation blocks");
+        assert_eq!(
+            num_of_blocks, 1791,
+            "The Szymanski example has 1791 bisimulation blocks"
+        );
     }
 
     #[test]
@@ -1155,7 +1174,6 @@ mod tests {
         })
     }
 
-    
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_sigref() {
@@ -1177,7 +1195,7 @@ mod tests {
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let explicit_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient).unwrap();
-            
+
             assert!(
                 compare_lts(
                     Equivalence::StrongBisim,

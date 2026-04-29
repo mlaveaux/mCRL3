@@ -1,21 +1,21 @@
 use log::info;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
-use oxidd::bdd::BDDFunction;
-use oxidd::bdd::BDDManagerRef;
-use oxidd::util::OutOfMemory;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
 use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::VarNo;
+use oxidd::bdd::BDDFunction;
+use oxidd::bdd::BDDManagerRef;
+use oxidd::util::OutOfMemory;
 
-use crate::bdd_from_cube;
-use crate::compute_vars_bdd;
-use crate::variable_rename;
 use crate::CubeIterAll;
 use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;
+use crate::bdd_from_cube;
+use crate::compute_vars_bdd;
+use crate::variable_rename;
 
 /// Strong bisimulation refinement algorithms for symbolic LTSs.
 pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) -> Result<BDDFunction, MercError> {
@@ -193,16 +193,18 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
         // Add the variables for b2
         // let b_next_variables = manager_ref.with_manager_exclusive(|manager| {
         //     let variables = manager.add_named_vars((0..block_variables.len()).map(|index| format!("b2_{index}")))?.collect();
-            
-        //     let order = block_variables.
 
+        //     let order = block_variables.
 
         //     oxidd_reorder::set_var_order(manager, &order)
         // })?;
 
         // B_i+1(p,b b1 b2) = B_i(p, b1) /\  (b <=> exists p' Ra(p, p') /\ B_i(p', b2)).
         blocks = manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
-            Ok(blocks.and(&BDDFunction::var(manager, *b_variables.last().expect("At least one b variable is added"))?)?)
+            Ok(blocks.and(&BDDFunction::var(
+                manager,
+                *b_variables.last().expect("At least one b variable is added"),
+            )?)?)
         })?;
 
         iteration += 1;
