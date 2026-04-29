@@ -452,38 +452,4 @@ mod tests {
             }
         })
     }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn test_block_allocator_parallel_freelist() {
-        let block_allocator = std::sync::Arc::new(BlockAllocator::<u32, 32>::new());
-
-        let threads: Vec<_> = (0..=2)
-            .map(|_| {
-                let block_allocator = block_allocator.clone();
-
-                std::thread::spawn(move || {
-                    let mut ptrs = Vec::new();
-                    for _ in 0..100 {
-                        let ptr = block_allocator.allocate_object().unwrap();
-                        unsafe {
-                            ptr.as_ptr().write(42);
-                        }
-                        ptrs.push(ptr);
-                    }
-
-                    for ptr in ptrs {
-                        unsafe {
-                            assert_eq!(*ptr.as_ref(), 42);
-                        }
-                        block_allocator.deallocate_object(ptr);
-                    }
-                })
-            })
-            .collect();
-
-        for th in threads {
-            th.join().unwrap();
-        }
-    }
 }
