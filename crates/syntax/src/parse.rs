@@ -122,11 +122,10 @@ pub fn parse_action_names(input: &str) -> Result<Vec<String>, MercError> {
 
 /// Parses the action names for the allow operator from the given input string.
 pub fn parse_allow_action_names(input: &str) -> Result<Vec<MultiActionLabel>, MercError> {
-    
     let mut result = Mcrl2Parser::parse(Rule::ActIdSet, input).map_err(extend_parser_error)?;
     let root = result.next().expect("Could not parse allow set name list");
 
-    Ok(Mcrl2Parser::MultActIdSet(ParseNode::new(root))?)    
+    Ok(Mcrl2Parser::MultActIdSet(ParseNode::new(root))?)
 }
 
 fn extend_parser_error(error: Error<Rule>) -> Error<Rule> {

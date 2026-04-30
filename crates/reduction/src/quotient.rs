@@ -40,11 +40,13 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
                     "Quotienting assumes that the block numbers do not exceed the number of blocks"
                 );
 
-                builder.add_transition(
-                    StateIndex::new(block.value()),
-                    &lts.labels()[transition.label],
-                    StateIndex::new(to_block.value()),
-                ).expect("Adding transitions does not fail");
+                builder
+                    .add_transition(
+                        StateIndex::new(block.value()),
+                        &lts.labels()[transition.label],
+                        StateIndex::new(to_block.value()),
+                    )
+                    .expect("Adding transitions does not fail");
             }
         }
     }
@@ -186,11 +188,13 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
                 );
             }
 
-            builder.add_transition(
-                StateIndex::new(*block),
-                &lts.labels()[transition.label],
-                StateIndex::new(*partition.block_number(transition.to)),
-            ).expect("Adding transitions does not fail");
+            builder
+                .add_transition(
+                    StateIndex::new(*block),
+                    &lts.labels()[transition.label],
+                    StateIndex::new(*partition.block_number(transition.to)),
+                )
+                .expect("Adding transitions does not fail");
         }
     }
 

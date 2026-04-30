@@ -79,11 +79,13 @@ pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
             let label = rng.random_range(0..num_of_labels);
             let to = rng.random_range(0..num_of_states);
 
-            builder.add_transition(
-                StateIndex::new(state_index),
-                &labels[label as usize],
-                StateIndex::new(to),
-            ).expect("Adding transitions does not fail");
+            builder
+                .add_transition(
+                    StateIndex::new(state_index),
+                    &labels[label as usize],
+                    StateIndex::new(to),
+                )
+                .expect("Adding transitions does not fail");
         }
     }
 
@@ -123,7 +125,9 @@ pub fn mutate_lts<L: LTS, R: Rng>(
         for transition in lts.outgoing_transitions(state) {
             // Skip this transition if it is one of the transitions to remove.
             if !to_remove.contains(&index) {
-                builder.add_transition(state, &lts.labels()[transition.label], transition.to).expect("Adding transitions does not fail");
+                builder
+                    .add_transition(state, &lts.labels()[transition.label], transition.to)
+                    .expect("Adding transitions does not fail");
             }
 
             index += 1;

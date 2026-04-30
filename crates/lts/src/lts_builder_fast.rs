@@ -108,12 +108,12 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
 
 impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderFast<L> {
     type LTS = LabelledTransitionSystem<L>;
-    
+
     fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
     where
         L: Borrow<Q>,
-        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash 
-    {            
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash,
+    {
         let label_index = if let Some(&index) = self.labels_index.get(label) {
             index
         } else {
@@ -136,20 +136,18 @@ impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderFast<L> {
         self.num_of_states = self.num_of_states.max(from.value() + 1).max(to.value() + 1);
         Ok(())
     }
-    
+
     fn finish(&mut self, initial_state: StateIndex) -> Result<Self::LTS, MercError> {
         Ok(self.finish(initial_state, false))
     }
-    
+
     fn num_of_transitions(&self) -> usize {
         self.transitions.len()
     }
-    
+
     fn num_of_states(&self) -> usize {
         self.num_of_states
     }
-
-    
 }
 
 impl<Label: TransitionLabel> fmt::Debug for LtsBuilderFast<Label> {

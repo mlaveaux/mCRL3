@@ -3,13 +3,13 @@ use merc_collections::IndexedSet;
 use merc_collections::SetIndex;
 use merc_collections::VecBag;
 use merc_io::TimeProgress;
+use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LtsAction;
 use merc_lts::LtsBuilder;
 use merc_lts::LtsMultiAction;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
-use merc_lts::LTS;
 use merc_syntax::CommExpr;
 use merc_syntax::MultiActionLabel;
 use merc_utilities::MercError;
@@ -95,10 +95,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
     );
 
     // Pre-sort the allow set for efficient matching.
-    let sorted_allow: Vec<SortedMultiActionLabel> = allow
-        .iter()
-        .map(SortedMultiActionLabel::new)
-        .collect();
+    let sorted_allow: Vec<SortedMultiActionLabel> = allow.iter().map(SortedMultiActionLabel::new).collect();
 
     // Working refers to the state vectors in discovered.
     let mut working: Vec<SetIndex> = vec![index];
@@ -501,14 +498,26 @@ impl StreamingIterator for ParallelTransitionIter {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{self, Write};
-    use std::{fs::File, path::Path, process::Command};
+    use std::fs::File;
+    use std::io::Write;
+    use std::io::{self};
+    use std::path::Path;
+    use std::process::Command;
 
     use log::trace;
-    use merc_lts::{LTS, LtsBuilderFast, LtsMultiAction, StateIndex, random_lts, read_lts, write_aut};
-    use merc_reduction::{compare_lts, Equivalence};
+    use merc_lts::LTS;
+    use merc_lts::LtsBuilderFast;
+    use merc_lts::LtsMultiAction;
+    use merc_lts::StateIndex;
+    use merc_lts::random_lts;
+    use merc_lts::read_lts;
+    use merc_lts::write_aut;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
     use merc_syntax::MultiActionLabel;
-    use merc_utilities::{random_test, MercError, Timing};
+    use merc_utilities::MercError;
+    use merc_utilities::Timing;
+    use merc_utilities::random_test;
     use rand::RngExt;
     use rand::seq::IndexedRandom;
     use tempfile::TempDir;
@@ -619,8 +628,7 @@ mod tests {
             .expect("Failed to run ltscombine");
             assert!(status.success(), "ltscombine failed with status: {status}");
 
-            let expected_lts = read_lts(&File::open(&output_path).unwrap(), false)
-                .unwrap();
+            let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
 
             // Allow an arbitrary subset of labels
             let labels = left_lts

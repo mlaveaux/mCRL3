@@ -71,11 +71,13 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
                         let (product_state, inserted) =
                             discovered_states.insert((left_transition.to, right_transition.to));
 
-                        lts_builder.add_transition(
-                            StateIndex::new(*product_index),
-                            &left.labels()[*left_transition.label],
-                            StateIndex::new(*product_state),
-                        ).expect("Adding transitions does not fail");
+                        lts_builder
+                            .add_transition(
+                                StateIndex::new(*product_index),
+                                &left.labels()[*left_transition.label],
+                                StateIndex::new(*product_state),
+                            )
+                            .expect("Adding transitions does not fail");
 
                         if inserted {
                             trace!("Adding ({}, {})", left_transition.to, right_transition.to);
@@ -87,11 +89,13 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
                 let (left_index, inserted) = discovered_states.insert((left_transition.to, right_state));
 
                 // (left, right) -[a]-> (left', right) iff left -[a]-> left' and a is not a synchronous action.
-                lts_builder.add_transition(
-                    StateIndex::new(*product_index),
-                    &left.labels()[*left_transition.label],
-                    StateIndex::new(*left_index),
-                ).expect("Adding transitions does not fail");
+                lts_builder
+                    .add_transition(
+                        StateIndex::new(*product_index),
+                        &left.labels()[*left_transition.label],
+                        StateIndex::new(*left_index),
+                    )
+                    .expect("Adding transitions does not fail");
 
                 if inserted {
                     trace!("Adding ({}, {})", left_transition.to, right_state);
@@ -108,11 +112,13 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
 
             // (left, right) -[a]-> (left, right') iff right -[a]-> right' and a is not a synchronous action.
             let (right_index, inserted) = discovered_states.insert((left_state, right_transition.to));
-            lts_builder.add_transition(
-                StateIndex::new(*product_index),
-                &right.labels()[*right_transition.label],
-                StateIndex::new(*right_index),
-            ).expect("Adding transitions does not fail");
+            lts_builder
+                .add_transition(
+                    StateIndex::new(*product_index),
+                    &right.labels()[*right_transition.label],
+                    StateIndex::new(*right_index),
+                )
+                .expect("Adding transitions does not fail");
 
             if inserted {
                 // New state discovered.
