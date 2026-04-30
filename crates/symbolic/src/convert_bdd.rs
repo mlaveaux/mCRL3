@@ -317,6 +317,7 @@ mod tests {
     use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
     use crate::random_symbolic_lts;
+    use crate::reachability;
     use crate::read_symbolic_lts;
 
     #[test]
@@ -346,6 +347,7 @@ mod tests {
 
             // We don't really check anything here, just ensure that reachability runs without errors.
             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let reachable_states = reachability(&mut storage, &lts).unwrap();
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
