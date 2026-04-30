@@ -166,7 +166,7 @@ impl SummandGroup {
         relation: Ldd,
     ) -> Result<Self, MercError> {
         // Find the position of every variable in the parameter list.
-        let read_parameter_indices: Vec<Value> = read_parameters
+        let mut read_parameter_indices: Vec<Value> = read_parameters
             .iter()
             .map(|var| {
                 parameters
@@ -177,7 +177,7 @@ impl SummandGroup {
             })
             .collect::<Result<Vec<Value>, _>>()?;
 
-        let write_parameter_indices: Vec<Value> = write_parameters
+        let mut write_parameter_indices: Vec<Value> = write_parameters
             .iter()
             .map(|var| {
                 parameters
@@ -187,6 +187,10 @@ impl SummandGroup {
                     .map(|pos| pos as Value)
             })
             .collect::<Result<Vec<Value>, _>>()?;
+
+        // For later processing it is convenient if these indices are sorted.
+        write_parameter_indices.sort();
+        read_parameter_indices.sort();
 
         let meta = compute_meta(storage, &read_parameter_indices, &write_parameter_indices).0;
         let action_label_index = read_parameters.len() + write_parameters.len(); // The action label is the last index
