@@ -295,7 +295,6 @@ pub fn sigref_symbolic(
                 &mut signature_to_block,
                 &block_variables_bdds,
                 lts.next_state_variables(),
-                &block_variable_indices,
                 &signature,
                 &partition,
             )
@@ -443,12 +442,11 @@ fn refine(
     signature_to_block: &mut FxHashMap<BDDFunction, u64>,
     block_variables_bdds: &[BDDFunction],
     next_state_variables: &[VarNo],
-    block_variables: &[VarNo],
     signature: &BDDFunction,
     partition: &BDDFunction,
 ) -> Result<BDDFunction, MercError> {
     debug_assert!(
-        check_partition_function(manager_ref, partition, next_state_variables, block_variables)?,
+        check_partition_function(manager_ref, partition, next_state_variables)?,
         "The given partition function is not a valid partition function"
     );
 
@@ -609,12 +607,11 @@ fn check_partition_function(
     manager_ref: &BDDManagerRef,
     bdd: &BDDFunction,
     domain: &[VarNo],
-    range: &[VarNo],
 ) -> Result<bool, MercError> {
     manager_ref.with_manager_shared(|manager| {
         let mut cache = HashMap::new();
 
-        check_partition_function_edge(manager, &mut cache, bdd.as_edge(manager).borrowed(), domain, range)
+        check_partition_function_edge(manager, &mut cache, bdd.as_edge(manager).borrowed(), domain)
     })
 }
 
@@ -624,7 +621,6 @@ fn check_partition_function_edge<'id>(
     cache: &mut HashMap<BDDFunction, bool>,
     bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     domain: &[VarNo],
-    range: &[VarNo],
 ) -> Result<bool, MercError> {
     if let Some(result) = cache.get(&BDDFunction::from_edge(manager, manager.clone_edge(&bdd))) {
         return Ok(*result);
@@ -640,12 +636,12 @@ fn check_partition_function_edge<'id>(
     let result = if let Some(domain_var) = domain.first() {
         if bdd_level > *domain_var {
             // Skipped levels, so catch up in the domain.
-            check_partition_function_edge(manager, cache, bdd.borrowed(), &domain[1..], range)
+            check_partition_function_edge(manager, cache, bdd.borrowed(), &domain[1..])
         } else if bdd_level == *domain_var {
             let (high, low) = collect_children(manager.get_node(&bdd).unwrap_inner());
 
-            let high_result = check_partition_function_edge(manager, cache, high, &domain[1..], range)?;
-            let low_result = check_partition_function_edge(manager, cache, low, &domain[1..], range)?;
+            let high_result = check_partition_function_edge(manager, cache, high, &domain[1..])?;
+            let low_result = check_partition_function_edge(manager, cache, low, &domain[1..])?;
             Ok(high_result && low_result)
         } else {
             // There are variables in the range that are not in the domain, so this cannot be a function from domain to range.
@@ -654,7 +650,7 @@ fn check_partition_function_edge<'id>(
     } else {
         // The domain was completely visited, so now we check whether there is
         // exactly one assignment to the range variables.
-        is_bdd_cube_edge(manager, bdd.borrowed(), range)
+        is_bdd_cube_edge(manager, bdd.borrowed())
     }?;
 
     cache.insert(BDDFunction::from_edge(manager, manager.clone_edge(&bdd)), result);
@@ -665,7 +661,6 @@ fn check_partition_function_edge<'id>(
 fn is_bdd_cube_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
-    vars: &[VarNo],
 ) -> Result<bool, MercError> {
     match manager.get_node(&bdd) {
         Node::Terminal(terminal) => match terminal {
@@ -675,8 +670,8 @@ fn is_bdd_cube_edge<'id>(
         Node::Inner(node) => {
             let (high, low) = collect_children(node);
 
-            let high_is_cube = is_bdd_cube_edge(manager, high, vars)?;
-            let low_is_cube = is_bdd_cube_edge(manager, low, vars)?;
+            let high_is_cube = is_bdd_cube_edge(manager, high)?;
+            let low_is_cube = is_bdd_cube_edge(manager, low)?;
 
             Ok(high_is_cube ^ low_is_cube) // Exactly one of them should be a cube.
         }
@@ -1167,7 +1162,7 @@ mod tests {
 
             manager.with_manager_shared(|manager| {
                 assert!(
-                    !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed(), &vars).unwrap(),
+                    !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed()).unwrap(),
                     "The bdd was created as a cube, so it should be a cube"
                 );
             })
