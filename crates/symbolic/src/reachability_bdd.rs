@@ -8,12 +8,10 @@ use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use oxidd_dump::Visualizer;
-use rustc_hash::FxBuildHasher;
 
 use crate::SymbolicLtsBdd;
 use crate::compute_vars_bdd;
@@ -29,7 +27,7 @@ pub fn reachability_bdd(
     manager_ref: &BDDManagerRef,
     lts: &SymbolicLtsBdd,
     visualize: bool,
-) -> Result<usize, MercError> {
+) -> Result<BDDFunction, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
@@ -114,16 +112,16 @@ pub fn reachability_bdd(
         iteration += 1;
     }
 
-    Ok(
-        states.sat_count::<u64, FxBuildHasher>(lts.state_variables().len() as u32, &mut SatCountCache::default())
-            as usize,
-    )
+    Ok(states)
 }
 
 #[cfg(test)]
 mod tests {
     use merc_utilities::Timing;
     use merc_utilities::random_test;
+    use oxidd::BooleanFunction;
+    use oxidd::util::SatCountCache;
+    use rustc_hash::FxBuildHasher;
 
     use crate::SymbolicLtsBdd;
     use crate::random_symbolic_lts;
@@ -137,13 +135,19 @@ mod tests {
             let mut storage = merc_ldd::Storage::new();
 
             // We don't really check anything here, just ensure that reachability runs without errors.
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let reachable_states = reachability(&mut storage, &lts).unwrap();
+            let num_reachable_states = len(&mut storage, &reachable_states);
             let mut lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
             let num_reachable_states = reachability(&mut storage, &mut lts, &Timing::new()).unwrap();
 
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-            let num_reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, false).unwrap();
+            let reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, false).unwrap();
+            let num_reachable_states_bdd = reachable_states_bdd
+                .sat_count::<u64, FxBuildHasher>(lts_bdd.state_variables().len() as u32, &mut SatCountCache::default())
+                as usize;
 
             assert_eq!(
                 num_reachable_states, num_reachable_states_bdd,
