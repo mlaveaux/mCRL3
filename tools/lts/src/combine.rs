@@ -16,6 +16,50 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
 
+/// A multi-action label with action names sorted, for proper multiset
+/// comparison with [`SortedLtsMultiAction`].
+struct SortedMultiActionLabel {
+    /// Action names in sorted order.
+    actions: Vec<String>,
+}
+
+impl SortedMultiActionLabel {
+    fn new(label: &MultiActionLabel) -> Self {
+        let mut actions = label.actions.clone();
+        actions.sort();
+        SortedMultiActionLabel { actions }
+    }
+}
+
+/// A view of an [`LtsMultiAction`] that provides label names in sorted order
+/// (ignoring action parameters), for proper multiset comparison with
+/// [`SortedMultiActionLabel`].
+///
+/// Since `VecBag<LtsAction>` sorts by `(label, arguments)`, the label names
+/// are already in non-decreasing order, so no additional sorting is needed.
+struct SortedLtsMultiAction<'a> {
+    action: &'a LtsMultiAction,
+}
+
+impl<'a> SortedLtsMultiAction<'a> {
+    fn new(action: &'a LtsMultiAction) -> Self {
+        SortedLtsMultiAction { action }
+    }
+
+    fn is_tau_label(&self) -> bool {
+        self.action.is_tau_label()
+    }
+
+    /// Returns an iterator over action label names in sorted order.
+    fn labels(&self) -> impl Iterator<Item = &str> {
+        self.action.actions().iter().map(|a| a.label())
+    }
+
+    fn len(&self) -> usize {
+        self.action.actions().len()
+    }
+}
+
 /// Computes the parallel composition hide(allow(comm(L1 || ... || Ln))).
 ///
 /// The `builder` is used to construct the resulting LTS, which can also be
@@ -50,6 +94,12 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
         1,
     );
 
+    // Pre-sort the allow set for efficient matching.
+    let sorted_allow: Vec<SortedMultiActionLabel> = allow
+        .iter()
+        .map(SortedMultiActionLabel::new)
+        .collect();
+
     // Working refers to the state vectors in discovered.
     let mut working: Vec<SetIndex> = vec![index];
     timing.measure("compose", || -> Result<(), MercError> {
@@ -83,7 +133,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
                 let multi_action = communicate(comm, multi_action);
 
                 // Check allow: alpha in A ∪ {tau}.
-                if !is_allowed(allow, &multi_action) {
+                if !is_allowed(&sorted_allow, &SortedLtsMultiAction::new(&multi_action)) {
                     continue;
                 }
 
@@ -198,19 +248,20 @@ fn find_communication_match(actions: &[LtsAction], expr: &CommExpr) -> Option<Ve
 ///
 /// A multi-action is allowed if:
 /// - The action is tau (always allowed), or
-/// - The action names match one of the entries in the allow set.
-fn is_allowed(allow: &[MultiActionLabel], action: &LtsMultiAction) -> bool {
+/// - The action label names, compared as sorted multisets, match one of the
+///   entries in the allow set.
+fn is_allowed(allow: &[SortedMultiActionLabel], action: &SortedLtsMultiAction) -> bool {
     if action.is_tau_label() {
         return true;
     }
 
-    let actions = action.actions();
     allow.iter().any(|allowed| {
-        allowed.actions.len() == actions.len()
+        allowed.actions.len() == action.len()
             && allowed
                 .actions
                 .iter()
-                .all(|name| actions.iter().any(|a| a.label() == name))
+                .zip(action.labels())
+                .all(|(name, label)| name == label)
     })
 }
 
