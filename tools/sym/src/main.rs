@@ -9,6 +9,7 @@ use clap::Subcommand;
 use itertools::Itertools;
 use merc_io::LargeFormatter;
 use merc_ldd::Storage;
+use merc_ldd::len;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
@@ -33,7 +34,10 @@ use merc_tools::VersionFlag;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use oxidd::BooleanFunction;
 use oxidd::bdd::BDDFunction;
+use oxidd::util::SatCountCache;
+use rustc_hash::FxBuildHasher;
 use which::which_in;
 
 /// Default node capacity for the Oxidd decision diagram manager.
@@ -286,16 +290,24 @@ fn explore_impl<L: SymbolicLTS>(
 
         println!(
             "LTS has {} states",
-            timing.measure("explore_bdd", || reachability_bdd(
-                &manager_ref,
-                &lts_bdd,
-                args.visualize
-            ))?
+            timing.measure("explore_bdd", || -> Result<_, MercError> {
+                let reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, args.visualize)?;
+
+                let num_reachable_states_bdd = reachable_states_bdd.sat_count::<u64, FxBuildHasher>(
+                    lts_bdd.state_variables().len() as u32,
+                    &mut SatCountCache::default(),
+                ) as usize;
+                Ok(num_reachable_states_bdd)
+            })?
         );
     } else {
         println!(
             "LTS has {} states",
-            timing.measure("explore", || reachability(storage, lts, timing))?
+            timing.measure("explore", || -> Result<_, MercError> {
+                let states = reachability(storage, lts)?;
+
+                Ok(len(storage, &states))
+            })?
         );
     }
     Ok(())
