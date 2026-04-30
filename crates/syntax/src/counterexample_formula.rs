@@ -101,7 +101,7 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
 /// it is a valid weaktrace formula.
 fn weaktrace_formula<L: TransitionLabel>(trace: &[L], expr: StateFrm, modality: ModalityOperator) -> StateFrm {
     // Build the formula tau*
-    let tau_star = RegFrm::Iteration(Box::new(RegFrm::Action(ActFrm::MultAct(MultiAction::new(vec![])))));
+    let tau_star = RegFrm::Iteration(Box::new(RegFrm::Action(ActFrm::MultAct(MultiAction::tau()))));
 
     // We build the formula bottom up: tau* . label . ... . tau*
     let mut result = StateFrm::Modality {

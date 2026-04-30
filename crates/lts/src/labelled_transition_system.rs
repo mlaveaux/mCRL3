@@ -59,6 +59,14 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         F: FnMut() -> I,
         I: Iterator<Item = (StateIndex, LabelIndex, StateIndex)>,
     {
+        assert!(
+            *labels
+                .first()
+                .expect("At least one label (the hidden label) must be provided")
+                == Label::tau_label(),
+            "The first label must be the hidden label."
+        );
+
         let mut states = ByteCompressedVec::new();
         if let Some(num_of_states) = num_of_states {
             states.resize_with(num_of_states, Default::default);
@@ -279,13 +287,28 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         )
     }
 
-    /// Consumes the LTS and relabels its transition labels according to the given mapping.
+    /// Consumes the LTS and relabels its transition labels according to the
+    /// given mapping.
+    /// 
+    /// Note that this only relabels the visible labels, since the hidden label
+    /// must be kept consistent.
     pub fn relabel<L, F>(self, labelling: F) -> Result<LabelledTransitionSystem<L>, MercError>
     where
         F: Fn(Label) -> Result<L, MercError>,
         L: TransitionLabel,
     {
-        let new_labels: Vec<L> = self.labels.into_iter().map(labelling).collect::<Result<_, _>>()?;
+        let new_labels: Vec<L> = self
+            .labels
+            .into_iter()
+            .enumerate()
+            .map(|(index, label)| {
+                if index == 0 {
+                    Ok(L::tau_label())
+                } else {
+                    labelling(label)
+                }
+            })
+            .collect::<Result<_, _>>()?;
 
         Ok(LabelledTransitionSystem::from_raw_parts(
             self.initial_state,
