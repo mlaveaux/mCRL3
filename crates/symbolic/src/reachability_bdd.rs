@@ -118,6 +118,7 @@ pub fn reachability_bdd(
 #[cfg(test)]
 mod tests {
     use merc_utilities::Timing;
+    use merc_ldd::len;
     use merc_utilities::random_test;
     use oxidd::BooleanFunction;
     use oxidd::util::SatCountCache;
