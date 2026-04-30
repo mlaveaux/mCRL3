@@ -273,7 +273,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
 
     /// Consumes the LTS and relabels its transition labels according to the
     /// given mapping.
-    /// 
+    ///
     /// Note that this only relabels the visible labels, since the hidden label
     /// must be kept consistent.
     pub fn relabel<L, F>(self, labelling: F) -> Result<LabelledTransitionSystem<L>, MercError>
@@ -377,7 +377,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
             self.transition_to.len(),
             "transition_labels and transition_to must have equal length"
         );
-        
+
         assert!(
             self.labels
                 .first()
