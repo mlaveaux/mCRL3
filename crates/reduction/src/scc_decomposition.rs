@@ -24,6 +24,7 @@ mod tests {
     use merc_lts::LabelIndex;
     use merc_lts::LabelledTransitionSystem;
     use merc_lts::StateIndex;
+    use merc_lts::TransitionLabel;
     use merc_lts::random_lts;
     use merc_lts::write_aut;
     use merc_utilities::random_test;
@@ -114,7 +115,7 @@ mod tests {
             StateIndex::new(0),
             None,
             || transitions.iter().cloned(),
-            vec!["tau".to_string(), "a".to_string()],
+            vec![String::tau_label(), "a".to_string()],
         );
 
         let _ = tau_scc_decomposition(&lts);

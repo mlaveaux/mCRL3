@@ -79,13 +79,14 @@ pub fn read_fts<R: Read>(
     let original_labels = aut.labels().to_vec();
 
     // Find the associated feature for each label and relabel the LTS accordingly.
-    let aut = aut.relabel(|label| {
+    let aut = aut.relabel_all(|label| {
         let associated_feature = feature_labels[original_labels
             .iter()
             .position(|orig| *orig == label)
             .ok_or("label must have an associated feature")?]
         .clone();
 
+        // This is fine for the tau label.
         Ok(FeaturedLabel::new(label, associated_feature))
     })?;
 

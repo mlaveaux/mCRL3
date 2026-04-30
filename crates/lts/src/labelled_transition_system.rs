@@ -59,14 +59,6 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         F: FnMut() -> I,
         I: Iterator<Item = (StateIndex, LabelIndex, StateIndex)>,
     {
-        assert!(
-            *labels
-                .first()
-                .expect("At least one label (the hidden label) must be provided")
-                == Label::tau_label(),
-            "The first label must be the hidden label."
-        );
-
         let mut states = ByteCompressedVec::new();
         if let Some(num_of_states) = num_of_states {
             states.resize_with(num_of_states, Default::default);
@@ -141,14 +133,6 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         F: FnMut(StateIndex) -> I,
         I: Iterator<Item = (LabelIndex, StateIndex)>,
     {
-        assert!(
-            *labels
-                .first()
-                .expect("At least one label (the hidden label) must be provided")
-                == Label::tau_label(),
-            "The first label must be the hidden label."
-        );
-
         let mut states = ByteCompressedVec::new();
         states.resize_with(num_of_states, Default::default);
 
@@ -319,6 +303,24 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
         ))
     }
 
+    /// A [Self::relabel] variant that also applies to the tau label. This is
+    /// useful when the tau label cannot be constructed from `L::tau_label()`.
+    pub fn relabel_all<L, F>(self, labelling: F) -> Result<LabelledTransitionSystem<L>, MercError>
+    where
+        F: Fn(Label) -> Result<L, MercError>,
+        L: TransitionLabel,
+    {
+        let new_labels: Vec<L> = self.labels.into_iter().map(labelling).collect::<Result<_, _>>()?;
+
+        Ok(LabelledTransitionSystem::from_raw_parts(
+            self.initial_state,
+            self.states,
+            self.transition_labels,
+            self.transition_to,
+            new_labels,
+        ))
+    }
+
     /// Constructs a [LabelledTransitionSystem] directly from its raw internal arrays.
     ///
     /// The `states` array must contain one entry per state holding the start offset of that
@@ -374,6 +376,14 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
             self.transition_labels.len(),
             self.transition_to.len(),
             "transition_labels and transition_to must have equal length"
+        );
+        
+        assert!(
+            self.labels
+                .first()
+                .expect("At least one label (the hidden label) must be provided")
+                .is_tau_label(),
+            "The first label must be the hidden label."
         );
 
         for i in 0..num_states {

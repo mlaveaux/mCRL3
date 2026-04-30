@@ -62,7 +62,7 @@ some convenience traits.
 
 Made the AUT format compliant with the actual specification. In particular, the
 internal action is now represented by `i` instead of `tau`. We introduced a
-`Mcrl2Aut` format that is compliant with the mCRL2 specification, which uses
+`AutMcrl2` format that is compliant with the mCRL2 specification, which uses
 `tau` and multi-actions.
 
 Introduce a proper `LtsMultiAction` type to represent multi-actions as they are
