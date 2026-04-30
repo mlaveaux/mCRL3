@@ -1,6 +1,5 @@
 use log::trace;
 
-use crate::IncomingTransitions;
 use crate::LTS;
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;

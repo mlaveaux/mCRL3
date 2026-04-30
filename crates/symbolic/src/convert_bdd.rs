@@ -283,16 +283,16 @@ fn compute_positions(
             .unwrap_or(state_variables.len());
 
         if read_group.contains(&offset) {
-            for bit in offset..end {
+            for bit in state_variables.iter().take(end).skip(offset) {
                 rpos.push(transition_variables.len());
-                transition_variables.push(state_variables[bit]);
+                transition_variables.push(*bit);
             }
         }
 
         if write_group.contains(&offset) {
-            for bit in offset..end {
+            for bit in next_state_variables.iter().take(end).skip(offset) {
                 wpos.push(transition_variables.len());
-                transition_variables.push(next_state_variables[bit]);
+                transition_variables.push(*bit);
             }
         }
     }

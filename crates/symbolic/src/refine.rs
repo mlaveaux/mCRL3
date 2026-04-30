@@ -146,7 +146,7 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
             let blocks_q_prime_b_prime = variable_rename(manager_ref, &blocks_q_prime, &b_to_b_prime)?;
 
             // Rename Ta(p, p') to Ta(q, q')
-            let relation_q = variable_rename(manager_ref, &group.relation(), &p_to_q)?;
+            let relation_q = variable_rename(manager_ref, group.relation(), &p_to_q)?;
             let relation_q_q_prime = variable_rename(manager_ref, &relation_q, &p_prime_to_q_prime)?;
 
             // Computes exists b', q': Ta(q, q') and B_i(p', b') and B_i(q', b')
@@ -201,10 +201,10 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
 
         // B_i+1(p,b b1 b2) = B_i(p, b1) /\  (b <=> exists p' Ra(p, p') /\ B_i(p', b2)).
         blocks = manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
-            Ok(blocks.and(&BDDFunction::var(
+            blocks.and(&BDDFunction::var(
                 manager,
                 *b_variables.last().expect("At least one b variable is added"),
-            )?)?)
+            )?)
         })?;
 
         iteration += 1;
