@@ -21,9 +21,13 @@ pub enum Equivalence {
     /// Partition based refinement algorithms.
     WeakBisim,
     WeakBisimParallel,
+    WeakBisimDivergencePreserving,
+    WeakBisimParallelDivergencePreserving,
     /// Various signature based reduction algorithms.
     WeakBisimSigref,
     WeakBisimSigrefNaive,
+    WeakBisimSigrefDivergencePreserving,
+    WeakBisimSigrefNaiveDivergencePreserving,
     StrongBisim,
     StrongBisimNaive,
     BranchingBisim,
@@ -42,19 +46,35 @@ pub fn reduce_lts<L: LTS>(
     let state = lts.initial_state_index();
     match equivalence {
         Equivalence::WeakBisim => {
-            let (lts, _, partition) = weak_bisimulation(lts, state, preprocess, timing);
+            let (lts, _, partition) = weak_bisimulation(lts, state, preprocess, false, timing);
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+        }
+        Equivalence::WeakBisimDivergencePreserving => {
+            let (lts, _, partition) = weak_bisimulation(lts, state, preprocess, true, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimParallel => {
-            let (lts, _, partition) = weak_bisimulation_parallel(lts, state, preprocess, timing);
+            let (lts, _, partition) = weak_bisimulation_parallel(lts, state, preprocess, false, timing);
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+        }
+        Equivalence::WeakBisimParallelDivergencePreserving => {
+            let (lts, _, partition) = weak_bisimulation_parallel(lts, state, preprocess, true, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigref => {
-            let (lts, _, partition) = weak_bisim_sigref_inductive_naive(lts, state, preprocess, timing);
+            let (lts, _, partition) = weak_bisim_sigref_inductive_naive(lts, state, preprocess, false, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::WeakBisimSigrefNaive => {
-            let (lts, _, partition) = weak_bisim_sigref_naive(lts, state, preprocess, timing);
+            let (lts, _, partition) = weak_bisim_sigref_naive(lts, state, preprocess, false, timing);
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+        }
+        Equivalence::WeakBisimSigrefDivergencePreserving => {
+            let (lts, _, partition) = weak_bisim_sigref_inductive_naive(lts, state, preprocess, true, timing);
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+        }
+        Equivalence::WeakBisimSigrefNaiveDivergencePreserving => {
+            let (lts, _, partition) = weak_bisim_sigref_naive(lts, state, preprocess, true, timing);
             timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
         }
         Equivalence::StrongBisim => {

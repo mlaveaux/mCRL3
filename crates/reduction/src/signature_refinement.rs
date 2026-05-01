@@ -219,16 +219,21 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
         let lts = timing.measure("preprocess", || {
-            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            if divergence_preserving {
+                reduce_lts(lts, Equivalence::BranchingBisimDivergencePreserving, true, timing)
+            } else {
+                reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            }
         });
-        weak_bisim_sigref_inductive_naive_impl(lts, state, timing)
+        weak_bisim_sigref_inductive_naive_impl(lts, state, divergence_preserving, timing)
     } else {
-        weak_bisim_sigref_inductive_naive_impl(lts, state, timing)
+        weak_bisim_sigref_inductive_naive_impl(lts, state, divergence_preserving, timing)
     }
 }
 
@@ -238,11 +243,18 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
 pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     lts: L,
     state: StateIndex,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     let (preprocessed_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
-    let partition = timing.measure("reduction", || signature_refinement_weak(&preprocessed_lts));
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+    let partition = timing.measure("reduction", || {
+        if divergence_preserving {
+            signature_refinement_weak(&DivergencePreservingLts::new(&preprocessed_lts))
+        } else {
+            signature_refinement_weak(&preprocessed_lts)
+        }
+    });
     (preprocessed_lts, mapped_state, partition)
 }
 
@@ -253,16 +265,21 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
         let lts = timing.measure("preprocess", || {
-            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            if divergence_preserving {
+                reduce_lts(lts, Equivalence::BranchingBisimDivergencePreserving, true, timing)
+            } else {
+                reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            }
         });
-        weak_bisim_sigref_naive_impl(lts, state, timing)
+        weak_bisim_sigref_naive_impl(lts, state, divergence_preserving, timing)
     } else {
-        weak_bisim_sigref_naive_impl(lts, state, timing)
+        weak_bisim_sigref_naive_impl(lts, state, divergence_preserving, timing)
     }
 }
 
@@ -274,17 +291,40 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
 fn weak_bisim_sigref_naive_impl<L: LTS>(
     lts: L,
     state: StateIndex,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     let (preprocessed_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
     let partition = timing.measure("reduction", || {
-        signature_refinement_naive::<_, _, true>(
-            &preprocessed_lts,
-            |state_index, partition, state_to_signature, builder| {
-                weak_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder)
-            },
-        )
+        if divergence_preserving {
+            let divergence_preserving_lts = DivergencePreservingLts::new(&preprocessed_lts);
+            signature_refinement_naive::<_, _, true>(
+                &divergence_preserving_lts,
+                |state_index, partition, state_to_signature, builder| {
+                    weak_bisim_signature_sorted(
+                        state_index,
+                        &divergence_preserving_lts,
+                        partition,
+                        state_to_signature,
+                        builder,
+                    )
+                },
+            )
+        } else {
+            signature_refinement_naive::<_, _, true>(
+                &preprocessed_lts,
+                |state_index, partition, state_to_signature, builder| {
+                    weak_bisim_signature_sorted(
+                        state_index,
+                        &preprocessed_lts,
+                        partition,
+                        state_to_signature,
+                        builder,
+                    )
+                },
+            )
+        }
     });
 
     (preprocessed_lts, mapped_state, partition)
@@ -931,9 +971,9 @@ mod tests {
             let mut timing = Timing::new();
 
             let (result_lts, _, result_partition) =
-                weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, &mut timing);
+                weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, false, &mut timing);
             let (expected_lts, _, expected_partition) =
-                weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, &mut timing);
+                weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, false, &mut timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -981,7 +1021,7 @@ mod tests {
             let mut timing = Timing::new();
 
             let (preprocessed_lts, _, weak_partition) =
-                weak_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
+                weak_bisim_sigref_naive(lts, StateIndex::new(0), false, false, &mut timing);
             files
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
@@ -1022,12 +1062,11 @@ mod tests {
         );
     }
 
-    // TODO: Our weak bisimulation quotient does not yet compute the minimal result.
-    // #[test]
-    // #[cfg_attr(miri, ignore)] // Miri is too slow
-    // fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
-    //     test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_weak_bisim_sigref_vs_ltsconvert", Equivalence::WeakBisim, "weak-bisim");
-    // }
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_weak_bisim_sigref_vs_ltsconvert", Equivalence::WeakBisim, "weak-bisim");
+    }
 
     /// Compares our approach to the one implemented in mCRL2's ltsconvert
     fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equivalence, argument: &str) {
