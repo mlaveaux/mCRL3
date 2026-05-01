@@ -4,6 +4,7 @@
 mod feature_transition_system;
 mod modal_equation_system;
 mod parity_games;
+mod priority_promotion;
 mod project_fts;
 mod project_vpg;
 mod reachability;
@@ -19,6 +20,7 @@ mod zielonka;
 pub use feature_transition_system::*;
 pub use modal_equation_system::*;
 pub use parity_games::*;
+pub use priority_promotion::*;
 pub use project_fts::*;
 pub use project_vpg::*;
 pub use reachability::*;
