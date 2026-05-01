@@ -446,6 +446,7 @@ mod tests {
     use crate::Equivalence;
     use crate::compare_lts;
     use crate::reduce_lts;
+    use crate::signature_refinement::test_mcrl2_sigref_vs_ltsconvert_impl;
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -503,5 +504,25 @@ mod tests {
                 &mut timing
             ));
         })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_weak_bisimulation_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_weak_bisimulation_vs_ltsconvert",
+            Equivalence::WeakBisim,
+            "weak-bisim",
+        );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_divergence_preserving_weak_bisimulation_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_divergence_preserving_weak_bisimulation_vs_ltsconvert",
+            Equivalence::WeakBisimDivergencePreserving,
+            "dpweak-bisim",
+        );
     }
 }

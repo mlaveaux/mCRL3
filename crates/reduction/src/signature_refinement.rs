@@ -28,6 +28,8 @@ use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
+#[cfg(test)]
+use crate::compare_lts;
 use crate::is_tau_hat;
 use crate::longest_tau_path;
 use crate::reduce_lts;
@@ -814,15 +816,89 @@ where
     true
 }
 
+/// Compares our reduction against mCRL2's `ltsconvert` on random inputs.
+#[cfg(test)]
+pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equivalence, argument: &str) {
+    let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+        println!("Skipping test: MCRL2_PATH not set");
+        return;
+    };
+
+    let ltsconvert = std::path::Path::new(&mcrl2_path).join("ltsconvert");
+
+    // Write the random LTS to a temp file for ltsconvert to process.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let input_path = temp_dir.path().join("input.aut");
+    let output_path = temp_dir.path().join("output.aut");
+
+    merc_utilities::random_test(100, |rng| {
+        let mut files = merc_io::DumpFiles::new(name);
+
+        let lts = merc_lts::random_lts(rng, 10, 3, 3);
+        log::info!(
+            "Generated random LTS with {} states and {} transitions",
+            lts.num_of_states(),
+            lts.num_of_transitions()
+        );
+
+        {
+            let mut input_file = std::fs::File::create(&input_path).unwrap();
+            merc_lts::write_mcrl2_aut(&mut input_file, &lts).unwrap();
+        }
+        files.dump("input.aut", |writer| merc_lts::write_mcrl2_aut(writer, &lts)).unwrap();
+
+        let status = std::process::Command::new(&ltsconvert)
+            .arg(format!("-e{}", argument))
+            .arg(&input_path)
+            .arg(&output_path)
+            .status()
+            .expect("Failed to run ltsconvert");
+        assert!(status.success(), "ltsconvert failed with status: {status}");
+
+        let ltsconvert_reduced = merc_lts::read_mcrl2_aut(std::fs::File::open(&output_path).unwrap()).unwrap();
+
+        let mut timing = merc_utilities::Timing::new();
+        let our_reduced = reduce_lts(lts, equivalence, false, &timing);
+
+        files
+            .dump("reduced.aut", |writer| merc_lts::write_mcrl2_aut(writer, &our_reduced))
+            .unwrap();
+        files
+            .dump("ltsconvert_reduced.aut", |writer| {
+                merc_lts::write_mcrl2_aut(writer, &ltsconvert_reduced)
+            })
+            .unwrap();
+
+        assert_eq!(
+            our_reduced.num_of_states(),
+            ltsconvert_reduced.num_of_states(),
+            "Number of states differs: ours={}, ltsconvert={}",
+            our_reduced.num_of_states(),
+            ltsconvert_reduced.num_of_states()
+        );
+        assert_eq!(
+            our_reduced.num_of_transitions(),
+            ltsconvert_reduced.num_of_transitions(),
+            "Number of transitions differs: ours={}, ltsconvert={}",
+            our_reduced.num_of_transitions(),
+            ltsconvert_reduced.num_of_transitions()
+        );
+
+        assert!(
+            compare_lts(
+                Equivalence::StrongBisim,
+                our_reduced,
+                ltsconvert_reduced,
+                false,
+                &mut timing
+            ),
+            "The reduced LTSs are not strongly bisimilar"
+        );
+    });
+}
+
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-    use std::path::Path;
-    use std::process::Command;
-
-    use log::info;
-    use merc_lts::read_mcrl2_aut;
-    use merc_lts::write_mcrl2_aut;
     use test_log::test;
 
     use merc_io::DumpFiles;
@@ -832,9 +908,6 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::Equivalence;
-    use crate::compare_lts;
-    use crate::reduce_lts;
-
     use super::BlockIndex;
     use super::LTS;
     use super::Partition;
@@ -843,6 +916,7 @@ mod tests {
     use super::branching_bisim_sigref_naive;
     use super::strong_bisim_sigref;
     use super::strong_bisim_sigref_naive;
+    use super::test_mcrl2_sigref_vs_ltsconvert_impl;
     use super::weak_bisim_sigref_inductive_naive;
     use super::weak_bisim_sigref_naive;
 
@@ -1068,88 +1142,13 @@ mod tests {
         test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_weak_bisim_sigref_vs_ltsconvert", Equivalence::WeakBisim, "weak-bisim");
     }
 
-    /// Compares our approach to the one implemented in mCRL2's ltsconvert
-    fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equivalence, argument: &str) {
-        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
-            println!("Skipping test: MCRL2_PATH not set");
-            return;
-        };
-
-        let ltsconvert = Path::new(&mcrl2_path).join("ltsconvert");
-
-        // Write the random LTS to a temp file for ltsconvert to process.
-        let temp_dir = tempfile::tempdir().unwrap();
-        let input_path = temp_dir.path().join("input.aut");
-        let output_path = temp_dir.path().join("output.aut");
-
-        random_test(100, |rng| {
-            let mut files = DumpFiles::new(name);
-
-            let lts = random_lts(rng, 10, 3, 3);
-            info!(
-                "Generated random LTS with {} states and {} transitions",
-                lts.num_of_states(),
-                lts.num_of_transitions()
-            );
-
-            {
-                let mut input_file = File::create(&input_path).unwrap();
-                write_mcrl2_aut(&mut input_file, &lts).unwrap();
-            }
-            files.dump("input.aut", |writer| write_mcrl2_aut(writer, &lts)).unwrap();
-
-            // Reduce the LTS using ltsconvert with branching bisimulation.
-            let status = Command::new(&ltsconvert)
-                .arg(format!("-e{}", argument))
-                .arg(&input_path)
-                .arg(&output_path)
-                .status()
-                .expect("Failed to run ltsconvert");
-            assert!(status.success(), "ltsconvert failed with status: {status}");
-
-            // Read back ltsconvert's reduced LTS.
-            let ltsconvert_reduced = read_mcrl2_aut(File::open(&output_path).unwrap()).unwrap();
-
-            // Reduce the same LTS using our branching bisimulation algorithm.
-            let mut timing = Timing::new();
-            let our_reduced = reduce_lts(lts, equivalence, false, &timing);
-
-            files
-                .dump("reduced.aut", |writer| write_mcrl2_aut(writer, &our_reduced))
-                .unwrap();
-            files
-                .dump("ltsconvert_reduced.aut", |writer| {
-                    write_mcrl2_aut(writer, &ltsconvert_reduced)
-                })
-                .unwrap();
-
-            // Both reductions must have the same number of states and transitions.
-            assert_eq!(
-                our_reduced.num_of_states(),
-                ltsconvert_reduced.num_of_states(),
-                "Number of states differs: ours={}, ltsconvert={}",
-                our_reduced.num_of_states(),
-                ltsconvert_reduced.num_of_states()
-            );
-            assert_eq!(
-                our_reduced.num_of_transitions(),
-                ltsconvert_reduced.num_of_transitions(),
-                "Number of transitions differs: ours={}, ltsconvert={}",
-                our_reduced.num_of_transitions(),
-                ltsconvert_reduced.num_of_transitions()
-            );
-
-            // The two reductions must be strongly bisimilar.
-            assert!(
-                compare_lts(
-                    Equivalence::StrongBisim,
-                    our_reduced,
-                    ltsconvert_reduced,
-                    false,
-                    &mut timing
-                ),
-                "The reduced LTSs are not strongly bisimilar"
-            );
-        });
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
+    fn test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert() {
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert",
+            Equivalence::WeakBisimDivergencePreserving,
+            "dpweak-bisim",
+        );
     }
 }
