@@ -78,7 +78,7 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           # Upload the documentation directory
           path: 'target/doc/'
