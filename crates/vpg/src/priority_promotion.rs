@@ -43,6 +43,7 @@ use crate::Player;
 use crate::Pred;
 use crate::Predecessors;
 use crate::Priority;
+use crate::Strat;
 use crate::Strategy;
 use crate::VertexIndex;
 use crate::zielonka::Set;
@@ -52,51 +53,59 @@ const COMPUTED_REGION: usize = usize::MAX;
 
 /// Solves the given parity game using the priority promotion algorithm.
 ///
-/// Returns the winning sets for both players and their winning strategies.
-pub fn solve_priority_promotion<G: PG>(game: &G) -> ([Set; 2], [Strategy; 2]) {
+/// Returns the winning sets for both players and optionally their strategies.
+pub fn solve_priority_promotion<G: PG>(game: &G, compute_strategy: bool) -> ([Set; 2], Option<[Strategy; 2]>) {
+    if compute_strategy {
+        let (solution, strategy) = solve_priority_promotion_impl::<G, Strategy>(game);
+        (solution, Some(strategy))
+    } else {
+        let (solution, _) = solve_priority_promotion_impl::<G, ()>(game);
+        (solution, None)
+    }
+}
+
+/// Solves the given parity game using the priority promotion algorithm,
+/// computing a strategy representation of type `S`.
+fn solve_priority_promotion_impl<G: PG, S: Strat>(game: &G) -> ([Set; 2], [S; 2]) {
     debug_assert!(
         game.is_total(),
         "Priority promotion solver requires a total parity game"
     );
 
     let mut solver = PriorityPromotionSolver::new(game);
-    let strategy = solver.solve();
+    let strategy = solver.solve::<S>();
 
-    // Convert region_function into winning sets based on the strategy.
-    let mut W0 = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
-    let mut W1 = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
-    let mut S0 = Strategy::new();
-    let mut S1 = Strategy::new();
+    let mut w0 = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
+    let mut w1 = bitvec![usize, Lsb0; 0; game.num_of_vertices()];
+    let mut s0 = S::new();
+    let mut s1 = S::new();
 
     for v in game.iter_vertices() {
         let prio = solver.region_function[*v];
         debug_assert_eq!(prio, COMPUTED_REGION, "All vertices should be solved");
 
-        // Determine the winner from the strategy: if a vertex has a strategy
-        // entry, the player owning it wins; otherwise check which dominion it
-        // belonged to by looking at the final_winner array.
         let winner = solver.final_winner[*v];
         match winner {
             Player::Even => {
-                W0.set(*v, true);
+                w0.set(*v, true);
                 if game.owner(v) == Player::Even {
-                    if let Some(&target) = strategy.get(v) {
-                        S0.set(v, target);
+                    if let Some(target) = strategy.get(v) {
+                        s0.set(v, target);
                     }
                 }
             }
             Player::Odd => {
-                W1.set(*v, true);
+                w1.set(*v, true);
                 if game.owner(v) == Player::Odd {
-                    if let Some(&target) = strategy.get(v) {
-                        S1.set(v, target);
+                    if let Some(target) = strategy.get(v) {
+                        s1.set(v, target);
                     }
                 }
             }
         }
     }
 
-    ([W0, W1], [S0, S1])
+    ([w0, w1], [s0, s1])
 }
 
 /// Internal solver state for the priority promotion algorithm.
@@ -177,8 +186,8 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// determine which vertices still are not solved. This is done because
     /// removing subgames allocates new memory repeatedly and parity games
     /// can be huge.
-    fn solve(&mut self) -> Strategy {
-        let mut strategy = Strategy::new();
+    fn solve<S: Strat>(&mut self) -> S {
+        let mut strategy = S::new();
 
         // Find the lowest priority in the game.
         let mut prio = self.next_priority(0);
@@ -269,7 +278,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// R and update region_function\[R -> p\]. The strategy will be updated in
     /// [`Self::compute_attractor`]. The unsolved set is used to quickly iterate unsolved vertices.
     /// The todo queue is passed to be reused by [`Self::compute_attractor`].
-    fn query(&mut self, strategy: &mut Strategy, prio: usize) {
+    fn query<S: Strat>(&mut self, strategy: &mut S, prio: usize) {
         // Make sure nothing else is stored in the todo.
         debug_assert!(self.todo.is_empty());
 
@@ -291,7 +300,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// updates region_function\[A -> prio\]. The strategy is changed for alpha for the
     /// attraction witness. The remaining vertices of alpha without a strategy can pick
     /// any vertex inside A as witness.
-    fn compute_attractor(&mut self, strategy: &mut Strategy, prio: usize, in_subgraph: bool) {
+    fn compute_attractor<S: Strat>(&mut self, strategy: &mut S, prio: usize, in_subgraph: bool) {
         let alpha = Player::from_priority(&Priority::new(prio));
 
         // O(V): Compute the attractor set to the alpha-region.
@@ -420,7 +429,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// For every opponent vertex this is the lowest priority (highest value in
     /// min-prio games) that it can reach. The region it can reach belongs to alpha,
     /// otherwise it would be attracted in some earlier state.
-    fn promote_sub_dominion(&mut self, strategy: &mut Strategy, prio: usize) -> usize {
+    fn promote_sub_dominion<S: Strat>(&mut self, strategy: &mut S, prio: usize) -> usize {
         let alpha = Player::from_priority(&Priority::new(prio));
 
         // O(V): It is only a dominion in the subgraph, determine highest p < prio
@@ -513,8 +522,8 @@ mod tests {
 
             files.dump("input.pg", |writer| write_pg(writer, &game)).unwrap();
 
-            let (solution, strategy) = solve_priority_promotion(&game);
-            verify_solution(&game, &solution, &strategy);
+            let (solution, strategy) = solve_priority_promotion(&game, true);
+            verify_solution(&game, &solution, &strategy.unwrap());
         });
     }
 
@@ -524,7 +533,7 @@ mod tests {
         random_test(100, |rng| {
             let game = random_parity_game(rng, true, 50, 4, 3);
 
-            let (pp_solution, _) = solve_priority_promotion(&game);
+            let (pp_solution, _) = solve_priority_promotion(&game, false);
             let (zielonka_solution, _) = solve_zielonka(&game, false);
 
             assert_eq!(
