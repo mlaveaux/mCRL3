@@ -52,6 +52,11 @@ impl Strategy {
         self.mapping.get(&from)
     }
 
+    /// Removes the strategy entry for the given vertex, if it exists.
+    pub fn remove(&mut self, from: VertexIndex) {
+        self.mapping.remove(&from);
+    }
+
     /// Computes the union of two strategies, assumes that they do not overlap.
     pub fn union(mut self, other: Strategy) -> Strategy {
         // Add all mappings from the extension strategy to the base strategy
