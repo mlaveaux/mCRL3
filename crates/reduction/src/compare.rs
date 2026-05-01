@@ -22,20 +22,41 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
     // Reduce the merged LTS modulo the given equivalence and return the partition
     match equivalence {
         Equivalence::WeakBisim => {
-            let (lts, rhs_initial, partition) = weak_bisimulation(merged, rhs_initial, preprocess, timing);
+            let (lts, rhs_initial, partition) = weak_bisimulation(merged, rhs_initial, preprocess, false, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimParallel => {
-            let (lts, rhs_initial, partition) = weak_bisimulation_parallel(merged, rhs_initial, preprocess, timing);
+            let (lts, rhs_initial, partition) =
+                weak_bisimulation_parallel(merged, rhs_initial, preprocess, false, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::WeakBisimDivergencePreserving => {
+            let (lts, rhs_initial, partition) = weak_bisimulation(merged, rhs_initial, preprocess, true, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::WeakBisimParallelDivergencePreserving => {
+            let (lts, rhs_initial, partition) =
+                weak_bisimulation_parallel(merged, rhs_initial, preprocess, true, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigref => {
             let (lts, rhs_initial, partition) =
-                weak_bisim_sigref_inductive_naive(merged, rhs_initial, preprocess, timing);
+                weak_bisim_sigref_inductive_naive(merged, rhs_initial, preprocess, false, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::WeakBisimSigrefNaive => {
-            let (lts, rhs_initial, partition) = weak_bisim_sigref_naive(merged, rhs_initial, preprocess, timing);
+            let (lts, rhs_initial, partition) =
+                weak_bisim_sigref_naive(merged, rhs_initial, preprocess, false, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::WeakBisimSigrefDivergencePreserving => {
+            let (lts, rhs_initial, partition) =
+                weak_bisim_sigref_inductive_naive(merged, rhs_initial, preprocess, true, timing);
+            partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
+        }
+        Equivalence::WeakBisimSigrefNaiveDivergencePreserving => {
+            let (lts, rhs_initial, partition) =
+                weak_bisim_sigref_naive(merged, rhs_initial, preprocess, true, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
         Equivalence::StrongBisim => {

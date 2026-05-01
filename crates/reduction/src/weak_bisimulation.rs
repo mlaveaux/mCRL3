@@ -21,6 +21,7 @@ use merc_lts::StateIndex;
 use merc_utilities::Timing;
 
 use crate::Equivalence;
+use crate::DivergencePreservingLts;
 use crate::MarkedBlockPartition;
 use crate::reduce_lts;
 use crate::tau_cycle_elimination_and_reorder;
@@ -41,16 +42,21 @@ pub fn weak_bisimulation<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
         let lts = timing.measure("preprocess", || {
-            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            if divergence_preserving {
+                reduce_lts(lts, Equivalence::BranchingBisimDivergencePreserving, true, timing)
+            } else {
+                reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            }
         });
-        weak_bisimulation_impl(lts, state, timing)
+        weak_bisimulation_preprocessed(lts, state, divergence_preserving, timing)
     } else {
-        weak_bisimulation_impl(lts, state, timing)
+        weak_bisimulation_preprocessed(lts, state, divergence_preserving, timing)
     }
 }
 
@@ -68,98 +74,74 @@ pub fn weak_bisimulation_parallel<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
         let lts = timing.measure("preprocess", || {
-            reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            if divergence_preserving {
+                reduce_lts(lts, Equivalence::BranchingBisimDivergencePreserving, true, timing)
+            } else {
+                reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
+            }
         });
-        weak_bisimulation_parallel_impl(lts, state, timing)
+        weak_bisimulation_parallel_preprocessed(lts, state, divergence_preserving, timing)
     } else {
-        weak_bisimulation_parallel_impl(lts, state, timing)
+        weak_bisimulation_parallel_preprocessed(lts, state, divergence_preserving, timing)
     }
 }
 
 /// Core weak bisimulation algorithm implementation.
-fn weak_bisimulation_impl<L: LTS>(
+fn weak_bisimulation_preprocessed<L: LTS>(
     lts: L,
     state: StateIndex,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
     let (tau_loop_free_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
 
     timing.measure("reduction", || {
-        let mut blocks = MarkedBlockPartition::new(tau_loop_free_lts.num_of_states());
-
-        let mut act_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
-        let mut tau_mark = bitvec![u64, Lsb0; 0; tau_loop_free_lts.num_of_states()];
-
-        let incoming = IncomingTransitions::new(&tau_loop_free_lts);
-
-        let progress = TimeProgress::new(
-            |num_of_blocks: usize| {
-                info!("Found {} blocks...", num_of_blocks);
-            },
-            1,
-        );
-
-        loop {
-            let mut stable = true;
-            for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
-                progress.print(blocks.num_of_blocks());
-                if *blocks.block(block_index).annotation() {
-                    continue;
-                }
-
-                trace!("Stabilising block {:?}", block_index);
-                stable = false;
-                blocks.mark_block_stable(block_index);
-
-                // tau is the first label.
-                for label in tau_loop_free_lts
-                    .labels()
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| LabelIndex::new(i))
-                {
-                    compute_weak_act(
-                        &mut act_mark,
-                        &mut tau_mark,
-                        &tau_loop_free_lts,
-                        &blocks,
-                        &incoming,
-                        block_index,
-                        label,
-                    );
-
-                    // Note that we cannot use the block references here, and instead uses indices, because stabilise
-                    // also modifies the blocks structure.
-                    for block_prime in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
-                        stabilise(block_prime, &mut act_mark, &mut blocks);
-                    }
-                }
-            }
-
-            if stable {
-                // Quit the outer loop.
-                trace!("Partition is stable!");
-                break;
-            }
-        }
-
+        let blocks = if divergence_preserving {
+            let divergence_preserving_lts = DivergencePreservingLts::new(&tau_loop_free_lts);
+            weak_bisimulation_impl(&divergence_preserving_lts)
+        } else {
+            weak_bisimulation_impl(&tau_loop_free_lts)
+        };
         (tau_loop_free_lts, mapped_state, blocks)
     })
 }
 
-fn weak_bisimulation_parallel_impl<L: LTS>(
+/// The implementation of [weak_bisimulation_parallel] that assumes the LTS has already been preprocessed.
+fn weak_bisimulation_parallel_preprocessed<L: LTS>(
     lts: L,
     state: StateIndex,
+    divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
     let (tau_loop_free_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, true));
+        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+
+    timing.measure("reduction", || {
+        let blocks = if divergence_preserving {
+            let divergence_preserving_lts = DivergencePreservingLts::new(&tau_loop_free_lts);
+            weak_bisimulation_parallel_impl(&divergence_preserving_lts)
+        } else {
+            weak_bisimulation_parallel_impl(&tau_loop_free_lts)
+        };
+        (tau_loop_free_lts, mapped_state, blocks)
+    })
+}
+
+/// The implementation of [weak_bisimulation].
+fn weak_bisimulation_impl<L: LTS>(lts: &L) -> MarkedBlockPartition {
+    let mut blocks = MarkedBlockPartition::new(lts.num_of_states());
+
+    let mut act_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
+    let mut tau_mark = bitvec![u64, Lsb0; 0; lts.num_of_states()];
+
+    let incoming = IncomingTransitions::new(lts);
 
     let progress = TimeProgress::new(
         |num_of_blocks: usize| {
@@ -168,52 +150,91 @@ fn weak_bisimulation_parallel_impl<L: LTS>(
         1,
     );
 
-    timing.measure("reduction", || {
-        let mut blocks = MarkedBlockPartition::new(tau_loop_free_lts.num_of_states());
-
-        // Represents the s.marked[a] from the pseudocode.
-        let mut marked = Vec::from_iter(iter::repeat_n(
-            bitvec![u64, Lsb0; 0; tau_loop_free_lts.labels().len()],
-            tau_loop_free_lts.num_of_states(),
-        ));
-
-        let incoming = IncomingTransitions::new(&tau_loop_free_lts);
-
-        loop {
-            let mut stable = true;
-            for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
-                progress.print(blocks.num_of_blocks());
-                if *blocks.block(block_index).annotation() {
-                    continue;
-                }
-
-                trace!("Stabilising block {:?}", block_index);
-                stable = false;
-                blocks.mark_block_stable(block_index);
-
-                // marked := 0 for all states and actions
-                for act_mark in &mut marked {
-                    act_mark.fill(false);
-                }
-
-                compute_weak_acts(&mut marked, &tau_loop_free_lts, &incoming, &blocks, block_index);
-
-                while let Some(label) = find_act(&tau_loop_free_lts, &blocks, &mut marked) {
-                    for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
-                        stabilise_act(block_index, label, &mut marked, &mut blocks);
-                    }
-                }
+    loop {
+        let mut stable = true;
+        for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
+            progress.print(blocks.num_of_blocks());
+            if *blocks.block(block_index).annotation() {
+                continue;
             }
 
-            if stable {
-                // Quit the outer loop.
-                trace!("Partition is stable!");
-                break;
+            trace!("Stabilising block {:?}", block_index);
+            stable = false;
+            blocks.mark_block_stable(block_index);
+
+            // tau is the first label.
+            for label in lts.labels().iter().enumerate().map(|(i, _)| LabelIndex::new(i)) {
+                compute_weak_act(&mut act_mark, &mut tau_mark, lts, &blocks, &incoming, block_index, label);
+
+                // Note that we cannot use the block references here, and instead uses indices, because stabilise
+                // also modifies the blocks structure.
+                for block_prime in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
+                    stabilise(block_prime, &mut act_mark, &mut blocks);
+                }
             }
         }
 
-        (tau_loop_free_lts, mapped_state, blocks)
-    })
+        if stable {
+            trace!("Partition is stable!");
+            break;
+        }
+    }
+
+    blocks
+}
+
+/// The implementation of [weak_bisimulation_parallel].
+fn weak_bisimulation_parallel_impl<L: LTS>(lts: &L) -> MarkedBlockPartition {
+    let progress = TimeProgress::new(
+        |num_of_blocks: usize| {
+            info!("Found {} blocks...", num_of_blocks);
+        },
+        1,
+    );
+
+    let mut blocks = MarkedBlockPartition::new(lts.num_of_states());
+
+    // Represents the s.marked[a] from the pseudocode.
+    let mut marked = Vec::from_iter(iter::repeat_n(
+        bitvec![u64, Lsb0; 0; lts.labels().len()],
+        lts.num_of_states(),
+    ));
+
+    let incoming = IncomingTransitions::new(lts);
+
+    loop {
+        let mut stable = true;
+        for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
+            progress.print(blocks.num_of_blocks());
+            if *blocks.block(block_index).annotation() {
+                continue;
+            }
+
+            trace!("Stabilising block {:?}", block_index);
+            stable = false;
+            blocks.mark_block_stable(block_index);
+
+            // marked := 0 for all states and actions
+            for act_mark in &mut marked {
+                act_mark.fill(false);
+            }
+
+            compute_weak_acts(&mut marked, lts, &incoming, &blocks, block_index);
+
+            while let Some(label) = find_act(lts, &blocks, &mut marked) {
+                for block_index in (0usize..blocks.num_of_blocks()).map(BlockIndex::new) {
+                    stabilise_act(block_index, label, &mut marked, &mut blocks);
+                }
+            }
+        }
+
+        if stable {
+            trace!("Partition is stable!");
+            break;
+        }
+    }
+
+    blocks
 }
 
 /// Sets s.act_mark to true iff exists t: S. s =\not{a}=> t
