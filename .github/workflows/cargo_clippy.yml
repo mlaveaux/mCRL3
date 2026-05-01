@@ -27,7 +27,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
 
     - name: Setup sccache
-      uses: mozilla-actions/sccache-action@v0.0.9
+      uses: mozilla-actions/sccache-action@v0.0.10
 
     - uses: actions/checkout@v6
       with:
