@@ -17,6 +17,12 @@ pub trait Strat: Sized {
     /// Records a strategy move from `from` to `to`.
     fn set(&mut self, from: VertexIndex, to: VertexIndex);
 
+    /// Gets the strategy move for `from`, if one is defined.
+    fn get(&self, from: VertexIndex) -> Option<VertexIndex>;
+
+    /// Removes any strategy move for `from`.
+    fn remove(&mut self, from: VertexIndex);
+
     /// Combines two strategy values.
     fn union(self, other: Self) -> Self;
 
@@ -121,15 +127,23 @@ impl Strat for Strategy {
     }
 
     fn set(&mut self, from: VertexIndex, to: VertexIndex) {
-        self.set(from, to);
+        Strategy::set(self, from, to);
+    }
+
+    fn get(&self, from: VertexIndex) -> Option<VertexIndex> {
+        Strategy::get(self, from).copied()
+    }
+
+    fn remove(&mut self, from: VertexIndex) {
+        Strategy::remove(self, from);
     }
 
     fn union(self, other: Self) -> Self {
-        self.union(other)
+        Strategy::union(self, other)
     }
 
     fn extend_arbitrary<G: PG>(self, pg: &G, vertices: &Set, subgame: &Set, player: Player) -> Self {
-        self.extend_arbitrary(pg, vertices, subgame, player)
+        Strategy::extend_arbitrary(self, pg, vertices, subgame, player)
     }
 }
 
@@ -137,6 +151,12 @@ impl Strat for () {
     fn new() -> Self {}
 
     fn set(&mut self, _from: VertexIndex, _to: VertexIndex) {}
+
+    fn get(&self, _from: VertexIndex) -> Option<VertexIndex> {
+        None
+    }
+
+    fn remove(&mut self, _from: VertexIndex) {}
 
     fn union(self, _other: Self) -> Self {}
 
