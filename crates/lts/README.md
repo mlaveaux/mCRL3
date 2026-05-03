@@ -46,30 +46,30 @@ variable must be set to the installation path of CADP at compilation and run tim
 
 ## Changelog
 
-### Current
-
-Added LTS builders that stream their output to disk, this is achieved by adding
-a general `LtsBuilder` trait, with a streaming implementation for AUT outputs
-in `AutStream`.
+### v2.0.0
 
 Added support for reading and writing LTSs in the BCG format from the
 [CADP](https://cadp.inria.fr/man/bcg.html) toolset. This requires CADP to be
 installed on the system and the `CADP` environment variable to be set, and it is
 enabled via the `cadp` feature flag.
 
-Added the `clap` feature to conditionally enable the `clap` dependency to derive
-some convenience traits.
-
 Made the AUT format compliant with the actual specification. In particular, the
 internal action is now represented by `i` instead of `tau`. We introduced a
 `AutMcrl2` format that is compliant with the mCRL2 specification, which uses
 `tau` and multi-actions.
 
+Added LTS builders that stream their output to disk, this is achieved by adding
+a general `LtsBuilder` trait, with a streaming implementation for AUT outputs
+in `AutStream`.
+
 Introduce a proper `LtsMultiAction` type to represent multi-actions as they are
 present in mCRL2. A multi-action is a multi-set of action labels that are
 executed simultaneously, i.e., an action `a|b` is a multi-action consisting of
 the actions `a` and `b`. Note that `a|b` is equivalent to `b|a` in this
-formalism, and `τ` simply denotes the empty set.
+formalism, and `τ` denotes the empty set.
+
+Added the `clap` feature to conditionally enable the `clap` dependency to derive
+some convenience traits.
 
 ### v1.1.0
 
