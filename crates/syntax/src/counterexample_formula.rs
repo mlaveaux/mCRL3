@@ -57,9 +57,9 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
                         formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
                         expr: Box::new(StateFrm::False),
                     }
-                    // Stable failures are only observed in stable states, so make this the base case.
                 })
                 .fold(
+                    // Stable failures are only observed in stable states, so tau is refused.
                     StateFrm::Modality {
                         operator: ModalityOperator::Box,
                         formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),

@@ -241,9 +241,9 @@ criterion_group!(
     config = Criterion::default().sample_size(10);
     targets = benchmark_shared_creation,
         benchmark_unique_creation,
-        benchmark_shared_inspect,
-        benchmark_unique_inspect,
         benchmark_shared_lookup,
         benchmark_unique_lookup,
+        benchmark_shared_inspect,
+        benchmark_unique_inspect,
 );
 criterion_main!(benches);

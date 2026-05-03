@@ -174,7 +174,7 @@ impl ATermStorage {
 
     /// Inserts an integer term into the storage, returning a pointer to the stored term
     /// and whether it was newly inserted.
-    pub unsafe fn insert_int_term<'a>(&self, symbol: SymbolRef<'_>, value: usize) -> (StablePointer<SharedTerm>, bool) {
+    pub unsafe fn insert_int_term(&self, symbol: SymbolRef<'_>, value: usize) -> (StablePointer<SharedTerm>, bool) {
         unsafe {
             let (result, inserted) = self.int_terms.insert(SharedTermInt {
                 symbol: SymbolRef::from_index(symbol.shared()),
