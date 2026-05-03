@@ -12,3 +12,6 @@ race:crossbeam_deque*steal
 
 # Non-lock-free AtomicCell uses SeqLock which uses fences.
 race:crossbeam_utils::atomic::atomic_cell::atomic_compare_exchange_weak
+
+# If a data race happens the value as next() is forgotten.
+race:merc_unsafety::freelist::*::try_pop
