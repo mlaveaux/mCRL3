@@ -39,6 +39,9 @@ jobs:
       with:
         submodules: true
 
+    - name: Check semver
+      uses: obi1kenobi/cargo-semver-checks-action@v2
+
     - name: Run package task
       run: cargo xtask package
       env:        
