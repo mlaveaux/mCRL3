@@ -248,8 +248,9 @@ pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || {
+        tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving)
+    });
     let partition = timing.measure("reduction", || {
         if divergence_preserving {
             signature_refinement_weak(&DivergencePreservingLts::new(&preprocessed_lts))
@@ -296,8 +297,9 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
     divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
-    let (preprocessed_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+    let (preprocessed_lts, mapped_state) = timing.measure("preprocess", || {
+        tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving)
+    });
     let partition = timing.measure("reduction", || {
         if divergence_preserving {
             let divergence_preserving_lts = DivergencePreservingLts::new(&preprocessed_lts);
@@ -317,13 +319,7 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
             signature_refinement_naive::<_, _, true>(
                 &preprocessed_lts,
                 |state_index, partition, state_to_signature, builder| {
-                    weak_bisim_signature_sorted(
-                        state_index,
-                        &preprocessed_lts,
-                        partition,
-                        state_to_signature,
-                        builder,
-                    )
+                    weak_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder)
                 },
             )
         }
@@ -845,7 +841,9 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equi
             let mut input_file = std::fs::File::create(&input_path).unwrap();
             merc_lts::write_mcrl2_aut(&mut input_file, &lts).unwrap();
         }
-        files.dump("input.aut", |writer| merc_lts::write_mcrl2_aut(writer, &lts)).unwrap();
+        files
+            .dump("input.aut", |writer| merc_lts::write_mcrl2_aut(writer, &lts))
+            .unwrap();
 
         let status = std::process::Command::new(&ltsconvert)
             .arg(format!("-e{}", argument))
@@ -907,7 +905,6 @@ mod tests {
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
-    use crate::Equivalence;
     use super::BlockIndex;
     use super::LTS;
     use super::Partition;
@@ -919,6 +916,7 @@ mod tests {
     use super::test_mcrl2_sigref_vs_ltsconvert_impl;
     use super::weak_bisim_sigref_inductive_naive;
     use super::weak_bisim_sigref_naive;
+    use crate::Equivalence;
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
     fn equal_partitions<P: Partition, Q: Partition>(left: &P, right: &Q) -> bool {
@@ -1139,7 +1137,11 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl("test_mcrl2_weak_bisim_sigref_vs_ltsconvert", Equivalence::WeakBisim, "weak-bisim");
+        test_mcrl2_sigref_vs_ltsconvert_impl(
+            "test_mcrl2_weak_bisim_sigref_vs_ltsconvert",
+            Equivalence::WeakBisim,
+            "weak-bisim",
+        );
     }
 
     #[test]

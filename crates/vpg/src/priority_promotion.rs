@@ -196,10 +196,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
             self.query(&mut strategy, prio);
 
             if self.is_open(prio, true) {
-                debug!(
-                    "Newly computed region is open in the subgame, with p = {}",
-                    prio
-                );
+                debug!("Newly computed region is open in the subgame, with p = {}", prio);
                 self.print_region(prio);
 
                 // Keep the new region_function and substrategy, but go to the next priority.
@@ -486,7 +483,11 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
                 .filter(|&&v| self.region_function[*v] == Some(prio))
                 .map(|v| v.value())
                 .collect();
-            trace!("alpha-region[{}] = {{ {} }}", prio, vertices.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","));
+            trace!(
+                "alpha-region[{}] = {{ {} }}",
+                prio,
+                vertices.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(",")
+            );
         }
     }
 
