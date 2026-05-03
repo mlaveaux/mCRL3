@@ -248,7 +248,9 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
 mod tests {
     use std::str::FromStr;
 
-    use super::*;
+    use proc_macro2::TokenStream;
+
+    use crate::mcrl2_derive_terms_impl;
 
     #[test]
     fn test_macro() {

@@ -800,9 +800,11 @@ fn apply_permutation(expression: &PbesExpression, parameters: &[DataVariable], p
 
 #[cfg(test)]
 mod tests {
+    use mcrl2::Pbes;
     use merc_utilities::test_logger;
 
-    use super::*;
+    use crate::permutation::Permutation;
+    use crate::symmetry::SymmetryAlgorithm;
 
     #[test]
     fn test_symmetry_example_a() {

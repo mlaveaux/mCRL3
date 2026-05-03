@@ -280,12 +280,15 @@ pub fn permutation_group_size(n: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use merc_utilities::random_test;
     use rand::RngExt;
     use rand::seq::IteratorRandom;
     use rand::seq::SliceRandom;
 
-    use super::*;
+    use merc_utilities::random_test;
+
+    use crate::permutation::Permutation;
+    use crate::permutation::permutation_group;
+    use crate::permutation::permutation_group_size;
 
     #[test]
     fn test_permutation_from_input() {

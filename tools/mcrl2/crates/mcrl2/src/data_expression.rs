@@ -124,8 +124,6 @@ pub fn is_sort_expression(term: &ATermRef<'_>) -> bool {
 // This module is only used internally to run the proc macro.
 #[mcrl2_derive_terms]
 mod inner {
-    use super::*;
-
     use std::fmt;
 
     use mcrl2_macros::mcrl2_term;
@@ -138,6 +136,16 @@ mod inner {
     use crate::ATermStringRef;
     use crate::Markable;
     use crate::Todo;
+
+    use super::is_application;
+    use super::is_data_expression;
+    use super::is_function_symbol;
+    use super::is_machine_number;
+    use super::is_sort_expression;
+    use super::is_untyped_identifier;
+    use super::is_variable;
+    use super::is_where_clause;
+    use super::mcrl2_data_expression_to_string;
 
     /// Represents a data::data_expression from the mCRL2 toolset.
     ///  A data expression can be any of:
