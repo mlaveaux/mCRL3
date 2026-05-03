@@ -3,6 +3,8 @@ use std::array;
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::Ordering;
 
 #[cfg(not(loom))]
 mod inner {
@@ -32,9 +34,13 @@ use crate::FreeListEntry;
 /// two words.
 ///
 /// Behaves like `Allocator`, except that it only allocates for layouts of `T`.
+/// Requires periodic calls to `remove_free_blocks` to prevent memory usage from
+/// growing indefinitely.
 ///
 /// This allocator is lock-free for the common allocation/deallocation paths and
-/// only takes a lock when a new block needs to be allocated.
+/// only takes a lock when a new block needs to be allocated. This does mean
+/// that external synchronisation is required to prevent concurrent allocations
+/// overlapping with `remove_free_blocks`.
 ///
 /// # Details
 ///
@@ -142,13 +148,13 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 let mut previous: Option<NonNull<Entry<T>>> = None;
                 for current in self.free.iter() {
                     if let Some(previous) = previous {
-                        (*previous.as_ptr()).next = nonexisting_value;
+                        (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
                     }
                     previous = Some(current);
                 }
 
                 if let Some(previous) = previous {
-                    (*previous.as_ptr()).next = nonexisting_value;
+                    (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
                 }
             }
 
@@ -161,7 +167,12 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             let mut removed_blocks = 0;
 
             loop {
-                let all_free = unsafe { (*block).data.iter().all(|entry| entry.next == nonexisting_value) };
+                let all_free = unsafe {
+                    (*block)
+                        .data
+                        .iter()
+                        .all(|entry| entry.next.load(Ordering::Relaxed) == nonexisting_value)
+                };
 
                 if all_free {
                     // Extract next before the current block is dropped.
@@ -215,7 +226,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             for entry in block.data.iter() {
                 // Safety: we only push entries that were marked with the special value, which means they are not live.
                 unsafe {
-                    if entry.next == nonexisting_value {
+                    if entry.next.load(Ordering::Relaxed) == nonexisting_value {
                         self.free
                             .push(NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>));
                     }
@@ -319,7 +330,7 @@ union Entry<T> {
     data: ManuallyDrop<T>,
 
     /// If the element is free, this points to the next entry in the freelist, or null if this is the last entry.
-    next: *mut Entry<T>,
+    next: ManuallyDrop<AtomicPtr<Entry<T>>>,
 }
 
 // Safety: `Entry<T>` stores a single intrusive next-pointer in `next` used only
@@ -327,13 +338,13 @@ union Entry<T> {
 unsafe impl<T> FreeListEntry for Entry<T> {
     unsafe fn get_next(ptr: *mut Self) -> *mut Self {
         // Safety: caller ensures `ptr` is a valid freelist node.
-        unsafe { (*ptr).next }
+        unsafe { (*ptr).next.load(Ordering::Relaxed) }
     }
 
     unsafe fn set_next(ptr: *mut Self, next: *mut Self) {
         // Safety: caller ensures `ptr` is a valid freelist node.
         unsafe {
-            (*ptr).next = next;
+            (*ptr).next.store(next, Ordering::Relaxed);
         }
     }
 }
@@ -369,7 +380,7 @@ impl<T, const N: usize> Block<T, N> {
     fn new() -> Self {
         Self {
             data: array::from_fn(|_i| Entry {
-                next: std::ptr::null_mut(),
+                next: ManuallyDrop::new(AtomicPtr::new(std::ptr::null_mut())),
             }),
             next: None,
         }
@@ -451,5 +462,39 @@ mod tests {
                 }
             }
         })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_block_allocator_parallel_freelist() {
+        let block_allocator = std::sync::Arc::new(BlockAllocator::<u32, 32>::new());
+
+        let threads: Vec<_> = (0..=2)
+            .map(|_| {
+                let block_allocator = block_allocator.clone();
+
+                std::thread::spawn(move || {
+                    let mut ptrs = Vec::new();
+                    for _ in 0..100 {
+                        let ptr = block_allocator.allocate_object().unwrap();
+                        unsafe {
+                            ptr.as_ptr().write(42);
+                        }
+                        ptrs.push(ptr);
+                    }
+
+                    for ptr in ptrs {
+                        unsafe {
+                            assert_eq!(*ptr.as_ref(), 42);
+                        }
+                        block_allocator.deallocate_object(ptr);
+                    }
+                })
+            })
+            .collect();
+
+        for th in threads {
+            th.join().unwrap();
+        }
     }
 }
