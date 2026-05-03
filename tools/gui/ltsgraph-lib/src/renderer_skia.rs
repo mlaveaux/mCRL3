@@ -227,7 +227,7 @@ mod tests {
     use tiny_skia::Pixmap;
     use tiny_skia::PixmapMut;
 
-    use super::*;
+    use crate::SkiaRenderer;
     use crate::viewer::Viewer;
 
     #[test]

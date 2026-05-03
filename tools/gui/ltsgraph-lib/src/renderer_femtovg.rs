@@ -150,13 +150,15 @@ impl FemtovgRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::sync::Arc;
 
+    use femtovg::Canvas;
     use femtovg::renderer::Void;
 
     use merc_lts::read_aut;
+
+    use crate::FemtovgRenderer;
+    use crate::Viewer;
 
     #[test]
     fn test_femtovg_renderer() {

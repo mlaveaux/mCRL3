@@ -34,13 +34,13 @@ impl TextCache {
         let mut buffer = Buffer::new(&mut self.font_system, font_metrics);
 
         // Set a size for the text buffer, in pixels
-        buffer.set_size(&mut self.font_system, None, None);
+        buffer.set_size(None, None);
 
         // Attributes indicate what font to choose.
         let attrs = Attrs::new();
 
         // Add some text!
-        buffer.set_text(&mut self.font_system, text, &attrs, Shaping::Advanced, None);
+        buffer.set_text(text, &attrs, Shaping::Advanced, None);
 
         // Perform shaping as desired
         buffer.shape_until_scroll(&mut self.font_system, true);
@@ -49,7 +49,7 @@ impl TextCache {
 
     /// Resizes the font metrics of the buffer.
     pub fn resize(&mut self, buffer: &mut Buffer, font_metrics: Metrics) {
-        buffer.set_metrics(&mut self.font_system, font_metrics);
+        buffer.set_metrics(font_metrics);
         buffer.shape_until_scroll(&mut self.font_system, true);
     }
 
