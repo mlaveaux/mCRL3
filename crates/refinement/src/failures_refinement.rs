@@ -94,18 +94,20 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
             lts.initial_state_index(),
             initial_spec,
             |impl_state, spec_states| {
-                if diverges(lts, impl_state) {
-                    // If the implementation state diverges, then it can refuse any set of actions, so we only need to check for divergence inclusion.
-                    if !spec_states.iter().any(|s| diverges(lts, *s)) {
+                if !spec_states.iter().any(|s| diverges(lts, *s)) {
+                    trace!("spec {:?} is convergent!", spec_states);
+                    // If the implementation state diverges, then it can refuse any set of actions.
+                    if diverges(lts, impl_state) {
+                        trace!("impl {:?} diverges, return false", impl_state);
                         (Some(InnerCe::Diverges), true)
                     } else {
-                        (None, false)
+                        (
+                            refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal),
+                            true,
+                        )
                     }
                 } else {
-                    (
-                        refusals_contained_in(lts, impl_state, spec_states).map(InnerCe::Refusal),
-                        true,
-                    )
+                    (None, false)
                 }
             },
             |_, _| (),
