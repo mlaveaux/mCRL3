@@ -2,6 +2,7 @@
 
 mod block_partition;
 mod compare;
+mod diverges;
 mod longest_tau_path;
 mod partition;
 mod quotient;
@@ -15,6 +16,7 @@ mod weak_bisimulation;
 
 pub use block_partition::*;
 pub use compare::*;
+pub use diverges::*;
 pub use longest_tau_path::*;
 pub use partition::*;
 pub use quotient::*;

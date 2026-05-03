@@ -5,9 +5,11 @@ use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
+use merc_lts::Transition;
 
 use crate::BlockPartition;
 use crate::Partition;
+use crate::diverges;
 
 /// Returns a new LTS based on the given partition.
 ///
@@ -52,6 +54,71 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
     )
 }
 
+/// Returns a weak bisimulation quotient that additionally removes transitions
+/// subsumed by a one-hidden-step alternative.
+pub fn quotient_lts_weak<L: LTS, P: Partition>(lts: &L, partition: &P) -> LabelledTransitionSystem<L::Label> {
+    let quotient = quotient_lts_naive(lts, partition, true);
+    remove_redundant_transitions(&quotient)
+}
+
+/// Weak bisimulation quotient that removes redundant transitions.
+fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::Label> {
+    let mut builder = LtsBuilderFast::with_capacity(lts.labels().into(), Vec::new(), lts.num_of_transitions());
+    builder.require_num_of_states(lts.num_of_states());
+
+    for from in lts.iter_states() {
+        for transition in lts.outgoing_transitions(from) {
+            if !is_redundant_transition(lts, from, &transition) {
+                builder.add_transition(from, &lts.labels()[transition.label], transition.to);
+            }
+        }
+    }
+
+    builder.finish(lts.initial_state_index(), true)
+}
+
+/// Returns true when `transition` from `from` is redundant.
+///
+/// A transition `s -a-> t` is redundant when one of these alternatives exists:
+/// - `s -tau-> m -a-> t` (for both hidden and visible `a`)
+/// - `s -a-> m -tau-> t` (only for visible `a`)
+///
+/// This matches the mCRL2-style one-intermediate-state elimination rule.
+fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, transition: &Transition) -> bool {
+    let label = transition.label;
+    let target = transition.to;
+
+    let redundant_via_hidden_then_label = lts
+        .outgoing_transitions(from)
+        .filter(|first| lts.is_hidden_label(first.label))
+        .map(|first| first.to)
+        .any(|middle| {
+            lts.outgoing_transitions(middle).any(|second| {
+                if lts.is_hidden_label(label) {
+                    lts.is_hidden_label(second.label) && second.to == target
+                } else {
+                    second.label == label && second.to == target
+                }
+            })
+        });
+
+    if redundant_via_hidden_then_label {
+        return true;
+    }
+
+    if lts.is_hidden_label(label) {
+        return false;
+    }
+
+    lts.outgoing_transitions(from)
+        .filter(|first| first.label == label)
+        .map(|first| first.to)
+        .any(|middle| {
+            lts.outgoing_transitions(middle)
+                .any(|second| lts.is_hidden_label(second.label) && second.to == target)
+        })
+}
+
 /// Optimised implementation for block partitions.
 ///
 /// Chooses a single state in the block as representative. If `BRANCHING` then the
@@ -72,17 +139,25 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         };
 
         if BRANCHING {
+            let mut visited = vec![false; lts.num_of_states()];
+
             // traverse any outgoing transition to find a bottom state.
             'outer: loop {
+                if visited[candidate] {
+                    // No bottom state exists in this block. Stop early to avoid looping forever.
+                    debug_assert!(
+                        !diverges(lts, candidate),
+                        "The states of the given LTS should be non-divergent."
+                    );
+                    break;
+                }
+                visited[candidate] = true;
+
                 if let Some(trans) = lts.outgoing_transitions(candidate).find(|trans| {
                     lts.is_hidden_label(trans.label)
                         && candidate != trans.to // Ignore self loops
                         && partition.block_number(trans.to) == block
                 }) {
-                    debug_assert!(
-                        !diverges(lts, candidate),
-                        "The states of the given LTS should be non-divergent."
-                    );
                     candidate = trans.to;
                     continue 'outer;
                 }
@@ -117,61 +192,6 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         StateIndex::new(partition.block_number(lts.initial_state_index()).value()),
         true,
     )
-}
-
-/// Returns true iff the given state diverges, i.e., it can perform an infinite
-/// sequence of tau transitions.
-///
-/// Uses iterative DFS with 3-color marking to correctly detect cycles in any LTS,
-/// including tau self-loops and graphs where the same state is reachable via
-/// multiple paths (diamonds).
-pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
-    let mut color = vec![DfsColor::White; lts.num_of_states()];
-    // Each stack entry is (node, backtrack): when backtrack is true the node is being finalised.
-    let mut stack = vec![(state, false)];
-
-    while let Some((current, backtrack)) = stack.pop() {
-        if backtrack {
-            // All descendants have been processed; mark the node as fully done.
-            color[current] = DfsColor::Black;
-            continue;
-        }
-
-        match color[current] {
-            DfsColor::Gray => return true, // Back-edge: current is still on the DFS path → cycle found.
-            DfsColor::Black => continue,   // Already fully processed; no new information.
-            DfsColor::White => {}
-        }
-
-        // Mark gray (on the current DFS path) and schedule finalisation.
-        color[current] = DfsColor::Gray;
-        stack.push((current, true));
-
-        for transition in lts.outgoing_transitions(current) {
-            if lts.is_hidden_label(transition.label) {
-                match color[transition.to] {
-                    DfsColor::Gray => return true, // Back-edge (incl. self-loop): cycle found.
-                    DfsColor::White => stack.push((transition.to, false)),
-                    DfsColor::Black => {}
-                }
-            }
-        }
-    }
-
-    // All reachable tau-transitions explored without finding a back-edge.
-    false
-}
-
-/// DFS node colour used by [`diverges`].
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-enum DfsColor {
-    /// Not yet visited.
-    #[default]
-    White,
-    /// On the current DFS path (in the recursion stack).
-    Gray,
-    /// All descendants fully processed.
-    Black,
 }
 
 #[cfg(test)]
