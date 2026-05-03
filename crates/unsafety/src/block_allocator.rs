@@ -3,23 +3,10 @@ use std::array;
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering;
-
-#[cfg(not(loom))]
-mod inner {
-    pub use std::sync::Mutex;
-    pub use std::sync::MutexGuard;
-}
-
-// We replace the standard implementation by loom's implementation.
-#[cfg(loom)]
-mod inner {
-    pub use loom::sync::Mutex;
-    pub use loom::sync::MutexGuard;
-}
-
-use inner::*;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;

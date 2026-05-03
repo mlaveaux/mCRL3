@@ -1,20 +1,7 @@
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-
-#[cfg(not(loom))]
-mod inner {
-    pub use std::sync::atomic::AtomicPtr;
-    pub use std::sync::atomic::Ordering;
-}
-
-// We replace the standard implementation by loom's implementation.
-#[cfg(loom)]
-mod inner {
-    pub use loom::sync::atomic::AtomicPtr;
-    pub use loom::sync::atomic::Ordering;
-}
-
-use inner::*;
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::Ordering;
 
 /// Intrusive node requirements for use in [`FreeList`].
 ///
