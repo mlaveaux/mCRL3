@@ -232,8 +232,8 @@ impl<'a, C: Transmutable> Deref for ProtectedReadGuard<'a, C> {
 #[cfg(test)]
 mod tests {
     use crate::ATerm;
-
-    use super::*;
+    use crate::ATermRef;
+    use crate::Protected;
 
     #[test]
     fn test_aterm_container() {

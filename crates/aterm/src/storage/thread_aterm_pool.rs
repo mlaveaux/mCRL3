@@ -508,9 +508,12 @@ impl DerefMut for ProtectionSetGuard<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::ATerm;
+    use crate::Symb;
+    use crate::Symbol;
     use crate::Term;
+    use crate::storage::THREAD_TERM_POOL;
 
-    use super::*;
     use std::thread;
 
     #[test]

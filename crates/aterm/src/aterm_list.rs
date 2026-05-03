@@ -223,12 +223,11 @@ pub struct ATermListIter<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::ATermInt;
+    use crate::ATermList;
 
     #[test]
     fn test_list_term() {
-        use super::*;
-        use crate::ATermInt;
-
         let list = ATermList::from_double_iter(vec![ATermInt::new(1), ATermInt::new(2), ATermInt::new(3)].into_iter());
         assert_eq!(list.head().value(), 1);
         assert_eq!(list.tail().head().value(), 2);

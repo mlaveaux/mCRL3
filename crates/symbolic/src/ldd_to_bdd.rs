@@ -392,17 +392,22 @@ pub fn compute_bits(highest: &[u32]) -> Vec<u32> {
 
 #[cfg(test)]
 mod tests {
-    use merc_ldd::LddDisplay;
-    use merc_ldd::from_iter;
-    use merc_ldd::random_vector_set;
-    use merc_ldd::singleton;
-    use merc_utilities::random_test;
     use oxidd::Manager;
     use oxidd::ManagerRef;
 
-    use crate::FormatConfigSet;
+    use merc_ldd::from_iter;
+    use merc_ldd::LddDisplay;
+    use merc_ldd::random_vector_set;
+    use merc_ldd::singleton;
+    use merc_ldd::Storage;
+    use merc_utilities::random_test;
 
-    use super::*;
+    use crate::FormatConfigSet;
+    use crate::bdd_to_ldd;
+    use crate::compute_bits;
+    use crate::compute_highest;
+    use crate::ldd_to_bdd;
+    use crate::required_bits;
 
     #[test]
     fn test_random_compute_highest() {

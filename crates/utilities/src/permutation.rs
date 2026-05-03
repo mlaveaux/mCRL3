@@ -24,11 +24,10 @@ where
 
 #[cfg(test)]
 mod tests {
-
-    use super::*;
-
-    use crate::random_test;
     use rand::seq::SliceRandom;
+
+    use crate::is_valid_permutation;
+    use crate::random_test;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Test is too slow under miri

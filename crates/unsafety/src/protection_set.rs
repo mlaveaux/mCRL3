@@ -305,12 +305,13 @@ impl<'a, T> IntoIterator for &'a ProtectionSet<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use rand::RngExt;
 
     use merc_utilities::random_test;
     use merc_utilities::test_logger;
+
+    use crate::ProtectionIndex;
+    use crate::ProtectionSet;
 
     #[test]
     #[cfg_attr(miri, ignore)]

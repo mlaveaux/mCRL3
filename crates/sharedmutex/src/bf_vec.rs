@@ -187,7 +187,7 @@ unsafe impl<T: Send> Send for BfVec<T> {}
 mod tests {
     use std::thread;
 
-    use super::*;
+    use crate::BfVec;
 
     // These are just simple tests.
     #[test]

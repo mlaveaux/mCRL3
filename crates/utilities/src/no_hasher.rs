@@ -2,7 +2,7 @@ use std::hash::BuildHasher;
 use std::hash::Hasher;
 
 /// A hasher that directly uses the value provided to write_u64 as the hash
-pub struct NoHasher(u64);
+pub struct NoHasher(pub u64);
 
 impl Hasher for NoHasher {
     /// Returns the current value as the hash
@@ -33,7 +33,11 @@ impl BuildHasher for NoHasherBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::hash::BuildHasher;
+    use std::hash::Hasher;
+
+    use crate::NoHasher;
+    use crate::NoHasherBuilder;
 
     #[test]
     fn test_no_hasher() {

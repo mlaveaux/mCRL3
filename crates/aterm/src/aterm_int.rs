@@ -1,21 +1,9 @@
 use std::fmt;
 
-use delegate::delegate;
-
 use merc_macros::merc_derive_terms;
-use merc_macros::merc_term;
 
-use crate::ATerm;
-use crate::ATermArgs;
-use crate::ATermIndex;
-use crate::ATermRef;
-use crate::Markable;
 use crate::Symb;
-use crate::SymbolRef;
 use crate::Term;
-use crate::TermIterator;
-use crate::Transmutable;
-use crate::storage::Marker;
 use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true if the term is an [ATermInt] term.
@@ -30,11 +18,24 @@ pub fn is_int_symbol<'a, 'b, S: Symb<'a, 'b>>(f: &'b S) -> bool {
 
 #[merc_derive_terms]
 mod inner {
+    use delegate::delegate;
+
     use merc_macros::merc_ignore;
+    use merc_macros::merc_term;
 
+    use crate::ATerm;
+    use crate::ATermArgs;
+    use crate::ATermIndex;
+    use crate::ATermRef;
+    use crate::Markable;
+    use crate::SymbolRef;
+    use crate::Term;
+    use crate::TermIterator;
+    use crate::Transmutable;
+    use crate::is_int_term;
+    use crate::storage::Marker;
     use crate::storage::SharedTermInt;
-
-    use super::*;
+    use crate::storage::THREAD_TERM_POOL;
 
     /// This is a wrapper around the [ATerm] type that stores a single `u64` using an annotation.
     #[merc_term(is_int_term)]
@@ -81,7 +82,8 @@ pub use inner::*;
 mod tests {
     use merc_utilities::test_logger;
 
-    use super::*;
+    use crate::ATermInt;
+    use crate::is_int_term;
 
     #[test]
     fn test_int_term() {

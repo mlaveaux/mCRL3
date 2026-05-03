@@ -456,8 +456,9 @@ unsafe impl<T: Send + Sync> Sync for GlobalBfSharedMutex<T> {}
 
 #[cfg(test)]
 mod tests {
-    use rand::prelude::*;
     use std::hint::black_box;
+
+    use rand::RngExt;
 
     use merc_utilities::random_test_threads;
     use merc_utilities::test_threads;
