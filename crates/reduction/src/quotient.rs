@@ -123,7 +123,8 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
 /// sequence of tau transitions.
 ///
 /// Uses iterative DFS with 3-color marking to correctly detect cycles in any LTS,
-/// including graphs where the same state is reachable via multiple paths (diamonds).
+/// including tau self-loops and graphs where the same state is reachable via
+/// multiple paths (diamonds).
 pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
     let mut color = vec![DfsColor::White; lts.num_of_states()];
     // Each stack entry is (node, backtrack): when backtrack is true the node is being finalised.
@@ -147,8 +148,12 @@ pub fn diverges<L: LTS>(lts: &L, state: StateIndex) -> bool {
         stack.push((current, true));
 
         for transition in lts.outgoing_transitions(current) {
-            if lts.is_hidden_label(transition.label) && current != transition.to {
-                stack.push((transition.to, false));
+            if lts.is_hidden_label(transition.label) {
+                match color[transition.to] {
+                    DfsColor::Gray => return true, // Back-edge (incl. self-loop): cycle found.
+                    DfsColor::White => stack.push((transition.to, false)),
+                    DfsColor::Black => {}
+                }
             }
         }
     }
