@@ -556,9 +556,11 @@ impl<'a, R: Read> ExactSizeIterator for ATermReadIter<'a, R> {
 mod tests {
     use merc_utilities::random_test;
 
+    use crate::ATermRead;
+    use crate::ATermWrite;
+    use crate::BinaryATermReader;
+    use crate::BinaryATermWriter;
     use crate::random_term;
-
-    use super::*;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow

@@ -59,7 +59,8 @@ impl TermParser {
 mod tests {
     use pest::Parser;
 
-    use super::*;
+    use crate::Rule;
+    use crate::TermParser;
 
     #[test]
     fn test_parse_term() {

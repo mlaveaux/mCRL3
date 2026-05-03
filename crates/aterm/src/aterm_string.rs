@@ -1,31 +1,13 @@
 #![forbid(unsafe_code)]
 
-use std::fmt;
-
-use delegate::delegate;
-
 use merc_macros::merc_derive_terms;
-use merc_macros::merc_ignore;
-use merc_macros::merc_term;
 use merc_utilities::MercError;
 
-use crate::ATerm;
-
-use crate::ATermArgs;
-use crate::ATermIndex;
 use crate::ATermRead;
-use crate::ATermRef;
 use crate::ATermStreamable;
 use crate::ATermWrite;
-use crate::Markable;
 use crate::Symb;
-use crate::Symbol;
-use crate::SymbolRef;
 use crate::Term;
-use crate::TermIterator;
-use crate::Transmutable;
-use crate::storage::Marker;
-use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true if the term is a string term
 fn is_string_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
@@ -34,7 +16,27 @@ fn is_string_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
 
 #[merc_derive_terms]
 mod inner {
-    use super::*;
+    use std::fmt;
+
+    use delegate::delegate;
+
+    use merc_macros::merc_ignore;
+    use merc_macros::merc_term;
+
+    use crate::ATerm;
+    use crate::ATermArgs;
+    use crate::ATermIndex;
+    use crate::ATermRef;
+    use crate::Markable;
+    use crate::Symb;
+    use crate::Symbol;
+    use crate::SymbolRef;
+    use crate::Term;
+    use crate::TermIterator;
+    use crate::Transmutable;
+    use crate::aterm_string::is_string_term;
+    use crate::storage::Marker;
+    use crate::storage::THREAD_TERM_POOL;
 
     #[merc_term(is_string_term)]
     pub struct ATermString {
@@ -103,7 +105,7 @@ impl ATermStreamable for String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::ATermString;
 
     #[test]
     fn test_string() {

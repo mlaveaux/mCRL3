@@ -689,10 +689,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use allocator_api2::alloc::System;
-    use rustc_hash::FxHasher;
     use std::hash::BuildHasherDefault;
+    use std::hash::Hash;
+    use std::hash::Hasher;
+    use std::hash::RandomState;
+
+    use allocator_api2::alloc::System;
+    use dashmap::Equivalent;
+    use rustc_hash::FxHasher;
+
+    use crate::StablePointerSet;
 
     #[test]
     fn test_insert_and_get() {

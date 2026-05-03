@@ -1,5 +1,4 @@
 use mcrl2_macros::mcrl2_derive_terms;
-use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_to_string;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_not;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_pbes_expression;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_propositional_variable_instantiation;
@@ -44,19 +43,27 @@ pub fn is_pbes_exists(term: &ATermRef<'_>) -> bool {
 // This module is only used internally to run the proc macro.
 #[mcrl2_derive_terms]
 mod inner {
-    use super::*;
 
     use std::fmt;
 
     use mcrl2_macros::mcrl2_term;
+    use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_to_string;
 
     use crate::ATerm;
     use crate::ATermListRef;
     use crate::ATermRef;
     use crate::ATermStringRef;
+    use crate::DataExpression;
     use crate::Markable;
     use crate::Todo;
+    use crate::is_pbes_and;
+    use crate::is_pbes_exists;
     use crate::is_pbes_expression;
+    use crate::is_pbes_forall;
+    use crate::is_pbes_imp;
+    use crate::is_pbes_not;
+    use crate::is_pbes_or;
+    use crate::is_pbes_propositional_variable_instantiation;
 
     /// mcrl2::pbes_system::pbes_expression
     #[mcrl2_term(is_pbes_expression)]

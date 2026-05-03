@@ -324,7 +324,9 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
 mod tests {
     use std::str::FromStr;
 
-    use super::*;
+    use proc_macro2::TokenStream;
+
+    use crate::merc_derive_terms_impl;
 
     #[test]
     fn test_macro() {

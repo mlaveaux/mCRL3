@@ -205,7 +205,8 @@ impl<T> Drop for RecursiveLockWriteGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::BfSharedMutex;
+    use crate::RecursiveLock;
 
     #[test]
     fn test_from_mutex() {

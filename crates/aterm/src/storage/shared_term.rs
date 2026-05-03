@@ -163,13 +163,14 @@ const _: () = assert!(offset_of!(SharedTerm, symbol) == 0);
 #[cfg(test)]
 mod tests {
     use allocator_api2::alloc::Global;
+
     use merc_unsafety::AllocatorDst;
 
     use crate::ATerm;
     use crate::Symbol;
     use crate::Term;
-
-    use super::*;
+    use crate::storage::SharedTerm;
+    use crate::storage::SharedTermLookup;
 
     #[test]
     #[cfg(not(debug_assertions))]
