@@ -13,7 +13,7 @@ use tiny_skia::PixmapMut;
 /// Render the alternating bit protocol with some settings.
 pub fn criterion_benchmark_viewer(c: &mut Criterion) {
     let file = include_str!("../../../../../examples/lts/abp.aut");
-    let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
+    let lts = Arc::new(read_aut(file.as_bytes()).unwrap());
 
     let viewer = Viewer::new(lts.clone());
     let mut renderer = SkiaRenderer::new(lts);
@@ -58,7 +58,7 @@ pub fn criterion_benchmark_viewer(c: &mut Criterion) {
 /// Perform layouting the alternating bit protocol with some settings.
 pub fn criterion_benchmark_layout(c: &mut Criterion) {
     let file = include_str!("../../../../../examples/lts/abp.aut");
-    let lts = Arc::new(read_aut(file.as_bytes(), vec![]).unwrap());
+    let lts = Arc::new(read_aut(file.as_bytes()).unwrap());
 
     let mut layout = GraphLayout::new(lts);
 

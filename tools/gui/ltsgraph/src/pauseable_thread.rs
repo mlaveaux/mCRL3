@@ -153,7 +153,7 @@ impl Drop for PauseableThread {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::PauseableThread;
 
     #[test]
     fn test_pausablethread() {

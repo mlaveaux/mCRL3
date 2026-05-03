@@ -34,27 +34,12 @@ jobs:
         submodules: true
 
     - name: Build aterm Benchmarks
-      run: cargo build -p benchmarks_aterm
-      env:
-        RUSTC_WRAPPER: sccache
-
-    - name: Build ldd Benchmarks
-      run: cargo build -p benchmarks_ldd
-      env:
-        RUSTC_WRAPPER: sccache
-
-    - name: Build sabre Benchmarks
-      run: cargo build -p benchmarks_sabre
-      env:
-        RUSTC_WRAPPER: sccache
-
-    - name: Build sharedmutex Benchmarks
-      run: cargo build -p benchmarks_sharedmutex
+      run: cargo bench --no-run
       env:
         RUSTC_WRAPPER: sccache
         
     - name: Build GUI Benchmarks
-      run: cargo build -p benchmarks_ltsgraph
+      run: cargo bench --no-run
       working-directory: tools/gui/
       env:
         RUSTC_WRAPPER: sccache
