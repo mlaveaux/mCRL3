@@ -18,7 +18,9 @@ use merc_lts::write_aut;
 use merc_symbolic::bits_to_bdd;
 use merc_vpg::Projected;
 use merc_vpg::ProjectedLts;
+use merc_vpg::Solver;
 use merc_vpg::project_feature_transition_system_iter;
+use merc_vpg::solve_priority_promotion;
 use merc_vpg::verify_solution;
 use oxidd::BooleanFunction;
 
@@ -98,13 +100,17 @@ enum Commands {
 /// Solve a parity game
 #[derive(clap::Args, Debug)]
 struct SolveArgs {
-    filename: String,
+    filename: PathBuf,
 
     /// The input parity game file format
     #[arg(long)]
     format: Option<ParityGameFormat>,
 
-    /// Sets the solving variant used for variability parity games
+    /// Sets the solving variant for regular parity games.
+    #[arg(long)]
+    solve_pg_variant: Option<Solver>,
+
+    /// Sets the solving variant used for variability parity games.
     #[arg(long)]
     solve_variant: Option<ZielonkaVariant>,
 
@@ -266,10 +272,17 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         .ok_or_else(|| format!("Unknown parity game file format for '{}", path.display()))?;
 
     if format == ParityGameFormat::PG {
+        let solver = args
+            .solve_pg_variant
+            .ok_or("For regular parity game solving a solving strategy should be selected")?;
+
         // Read and solve a standard parity game.
         let game = timing.measure("read_pg", || read_pg(&mut file))?;
 
-        let (solution, strategy) = timing.measure("solve_zielonka", || solve_zielonka(&game, args.verify_solution));
+        let (solution, strategy) = timing.measure("solve_zielonka", || match solver {
+            Solver::Zielonka => solve_zielonka(&game, args.verify_solution),
+            Solver::PriorityPromotion => solve_priority_promotion(&game, args.verify_solution),
+        });
         if args.full_solution {
             for (index, player_set) in solution.iter().enumerate() {
                 println!("W{index}: {}", player_set.iter_ones().format(", "));
@@ -310,9 +323,13 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 
         timing.measure("solve_variability_zielonka", || -> Result<_, MercError> {
             if solve_variant == ZielonkaVariant::Product {
+                let solver = args
+                    .solve_pg_variant
+                    .ok_or("For product-based variability parity game solving a solving strategy should be selected")?;
+
                 // Since we want to print W0, W1 separately, we need to store the results temporarily.
                 let mut results = [Vec::new(), Vec::new()];
-                for result in solve_variability_product_zielonka(&game, timing) {
+                for result in solve_variability_product_zielonka(&game, solver, timing) {
                     let (cube, _bdd, solution) = result?;
 
                     for (index, w) in solution.iter().enumerate() {

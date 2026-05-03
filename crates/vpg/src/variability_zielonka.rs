@@ -36,27 +36,18 @@ use crate::Priority;
 use crate::Projected;
 use crate::Repeat;
 use crate::Set;
+use crate::Solver;
 use crate::Submap;
 use crate::VariabilityParityGame;
 use crate::VariabilityPredecessors;
 use crate::VertexIndex;
+use crate::ZielonkaVariant;
 use crate::combine;
 use crate::compute_reachable;
 use crate::project_variability_parity_games_iter;
+use crate::solve_priority_promotion;
 use crate::solve_zielonka;
 use crate::x_and_not_x;
-
-/// Variant of the Zielonka algorithm to use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
-pub enum ZielonkaVariant {
-    /// Product-based Zielonka variant.
-    Product,
-    /// Standard family-based Zielonka algorithm.
-    Family,
-    /// Left-optimised family-based Zielonka variant.
-    FamilyOptimisedLeft,
-}
 
 /// Solves the given variability parity game using the specified Zielonka algorithm variant.
 pub fn solve_variability_zielonka(
@@ -114,16 +105,21 @@ pub fn solve_variability_zielonka(
 /// Solves the given variability parity game using the product-based Zielonka algorithm.
 pub fn solve_variability_product_zielonka<'a>(
     vpg: &'a VariabilityParityGame,
+    solver: Solver,
     timing: &'a Timing,
 ) -> impl Iterator<Item = Result<(Vec<OptBool>, BDDFunction, [Set; 2]), MercError>> + 'a {
-    project_variability_parity_games_iter(vpg, timing).map(|result| {
+    project_variability_parity_games_iter(vpg, timing).map(move |result| {
         match result {
             Ok((Projected { bits, bdd, game }, timing)) => {
                 let (reachable_pg, projection) = timing.measure("reachable", || compute_reachable(&game));
 
                 debug!("Solving projection on {}...", FormatConfig(&bits));
 
-                let (pg_solution, _) = solve_zielonka(&reachable_pg, false);
+                // We cannot yet construct a strategy for the VPG solver.
+                let (pg_solution, _) = match solver {
+                    Solver::Zielonka => solve_zielonka(&reachable_pg, false),
+                    Solver::PriorityPromotion => solve_priority_promotion(&reachable_pg, false),
+                };
                 let mut new_solution = [
                     bitvec![usize, Lsb0; 0; vpg.num_of_vertices()],
                     bitvec![usize, Lsb0; 0; vpg.num_of_vertices()],
@@ -155,7 +151,7 @@ pub fn verify_variability_product_zielonka_solution(
     timing: &Timing,
 ) -> Result<(), MercError> {
     info!("Verifying variability product-based Zielonka solution...");
-    solve_variability_product_zielonka(vpg, timing).try_for_each(|res| {
+    solve_variability_product_zielonka(vpg, Solver::Zielonka, timing).try_for_each(|res| {
         match res {
             Ok((bits, cube, pg_solution)) => {
                 for v in vpg.iter_vertices() {
