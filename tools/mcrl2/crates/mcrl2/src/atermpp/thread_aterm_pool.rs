@@ -320,8 +320,6 @@ mod tests {
 
     use crate::random_term;
 
-    use super::*;
-
     /// Make sure that the term has the same number of arguments as its arity.
     fn verify_term(term: &ATermRef<'_>) {
         for subterm in term.iter() {
