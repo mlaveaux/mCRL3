@@ -20,8 +20,8 @@ use merc_lts::LabelledTransitionSystem;
 use merc_lts::StateIndex;
 use merc_utilities::Timing;
 
-use crate::Equivalence;
 use crate::DivergencePreservingLts;
+use crate::Equivalence;
 use crate::MarkedBlockPartition;
 use crate::reduce_lts;
 use crate::tau_cycle_elimination_and_reorder;
@@ -99,8 +99,9 @@ fn weak_bisimulation_preprocessed<L: LTS>(
     divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
-    let (tau_loop_free_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || {
+        tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving)
+    });
 
     timing.measure("reduction", || {
         let blocks = if divergence_preserving {
@@ -120,8 +121,9 @@ fn weak_bisimulation_parallel_preprocessed<L: LTS>(
     divergence_preserving: bool,
     timing: &Timing,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, MarkedBlockPartition) {
-    let (tau_loop_free_lts, mapped_state) =
-        timing.measure("preprocess", || tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving));
+    let (tau_loop_free_lts, mapped_state) = timing.measure("preprocess", || {
+        tau_cycle_elimination_and_reorder(lts, state, !divergence_preserving)
+    });
 
     timing.measure("reduction", || {
         let blocks = if divergence_preserving {
@@ -164,7 +166,15 @@ fn weak_bisimulation_impl<L: LTS>(lts: &L) -> MarkedBlockPartition {
 
             // tau is the first label.
             for label in lts.labels().iter().enumerate().map(|(i, _)| LabelIndex::new(i)) {
-                compute_weak_act(&mut act_mark, &mut tau_mark, lts, &blocks, &incoming, block_index, label);
+                compute_weak_act(
+                    &mut act_mark,
+                    &mut tau_mark,
+                    lts,
+                    &blocks,
+                    &incoming,
+                    block_index,
+                    label,
+                );
 
                 // Note that we cannot use the block references here, and instead uses indices, because stabilise
                 // also modifies the blocks structure.

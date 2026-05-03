@@ -1,6 +1,3 @@
-
-
-
 /// Variant of variability solver to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
