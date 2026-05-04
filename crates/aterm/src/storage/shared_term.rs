@@ -165,6 +165,8 @@ mod tests {
     use allocator_api2::alloc::Global;
 
     use merc_unsafety::AllocatorDst;
+    #[cfg(not(debug_assertions))]
+    use merc_unsafety::SliceDst;
 
     use crate::ATerm;
     use crate::Symbol;
