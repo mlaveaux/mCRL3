@@ -4,6 +4,7 @@ use std::hash::Hash;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
+use merc_unsafety::AllocBlock;
 use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
 use merc_unsafety::StablePointerSet;
@@ -25,33 +26,39 @@ pub(crate) struct ATermStorage {
     terms: StablePointerSet<SharedTerm, FxBuildHasher>,
 
     /// Stores the fixed size [SharedTermInt] integer terms.
-    int_terms: StablePointerSet<SharedTermInt, FxBuildHasher>,
+    int_terms: StablePointerSet<SharedTermInt, FxBuildHasher, AllocBlock<SharedTermInt, BLOCK_SIZE>>,
 
     /// Stores terms of fixed arity, see [SharedTermFixed].
-    terms_0: StablePointerSet<SharedTermFixed<0>, FxBuildHasher>,
-    terms_1: StablePointerSet<SharedTermFixed<1>, FxBuildHasher>,
-    terms_2: StablePointerSet<SharedTermFixed<2>, FxBuildHasher>,
-    terms_3: StablePointerSet<SharedTermFixed<3>, FxBuildHasher>,
-    terms_4: StablePointerSet<SharedTermFixed<4>, FxBuildHasher>,
-    terms_5: StablePointerSet<SharedTermFixed<5>, FxBuildHasher>,
-    terms_6: StablePointerSet<SharedTermFixed<6>, FxBuildHasher>,
-    terms_7: StablePointerSet<SharedTermFixed<7>, FxBuildHasher>,
+    terms_0: StablePointerSet<SharedTermFixed<0>, FxBuildHasher, AllocBlock::<SharedTermFixed<0>, BLOCK_SIZE>>,
+    terms_1: StablePointerSet<SharedTermFixed<1>, FxBuildHasher, AllocBlock::<SharedTermFixed<1>, BLOCK_SIZE>>,
+    terms_2: StablePointerSet<SharedTermFixed<2>, FxBuildHasher, AllocBlock::<SharedTermFixed<2>, BLOCK_SIZE>>,
+    terms_3: StablePointerSet<SharedTermFixed<3>, FxBuildHasher, AllocBlock::<SharedTermFixed<3>, BLOCK_SIZE>>,
+    terms_4: StablePointerSet<SharedTermFixed<4>, FxBuildHasher, AllocBlock::<SharedTermFixed<4>, BLOCK_SIZE>>,
+    terms_5: StablePointerSet<SharedTermFixed<5>, FxBuildHasher, AllocBlock::<SharedTermFixed<5>, BLOCK_SIZE>>,
+    terms_6: StablePointerSet<SharedTermFixed<6>, FxBuildHasher, AllocBlock::<SharedTermFixed<6>, BLOCK_SIZE>>,
+    terms_7: StablePointerSet<SharedTermFixed<7>, FxBuildHasher, AllocBlock::<SharedTermFixed<7>, BLOCK_SIZE>>,
 }
+
+/// The initial capacity for the term storage.
+const INITIAL_CAPACITY: usize = 1000;
+
+/// The number of terms stored in every block of the fixed-size storage.
+const BLOCK_SIZE: usize = 1000;
 
 impl ATermStorage {
     /// Creates a new, empty storage.
     pub fn new() -> Self {
         Self {
-            terms: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            int_terms: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_0: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_1: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_2: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_3: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_4: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_5: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_6: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
-            terms_7: StablePointerSet::with_capacity_and_hasher(1000, FxBuildHasher),
+            terms: StablePointerSet::with_capacity_and_hasher(INITIAL_CAPACITY, FxBuildHasher),
+            int_terms: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_0: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_1: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_2: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_3: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_4: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_5: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_6: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
+            terms_7: StablePointerSet::with_capacity_and_hasher_in(INITIAL_CAPACITY, FxBuildHasher, AllocBlock::new()),
         }
     }
 
