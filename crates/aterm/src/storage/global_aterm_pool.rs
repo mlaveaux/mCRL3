@@ -172,8 +172,11 @@ impl GlobalTermPool {
     }
 
     /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
-    pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
-        self.collect_garbage();
+    pub(crate) fn trigger_garbage_collection(&mut self) -> usize {        
+        if self.garbage_collection {
+            // Garbage collection is enabled.
+            self.collect_garbage();
+        }
 
         if AGGRESSIVE_GC {
             return 1;
@@ -206,17 +209,7 @@ impl GlobalTermPool {
     }
 
     /// Collects garbage terms.
-    fn collect_garbage(&mut self) {
-        if !self.garbage_collection {
-            // Garbage collection is disabled.
-            return;
-        }
-
-        // Clear marking data structures
-        self.marked_terms.clear();
-        self.marked_symbols.clear();
-        self.stack.clear();
-
+    pub fn collect_garbage(&mut self) {
         // Mark the default symbols
         self.marked_symbols.insert(self.int_symbol.shared().copy());
         self.marked_symbols.insert(self.list_symbol.shared().copy());
@@ -304,6 +297,11 @@ impl GlobalTermPool {
             let pool = unsafe { &mut *pool.get() };
             debug!("{}", pool.metrics());
         }
+
+        // Clear marking data structures
+        self.marked_terms.clear();
+        self.marked_symbols.clear();
+        self.stack.clear();
     }
 
     /// Returns the metrics of the term pool, can be formatted and written to output.

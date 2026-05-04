@@ -387,6 +387,12 @@ impl ThreadTermPool {
         guard.automatic_garbage_collection(enabled);
     }
 
+    /// Forces a garbage collection to occur, regardless of the current counter value.
+    pub fn collect_garbage(&self) {
+        let mut guard = self.term_pool.write().expect("Lock poisoned!");
+        guard.collect_garbage();
+    }
+
     /// Triggers delayed garbage collection if the counter has reached zero.
     ///
     /// # Safety
