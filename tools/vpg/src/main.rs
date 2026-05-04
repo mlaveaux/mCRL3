@@ -39,7 +39,7 @@ use merc_vpg::ParityGameFormat;
 use merc_vpg::PgDot;
 use merc_vpg::Player;
 use merc_vpg::VpgDot;
-use merc_vpg::ZielonkaVariant;
+use merc_vpg::VpgSolver;
 use merc_vpg::compute_reachable;
 use merc_vpg::guess_format_from_extension;
 use merc_vpg::make_vpg_total;
@@ -107,12 +107,12 @@ struct SolveArgs {
     format: Option<ParityGameFormat>,
 
     /// Sets the solving variant for regular parity games.
-    #[arg(long)]
-    solve_pg_variant: Option<Solver>,
+    #[arg(long, default_value_t = Solver::Zielonka)]
+    solver: Solver,
 
     /// Sets the solving variant used for variability parity games.
-    #[arg(long)]
-    solve_variant: Option<ZielonkaVariant>,
+    #[arg(long, default_value_t = VpgSolver::Family)]
+    vpg_solver: VpgSolver,
 
     /// Output the solution for every single vertex instead of only the initial vertex.
     #[arg(long, default_value_t = false)]
@@ -272,14 +272,10 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         .ok_or_else(|| format!("Unknown parity game file format for '{}", path.display()))?;
 
     if format == ParityGameFormat::PG {
-        let solver = args
-            .solve_pg_variant
-            .ok_or("For regular parity game solving a solving strategy should be selected")?;
-
         // Read and solve a standard parity game.
         let game = timing.measure("read_pg", || read_pg(&mut file))?;
 
-        let (solution, strategy) = timing.measure("solve_zielonka", || match solver {
+        let (solution, strategy) = timing.measure("solve_zielonka", || match args.solver {
             Solver::Zielonka => solve_zielonka(&game, args.verify_solution),
             Solver::PriorityPromotion => solve_priority_promotion(&game, args.verify_solution),
         });
@@ -299,10 +295,6 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             verify_solution(&game, &solution, &strategy);
         }
     } else {
-        let solve_variant = args
-            .solve_variant
-            .ok_or("For variability parity game solving a solving strategy should be selected")?;
-
         // Read and solve a variability parity game.
         let manager_ref = oxidd::bdd::new_manager(
             cli.oxidd_node_capacity,
@@ -322,10 +314,9 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
         };
 
         timing.measure("solve_variability_zielonka", || -> Result<_, MercError> {
-            if solve_variant == ZielonkaVariant::Product {
+            if args.vpg_solver == VpgSolver::Product {
                 let solver = args
-                    .solve_pg_variant
-                    .ok_or("For product-based variability parity game solving a solving strategy should be selected")?;
+                    .solver;
 
                 // Since we want to print W0, W1 separately, we need to store the results temporarily.
                 let mut results = [Vec::new(), Vec::new()];
@@ -350,7 +341,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
                     }
                 }
             } else {
-                let solutions = solve_variability_zielonka(&manager_ref, &game, solve_variant, false)?;
+                let solutions = solve_variability_zielonka(&manager_ref, &game, args.vpg_solver, false)?;
                 for (index, w) in solutions.iter().enumerate() {
                     for entry in CubeIterAll::new(game.configuration()) {
                         let config = entry?;

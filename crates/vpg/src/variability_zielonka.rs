@@ -41,7 +41,7 @@ use crate::Submap;
 use crate::VariabilityParityGame;
 use crate::VariabilityPredecessors;
 use crate::VertexIndex;
-use crate::ZielonkaVariant;
+use crate::VpgSolver;
 use crate::combine;
 use crate::compute_reachable;
 use crate::project_variability_parity_games_iter;
@@ -53,7 +53,7 @@ use crate::x_and_not_x;
 pub fn solve_variability_zielonka(
     manager_ref: &BDDManagerRef,
     game: &VariabilityParityGame,
-    variant: ZielonkaVariant,
+    variant: VpgSolver,
     alternative_solving: bool,
 ) -> Result<[Submap; 2], MercError> {
     debug_assert!(
@@ -76,9 +76,9 @@ pub fn solve_variability_zielonka(
 
     let full_V = V.clone();
     let (W0, W1) = match variant {
-        ZielonkaVariant::Family => zielonka.solve_recursive(V, 0)?,
-        ZielonkaVariant::FamilyOptimisedLeft => zielonka.zielonka_family_optimised(V, 0)?,
-        ZielonkaVariant::Product => {
+        VpgSolver::Family => zielonka.solve_recursive(V, 0)?,
+        VpgSolver::FamilyOptimisedLeft => zielonka.zielonka_family_optimised(V, 0)?,
+        VpgSolver::Product => {
             panic!("Product-based Zielonka is implemented in solve_product_zielonka");
         }
     };
@@ -668,7 +668,7 @@ mod tests {
     use crate::PG;
     use crate::Submap;
     use crate::VertexIndex;
-    use crate::ZielonkaVariant;
+    use crate::VpgSolver;
     use crate::project_variability_parity_games_iter;
     use crate::random_variability_parity_game;
     use crate::solve_variability_product_zielonka;
@@ -688,7 +688,7 @@ mod tests {
 
             files.dump("input.vpg", |w| write_vpg(w, &vpg)).unwrap();
 
-            let solution = solve_variability_zielonka(&manager_ref, &vpg, ZielonkaVariant::Family, false).unwrap();
+            let solution = solve_variability_zielonka(&manager_ref, &vpg, VpgSolver::Family, false).unwrap();
             verify_variability_product_zielonka_solution(&vpg, &solution, &Timing::new()).unwrap();
         })
     }
@@ -705,9 +705,9 @@ mod tests {
             files.dump("input.vpg", |w| write_vpg(w, &vpg)).unwrap();
 
             let solution =
-                solve_variability_zielonka(&manager_ref, &vpg, ZielonkaVariant::FamilyOptimisedLeft, false).unwrap();
+                solve_variability_zielonka(&manager_ref, &vpg, VpgSolver::FamilyOptimisedLeft, false).unwrap();
             let solution_expected =
-                solve_variability_zielonka(&manager_ref, &vpg, ZielonkaVariant::Family, false).unwrap();
+                solve_variability_zielonka(&manager_ref, &vpg, VpgSolver::Family, false).unwrap();
 
             debug_assert_eq!(solution[0], solution_expected[0]);
             debug_assert_eq!(solution[1], solution_expected[1]);
