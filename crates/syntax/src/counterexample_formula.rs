@@ -51,12 +51,10 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
             // Refused actions are characterized by box-false modalities.
             let inner = refusals
                 .iter()
-                .map(|l| {
-                    StateFrm::Modality {
-                        operator: ModalityOperator::Box,
-                        formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
-                        expr: Box::new(StateFrm::False),
-                    }
+                .map(|l| StateFrm::Modality {
+                    operator: ModalityOperator::Box,
+                    formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
+                    expr: Box::new(StateFrm::False),
                 })
                 .fold(
                     // Stable failures are only observed in stable states, so tau is refused.

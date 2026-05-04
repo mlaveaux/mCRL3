@@ -456,7 +456,7 @@ mod tests {
     use crate::Equivalence;
     use crate::compare_lts;
     use crate::reduce_lts;
-    use crate::signature_refinement::test_mcrl2_sigref_vs_ltsconvert_impl;
+    // use crate::signature_refinement::test_mcrl2_sigref_vs_ltsconvert_impl;
 
     #[test]
     #[cfg_attr(miri, ignore)]

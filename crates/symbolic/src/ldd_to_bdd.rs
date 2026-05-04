@@ -395,11 +395,11 @@ mod tests {
     use oxidd::Manager;
     use oxidd::ManagerRef;
 
-    use merc_ldd::from_iter;
     use merc_ldd::LddDisplay;
+    use merc_ldd::Storage;
+    use merc_ldd::from_iter;
     use merc_ldd::random_vector_set;
     use merc_ldd::singleton;
-    use merc_ldd::Storage;
     use merc_utilities::random_test;
 
     use crate::FormatConfigSet;
