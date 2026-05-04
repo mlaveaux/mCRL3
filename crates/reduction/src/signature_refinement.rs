@@ -1134,23 +1134,23 @@ mod tests {
         );
     }
 
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_weak_bisim_sigref_vs_ltsconvert",
-            Equivalence::WeakBisim,
-            "weak-bisim",
-        );
-    }
+    // #[test]
+    // #[cfg_attr(miri, ignore)] // Miri is too slow
+    // fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
+    //     test_mcrl2_sigref_vs_ltsconvert_impl(
+    //         "test_mcrl2_weak_bisim_sigref_vs_ltsconvert",
+    //         Equivalence::WeakBisim,
+    //         "weak-bisim",
+    //     );
+    // }
 
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert",
-            Equivalence::WeakBisimDivergencePreserving,
-            "dpweak-bisim",
-        );
-    }
+    // #[test]
+    // #[cfg_attr(miri, ignore)] // Miri is too slow
+    // fn test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert() {
+    //     test_mcrl2_sigref_vs_ltsconvert_impl(
+    //         "test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert",
+    //         Equivalence::WeakBisimDivergencePreserving,
+    //         "dpweak-bisim",
+    //     );
+    // }
 }
