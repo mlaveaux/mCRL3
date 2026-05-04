@@ -101,7 +101,7 @@ mod tests {
     use super::SabreCompilingRewriter;
 
     #[test]
-    fn test_compilation() {
+    fn test_sabre_compiling_example() {
         //   plus : Nat Nat -> Nat   # addition
         //   times : Nat Nat -> Nat  # product
         //   fact : Nat -> Nat       # factorial

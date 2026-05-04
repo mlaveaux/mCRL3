@@ -1,7 +1,10 @@
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    ptr::{slice_from_raw_parts_mut, NonNull},
+};
 
-use merc_aterm::ATermIndex;
-use merc_collections::ProtectionIndex;
+use merc_aterm::{ATermIndex, SymbolIndex, SymbolRef};
+use merc_unsafety::ProtectionIndex;
 
 #[cfg(feature = "import")]
 mod import;
@@ -13,6 +16,28 @@ mod export;
 #[cfg(not(feature = "import"))]
 pub use export::*;
 
+/// Represents a FFI stable reference to a [merc_aterm::SymbolRef].
+#[repr(C)]
+pub struct  SymbolRefFFI<'a> {
+    index: SymbolIndex,
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a> SymbolRefFFI<'a> {
+    /// Constructs a symbol reference from a pointer.
+    /// 
+    /// # Safety
+    /// 
+    /// The index must be a valid index of a symbol, that is valid for this lifetime.
+    pub unsafe fn from_ptr(index: usize) -> Self {
+        Self {
+            index: unsafe { SymbolIndex::from_ptr(NonNull::new(index as *mut _).unwrap()) },
+            _marker: PhantomData,
+        }
+    }
+}
+
+/// Represents a FFI stable reference to a [merc_data::DataExpression].
 #[repr(C)]
 pub struct DataExpressionFFI {
     index: ATermIndex,
@@ -20,6 +45,17 @@ pub struct DataExpressionFFI {
 }
 
 impl DataExpressionFFI {
+
+    /// Creates a new data expression from a symbol and its arguments.
+    pub fn create(symbol: SymbolRefFFI, args: &[DataExpressionRefFFI]) -> Self {
+        unimplemented!("Creating data expressions from symbol references is not yet implemented")
+    }
+
+    /// Creates a new data expression from a symbol with no arguments.
+    pub fn constant(symbol: SymbolRefFFI) -> Self {
+        unimplemented!("Creating data expressions from symbol references is not yet implemented")
+    }
+
     /// Creates a new data expression from an index and a root.
     ///
     /// # Safety
@@ -43,8 +79,14 @@ impl DataExpressionFFI {
     pub fn index(&self) -> &ATermIndex {
         &self.index
     }
+
+    /// Protects the data expression, preventing it from being garbage collected.
+    pub fn protect(&self) -> DataExpressionFFI {
+        unsafe { data_expression_protect(&self.copy()) }
+    }
 }
 
+/// Represents a FFI stable reference to a [merc_data::DataExpressionRef].
 #[repr(transparent)]
 pub struct DataExpressionRefFFI<'a> {
     index: ATermIndex,
@@ -57,6 +99,21 @@ impl DataExpressionRefFFI<'_> {
     pub unsafe fn from_index(index: &ATermIndex) -> Self {
         Self {
             index: index.copy(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// 
+    /// 
+    /// # Safety
+    /// 
+    /// The index must be a valid index of a symbol, that is valid for this lifetime.
+    pub unsafe fn from_ptr(index: usize, arity: usize) -> Self {
+        // ATermIndex is a stable pointer to SharedTerm (DST), so it must include
+        // metadata for the argument slice length (arity).
+        let raw = slice_from_raw_parts_mut(index as *mut SymbolRef<'static>, arity) as *mut _;
+        Self {
+            index: unsafe { ATermIndex::from_ptr(NonNull::new(raw).unwrap()) },
             _marker: PhantomData,
         }
     }

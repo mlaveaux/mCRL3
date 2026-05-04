@@ -1,13 +1,13 @@
 #![doc = include_str!("../README.md")]
 
 mod innermost_rewriter;
-mod matching;
 mod mcrl2_specification;
 mod naive_rewriter;
 mod rewrite_specification;
 mod sabre_rewriter;
 mod set_automaton;
 
+pub mod matching;
 pub mod test_utility;
 pub mod utilities;
 
