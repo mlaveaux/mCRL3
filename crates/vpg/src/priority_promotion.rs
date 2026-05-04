@@ -86,16 +86,18 @@ fn solve_priority_promotion_impl<G: PG, S: Strat>(game: &G) -> ([Set; 2], [S; 2]
             Player::Even => {
                 w0.set(*v, true);
                 if game.owner(v) == Player::Even
-                    && let Some(target) = strategy.get(v) {
-                        s0.set(v, target);
-                    }
+                    && let Some(target) = strategy.get(v)
+                {
+                    s0.set(v, target);
+                }
             }
             Player::Odd => {
                 w1.set(*v, true);
                 if game.owner(v) == Player::Odd
-                    && let Some(target) = strategy.get(v) {
-                        s1.set(v, target);
-                    }
+                    && let Some(target) = strategy.get(v)
+                {
+                    s1.set(v, target);
+                }
             }
         }
     }
@@ -438,9 +440,10 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
                     let u = edge.to();
 
                     if let Some(region) = self.region_function[*u]
-                        && region > prio {
-                            promotion = promotion.min(region);
-                        }
+                        && region > prio
+                    {
+                        promotion = promotion.min(region);
+                    }
                 }
             }
         }

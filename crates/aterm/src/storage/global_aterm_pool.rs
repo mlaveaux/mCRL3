@@ -172,7 +172,7 @@ impl GlobalTermPool {
     }
 
     /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
-    pub(crate) fn trigger_garbage_collection(&mut self) -> usize {        
+    pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
         if self.garbage_collection {
             // Garbage collection is enabled.
             self.collect_garbage();
