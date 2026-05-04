@@ -7,7 +7,10 @@ use std::collections::VecDeque;
 use std::hint::black_box;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
+use std::time::Instant;
 
+use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
@@ -84,11 +87,22 @@ fn benchmark_shared_creation(c: &mut Criterion) {
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
-        c.bench_function(&format!("shared_creation_{}", num_threads), |b| {
-            b.iter(|| {
-                benchmark_threads(num_threads, |_id| {
-                    black_box(create_nested_function::<2>("f", "c", SIZE));
-                });
+        c.bench_with_input(BenchmarkId::new("shared_creation", num_threads), &num_threads, |b, &num_threads| {
+            b.iter_custom(|iters| {
+                let mut result = Duration::new(0, 0);
+                for _ in 0..iters {
+                    let start = Instant::now();
+
+                    benchmark_threads(num_threads, |_id| {
+                        black_box(create_nested_function::<2>("f", "c", SIZE));
+                    });
+
+                    result += start.elapsed();
+
+                    // For a garbage collection (not part of the measurement) to clean up the created terms.
+                    THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
+                }
+                result
             });
         });
     }
@@ -123,7 +137,7 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
-        c.bench_function(&format!("shared_inspect_{}", num_threads), |b| {
+        c.bench_with_input(BenchmarkId::new("shared_inspect", num_threads), &num_threads, |b, &num_threads| {
             let shared_term = Arc::new(ATermSend::from(create_nested_function::<2>("f", "c", SIZE)));
             assert_eq!(inspect(&shared_term.copy(), 1), 4194302);
 
@@ -147,7 +161,7 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
-        c.bench_function(&format!("shared_lookup_{}", num_threads), |b| {
+        c.bench_with_input(BenchmarkId::new("shared_lookup", num_threads), &num_threads, |b, &num_threads| {
             // Keep one protected instance
             let term = create_nested_function::<2>("f", "c", SIZE);
 
@@ -171,15 +185,28 @@ fn benchmark_unique_creation(c: &mut Criterion) {
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
-        c.bench_function(&format!("unique_creation_{}", num_threads), |b| {
-            b.iter(|| {
-                benchmark_threads(num_threads, move |id| {
-                    black_box(create_nested_function::<2>(
-                        "f",
-                        &format!("c{}", id),
-                        SIZE / num_threads,
-                    ));
-                });
+        c.bench_with_input(BenchmarkId::new("unique_creation", num_threads), &num_threads, |b, &num_threads| {
+            b.iter_custom(|iters| {
+
+                let mut result = Duration::new(0, 0);
+                for _ in 0..iters {
+                    let start = Instant::now();
+
+                    benchmark_threads(num_threads, move |id| {
+                        black_box(create_nested_function::<2>(
+                            "f",
+                            &format!("c{}", id),
+                            SIZE / num_threads,
+                        ));
+                    });
+
+                    result += start.elapsed();
+
+                    // For a garbage collection (not part of the measurement) to clean up the created terms.
+                    THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
+                }
+
+                result
             });
         });
     }
@@ -192,7 +219,7 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
     THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
-        c.bench_function(&format!("unique_inspect_{}", num_threads), |b| {
+        c.bench_with_input(BenchmarkId::new("unique_inspect", num_threads), &num_threads, |b, &num_threads| {
             let terms: Arc<Vec<ATermSend>> = Arc::new(
                 (0..num_threads)
                     .map(|id| ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE)))
@@ -222,7 +249,7 @@ fn benchmark_unique_lookup(c: &mut Criterion) {
     let f = create_nested_function::<2>("f", "c", SIZE);
 
     for num_threads in THREADS {
-        c.bench_function(&format!("unique_lookup_{}", num_threads), |b| {
+        c.bench_with_input(BenchmarkId::new("unique_lookup", num_threads), &num_threads, |b, &num_threads| {
             b.iter(|| {
                 benchmark_threads(num_threads, move |id| {
                     for _ in 0..ITERATIONS / num_threads {
