@@ -1,9 +1,10 @@
-use std::{
-    marker::PhantomData,
-    ptr::{slice_from_raw_parts_mut, NonNull},
-};
+use std::marker::PhantomData;
+use std::ptr::NonNull;
+use std::ptr::slice_from_raw_parts_mut;
 
-use merc_aterm::{ATermIndex, SymbolIndex, SymbolRef};
+use merc_aterm::ATermIndex;
+use merc_aterm::SymbolIndex;
+use merc_aterm::SymbolRef;
 use merc_unsafety::ProtectionIndex;
 
 #[cfg(feature = "import")]
@@ -18,16 +19,16 @@ pub use export::*;
 
 /// Represents a FFI stable reference to a [merc_aterm::SymbolRef].
 #[repr(C)]
-pub struct  SymbolRefFFI<'a> {
+pub struct SymbolRefFFI<'a> {
     index: SymbolIndex,
     _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> SymbolRefFFI<'a> {
     /// Constructs a symbol reference from a pointer.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The index must be a valid index of a symbol, that is valid for this lifetime.
     pub unsafe fn from_ptr(index: usize) -> Self {
         Self {
@@ -45,7 +46,6 @@ pub struct DataExpressionFFI {
 }
 
 impl DataExpressionFFI {
-
     /// Creates a new data expression from a symbol and its arguments.
     pub fn create(symbol: SymbolRefFFI, args: &[DataExpressionRefFFI]) -> Self {
         unimplemented!("Creating data expressions from symbol references is not yet implemented")
@@ -103,10 +103,10 @@ impl DataExpressionRefFFI<'_> {
         }
     }
 
-    /// 
-    /// 
+    ///
+    ///
     /// # Safety
-    /// 
+    ///
     /// The index must be a valid index of a symbol, that is valid for this lifetime.
     pub unsafe fn from_ptr(index: usize, arity: usize) -> Self {
         // ATermIndex is a stable pointer to SharedTerm (DST), so it must include

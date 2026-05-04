@@ -12,11 +12,11 @@ use merc_aterm::Term;
 use merc_sabre::AnnouncementInnermost;
 use merc_sabre::RewriteSpecification;
 use merc_sabre::SetAutomaton;
+use merc_sabre::matching::conditions::EMACondition;
 use merc_sabre::matching::nonlinear::EquivalenceClass;
 use merc_sabre::utilities::Config;
 use merc_sabre::utilities::DataPosition;
 use merc_sabre::utilities::TermStack;
-use merc_sabre::matching::conditions::EMACondition;
 use merc_utilities::MercError;
 
 use crate::indenter::IndentFormatter;
@@ -146,12 +146,12 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         writeln!(&mut formatter, "}}")?;
         writeln!(&mut formatter)?;
     }
-    
+
     writeln!(formatter, "// term stack rewrite functions")?;
     writeln!(formatter)?;
     for ((from, symbol), transition) in apma.transitions() {
         for (_announcement, annotation) in &transition.announcements {
-            generate_rewrite_term_stack(&mut formatter, *from, *symbol, &mut positions, &annotation.rhs_stack)?;     
+            generate_rewrite_term_stack(&mut formatter, *from, *symbol, &mut positions, &annotation.rhs_stack)?;
         }
     }
 
@@ -159,7 +159,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     writeln!(formatter)?;
     for ((from, symbol), transition) in apma.transitions() {
         for (_announcement, annotation) in &transition.announcements {
-            generate_check_condition(&mut formatter, *from, *symbol, &annotation.conditions)?;     
+            generate_check_condition(&mut formatter, *from, *symbol, &annotation.conditions)?;
         }
     }
 
@@ -167,7 +167,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     writeln!(formatter)?;
     for ((from, symbol), transition) in apma.transitions() {
         for (_announcement, annotation) in &transition.announcements {
-            generate_check_equivalence_classes(&mut formatter, *from, *symbol, &annotation.equivalence_classes)?;     
+            generate_check_equivalence_classes(&mut formatter, *from, *symbol, &annotation.equivalence_classes)?;
         }
     }
 
@@ -193,7 +193,10 @@ fn generate_check_condition(
 ) -> Result<(), MercError> {
     writeln!(formatter, "/// Checking condition {:?}", conditions)?;
 
-    writeln!(formatter, "fn check_condition_{index}_{symbol}(t: &DataExpressionRefFFI<'_>) -> bool {{")?;
+    writeln!(
+        formatter,
+        "fn check_condition_{index}_{symbol}(t: &DataExpressionRefFFI<'_>) -> bool {{"
+    )?;
 
     let condition_indent = formatter.indent();
     for condition in conditions {
@@ -226,7 +229,6 @@ fn generate_rewrite_term_stack(
     positions: &mut HashSet<DataPosition>,
     term_stack: &TermStack,
 ) -> Result<(), MercError> {
-
     writeln!(formatter, "/// Rewriting {:?}", term_stack)?;
     writeln!(
         formatter,
@@ -252,11 +254,13 @@ fn generate_rewrite_term_stack(
                 if *arity > 0 {
                     writeln!(
                         formatter,
-                            "let var_{stack_index} = DataExpressionFFI::create(unsafe {{ SymbolRefFFI::from_ptr({:?}) }}, &[{}]);",
-                            symbol.shared().ptr().as_ptr() as *mut () as usize,
-                        (0..*arity).map(|i| format!("var_{}.copy()", stack_index + i + 1)).format(", ")
+                        "let var_{stack_index} = DataExpressionFFI::create(unsafe {{ SymbolRefFFI::from_ptr({:?}) }}, &[{}]);",
+                        symbol.shared().ptr().as_ptr() as *mut () as usize,
+                        (0..*arity)
+                            .map(|i| format!("var_{}.copy()", stack_index + i + 1))
+                            .format(", ")
                     )?;
-                } else {                    
+                } else {
                     writeln!(
                         formatter,
                         "let var_{stack_index} = DataExpressionFFI::constant(unsafe {{ SymbolRefFFI::from_ptr({:?}) }});",
@@ -265,28 +269,28 @@ fn generate_rewrite_term_stack(
                 }
             }
             Config::Term(data_expression_ref, index) => {
-                    writeln!(
-                        formatter,
-                        "let var_{index} = unsafe {{ DataExpressionFFI::from_ptr({:?}) }};",
-                        data_expression_ref.shared().ptr().as_ptr() as *mut () as usize
-                    )?;                                
+                writeln!(
+                    formatter,
+                    "let var_{index} = unsafe {{ DataExpressionFFI::from_ptr({:?}) }};",
+                    data_expression_ref.shared().ptr().as_ptr() as *mut () as usize
+                )?;
             }
-            Config::Rewrite(_)|Config::Return() => unreachable!("The term stack never contains these configurations"),
+            Config::Rewrite(_) | Config::Return() => unreachable!("The term stack never contains these configurations"),
         }
     }
 
     // Return the last variable, which contains the result of the rewrite.
-        if let Some(last) = term_stack.innermost_stack.read().iter().rev().find_map(|config| {
-            if let Config::Construct(_, _, stack_index) = config {
-                Some(stack_index)
-            } else {
-                None
-            }
-        }) {
-            writeln!(formatter, "var_{last}.protect()")?;
+    if let Some(last) = term_stack.innermost_stack.read().iter().rev().find_map(|config| {
+        if let Config::Construct(_, _, stack_index) = config {
+            Some(stack_index)
         } else {
-            writeln!(formatter, "t.protect()")?;
+            None
         }
+    }) {
+        writeln!(formatter, "var_{last}.protect()")?;
+    } else {
+        writeln!(formatter, "t.protect()")?;
+    }
 
     drop(indent);
     writeln!(formatter, "}}")?;
@@ -300,7 +304,6 @@ fn generate_position_getters(
     formatter: &mut IndentFormatter<File>,
     positions: &HashSet<DataPosition>,
 ) -> Result<(), MercError> {
-
     for position in positions {
         writeln!(formatter, "/// Get position {:?} from term", position)?;
         writeln!(
@@ -351,13 +354,7 @@ fn generate_check_equivalence_classes(
     let indent = formatter.indent();
     if let Some(first) = equivalence_classes.first() {
         equivalence_classes.iter().skip(1).for_each(|class| {
-            writeln!(
-                formatter,
-                "&& ({} == {})",
-                class,
-                first
-            )
-            .unwrap();
+            writeln!(formatter, "&& ({} == {})", class, first).unwrap();
         });
     } else {
         writeln!(formatter, "true")?;
