@@ -6,11 +6,17 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use indoc::indoc;
+
+use itertools::Itertools;
+use merc_aterm::Term;
 use merc_sabre::AnnouncementInnermost;
 use merc_sabre::RewriteSpecification;
 use merc_sabre::SetAutomaton;
+use merc_sabre::matching::nonlinear::EquivalenceClass;
+use merc_sabre::utilities::Config;
 use merc_sabre::utilities::DataPosition;
 use merc_sabre::utilities::TermStack;
+use merc_sabre::matching::conditions::EMACondition;
 use merc_utilities::MercError;
 
 use crate::indenter::IndentFormatter;
@@ -34,7 +40,10 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     // Write imports and the main rewrite function
     writeln!(
         &mut formatter,
-        indoc! {"use merc_sabre_ffi::DataExpressionFFI;
+        indoc! {"#![allow(unused_variables)]
+        
+        use merc_sabre_ffi::SymbolRefFFI;
+        use merc_sabre_ffi::DataExpressionFFI;
         use merc_sabre_ffi::DataExpressionRefFFI;
 
         /// Generic rewrite function
@@ -45,10 +54,10 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         "}
     )?;
 
-    // Introduce a match function for every state of the set automaton.
+    // Keep track of all positions that need to be read from terms, to generate getters for them later.
     let mut positions: HashSet<DataPosition> = HashSet::new();
-    let mut term_stacks: Vec<TermStack> = Vec::new();
 
+    // Introduce a match function for every state of the set automaton.
     for (index, state) in apma.states().iter().enumerate() {
         writeln!(&mut formatter, "// Position {}", state.label())?;
 
@@ -79,8 +88,8 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         let match_indent = formatter.indent();
 
         for ((from, symbol), transition) in apma.transitions() {
+            // Consider only transitions that match the current state index
             if *from == index {
-                // Outgoing transition
                 writeln!(&mut formatter, "{symbol} => {{")?;
 
                 // Indent the case block
@@ -88,12 +97,20 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
                 writeln!(&mut formatter, "// Symbol {}", transition.symbol)?;
 
                 // Continue on the outgoing transition.
-                for (announcement, annotation) in &transition.announcements {
+                for (announcement, _annotation) in &transition.announcements {
                     // Check for conditions and non linear patterns.
                     writeln!(&mut formatter, "// Announcement {announcement:?}")?;
 
-                    writeln!(&mut formatter, "rewrite_term_stack_{}(t)", term_stacks.len())?;
-                    term_stacks.push(annotation.rhs_stack.clone());
+                    writeln!(
+                        &mut formatter,
+                        "if check_equivalence_classes_{index}_{symbol}(t) && check_condition_{index}_{symbol}(t) {{",
+                    )?;
+
+                    let condition_indent = formatter.indent();
+                    writeln!(&mut formatter, "return rewrite_term_stack_{index}_{symbol}(t)")?;
+                    drop(condition_indent);
+
+                    writeln!(&mut formatter, "}}")?;
                 }
 
                 if transition.destinations.is_empty() {
@@ -129,9 +146,34 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         writeln!(&mut formatter, "}}")?;
         writeln!(&mut formatter)?;
     }
+    
+    writeln!(formatter, "// term stack rewrite functions")?;
+    writeln!(formatter)?;
+    for ((from, symbol), transition) in apma.transitions() {
+        for (_announcement, annotation) in &transition.announcements {
+            generate_rewrite_term_stack(&mut formatter, *from, *symbol, &mut positions, &annotation.rhs_stack)?;     
+        }
+    }
+
+    writeln!(formatter, "// check condition functions")?;
+    writeln!(formatter)?;
+    for ((from, symbol), transition) in apma.transitions() {
+        for (_announcement, annotation) in &transition.announcements {
+            generate_check_condition(&mut formatter, *from, *symbol, &annotation.conditions)?;     
+        }
+    }
+
+    writeln!(formatter, "// equivalence classes check")?;
+    writeln!(formatter)?;
+    for ((from, symbol), transition) in apma.transitions() {
+        for (_announcement, annotation) in &transition.announcements {
+            generate_check_equivalence_classes(&mut formatter, *from, *symbol, &annotation.equivalence_classes)?;     
+        }
+    }
 
     // Generate position getters
-    generate_termstack_constructors(&mut formatter, &mut positions, &term_stacks)?;
+    writeln!(formatter, "// position getters")?;
+    writeln!(formatter)?;
     generate_position_getters(&mut formatter, &positions)?;
 
     // Ensure all data is written
@@ -143,44 +185,112 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     Ok(())
 }
 
-/// Generates TermStack-based constructor functions for all rewrite rules
-fn generate_termstack_constructors(
+fn generate_check_condition(
     formatter: &mut IndentFormatter<File>,
-    positions: &mut HashSet<DataPosition>,
-    term_stacks: &[TermStack],
+    index: usize,
+    symbol: usize,
+    conditions: &[EMACondition],
 ) -> Result<(), MercError> {
-    writeln!(formatter, "// TermStack-based constructor functions")?;
+    writeln!(formatter, "/// Checking condition {:?}", conditions)?;
 
-    for (index, term_stack) in term_stacks.iter().enumerate() {
+    writeln!(formatter, "fn check_condition_{index}_{symbol}(t: &DataExpressionRefFFI<'_>) -> bool {{")?;
+
+    let condition_indent = formatter.indent();
+    for condition in conditions {
+        writeln!(formatter, "// Condition {condition:?}")?;
+        writeln!(formatter, "let left = rewrite_term_stack(t)")?;
+        writeln!(formatter, "let right = rewrite_term_stack(t)")?;
+
+        writeln!(formatter, "if left == right {{")?;
+
+        let condition_body_indent = formatter.indent();
+        writeln!(formatter, "return true")?;
+        drop(condition_body_indent);
+
+        writeln!(formatter, "}}")?;
+    }
+
+    writeln!(formatter, "true")?;
+    drop(condition_indent);
+
+    writeln!(formatter, "}}")?;
+    Ok(())
+}
+
+/// Generates `rewrite_term_stack` functions for the given term stack, which
+/// perform the actual rewriting based on the innermost strategy.
+fn generate_rewrite_term_stack(
+    formatter: &mut IndentFormatter<File>,
+    index: usize,
+    symbol: usize,
+    positions: &mut HashSet<DataPosition>,
+    term_stack: &TermStack,
+) -> Result<(), MercError> {
+
+    writeln!(formatter, "/// Rewriting {:?}", term_stack)?;
+    writeln!(
+        formatter,
+        "fn rewrite_term_stack_{index}_{symbol}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{"
+    )?;
+
+    let indent = formatter.indent();
+
+    // Get the terms at the positions that need to be read.
+    for (position, stack_index) in &term_stack.variables {
+        positions.insert(position.clone());
         writeln!(
             formatter,
-            "fn construct_term_stack_{index}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{"
+            "let var_{stack_index} = get_data_position_{}(t);",
+            UnderscoreFormatter(position)
         )?;
+    }
 
-        let indent = formatter.indent();
+    let read = term_stack.innermost_stack.read();
+    for config in read.iter().rev() {
+        match config {
+            Config::Construct(symbol, arity, stack_index) => {
+                if *arity > 0 {
+                    writeln!(
+                        formatter,
+                            "let var_{stack_index} = DataExpressionFFI::create(unsafe {{ SymbolRefFFI::from_ptr({:?}) }}, &[{}]);",
+                            symbol.shared().ptr().as_ptr() as *mut () as usize,
+                        (0..*arity).map(|i| format!("var_{}.copy()", stack_index + i + 1)).format(", ")
+                    )?;
+                } else {                    
+                    writeln!(
+                        formatter,
+                        "let var_{stack_index} = DataExpressionFFI::constant(unsafe {{ SymbolRefFFI::from_ptr({:?}) }});",
+                        symbol.shared().ptr().as_ptr() as *mut () as usize,
+                    )?;
+                }
+            }
+            Config::Term(data_expression_ref, index) => {
+                    writeln!(
+                        formatter,
+                        "let var_{index} = unsafe {{ DataExpressionFFI::from_ptr({:?}) }};",
+                        data_expression_ref.shared().ptr().as_ptr() as *mut () as usize
+                    )?;                                
+            }
+            Config::Rewrite(_)|Config::Return() => unreachable!("The term stack never contains these configurations"),
+        }
+    }
 
-        writeln!(formatter, "// TermStack {:?}", term_stack)?;
-
-        // Generate variable extraction code
-        for (position, stack_index) in &term_stack.variables {
-            positions.insert(position.clone());
-            writeln!(
-                formatter,
-                "let var_{stack_index} = get_data_position_{}(t);",
-                UnderscoreFormatter(position)
-            )?;
+    // Return the last variable, which contains the result of the rewrite.
+        if let Some(last) = term_stack.innermost_stack.read().iter().rev().find_map(|config| {
+            if let Config::Construct(_, _, stack_index) = config {
+                Some(stack_index)
+            } else {
+                None
+            }
+        }) {
+            writeln!(formatter, "var_{last}.protect()")?;
+        } else {
+            writeln!(formatter, "t.protect()")?;
         }
 
-        // Generate TermStack evaluation code
-        writeln!(formatter, "// TODO: Implement TermStack evaluation")?;
-        writeln!(formatter, "// This would use the innermost_stack configuration")?;
-        writeln!(formatter, "// and the extracted variables to construct the RHS")?;
-        writeln!(formatter, "t.protect() // Placeholder")?;
-
-        drop(indent);
-        writeln!(formatter, "}}")?;
-        writeln!(formatter)?;
-    }
+    drop(indent);
+    writeln!(formatter, "}}")?;
+    writeln!(formatter)?;
 
     Ok(())
 }
@@ -190,9 +300,9 @@ fn generate_position_getters(
     formatter: &mut IndentFormatter<File>,
     positions: &HashSet<DataPosition>,
 ) -> Result<(), MercError> {
-    writeln!(formatter, "// Get positions from term")?;
 
     for position in positions {
+        writeln!(formatter, "/// Get position {:?} from term", position)?;
         writeln!(
             formatter,
             "fn get_data_position_{}<'a>(t: &DataExpressionRefFFI<'a>) -> DataExpressionRefFFI<'a> {{",
@@ -221,6 +331,43 @@ fn generate_position_getters(
         writeln!(formatter)?;
     }
 
+    Ok(())
+}
+
+/// Generates getter functions for all positions that must be read from terms.
+fn generate_check_equivalence_classes(
+    formatter: &mut IndentFormatter<File>,
+    index: usize,
+    symbol: usize,
+    equivalence_classes: &Vec<EquivalenceClass>,
+) -> Result<(), MercError> {
+    writeln!(formatter, "/// Check equivalence classes")?;
+    writeln!(
+        formatter,
+        "fn check_equivalence_classes_{index}_{symbol}<'a>(t: &DataExpressionRefFFI<'a>) -> bool {{",
+    )?;
+
+    // Indent the function body
+    let indent = formatter.indent();
+    if let Some(first) = equivalence_classes.first() {
+        equivalence_classes.iter().skip(1).for_each(|class| {
+            writeln!(
+                formatter,
+                "&& ({} == {})",
+                class,
+                first
+            )
+            .unwrap();
+        });
+    } else {
+        writeln!(formatter, "true")?;
+    }
+
+    // The function indent is automatically decreased
+    drop(indent);
+
+    writeln!(formatter, "}}")?;
+    writeln!(formatter)?;
     Ok(())
 }
 
