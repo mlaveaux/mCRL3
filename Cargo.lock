@@ -1344,7 +1344,6 @@ dependencies = [
  "equivalent",
  "itertools 0.14.0",
  "log",
- "loom",
  "merc_collections",
  "merc_io",
  "merc_utilities",
