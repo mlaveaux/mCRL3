@@ -172,6 +172,7 @@ struct RefinesArgs {
 #[derive(clap::Args, Debug)]
 struct CombineArgs {
     /// The input LTSs for which the parallel composition should be computed.
+    #[arg(num_args=2..)]
     lts: Vec<PathBuf>,
 
     /// Specify the output LTS, if not given, output to stdout.
@@ -192,10 +193,6 @@ struct CombineArgs {
     /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
-
-    /// List of actions that should be considered tau actions
-    #[arg(long, value_delimiter = ',')]
-    tau: Option<Vec<String>>,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -477,7 +474,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
 
     if format != LtsFormat::Aut {
         return Err(MercError::from(
-            "The translate command only works for labelled transition systems in the .aut format.",
+            "The combine command only works for labelled transition systems in the .aut format.",
         ));
     }
 
@@ -508,9 +505,11 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         None => Vec::new(),
     };
 
-    let mut builder = AutStream::new(File::create("combined.aut")?);
+    if let Some(output) = &args.output {
+        let mut builder = AutStream::new(File::create(output)?);
 
-    combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
+        combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
+    }
 
     Ok(())
 }
