@@ -74,7 +74,7 @@ pub struct GlobalTermPool {
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
-        // Insert the default symbols, mirros the symbols defined in mCRL2.
+        // Insert the default symbols, mirrors the symbols defined in mCRL2.
         let symbol_pool = SymbolPool::new();
         let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<aterm_int>", 0)) };
         let list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<list_constructor>", 2)) };

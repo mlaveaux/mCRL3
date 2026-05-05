@@ -12,7 +12,7 @@ handling errors. Furthermore, it provides a stack trace by default, which can be
 very useful for debugging and diagnosing issues.
 
 An important testing function is the `random_test` function, which can be used
-in tests to provide (reproducable) random state. This is useful for testing code
+in tests to provide (reproducible) random state. This is useful for testing code
 that relies on randomness, as it allows for consistent and repeatable tests.
 Finally, it provides a `Timing` struct that can be used to measure and record
 the time taken by various operations in the MERC toolset.

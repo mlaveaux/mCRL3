@@ -37,7 +37,7 @@ pub fn substitute_with<'a, 'b, T: Term<'a, 'b>>(
     substitute_rec(tp, t, new_subterm, p, builder, 0)
 }
 
-/// The recursive implementation for subsitute.
+/// The recursive implementation for substitute.
 ///
 /// # Details
 ///

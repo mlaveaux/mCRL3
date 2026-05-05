@@ -18,7 +18,7 @@ use crate::Term;
 use crate::storage::SharedTerm;
 use crate::storage::SharedTermLookup;
 
-/// The actual storage for [crate::ATerm]. Terms are stored in separated
+/// The actual storage for [crate::ATerm]. Terms are stored in separate
 /// `StablePointerSet`s based on their arity, and whether they have annotations
 /// or not.
 pub(crate) struct ATermStorage {

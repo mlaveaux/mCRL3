@@ -38,7 +38,7 @@ use crate::storage::THREAD_TERM_POOL;
 ///
 /// This trait is rather complicated with two lifetimes, but this is used
 /// to support both the [ATerm], which has no lifetimes, and [ATermRef<'a>]
-/// whose lifetime is bound by `'a`. Because now we can be require that `'b: 'a`
+/// whose lifetime is bound by `'a`. Because now we can require that `'b: 'a`
 /// for the implementation of [Term<'a, 'b>] for [ATerm], we can safely return
 /// [ATermRef<'a>] from methods of [Term<'a, 'b>]. Further explanation can be
 /// found on the website.
@@ -208,7 +208,7 @@ impl fmt::Debug for ATermRef<'_> {
 /// protection sets anyway.
 ///
 /// We do not mark term access as unsafe, since that would make their use
-/// cumbersome. An alternative would be to required
+/// cumbersome. An alternative would be to require
 /// THREAD_TERM_POOL.with_borrow(|tp| ...) around every access, but that would
 /// be very verbose.
 pub struct ATerm {

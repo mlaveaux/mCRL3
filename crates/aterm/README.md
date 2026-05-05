@@ -23,7 +23,7 @@ usage.
 Terms are immutable, but can be accessed concurrently in different threads. They
 are periodically garbage collected when they are no longer reachable. This is
 ensured by thread-local protection sets that keep track of reachable terms. Note
-that the name stands for **A**nnotated terms, but this is only a left over from
+that the name stands for **A**nnotated terms, but this is only a leftover from
 the history, as of today terms can no longer be annotated with additional
 information.
 
@@ -66,8 +66,8 @@ allowing compact storage of terms.
 
 ## Macros
 
-The `merc_derive_terms` proc macro can be used to generate the necessary boiler
-plate code for structs to behave as aterms with additional structure. This is
+The `merc_derive_terms` proc macro can be used to generate the necessary boilerplate
+code for structs to behave as aterms with additional structure. This is
 heavily used in the `merc_data` crate, but also in the term library to define
 lists and integers. The macro must be added to a module that contains the
 definitions for the underlying data types for which the boilerplate code should

@@ -20,7 +20,7 @@ use crate::TransitionLabel;
 ///
 /// Depending on the implementation this can be done in a memory efficient way,
 /// or in a way that is optimized for speed. Alternatively, the resulting LTS is
-/// immediatly written to disk. The builder accumulates transitions using
+/// immediately written to disk. The builder accumulates transitions using
 /// `add_transition`, and once all transitions have been added, the labelled
 /// transition system can be constructed with `finish`. An initial state can
 /// also be specified during finalization.
