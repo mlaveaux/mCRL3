@@ -205,12 +205,19 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         };
 
         // The freelist now owns all reusable slots in the current head block.
-        guard.bump_offset = if guard.head_block.is_some() { N } else { 0 };
-        drop(guard);
+        let bump_offset = guard.bump_offset;
 
-        // Recreate the free list by pushing all entries of the remaining blocks back onto the free list.
-        for block in unsafe { self.iter() } {
-            for entry in block.data.iter() {
+        // Recreate the free list from remaining blocks.
+        // The head block may be only partially initialized; only slots below
+        // bump_offset have ever been handed out there.
+        for (index, block) in unsafe { self.iter() }.enumerate() {
+            let entries = if index == 0 {
+                &block.data[..bump_offset]
+            } else {
+                &block.data[..]
+            };
+
+            for entry in entries {
                 // Safety: we only push entries that were marked with the special value, which means they are not live.
                 unsafe {
                     if entry.next.load(Ordering::Relaxed) == nonexisting_value {
@@ -221,6 +228,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             }
         }
 
+        drop(guard);
         removed
     }
 
