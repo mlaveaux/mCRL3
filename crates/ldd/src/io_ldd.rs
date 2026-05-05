@@ -11,6 +11,8 @@ use std::cell::RefCell;
 
 use merc_aterm::ATerm;
 use merc_aterm::ATermRead;
+use merc_aterm::ATermRef;
+use merc_aterm::Return;
 use merc_collections::IndexedSet;
 use merc_io::BitStreamRead;
 use merc_io::BitStreamWrite;
@@ -159,7 +161,7 @@ impl<R: BitStreamRead> BinaryLddReader<R> {
 impl<R: BitStreamRead + ATermRead> ATermRead for BinaryLddReader<R> {
     delegate::delegate! {
         to self.reader {
-            fn read_aterm(&mut self) -> Result<Option<ATerm>, MercError>;
+            fn read_aterm(&mut self) -> Result<Option<Return<ATermRef<'static>>>, MercError>;
             fn read_aterm_iter(&mut self) -> Result<impl ExactSizeIterator<Item = Result<ATerm, MercError>>, MercError>;
         }
     }

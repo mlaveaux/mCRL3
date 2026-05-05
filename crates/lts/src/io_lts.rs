@@ -10,6 +10,7 @@ use log::debug;
 use log::info;
 use merc_aterm::ATerm;
 use merc_aterm::ATermInt;
+use merc_aterm::ATermIntRef;
 use merc_aterm::ATermList;
 use merc_aterm::ATermRead;
 use merc_aterm::ATermStreamable;
@@ -17,6 +18,7 @@ use merc_aterm::ATermWrite;
 use merc_aterm::BinaryATermReader;
 use merc_aterm::BinaryATermWriter;
 use merc_aterm::Symbol;
+use merc_aterm::Term;
 use merc_aterm::is_list_term;
 use merc_data::DataSpecification;
 use merc_io::LargeFormatter;
@@ -64,50 +66,55 @@ pub fn read_lts<R: Read>(
 
     let mut state_labels = Vec::new();
 
+    // Cache the markers to avoid constructing them repeatedly in the loop.
+    let transition_marker = transition_marker();
+    let probabilistic_transition_marker = probabilistic_transition_marker();
+    let initial_state_marker = initial_state_marker();
+
     loop {
         let term = reader.read_aterm()?;
         match term {
             Some(t) => {
-                if t == transition_marker() {
-                    let from: ATermInt = reader.read_aterm()?.ok_or("Missing from state")?.into();
+                if *t == transition_marker.copy() {
+                    let from: usize = reader.read_aterm()?.ok_or("Missing from state")?.cast::<ATermIntRef<'static>>().value();
                     let label = reader.read_aterm()?.ok_or("Missing transition label")?;
-                    let to: ATermInt = reader.read_aterm()?.ok_or("Missing to state")?.into();
+                    let to: usize = reader.read_aterm()?.ok_or("Missing to state")?.cast::<ATermIntRef<'static>>().value();
 
-                    if let Some(multi_action) = multi_actions.get(&label) {
+                    if let Some(multi_action) = multi_actions.get(&*label) {
                         // Multi-action already exists in the cache.
                         builder.add_transition(
-                            StateIndex::new(from.value()),
+                            StateIndex::new(from),
                             multi_action,
-                            StateIndex::new(to.value()),
+                            StateIndex::new(to),
                         )?;
                     } else {
                         // New multi-action found, add it to the builder.
-                        let multi_action = LtsMultiAction::from_mcrl2_aterm(label.clone())?;
-                        multi_actions.insert(label.clone(), multi_action.clone());
+                        let multi_action = LtsMultiAction::from_mcrl2_aterm(label.protect())?;
+                        multi_actions.insert(label.protect(), multi_action.clone());
                         builder.add_transition(
-                            StateIndex::new(from.value()),
+                            StateIndex::new(from),
                             &multi_action,
-                            StateIndex::new(to.value()),
+                            StateIndex::new(to),
                         )?;
                     }
 
                     progress.print(builder.num_of_transitions());
-                } else if t == probabilistic_transition_mark() {
+                } else if *t == probabilistic_transition_marker.copy() {
                     return Err("Probabilistic transitions are not supported yet.".into());
-                } else if is_list_term(&t) {
+                } else if is_list_term(&*t) {
                     if read_state_labels {
-                        let t: ATermList<ATerm> = t.into();
+                        let t: ATermList<ATerm> = t.protect().into();
                         debug!("Read state label: {:?}", t.to_vec());
                         state_labels.push(t);
                     }
-                } else if t == initial_state_marker() {
+                } else if *t == initial_state_marker.copy() {
                     let length = ATermInt::from(reader.read_aterm()?.ok_or("Missing initial state length")?).value();
                     if length != 1 {
                         return Err("Initial state length greater than 1 is not supported.".into());
                     }
 
                     initial_state = Some(StateIndex::new(
-                        ATermInt::from(reader.read_aterm()?.ok_or("Missing initial state index")?).value(),
+                        *(reader.read_aterm()?.ok_or("Missing initial state index")?.into()).value(),
                     ));
                     debug!("Initial state: {:?}", initial_state);
                 } else {
@@ -179,8 +186,8 @@ where
 
     // Write the initial state.
     writer.write_aterm(&initial_state_marker())?;
-    writer.write_aterm(&ATermInt::new(1))?; // Length of initial state is 1.
-    writer.write_aterm(&ATermInt::new(*lts.initial_state_index()))?;
+    writer.write_aterm(&ATermInt::new(1).protect())?; // Length of initial state is 1.
+    writer.write_aterm(&ATermInt::new(*lts.initial_state_index()).protect())?;
 
     let num_of_transitions = lts.num_of_transitions();
     let progress = TimeProgress::new(
@@ -198,9 +205,9 @@ where
     for state in lts.iter_states() {
         for transition in lts.outgoing_transitions(state) {
             writer.write_aterm(&transition_marker())?;
-            writer.write_aterm(&ATermInt::new(*state))?;
+            writer.write_aterm(&ATermInt::new(*state).protect())?;
             writer.write_aterm(&label_terms[transition.label.value()])?;
-            writer.write_aterm(&ATermInt::new(*transition.to))?;
+            writer.write_aterm(&ATermInt::new(*transition.to).protect())?;
 
             progress.print(written);
             written += 1;
@@ -227,7 +234,7 @@ fn initial_state_marker() -> ATerm {
 }
 
 /// Returns the ATerm marker for the probabilistic transition.
-fn probabilistic_transition_mark() -> ATerm {
+fn probabilistic_transition_marker() -> ATerm {
     ATerm::constant(&Symbol::new("probabilistic_transition", 0))
 }
 
