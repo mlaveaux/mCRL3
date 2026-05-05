@@ -6,7 +6,7 @@ use merc_collections::VecSet;
 
 /// An antichain is a structure (<, S) such that < is a preorder on S, such that
 /// for any s, t in S neither s < t nor t < s holds. In other words, all
-/// elements of S are incomparable under the preorder <. This is dual to to
+/// elements of S are incomparable under the preorder <. This is dual to the
 /// notion of a chain.
 ///
 /// # Details

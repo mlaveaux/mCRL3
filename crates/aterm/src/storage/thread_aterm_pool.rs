@@ -185,7 +185,7 @@ impl ThreadTermPool {
         result
     }
 
-    /// Create a term with the given arguments given by the iterator that is failable.
+    /// Create a term with the given arguments given by the iterator that is fallible.
     pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> Result<ATerm, MercError>
     where
         S: Symb<'a, 'b>,

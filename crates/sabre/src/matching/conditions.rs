@@ -3,7 +3,7 @@ use crate::utilities::TermStack;
 use crate::utilities::create_var_map;
 
 /// This is a [Rule] condition stored as semi compressed trees such that they can be
-/// subsituted efficiently.
+/// substituted efficiently.
 #[derive(Hash, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct EMACondition {
     /// Conditions lhs and rhs are stored in the term pool as much as possible with a SemiCompressedTermTree

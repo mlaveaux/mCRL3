@@ -80,7 +80,7 @@ pub fn variable_rename(
     function: &BDDFunction,
     substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
-    // Every subsitution must be from a lower variable to a higher variable.
+    // Every substitution must be from a lower variable to a higher variable.
     for (from, to) in substitution {
         debug_assert!(from + 1 == *to, "Variable renaming must be from 'x' to 'x+1'");
     }
@@ -189,7 +189,7 @@ pub fn variable_rename_reverse(
     function: &BDDFunction,
     substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
-    // Every subsitution must be from a lower variable to a higher variable.
+    // Every substitution must be from a lower variable to a higher variable.
     for (from, to) in substitution {
         debug_assert!(*from == to + 1, "Variable renaming must be from 'x+1' to 'x'");
     }
