@@ -16,50 +16,6 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
 
-/// A multi-action label with action names sorted, for proper multiset
-/// comparison with [`SortedLtsMultiAction`].
-struct SortedMultiActionLabel {
-    /// Action names in sorted order.
-    actions: Vec<String>,
-}
-
-impl SortedMultiActionLabel {
-    fn new(label: &MultiActionLabel) -> Self {
-        let mut actions = label.actions.clone();
-        actions.sort();
-        SortedMultiActionLabel { actions }
-    }
-}
-
-/// A view of an [`LtsMultiAction`] that provides label names in sorted order
-/// (ignoring action parameters), for proper multiset comparison with
-/// [`SortedMultiActionLabel`].
-///
-/// Since `VecBag<LtsAction>` sorts by `(label, arguments)`, the label names
-/// are already in non-decreasing order, so no additional sorting is needed.
-struct SortedLtsMultiAction<'a> {
-    action: &'a LtsMultiAction,
-}
-
-impl<'a> SortedLtsMultiAction<'a> {
-    fn new(action: &'a LtsMultiAction) -> Self {
-        SortedLtsMultiAction { action }
-    }
-
-    fn is_tau_label(&self) -> bool {
-        self.action.is_tau_label()
-    }
-
-    /// Returns an iterator over action label names in sorted order.
-    fn labels(&self) -> impl Iterator<Item = &str> {
-        self.action.actions().iter().map(|a| a.label())
-    }
-
-    fn len(&self) -> usize {
-        self.action.actions().len()
-    }
-}
-
 /// Computes the parallel composition hide(allow(comm(L1 || ... || Ln))).
 ///
 /// The `builder` is used to construct the resulting LTS, which can also be
@@ -104,7 +60,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
             // Clone the current state vector since discovered may be mutated below.
             let current_state_vector = discovered
                 .get(current)
-                .expect("State must in the discovered set")
+                .expect("State must be in the discovered set")
                 .as_ref();
 
             // Loop over all subsets of LTSs and their outgoing transitions in the current state vector.
@@ -165,8 +121,8 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
     Ok(())
 }
 
-/// Returns true iff the given action is allowed by the allow operator with the
-/// given allow set.
+/// Applies the communication operator to a multi-action according to the given
+/// communication expressions.
 ///
 /// # Details
 /// Applies the communication operator $\gamma_C$ to a multi-action.
@@ -342,6 +298,50 @@ impl StreamingIterator for CartesianProduct {
         } else {
             Some(&self.indices)
         }
+    }
+}
+
+/// A multi-action label with action names sorted, for proper multiset
+/// comparison with [`SortedLtsMultiAction`].
+struct SortedMultiActionLabel {
+    /// Action names in sorted order.
+    actions: Vec<String>,
+}
+
+impl SortedMultiActionLabel {
+    fn new(label: &MultiActionLabel) -> Self {
+        let mut actions = label.actions.clone();
+        actions.sort();
+        SortedMultiActionLabel { actions }
+    }
+}
+
+/// A view of an [`LtsMultiAction`] that provides label names in sorted order
+/// (ignoring action parameters), for proper multiset comparison with
+/// [`SortedMultiActionLabel`].
+///
+/// Since `VecBag<LtsAction>` sorts by `(label, arguments)`, the label names
+/// are already in non-decreasing order, so no additional sorting is needed.
+struct SortedLtsMultiAction<'a> {
+    action: &'a LtsMultiAction,
+}
+
+impl<'a> SortedLtsMultiAction<'a> {
+    fn new(action: &'a LtsMultiAction) -> Self {
+        SortedLtsMultiAction { action }
+    }
+
+    fn is_tau_label(&self) -> bool {
+        self.action.is_tau_label()
+    }
+
+    /// Returns an iterator over action label names in sorted order.
+    fn labels(&self) -> impl Iterator<Item = &str> {
+        self.action.actions().iter().map(|a| a.label())
+    }
+
+    fn len(&self) -> usize {
+        self.action.actions().len()
     }
 }
 
