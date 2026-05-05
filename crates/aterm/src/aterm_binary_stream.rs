@@ -129,11 +129,11 @@ pub struct BinaryATermWriter<W: Write> {
     stream: BitStreamWriter<W>,
 
     /// Stores the function symbols and the number of bits needed to encode their indices.
-    function_symbols: IndexedSet<Symbol>,
+    function_symbols: Protected<IndexedSet<SymbolRef<'static>>>,
     function_symbol_index_width: u8,
 
     /// Stores the terms and the number of bits needed to encode their indices.
-    terms: IndexedSet<ATerm>,
+    terms: Protected<IndexedSet<ATermRef<'static>>>,
     term_index_width: u8,
 
     /// Indicates whether the stream has been flushed.
@@ -153,15 +153,16 @@ impl<W: Write> BinaryATermWriter<W> {
         stream.write_bits(BAF_MAGIC as u64, 16)?;
         stream.write_bits(BAF_VERSION as u64, 16)?;
 
-        let mut function_symbols = IndexedSet::new();
+        let mut function_symbols = Protected::new(IndexedSet::new());
         // The term with function symbol index 0 indicates the end of the stream
-        function_symbols.insert(Symbol::new("end_of_stream".to_string(), 0));
+        let end_of_stream_symbol = Symbol::new(String::new(), 0);
+        function_symbols.write().insert(end_of_stream_symbol.copy());
 
         Ok(Self {
             stream,
             function_symbols,
             function_symbol_index_width: 1,
-            terms: IndexedSet::new(),
+            terms: Protected::new(IndexedSet::new()),
             term_index_width: 1,
             stack: VecDeque::new(),
             flushed: false,
@@ -170,14 +171,14 @@ impl<W: Write> BinaryATermWriter<W> {
 
     /// \brief Write a function symbol to the output stream.
     fn write_function_symbol(&mut self, symbol: &SymbolRef<'_>) -> Result<usize, MercError> {
-        let (index, inserted) = self.function_symbols.insert(symbol.protect());
+        let (index, inserted) = self.function_symbols.write().insert(symbol.copy());
 
         if inserted {
             // Write the function symbol to the stream
             self.stream.write_bits(PacketType::FunctionSymbol as u64, PACKET_BITS)?;
             self.stream.write_string(symbol.name())?;
             self.stream.write_integer(symbol.arity() as u64)?;
-            self.function_symbol_index_width = bits_for_value(self.function_symbols.len());
+            self.function_symbol_index_width = bits_for_value(self.function_symbols.read().len());
         }
 
         Ok(*index)
@@ -185,7 +186,7 @@ impl<W: Write> BinaryATermWriter<W> {
 
     /// Returns the current bit width needed to encode a function symbol index.
     fn function_symbol_index_width(&self) -> u8 {
-        let expected = bits_for_value(self.function_symbols.len());
+        let expected = bits_for_value(self.function_symbols.read().len());
         debug_assert_eq!(
             self.function_symbol_index_width, expected,
             "function_symbol_index_width does not match bits_for_value",
@@ -196,7 +197,7 @@ impl<W: Write> BinaryATermWriter<W> {
 
     /// Returns the current bit width needed to encode a term index.
     fn term_index_width(&self) -> u8 {
-        let expected = bits_for_value(self.terms.len());
+        let expected = bits_for_value(self.terms.read().len());
         debug_assert_eq!(
             self.term_index_width, expected,
             "term_index_width does not match bits_for_value",
@@ -213,7 +214,7 @@ impl<W: Write> ATermWrite for BinaryATermWriter<W> {
             // Indicates that this term is output and not a subterm, these should always be written.
             let is_output = self.stack.is_empty();
 
-            if !self.terms.contains(&current_term) || is_output {
+            if !self.terms.read().contains(&current_term.copy()) || is_output {
                 if write_ready {
                     if is_int_term(&current_term) {
                         let int_term = ATermIntRef::from(current_term.copy());
@@ -242,15 +243,15 @@ impl<W: Write> ATermWrite for BinaryATermWriter<W> {
                             .write_bits(symbol_index as u64, self.function_symbol_index_width())?;
 
                         for arg in current_term.arguments() {
-                            let index = self.terms.index(&arg).expect("Argument must already be written");
+                            let index = self.terms.read().index(&arg).expect("Argument must already be written");
                             self.stream.write_bits(*index as u64, self.term_index_width())?;
                         }
                     }
 
                     if !is_output {
-                        let (_, inserted) = self.terms.insert(current_term);
+                        let (_, inserted) = self.terms.write().insert(current_term.copy());
                         assert!(inserted, "This term should have a new index assigned.");
-                        self.term_index_width = bits_for_value(self.terms.len());
+                        self.term_index_width = bits_for_value(self.terms.read().len());
                     }
                 } else {
                     // Add current term back to stack for writing after processing arguments
@@ -258,7 +259,7 @@ impl<W: Write> ATermWrite for BinaryATermWriter<W> {
 
                     // Add arguments to stack for processing first
                     for arg in current_term.arguments() {
-                        if !self.terms.contains(&arg) {
+                        if !self.terms.read().contains(&arg) {
                             self.stack.push_back((arg.protect(), false));
                         }
                     }
