@@ -85,7 +85,7 @@ struct ReduceArgs {
 
     /// Explicitly specify the LTS file format.
     #[arg(long)]
-    filetype: Option<LtsFormat>,
+    format: Option<LtsFormat>,
 
     /// Specify the output LTS, if not given, output to stdout.
     #[arg(long)]
@@ -239,7 +239,7 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
 /// Reduce the given LTS into another LTS modulo any of the supported equivalences.
 fn handle_reduce(args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
-    let format = guess_lts_format_from_extension(path, args.filetype).ok_or("Unknown LTS file format.")?;
+    let format = guess_lts_format_from_extension(path, args.format).ok_or("Unknown LTS file format.")?;
 
     let lts = read_explicit_lts(path, format, timing)?;
     info!(
