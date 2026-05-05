@@ -2,7 +2,7 @@
 
  > ⚠️ **important** This is an internal crate and is not intended for public use.
 
-Internal crate for the MERC toolset the provides various collections for the
+Internal crate for the MERC toolset that provides various collections for the
 Merc toolset.
 
 ## Safety

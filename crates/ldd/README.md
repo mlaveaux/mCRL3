@@ -19,7 +19,7 @@ then \[n\] is inductively defined as:
  [node(value, down, right)] = { value x | x in [down] } ∪ [right]\
 ```
 
-Node that since 'true' and 'false' are not very insightful and clash with
+Note that since 'true' and 'false' are not very insightful and clash with
 Rust keywords we use 'empty vector' and 'empty set' for the constants 'true'
 and 'false' respectively.
 

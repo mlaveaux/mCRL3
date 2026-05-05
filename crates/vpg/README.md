@@ -10,7 +10,7 @@ can be solved using Zielonka's recursive algorithm, displayed in
 [Graphviz](https://graphviz.org/) `DOT` format and generated from modal
 mu-calculus formulas.
 
-A central `PG` or parity game trait is used to allow writing generic algoritms
+A central `PG` or parity game trait is used to allow writing generic algorithms
 for (variability) parity games. Various helpers are introduced for working with
 `strong` types for priorities, explicitly representing the even and odd players
 etc. This crate uses [OxiDD](https://oxidd.net/) for the binary decision

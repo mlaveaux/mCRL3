@@ -3,7 +3,7 @@
 This crate provides refinement algorithms to check various preorder relations
 between labelled transition systems (LTSs). The main functionality is checking
 whether an implementation LTS is refined by a specification LTS with respect to
-the failures-divergence refinement, which the preorder relation widely used by
+the failures-divergence refinement, which is the preorder relation widely used by
 the [FDR4](https://cocotec.io/fdr/); the CSP refinement checker.
 
 ```rust
