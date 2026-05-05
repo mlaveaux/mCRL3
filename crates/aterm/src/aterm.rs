@@ -243,7 +243,7 @@ impl ATerm {
     }
 
     /// Creates a new term with the given symbol and an iterator over the arguments.
-    pub fn try_with_iter<'a, 'b, 'c, 'd, S, I, T>(symbol: &'b S, iter: I) -> Result<ATerm, MercError>
+    pub fn try_with_iter<'a, 'b, 'c, 'd, S, I, T>(symbol: &'b S, iter: I) -> Result<Return<ATermRef<'static>>, MercError>
     where
         S: Symb<'a, 'b>,
         I: IntoIterator<Item = Result<T, MercError>>,
@@ -480,9 +480,15 @@ impl<T> Return<T> {
         Return { term, guard }
     }
 
-    /// Consumes the return value and returns the inner term.
-    pub fn into(self) -> T {
-        self.term
+    /// Casts the inner term to another type, while keeping the same guard.
+    pub fn cast<U>(self) -> Return<U>
+    where
+        T: Into<U>,
+    {
+        Return {
+            term: self.term.into(),
+            guard: self.guard,
+        }
     }
 }
 

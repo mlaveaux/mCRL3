@@ -28,6 +28,7 @@ mod inner {
     use crate::ATermIndex;
     use crate::ATermRef;
     use crate::Markable;
+    use crate::Return;
     use crate::SymbolRef;
     use crate::Term;
     use crate::TermIterator;
@@ -45,10 +46,8 @@ mod inner {
 
     impl ATermInt {
         #[merc_ignore]
-        pub fn new(value: usize) -> ATermInt {
-            THREAD_TERM_POOL.with_borrow(|tp| ATermInt {
-                term: tp.create_int(value),
-            })
+        pub fn new(value: usize) -> Return<ATermIntRef<'static>> {
+            THREAD_TERM_POOL.with_borrow(|tp| tp.create_int(value).cast())
         }
 
         /// Returns the value of the integer term.
@@ -91,6 +90,6 @@ mod tests {
 
         let int_term = ATermInt::new(42);
         assert_eq!(int_term.value(), 42);
-        assert!(is_int_term(&int_term));
+        assert!(is_int_term(&*int_term));
     }
 }

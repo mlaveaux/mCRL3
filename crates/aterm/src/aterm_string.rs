@@ -6,6 +6,7 @@ use merc_utilities::MercError;
 use crate::ATermRead;
 use crate::ATermStreamable;
 use crate::ATermWrite;
+use crate::Return;
 use crate::Symb;
 use crate::Term;
 
@@ -98,7 +99,7 @@ impl ATermStreamable for String {
     where
         Self: Sized,
     {
-        let term: ATermString = reader.read_aterm()?.ok_or("Expected a string ATerm")?.into();
+        let term: Return<ATermStringRef<'static>> = reader.read_aterm()?.ok_or("Expected a string ATerm")?.cast();
         Ok(term.value().to_string())
     }
 }

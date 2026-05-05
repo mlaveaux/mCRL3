@@ -20,6 +20,7 @@ use crate::ATermInt;
 use crate::ATermIntRef;
 use crate::ATermRef;
 use crate::Protected;
+use crate::Return;
 use crate::Symb;
 use crate::Symbol;
 use crate::SymbolRef;
@@ -93,7 +94,7 @@ pub trait ATermWrite {
 /// Trait for reading ATerms from a stream.
 pub trait ATermRead {
     /// Reads the next ATerm from the stream. Returns None when the end of the stream is reached.
-    fn read_aterm(&mut self) -> Result<Option<ATerm>, MercError>;
+    fn read_aterm(&mut self) -> Result<Option<Return<ATermRef<'static>>>, MercError>;
 
     /// Reads an iterator of ATerms from the stream.
     fn read_aterm_iter(&mut self) -> Result<impl ExactSizeIterator<Item = Result<ATerm, MercError>>, MercError>;
@@ -277,7 +278,7 @@ impl<W: Write> ATermWrite for BinaryATermWriter<W> {
     where
         I: ExactSizeIterator<Item = ATerm>,
     {
-        self.write_aterm(&ATermInt::new(iter.len()))?;
+        self.write_aterm(&ATermInt::new(iter.len()).protect())?;
         for ldd in iter {
             self.write_aterm(&ldd)?;
         }
@@ -397,7 +398,7 @@ impl<R: Read> BinaryATermReader<R> {
 }
 
 impl<R: Read> ATermRead for BinaryATermReader<R> {
-    fn read_aterm(&mut self) -> Result<Option<ATerm>, MercError> {
+    fn read_aterm(&mut self) -> Result<Option<Return<ATermRef<'static>>>, MercError> {
         if self.ended {
             return Err(Error::new(
                 ErrorKind::UnexpectedEof,
@@ -426,7 +427,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                 PacketType::ATermIntOutput => {
                     let value = self.stream.read_integer()?.try_into()?;
                     debug_trace!("Output int term: {}", ATermInt::new(value));
-                    return Ok(Some(ATermInt::new(value).into()));
+                    return Ok(Some(ATermInt::new(value).cast()));
                 }
                 PacketType::ATerm | PacketType::ATermOutput => {
                     let symbol_index = self.stream.read_bits(self.function_symbol_index_width())? as usize;
@@ -449,7 +450,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         debug_trace!("Read int term: {term}");
 
                         let mut write_terms = self.terms.write();
-                        let t = write_terms.protect(&term);
+                        let t = write_terms.protect(&*term);
                         write_terms.push(t);
                         self.term_index_width = bits_for_value(write_terms.len());
                     } else {
@@ -477,7 +478,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         }
                         debug_trace!("Read term: {term}");
 
-                        let t = write_terms.protect(&term);
+                        let t = write_terms.protect(&*term);
                         write_terms.push(t);
                         self.term_index_width = bits_for_value(write_terms.len());
                     }
@@ -495,10 +496,10 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
             .into());
         }
 
-        let number_of_elements: ATermInt = self
+        let number_of_elements: Return<ATermIntRef<'static>> = self
             .read_aterm()?
             .ok_or("Missing number of elements for iterator")?
-            .into();
+            .cast();
         Ok(ATermReadIter {
             reader: self,
             remaining: number_of_elements.value(),
@@ -532,7 +533,7 @@ impl<'a, R: Read> Iterator for ATermReadIter<'a, R> {
 
         self.remaining -= 1;
         match self.reader.read_aterm() {
-            Ok(Some(term)) => Some(Ok(term)),
+            Ok(Some(term)) => Some(Ok(term.protect())),
             Ok(None) => Some(Err(Error::new(
                 ErrorKind::UnexpectedEof,
                 "Unexpected end of stream while reading iterator",
@@ -561,7 +562,8 @@ mod tests {
     use crate::ATermWrite;
     use crate::BinaryATermReader;
     use crate::BinaryATermWriter;
-    use crate::random_term;
+    use crate::Term;
+use crate::random_term;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
@@ -585,7 +587,7 @@ mod tests {
                 println!("Term {}", term);
                 debug_assert_eq!(
                     *term,
-                    input_stream.read_aterm().unwrap().unwrap(),
+                    input_stream.read_aterm().unwrap().unwrap().protect(),
                     "The read term must match the term that we have written"
                 );
             }
