@@ -62,7 +62,7 @@ Added LTS builders that stream their output to disk, this is achieved by adding
 a general `LtsBuilder` trait, with a streaming implementation for AUT outputs
 in `AutStream`.
 
-Introduce a proper `LtsMultiAction` type to represent multi-actions as they are
+Introduced a proper `LtsMultiAction` type to represent multi-actions as they are
 present in mCRL2. A multi-action is a multi-set of action labels that are
 executed simultaneously, i.e., an action `a|b` is a multi-action consisting of
 the actions `a` and `b`. Note that `a|b` is equivalent to `b|a` in this

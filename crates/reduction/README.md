@@ -8,7 +8,7 @@ bisimulation.
 
 ## Usage
 
-The main functionalities of this crate of provided by the `reduce_lts` and
+The main functionalities of this crate are provided by the `reduce_lts` and
 `compare_lts` functions, which can be used to reduce and compare LTS using all
 available equivalence relations. These functions, and many functions in this crate,
 accept the inputs by value, since these reductions often need to preprocess the given
