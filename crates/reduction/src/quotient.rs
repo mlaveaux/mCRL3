@@ -1,11 +1,12 @@
 #![forbid(unsafe_code)]
 
+use log::trace;
 use merc_collections::BlockIndex;
 use merc_lts::LTS;
+use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
-use merc_lts::Transition;
 
 use crate::BlockPartition;
 use crate::Partition;
@@ -68,8 +69,15 @@ fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::
 
     for from in lts.iter_states() {
         for transition in lts.outgoing_transitions(from) {
-            if !is_redundant_transition(lts, from, &transition) {
+            if !is_redundant_transition(lts, from, transition.label, transition.to) || true {
                 builder.add_transition(from, &lts.labels()[transition.label], transition.to);
+            } else {
+                trace!(
+                    "Removing redundant transition: {} -[{}]-> {}",
+                    from,
+                    lts.labels()[transition.label],
+                    transition.to
+                );
             }
         }
     }
@@ -77,21 +85,20 @@ fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::
     builder.finish(lts.initial_state_index(), true)
 }
 
-/// Returns true when `transition` from `from` is redundant.
+/// Returns true when transition `from -label-> target` is redundant.
 ///
 /// A transition `s -a-> t` is redundant when one of these alternatives exists:
 /// - `s -tau-> m -a-> t` (for both hidden and visible `a`)
 /// - `s -a-> m -tau-> t` (only for visible `a`)
 ///
 /// This matches the mCRL2-style one-intermediate-state elimination rule.
-fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, transition: &Transition) -> bool {
-    let label = transition.label;
-    let target = transition.to;
+fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex, target: StateIndex) -> bool {
 
-    let redundant_via_hidden_then_label = lts
+    // Check for the existence of `s -tau-> m -a-> t` (for both hidden and visible `a`)
+    if lts
         .outgoing_transitions(from)
-        .filter(|first| lts.is_hidden_label(first.label))
-        .map(|first| first.to)
+        .filter(|trans| lts.is_hidden_label(trans.label))
+        .map(|trans| trans.to)
         .any(|middle| {
             lts.outgoing_transitions(middle).any(|second| {
                 if lts.is_hidden_label(label) {
@@ -100,9 +107,8 @@ fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, transition: &Trans
                     second.label == label && second.to == target
                 }
             })
-        });
-
-    if redundant_via_hidden_then_label {
+        })
+    {
         return true;
     }
 
@@ -110,6 +116,7 @@ fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, transition: &Trans
         return false;
     }
 
+    // Check for the existence of `s -a-> m -tau-> t` (only for visible `a`)
     lts.outgoing_transitions(from)
         .filter(|first| first.label == label)
         .map(|first| first.to)
