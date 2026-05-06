@@ -41,10 +41,20 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     writeln!(
         &mut formatter,
         indoc! {"#![allow(unused_variables)]
+        #![allow(improper_ctypes_definitions)]
+
+        use std::ffi::c_void;
         
+        use merc_sabre_ffi::initialize_thread_local_term_pool;
         use merc_sabre_ffi::SymbolRefFFI;
         use merc_sabre_ffi::DataExpressionFFI;
         use merc_sabre_ffi::DataExpressionRefFFI;
+
+        /// The initialisation function used to pass the GLOBAL_TERM_POOL to the shared library.
+        #[unsafe(no_mangle)]
+        pub unsafe extern \"C\" fn initialise(global_term_pool: *mut c_void) {{
+            initialize_thread_local_term_pool(global_term_pool);
+        }}
 
         /// Generic rewrite function
         #[unsafe(no_mangle)]
@@ -321,7 +331,7 @@ fn generate_position_getters(
             write!(formatter, "t")?;
 
             for index in position.indices().iter() {
-                write!(formatter, ".data_arg({index})")?;
+                write!(formatter, ".data_arg({})", index - 1)?; // Note that positions are 1 indexed.
             }
 
             // Add newline after the chain of method calls

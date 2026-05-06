@@ -9,9 +9,10 @@ rust-version.workspace = true
 merc_aterm.workspace = true
 merc_data.workspace = true
 merc_rec-tests.workspace = true
-merc_sabre.workspace = true
-merc_utilities.workspace = true
 merc_sabre-ffi.workspace = true
+merc_sabre.workspace = true
+merc_sharedmutex.workspace = true
+merc_utilities.workspace = true
 
 ahash.workspace = true
 duct.workspace = true

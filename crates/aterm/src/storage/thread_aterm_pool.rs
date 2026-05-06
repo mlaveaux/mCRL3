@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use log::debug;
 
 use merc_pest_consume::Parser;
+use merc_sharedmutex::GlobalBfSharedMutex;
 use merc_sharedmutex::RecursiveLock;
 use merc_sharedmutex::RecursiveLockReadGuard;
 use merc_unsafety::ProtectionIndex;
@@ -88,6 +89,18 @@ impl ThreadTermPool {
             empty_list_symbol,
             list_symbol,
             term_pool,
+        }
+    }
+
+    /// Sets the global term pool for this thread.
+    /// 
+    /// # Safety
+    /// 
+    /// This should probably be used immediately after thread creation before
+    /// any terms are created. Also the pointer must be valid.
+    pub unsafe fn set_global_term_pool(&mut self, global_term_pool: *mut GlobalBfSharedMutex<GlobalTermPool>) {
+        unsafe {
+            self.term_pool = RecursiveLock::from_mutex((*global_term_pool).share());
         }
     }
 
