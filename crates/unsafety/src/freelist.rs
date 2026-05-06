@@ -63,46 +63,37 @@ impl<T: FreeListEntry> FreeList<T> {
     pub fn try_pop(&self) -> Option<NonNull<T>> {
         let mut head = self.head.load(Ordering::Acquire);
         loop {
-            if head.is_null() {
-                return None;
-            }
+            let node = NonNull::new(head)?;
 
-            // Safety: `head` is the current freelist head. Reading its link field is
-            // valid for nodes managed by this freelist.
-            let next = unsafe { T::get_next(head) };
+            // Safety: `head` is non-null and the Acquire load above (or the
+            // Acquire on CAS failure) synchronizes with the Release in push,
+            // guaranteeing we see the correct next pointer.
+            let next = unsafe { T::get_next(node.as_ptr()) };
+
             match self
                 .head
-                .compare_exchange_weak(head, next, Ordering::Acquire, Ordering::Relaxed)
+                .compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire)
             {
-                Ok(_) => {
-                    // Safety: `head` was checked non-null above and was observed as list head.
-                    return Some(unsafe { NonNull::new_unchecked(head) });
-                }
-                Err(actual) => {
-                    head = actual;
-                }
+                Ok(_) => return Some(node),
+                Err(actual) => head = actual,
             }
         }
     }
 
     /// Pushes an entry onto the freelist.
     pub fn push(&self, entry: NonNull<T>) {
-        let entry = entry.as_ptr();
+        let ptr = entry.as_ptr();
         let mut head = self.head.load(Ordering::Relaxed);
         loop {
-            // Safety: caller provides ownership of a free node; writing its next link is valid.
-            unsafe {
-                T::set_next(entry, head);
-            }
+            // Safety: caller transfers ownership of a valid node; writing its next link is valid.
+            unsafe { T::set_next(ptr, head) };
 
             match self
                 .head
-                .compare_exchange_weak(head, entry, Ordering::AcqRel, Ordering::Relaxed)
+                .compare_exchange_weak(head, ptr, Ordering::Release, Ordering::Relaxed)
             {
                 Ok(_) => return,
-                Err(actual) => {
-                    head = actual;
-                }
+                Err(actual) => head = actual,
             }
         }
     }

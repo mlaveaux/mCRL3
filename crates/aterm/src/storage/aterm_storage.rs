@@ -40,10 +40,10 @@ pub(crate) struct ATermStorage {
 }
 
 /// The initial capacity for the term storage.
-const INITIAL_CAPACITY: usize = 1000;
+const INITIAL_CAPACITY: usize = 1024;
 
 /// The number of terms stored in every block of the fixed-size storage.
-const BLOCK_SIZE: usize = 1000;
+const BLOCK_SIZE: usize = 1024;
 
 impl ATermStorage {
     /// Creates a new, empty storage.
