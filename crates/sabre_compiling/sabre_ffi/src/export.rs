@@ -21,7 +21,9 @@ use crate::DataFunctionSymbolRefFFI;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn initialize_thread_local_term_pool(global_term_pool: *mut c_void) {
     unsafe {
-        THREAD_TERM_POOL.with_borrow_mut(|tp| tp.set_global_term_pool(global_term_pool as *mut GlobalBfSharedMutex<GlobalTermPool>));
+        THREAD_TERM_POOL.with_borrow_mut(|tp| {
+            tp.set_global_term_pool(global_term_pool as *mut GlobalBfSharedMutex<GlobalTermPool>)
+        });
     }
 }
 

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use indoc::indoc;
 
 use itertools::Itertools;
+use merc_aterm::Symb;
 use merc_aterm::Term;
 use merc_sabre::AnnouncementInnermost;
 use merc_sabre::RewriteSpecification;
@@ -46,14 +47,13 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         use std::ffi::c_void;
         
         use merc_sabre_ffi::initialize_thread_local_term_pool;
-        use merc_sabre_ffi::SymbolRefFFI;
         use merc_sabre_ffi::DataExpressionFFI;
         use merc_sabre_ffi::DataExpressionRefFFI;
 
         /// The initialisation function used to pass the GLOBAL_TERM_POOL to the shared library.
         #[unsafe(no_mangle)]
         pub unsafe extern \"C\" fn initialise(global_term_pool: *mut c_void) {{
-            initialize_thread_local_term_pool(global_term_pool);
+            unsafe {{ initialize_thread_local_term_pool(global_term_pool); }}
         }}
 
         /// Generic rewrite function
@@ -261,11 +261,13 @@ fn generate_rewrite_term_stack(
     for config in read.iter().rev() {
         match config {
             Config::Construct(symbol, arity, stack_index) => {
+                writeln!(formatter, "// Constructing symbol {symbol} with arity {arity}")?;
                 if *arity > 0 {
                     writeln!(
                         formatter,
-                        "let var_{stack_index} = DataExpressionFFI::create(unsafe {{ SymbolRefFFI::from_ptr({:?}) }}, &[{}]);",
+                        "let var_{stack_index} = DataExpressionFFI::create(unsafe {{ DataExpressionRefFFI::from_ptr({:?}, {}) }}, &[{}]);",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
+                        arity,
                         (0..*arity)
                             .map(|i| format!("var_{}.copy()", stack_index + i + 1))
                             .format(", ")
@@ -273,7 +275,7 @@ fn generate_rewrite_term_stack(
                 } else {
                     writeln!(
                         formatter,
-                        "let var_{stack_index} = DataExpressionFFI::constant(unsafe {{ SymbolRefFFI::from_ptr({:?}) }});",
+                        "let var_{stack_index} = DataExpressionFFI::constant(unsafe {{ DataExpressionRefFFI::from_ptr({:?}, 0) }});",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                     )?;
                 }
@@ -281,7 +283,8 @@ fn generate_rewrite_term_stack(
             Config::Term(data_expression_ref, index) => {
                 writeln!(
                     formatter,
-                    "let var_{index} = unsafe {{ DataExpressionFFI::from_ptr({:?}) }};",
+                    "let var_{index} = unsafe {{ DataExpressionFFI::from_ptr({:?}), {}}};",
+                    data_expression_ref.get_head_symbol().arity(),
                     data_expression_ref.shared().ptr().as_ptr() as *mut () as usize
                 )?;
             }

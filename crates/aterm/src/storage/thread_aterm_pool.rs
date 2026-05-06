@@ -93,9 +93,9 @@ impl ThreadTermPool {
     }
 
     /// Sets the global term pool for this thread.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// This should probably be used immediately after thread creation before
     /// any terms are created. Also the pointer must be valid.
     pub unsafe fn set_global_term_pool(&mut self, global_term_pool: *mut GlobalBfSharedMutex<GlobalTermPool>) {
