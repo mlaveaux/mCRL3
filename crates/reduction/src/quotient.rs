@@ -69,7 +69,7 @@ fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::
 
     for from in lts.iter_states() {
         for transition in lts.outgoing_transitions(from) {
-            if !is_redundant_transition(lts, from, transition.label, transition.to) || true {
+            if !is_redundant_transition(lts, from, transition.label, transition.to) {
                 builder.add_transition(from, &lts.labels()[transition.label], transition.to);
             } else {
                 trace!(
