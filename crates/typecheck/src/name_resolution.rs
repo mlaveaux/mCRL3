@@ -38,7 +38,7 @@ where
     for sort in &mut spec.sort_declarations {
         if let Some(expr) = &sort.expr {
             // Only apply to type aliases.
-             sort.expr = Some(f(expr)?);
+            sort.expr = Some(f(expr)?);
         }
     }
 
@@ -65,7 +65,7 @@ fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Resu
         if let SortExpression::Reference(name) = expr {
             if let Some(id) = resolved.index(name) {
                 return Ok(Some(SortExpression::Resolved(name.clone(), DefId::new(*id))));
-            } 
+            }
 
             return Err(WellTypedError::UndefinedSort { sort: name.clone() });
         }

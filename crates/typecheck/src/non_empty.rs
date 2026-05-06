@@ -38,7 +38,10 @@ fn is_nonempty_sort_rec(sort: DefId, constructors: &Vec<IdDecl>, seen: &mut Hash
         if let SortExpression::Resolved(_, id) = target_sort(&id.sort) {
             *id == sort
         } else {
-            unreachable!("The target sort of a constructor should always be a reference sort, but is not for {:?}", id.sort)
+            unreachable!(
+                "The target sort of a constructor should always be a reference sort, but is not for {:?}",
+                id.sort
+            )
         }
     }) {
         if argument_sorts(&constructor.sort).is_empty() {
@@ -78,7 +81,7 @@ mod tests {
         .unwrap();
 
         match DataSpecification::from_untyped(spec) {
-            Err(WellTypedError::EmptySort { sort }) if sort == "D" => {},
+            Err(WellTypedError::EmptySort { sort }) if sort == "D" => {}
             Err(other) => panic!("Unexpected {:?}", other),
             _ => panic!("Unexpected from_untyped to fail"),
         }

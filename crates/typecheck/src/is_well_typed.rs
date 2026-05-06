@@ -42,7 +42,6 @@ pub fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellTypedErr
         }
     }
 
-
     Ok(())
 }
 
@@ -109,7 +108,8 @@ fn is_basic_sort(sort: &SortExpression) -> bool {
 mod tests {
     use merc_syntax::UntypedDataSpecification;
 
-    use crate::{DataSpecification, WellTypedError};
+    use crate::DataSpecification;
+    use crate::WellTypedError;
 
     #[test]
     fn test_well_typed_spec() {
@@ -122,7 +122,8 @@ mod tests {
         .unwrap();
 
         match DataSpecification::from_untyped(spec) {
-            Err(WellTypedError::ConstructorForBasicSort { constructor, sort }) if constructor == "f" && sort == "Nat" => {},
+            Err(WellTypedError::ConstructorForBasicSort { constructor, sort })
+                if constructor == "f" && sort == "Nat" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
