@@ -381,9 +381,11 @@ impl<T, const N: usize> Block<T, N> {
 
 impl<T, const N: usize> Drop for Block<T, N> {
     fn drop(&mut self) {
-        // Drop the next block in the chain recursively.
-        if let Some(next_ptr) = self.next.take() {
-            unsafe { drop(Box::from_raw(next_ptr.as_ptr())) };
+        // Iteratively drop the chain to avoid stack overflow on long lists.
+        let mut current = self.next.take();
+        while let Some(block_ptr) = current {
+            let mut block = unsafe { Box::from_raw(block_ptr.as_ptr()) };
+            current = block.next.take();
         }
     }
 }
