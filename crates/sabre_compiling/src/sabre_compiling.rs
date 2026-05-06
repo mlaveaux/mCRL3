@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -9,6 +10,7 @@ use toml::Table;
 
 use merc_aterm::ATermRef;
 use merc_aterm::Term;
+use merc_aterm::storage::GLOBAL_TERM_POOL;
 use merc_data::DataExpression;
 use merc_sabre::RewriteEngine;
 use merc_sabre::RewriteSpecification;
@@ -28,6 +30,11 @@ impl RewriteEngine for SabreCompilingRewriter {
     fn rewrite(&mut self, term: &DataExpression) -> DataExpression {
         // TODO: This ought to be stored somewhere for repeated calls.
         unsafe {
+            // Ensure that the library is initialized to the actual global aterm library.
+            let initialize: Symbol<extern "C" fn(*mut c_void)> = self.library.get(b"initialise").unwrap();
+
+            initialize(std::ptr::addr_of!(GLOBAL_TERM_POOL) as *mut c_void);
+
             let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> =
                 self.library.get(b"rewrite").unwrap();
 
@@ -102,14 +109,6 @@ mod tests {
 
     #[test]
     fn test_sabre_compiling_example() {
-        //   plus : Nat Nat -> Nat   # addition
-        //   times : Nat Nat -> Nat  # product
-        //   fact : Nat -> Nat       # factorial
-        //   plus(d0, N) -> N
-        //   plus(s(N), M) -> s(plus(N, M))
-        //   fibb(d0) -> d0         # corrected by CONVECS
-        //   fibb(s(d0)) -> s(d0)
-        //   fibb(s(s(N))) -> plus(fibb(s(N)), fibb(N))
         let (spec, terms) = load_rec_from_strings(&[
             include_str!("../../../examples/REC/rec/factorial6.rec"),
             include_str!("../../../examples/REC/rec/factorial.rec"),
