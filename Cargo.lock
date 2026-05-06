@@ -1319,6 +1319,7 @@ dependencies = [
  "merc_rec-tests",
  "merc_sabre",
  "merc_sabre-ffi",
+ "merc_sharedmutex",
  "merc_utilities",
  "tempfile",
  "test-log",
@@ -1332,6 +1333,7 @@ dependencies = [
  "merc_aterm",
  "merc_collections",
  "merc_data",
+ "merc_sharedmutex",
  "merc_unsafety",
  "merc_utilities",
 ]
