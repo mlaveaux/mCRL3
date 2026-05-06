@@ -127,29 +127,28 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     where
         T: BlockAllocatorSafe,
     {
-        // A special value that must not occur in the values of `T`.
+        // Mark all elements in the free list with a special value that none of the live entries can have.
         let nonexisting_value = std::ptr::null_mut();
-
-        let mut guard = self.blocks.lock().expect("Lock poisoned");
-        let removed = if let Some(head_block) = guard.head_block.as_mut() {
-            // Mark all elements in the free list with a special value that none of the live entries can have (e.g., a non-canonical pointer).
-            unsafe {
-                let mut previous: Option<NonNull<Entry<T>>> = None;
-                for current in self.free.iter() {
-                    if let Some(previous) = previous {
-                        (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
-                    }
-                    previous = Some(current);
-                }
-
+        unsafe {
+            let mut previous: Option<NonNull<Entry<T>>> = None;
+            for current in self.free.iter() {
+                // We only update previous entries to ensure that iter keeps working.
                 if let Some(previous) = previous {
                     (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
                 }
+                previous = Some(current);
             }
 
-            // We will rebuild the freelist from the remaining blocks below.
-            self.free.clear();
+            if let Some(previous) = previous {
+                (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
+            }
+        }
 
+        // We will rebuild the freelist from the remaining blocks below.
+        self.free.clear();
+
+        let mut guard = self.blocks.lock().expect("Lock poisoned");
+        let removed = if let Some(head_block) = guard.head_block.as_mut() {
             // Remove blocks that are now empty, i.e., all their entries have nonexisting_value.
             let mut previous_block: Option<*mut Box<Block<T, N>>> = None;
             let mut block = head_block as *mut Box<Block<T, N>>;
@@ -206,20 +205,12 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             0
         };
 
-        // The freelist now owns all reusable slots in the current head block.
-        let bump_offset = guard.bump_offset;
-
-        // Recreate the free list from remaining blocks.
-        // The head block may be only partially initialized; only slots below
-        // bump_offset have ever been handed out there.
-        for (index, block) in Self::iter_blocks(&guard).enumerate() {
-            let entries = if index == 0 {
-                &block.data[..bump_offset]
-            } else {
-                &block.data[..]
-            };
-
-            for entry in entries {
+        // Recreate the free list from remaining blocks. We add all free
+        // entries (including never-bumped slots in the head block) to the
+        // freelist and set bump_offset = N so future allocations go through
+        // the freelist.
+        for block in Self::iter_blocks(&guard) {
+            for entry in &block.data[..] {
                 // Safety: we only push entries that were marked with the special value, which means they are not live.
                 unsafe {
                     if entry.next.load(Ordering::Relaxed) == nonexisting_value {
@@ -230,6 +221,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             }
         }
 
+        guard.bump_offset = N;
         drop(guard);
         removed
     }
@@ -414,7 +406,7 @@ mod tests {
         random_test(100, |rng| {
             let mut allocator: BlockAllocator<NonZeroUsize, 32> = BlockAllocator::new();
 
-            // Allocate 1000 elements, recording each pointer alongside its written value.
+            // Allocate 1000 elements and keep track of ptr to value mapping.
             let mut allocated: Vec<(NonNull<NonZeroUsize>, NonZeroUsize)> = Vec::new();
             for _ in 0..1000 {
                 let ptr = allocator.allocate_object().unwrap();
@@ -444,7 +436,7 @@ mod tests {
 
             println!("{} removed", allocator.remove_free_blocks());
 
-            // Reallocate 500 elements to exercise the freelist and verify no aliasing.
+            // Reallocate 500 elements; pushing them into the freelist.
             for _ in 0..500 {
                 let ptr = allocator.allocate_object().unwrap();
                 let value: NonZeroUsize = NonZeroUsize::new(rng.random_range(1..=usize::MAX)).unwrap();
@@ -454,7 +446,7 @@ mod tests {
                 remaining.push((ptr, value));
             }
 
-            // All elements (old survivors and newly allocated) must hold their correct values.
+            // All remaining elements must have the correct values.
             for (ptr, expected) in &remaining {
                 unsafe {
                     assert_eq!(*ptr.as_ref(), *expected);

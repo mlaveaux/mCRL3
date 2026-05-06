@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -9,6 +7,7 @@ use std::sync::atomic::Ordering;
 use dashmap::DashMap;
 use equivalent::Equivalent;
 use merc_unsafety::AllocBlock;
+use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
 use rustc_hash::FxBuildHasher;
 
@@ -87,6 +86,8 @@ impl SymbolPool {
         F: FnMut(&SymbolIndex) -> bool,
     {
         self.symbols.retain(|element| f(element));
+
+        self.symbols.allocator_mut().remove_free_blocks();
     }
 
     /// Creates a new prefix counter for the given prefix.
@@ -165,6 +166,8 @@ pub struct SharedSymbol {
     /// Number of arguments
     arity: usize,
 }
+
+unsafe impl BlockAllocatorSafe for SharedSymbol {}
 
 impl SharedSymbol {
     /// Creates a new function symbol.
