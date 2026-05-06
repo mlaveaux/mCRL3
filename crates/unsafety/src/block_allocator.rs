@@ -27,7 +27,8 @@ use crate::FreeListEntry;
 /// This allocator is lock-free for the common allocation/deallocation paths and
 /// only takes a lock when a new block needs to be allocated. This does mean
 /// that external synchronisation is required to prevent concurrent allocations
-/// overlapping with `remove_free_blocks`.
+/// overlapping with `remove_free_blocks`. Also concurrent allocate and deallocate
+/// calls can result in the ABA problem.
 ///
 /// # Details
 ///
@@ -393,6 +394,7 @@ impl<T, const N: usize> fmt::Debug for BlockAllocator<T, N> {
 mod tests {
     use std::num::NonZeroUsize;
     use std::ptr::NonNull;
+    use std::sync::Arc;
 
     use rand::RngExt;
 
@@ -462,7 +464,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_block_allocator_parallel_freelist() {
-        let block_allocator = std::sync::Arc::new(BlockAllocator::<u32, 32>::new());
+        let block_allocator = Arc::new(BlockAllocator::<u32, 32>::new());
 
         let threads: Vec<_> = (0..=2)
             .map(|_| {
