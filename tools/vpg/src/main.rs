@@ -315,8 +315,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 
         timing.measure("solve_variability_zielonka", || -> Result<_, MercError> {
             if args.vpg_solver == VpgSolver::Product {
-                let solver = args
-                    .solver;
+                let solver = args.solver;
 
                 // Since we want to print W0, W1 separately, we need to store the results temporarily.
                 let mut results = [Vec::new(), Vec::new()];

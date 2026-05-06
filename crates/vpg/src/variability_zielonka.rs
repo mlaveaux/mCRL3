@@ -706,8 +706,7 @@ mod tests {
 
             let solution =
                 solve_variability_zielonka(&manager_ref, &vpg, VpgSolver::FamilyOptimisedLeft, false).unwrap();
-            let solution_expected =
-                solve_variability_zielonka(&manager_ref, &vpg, VpgSolver::Family, false).unwrap();
+            let solution_expected = solve_variability_zielonka(&manager_ref, &vpg, VpgSolver::Family, false).unwrap();
 
             debug_assert_eq!(solution[0], solution_expected[0]);
             debug_assert_eq!(solution[1], solution_expected[1]);

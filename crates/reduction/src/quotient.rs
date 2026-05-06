@@ -93,7 +93,6 @@ fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::
 ///
 /// This matches the mCRL2-style one-intermediate-state elimination rule.
 fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex, target: StateIndex) -> bool {
-
     // Check for the existence of `s -tau-> m -a-> t` (for both hidden and visible `a`)
     if lts
         .outgoing_transitions(from)
