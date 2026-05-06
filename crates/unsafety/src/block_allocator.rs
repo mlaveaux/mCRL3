@@ -1,5 +1,6 @@
 use std::alloc::Layout;
 use std::array;
+use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
@@ -45,10 +46,23 @@ pub struct BlockAllocator<T, const N: usize> {
 /// The block list and bump pointer, protected by the blocks mutex.
 struct BlockList<T, const N: usize> {
     /// The block that is currently being bump-allocated from.
-    head_block: Option<Box<Block<T, N>>>,
+    /// Uses raw NonNull instead of Box to avoid Box's noalias semantics,
+    /// which would cause Miri to retag (invalidate) derived pointers when
+    /// the containing struct is moved.
+    head_block: Option<NonNull<Block<T, N>>>,
 
     /// Current bump offset within the head block.
     bump_offset: usize,
+}
+
+impl<T, const N: usize> Drop for BlockList<T, N> {
+    fn drop(&mut self) {
+        // Drop the head block; Block's Drop impl recursively drops the chain.
+        if let Some(block_ptr) = self.head_block.take() {
+            // Safety: we own all blocks in the list.
+            unsafe { drop(Box::from_raw(block_ptr.as_ptr())) };
+        }
+    }
 }
 
 impl<T, const N: usize> Default for BlockAllocator<T, N> {
@@ -94,24 +108,27 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             }
             _ => {
                 // Either no block exists, or the current one is full.
-                let mut new_block = Box::new(Block::new());
-                if let Some(old_block) = blocks.head_block.take() {
-                    new_block.next = Some(old_block);
-                }
-                blocks.head_block = Some(new_block);
+                let mut new_block = Block::new();
+                new_block.next = blocks.head_block.take();
+                // Use Box::into_raw to get a raw pointer without Box's noalias.
+                let new_block_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
+                blocks.head_block = Some(new_block_ptr);
                 blocks.bump_offset = 0;
             }
         }
 
         let offset = blocks.bump_offset;
         blocks.bump_offset += 1;
-        let block = blocks.head_block.as_mut().expect("block was just ensured");
+        let block_ptr = blocks.head_block.expect("block was just ensured");
 
         unsafe {
-            // Safety: offset < N, so the index is in bounds. We take a pointer to
-            // ManuallDrop<T>, which has the same layout as T.
+            // Safety: offset < N, so the index is in bounds.
+            // Use raw pointer arithmetic to avoid creating &mut to the array,
+            // which would cause a Unique retag invalidating existing pointers.
+            let data_ptr = (*block_ptr.as_ptr()).data.get() as *mut Entry<T>;
+            let entry_ptr = data_ptr.add(offset);
             Ok(NonNull::new_unchecked(
-                &mut block.data[offset].data as *mut ManuallyDrop<T> as *mut T,
+                std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T
             ))
         }
     }
@@ -148,54 +165,35 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         self.free.clear();
 
         let mut guard = self.blocks.lock().expect("Lock poisoned");
-        let removed = if let Some(head_block) = guard.head_block.as_mut() {
+        let removed = if guard.head_block.is_some() {
             // Remove blocks that are now empty, i.e., all their entries have nonexisting_value.
-            let mut previous_block: Option<*mut Box<Block<T, N>>> = None;
-            let mut block = head_block as *mut Box<Block<T, N>>;
+            // We walk the linked list using raw pointers to Option<NonNull<Block>>.
+            let mut prev_next_field: *mut Option<NonNull<Block<T, N>>> = &mut guard.head_block;
             let mut removed_blocks = 0;
 
             loop {
+                let current_ptr = match unsafe { &*prev_next_field } {
+                    Some(ptr) => *ptr,
+                    None => break,
+                };
+
                 let all_free = unsafe {
-                    (*block)
-                        .data
-                        .iter()
+                    let data = &*(*current_ptr.as_ptr()).data.get();
+                    data.iter()
                         .all(|entry| entry.next.load(Ordering::Relaxed) == nonexisting_value)
                 };
 
                 if all_free {
-                    // Extract next before the current block is dropped.
-                    let next = unsafe { (*block).next.take() };
-
-                    // Unlink current block; the old Box is dropped here.
-                    if let Some(previous_block) = previous_block {
-                        unsafe {
-                            (*previous_block).next = next;
-                        }
-                    } else {
-                        guard.head_block = next;
-                    }
-
+                    // Unlink and drop the current block.
+                    let next = unsafe { (*current_ptr.as_ptr()).next.take() };
+                    unsafe { *prev_next_field = next };
+                    // Drop the block (deallocates memory).
+                    unsafe { drop(Box::from_raw(current_ptr.as_ptr())) };
                     removed_blocks += 1;
-
-                    // Advance to the next block, which now lives at previous's
-                    // next slot (or the head).
-                    let next_ref = if let Some(prev) = previous_block {
-                        unsafe { &mut (*prev).next }
-                    } else {
-                        &mut guard.head_block
-                    };
-                    block = match next_ref {
-                        Some(next_block) => next_block as *mut Box<Block<T, N>>,
-                        None => break,
-                    };
+                    // prev_next_field stays the same — it now points to the next block.
                 } else {
-                    // Keep this block; advance normally.
-                    let next = unsafe { &mut (*block).next };
-                    previous_block = Some(block);
-                    block = match next {
-                        Some(next_block) => next_block as *mut Box<Block<T, N>>,
-                        None => break,
-                    };
+                    // Keep this block; advance to next.
+                    prev_next_field = unsafe { &mut (*current_ptr.as_ptr()).next };
                 }
             }
 
@@ -209,8 +207,10 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         // entries (including never-bumped slots in the head block) to the
         // freelist and set bump_offset = N so future allocations go through
         // the freelist.
-        for block in Self::iter_blocks(&guard) {
-            for entry in &block.data[..] {
+        for block_ptr in Self::iter_blocks(&guard) {
+            // Safety: exclusive access via &mut self; no concurrent readers.
+            let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
+            for entry in &data[..] {
                 // Safety: we only push entries that were marked with the special value, which means they are not live.
                 unsafe {
                     if entry.next.load(Ordering::Relaxed) == nonexisting_value {
@@ -231,7 +231,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// The caller must pass the already-acquired guard to avoid a deadlock.
     fn iter_blocks<'a>(guard: &'a MutexGuard<'_, BlockList<T, N>>) -> BlockIter<'a, T, N> {
         BlockIter {
-            current: guard.head_block.as_ref().map(|b| b as *const _),
+            current: guard.head_block,
             _marker: PhantomData,
         }
     }
@@ -341,38 +341,49 @@ unsafe impl<T> FreeListEntry for Entry<T> {
 
 /// An iterator over the blocks in the block allocator.
 struct BlockIter<'a, T, const N: usize> {
-    current: Option<*const Box<Block<T, N>>>,
+    current: Option<NonNull<Block<T, N>>>,
     _marker: PhantomData<&'a BlockList<T, N>>,
 }
 
 impl<'a, T, const N: usize> Iterator for BlockIter<'a, T, N> {
-    type Item = &'a Box<Block<T, N>>;
+    type Item = NonNull<Block<T, N>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current_block = self.current?;
+        let current_ptr = self.current?;
 
         // Move to the next block for the next iteration.
-        self.current = unsafe { (*current_block).next.as_ref() }.map(|b| b as *const _);
+        self.current = unsafe { (*current_ptr.as_ptr()).next };
 
-        Some(unsafe { &*current_block })
+        Some(current_ptr)
     }
 }
 
 /// We maintain a list of blocks that store N elements each.
 struct Block<T, const N: usize> {
-    data: [Entry<T>; N],
+    /// Wrapped in UnsafeCell to avoid Stacked Borrows invalidation of
+    /// outstanding pointers during subsequent allocations from the same block.
+    data: UnsafeCell<[Entry<T>; N]>,
 
-    /// Pointer to the next block.
-    next: Option<Box<Block<T, N>>>,
+    /// Pointer to the next block (raw to avoid Box noalias).
+    next: Option<NonNull<Block<T, N>>>,
 }
 
 impl<T, const N: usize> Block<T, N> {
     fn new() -> Self {
         Self {
-            data: array::from_fn(|_i| Entry {
+            data: UnsafeCell::new(array::from_fn(|_i| Entry {
                 next: ManuallyDrop::new(AtomicPtr::new(std::ptr::null_mut())),
-            }),
+            })),
             next: None,
+        }
+    }
+}
+
+impl<T, const N: usize> Drop for Block<T, N> {
+    fn drop(&mut self) {
+        // Drop the next block in the chain recursively.
+        if let Some(next_ptr) = self.next.take() {
+            unsafe { drop(Box::from_raw(next_ptr.as_ptr())) };
         }
     }
 }
