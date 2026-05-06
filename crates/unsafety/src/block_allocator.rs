@@ -1,6 +1,7 @@
 use std::alloc::Layout;
 use std::array;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::sync::Mutex;
@@ -211,7 +212,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         // Recreate the free list from remaining blocks.
         // The head block may be only partially initialized; only slots below
         // bump_offset have ever been handed out there.
-        for (index, block) in unsafe { self.iter() }.enumerate() {
+        for (index, block) in Self::iter_blocks(&guard).enumerate() {
             let entries = if index == 0 {
                 &block.data[..bump_offset]
             } else {
@@ -233,12 +234,13 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         removed
     }
 
-    /// Returns an iterator over the blocks
-    unsafe fn iter<'a>(&'a self) -> BlockIter<'a, T, N> {
-        let guard = self.blocks.lock().expect("Lock poisoned");
+    /// Returns an iterator over the blocks.
+    ///
+    /// The caller must pass the already-acquired guard to avoid a deadlock.
+    fn iter_blocks<'a>(guard: &'a MutexGuard<'_, BlockList<T, N>>) -> BlockIter<'a, T, N> {
         BlockIter {
             current: guard.head_block.as_ref().map(|b| b as *const _),
-            _guard: guard,
+            _marker: PhantomData,
         }
     }
 
@@ -348,7 +350,7 @@ unsafe impl<T> FreeListEntry for Entry<T> {
 /// An iterator over the blocks in the block allocator.
 struct BlockIter<'a, T, const N: usize> {
     current: Option<*const Box<Block<T, N>>>,
-    _guard: MutexGuard<'a, BlockList<T, N>>,
+    _marker: PhantomData<&'a BlockList<T, N>>,
 }
 
 impl<'a, T, const N: usize> Iterator for BlockIter<'a, T, N> {
@@ -471,6 +473,8 @@ mod tests {
                 let block_allocator = block_allocator.clone();
 
                 std::thread::spawn(move || {
+                    // Not sure if this could actually trigger the ABA problem,
+                    // but this is only used to detect data races.
                     let mut ptrs = Vec::new();
                     for _ in 0..100 {
                         let ptr = block_allocator.allocate_object().unwrap();
@@ -490,8 +494,8 @@ mod tests {
             })
             .collect();
 
-        for th in threads {
-            th.join().unwrap();
+        for thread in threads {
+            thread.join().unwrap();
         }
     }
 }

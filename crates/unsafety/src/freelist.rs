@@ -33,7 +33,17 @@ pub unsafe trait FreeListEntry: Sized {
 pub struct FreeList<T: FreeListEntry> {
     /// The head of the lock-free freelist. Null means empty.
     head: AtomicPtr<T>,
+
+    /// We implement Send and Sync manually.
+    _marker: PhantomData<*mut T>,
 }
+
+// Safety: Transferring a FreeList to another thread is safe if T is Send.
+unsafe impl<T: FreeListEntry + Send> Send for FreeList<T> {}
+
+// Safety: Concurrent pop transfers ownership of T nodes across threads, which
+// requires T: Send.
+unsafe impl<T: FreeListEntry + Send> Sync for FreeList<T> {}
 
 impl<T: FreeListEntry> Default for FreeList<T> {
     fn default() -> Self {
@@ -45,6 +55,7 @@ impl<T: FreeListEntry> FreeList<T> {
     pub fn new() -> Self {
         Self {
             head: AtomicPtr::new(std::ptr::null_mut()),
+            _marker: PhantomData,
         }
     }
 
