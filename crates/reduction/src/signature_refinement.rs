@@ -333,10 +333,10 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
 ///
 /// The `signature` function is called for each state and should fill the
 /// signature builder with the signature of the state.
-/// 
+///
 /// The `renumber` function can be used to renumber the signatures, which is
 /// used in inductive signatures.
-/// 
+///
 /// If `BRANCHING` then incoming tau-paths are considered for marking the
 /// incoming blocks. Furthermore, the signature function receives the
 /// `state_to_key` mapping that contains the signature index for every state,
