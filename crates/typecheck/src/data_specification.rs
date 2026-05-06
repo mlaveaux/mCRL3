@@ -33,9 +33,7 @@ impl DataSpecification {
         has_alias_cycle(&spec).map_err(|cycle| WellTypedError::AliasCycle {
             sorts: cycle
                 .iter()
-                .map(|id| {
-                    sorts.get_unchecked(**id).expect("The sort should be declared").clone()
-                })
+                .map(|id| sorts.get_by_index(**id).expect("The sort should be declared").clone())
                 .collect(),
         })?;
 

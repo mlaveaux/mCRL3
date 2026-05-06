@@ -99,7 +99,8 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
         }
 
         Ok(None)
-    }).unwrap()
+    })
+    .unwrap()
 }
 
 /// Generate a data specification for any sort based on the rules in Appendix `B`.

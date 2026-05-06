@@ -28,7 +28,8 @@ where
 {
     try_visit_sort_expr(sort_expr, |sort_expr| -> Result<_, Infallible> {
         Ok(visitor(sort_expr))
-    }).expect("Inner function does not fail")
+    })
+    .expect("Inner function does not fail")
 }
 
 /// Visits all sort expressions in the sort expression, allowing the visitor to return an error.
@@ -152,7 +153,7 @@ where
             }
             visit_sort_expr_rec(range, function)?;
         }
-        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _)=> {}
+        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {}
     }
 
     // The visitor did not break the traversal.
