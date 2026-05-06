@@ -328,11 +328,20 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
     (preprocessed_lts, mapped_state, partition)
 }
 
-/// General signature refinement algorithm that accepts an arbitrary signature
+/// Signature refinement algorithm that accepts an arbitrary signature and uses
+/// process-the-smaller-half optimisation by marking dirty states.
 ///
-/// The signature function is called for each state and should fill the
-/// signature builder with the signature of the state. It consists of the
-/// current partition, the signatures per state for the next partition.
+/// The `signature` function is called for each state and should fill the
+/// signature builder with the signature of the state.
+/// 
+/// The `renumber` function can be used to renumber the signatures, which is
+/// used in inductive signatures.
+/// 
+/// If `BRANCHING` then incoming tau-paths are considered for marking the
+/// incoming blocks. Furthermore, the signature function receives the
+/// `state_to_key` mapping that contains the signature index for every state,
+/// required for inductive signatures. And the signatures are computed in the
+/// order of the given `lts`.
 fn signature_refinement<F, G, L, const BRANCHING: bool>(
     lts: &L,
     incoming: &IncomingTransitions,
