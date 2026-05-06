@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 
 use dashmap::DashMap;
 use equivalent::Equivalent;
+use merc_unsafety::AllocBlock;
 use merc_unsafety::StablePointer;
 use rustc_hash::FxBuildHasher;
 
@@ -23,7 +24,7 @@ use crate::SymbolRef;
 /// garbage collection of the underlying shared symbol.
 pub struct SymbolPool {
     /// Unique table of all function symbols
-    symbols: StablePointerSet<SharedSymbol, FxBuildHasher>,
+    symbols: StablePointerSet<SharedSymbol, FxBuildHasher, AllocBlock<SharedSymbol, 1024>>,
 
     /// A map from prefixes to counters that track the next available index for function symbols
     prefix_to_register_function_map: DashMap<String, Arc<AtomicUsize>, FxBuildHasher>,
@@ -33,7 +34,7 @@ impl SymbolPool {
     /// Creates a new empty symbol pool.
     pub(crate) fn new() -> Self {
         Self {
-            symbols: StablePointerSet::with_hasher(FxBuildHasher),
+            symbols: StablePointerSet::with_hasher_in(FxBuildHasher, AllocBlock::new()),
             prefix_to_register_function_map: DashMap::with_hasher(FxBuildHasher),
         }
     }
