@@ -2,3 +2,6 @@
 leak:bcg_absolute_path
 leak:bcg_init_edges_2
 leak:BCG_TEMPORARY_FILE
+
+# Ignore terms stored in thread local data structures.
+leak:merc_data::data_terms::DATA_SYMBOLS::*
