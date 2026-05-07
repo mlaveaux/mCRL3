@@ -146,9 +146,17 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     {
         // Mark all elements in the free list with a special value that none of the live entries can have.
         let nonexisting_value = std::ptr::null_mut();
+
+        // In debug mode, collect all freelist entry pointers.
+        #[cfg(debug_assertions)]
+        let mut freelist_ptrs: Vec<*mut Entry<T>> = Vec::new();
+
         unsafe {
             let mut previous: Option<NonNull<Entry<T>>> = None;
             for current in self.free.iter() {
+                #[cfg(debug_assertions)]
+                freelist_ptrs.push(current.as_ptr());
+
                 // We only update previous entries to ensure that iter keeps working.
                 if let Some(previous) = previous {
                     (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
@@ -165,6 +173,32 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         self.free.clear();
 
         let mut guard = self.blocks.lock().expect("Lock poisoned");
+
+        // Debug check: verify that no live entry has the sentinel value.
+        #[cfg(debug_assertions)]
+        {
+            let mut is_head = true;
+            for block_ptr in Self::iter_blocks(&guard) {
+                let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
+                // Only check entries that have been bump-allocated; entries
+                // beyond bump_offset in the head block were never handed out.
+                let limit = if is_head { guard.bump_offset } else { N };
+                for entry in &data[..limit] {
+                    let entry_ptr = entry as *const Entry<T> as *mut Entry<T>;
+                    if !freelist_ptrs.contains(&entry_ptr) {
+                        // This entry is live — it must not look like the sentinel.
+                        unsafe {
+                            debug_assert!(
+                                entry.next.load(Ordering::Relaxed) != nonexisting_value,
+                                "Live entry at {entry_ptr:?} has the sentinel value (null in first word). \
+                                 This violates the BlockAllocatorSafe contract."
+                            );
+                        }
+                    }
+                }
+                is_head = false;
+            }
+        }
         let removed = if guard.head_block.is_some() {
             // Remove blocks that are now empty, i.e., all their entries have nonexisting_value.
             // We walk the linked list using raw pointers to Option<NonNull<Block>>.
@@ -254,7 +288,21 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 ///
 /// Implementing this trait for a type `T` asserts that the special sentinel
 /// value can be used.
-pub unsafe trait BlockAllocatorSafe {}
+pub unsafe trait BlockAllocatorSafe {
+
+    /// Checks that `self`, when reinterpreted as an [`Entry<Self>`], does not
+    /// contain the sentinel value used by [`BlockAllocator::remove_free_blocks`]
+    /// (a null pointer in the first pointer-sized bytes).
+    fn is_safe(&self) -> bool {
+        // The sentinel written into `Entry<T>.next` is `std::ptr::null_mut()`.
+        // Because `Entry<T>` is a union whose `data` and `next` fields overlap
+        // at offset 0, a valid `T` must never have its first pointer-sized
+        // bytes equal to null.
+        let first_word: usize =
+            unsafe { std::ptr::read_unaligned(self as *const Self as *const usize) };
+        first_word != 0
+    }
+}
 
 /// The [BlockAllocator] is thread-safe.
 unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
@@ -328,13 +376,13 @@ union Entry<T> {
 unsafe impl<T> FreeListEntry for Entry<T> {
     unsafe fn get_next(ptr: *mut Self) -> *mut Self {
         // Safety: caller ensures `ptr` is a valid freelist node.
-        unsafe { (*ptr).next.load(Ordering::Relaxed) }
+        unsafe { (*ptr).next.load(Ordering::SeqCst) }
     }
 
     unsafe fn set_next(ptr: *mut Self, next: *mut Self) {
         // Safety: caller ensures `ptr` is a valid freelist node.
         unsafe {
-            (*ptr).next.store(next, Ordering::Relaxed);
+            (*ptr).next.store(next, Ordering::SeqCst);
         }
     }
 }
