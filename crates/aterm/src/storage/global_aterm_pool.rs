@@ -246,6 +246,16 @@ impl GlobalTermPool {
             }
         }
 
+        for pool in self.send_term_protection_sets.iter().flatten() {
+            let pool = pool.lock().expect("Lock poisoned!");
+            for (_root, term) in pool.iter() {
+                debug_trace!("Marking sendable term {term:?}");
+                unsafe {
+                    ATermRef::from_index(term).mark(&mut marker);
+                }
+            }
+        }
+
         let mark_time_elapsed = mark_time.elapsed();
         let collect_time = Instant::now();
 
