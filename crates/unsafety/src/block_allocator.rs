@@ -288,21 +288,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 ///
 /// Implementing this trait for a type `T` asserts that the special sentinel
 /// value can be used.
-pub unsafe trait BlockAllocatorSafe {
-
-    /// Checks that `self`, when reinterpreted as an [`Entry<Self>`], does not
-    /// contain the sentinel value used by [`BlockAllocator::remove_free_blocks`]
-    /// (a null pointer in the first pointer-sized bytes).
-    fn is_safe(&self) -> bool {
-        // The sentinel written into `Entry<T>.next` is `std::ptr::null_mut()`.
-        // Because `Entry<T>` is a union whose `data` and `next` fields overlap
-        // at offset 0, a valid `T` must never have its first pointer-sized
-        // bytes equal to null.
-        let first_word: usize =
-            unsafe { std::ptr::read_unaligned(self as *const Self as *const usize) };
-        first_word != 0
-    }
-}
+pub unsafe trait BlockAllocatorSafe {}
 
 /// The [BlockAllocator] is thread-safe.
 unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
