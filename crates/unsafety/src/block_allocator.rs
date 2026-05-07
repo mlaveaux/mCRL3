@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
+use crossbeam_utils::CachePadded;
 use itertools::Itertools;
 
 use crate::FreeList;
@@ -46,12 +47,12 @@ pub struct BlockAllocator<T, const N: usize> {
     blocks: Mutex<BlockList<T, N>>,
 
     /// Recycled entries available for allocation, only popped from during
-    /// allocation.
-    free: FreeList<Entry<T>>,
+    /// allocation. Cache-padded to avoid false sharing with `deallocated`.
+    free: CachePadded<FreeList<Entry<T>>>,
 
     /// Only pushed to during deallocation. Moved into `free` during
-    /// `remove_free_blocks`.
-    deallocated: FreeList<Entry<T>>,
+    /// `remove_free_blocks`. Cache-padded to avoid false sharing with `free`.
+    deallocated: CachePadded<FreeList<Entry<T>>>,
 }
 
 /// The block list and bump pointer, protected by the blocks mutex.
@@ -88,8 +89,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 head_block: None,
                 bump_offset: 0,
             }),
-            free: FreeList::new(),
-            deallocated: FreeList::new(),
+            free: CachePadded::new(FreeList::new()),
+            deallocated: CachePadded::new(FreeList::new()),
         }
     }
 

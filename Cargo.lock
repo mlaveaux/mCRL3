@@ -1340,6 +1340,7 @@ name = "merc_unsafety"
 version = "1.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
+ "crossbeam-utils",
  "dashmap",
  "equivalent",
  "itertools 0.14.0",
