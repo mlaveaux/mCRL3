@@ -115,6 +115,7 @@ impl ThreadTermPool {
         symbol: &'b S,
         args: &'b [T],
     ) -> Return<ATermRef<'static>> {
+        let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
         let mut arguments = self.tmp_arguments.borrow_mut();
 
         arguments.clear();
@@ -124,7 +125,6 @@ impl ThreadTermPool {
             }
         }
 
-        let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
 
         let result = unsafe {
@@ -226,6 +226,7 @@ impl ThreadTermPool {
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
     {
+        let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
         let mut arguments = self.tmp_arguments.borrow_mut();
         arguments.clear();
         unsafe {
@@ -237,7 +238,6 @@ impl ThreadTermPool {
             }
         }
 
-        let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
 
         let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
