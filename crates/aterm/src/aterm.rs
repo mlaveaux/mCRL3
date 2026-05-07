@@ -5,7 +5,6 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -23,6 +22,7 @@ use crate::ATermList;
 use crate::Markable;
 use crate::Symb;
 use crate::SymbolRef;
+use crate::Transmutable;
 use crate::is_empty_list_term;
 use crate::is_int_term;
 use crate::is_list_term;
@@ -495,18 +495,7 @@ impl<T> Return<T> {
     }
 }
 
-impl<'a, 'b, T> Deref for Return<T>
-where
-    T: Term<'a, 'b>,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.term
-    }
-}
-
-impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b Return<T>
+impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for Return<T>
 where
     'b: 'a,
 {

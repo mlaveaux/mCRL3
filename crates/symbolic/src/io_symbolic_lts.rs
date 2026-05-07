@@ -9,6 +9,7 @@ use merc_aterm::ATermRead;
 use merc_aterm::ATermStreamable;
 use merc_aterm::BinaryATermReader;
 use merc_aterm::Symbol;
+use merc_aterm::Term;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
@@ -60,12 +61,12 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let aterm_stream = BinaryATermReader::new(BufReader::new(reader))?;
     let mut stream = BinaryLddReader::new(storage, aterm_stream)?;
 
-    if ATermRead::read_aterm(&mut stream)? != Some(symbolic_labelled_transition_system_mark()) {
+    if ATermRead::read_aterm(&mut stream)?.map(|t| t.copy()) != Some(symbolic_labelled_transition_system_mark().copy()) {
         return Err("Expected symbolic labelled transition system stream".into());
     }
 
     let data_spec = DataSpecification::read(&mut stream)?;
-    let process_parameters: ATermList<DataVariable> = stream.read_aterm()?.ok_or("Expected process parameters")?.into();
+    let process_parameters: ATermList<DataVariable> = stream.read_aterm()?.ok_or("Expected process parameters")?.protect().into();
     let process_parameters: Vec<DataVariable> = process_parameters.to_vec();
 
     let initial_state = stream.read_ldd(storage)?;
@@ -86,7 +87,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
         for i in 0..num_of_entries {
             let value = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
 
-            let expr: DataExpression = value.into();
+            let expr: DataExpression = value.protect().into();
             debug!("  {i}:  {}", expr);
             values.push(expr);
         }
@@ -99,7 +100,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let mut action_labels = Vec::with_capacity(num_of_action_labels as usize);
     for _ in 0..num_of_action_labels {
         let action_label = stream.read_aterm()?.ok_or("Unexpected end of stream")?;
-        let action = LtsMultiAction::from_mcrl2_aterm(action_label)?;
+        let action = LtsMultiAction::from_mcrl2_aterm(action_label.protect())?;
 
         debug!("Action {}: {}", action_labels.len(), action);
         action_labels.push(action);
@@ -113,13 +114,13 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
         let num_of_reads = stream.read_integer()?;
         let mut read_parameters: Vec<DataVariable> = Vec::with_capacity(num_of_reads as usize);
         for _ in 0..num_of_reads {
-            read_parameters.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?.into());
+            read_parameters.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?.protect().into());
         }
 
         let num_of_writes = stream.read_integer()?;
         let mut write_parameters: Vec<DataVariable> = Vec::with_capacity(num_of_writes as usize);
         for _ in 0..num_of_writes {
-            write_parameters.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?.into());
+            write_parameters.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?.protect().into());
         }
 
         let relation = stream.read_ldd(storage)?;

@@ -41,7 +41,7 @@ pub fn read_lts<R: Read>(
 
     let mut reader = BinaryATermReader::new(BufReader::new(reader))?;
 
-    if reader.read_aterm()? != Some(lts_marker()) {
+    if reader.read_aterm()?.map(|t| t.copy()) != Some(lts_marker().copy()) {
         return Err("Stream does not contain a labelled transition system (LTS).".into());
     }
 
@@ -108,17 +108,17 @@ pub fn read_lts<R: Read>(
                         state_labels.push(t);
                     }
                 } else if *t == initial_state_marker.copy() {
-                    let length = ATermInt::from(reader.read_aterm()?.ok_or("Missing initial state length")?).value();
+                    let length = reader.read_aterm()?.ok_or("Missing initial state length")?.cast::<ATermIntRef<'static>>().value();
                     if length != 1 {
                         return Err("Initial state length greater than 1 is not supported.".into());
                     }
 
                     initial_state = Some(StateIndex::new(
-                        *(reader.read_aterm()?.ok_or("Missing initial state index")?.into()).value(),
+                        (reader.read_aterm()?.ok_or("Missing initial state index")?.cast::<ATermIntRef<'static>>()).value(),
                     ));
                     debug!("Initial state: {:?}", initial_state);
                 } else {
-                    return Err(format!("Unexpected term in LTS stream: {}", t).into());
+                    return Err(format!("Unexpected term in LTS stream: {}", *t).into());
                 }
             }
             None => break, // The default constructed term indicates the end of the stream.
