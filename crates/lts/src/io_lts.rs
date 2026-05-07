@@ -41,7 +41,7 @@ pub fn read_lts<R: Read>(
 
     let mut reader = BinaryATermReader::new(BufReader::new(reader))?;
 
-    if reader.read_aterm()?.map(|t| t.copy()) != Some(lts_marker().copy()) {
+    if reader.read_aterm()?.map(|t| t.protect()) != Some(lts_marker()) {
         return Err("Stream does not contain a labelled transition system (LTS).".into());
     }
 
@@ -75,20 +75,22 @@ pub fn read_lts<R: Read>(
         let term = reader.read_aterm()?;
         match term {
             Some(t) => {
-                if *t == transition_marker.copy() {
+                if *t.inner() == transition_marker.copy() {
                     let from: usize = reader
                         .read_aterm()?
                         .ok_or("Missing from state")?
                         .cast::<ATermIntRef<'static>>()
+                        .inner()
                         .value();
                     let label = reader.read_aterm()?.ok_or("Missing transition label")?;
                     let to: usize = reader
                         .read_aterm()?
                         .ok_or("Missing to state")?
                         .cast::<ATermIntRef<'static>>()
+                        .inner()
                         .value();
 
-                    if let Some(multi_action) = multi_actions.get(&*label) {
+                    if let Some(multi_action) = multi_actions.get(&*label.inner()) {
                         // Multi-action already exists in the cache.
                         builder.add_transition(StateIndex::new(from), multi_action, StateIndex::new(to))?;
                     } else {
@@ -99,26 +101,36 @@ pub fn read_lts<R: Read>(
                     }
 
                     progress.print(builder.num_of_transitions());
-                } else if *t == probabilistic_transition_marker.copy() {
+                } else if *t.inner() == probabilistic_transition_marker.copy() {
                     return Err("Probabilistic transitions are not supported yet.".into());
-                } else if is_list_term(&*t) {
+                } else if is_list_term(&t.inner()) {
                     if read_state_labels {
                         let t: ATermList<ATerm> = t.protect().into();
                         debug!("Read state label: {:?}", t.to_vec());
                         state_labels.push(t);
                     }
-                } else if *t == initial_state_marker.copy() {
-                    let length = reader.read_aterm()?.ok_or("Missing initial state length")?.cast::<ATermIntRef<'static>>().value();
+                } else if *t.inner() == initial_state_marker.copy() {
+                    let length = reader
+                        .read_aterm()?
+                        .ok_or("Missing initial state length")?
+                        .cast::<ATermIntRef<'static>>()
+                        .inner()
+                        .value();
                     if length != 1 {
                         return Err("Initial state length greater than 1 is not supported.".into());
                     }
 
                     initial_state = Some(StateIndex::new(
-                        (reader.read_aterm()?.ok_or("Missing initial state index")?.cast::<ATermIntRef<'static>>()).value(),
+                        (reader
+                            .read_aterm()?
+                            .ok_or("Missing initial state index")?
+                            .cast::<ATermIntRef<'static>>())
+                        .inner()
+                        .value(),
                     ));
                     debug!("Initial state: {:?}", initial_state);
                 } else {
-                    return Err(format!("Unexpected term in LTS stream: {}", *t).into());
+                    return Err(format!("Unexpected term in LTS stream: {}", t.inner()).into());
                 }
             }
             None => break, // The default constructed term indicates the end of the stream.

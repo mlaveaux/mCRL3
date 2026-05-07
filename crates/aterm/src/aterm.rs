@@ -495,6 +495,13 @@ impl<T> Return<T> {
     }
 }
 
+impl<T: Transmutable> Return<T> {
+    /// Maps the inner term to another type, while keeping the same guard.
+    pub fn inner(&self) -> &T::Target<'_> {
+        &self.term.transmute_lifetime()
+    }
+}
+
 impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for Return<T>
 where
     'b: 'a,
@@ -502,11 +509,11 @@ where
     delegate! {
         to self.term {
             fn protect(&self) -> ATerm;
-            fn arg(&self, index: usize) -> ATermRef<'a>;
-            fn arguments(&self) -> ATermArgs<'a>;
-            fn copy(&self) -> ATermRef<'a>;
-            fn get_head_symbol(&self) -> SymbolRef<'a>;
-            fn iter(&self) -> TermIterator<'a>;
+            fn arg(&'b self, index: usize) -> ATermRef<'a>;
+            fn arguments(&'b self) -> ATermArgs<'a>;
+            fn copy(&'b self) -> ATermRef<'a>;
+            fn get_head_symbol(&'b self) -> SymbolRef<'a>;
+            fn iter(&'b self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
         }

@@ -89,7 +89,7 @@ mod tests {
         let _ = test_logger();
 
         let int_term = ATermInt::new(42);
-        assert_eq!(int_term.value(), 42);
-        assert!(is_int_term(&*int_term));
+        assert_eq!(int_term.inner().value(), 42);
+        assert!(is_int_term(&int_term.inner()));
     }
 }

@@ -450,7 +450,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         debug_trace!("Read int term: {term}");
 
                         let mut write_terms = self.terms.write();
-                        let t = write_terms.protect(&*term);
+                        let t = write_terms.protect(&term.inner());
                         write_terms.push(t);
                         self.term_index_width = bits_for_value(write_terms.len());
                     } else {
@@ -478,7 +478,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         }
                         debug_trace!("Read term: {term}");
 
-                        let t = write_terms.protect(&*term);
+                        let t = write_terms.protect(&term.inner());
                         write_terms.push(t);
                         self.term_index_width = bits_for_value(write_terms.len());
                     }
@@ -502,7 +502,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
             .cast();
         Ok(ATermReadIter {
             reader: self,
-            remaining: number_of_elements.value(),
+            remaining: number_of_elements.inner().value(),
         })
     }
 }

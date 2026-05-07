@@ -100,7 +100,7 @@ impl ATermStreamable for String {
         Self: Sized,
     {
         let term: Return<ATermStringRef<'static>> = reader.read_aterm()?.ok_or("Expected a string ATerm")?.cast();
-        Ok(term.value().to_string())
+        Ok(term.inner().value().to_string())
     }
 }
 

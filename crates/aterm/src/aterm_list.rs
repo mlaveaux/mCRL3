@@ -230,9 +230,9 @@ mod tests {
     fn test_list_term() {
         let list = ATermList::from_double_iter(
             vec![
-                ATermInt::new(1).protect(),
-                ATermInt::new(2).protect(),
-                ATermInt::new(3).protect(),
+                ATermInt::new(1).inner().protect(),
+                ATermInt::new(2).inner().protect(),
+                ATermInt::new(3).inner().protect(),
             ]
             .into_iter(),
         );
