@@ -243,7 +243,10 @@ impl ATerm {
     }
 
     /// Creates a new term with the given symbol and an iterator over the arguments.
-    pub fn try_with_iter<'a, 'b, 'c, 'd, S, I, T>(symbol: &'b S, iter: I) -> Result<Return<ATermRef<'static>>, MercError>
+    pub fn try_with_iter<'a, 'b, 'c, 'd, S, I, T>(
+        symbol: &'b S,
+        iter: I,
+    ) -> Result<Return<ATermRef<'static>>, MercError>
     where
         S: Symb<'a, 'b>,
         I: IntoIterator<Item = Result<T, MercError>>,

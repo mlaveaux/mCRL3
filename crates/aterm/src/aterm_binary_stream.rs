@@ -563,7 +563,7 @@ mod tests {
     use crate::BinaryATermReader;
     use crate::BinaryATermWriter;
     use crate::Term;
-use crate::random_term;
+    use crate::random_term;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow

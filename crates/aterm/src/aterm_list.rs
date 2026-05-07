@@ -228,7 +228,14 @@ mod tests {
 
     #[test]
     fn test_list_term() {
-        let list = ATermList::from_double_iter(vec![ATermInt::new(1).protect(), ATermInt::new(2).protect(), ATermInt::new(3).protect()].into_iter());
+        let list = ATermList::from_double_iter(
+            vec![
+                ATermInt::new(1).protect(),
+                ATermInt::new(2).protect(),
+                ATermInt::new(3).protect(),
+            ]
+            .into_iter(),
+        );
         assert_eq!(list.head().value(), 1);
         assert_eq!(list.tail().head().value(), 2);
         assert_eq!(list.tail().tail().head().value(), 3);

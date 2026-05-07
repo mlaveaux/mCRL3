@@ -76,26 +76,26 @@ pub fn read_lts<R: Read>(
         match term {
             Some(t) => {
                 if *t == transition_marker.copy() {
-                    let from: usize = reader.read_aterm()?.ok_or("Missing from state")?.cast::<ATermIntRef<'static>>().value();
+                    let from: usize = reader
+                        .read_aterm()?
+                        .ok_or("Missing from state")?
+                        .cast::<ATermIntRef<'static>>()
+                        .value();
                     let label = reader.read_aterm()?.ok_or("Missing transition label")?;
-                    let to: usize = reader.read_aterm()?.ok_or("Missing to state")?.cast::<ATermIntRef<'static>>().value();
+                    let to: usize = reader
+                        .read_aterm()?
+                        .ok_or("Missing to state")?
+                        .cast::<ATermIntRef<'static>>()
+                        .value();
 
                     if let Some(multi_action) = multi_actions.get(&*label) {
                         // Multi-action already exists in the cache.
-                        builder.add_transition(
-                            StateIndex::new(from),
-                            multi_action,
-                            StateIndex::new(to),
-                        )?;
+                        builder.add_transition(StateIndex::new(from), multi_action, StateIndex::new(to))?;
                     } else {
                         // New multi-action found, add it to the builder.
                         let multi_action = LtsMultiAction::from_mcrl2_aterm(label.protect())?;
                         multi_actions.insert(label.protect(), multi_action.clone());
-                        builder.add_transition(
-                            StateIndex::new(from),
-                            &multi_action,
-                            StateIndex::new(to),
-                        )?;
+                        builder.add_transition(StateIndex::new(from), &multi_action, StateIndex::new(to))?;
                     }
 
                     progress.print(builder.num_of_transitions());

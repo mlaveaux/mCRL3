@@ -141,7 +141,7 @@ impl ThreadTermPool {
     pub fn create_int(&self, value: usize) -> Return<ATermRef<'static>> {
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
         let (index, inserted) = guard.create_int(value);
-        let result =  self.make_return(guard, index);
+        let result = self.make_return(guard, index);
 
         if inserted {
             // Intentially called after the guard is dropped.
@@ -180,7 +180,11 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator that is failable.
-    pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> Result<Return<ATermRef<'static>>, MercError>
+    pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(
+        &self,
+        symbol: &'b S,
+        args: I,
+    ) -> Result<Return<ATermRef<'static>>, MercError>
     where
         S: Symb<'a, 'b>,
         I: IntoIterator<Item = Result<T, MercError>>,
@@ -297,7 +301,11 @@ impl ThreadTermPool {
     }
 
     /// Protects a term and returns a Return that will automatically unprotect the term when dropped.
-    pub fn make_return(&self, guard: RecursiveLockReadGuard<'_, GlobalTermPool>, index: ATermIndex) -> Return<ATermRef<'static>> {
+    pub fn make_return(
+        &self,
+        guard: RecursiveLockReadGuard<'_, GlobalTermPool>,
+        index: ATermIndex,
+    ) -> Return<ATermRef<'static>> {
         unsafe {
             // SAFETY: The guard is guaranteed to live as long as the returned term, since it is thread local and Return cannot be sent to other threads.
             Return::new(
