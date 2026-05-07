@@ -56,9 +56,32 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
             unsafe {{ initialize_thread_local_term_pool(global_term_pool); }}
         }}
 
-        /// Generic rewrite function
+        /// Generic rewrite function using the innermost strategy.
+        ///
+        /// First rewrites all arguments to normal form, reconstructs the term,
+        /// and then tries to match the reconstructed term using the automaton.
         #[unsafe(no_mangle)]
         pub unsafe extern \"C\" fn rewrite(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            let arity = term.arity();
+            if arity == 0 {{
+                // Constant: just try to match directly
+                return match_term(&term.copy());
+            }}
+
+            // Rewrite the arguments innermost
+            let args: Vec<DataExpressionFFI> = (0..arity).map(|i| unsafe {{ rewrite(&term.data_arg(i)) }}).collect();
+            let arg_refs: Vec<DataExpressionRefFFI> = args.iter().map(|a| a.copy()).collect();
+
+            // Reconstruct term with rewritten arguments
+            let symbol = term.data_function_symbol().into();
+            let reconstructed = DataExpressionFFI::create(symbol, &arg_refs);
+
+            match_term(&reconstructed.copy())
+        }}
+
+        /// Try to match the given term using the automaton and apply a rewrite rule.
+        /// If no rule matches, returns the term unchanged.
+        fn match_term(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
             rewrite_0(&term.copy())
         }}
         "}
