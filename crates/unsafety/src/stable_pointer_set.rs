@@ -331,12 +331,12 @@ where
                 .expect("Insertion failed, so entry must be in the set");
 
             // Call the drop function
-            unsafe { std::ptr::drop_in_place(ptr.as_ptr()) };
+            // unsafe { std::ptr::drop_in_place(ptr.as_ptr()) };
 
-            // Remove the entry we just created since it was not inserted
-            unsafe {
-                self.allocator.deallocate(ptr.cast(), layout);
-            }
+            // // Remove the entry we just created since it was not inserted
+            // unsafe {
+            //     self.allocator.deallocate(ptr.cast(), layout);
+            // }
 
             return (StablePointer::from_entry(&element), false);
         }
@@ -593,8 +593,8 @@ where
                 .expect("Insertion failed, so entry must be in the set");
 
             // Drop and deallocate the allocation we created since it was not inserted.
-            unsafe { std::ptr::drop_in_place(ptr.ptr().as_ptr()) };
-            unsafe { self.allocator.deallocate(ptr.ptr().cast(), Layout::new::<T>()) };
+            // unsafe { std::ptr::drop_in_place(ptr.ptr().as_ptr()) };
+            // unsafe { self.allocator.deallocate(ptr.ptr().cast(), Layout::new::<T>()) };
 
             return (StablePointer::from_entry(&element), false);
         }
