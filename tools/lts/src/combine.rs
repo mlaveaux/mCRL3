@@ -575,6 +575,7 @@ mod tests {
         let spec_path = temp_dir.path().join("spec.mcrl2");
         let lps_path = temp_dir.path().join("spec.lps");
         let output_path = temp_dir.path().join("output.lts");
+        let expected_path = temp_dir.path().join("expected.aut");
         let result_path = temp_dir.path().join("result.aut");
 
         // Generate a dummy linear process specification to convert the .aut files to .lts format.
@@ -629,6 +630,7 @@ mod tests {
             assert!(status.success(), "ltscombine failed with status: {status}");
 
             let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
+            write_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
             // Allow an arbitrary subset of labels
             let labels = left_lts
@@ -650,7 +652,7 @@ mod tests {
                 &mut result,
                 vec![left_lts, right_lts],
                 &vec![],
-                &allow,
+                &vec![],
                 &vec![],
                 &mut Timing::new(),
             )
