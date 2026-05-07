@@ -109,7 +109,7 @@ impl DataExpressionRefFFI<'_> {
     pub unsafe fn from_ptr(index: usize, arity: usize) -> Self {
         // ATermIndex is a stable pointer to SharedTerm (DST), so it must include
         // metadata for the argument slice length (arity).
-        let raw = slice_from_raw_parts_mut(index as *mut SymbolRef<'static>, arity) as *mut _;
+        let raw = slice_from_raw_parts_mut(index as *mut SymbolRef<'static>, arity + 1) as *mut _;
         Self {
             index: unsafe { ATermIndex::from_ptr(NonNull::new(raw).unwrap()) },
             _marker: PhantomData,
