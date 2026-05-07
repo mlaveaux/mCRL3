@@ -12,6 +12,9 @@ unsafe extern "C" {
     /// Returns the data function symbol of a data expression.
     fn data_expression_symbol(term: DataExpressionRefFFI<'_>) -> DataFunctionSymbolRefFFI<'_>;
 
+    /// Returns the number of data arguments of a data expression.
+    fn data_expression_arity(term: DataExpressionRefFFI<'_>) -> usize;
+
     /// Protects the data expression.
     fn data_expression_protect(term: DataExpressionRefFFI<'_>) -> DataExpressionFFI;
 }

@@ -62,6 +62,18 @@ pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn data_expression_arity(term: &DataExpressionRefFFI<'_>) -> usize {
+    unsafe {
+        DataExpressionRef::from(ATermRef::from_index(term.shared()))
+            .data_arguments()
+            .len()
+    }
+}
+
+/// # Safety
+///
+/// See the documentation in the import module.
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn data_expression_protect(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {
     unsafe {
         let t = ATermRef::from_index(term.shared()).protect();

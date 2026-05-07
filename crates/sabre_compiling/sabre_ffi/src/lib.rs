@@ -133,6 +133,11 @@ impl<'a> DataExpressionRefFFI<'a> {
         unsafe { data_expression_arg(self, index) }
     }
 
+    /// Returns the number of data arguments of the data expression.
+    pub fn arity(&self) -> usize {
+        unsafe { data_expression_arity(self) }
+    }
+
     /// Returns a copy of the data expression.
     pub fn copy(&self) -> DataExpressionRefFFI<'a> {
         unsafe { DataExpressionRefFFI::from_index(&self.index) }
@@ -165,5 +170,11 @@ impl DataFunctionSymbolRefFFI<'_> {
     /// Returns the operation id of the data function symbol.
     pub fn operation_id(&self) -> usize {
         self.index.index()
+    }
+}
+
+impl From<DataFunctionSymbolRefFFI<'_>> for DataExpressionRefFFI<'_> {
+    fn from(symbol: DataFunctionSymbolRefFFI) -> Self {
+        unsafe { DataExpressionRefFFI::from_index(&symbol.index) }
     }
 }
