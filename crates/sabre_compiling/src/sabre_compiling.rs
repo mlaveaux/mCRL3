@@ -116,14 +116,18 @@ mod tests {
         .unwrap();
 
         let spec = spec.to_rewrite_spec();
-
         let mut rewriter = SabreCompilingRewriter::new(&spec, true, true).unwrap();
 
         for t in terms {
             let data_term = to_untyped_data_expression(t, None);
+            let rewritten_term = rewriter.rewrite(&data_term);
+
+            println!("Original term: {data_term}");
+            println!("Rewritten term: {rewritten_term}");
+
             assert_eq!(
-                rewriter.rewrite(&data_term),
-                data_term,
+                rewritten_term.to_string().chars().filter(|c| *c == 's').count(),
+                720, // 6! = 720.
                 "The rewritten result does not match the expected result"
             );
         }
