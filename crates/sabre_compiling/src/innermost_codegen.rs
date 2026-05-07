@@ -265,7 +265,7 @@ fn generate_rewrite_term_stack(
                 if *arity > 0 {
                     writeln!(
                         formatter,
-                        "let var_{stack_index} = DataExpressionFFI::create(unsafe {{ DataExpressionRefFFI::from_ptr({:?}, {}) }}, &[{}]);",
+                        "let var_{stack_index} = unsafe {{ rewrite(&DataExpressionFFI::create(DataExpressionRefFFI::from_ptr({:?}, {}), &[{}]).copy()) }};",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                         arity,
                         (0..*arity)
@@ -275,7 +275,7 @@ fn generate_rewrite_term_stack(
                 } else {
                     writeln!(
                         formatter,
-                        "let var_{stack_index} = DataExpressionFFI::constant(unsafe {{ DataExpressionRefFFI::from_ptr({:?}, 0) }});",
+                        "let var_{stack_index} = unsafe {{ rewrite(&DataExpressionFFI::constant(DataExpressionRefFFI::from_ptr({:?}, 0)).copy()) }};",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                     )?;
                 }
@@ -283,9 +283,9 @@ fn generate_rewrite_term_stack(
             Config::Term(data_expression_ref, index) => {
                 writeln!(
                     formatter,
-                    "let var_{index} = unsafe {{ DataExpressionFFI::from_ptr({:?}), {}}};",
-                    data_expression_ref.get_head_symbol().arity(),
-                    data_expression_ref.shared().ptr().as_ptr() as *mut () as usize
+                    "let var_{index} = unsafe {{ rewrite(&DataExpressionFFI::from_ptr({:?}, {})).copy() }};",
+                    data_expression_ref.shared().ptr().as_ptr() as *mut () as usize,
+                    data_expression_ref.get_head_symbol().arity()
                 )?;
             }
             Config::Rewrite(_) | Config::Return() => unreachable!("The term stack never contains these configurations"),
@@ -293,7 +293,7 @@ fn generate_rewrite_term_stack(
     }
 
     // Return the last variable, which contains the result of the rewrite.
-    if let Some(last) = term_stack.innermost_stack.read().iter().rev().find_map(|config| {
+    if let Some(last) = term_stack.innermost_stack.read().iter().find_map(|config| {
         if let Config::Construct(_, _, stack_index) = config {
             Some(stack_index)
         } else {
