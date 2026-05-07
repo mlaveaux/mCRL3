@@ -61,7 +61,7 @@ impl<T: FreeListEntry> FreeList<T> {
 
     /// Pops one entry from the freelist.
     pub fn try_pop(&self) -> Option<NonNull<T>> {
-        let mut head = self.head.load(Ordering::Acquire);
+        let mut head = self.head.load(Ordering::Relaxed);
         loop {
             let node = NonNull::new(head)?;
 
@@ -72,7 +72,7 @@ impl<T: FreeListEntry> FreeList<T> {
 
             match self
                 .head
-                .compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire)
+                .compare_exchange_weak(head, next, Ordering::Acquire, Ordering::Relaxed)
             {
                 Ok(_) => return Some(node),
                 Err(actual) => head = actual,

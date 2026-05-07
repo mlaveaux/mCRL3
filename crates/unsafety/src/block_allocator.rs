@@ -29,8 +29,14 @@ use crate::FreeListEntry;
 /// This allocator is lock-free for the common allocation/deallocation paths and
 /// only takes a lock when a new block needs to be allocated. This does mean
 /// that external synchronisation is required to prevent concurrent allocations
-/// overlapping with `remove_free_blocks`. Also concurrent allocate and deallocate
-/// calls can result in the ABA problem.
+/// overlapping with `remove_free_blocks`.
+///
+/// Two separate freelists are maintained to avoid the ABA problem:
+/// - `free`: only popped from during allocation.
+/// - `deallocated`: only pushed to during deallocation.
+///
+/// During `remove_free_blocks` (which requires `&mut self`), entries from
+/// `deallocated` are merged into `free`.
 ///
 /// # Details
 ///
@@ -39,16 +45,20 @@ pub struct BlockAllocator<T, const N: usize> {
     /// Blocks and bump pointer are protected by a mutex, for the cold path.
     blocks: Mutex<BlockList<T, N>>,
 
-    /// Recycled entries managed in a lock-free Treiber stack.
+    /// Recycled entries available for allocation, only popped from during
+    /// allocation.
     free: FreeList<Entry<T>>,
+
+    /// Only pushed to during deallocation. Moved into `free` during
+    /// `remove_free_blocks`.
+    deallocated: FreeList<Entry<T>>,
 }
 
 /// The block list and bump pointer, protected by the blocks mutex.
 struct BlockList<T, const N: usize> {
-    /// The block that is currently being bump-allocated from.
-    /// Uses raw NonNull instead of Box to avoid Box's noalias semantics,
-    /// which would cause Miri to retag (invalidate) derived pointers when
-    /// the containing struct is moved.
+    /// The block that is currently being bump-allocated from. We avoid Box here
+    /// to allow multiple blocks to point to the same next block without
+    /// violating Box's noalias.
     head_block: Option<NonNull<Block<T, N>>>,
 
     /// Current bump offset within the head block.
@@ -79,6 +89,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 bump_offset: 0,
             }),
             free: FreeList::new(),
+            deallocated: FreeList::new(),
         }
     }
 
@@ -133,44 +144,67 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         }
     }
 
-    /// Deallocates a previously-allocated pointer (lock-free push onto freelist).
+    /// Deallocates a previously-allocated pointer.
     pub fn deallocate_object(&self, ptr: NonNull<T>) {
-        self.free.push(ptr.cast());
+        self.deallocated.push(ptr.cast());
     }
 
-    /// Removes empty blocks from the block list. Should be called periodically
-    /// to prevent memory usage from growing indefinitely.
-    pub fn remove_free_blocks(&mut self) -> usize
+    /// Removes empty blocks from the block list, and merges the free lists.
+    ///
+    /// Should be called periodically to prevent memory usage from growing
+    /// indefinitely.
+    ///
+    /// Returns `(removed_blocks, free_size, deallocated_size)`: the number of
+    /// blocks removed, and the sizes of the `free` and `deallocated` freelists
+    /// before merging.
+    pub fn remove_free_blocks(&mut self) -> (usize, usize, usize)
     where
         T: BlockAllocatorSafe,
     {
-        // Mark all elements in the free list with a special value that none of the live entries can have.
+        // Mark all elements in both freelists with a special value that none of the live entries can have.
         let nonexisting_value = std::ptr::null_mut();
 
         // In debug mode, collect all freelist entry pointers.
         #[cfg(debug_assertions)]
         let mut freelist_ptrs: Vec<*mut Entry<T>> = Vec::new();
 
-        unsafe {
+        // Helper: walk a freelist and mark every entry with the sentinel.
+        // We only update previous entries to ensure that iter keeps working.
+        // Returns the number of entries in the freelist.
+        let mark_freelist = |list: &FreeList<Entry<T>>, #[cfg(debug_assertions)] ptrs: &mut Vec<*mut Entry<T>>| unsafe {
             let mut previous: Option<NonNull<Entry<T>>> = None;
-            for current in self.free.iter() {
+            let mut count: usize = 0;
+            for current in list.iter() {
                 #[cfg(debug_assertions)]
-                freelist_ptrs.push(current.as_ptr());
+                ptrs.push(current.as_ptr());
 
-                // We only update previous entries to ensure that iter keeps working.
                 if let Some(previous) = previous {
                     (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
                 }
                 previous = Some(current);
+                count += 1;
             }
 
             if let Some(previous) = previous {
                 (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
             }
-        }
+            count
+        };
 
-        // We will rebuild the freelist from the remaining blocks below.
+        let free_size = mark_freelist(
+            &self.free,
+            #[cfg(debug_assertions)]
+            &mut freelist_ptrs,
+        );
+        let deallocated_size = mark_freelist(
+            &self.deallocated,
+            #[cfg(debug_assertions)]
+            &mut freelist_ptrs,
+        );
+
+        // We will rebuild the freelists from the remaining blocks below.
         self.free.clear();
+        self.deallocated.clear();
 
         let mut guard = self.blocks.lock().expect("Lock poisoned");
 
@@ -201,7 +235,6 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         }
         let removed = if guard.head_block.is_some() {
             // Remove blocks that are now empty, i.e., all their entries have nonexisting_value.
-            // We walk the linked list using raw pointers to Option<NonNull<Block>>.
             let mut prev_next_field: *mut Option<NonNull<Block<T, N>>> = &mut guard.head_block;
             let mut removed_blocks = 0;
 
@@ -237,10 +270,9 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             0
         };
 
-        // Recreate the free list from remaining blocks. We add all free
-        // entries (including never-bumped slots in the head block) to the
-        // freelist and set bump_offset = N so future allocations go through
-        // the freelist.
+        // Recreate the free list from remaining blocks. We add all free entries
+        // to the freelist and set bump_offset = N so future allocations go
+        // through the freelist.
         for block_ptr in Self::iter_blocks(&guard) {
             // Safety: exclusive access via &mut self; no concurrent readers.
             let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
@@ -257,7 +289,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
         guard.bump_offset = N;
         drop(guard);
-        removed
+        (removed, free_size, deallocated_size)
     }
 
     /// Returns an iterator over the blocks.
@@ -277,7 +309,12 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     /// This is only safe when no concurrent allocations or deallocations are in progress
     /// (e.g., in single-threaded tests or with `&mut self`).
     unsafe fn iter_free(&self) -> impl Iterator<Item = NonNull<T>> + '_ {
-        unsafe { self.free.iter().map(|entry| entry.cast()) }
+        unsafe {
+            self.free
+                .iter()
+                .chain(self.deallocated.iter())
+                .map(|entry| entry.cast())
+        }
     }
 }
 
@@ -481,7 +518,8 @@ mod tests {
                 }
             }
 
-            println!("{} removed", allocator.remove_free_blocks());
+            let (removed, free_size, deallocated_size) = allocator.remove_free_blocks();
+            println!("{removed} removed, {free_size} free, {deallocated_size} deallocated");
 
             // Reallocate 500 elements; pushing them into the freelist.
             for _ in 0..500 {
