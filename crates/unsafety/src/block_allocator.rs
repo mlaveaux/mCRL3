@@ -31,17 +31,13 @@ use crate::FreeListEntry;
 /// that external synchronisation is required to prevent concurrent allocations
 /// overlapping with `remove_free_blocks`.
 ///
-/// Two separate freelists are maintained to avoid the ABA problem:
-/// - `free`: only popped from during allocation.
-/// - `deallocated`: only pushed to during deallocation.
-///
-/// During `remove_free_blocks` (which requires `&mut self`), entries from
-/// `deallocated` are merged into `free`.
+/// A single thread-local freelist is maintained per thread:
+/// - `free`: popped from during allocation and pushed to during deallocation.
 ///
 /// # Details
 ///
 /// Internally stores blocks of `N` elements.
-/// All thread-local state (bump_offset, current_block, free, deallocated) is stored
+/// All thread-local state (bump_offset, current_block, free) is stored
 /// per-thread to eliminate shared atomic contention in the hot path.
 pub struct BlockAllocator<T: Send, const N: usize> {
     /// Owns the block chain; only locked when a new block must be allocated.
@@ -93,12 +89,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             return Ok(entry.cast());
         }
 
-        // Fast path 2: try thread-local deallocated list.
-        if let Some(entry) = state.deallocated.try_pop() {
-            return Ok(entry.cast());
-        }
-
-        // Fast path 3: lock-free bump allocation from current thread's block.
+        // Fast path 2: lock-free bump allocation from current thread's block.
         let block_ptr = state.current_block.get();
         let offset = state.bump_offset.get();
         if !block_ptr.is_null() && offset < N {
@@ -145,7 +136,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
     /// Deallocates a previously-allocated pointer.
     pub fn deallocate_object(&self, ptr: NonNull<T>) {
         let state = self.alloc_state.get_or(ThreadLocalAllocState::new);
-        state.deallocated.push(ptr.cast());
+        state.free.push(ptr.cast());
     }
 
     /// Removes empty blocks from the block list.
@@ -157,14 +148,14 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
     /// or deallocations. It should be called at a synchronization point where no other
     /// threads are active on this allocator.
     ///
-    /// This method scans every thread-local `free` and `deallocated` list,
+    /// This method scans every thread-local `free` list,
     /// marks those entries with a sentinel value, then removes blocks where all
     /// entries are marked as free.
     ///
     /// Returns `(removed_blocks, free_size, deallocated_size)`: the number of
-    /// blocks removed, and the sizes of the `free` and `deallocated` freelists
-    /// before merging.
-    pub fn remove_free_blocks(&mut self) -> (usize, usize, usize)
+    /// blocks removed, and the size of the merged `free` list before cleanup.
+    /// `deallocated_size` is always 0 and kept for API compatibility.
+    pub fn remove_free_blocks(&mut self) -> (usize, usize)
     where
         T: BlockAllocatorSafe,
     {
@@ -202,20 +193,13 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             };
 
         let mut free_size = 0;
-        let mut deallocated_size = 0;
         for state in self.alloc_state.iter_mut() {
             free_size += mark_freelist(
                 &state.free,
                 #[cfg(debug_assertions)]
                 &mut freelist_ptrs,
             );
-            deallocated_size += mark_freelist(
-                &state.deallocated,
-                #[cfg(debug_assertions)]
-                &mut freelist_ptrs,
-            );
             state.free.clear();
-            state.deallocated.clear();
             state.current_block.set(std::ptr::null_mut());
             state.bump_offset.set(N);
         }
@@ -295,7 +279,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
         }
 
         drop(guard);
-        (removed, free_size, deallocated_size)
+        (removed, free_size)
     }
 
     /// Returns an iterator over the blocks.
@@ -320,9 +304,6 @@ struct ThreadLocalAllocState<T, const N: usize> {
 
     /// Thread-local free list (only popped from during allocation).
     free: FreeList<Entry<T>>,
-
-    /// Thread-local deallocated list (only pushed to during deallocation).
-    deallocated: FreeList<Entry<T>>,
 }
 
 impl<T, const N: usize> ThreadLocalAllocState<T, N> {
@@ -331,7 +312,6 @@ impl<T, const N: usize> ThreadLocalAllocState<T, N> {
             current_block: Cell::new(std::ptr::null_mut()),
             bump_offset: Cell::new(N),
             free: FreeList::new(),
-            deallocated: FreeList::new(),
         }
     }
 }
@@ -533,8 +513,8 @@ mod tests {
                 }
             }
 
-            let (removed, free_size, deallocated_size) = allocator.remove_free_blocks();
-            println!("{removed} removed, {free_size} free, {deallocated_size} deallocated");
+            let (removed, free_size) = allocator.remove_free_blocks();
+            println!("{removed} removed, {free_size} free");
 
             for _ in 0..500 {
                 let ptr = allocator.allocate_object().unwrap();
