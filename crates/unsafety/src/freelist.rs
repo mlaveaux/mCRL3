@@ -1,7 +1,6 @@
+use std::cell::Cell;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::Ordering;
 
 /// Intrusive node requirements for use in [`FreeList`].
 ///
@@ -29,10 +28,10 @@ pub unsafe trait FreeListEntry: Sized {
     unsafe fn set_next(ptr: *mut Self, next: *mut Self);
 }
 
-/// Lock-free intrusive freelist based on a Treiber stack.
+/// Intrusive freelist based on a stack.
 pub struct FreeList<T: FreeListEntry> {
-    /// The head of the lock-free freelist. Null means empty.
-    head: AtomicPtr<T>,
+    /// The head of the freelist. Null means empty.
+    head: Cell<*mut T>,
 
     /// We implement Send and Sync manually.
     _marker: PhantomData<*mut T>,
@@ -40,10 +39,6 @@ pub struct FreeList<T: FreeListEntry> {
 
 // Safety: Transferring a FreeList to another thread is safe if T is Send.
 unsafe impl<T: FreeListEntry + Send> Send for FreeList<T> {}
-
-// Safety: Concurrent pop transfers ownership of T nodes across threads, which
-// requires T: Send.
-unsafe impl<T: FreeListEntry + Send> Sync for FreeList<T> {}
 
 impl<T: FreeListEntry> Default for FreeList<T> {
     fn default() -> Self {
@@ -54,93 +49,65 @@ impl<T: FreeListEntry> Default for FreeList<T> {
 impl<T: FreeListEntry> FreeList<T> {
     pub fn new() -> Self {
         Self {
-            head: AtomicPtr::new(std::ptr::null_mut()),
+            head: Cell::new(std::ptr::null_mut()),
             _marker: PhantomData,
         }
     }
 
     /// Pops one entry from the freelist.
     pub fn try_pop(&self) -> Option<NonNull<T>> {
-        let mut head = self.head.load(Ordering::Relaxed);
-        loop {
-            let node = NonNull::new(head)?;
+        let node = NonNull::new(self.head.get())?;
 
-            // Safety: `head` is non-null and the Acquire on CAS failure synchronizes
-            // with the Release in push, guaranteeing we see the correct next pointer.
-            let next = unsafe { T::get_next(node.as_ptr()) };
+        // Safety: `head` is non-null.
+        let next = unsafe { T::get_next(node.as_ptr()) };
+        self.head.set(next);
 
-            match self
-                .head
-                .compare_exchange_weak(head, next, Ordering::Acquire, Ordering::Acquire)
-            {
-                Ok(_) => return Some(node),
-                Err(actual) => head = actual,
-            }
-        }
+        Some(node)
     }
 
     /// Pushes an entry onto the freelist.
     pub fn push(&self, entry: NonNull<T>) {
         let ptr = entry.as_ptr();
-        let mut head = self.head.load(Ordering::Relaxed);
-        loop {
-            // Safety: caller transfers ownership of a valid node; writing its next link is valid.
-            unsafe { T::set_next(ptr, head) };
+        let head = self.head.get();
 
-            match self
-                .head
-                .compare_exchange_weak(head, ptr, Ordering::Release, Ordering::Relaxed)
-            {
-                Ok(_) => return,
-                Err(actual) => head = actual,
-            }
-        }
+        // Safety: caller transfers ownership of a valid node; writing its next link is valid.
+        unsafe { T::set_next(ptr, head) };
+        self.head.set(ptr);
     }
 
     /// Returns an iterator over freelist entries.
-    ///
-    /// # Safety
-    ///
-    /// This is only safe when no concurrent push/pop operations are in progress.
     pub unsafe fn iter(&self) -> FreeListIterator<T> {
         FreeListIterator {
-            current: NonNull::new(self.head.load(Ordering::Relaxed)),
+            current: NonNull::new(self.head.get()),
         }
     }
 
     /// Returns a mutable iterator over freelist entries.
-    ///
-    /// # Safety
-    ///
-    /// This is only safe when no concurrent push/pop operations are in progress.
     pub unsafe fn iter_mut(&mut self) -> FreeListIteratorMut<'_, T> {
         FreeListIteratorMut {
-            current: NonNull::new(self.head.load(Ordering::Relaxed)),
+            current: NonNull::new(self.head.get()),
             marker: PhantomData,
         }
     }
 
     /// Clears the freelist head.
-    ///
-    /// This is only safe when no concurrent push/pop operations are in progress.
     pub fn clear(&mut self) {
-        self.head.store(std::ptr::null_mut(), Ordering::Relaxed);
+        self.head.set(std::ptr::null_mut());
     }
 
     /// Returns whether the freelist is currently empty.
     pub fn is_empty(&self) -> bool {
-        self.head.load(Ordering::Relaxed).is_null()
+        self.head.get().is_null()
     }
 
     /// Replaces the freelist head with `head`.
     ///
     /// # Safety
     ///
-    /// Caller must ensure there are no concurrent push/pop operations on this
-    /// freelist, and `head` is either null or a valid linked list of nodes
+    /// `head` must be either null or a valid linked list of nodes
     /// managed by this freelist.
     pub unsafe fn set_head(&self, head: *mut T) {
-        self.head.store(head, Ordering::Relaxed);
+        self.head.set(head);
     }
 }
 

@@ -7,8 +7,6 @@ use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::Ordering;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
@@ -28,25 +26,20 @@ const FREE_LIST_CHUNK_SIZE: usize = 1000;
 /// Requires periodic calls to `remove_free_blocks` to prevent memory usage from
 /// growing indefinitely.
 ///
-/// This allocator is lock-free for the common allocation/deallocation paths and
-/// only takes a lock when a new block needs to be allocated. This does mean
-/// that external synchronisation is required to prevent concurrent allocations
-/// overlapping with `remove_free_blocks`.
+/// This allocator minimizes contention by maintaining per-thread state for
+/// the common allocation/deallocation paths and only takes a lock when a new
+/// block needs to be allocated. This does mean that external synchronisation
+/// is required to prevent concurrent allocations overlapping with `remove_free_blocks`.
 ///
 /// A single thread-local freelist is maintained per thread:
 /// - `free`: popped from during allocation and pushed to during deallocation.
-///
-/// # Details
-///
-/// Internally stores blocks of `N` elements.
-/// All thread-local state (bump_offset, current_block, free) is stored
-/// per-thread to eliminate shared atomic contention in the hot path.
 pub struct BlockAllocator<T: Send, const N: usize> {
     /// Owns the block chain; only locked when a new block must be allocated.
     /// This is the only shared state accessed during allocation.
     blocks: Mutex<BlockList<T, N>>,
 
     /// Per-thread state for allocation: current block and bump offset. This eliminates
+    /// contention in the common path.
     alloc_state: ThreadLocal<ThreadLocalAllocState<T, N>>,
 }
 
@@ -175,17 +168,16 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
     /// Should be called periodically to prevent memory usage from growing
     /// indefinitely.
     ///
-    /// **Important**: This method must not be called concurrently with any allocations
-    /// or deallocations. It should be called at a synchronization point where no other
-    /// threads are active on this allocator.
+    /// **Important**: This method must not be called concurrently with any
+    /// allocations or deallocations. It should be called at a synchronization
+    /// point where no other threads are active on this allocator.
     ///
-    /// This method scans every thread-local `free` list,
-    /// marks those entries with a sentinel value, then removes blocks where all
-    /// entries are marked as free.
+    /// This method scans every thread-local `free` list, marks those entries
+    /// with a sentinel value, then removes blocks where all entries are marked
+    /// as free.
     ///
-    /// Returns `(removed_blocks, free_size, deallocated_size)`: the number of
-    /// blocks removed, and the size of the merged `free` list before cleanup.
-    /// `deallocated_size` is always 0 and kept for API compatibility.
+    /// Returns `(removed_blocks, free_size)`: the number of blocks removed, and
+    /// the size of the merged `free` list before cleanup.
     pub fn remove_free_blocks(&mut self) -> (usize, usize)
     where
         T: BlockAllocatorSafe,
@@ -211,14 +203,14 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                     ptrs.insert(current.as_ptr());
 
                     if let Some(previous) = previous {
-                        (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
+                        *(*previous.as_ptr()).next = nonexisting_value as *mut Entry<T>;
                     }
                     previous = Some(current);
                     count += 1;
                 }
 
                 if let Some(previous) = previous {
-                    (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
+                    *(*previous.as_ptr()).next = nonexisting_value as *mut Entry<T>;
                 }
                 count
             };
@@ -246,9 +238,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 
                 let next = unsafe { Entry::get_next(entry.as_ptr()) };
                 unsafe {
-                    (*entry.as_ptr())
-                        .next
-                        .store(nonexisting_value, Ordering::Relaxed);
+                    *(*entry.as_ptr()).next = nonexisting_value as *mut Entry<T>;
                 }
                 free_size += 1;
                 current = NonNull::new(next);
@@ -267,7 +257,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                         // This entry is live — it must not look like the sentinel.
                         unsafe {
                             debug_assert!(
-                                entry.next.load(Ordering::Relaxed) != nonexisting_value,
+                                *entry.next != nonexisting_value as *mut Entry<T>,
                                 "Live entry at {entry_ptr:?} has the sentinel value (null in first word). \
                                  This violates the BlockAllocatorSafe contract."
                             );
@@ -291,7 +281,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                 let all_free = unsafe {
                     let data = &*(*current_ptr.as_ptr()).data.get();
                     data.iter()
-                        .all(|entry| entry.next.load(Ordering::Relaxed) == nonexisting_value)
+                        .all(|entry| *entry.next == nonexisting_value as *mut Entry<T>)
                 };
 
                 if all_free {
@@ -323,14 +313,12 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
             for entry in data {
                 unsafe {
-                    if entry.next.load(Ordering::Relaxed) == nonexisting_value {
+                    if *entry.next == nonexisting_value as *mut Entry<T> {
                         let entry_ptr = NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>);
-                        (*entry_ptr.as_ptr())
-                            .next
-                            .store(std::ptr::null_mut(), Ordering::Relaxed);
+                        *(*entry_ptr.as_ptr()).next = std::ptr::null_mut();
 
                         if let Some(tail) = chunk_tail {
-                            (*tail.as_ptr()).next.store(entry_ptr.as_ptr(), Ordering::Relaxed);
+                            *(*tail.as_ptr()).next = entry_ptr.as_ptr();
                             chunk_tail = Some(entry_ptr);
                             chunk_len += 1;
                         } else {
@@ -372,7 +360,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 }
 
 /// Per-thread state for allocation: current block and bump offset.
-/// This eliminates shared atomic contention in the hot path.
+/// This eliminates contention in the hot path.
 struct ThreadLocalAllocState<T, const N: usize> {
     /// The block currently being bump-allocated from.
     current_block: Cell<*mut Block<T, N>>,
@@ -472,7 +460,7 @@ union Entry<T> {
     data: ManuallyDrop<T>,
 
     /// If the element is free, this points to the next entry in the freelist, or null if this is the last entry.
-    next: ManuallyDrop<AtomicPtr<Entry<T>>>,
+    next: ManuallyDrop<*mut Entry<T>>,
 }
 
 // Safety: `Entry<T>` stores a single intrusive next-pointer in `next` used only
@@ -480,13 +468,13 @@ union Entry<T> {
 unsafe impl<T> FreeListEntry for Entry<T> {
     unsafe fn get_next(ptr: *mut Self) -> *mut Self {
         // Safety: caller ensures `ptr` is a valid freelist node.
-        unsafe { (*ptr).next.load(Ordering::Acquire) }
+        unsafe { *(*ptr).next }
     }
 
     unsafe fn set_next(ptr: *mut Self, next: *mut Self) {
         // Safety: caller ensures `ptr` is a valid freelist node.
         unsafe {
-            (*ptr).next.store(next, Ordering::Release);
+            *(*ptr).next = next;
         }
     }
 }
@@ -524,7 +512,7 @@ impl<T, const N: usize> Block<T, N> {
     fn new() -> Self {
         Self {
             data: UnsafeCell::new(array::from_fn(|_i| Entry {
-                next: ManuallyDrop::new(AtomicPtr::new(std::ptr::null_mut())),
+                next: ManuallyDrop::new(std::ptr::null_mut()),
             })),
             next: None,
         }
