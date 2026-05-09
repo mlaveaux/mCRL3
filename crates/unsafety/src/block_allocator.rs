@@ -387,13 +387,15 @@ impl<T, const N: usize> ThreadLocalAllocState<T, N> {
 
 unsafe impl<T: Send, const N: usize> Send for ThreadLocalAllocState<T, N> {}
 
-/// Marker trait asserting that `std::ptr::null_mut::<Entry<T>>()` can never
-/// appear as the first `size_of::<*mut _>()` bytes of any valid value of `T`.
-///
+/// Implementing this trait for a type `T` asserts that the special sentinel
+/// never occurs as a valid entry.
+/// 
 /// # Safety
 ///
-/// Implementing this trait for a type `T` asserts that the special sentinel
-/// value can be used.
+/// Marker trait asserting that the sentinel value used by [`BlockAllocator`]—
+/// specifically, a pointer value where all bytes are set to `0xFF` (i.e.,
+/// `usize::MAX` cast to `*mut Entry<T>`)—can never appear as the first
+/// `size_of::<*mut _>()` bytes of any valid value of `T`.
 pub unsafe trait BlockAllocatorSafe {}
 
 /// Sentinel value used to identify entries that are not on the freelist.
