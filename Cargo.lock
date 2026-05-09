@@ -1351,6 +1351,7 @@ dependencies = [
  "mimalloc",
  "rand",
  "rustc-hash 2.1.2",
+ "thread_local",
  "tikv-jemallocator",
 ]
 

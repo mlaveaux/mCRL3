@@ -84,10 +84,11 @@ winapi = { version = "0.3", features = ["consoleapi"] }
 allocator-api2 =  "0.4"
 backtrace = "0.3"
 crossbeam-utils = "0.8"
+loom = { version = "0.7", features = ["checkpoint"] }
 mimalloc = "0.1"
 streaming-iterator = "0.1"
+thread_local = "1.1"
 tikv-jemallocator = "0.6"
-loom = { version = "0.7", features = ["checkpoint"] }
 
 # Used in macros
 proc-macro2 = "1.0"

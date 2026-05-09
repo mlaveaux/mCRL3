@@ -1,20 +1,18 @@
 use std::alloc::Layout;
 use std::array;
+use std::cell::Cell;
 use std::cell::UnsafeCell;
-use std::fmt;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
-use crossbeam_utils::CachePadded;
-use itertools::Itertools;
+use thread_local::ThreadLocal;
 
 use crate::FreeList;
 use crate::FreeListEntry;
@@ -43,23 +41,15 @@ use crate::FreeListEntry;
 /// # Details
 ///
 /// Internally stores blocks of `N` elements.
-pub struct BlockAllocator<T, const N: usize> {
+/// All thread-local state (bump_offset, current_block, free, deallocated) is stored
+/// per-thread to eliminate shared atomic contention in the hot path.
+pub struct BlockAllocator<T: Send, const N: usize> {
     /// Owns the block chain; only locked when a new block must be allocated.
+    /// This is the only shared state accessed during allocation.
     blocks: Mutex<BlockList<T, N>>,
 
-    /// The block currently used for bump allocation.
-    current_block: AtomicPtr<Block<T, N>>,
-
-    /// Bump offset within `current_block`. N or greater means the block is full.
-    bump_offset: AtomicUsize,
-
-    /// Recycled entries available for allocation, only popped from during
-    /// allocation. Cache-padded to avoid false sharing with `deallocated`.
-    free: CachePadded<FreeList<Entry<T>>>,
-
-    /// Only pushed to during deallocation. Moved into `free` during
-    /// `remove_free_blocks`. Cache-padded to avoid false sharing with `free`.
-    deallocated: CachePadded<FreeList<Entry<T>>>,
+    /// Per-thread state for allocation: current block and bump offset. This eliminates
+    alloc_state: ThreadLocal<ThreadLocalAllocState<T, N>>,
 }
 
 /// The block list and bump pointer, protected by the blocks mutex.
@@ -80,74 +70,39 @@ impl<T, const N: usize> Drop for BlockList<T, N> {
     }
 }
 
-impl<T, const N: usize> Default for BlockAllocator<T, N> {
+impl<T: Send, const N: usize> Default for BlockAllocator<T, N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T, const N: usize> BlockAllocator<T, N> {
+impl<T: Send, const N: usize> BlockAllocator<T, N> {
     pub fn new() -> Self {
         Self {
             blocks: Mutex::new(BlockList { head_block: None }),
-            current_block: AtomicPtr::new(std::ptr::null_mut()),
-            bump_offset: AtomicUsize::new(N), // N = "full", forces slow path until first block
-            free: CachePadded::new(FreeList::new()),
-            deallocated: CachePadded::new(FreeList::new()),
+            alloc_state: ThreadLocal::new(),
         }
     }
 
     /// Allocates a slot for one object of type `T`.
     pub fn allocate_object(&self) -> Result<NonNull<T>, AllocError> {
-        // Fast path 1: pop from the lock-free freelist.
-        if let Some(entry) = self.free.try_pop() {
+        let state = self.alloc_state.get_or(ThreadLocalAllocState::new);
+
+        // Fast path 1: try thread-local free list.
+        if let Some(entry) = state.free.try_pop() {
             return Ok(entry.cast());
         }
 
-        // Fast path 2: lock-free bump allocation.
-        loop {
-            let block_before = self.current_block.load(Ordering::Acquire);
-            if block_before.is_null() {
-                break; // No current block, go to slow path
-            }
-
-            let offset = self.bump_offset.fetch_add(1, Ordering::Relaxed);
-            if offset >= N {
-                break; // Block is full, go to slow path
-            }
-
-            let block_after = self.current_block.load(Ordering::Acquire);
-            if block_before == block_after {
-                return unsafe {
-                    let data_ptr = (*block_before).data.get() as *mut Entry<T>;
-                    let entry_ptr = data_ptr.add(offset);
-                    Ok(NonNull::new_unchecked(
-                        std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T
-                    ))
-                };
-            }
-            // Block changed: retry the loop
+        // Fast path 2: try thread-local deallocated list.
+        if let Some(entry) = state.deallocated.try_pop() {
+            return Ok(entry.cast());
         }
 
-        // Slow path: allocate a new block under the mutex.
-        self.allocate_new_block()
-    }
-
-    /// Slow path: take the mutex and allocate a new block.
-    ///
-    /// First checks whether another thread already published a block while we
-    /// were waiting for the lock, in which case we claim a slot from it directly.
-    #[cold]
-    fn allocate_new_block(&self) -> Result<NonNull<T>, AllocError> {
-        let mut guard = self.blocks.lock().expect("Lock poisoned");
-
-        // A concurrent thread may have published a new block while we waited;
-        // try to claim a bump slot directly under the lock.
-        let offset = self.bump_offset.fetch_add(1, Ordering::Relaxed);
-        if offset < N {
-            let block_ptr = self.current_block.load(Ordering::Relaxed);
-            debug_assert!(!block_ptr.is_null(), "current_block must be set when bump_offset < N");
-            drop(guard);
+        // Fast path 3: lock-free bump allocation from current thread's block.
+        let block_ptr = state.current_block.get();
+        let offset = state.bump_offset.get();
+        if !block_ptr.is_null() && offset < N {
+            state.bump_offset.set(offset + 1);
             return unsafe {
                 let data_ptr = (*block_ptr).data.get() as *mut Entry<T>;
                 let entry_ptr = data_ptr.add(offset);
@@ -157,22 +112,28 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             };
         }
 
+        // Slow path: allocate a new block under the mutex.
+        self.allocate_new_block(state)
+    }
+
+    /// Slow path: allocate a new block and update thread-local state.
+    #[cold]
+    fn allocate_new_block(&self, state: &ThreadLocalAllocState<T, N>) -> Result<NonNull<T>, AllocError> {
+        let mut guard = self.blocks.lock().expect("Lock poisoned");
+
         // Allocate a new block and link it to the existing chain.
         let mut new_block = Block::new();
         new_block.next = guard.head_block;
         let new_block_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
         guard.head_block = Some(new_block_ptr);
 
-        // Publish the new block with Release, then reset bump_offset to 1,
-        // claiming slot 0 for ourselves. The Release on bump_offset ensures
-        // that threads which later load current_block with Acquire will also
-        // see the fully-initialised block.
-        self.current_block.store(new_block_ptr.as_ptr(), Ordering::Release);
-        self.bump_offset.store(1, Ordering::Release);
-
         drop(guard);
 
-        // Return slot 0 of the new block (claimed by the store above).
+        // Update thread-local state with new block.
+        state.current_block.set(new_block_ptr.as_ptr());
+        state.bump_offset.set(1);
+
+        // Return slot 0 of the new block.
         unsafe {
             let data_ptr = (*new_block_ptr.as_ptr()).data.get() as *mut Entry<T>;
             Ok(NonNull::new_unchecked(
@@ -183,13 +144,22 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
     /// Deallocates a previously-allocated pointer.
     pub fn deallocate_object(&self, ptr: NonNull<T>) {
-        self.deallocated.push(ptr.cast());
+        let state = self.alloc_state.get_or(ThreadLocalAllocState::new);
+        state.deallocated.push(ptr.cast());
     }
 
-    /// Removes empty blocks from the block list, and merges the free lists.
+    /// Removes empty blocks from the block list.
     ///
     /// Should be called periodically to prevent memory usage from growing
     /// indefinitely.
+    ///
+    /// **Important**: This method must not be called concurrently with any allocations
+    /// or deallocations. It should be called at a synchronization point where no other
+    /// threads are active on this allocator.
+    ///
+    /// This method scans every thread-local `free` and `deallocated` list,
+    /// marks those entries with a sentinel value, then removes blocks where all
+    /// entries are marked as free.
     ///
     /// Returns `(removed_blocks, free_size, deallocated_size)`: the number of
     /// blocks removed, and the sizes of the `free` and `deallocated` freelists
@@ -198,7 +168,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
     where
         T: BlockAllocatorSafe,
     {
-        // Mark all elements in both freelists with a special value that none of the live entries can have.
+        // Mark all elements in all thread-local freelists with a special
+        // value that none of the live entries can have.
         let nonexisting_value = NONEXISTING_VALUE as *mut Entry<T>;
 
         // In debug mode, collect all freelist entry pointers.
@@ -230,37 +201,33 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 count
             };
 
-        let free_size = mark_freelist(
-            &self.free,
-            #[cfg(debug_assertions)]
-            &mut freelist_ptrs,
-        );
-        let deallocated_size = mark_freelist(
-            &self.deallocated,
-            #[cfg(debug_assertions)]
-            &mut freelist_ptrs,
-        );
-
-        // We will rebuild the freelists from the remaining blocks below.
-        self.free.clear();
-        self.deallocated.clear();
+        let mut free_size = 0;
+        let mut deallocated_size = 0;
+        for state in self.alloc_state.iter_mut() {
+            free_size += mark_freelist(
+                &state.free,
+                #[cfg(debug_assertions)]
+                &mut freelist_ptrs,
+            );
+            deallocated_size += mark_freelist(
+                &state.deallocated,
+                #[cfg(debug_assertions)]
+                &mut freelist_ptrs,
+            );
+            state.free.clear();
+            state.deallocated.clear();
+            state.current_block.set(std::ptr::null_mut());
+            state.bump_offset.set(N);
+        }
 
         let mut guard = self.blocks.lock().expect("Lock poisoned");
 
         // Debug check: verify that no live entry has the sentinel value.
         #[cfg(debug_assertions)]
         {
-            let mut is_head = true;
             for block_ptr in Self::iter_blocks(&guard) {
                 let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
-                // Only check entries that have been bump-allocated; entries
-                // beyond bump_offset in the head block were never handed out.
-                let limit = if is_head {
-                    self.bump_offset.load(Ordering::Relaxed).min(N)
-                } else {
-                    N
-                };
-                for entry in &data[..limit] {
+                for entry in data {
                     let entry_ptr = entry as *const Entry<T> as *mut Entry<T>;
                     if !freelist_ptrs.contains(&entry_ptr) {
                         // This entry is live — it must not look like the sentinel.
@@ -273,9 +240,9 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                         }
                     }
                 }
-                is_head = false;
             }
         }
+
         let removed = if guard.head_block.is_some() {
             // Remove blocks that are now empty, i.e., all their entries have nonexisting_value.
             let mut prev_next_field: *mut Option<NonNull<Block<T, N>>> = &mut guard.head_block;
@@ -297,7 +264,6 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                     // Unlink and drop the current block.
                     let next = unsafe { (*current_ptr.as_ptr()).next.take() };
                     unsafe { *prev_next_field = next };
-                    // Drop the block (deallocates memory).
                     unsafe { drop(Box::from_raw(current_ptr.as_ptr())) };
                     removed_blocks += 1;
                     // prev_next_field stays the same — it now points to the next block.
@@ -313,28 +279,21 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             0
         };
 
-        // Recreate the free list from remaining blocks. We add all free entries
-        // to the freelist and set bump_offset = N so future allocations go
-        // through the freelist.
+        // Recreate one freelist from remaining blocks in the calling thread.
+        let state = self.alloc_state.get_or(ThreadLocalAllocState::new);
         for block_ptr in Self::iter_blocks(&guard) {
-            // Safety: exclusive access via &mut self; no concurrent readers.
             let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
-            for entry in &data[..] {
-                // Safety: we only push entries that were marked with the special value, which means they are not live.
+            for entry in data {
                 unsafe {
                     if entry.next.load(Ordering::Relaxed) == nonexisting_value {
-                        self.free
+                        state
+                            .free
                             .push(NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>));
                     }
                 }
             }
         }
 
-        // Force future allocations through the freelist; bump_offset = N means "full".
-        // current_block is left stale but is harmless: bump_offset >= N means the
-        // fast path never dereferences it, and allocate_new_block will overwrite it
-        // once a fresh block is needed.
-        self.bump_offset.store(N, Ordering::Relaxed);
         drop(guard);
         (removed, free_size, deallocated_size)
     }
@@ -348,22 +307,36 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             _marker: PhantomData,
         }
     }
+}
 
-    /// Returns an iterator over the free list entries.
-    ///
-    /// # Safety
-    ///
-    /// This is only safe when no concurrent allocations or deallocations are in progress
-    /// (e.g., in single-threaded tests or with `&mut self`).
-    unsafe fn iter_free(&self) -> impl Iterator<Item = NonNull<T>> + '_ {
-        unsafe {
-            self.free
-                .iter()
-                .chain(self.deallocated.iter())
-                .map(|entry| entry.cast())
+/// Per-thread state for allocation: current block and bump offset.
+/// This eliminates shared atomic contention in the hot path.
+struct ThreadLocalAllocState<T, const N: usize> {
+    /// The block currently being bump-allocated from.
+    current_block: Cell<*mut Block<T, N>>,
+
+    /// Bump offset within `current_block`. N or greater means the block is full.
+    bump_offset: Cell<usize>,
+
+    /// Thread-local free list (only popped from during allocation).
+    free: FreeList<Entry<T>>,
+
+    /// Thread-local deallocated list (only pushed to during deallocation).
+    deallocated: FreeList<Entry<T>>,
+}
+
+impl<T, const N: usize> ThreadLocalAllocState<T, N> {
+    fn new() -> Self {
+        Self {
+            current_block: Cell::new(std::ptr::null_mut()),
+            bump_offset: Cell::new(N),
+            free: FreeList::new(),
+            deallocated: FreeList::new(),
         }
     }
 }
+
+unsafe impl<T: Send, const N: usize> Send for ThreadLocalAllocState<T, N> {}
 
 /// Marker trait asserting that `std::ptr::null_mut::<Entry<T>>()` can never
 /// appear as the first `size_of::<*mut _>()` bytes of any valid value of `T`.
@@ -374,6 +347,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 /// value can be used.
 pub unsafe trait BlockAllocatorSafe {}
 
+/// Sentinel value used to identify entries that are not on the freelist.
 const NONEXISTING_VALUE: usize = usize::MAX;
 
 /// The [BlockAllocator] is thread-safe.
@@ -381,17 +355,17 @@ unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
 unsafe impl<T: Send, const N: usize> Sync for BlockAllocator<T, N> {}
 
 /// `AllocBlock` implements the [`Allocator`] trait using the underlying [`BlockAllocator`].
-pub struct AllocBlock<T, const N: usize> {
+pub struct AllocBlock<T: Send, const N: usize> {
     block_allocator: BlockAllocator<T, N>,
 }
 
-impl<T, const N: usize> Default for AllocBlock<T, N> {
+impl<T: Send, const N: usize> Default for AllocBlock<T, N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T, const N: usize> AllocBlock<T, N> {
+impl<T: Send, const N: usize> AllocBlock<T, N> {
     /// Creates a new `AllocBlock`.
     pub fn new() -> Self {
         Self {
@@ -510,16 +484,8 @@ impl<T, const N: usize> Drop for Block<T, N> {
     }
 }
 
-impl<T, const N: usize> fmt::Debug for BlockAllocator<T, N> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Safety: Debug is only meaningful in single-threaded / non-concurrent contexts.
-        write!(f, "freelist = {:?}", unsafe { self.iter_free() }.format(", "))
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
     use std::ptr::NonNull;
     use std::sync::Arc;
 
@@ -531,19 +497,19 @@ mod tests {
     use super::BlockAllocatorSafe;
 
     // In practice u64 is used only in tests; real clients must audit their types.
-    unsafe impl BlockAllocatorSafe for NonZeroUsize {}
+    unsafe impl BlockAllocatorSafe for usize {}
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_block_allocator() {
         random_test(100, |rng| {
-            let mut allocator: BlockAllocator<NonZeroUsize, 32> = BlockAllocator::new();
+            let mut allocator: BlockAllocator<usize, 32> = BlockAllocator::new();
 
             // Allocate 1000 elements and keep track of ptr to value mapping.
-            let mut allocated: Vec<(NonNull<NonZeroUsize>, NonZeroUsize)> = Vec::new();
+            let mut allocated: Vec<(NonNull<usize>, usize)> = Vec::new();
             for _ in 0..1000 {
                 let ptr = allocator.allocate_object().unwrap();
-                let value: NonZeroUsize = NonZeroUsize::new(rng.random_range(1..=usize::MAX)).unwrap();
+                let value: usize = rng.random_range(0..=usize::MAX - 1);
                 unsafe {
                     ptr.as_ptr().write(value);
                 }
@@ -572,7 +538,7 @@ mod tests {
 
             for _ in 0..500 {
                 let ptr = allocator.allocate_object().unwrap();
-                let value: NonZeroUsize = NonZeroUsize::new(rng.random_range(1..=usize::MAX)).unwrap();
+                let value: usize = rng.random_range(0..=usize::MAX - 1);
                 unsafe {
                     ptr.as_ptr().write(value);
                 }
