@@ -65,14 +65,13 @@ impl<T: FreeListEntry> FreeList<T> {
         loop {
             let node = NonNull::new(head)?;
 
-            // Safety: `head` is non-null and the Acquire load above (or the
-            // Acquire on CAS failure) synchronizes with the Release in push,
-            // guaranteeing we see the correct next pointer.
+            // Safety: `head` is non-null and the Acquire on CAS failure synchronizes
+            // with the Release in push, guaranteeing we see the correct next pointer.
             let next = unsafe { T::get_next(node.as_ptr()) };
 
             match self
                 .head
-                .compare_exchange_weak(head, next, Ordering::Acquire, Ordering::Relaxed)
+                .compare_exchange_weak(head, next, Ordering::Acquire, Ordering::Acquire)
             {
                 Ok(_) => return Some(node),
                 Err(actual) => head = actual,

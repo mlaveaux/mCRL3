@@ -167,6 +167,7 @@ pub struct SharedSymbol {
     arity: usize,
 }
 
+/// SAFETY: The `SharedSymbol` is never equal to a null pointer on the first 8 words.
 unsafe impl BlockAllocatorSafe for SharedSymbol {}
 
 impl SharedSymbol {
