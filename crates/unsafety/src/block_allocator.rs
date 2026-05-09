@@ -124,7 +124,10 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
         };
         drop(guard);
 
-        debug_assert!(state.free.is_empty(), "local freelist must be empty before chunk refill");
+        debug_assert!(
+            state.free.is_empty(),
+            "local freelist must be empty before chunk refill"
+        );
         unsafe {
             state.free.set_head(current.as_ptr());
         }
