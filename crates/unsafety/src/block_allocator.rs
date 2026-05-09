@@ -89,9 +89,7 @@ impl<T, const N: usize> Default for BlockAllocator<T, N> {
 impl<T, const N: usize> BlockAllocator<T, N> {
     pub fn new() -> Self {
         Self {
-            blocks: Mutex::new(BlockList {
-                head_block: None,
-            }),
+            blocks: Mutex::new(BlockList { head_block: None }),
             current_block: AtomicPtr::new(std::ptr::null_mut()),
             bump_offset: AtomicUsize::new(N), // N = "full", forces slow path until first block
             free: CachePadded::new(FreeList::new()),
@@ -124,7 +122,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                     let data_ptr = (*block_before).data.get() as *mut Entry<T>;
                     let entry_ptr = data_ptr.add(offset);
                     Ok(NonNull::new_unchecked(
-                        std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T,
+                        std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T
                     ))
                 };
             }
@@ -154,7 +152,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 let data_ptr = (*block_ptr).data.get() as *mut Entry<T>;
                 let entry_ptr = data_ptr.add(offset);
                 Ok(NonNull::new_unchecked(
-                    std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T,
+                    std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T
                 ))
             };
         }
@@ -162,16 +160,14 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         // Allocate a new block and link it to the existing chain.
         let mut new_block = Block::new();
         new_block.next = guard.head_block;
-        let new_block_ptr =
-            unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
+        let new_block_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
         guard.head_block = Some(new_block_ptr);
 
         // Publish the new block with Release, then reset bump_offset to 1,
         // claiming slot 0 for ourselves. The Release on bump_offset ensures
         // that threads which later load current_block with Acquire will also
         // see the fully-initialised block.
-        self.current_block
-            .store(new_block_ptr.as_ptr(), Ordering::Release);
+        self.current_block.store(new_block_ptr.as_ptr(), Ordering::Release);
         self.bump_offset.store(1, Ordering::Release);
 
         drop(guard);
@@ -180,7 +176,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         unsafe {
             let data_ptr = (*new_block_ptr.as_ptr()).data.get() as *mut Entry<T>;
             Ok(NonNull::new_unchecked(
-                std::ptr::addr_of_mut!((*data_ptr).data) as *mut T,
+                std::ptr::addr_of_mut!((*data_ptr).data) as *mut T
             ))
         }
     }
@@ -203,7 +199,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         T: BlockAllocatorSafe,
     {
         // Mark all elements in both freelists with a special value that none of the live entries can have.
-        let nonexisting_value = std::ptr::null_mut();
+        let nonexisting_value = NONEXISTING_VALUE as *mut Entry<T>;
 
         // In debug mode, collect all freelist entry pointers.
         #[cfg(debug_assertions)]
@@ -212,25 +208,27 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         // Helper: walk a freelist and mark every entry with the sentinel.
         // We only update previous entries to ensure that iter keeps working.
         // Returns the number of entries in the freelist.
-        let mark_freelist = |list: &FreeList<Entry<T>>, #[cfg(debug_assertions)] ptrs: &mut std::collections::HashSet<*mut Entry<T>>| unsafe {
-            let mut previous: Option<NonNull<Entry<T>>> = None;
-            let mut count: usize = 0;
-            for current in list.iter() {
-                #[cfg(debug_assertions)]
-                ptrs.insert(current.as_ptr());
+        let mark_freelist =
+            |list: &FreeList<Entry<T>>,
+             #[cfg(debug_assertions)] ptrs: &mut std::collections::HashSet<*mut Entry<T>>| unsafe {
+                let mut previous: Option<NonNull<Entry<T>>> = None;
+                let mut count: usize = 0;
+                for current in list.iter() {
+                    #[cfg(debug_assertions)]
+                    ptrs.insert(current.as_ptr());
+
+                    if let Some(previous) = previous {
+                        (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
+                    }
+                    previous = Some(current);
+                    count += 1;
+                }
 
                 if let Some(previous) = previous {
                     (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
                 }
-                previous = Some(current);
-                count += 1;
-            }
-
-            if let Some(previous) = previous {
-                (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
-            }
-            count
-        };
+                count
+            };
 
         let free_size = mark_freelist(
             &self.free,
@@ -257,7 +255,11 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
                 // Only check entries that have been bump-allocated; entries
                 // beyond bump_offset in the head block were never handed out.
-                let limit = if is_head { self.bump_offset.load(Ordering::Relaxed).min(N) } else { N };
+                let limit = if is_head {
+                    self.bump_offset.load(Ordering::Relaxed).min(N)
+                } else {
+                    N
+                };
                 for entry in &data[..limit] {
                     let entry_ptr = entry as *const Entry<T> as *mut Entry<T>;
                     if !freelist_ptrs.contains(&entry_ptr) {
@@ -371,6 +373,8 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 /// Implementing this trait for a type `T` asserts that the special sentinel
 /// value can be used.
 pub unsafe trait BlockAllocatorSafe {}
+
+const NONEXISTING_VALUE: usize = usize::MAX;
 
 /// The [BlockAllocator] is thread-safe.
 unsafe impl<T: Send, const N: usize> Send for BlockAllocator<T, N> {}
@@ -565,7 +569,7 @@ mod tests {
 
             let (removed, free_size, deallocated_size) = allocator.remove_free_blocks();
             println!("{removed} removed, {free_size} free, {deallocated_size} deallocated");
-            
+
             for _ in 0..500 {
                 let ptr = allocator.allocate_object().unwrap();
                 let value: NonZeroUsize = NonZeroUsize::new(rng.random_range(1..=usize::MAX)).unwrap();
