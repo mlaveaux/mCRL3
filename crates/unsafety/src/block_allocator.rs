@@ -8,6 +8,7 @@ use std::ptr::NonNull;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use allocator_api2::alloc::AllocError;
@@ -43,8 +44,14 @@ use crate::FreeListEntry;
 ///
 /// Internally stores blocks of `N` elements.
 pub struct BlockAllocator<T, const N: usize> {
-    /// Blocks and bump pointer are protected by a mutex, for the cold path.
+    /// Owns the block chain; only locked when a new block must be allocated.
     blocks: Mutex<BlockList<T, N>>,
+
+    /// The block currently used for bump allocation.
+    current_block: AtomicPtr<Block<T, N>>,
+
+    /// Bump offset within `current_block`. N or greater means the block is full.
+    bump_offset: AtomicUsize,
 
     /// Recycled entries available for allocation, only popped from during
     /// allocation. Cache-padded to avoid false sharing with `deallocated`.
@@ -61,9 +68,6 @@ struct BlockList<T, const N: usize> {
     /// to allow multiple blocks to point to the same next block without
     /// violating Box's noalias.
     head_block: Option<NonNull<Block<T, N>>>,
-
-    /// Current bump offset within the head block.
-    bump_offset: usize,
 }
 
 impl<T, const N: usize> Drop for BlockList<T, N> {
@@ -87,60 +91,96 @@ impl<T, const N: usize> BlockAllocator<T, N> {
         Self {
             blocks: Mutex::new(BlockList {
                 head_block: None,
-                bump_offset: 0,
             }),
+            current_block: AtomicPtr::new(std::ptr::null_mut()),
+            bump_offset: AtomicUsize::new(N), // N = "full", forces slow path until first block
             free: CachePadded::new(FreeList::new()),
             deallocated: CachePadded::new(FreeList::new()),
         }
     }
 
     /// Allocates a slot for one object of type `T`.
-    ///
-    /// The fast path pops from the lock-free freelist; the slow path
-    /// bump-allocates from blocks and takes a lock for now blocks.
     pub fn allocate_object(&self) -> Result<NonNull<T>, AllocError> {
-        // Fast path: pop from the lock-free freelist (Treiber stack).
+        // Fast path 1: pop from the lock-free freelist.
         if let Some(entry) = self.free.try_pop() {
             return Ok(entry.cast());
         }
 
-        // Slow path: bump-allocate from a block.
-        self.allocate_from_block()
-    }
-
-    /// Slow path: allocate from the block list, potentially allocating a new block.
-    #[cold]
-    fn allocate_from_block(&self) -> Result<NonNull<T>, AllocError> {
-        let mut blocks = self.blocks.lock().expect("Lock poisoned");
-
-        // Ensure we have a block with space.
-        match &blocks.head_block {
-            Some(_block) if blocks.bump_offset < N => {
-                // Current block has room.
+        // Fast path 2: lock-free bump allocation.
+        loop {
+            let block_before = self.current_block.load(Ordering::Acquire);
+            if block_before.is_null() {
+                break; // No current block, go to slow path
             }
-            _ => {
-                // Either no block exists, or the current one is full.
-                let mut new_block = Block::new();
-                new_block.next = blocks.head_block.take();
-                // Use Box::into_raw to get a raw pointer without Box's noalias.
-                let new_block_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
-                blocks.head_block = Some(new_block_ptr);
-                blocks.bump_offset = 0;
+
+            let offset = self.bump_offset.fetch_add(1, Ordering::Relaxed);
+            if offset >= N {
+                break; // Block is full, go to slow path
             }
+
+            let block_after = self.current_block.load(Ordering::Acquire);
+            if block_before == block_after {
+                return unsafe {
+                    let data_ptr = (*block_before).data.get() as *mut Entry<T>;
+                    let entry_ptr = data_ptr.add(offset);
+                    Ok(NonNull::new_unchecked(
+                        std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T,
+                    ))
+                };
+            }
+            // Block changed: retry the loop
         }
 
-        let offset = blocks.bump_offset;
-        blocks.bump_offset += 1;
-        let block_ptr = blocks.head_block.expect("block was just ensured");
+        // Slow path: allocate a new block under the mutex.
+        self.allocate_new_block()
+    }
 
+    /// Slow path: take the mutex and allocate a new block.
+    ///
+    /// First checks whether another thread already published a block while we
+    /// were waiting for the lock, in which case we claim a slot from it directly.
+    #[cold]
+    fn allocate_new_block(&self) -> Result<NonNull<T>, AllocError> {
+        let mut guard = self.blocks.lock().expect("Lock poisoned");
+
+        // A concurrent thread may have published a new block while we waited;
+        // try to claim a bump slot directly under the lock.
+        let offset = self.bump_offset.fetch_add(1, Ordering::Relaxed);
+        if offset < N {
+            let block_ptr = self.current_block.load(Ordering::Relaxed);
+            debug_assert!(!block_ptr.is_null(), "current_block must be set when bump_offset < N");
+            drop(guard);
+            return unsafe {
+                let data_ptr = (*block_ptr).data.get() as *mut Entry<T>;
+                let entry_ptr = data_ptr.add(offset);
+                Ok(NonNull::new_unchecked(
+                    std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T,
+                ))
+            };
+        }
+
+        // Allocate a new block and link it to the existing chain.
+        let mut new_block = Block::new();
+        new_block.next = guard.head_block;
+        let new_block_ptr =
+            unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
+        guard.head_block = Some(new_block_ptr);
+
+        // Publish the new block with Release, then reset bump_offset to 1,
+        // claiming slot 0 for ourselves. The Release on bump_offset ensures
+        // that threads which later load current_block with Acquire will also
+        // see the fully-initialised block.
+        self.current_block
+            .store(new_block_ptr.as_ptr(), Ordering::Release);
+        self.bump_offset.store(1, Ordering::Release);
+
+        drop(guard);
+
+        // Return slot 0 of the new block (claimed by the store above).
         unsafe {
-            // Safety: offset < N, so the index is in bounds.
-            // Use raw pointer arithmetic to avoid creating &mut to the array,
-            // which would cause a Unique retag invalidating existing pointers.
-            let data_ptr = (*block_ptr.as_ptr()).data.get() as *mut Entry<T>;
-            let entry_ptr = data_ptr.add(offset);
+            let data_ptr = (*new_block_ptr.as_ptr()).data.get() as *mut Entry<T>;
             Ok(NonNull::new_unchecked(
-                std::ptr::addr_of_mut!((*entry_ptr).data) as *mut T
+                std::ptr::addr_of_mut!((*data_ptr).data) as *mut T,
             ))
         }
     }
@@ -217,7 +257,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
                 let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
                 // Only check entries that have been bump-allocated; entries
                 // beyond bump_offset in the head block were never handed out.
-                let limit = if is_head { guard.bump_offset } else { N };
+                let limit = if is_head { self.bump_offset.load(Ordering::Relaxed).min(N) } else { N };
                 for entry in &data[..limit] {
                     let entry_ptr = entry as *const Entry<T> as *mut Entry<T>;
                     if !freelist_ptrs.contains(&entry_ptr) {
@@ -288,7 +328,11 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             }
         }
 
-        guard.bump_offset = if guard.head_block.is_some() { N } else { 0 };
+        // Force future allocations through the freelist; bump_offset = N means "full".
+        // current_block is left stale but is harmless: bump_offset >= N means the
+        // fast path never dereferences it, and allocate_new_block will overwrite it
+        // once a fresh block is needed.
+        self.bump_offset.store(N, Ordering::Relaxed);
         drop(guard);
         (removed, free_size, deallocated_size)
     }
@@ -400,13 +444,13 @@ union Entry<T> {
 unsafe impl<T> FreeListEntry for Entry<T> {
     unsafe fn get_next(ptr: *mut Self) -> *mut Self {
         // Safety: caller ensures `ptr` is a valid freelist node.
-        unsafe { (*ptr).next.load(Ordering::SeqCst) }
+        unsafe { (*ptr).next.load(Ordering::Acquire) }
     }
 
     unsafe fn set_next(ptr: *mut Self, next: *mut Self) {
         // Safety: caller ensures `ptr` is a valid freelist node.
         unsafe {
-            (*ptr).next.store(next, Ordering::SeqCst);
+            (*ptr).next.store(next, Ordering::Release);
         }
     }
 }
