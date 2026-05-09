@@ -288,7 +288,7 @@ impl<T, const N: usize> BlockAllocator<T, N> {
             }
         }
 
-        guard.bump_offset = N;
+        guard.bump_offset = if guard.head_block.is_some() { N } else { 0 };
         drop(guard);
         (removed, free_size, deallocated_size)
     }
@@ -512,7 +512,7 @@ mod tests {
                 }
             }
 
-            // All surviving elements must still hold their original values.
+            // All remaining elements must still hold their original values.
             for (ptr, expected) in &remaining {
                 unsafe {
                     assert_eq!(*ptr.as_ref(), *expected);
@@ -521,8 +521,7 @@ mod tests {
 
             let (removed, free_size, deallocated_size) = allocator.remove_free_blocks();
             println!("{removed} removed, {free_size} free, {deallocated_size} deallocated");
-
-            // Reallocate 500 elements; pushing them into the freelist.
+            
             for _ in 0..500 {
                 let ptr = allocator.allocate_object().unwrap();
                 let value: NonZeroUsize = NonZeroUsize::new(rng.random_range(1..=usize::MAX)).unwrap();
