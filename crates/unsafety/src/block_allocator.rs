@@ -207,17 +207,17 @@ impl<T, const N: usize> BlockAllocator<T, N> {
 
         // In debug mode, collect all freelist entry pointers.
         #[cfg(debug_assertions)]
-        let mut freelist_ptrs: Vec<*mut Entry<T>> = Vec::new();
+        let mut freelist_ptrs: std::collections::HashSet<*mut Entry<T>> = std::collections::HashSet::new();
 
         // Helper: walk a freelist and mark every entry with the sentinel.
         // We only update previous entries to ensure that iter keeps working.
         // Returns the number of entries in the freelist.
-        let mark_freelist = |list: &FreeList<Entry<T>>, #[cfg(debug_assertions)] ptrs: &mut Vec<*mut Entry<T>>| unsafe {
+        let mark_freelist = |list: &FreeList<Entry<T>>, #[cfg(debug_assertions)] ptrs: &mut std::collections::HashSet<*mut Entry<T>>| unsafe {
             let mut previous: Option<NonNull<Entry<T>>> = None;
             let mut count: usize = 0;
             for current in list.iter() {
                 #[cfg(debug_assertions)]
-                ptrs.push(current.as_ptr());
+                ptrs.insert(current.as_ptr());
 
                 if let Some(previous) = previous {
                     (*previous.as_ptr()).next.store(nonexisting_value, Ordering::Relaxed);
