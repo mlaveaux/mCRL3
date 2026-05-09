@@ -126,6 +126,22 @@ impl<T: FreeListEntry> FreeList<T> {
     pub fn clear(&mut self) {
         self.head.store(std::ptr::null_mut(), Ordering::Relaxed);
     }
+
+    /// Returns whether the freelist is currently empty.
+    pub fn is_empty(&self) -> bool {
+        self.head.load(Ordering::Relaxed).is_null()
+    }
+
+    /// Replaces the freelist head with `head`.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure there are no concurrent push/pop operations on this
+    /// freelist, and `head` is either null or a valid linked list of nodes
+    /// managed by this freelist.
+    pub unsafe fn set_head(&self, head: *mut T) {
+        self.head.store(head, Ordering::Relaxed);
+    }
 }
 
 /// Iterator over entries in a [`FreeList`].
