@@ -76,6 +76,10 @@ impl<T: FreeListEntry> FreeList<T> {
     }
 
     /// Returns an iterator over freelist entries.
+    ///
+    /// # Safety
+    ///
+    /// The freelist uses a non-atomic [`Cell`] head.
     pub unsafe fn iter(&self) -> FreeListIterator<T> {
         FreeListIterator {
             current: NonNull::new(self.head.get()),
@@ -83,6 +87,10 @@ impl<T: FreeListEntry> FreeList<T> {
     }
 
     /// Returns a mutable iterator over freelist entries.
+    ///
+    /// # Safety
+    ///
+    /// The freelist uses a non-atomic [`Cell`] head.
     pub unsafe fn iter_mut(&mut self) -> FreeListIteratorMut<'_, T> {
         FreeListIteratorMut {
             current: NonNull::new(self.head.get()),
