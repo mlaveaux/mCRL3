@@ -17,6 +17,8 @@ use thread_local::ThreadLocal;
 use crate::FreeList;
 use crate::FreeListEntry;
 
+const FREE_LIST_CHUNK_SIZE: usize = 1000;
+
 /// This is a memory pool or also called fixed-size block allocator for a
 /// concrete type `T`. It stores blocks of `N` to minimize the overhead of
 /// individual memory allocations, which are typically in the range of one or
@@ -54,6 +56,11 @@ struct BlockList<T, const N: usize> {
     /// to allow multiple blocks to point to the same next block without
     /// violating Box's noalias.
     head_block: Option<NonNull<Block<T, N>>>,
+
+    /// Shared chunks of free entries represented by list heads. Each head
+    /// points to a null-terminated list of length `FREE_LIST_CHUNK_SIZE`
+    /// (except possibly the final chunk).
+    free_chunks: Vec<NonNull<Entry<T>>>,
 }
 
 impl<T, const N: usize> Drop for BlockList<T, N> {
@@ -75,7 +82,10 @@ impl<T: Send, const N: usize> Default for BlockAllocator<T, N> {
 impl<T: Send, const N: usize> BlockAllocator<T, N> {
     pub fn new() -> Self {
         Self {
-            blocks: Mutex::new(BlockList { head_block: None }),
+            blocks: Mutex::new(BlockList {
+                head_block: None,
+                free_chunks: Vec::new(),
+            }),
             alloc_state: ThreadLocal::new(),
         }
     }
@@ -86,6 +96,12 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 
         // Fast path 1: try thread-local free list.
         if let Some(entry) = state.free.try_pop() {
+            return Ok(entry.cast());
+        }
+
+        if self.refill_local_free_from_chunks(state)
+            && let Some(entry) = state.free.try_pop()
+        {
             return Ok(entry.cast());
         }
 
@@ -105,6 +121,21 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 
         // Slow path: allocate a new block under the mutex.
         self.allocate_new_block(state)
+    }
+
+    /// Refills the calling thread's local freelist from one shared chunk.
+    fn refill_local_free_from_chunks(&self, state: &ThreadLocalAllocState<T, N>) -> bool {
+        let mut guard = self.blocks.lock().expect("Lock poisoned");
+        let Some(current) = guard.free_chunks.pop() else {
+            return false;
+        };
+        drop(guard);
+
+        debug_assert!(state.free.is_empty(), "local freelist must be empty before chunk refill");
+        unsafe {
+            state.free.set_head(current.as_ptr());
+        }
+        true
     }
 
     /// Slow path: allocate a new block and update thread-local state.
@@ -206,6 +237,25 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 
         let mut guard = self.blocks.lock().expect("Lock poisoned");
 
+        // Mark entries currently staged in shared free chunks.
+        for &chunk_head in &guard.free_chunks {
+            let mut current = Some(chunk_head);
+            while let Some(entry) = current {
+                #[cfg(debug_assertions)]
+                freelist_ptrs.insert(entry.as_ptr());
+
+                let next = unsafe { Entry::get_next(entry.as_ptr()) };
+                unsafe {
+                    (*entry.as_ptr())
+                        .next
+                        .store(nonexisting_value, Ordering::Relaxed);
+                }
+                free_size += 1;
+                current = NonNull::new(next);
+            }
+        }
+        guard.free_chunks.clear();
+
         // Debug check: verify that no live entry has the sentinel value.
         #[cfg(debug_assertions)]
         {
@@ -263,20 +313,48 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             0
         };
 
-        // Recreate one freelist from remaining blocks in the calling thread.
-        let state = self.alloc_state.get_or(ThreadLocalAllocState::new);
+        // Recreate shared free chunks from remaining blocks.
+        let mut rebuilt_chunk_heads: Vec<NonNull<Entry<T>>> = Vec::new();
+        let mut chunk_head: Option<NonNull<Entry<T>>> = None;
+        let mut chunk_tail: Option<NonNull<Entry<T>>> = None;
+        let mut chunk_len = 0usize;
+
         for block_ptr in Self::iter_blocks(&guard) {
             let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
             for entry in data {
                 unsafe {
                     if entry.next.load(Ordering::Relaxed) == nonexisting_value {
-                        state
-                            .free
-                            .push(NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>));
+                        let entry_ptr = NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>);
+                        (*entry_ptr.as_ptr())
+                            .next
+                            .store(std::ptr::null_mut(), Ordering::Relaxed);
+
+                        if let Some(tail) = chunk_tail {
+                            (*tail.as_ptr()).next.store(entry_ptr.as_ptr(), Ordering::Relaxed);
+                            chunk_tail = Some(entry_ptr);
+                            chunk_len += 1;
+                        } else {
+                            chunk_head = Some(entry_ptr);
+                            chunk_tail = Some(entry_ptr);
+                            chunk_len = 1;
+                        }
+
+                        if chunk_len == FREE_LIST_CHUNK_SIZE {
+                            rebuilt_chunk_heads.push(chunk_head.expect("chunk head set"));
+                            chunk_head = None;
+                            chunk_tail = None;
+                            chunk_len = 0;
+                        }
                     }
                 }
             }
         }
+
+        if let Some(head) = chunk_head {
+            rebuilt_chunk_heads.push(head);
+        }
+
+        guard.free_chunks.extend(rebuilt_chunk_heads);
 
         drop(guard);
         (removed, free_size)
