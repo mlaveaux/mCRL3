@@ -509,9 +509,10 @@ mod tests {
     use merc_lts::LtsBuilderFast;
     use merc_lts::LtsMultiAction;
     use merc_lts::StateIndex;
-    use merc_lts::random_lts;
+    use merc_lts::random_lts_monolithic;
     use merc_lts::read_lts;
     use merc_lts::write_aut;
+    use merc_lts::write_mcrl2_aut;
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
     use merc_syntax::MultiActionLabel;
@@ -586,15 +587,15 @@ mod tests {
         assert!(status.success(), "ltsconvert failed with status: {status}");
 
         random_test(100, |rng| {
-            let left_lts = random_lts(rng, 10, 3, 3)
+            let left_lts = random_lts_monolithic::<String, _>(rng, 100, 3, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
-            let right_lts = random_lts(rng, 10, 3, 3)
+            let right_lts = random_lts_monolithic::<String, _>(rng, 100, 3, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
 
-            write_aut(&mut File::create(&left_path).unwrap(), &left_lts).unwrap();
-            write_aut(&mut File::create(&right_path).unwrap(), &right_lts).unwrap();
+            write_mcrl2_aut(&mut File::create(&left_path).unwrap(), &left_lts).unwrap();
+            write_mcrl2_aut(&mut File::create(&right_path).unwrap(), &right_lts).unwrap();
 
             // For mCRL2's ltscombine we need to convert the inputs to the mCRL2 LTS format.
             let status = traced_status(
@@ -630,7 +631,7 @@ mod tests {
             assert!(status.success(), "ltscombine failed with status: {status}");
 
             let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
-            write_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
+            write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
             // Allow an arbitrary subset of labels
             let labels = left_lts
@@ -641,7 +642,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let num_of_allowed = rng.random_range(0..=labels.len());
-            let allow = labels
+            let _allow = labels
                 .sample(rng, num_of_allowed)
                 .cloned()
                 .map(|s| MultiActionLabel::new(vec![s]))
@@ -658,7 +659,7 @@ mod tests {
             )
             .unwrap();
             let result_lts = result.finish(StateIndex::new(0), false);
-            write_aut(&mut File::create(&result_path).unwrap(), &result_lts).unwrap();
+            write_mcrl2_aut(&mut File::create(&result_path).unwrap(), &result_lts).unwrap();
 
             assert!(
                 compare_lts(
