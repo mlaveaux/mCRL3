@@ -37,6 +37,7 @@ itertools.workspace = true
 log.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
+thread_local.workspace = true
 
 mimalloc = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }
