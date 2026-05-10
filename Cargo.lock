@@ -971,6 +971,7 @@ version = "1.0.0"
 dependencies = [
  "clap",
  "env_logger",
+ "itertools 0.14.0",
  "log",
  "merc_collections",
  "merc_io",

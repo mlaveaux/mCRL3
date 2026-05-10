@@ -176,6 +176,7 @@ struct CombineArgs {
     lts: Vec<PathBuf>,
 
     /// Specify the output LTS, if not given, output to stdout.
+    #[arg(long)]
     output: Option<PathBuf>,
 
     /// Determines the outermost hide operator.
