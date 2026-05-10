@@ -504,14 +504,14 @@ mod tests {
     use std::path::Path;
     use std::process::Command;
 
-    use log::trace;
+    use itertools::Itertools;
+use log::{info, trace};
     use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
     use merc_lts::LtsMultiAction;
     use merc_lts::StateIndex;
     use merc_lts::random_lts_monolithic;
     use merc_lts::read_lts;
-    use merc_lts::write_aut;
     use merc_lts::write_mcrl2_aut;
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
@@ -568,16 +568,15 @@ mod tests {
 
         // Write the random LTS to a temp file for ltsconvert to process.
         let temp_dir = temp_dir("test_mcrl2_ltscombine").unwrap();
-        let left_path = temp_dir.path().join("left.aut");
-        let right_path = temp_dir.path().join("right.aut");
-        let left_lts_path = temp_dir.path().join("left.lts");
-        let right_lts_path = temp_dir.path().join("right.lts");
 
         let spec_path = temp_dir.path().join("spec.mcrl2");
         let lps_path = temp_dir.path().join("spec.lps");
         let output_path = temp_dir.path().join("output.lts");
         let expected_path = temp_dir.path().join("expected.aut");
         let result_path = temp_dir.path().join("result.aut");
+
+        let hide_file = temp_dir.path().join("hide.txt");
+        let comm_file = temp_dir.path().join("comm.txt");
 
         // Generate a dummy linear process specification to convert the .aut files to .lts format.
         writeln!(&mut File::create(&spec_path).unwrap(), "act i, a, b, c; init delta;").unwrap();
@@ -594,10 +593,14 @@ mod tests {
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
 
+            let left_path = temp_dir.path().join("left.aut");
+            let right_path = temp_dir.path().join("right.aut");
             write_mcrl2_aut(&mut File::create(&left_path).unwrap(), &left_lts).unwrap();
             write_mcrl2_aut(&mut File::create(&right_path).unwrap(), &right_lts).unwrap();
 
             // For mCRL2's ltscombine we need to convert the inputs to the mCRL2 LTS format.
+            let left_lts_path = temp_dir.path().join("left.lts");
+            let right_lts_path = temp_dir.path().join("right.lts");
             let status = traced_status(
                 Command::new(&mcrl2_ltsconvert)
                     .arg("-enone")
@@ -620,19 +623,6 @@ mod tests {
             .expect("Failed to run ltsconvert");
             assert!(status.success(), "ltsconvert failed with status: {status}");
 
-            // Use ltscombine to compute the combined LTS, which we will compare against our implementation's result
-            let status = traced_status(
-                Command::new(&mcrl2_ltscombine)
-                    .arg(&left_lts_path)
-                    .arg(&right_lts_path)
-                    .arg(&output_path),
-            )
-            .expect("Failed to run ltscombine");
-            assert!(status.success(), "ltscombine failed with status: {status}");
-
-            let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
-            write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
-
             // Allow an arbitrary subset of labels
             let labels = left_lts
                 .labels()
@@ -642,18 +632,35 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let num_of_allowed = rng.random_range(0..=labels.len());
-            let _allow = labels
+            let allow = labels
                 .sample(rng, num_of_allowed)
                 .cloned()
                 .map(|s| MultiActionLabel::new(vec![s]))
                 .collect::<Vec<_>>();
+
+            info!("Allow set {{{}}}", allow.iter().format(", "));
+
+            // Use ltscombine to compute the combined LTS, which we will compare against our implementation's result
+            let status = traced_status(
+                Command::new(&mcrl2_ltscombine)
+                    .arg(&left_lts_path)
+                    .arg(&right_lts_path)
+                    .arg(format!("--allow={{{}}}", allow.iter().format(", ")))
+                    .arg(&output_path),
+            )
+            .expect("Failed to run ltscombine");
+            assert!(status.success(), "ltscombine failed with status: {status}");
+
+            let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
+            write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
+
 
             let mut result: LtsBuilderFast<LtsMultiAction> = LtsBuilderFast::new(Vec::new(), Vec::new());
             combine_lts(
                 &mut result,
                 vec![left_lts, right_lts],
                 &vec![],
-                &vec![],
+                &allow,
                 &vec![],
                 &mut Timing::new(),
             )
