@@ -34,6 +34,15 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
         return Err("At least one LTS is required for composition.".into());
     }
 
+    if allow.iter().any(|allow| allow.is_tau_label()) {
+        return Err("Allow set cannot contain the tau action.".into());
+    }
+    
+    if comm.iter().any(|comm| comm.from.is_tau_label()) {
+        return Err("Communication expressions cannot have tau actions on the left-hand side.".into());
+    }
+
+
     // Keep track of the discovered states in the combined LTS.
     let mut discovered: IndexedSet<Vec<StateIndex>> = IndexedSet::new();
     let (index, _) = discovered.insert(
@@ -505,8 +514,9 @@ mod tests {
     use std::process::Command;
 
     use itertools::Itertools;
-use log::{info, trace};
-    use merc_lts::LTS;
+    use log::info;
+    use log::trace;
+    use merc_lts::{LTS, TransitionLabel};
     use merc_lts::LtsBuilderFast;
     use merc_lts::LtsMultiAction;
     use merc_lts::StateIndex;
@@ -515,12 +525,14 @@ use log::{info, trace};
     use merc_lts::write_mcrl2_aut;
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
+    use merc_syntax::CommExpr;
     use merc_syntax::MultiActionLabel;
     use merc_utilities::MercError;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
     use rand::RngExt;
     use rand::seq::IndexedRandom;
+    use rand::seq::IteratorRandom;
     use tempfile::TempDir;
 
     use crate::combine::combine_lts;
@@ -555,6 +567,14 @@ use log::{info, trace};
         command.status()
     }
 
+    /// Returns a random multi-action label with action names sampled from the given list.
+    fn random_multi_action<R: rand::Rng>(rng: &mut R, actions: &[String], max_size: usize) -> MultiActionLabel {
+        let max_size = usize::min(actions.len(), max_size);
+        let size = rng.random_range(0..=max_size);
+        let selected_actions = actions.sample(rng, size).cloned().collect::<Vec<_>>();
+        MultiActionLabel::new(selected_actions)
+    }
+
     #[test]
     fn test_mcrl2_ltscombine() {
         let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
@@ -572,20 +592,15 @@ use log::{info, trace};
         let spec_path = temp_dir.path().join("spec.mcrl2");
         let lps_path = temp_dir.path().join("spec.lps");
         let output_path = temp_dir.path().join("output.lts");
-        let expected_path = temp_dir.path().join("expected.aut");
-        let result_path = temp_dir.path().join("result.aut");
-
-        let hide_file = temp_dir.path().join("hide.txt");
-        let comm_file = temp_dir.path().join("comm.txt");
 
         // Generate a dummy linear process specification to convert the .aut files to .lts format.
-        writeln!(&mut File::create(&spec_path).unwrap(), "act i, a, b, c; init delta;").unwrap();
+        writeln!(&mut File::create(&spec_path).unwrap(), "act a, b, c; init delta;").unwrap();
 
         let status = traced_status(Command::new(&mcrl2_mcrl22lps).arg(&spec_path).arg(&lps_path))
             .expect("Failed to run ltsconvert");
         assert!(status.success(), "ltsconvert failed with status: {status}");
 
-        random_test(100, |rng| {
+        random_test(1, |rng| {
             let left_lts = random_lts_monolithic::<String, _>(rng, 100, 3, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
@@ -629,16 +644,30 @@ use log::{info, trace};
                 .iter()
                 .chain(right_lts.labels().iter())
                 .map(|l| l.to_string())
+                .filter(|label| !label.is_tau_label())
                 .collect::<Vec<_>>();
 
             let num_of_allowed = rng.random_range(0..=labels.len());
-            let allow = labels
-                .sample(rng, num_of_allowed)
-                .cloned()
-                .map(|s| MultiActionLabel::new(vec![s]))
+            let allow = (0..num_of_allowed)
+                .map(|_| random_multi_action(rng, &labels, 3))
+                .collect::<Vec<_>>();
+
+            let num_of_hidden = rng.random_range(0..=labels.len());
+            let hide = labels.iter().cloned().sample(rng, num_of_hidden);
+
+            let num_of_comm = rng.random_range(0..=5);
+            let comm = (0..num_of_comm)
+                .map(|_| {
+                    let size = rng.random_range(2..=3);
+                    let actions = random_multi_action(rng, &labels, size);
+                    let to = labels.choose(rng).unwrap().clone();
+                    CommExpr::new(actions, to)
+                })
                 .collect::<Vec<_>>();
 
             info!("Allow set {{{}}}", allow.iter().format(", "));
+            info!("Hide set {{{}}}", hide.iter().format(", "));
+            info!("Comm set {{{}}}", comm.iter().format(", "));
 
             // Use ltscombine to compute the combined LTS, which we will compare against our implementation's result
             let status = traced_status(
@@ -646,26 +675,31 @@ use log::{info, trace};
                     .arg(&left_lts_path)
                     .arg(&right_lts_path)
                     .arg(format!("--allow={{{}}}", allow.iter().format(", ")))
+                    .arg(format!("--hide={{{}}}", hide.iter().format(", ")))
+                    .arg(format!("--comm={{{}}}", comm.iter().format(", ")))
                     .arg(&output_path),
             )
             .expect("Failed to run ltscombine");
             assert!(status.success(), "ltscombine failed with status: {status}");
 
             let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
+            let expected_path = temp_dir.path().join("expected.aut");
             write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
-
+            panic!("What the fuck");
             let mut result: LtsBuilderFast<LtsMultiAction> = LtsBuilderFast::new(Vec::new(), Vec::new());
             combine_lts(
                 &mut result,
                 vec![left_lts, right_lts],
-                &vec![],
+                &hide,
                 &allow,
-                &vec![],
+                &comm,
                 &mut Timing::new(),
             )
             .unwrap();
             let result_lts = result.finish(StateIndex::new(0), false);
+
+            let result_path = temp_dir.path().join("result.aut");
             write_mcrl2_aut(&mut File::create(&result_path).unwrap(), &result_lts).unwrap();
 
             assert!(

@@ -278,8 +278,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             while let Some(current_ptr) = unsafe { *prev_next_field } {
                 let all_free = unsafe {
                     let data = &*(*current_ptr.as_ptr()).data.get();
-                    data.iter()
-                        .all(|entry| std::ptr::eq(*entry.next, nonexisting_value))
+                    data.iter().all(|entry| std::ptr::eq(*entry.next, nonexisting_value))
                 };
 
                 if all_free {
