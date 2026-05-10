@@ -206,14 +206,14 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                     ptrs.insert(current.as_ptr());
 
                     if let Some(previous) = previous {
-                        *(*previous.as_ptr()).next = nonexisting_value as *mut Entry<T>;
+                        *(*previous.as_ptr()).next = nonexisting_value;
                     }
                     previous = Some(current);
                     count += 1;
                 }
 
                 if let Some(previous) = previous {
-                    *(*previous.as_ptr()).next = nonexisting_value as *mut Entry<T>;
+                    *(*previous.as_ptr()).next = nonexisting_value;
                 }
                 count
             };
@@ -241,7 +241,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 
                 let next = unsafe { Entry::get_next(entry.as_ptr()) };
                 unsafe {
-                    *(*entry.as_ptr()).next = nonexisting_value as *mut Entry<T>;
+                    *(*entry.as_ptr()).next = nonexisting_value;
                 }
                 free_size += 1;
                 current = NonNull::new(next);
@@ -260,7 +260,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                         // This entry is live — it must not look like the sentinel.
                         unsafe {
                             debug_assert!(
-                                *entry.next != nonexisting_value as *mut Entry<T>,
+                                !std::ptr::eq(*entry.next, nonexisting_value),
                                 "Live entry at {entry_ptr:?} has the sentinel value (null in first word). \
                                  This violates the BlockAllocatorSafe contract."
                             );
@@ -275,16 +275,11 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             let mut prev_next_field: *mut Option<NonNull<Block<T, N>>> = &mut guard.head_block;
             let mut removed_blocks = 0;
 
-            loop {
-                let current_ptr = match unsafe { &*prev_next_field } {
-                    Some(ptr) => *ptr,
-                    None => break,
-                };
-
+            while let Some(current_ptr) = unsafe { *prev_next_field } {
                 let all_free = unsafe {
                     let data = &*(*current_ptr.as_ptr()).data.get();
                     data.iter()
-                        .all(|entry| *entry.next == nonexisting_value as *mut Entry<T>)
+                        .all(|entry| std::ptr::eq(*entry.next, nonexisting_value))
                 };
 
                 if all_free {
@@ -316,7 +311,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
             for entry in data {
                 unsafe {
-                    if *entry.next == nonexisting_value as *mut Entry<T> {
+                    if std::ptr::eq(*entry.next, nonexisting_value) {
                         let entry_ptr = NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>);
                         *(*entry_ptr.as_ptr()).next = std::ptr::null_mut();
 
@@ -389,7 +384,7 @@ unsafe impl<T: Send, const N: usize> Send for ThreadLocalAllocState<T, N> {}
 
 /// Implementing this trait for a type `T` asserts that the special sentinel
 /// never occurs as a valid entry.
-/// 
+///
 /// # Safety
 ///
 /// Marker trait asserting that the sentinel value used by [`BlockAllocator`]—
