@@ -736,6 +736,13 @@ pub struct CommExpr {
     pub to: String,
 }
 
+impl CommExpr {
+    /// Creates a new communication expression from a multi-action label and a target action identifier.
+    pub fn new(from: MultiActionLabel, to: String) -> Self {
+        CommExpr { from, to }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct UntypedActionRenameSpec {
     pub data_specification: UntypedDataSpecification,
