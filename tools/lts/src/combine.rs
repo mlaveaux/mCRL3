@@ -37,11 +37,31 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
     if allow.iter().any(|allow| allow.is_tau_label()) {
         return Err("Allow set cannot contain the tau action.".into());
     }
-    
+
     if comm.iter().any(|comm| comm.from.is_tau_label()) {
         return Err("Communication expressions cannot have tau actions on the left-hand side.".into());
     }
 
+    // The left hand side of a communication cannot overlap with any other communication's left hand side.
+    for (i, comm_i) in comm.iter().enumerate() {
+        for (j, comm_j) in comm.iter().enumerate() {
+            if i != j && comm_i.from.actions.iter().any(|a| comm_j.from.actions.contains(a)) {
+                return Err("Communication expressions cannot have overlapping left-hand sides.".into());
+            }
+        }
+    }
+
+    // The right hand side of a communication cannot be in another communication's left hand side.
+    for (i, comm_i) in comm.iter().enumerate() {
+        for (j, comm_j) in comm.iter().enumerate() {
+            if i != j && comm_j.from.actions.contains(&comm_i.to) {
+                return Err(
+                    "Communication expressions cannot have right-hand side in another communication's left-hand side."
+                        .into(),
+                );
+            }
+        }
+    }
 
     // Keep track of the discovered states in the combined LTS.
     let mut discovered: IndexedSet<Vec<StateIndex>> = IndexedSet::new();
@@ -516,10 +536,11 @@ mod tests {
     use itertools::Itertools;
     use log::info;
     use log::trace;
-    use merc_lts::{LTS, TransitionLabel};
+    use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
     use merc_lts::LtsMultiAction;
     use merc_lts::StateIndex;
+    use merc_lts::TransitionLabel;
     use merc_lts::random_lts_monolithic;
     use merc_lts::read_lts;
     use merc_lts::write_mcrl2_aut;
@@ -663,6 +684,7 @@ mod tests {
                     let to = labels.choose(rng).unwrap().clone();
                     CommExpr::new(actions, to)
                 })
+                .filter(|comm| !comm.from.is_tau_label())
                 .collect::<Vec<_>>();
 
             info!("Allow set {{{}}}", allow.iter().format(", "));
@@ -686,7 +708,6 @@ mod tests {
             let expected_path = temp_dir.path().join("expected.aut");
             write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
-            panic!("What the fuck");
             let mut result: LtsBuilderFast<LtsMultiAction> = LtsBuilderFast::new(Vec::new(), Vec::new());
             combine_lts(
                 &mut result,
