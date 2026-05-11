@@ -61,7 +61,11 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
 
 /// Returns a weak bisimulation quotient that additionally removes transitions
 /// subsumed by a one-hidden-step alternative.
-pub fn quotient_lts_weak<L: LTS, P: Partition>(lts: &L, partition: &P, eliminate_tau_loops: bool) -> LabelledTransitionSystem<L::Label> {
+pub fn quotient_lts_weak<L: LTS, P: Partition>(
+    lts: &L,
+    partition: &P,
+    eliminate_tau_loops: bool,
+) -> LabelledTransitionSystem<L::Label> {
     let quotient = quotient_lts_naive(lts, partition, eliminate_tau_loops);
     remove_redundant_transitions(&quotient)
 }
@@ -102,38 +106,48 @@ fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::
 fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex, target: StateIndex) -> bool {
     let mut redundant = false;
 
-    reachability(lts, from, |l| lts.is_hidden_label(l), |middle| {
-        if redundant {
-            return;
-        }
-
-        for transition in lts.outgoing_transitions(middle) {
-            let same_action = if lts.is_hidden_label(label) {
-                lts.is_hidden_label(transition.label)
-            } else {
-                transition.label == label
-            };
-
-            if !same_action {
-                continue;
-            }
-
-            // Skip the exact transition being tested.
-            if middle == from && transition.label == label && transition.to == target {
-                continue;
-            }
-
-            reachability(lts, transition.to, |l| lts.is_hidden_label(l), |reached| {
-                if reached == target {
-                    redundant = true;
-                }
-            });
-
+    reachability(
+        lts,
+        from,
+        |l| lts.is_hidden_label(l),
+        |middle| {
             if redundant {
-                break;
+                return;
             }
-        }
-    });
+
+            for transition in lts.outgoing_transitions(middle) {
+                let same_action = if lts.is_hidden_label(label) {
+                    lts.is_hidden_label(transition.label)
+                } else {
+                    transition.label == label
+                };
+
+                if !same_action {
+                    continue;
+                }
+
+                // Skip the exact transition being tested.
+                if middle == from && transition.label == label && transition.to == target {
+                    continue;
+                }
+
+                reachability(
+                    lts,
+                    transition.to,
+                    |l| lts.is_hidden_label(l),
+                    |reached| {
+                        if reached == target {
+                            redundant = true;
+                        }
+                    },
+                );
+
+                if redundant {
+                    break;
+                }
+            }
+        },
+    );
 
     redundant
 }
