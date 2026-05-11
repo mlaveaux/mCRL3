@@ -1,0 +1,11 @@
+error[E0597]: `i` does not live long enough
+ --> tests/input/aterm_return_lifetime.rs:6:9
+  |
+4 |     let term = {
+  |         ---- borrow later stored here
+5 |         let i = ATermInt::new(42);
+  |             - binding `i` declared here
+6 |         i.inner()
+  |         ^ borrowed value does not live long enough
+7 |     };
+  |     - `i` dropped here while still borrowed
