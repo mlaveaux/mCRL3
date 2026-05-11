@@ -487,9 +487,11 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
             let lts = read_explicit_lts(&path, format, timing)?;
 
             match lts {
-                GenericLts::Aut(aut)|GenericLts::Bcg(aut) => Ok(aut.relabel(|label| LtsMultiAction::from_string(&label))?),
+                GenericLts::Aut(aut) | GenericLts::Bcg(aut) => {
+                    Ok(aut.relabel(|label| LtsMultiAction::from_string(&label))?)
+                }
                 GenericLts::Lts(lts) => Ok(lts),
-            }            
+            }
         })
         .collect::<Result<Vec<LabelledTransitionSystem<LtsMultiAction>>, MercError>>()?;
 

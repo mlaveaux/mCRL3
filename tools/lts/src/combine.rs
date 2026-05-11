@@ -44,7 +44,10 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
 
     for (i, comm_i) in comm.iter().enumerate() {
         if comm_i.from.actions.len() < 2 {
-            return Err(format!("Communication expressions must have at least two actions on the left-hand side, but {comm_i} does not.").into());
+            return Err(format!(
+                "Communication expressions must have at least two actions on the left-hand side, but {comm_i} does not."
+            )
+            .into());
         }
 
         // The left hand side of a communication cannot overlap with any other communication's left hand side.
@@ -693,7 +696,9 @@ mod tests {
                     let to = labels.choose(rng).unwrap().clone();
                     CommExpr::new(actions, to)
                 })
-                .filter(|comm| !comm.from.is_tau_label() && comm.from.actions.contains(&comm.to) && comm.from.actions.len() >= 2)
+                .filter(|comm| {
+                    !comm.from.is_tau_label() && comm.from.actions.contains(&comm.to) && comm.from.actions.len() >= 2
+                })
                 .collect::<Vec<_>>();
 
             comm.sort_unstable();
