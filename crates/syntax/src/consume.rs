@@ -1070,7 +1070,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn CommExprList(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
+    fn CommExprList(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
         match_nodes!(actions.into_children();
             [CommExpr(action), CommExpr(actions)..] => {
                 Ok(iter::once(action).chain(actions).collect())
@@ -1078,7 +1078,7 @@ impl Mcrl2Parser {
         )
     }
 
-    fn CommExprSet(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
+    pub(crate) fn CommExprSet(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
         match_nodes!(actions.into_children();
             [CommExprList(list)] => {
                 Ok(list)
