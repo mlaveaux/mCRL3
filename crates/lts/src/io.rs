@@ -47,6 +47,22 @@ macro_rules! apply_lts_pair {
     };
 }
 
+/// Convenience macro to apply a function to a slice of `GenericLts` when all
+/// are the same variant; returns an error otherwise.
+///
+/// Examples:
+/// - apply_lts_slice!(lts_slice, args, my_fn)
+/// - apply_lts_slice!(lts_slice, args, |lts_vec, args| do_something(lts_vec, args))
+#[macro_export]
+macro_rules! apply_lts_slice {
+    ($lts_slice:expr, $arguments:expr, $f:path) => {
+        $crate::apply_slice_impl($lts_slice, $arguments, $f, $f)
+    };
+    ($lts_slice:expr, $arguments:expr, $f:expr) => {
+        $crate::apply_slice_impl($lts_slice, $arguments, $f, $f)
+    };
+}
+
 /// Explicitly specify the LTS file format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -105,9 +121,7 @@ impl GenericLts {
             _ => unreachable!("Mismatched GenericLts variants in apply_pair; this indicates a programming error"),
         }
     }
-}
 
-impl GenericLts {
     pub fn apply<T, F, G, R>(self, arguments: T, apply_aut: F, apply_lts: G) -> R
     where
         F: FnOnce(LabelledTransitionSystem<String>, T) -> R,
@@ -137,6 +151,50 @@ impl GenericLts {
             GenericLts::Aut(lts) => lts.num_of_transitions(),
             GenericLts::Lts(lts) => lts.num_of_transitions(),
             GenericLts::Bcg(lts) => lts.num_of_transitions(),
+        }
+    }
+}
+
+/// Internal helper function for the `apply_lts_slice!` macro.
+/// Applies a function to a slice of `GenericLts` when all are the same variant.
+pub fn apply_slice<T, FAut, FLts, R>(
+    lts_slice: &[GenericLts],
+    arguments: T,
+    apply_aut: FAut,
+    apply_lts: FLts,
+) -> Result<R, MercError>
+where
+    FAut: FnOnce(Vec<&LabelledTransitionSystem<String>>, T) -> R,
+    FLts: FnOnce(Vec<&LabelledTransitionSystem<LtsMultiAction>>, T) -> R,
+{
+    if lts_slice.is_empty() {
+        return Err("Cannot apply function to empty slice of GenericLts".into());
+    }
+
+    match &lts_slice[0] {
+        GenericLts::Aut(_) | GenericLts::Bcg(_) => {
+            let aut_lts: Result<Vec<&LabelledTransitionSystem<String>>, MercError> = lts_slice
+                .iter()
+                .enumerate()
+                .map(|(idx, lts)| match lts {
+                    GenericLts::Aut(aut) | GenericLts::Bcg(aut) => Ok(aut),
+                    GenericLts::Lts(_) => Err(format!("Expected Aut/Bcg variant at index {}, got Lts", idx).into()),
+                })
+                .collect();
+            Ok(apply_aut(aut_lts?, arguments))
+        }
+        GenericLts::Lts(_) => {
+            let lts_lts: Result<Vec<&LabelledTransitionSystem<LtsMultiAction>>, MercError> = lts_slice
+                .iter()
+                .enumerate()
+                .map(|(idx, lts)| match lts {
+                    GenericLts::Lts(lts_obj) => Ok(lts_obj),
+                    GenericLts::Aut(_) | GenericLts::Bcg(_) => {
+                        Err(format!("Expected Lts variant at index {}, got Aut/Bcg", idx).into())
+                    }
+                })
+                .collect();
+            Ok(apply_lts(lts_lts?, arguments))
         }
     }
 }
