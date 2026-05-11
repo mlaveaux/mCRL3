@@ -61,8 +61,7 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let aterm_stream = BinaryATermReader::new(BufReader::new(reader))?;
     let mut stream = BinaryLddReader::new(storage, aterm_stream)?;
 
-    if ATermRead::read_aterm(&mut stream)?.map(|t| t.protect()) != Some(symbolic_labelled_transition_system_mark())
-    {
+    if ATermRead::read_aterm(&mut stream)?.map(|t| t.protect()) != Some(symbolic_labelled_transition_system_mark()) {
         return Err("Expected symbolic labelled transition system stream".into());
     }
 
