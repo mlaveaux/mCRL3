@@ -105,11 +105,11 @@ impl UntypedPres {
 }
 
 /// Parses a list of communication expressions from the given input string.
-pub fn parse_comm_expr_list(input: &str) -> Result<Vec<CommExpr>, MercError> {
-    let mut result = Mcrl2Parser::parse(Rule::CommExprList, input).map_err(extend_parser_error)?;
-    let root = result.next().expect("Could not parse communication expression list");
+pub fn parse_comm_expr_set(input: &str) -> Result<Vec<CommExpr>, MercError> {
+    let mut result = Mcrl2Parser::parse(Rule::CommExprSet, input).map_err(extend_parser_error)?;
+    let root = result.next().expect("Could not parse communication expression set");
 
-    Ok(Mcrl2Parser::CommExprList(ParseNode::new(root))?)
+    Ok(Mcrl2Parser::CommExprSet(ParseNode::new(root))?)
 }
 
 /// Parses a list of action names from the given input string, for example those used in the hide operator.

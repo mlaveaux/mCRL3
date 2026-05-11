@@ -13,12 +13,12 @@ use merc_io::LargeFormatter;
 use merc_lts::AutStream;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
+use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsFormat;
 use merc_lts::LtsMultiAction;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
-use merc_lts::read_aut;
 use merc_lts::read_explicit_lts;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
@@ -30,7 +30,7 @@ use merc_refinement::refines;
 use merc_syntax::generate_formula;
 use merc_syntax::parse_action_names;
 use merc_syntax::parse_allow_action_names;
-use merc_syntax::parse_comm_expr_list;
+use merc_syntax::parse_comm_expr_set;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -480,22 +480,18 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         guess_lts_format_from_extension(&args.lts[0], None).ok_or("Unknown LTS file format.")?
     };
 
-    if format != LtsFormat::Aut {
-        return Err(MercError::from(
-            "The combine command only works for labelled transition systems in the .aut format.",
-        ));
-    }
-
     let lts_list = args
         .lts
         .iter()
         .map(|path| {
-            let file = File::open(path)?;
-            let lts = read_aut(&file)?;
+            let lts = read_explicit_lts(&path, format, timing)?;
 
-            lts.relabel(|label| LtsMultiAction::from_string(&label))
+            match lts {
+                GenericLts::Aut(aut)|GenericLts::Bcg(aut) => Ok(aut.relabel(|label| LtsMultiAction::from_string(&label))?),
+                GenericLts::Lts(lts) => Ok(lts),
+            }            
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<LabelledTransitionSystem<LtsMultiAction>>, MercError>>()?;
 
     // Parse the hide, allow and comm arguments, if they are provided.
     let hide = match &args.hide {
@@ -509,7 +505,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
     };
 
     let comm = match &args.comm {
-        Some(arg) => parse_comm_expr_list(&arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
+        Some(arg) => parse_comm_expr_set(&arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
         None => Vec::new(),
     };
 

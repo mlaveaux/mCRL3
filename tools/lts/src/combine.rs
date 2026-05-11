@@ -42,8 +42,12 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
         return Err("Communication expressions cannot have tau actions on the left-hand side.".into());
     }
 
-    // The left hand side of a communication cannot overlap with any other communication's left hand side.
     for (i, comm_i) in comm.iter().enumerate() {
+        if comm_i.from.actions.len() < 2 {
+            return Err(format!("Communication expressions must have at least two actions on the left-hand side, but {comm_i} does not.").into());
+        }
+
+        // The left hand side of a communication cannot overlap with any other communication's left hand side.
         for (j, comm_j) in comm.iter().enumerate() {
             if i != j && comm_i.from.actions.iter().any(|a| comm_j.from.actions.contains(a)) {
                 return Err(format!(
@@ -52,10 +56,8 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
                 .into());
             }
         }
-    }
 
-    // The right hand side of a communication cannot be in another communication's left hand side.
-    for (i, comm_i) in comm.iter().enumerate() {
+        // The right hand side of a communication cannot be in another communication's left hand side.
         for (j, comm_j) in comm.iter().enumerate() {
             if i != j && comm_j.from.actions.contains(&comm_i.to) {
                 return Err(
@@ -691,7 +693,7 @@ mod tests {
                     let to = labels.choose(rng).unwrap().clone();
                     CommExpr::new(actions, to)
                 })
-                .filter(|comm| !comm.from.is_tau_label() || comm.from.actions.contains(&comm.to))
+                .filter(|comm| !comm.from.is_tau_label() && comm.from.actions.contains(&comm.to) && comm.from.actions.len() >= 2)
                 .collect::<Vec<_>>();
 
             comm.sort_unstable();
