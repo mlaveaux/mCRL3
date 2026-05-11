@@ -8,6 +8,7 @@ use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilder;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
+use merc_lts::reachability;
 
 use crate::BlockPartition;
 use crate::Partition;
@@ -60,8 +61,8 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
 
 /// Returns a weak bisimulation quotient that additionally removes transitions
 /// subsumed by a one-hidden-step alternative.
-pub fn quotient_lts_weak<L: LTS, P: Partition>(lts: &L, partition: &P) -> LabelledTransitionSystem<L::Label> {
-    let quotient = quotient_lts_naive(lts, partition, true);
+pub fn quotient_lts_weak<L: LTS, P: Partition>(lts: &L, partition: &P, eliminate_tau_loops: bool) -> LabelledTransitionSystem<L::Label> {
+    let quotient = quotient_lts_naive(lts, partition, eliminate_tau_loops);
     remove_redundant_transitions(&quotient)
 }
 
@@ -92,42 +93,49 @@ fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::
 
 /// Returns true when transition `from -label-> target` is redundant.
 ///
-/// A transition `s -a-> t` is redundant when one of these alternatives exists:
-/// - `s -tau-> m -a-> t` (for both hidden and visible `a`)
-/// - `s -a-> m -tau-> t` (only for visible `a`)
+/// A transition `s -a-> u` is redundant iff there exist states `t` and `v` such that:
+/// - `s -tau*-> t`
+/// - `t -a-> v` (for hidden `a`, any hidden transition)
+/// - `v -tau*-> u`
 ///
-/// This matches the mCRL2-style one-intermediate-state elimination rule.
+/// The exact transition `s -a-> u` itself is not considered a witness.
 fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex, target: StateIndex) -> bool {
-    // Check for the existence of `s -tau-> m -a-> t` (for both hidden and visible `a`)
-    if lts
-        .outgoing_transitions(from)
-        .filter(|trans| lts.is_hidden_label(trans.label))
-        .map(|trans| trans.to)
-        .any(|middle| {
-            lts.outgoing_transitions(middle).any(|second| {
-                if lts.is_hidden_label(label) {
-                    lts.is_hidden_label(second.label) && second.to == target
-                } else {
-                    second.label == label && second.to == target
+    let mut redundant = false;
+
+    reachability(lts, from, |l| lts.is_hidden_label(l), |middle| {
+        if redundant {
+            return;
+        }
+
+        for transition in lts.outgoing_transitions(middle) {
+            let same_action = if lts.is_hidden_label(label) {
+                lts.is_hidden_label(transition.label)
+            } else {
+                transition.label == label
+            };
+
+            if !same_action {
+                continue;
+            }
+
+            // Skip the exact transition being tested.
+            if middle == from && transition.label == label && transition.to == target {
+                continue;
+            }
+
+            reachability(lts, transition.to, |l| lts.is_hidden_label(l), |reached| {
+                if reached == target {
+                    redundant = true;
                 }
-            })
-        })
-    {
-        return true;
-    }
+            });
 
-    if lts.is_hidden_label(label) {
-        return false;
-    }
+            if redundant {
+                break;
+            }
+        }
+    });
 
-    // Check for the existence of `s -a-> m -tau-> t` (only for visible `a`)
-    lts.outgoing_transitions(from)
-        .filter(|first| first.label == label)
-        .map(|first| first.to)
-        .any(|middle| {
-            lts.outgoing_transitions(middle)
-                .any(|second| lts.is_hidden_label(second.label) && second.to == target)
-        })
+    redundant
 }
 
 /// Optimised implementation for block partitions.
