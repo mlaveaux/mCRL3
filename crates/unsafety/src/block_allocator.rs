@@ -15,6 +15,7 @@ use thread_local::ThreadLocal;
 use crate::FreeList;
 use crate::FreeListEntry;
 
+/// The number of entries in every free list chunk.
 const FREE_LIST_CHUNK_SIZE: usize = 1000;
 
 /// This is a memory pool or also called fixed-size block allocator for a
@@ -419,11 +420,11 @@ impl<T: Send, const N: usize> AllocBlock<T, N> {
     }
 
     /// Removes free blocks from the underlying block allocator, see [`BlockAllocator::remove_free_blocks`].
-    pub fn remove_free_blocks(&mut self)
+    pub fn remove_free_blocks(&mut self) -> usize
     where
         T: BlockAllocatorSafe,
     {
-        self.block_allocator.remove_free_blocks();
+        self.block_allocator.remove_free_blocks().0
     }
 }
 

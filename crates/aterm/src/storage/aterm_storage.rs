@@ -5,11 +5,12 @@ use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
 use log::debug;
+use rustc_hash::FxBuildHasher;
+
 use merc_unsafety::AllocBlock;
 use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
 use merc_unsafety::StablePointerSet;
-use rustc_hash::FxBuildHasher;
 
 use crate::ATermIndex;
 use crate::ATermRef;

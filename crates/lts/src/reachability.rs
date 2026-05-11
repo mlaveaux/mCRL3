@@ -1,7 +1,7 @@
 use log::trace;
 
-use crate::LabelIndex;
 use crate::LTS;
+use crate::LabelIndex;
 use crate::StateIndex;
 
 /// Performs a reachability analysis on the given LTS using a depth-first search

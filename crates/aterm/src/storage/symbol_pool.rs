@@ -7,11 +7,11 @@ use std::sync::atomic::Ordering;
 use dashmap::DashMap;
 use equivalent::Equivalent;
 use log::debug;
+use rustc_hash::FxBuildHasher;
+
 use merc_unsafety::AllocBlock;
 use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
-use rustc_hash::FxBuildHasher;
-
 use merc_unsafety::StablePointerSet;
 
 use crate::Symb;
