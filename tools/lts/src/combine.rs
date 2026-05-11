@@ -25,9 +25,9 @@ use streaming_iterator::StreamingIterator;
 pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
     builder: &mut B,
     parallel_composition: Vec<L>,
-    hide: &Vec<String>,
-    allow: &Vec<MultiActionLabel>,
-    comm: &Vec<CommExpr>,
+    hide: &[String],
+    allow: &[MultiActionLabel],
+    comm: &[CommExpr],
     timing: &Timing,
 ) -> Result<(), MercError> {
     if parallel_composition.is_empty() {
@@ -100,7 +100,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
                 .as_ref();
 
             // Loop over all subsets of LTSs and their outgoing transitions in the current state vector.
-            let mut iter = ParallelTransitionIter::new(&parallel_composition, &current_state_vector);
+            let mut iter = ParallelTransitionIter::new(&parallel_composition, current_state_vector);
             loop {
                 iter.advance();
                 let Some(transition) = iter.get() else {
@@ -170,13 +170,9 @@ fn communicate(comm: &[CommExpr], action: LtsMultiAction) -> LtsMultiAction {
     let mut actions = action.into_actions().to_vec();
 
     for expr in comm {
-        loop {
-            // Try to find a matching sub-multiset for this communication expression.
-            if let Some(replacement) = find_communication_match(&actions, expr) {
-                actions = replacement;
-            } else {
-                break;
-            }
+        // Try to find a matching sub-multiset for this communication expression.
+        while let Some(replacement) = find_communication_match(&actions, expr) {
+            actions = replacement;
         }
     }
 
@@ -288,7 +284,7 @@ impl CartesianProduct {
     ///
     /// If any length is zero the iterator will yield no elements.
     pub fn new(lengths: Vec<usize>) -> Self {
-        let done = lengths.iter().any(|&len| len == 0);
+        let done = lengths.contains(&0);
         let n = lengths.len();
         CartesianProduct {
             lengths,
