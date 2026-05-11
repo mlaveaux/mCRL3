@@ -46,7 +46,10 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
     for (i, comm_i) in comm.iter().enumerate() {
         for (j, comm_j) in comm.iter().enumerate() {
             if i != j && comm_i.from.actions.iter().any(|a| comm_j.from.actions.contains(a)) {
-                return Err("Communication expressions cannot have overlapping left-hand sides.".into());
+                return Err(format!(
+                    "Communication expressions cannot have overlapping left-hand sides, i.e. {comm_i} and {comm_j}."
+                )
+                .into());
             }
         }
     }
@@ -56,8 +59,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
         for (j, comm_j) in comm.iter().enumerate() {
             if i != j && comm_j.from.actions.contains(&comm_i.to) {
                 return Err(
-                    "Communication expressions cannot have right-hand side in another communication's left-hand side."
-                        .into(),
+                    format!("Communication expressions cannot have right-hand side in another communication's left-hand side, i.e. {comm_i} and {comm_j}.").into(),
                 );
             }
         }
@@ -621,11 +623,11 @@ mod tests {
             .expect("Failed to run ltsconvert");
         assert!(status.success(), "ltsconvert failed with status: {status}");
 
-        random_test(1, |rng| {
-            let left_lts = random_lts_monolithic::<String, _>(rng, 100, 3, 3)
+        random_test(100, |rng| {
+            let left_lts = random_lts_monolithic::<String, _>(rng, 1000, 3, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
-            let right_lts = random_lts_monolithic::<String, _>(rng, 100, 3, 3)
+            let right_lts = random_lts_monolithic::<String, _>(rng, 1000, 3, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
 
@@ -671,20 +673,39 @@ mod tests {
             let num_of_allowed = rng.random_range(0..=labels.len());
             let allow = (0..num_of_allowed)
                 .map(|_| random_multi_action(rng, &labels, 3))
+                .filter(|a| !a.is_tau_label())
                 .collect::<Vec<_>>();
 
             let num_of_hidden = rng.random_range(0..=labels.len());
-            let hide = labels.iter().cloned().sample(rng, num_of_hidden);
+            let hide = labels
+                .iter()
+                .cloned()
+                .filter(|a| !a.is_tau_label())
+                .sample(rng, num_of_hidden);
 
             let num_of_comm = rng.random_range(0..=5);
-            let comm = (0..num_of_comm)
+            let mut comm = (0..num_of_comm)
                 .map(|_| {
                     let size = rng.random_range(2..=3);
                     let actions = random_multi_action(rng, &labels, size);
                     let to = labels.choose(rng).unwrap().clone();
                     CommExpr::new(actions, to)
                 })
-                .filter(|comm| !comm.from.is_tau_label())
+                .filter(|comm| !comm.from.is_tau_label() || comm.from.actions.contains(&comm.to))
+                .collect::<Vec<_>>();
+
+            comm.sort_unstable();
+            comm.dedup();
+
+            // Remove communication expressions with overlapping left-hand sides.
+            let comm = comm
+                .iter()
+                .filter(|&comm_i| {
+                    !comm.iter().any(|comm_j| {
+                        comm_i != comm_j && comm_i.from.actions.iter().any(|a| comm_j.from.actions.contains(a))
+                    })
+                })
+                .cloned()
                 .collect::<Vec<_>>();
 
             info!("Allow set {{{}}}", allow.iter().format(", "));

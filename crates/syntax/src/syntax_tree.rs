@@ -488,7 +488,7 @@ pub enum StateFrm {
 }
 
 /// Represents a multi action label `a | b | c ...`.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct MultiActionLabel {
     pub actions: Vec<String>,
 }
@@ -730,7 +730,7 @@ pub struct Rename {
     pub to: String,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct CommExpr {
     pub from: MultiActionLabel,
     pub to: String,
