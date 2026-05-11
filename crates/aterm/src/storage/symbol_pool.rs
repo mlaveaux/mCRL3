@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 
 use dashmap::DashMap;
 use equivalent::Equivalent;
+use log::debug;
 use merc_unsafety::AllocBlock;
 use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
@@ -87,7 +88,8 @@ impl SymbolPool {
     {
         self.symbols.retain(|element| f(element));
 
-        self.symbols.allocator_mut().remove_free_blocks();
+        let removed_blocks = self.symbols.allocator_mut().remove_free_blocks();
+        debug!("Removed {} blocks from the symbol pool", removed_blocks);
     }
 
     /// Creates a new prefix counter for the given prefix.

@@ -4,6 +4,7 @@ use std::hash::Hash;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;
 
+use log::debug;
 use merc_unsafety::AllocBlock;
 use merc_unsafety::BlockAllocatorSafe;
 use merc_unsafety::StablePointer;
@@ -223,15 +224,17 @@ impl ATermStorage {
             .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 7) }));
 
         // Removes empty blocks after removing entries.
-        self.int_terms.allocator_mut().remove_free_blocks();
-        self.terms_0.allocator_mut().remove_free_blocks();
-        self.terms_1.allocator_mut().remove_free_blocks();
-        self.terms_2.allocator_mut().remove_free_blocks();
-        self.terms_3.allocator_mut().remove_free_blocks();
-        self.terms_4.allocator_mut().remove_free_blocks();
-        self.terms_5.allocator_mut().remove_free_blocks();
-        self.terms_6.allocator_mut().remove_free_blocks();
-        self.terms_7.allocator_mut().remove_free_blocks();
+        let mut blocks_removed = 0;
+        blocks_removed += self.int_terms.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_0.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_1.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_2.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_3.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_4.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_5.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_6.allocator_mut().remove_free_blocks();
+        blocks_removed += self.terms_7.allocator_mut().remove_free_blocks();
+        debug!("Removed {} empty blocks from the fixed-size storage", blocks_removed);
     }
 
     /// Returns the number of stored terms.
