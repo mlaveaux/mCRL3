@@ -172,7 +172,7 @@ struct RefinesArgs {
 #[derive(clap::Args, Debug)]
 struct CombineArgs {
     /// The input LTSs for which the parallel composition should be computed.
-    #[arg(num_args=2..)]
+    #[arg(required=true, num_args=2..)]
     lts: Vec<PathBuf>,
 
     /// Specify the output LTS, if not given, output to stdout.
@@ -211,28 +211,8 @@ fn main() -> Result<ExitCode, MercError> {
     }
 
     let mut timing = Timing::new();
-
-    if let Some(command) = &cli.commands {
-        match command {
-            Commands::Info(args) => {
-                handle_info(args, &mut timing)?;
-            }
-            Commands::Reduce(args) => {
-                handle_reduce(args, &mut timing)?;
-            }
-            Commands::Compare(args) => {
-                handle_compare(args, &mut timing)?;
-            }
-            Commands::Refines(args) => {
-                handle_refinement(args, &mut timing)?;
-            }
-            Commands::Convert(args) => {
-                handle_convert(args, &mut timing)?;
-            }
-            Commands::Combine(args) => {
-                handle_combine(args, &mut timing)?;
-            }
-        }
+    if let Err(x) = handle_command(cli.commands, &mut timing) {
+        println!("Error: {x}");
     }
 
     if cli.timings {
@@ -241,6 +221,33 @@ fn main() -> Result<ExitCode, MercError> {
 
     print_allocator_metrics();
     Ok(ExitCode::SUCCESS)
+}
+
+fn handle_command(commands: Option<Commands>, timing: &mut Timing) -> Result<(), MercError> {
+    if let Some(command) = &commands {
+        match command {
+            Commands::Info(args) => {
+                handle_info(args, timing)?;
+            }
+            Commands::Reduce(args) => {
+                handle_reduce(args, timing)?;
+            }
+            Commands::Compare(args) => {
+                handle_compare(args, timing)?;
+            }
+            Commands::Refines(args) => {
+                handle_refinement(args, timing)?;
+            }
+            Commands::Convert(args) => {
+                handle_convert(args, timing)?;
+            }
+            Commands::Combine(args) => {
+                handle_combine(args, timing)?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Display information about the given LTS.
@@ -492,17 +499,17 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
 
     // Parse the hide, allow and comm arguments, if they are provided.
     let hide = match &args.hide {
-        Some(arg) => parse_action_names(&arg)?,
+        Some(arg) => parse_action_names(&arg).map_err(|e| format!("Failed to parse --hide argument:\n{e}"))?,
         None => Vec::new(),
     };
 
     let allow = match &args.allow {
-        Some(arg) => parse_allow_action_names(&arg)?,
+        Some(arg) => parse_allow_action_names(&arg).map_err(|e| format!("Failed to parse --allow argument:\n{e}"))?,
         None => Vec::new(),
     };
 
     let comm = match &args.comm {
-        Some(arg) => parse_comm_expr_list(&arg)?,
+        Some(arg) => parse_comm_expr_list(&arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
         None => Vec::new(),
     };
 
