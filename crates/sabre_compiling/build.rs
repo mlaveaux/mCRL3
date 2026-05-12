@@ -15,11 +15,8 @@ fn write_env(writer: &mut impl Write, variables: &[&'static str]) -> Result<(), 
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    for (from, to) in env::vars() {
-        println!("{from} to {to}");
-    }
-
-    let mut file = File::create("../../target/Compilation.toml")?;
+    let out_dir = env::var("OUT_DIR")?;
+    let mut file = File::create(std::path::Path::new(&out_dir).join("Compilation.toml"))?;
 
     // Write the development location.
     writeln!(file, "[sabrec]")?;

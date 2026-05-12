@@ -106,7 +106,7 @@ impl RuntimeLibrary {
 
     /// Compiles the library into
     pub fn compile(&mut self) -> Result<Library, MercError> {
-        let compilation_toml = include_str!("../../../target/Compilation.toml").parse::<Table>()?;
+        let compilation_toml = include_str!(concat!(env!("OUT_DIR"), "/Compilation.toml")).parse::<Table>()?;
 
         // Compile the dynamic object.
         info!("Compiling...");
