@@ -1,9 +1,13 @@
+use mcrl2_sys::atermpp::ffi::_aterm;
 use mcrl2_sys::cxx::UniquePtr;
+use mcrl2_sys::lps::ffi::learn_successors_context;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_assignments;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_condition;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_multi_action;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_summation_variables;
+use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context;
+use mcrl2_sys::lps::ffi::mcrl2_lps_enumerate;
 use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_lps_file;
 use mcrl2_sys::lps::ffi::mcrl2_lps_num_of_action_summands;
 use mcrl2_sys::lps::ffi::mcrl2_lps_preprocess_symbolic_exploration;
@@ -122,4 +126,108 @@ pub fn preprocess(lps: &LinearProcessSpecification) -> Result<LinearProcessSpeci
     Ok(LinearProcessSpecification {
         lps: mcrl2_lps_preprocess_symbolic_exploration(lps.lps.as_ref().expect("The lps is always defined"))?,
     })
+}
+
+/// Context for learning successors during symbolic exploration.
+///
+/// Contains a rewriter, substitution (sigma), and enumerator instance
+/// that are shared across all summands.
+pub struct LearnSuccessorsContext {
+    context: UniquePtr<learn_successors_context>,
+}
+
+impl LearnSuccessorsContext {
+    /// Creates a new context from the given LPS specification.
+    pub fn new(lps: &LinearProcessSpecification) -> Self {
+        LearnSuccessorsContext {
+            context: mcrl2_lps_create_learn_successors_context(lps.lps.as_ref().expect("The lps is always defined")),
+        }
+    }
+
+    /// Enumerate all solutions for the summand's condition under the given
+    /// read parameter assignments from the current state.
+    ///
+    /// For each solution found, calls `callback` with a slice of the
+    /// next-state values (one per assignment in the summand).
+    pub fn enumerate<F>(
+        &mut self,
+        summand: &LinearSummand,
+        read_parameters: &[*const _aterm],
+        read_values: &[*const _aterm],
+        callback: F,
+    ) where
+        F: FnMut(&[*const _aterm]),
+    {
+        let condition = summand.condition();
+        let summation_variables = summand.summation_variables();
+        let assignments = summand.assignments();
+        self.enumerate_raw_inner(
+            condition.get(),
+            ATerm::from(summation_variables).get(),
+            ATerm::from(assignments).get(),
+            read_parameters,
+            read_values,
+            callback,
+        );
+    }
+
+    /// Enumerate using stored ATerm values directly.
+    ///
+    /// This is useful when the summand's condition, summation variables, and
+    /// assignments have already been extracted and stored as aterms.
+    pub fn enumerate_raw<F>(
+        &mut self,
+        // Information of the summand
+        condition: &DataExpression,
+        summation_variables: &ATermList<DataVariable>,
+        assignments: &ATermList<ATerm>,
+        // Encodes the current substitution
+        read_parameters: &[*const _aterm],
+        read_values: &[*const _aterm],
+        callback: F,
+    ) where
+        F: FnMut(&[*const _aterm]),
+    {
+        self.enumerate_raw_inner(
+            condition.get(),
+            summation_variables.get(),
+            assignments.get(),
+            read_parameters,
+            read_values,
+            callback,
+        );
+    }
+
+    fn enumerate_raw_inner<F>(
+        &mut self,
+        condition: &_aterm,
+        summation_variables: &_aterm,
+        assignments: &_aterm,
+        read_parameters: &[*const _aterm],
+        read_values: &[*const _aterm],
+        mut callback: F,
+    ) where
+        F: FnMut(&[*const _aterm]),
+    {
+        /// Trampoline that casts the context pointer back to the closure and calls it.
+        fn trampoline(context: *mut u8, values: &[*const _aterm]) {
+            // Safety: `context` points to a live `&mut dyn FnMut(...)` set by the caller below.
+            let callback = unsafe { &mut *(context as *mut &mut dyn FnMut(&[*const _aterm])) };
+            callback(values);
+        }
+
+        let mut callback_ref: &mut dyn FnMut(&[*const _aterm]) = &mut callback;
+        unsafe {
+            mcrl2_lps_enumerate(
+                self.context.as_mut().expect("The context is always defined"),
+                condition,
+                summation_variables,
+                assignments,
+                read_parameters,
+                read_values,
+                &mut callback_ref as *mut _ as *mut u8,
+                trampoline,
+            );
+        }
+    }
 }
