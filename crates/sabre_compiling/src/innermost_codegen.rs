@@ -52,7 +52,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
 
         /// The initialisation function used to pass the GLOBAL_TERM_POOL to the shared library.
         #[unsafe(no_mangle)]
-        pub unsafe extern \"C\" fn initialise(global_term_pool: *mut c_void) {{
+        pub unsafe extern \"C-unwind\" fn initialise(global_term_pool: *mut c_void) {{
             unsafe {{ initialize_thread_local_term_pool(global_term_pool); }}
         }}
 
@@ -62,27 +62,131 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         /// and then tries to match the reconstructed term using the automaton.
         #[unsafe(no_mangle)]
         pub unsafe extern \"C-unwind\" fn rewrite(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
-            let arity = term.arity();
-            if arity == 0 {{
-                // Constant: just try to match directly
-                return match_term(&term.copy());
+            match term.arity() {{
+                0 => rewrite_arity_0(term),
+                1 => rewrite_arity_1(term),
+                2 => rewrite_arity_2(term),
+                3 => rewrite_arity_3(term),
+                4 => rewrite_arity_4(term),
+                5 => rewrite_arity_5(term),
+                6 => rewrite_arity_6(term),
+                7 => rewrite_arity_7(term),
+                _ => rewrite_arity_generic(term),
             }}
-
-            // Rewrite the arguments innermost
-            let args: Vec<DataExpressionFFI> = (0..arity).map(|i| unsafe {{ rewrite(&term.data_arg(i)) }}).collect();
-            let arg_refs: Vec<DataExpressionRefFFI> = args.iter().map(|a| a.copy()).collect();
-
-            // Reconstruct term with rewritten arguments
-            let symbol = term.data_function_symbol().into();
-            let reconstructed = DataExpressionFFI::create(symbol, &arg_refs);
-
-            match_term(&reconstructed.copy())
         }}
 
         /// Try to match the given term using the automaton and apply a rewrite rule.
         /// If no rule matches, returns the term unchanged.
         fn match_term(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
-            rewrite_0(&term.copy())
+            match_0(&term.copy())
+        }}
+
+        /// Rewrite arity 0 (constant term)
+        fn rewrite_arity_0(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            match_term(&term.copy())
+        }}
+
+        /// Rewrite arity 1
+        fn rewrite_arity_1(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 2
+        fn rewrite_arity_2(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let arg1 = rewrite(&term.data_arg(1));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy(), arg1.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 3
+        fn rewrite_arity_3(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let arg1 = rewrite(&term.data_arg(1));
+                let arg2 = rewrite(&term.data_arg(2));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy(), arg1.copy(), arg2.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 4
+        fn rewrite_arity_4(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let arg1 = rewrite(&term.data_arg(1));
+                let arg2 = rewrite(&term.data_arg(2));
+                let arg3 = rewrite(&term.data_arg(3));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy(), arg1.copy(), arg2.copy(), arg3.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 5
+        fn rewrite_arity_5(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let arg1 = rewrite(&term.data_arg(1));
+                let arg2 = rewrite(&term.data_arg(2));
+                let arg3 = rewrite(&term.data_arg(3));
+                let arg4 = rewrite(&term.data_arg(4));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy(), arg1.copy(), arg2.copy(), arg3.copy(), arg4.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 6
+        fn rewrite_arity_6(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let arg1 = rewrite(&term.data_arg(1));
+                let arg2 = rewrite(&term.data_arg(2));
+                let arg3 = rewrite(&term.data_arg(3));
+                let arg4 = rewrite(&term.data_arg(4));
+                let arg5 = rewrite(&term.data_arg(5));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy(), arg1.copy(), arg2.copy(), arg3.copy(), arg4.copy(), arg5.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 7
+        fn rewrite_arity_7(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arg0 = rewrite(&term.data_arg(0));
+                let arg1 = rewrite(&term.data_arg(1));
+                let arg2 = rewrite(&term.data_arg(2));
+                let arg3 = rewrite(&term.data_arg(3));
+                let arg4 = rewrite(&term.data_arg(4));
+                let arg5 = rewrite(&term.data_arg(5));
+                let arg6 = rewrite(&term.data_arg(6));
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &[arg0.copy(), arg1.copy(), arg2.copy(), arg3.copy(), arg4.copy(), arg5.copy(), arg6.copy()]);
+                match_term(&reconstructed.copy())
+            }}
+        }}
+
+        /// Rewrite arity 8 or higher (uses vector allocation)
+        fn rewrite_arity_generic(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+            unsafe {{
+                let arity = term.arity();
+                let args: Vec<DataExpressionFFI> = (0..arity).map(|i| rewrite(&term.data_arg(i))).collect();
+                let arg_refs: Vec<DataExpressionRefFFI> = args.iter().map(|a| a.copy()).collect();
+                let symbol = term.data_function_symbol().into();
+                let reconstructed = DataExpressionFFI::create(symbol, &arg_refs);
+                match_term(&reconstructed.copy())
+            }}
         }}
         "}
     )?;
@@ -100,7 +204,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
 
         writeln!(
             &mut formatter,
-            "fn rewrite_{index}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{"
+            "fn match_{index}(t: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{"
         )?;
 
         // Use the IndentFormatter to properly indent the function body
@@ -153,7 +257,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
                 for (position, to) in &transition.destinations {
                     positions.insert(position.clone());
 
-                    writeln!(&mut formatter, "rewrite_{to}(&t)",)?;
+                    writeln!(&mut formatter, "match_{to}(&t)",)?;
                 }
 
                 drop(case_indent);
