@@ -3,7 +3,7 @@
 //!
 
 #[link(name = "sabre-ffi")]
-unsafe extern "C" {
+unsafe extern "C-unwind" {
     fn initialize_thread_local_term_pool(global_term_pool: *mut c_void);
 
     /// Returns the argument of a data expression.
