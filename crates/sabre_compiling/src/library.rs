@@ -66,7 +66,7 @@ impl RuntimeLibrary {
                 [package]
                 name = \"sabre-generated\"
                 edition = \"2024\"
-                rust-version = \"1.85.0\"
+                rust-version = \"1.87.0\"
                 version = \"1.0.0\"
                 [workspace]
                 
