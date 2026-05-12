@@ -2,6 +2,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use itertools::Itertools;
+use mcrl2_sys::atermpp::ffi::_aterm;
 
 use crate::ATerm;
 use crate::ATermRef;
@@ -48,6 +49,10 @@ impl<T> ATermList<T> {
     /// Returns the tail if it exists, or None if the list is empty.
     pub fn try_tail(&self) -> Option<ATermList<T>> {
         if self.is_empty() { None } else { Some(self.tail()) }
+    }
+
+    pub fn get(&self) -> &_aterm {
+        self.term.get()
     }
 
     /// Casts the list to another type. This does not check whether the cast is
