@@ -417,6 +417,7 @@ mod inner {
 
 pub use inner::*;
 
+/// Substitutes variables in a data expression according to the given substitution sigma.
 pub fn substitute_variables(
     data_expression: &DataExpressionRef,
     sigma: Vec<(DataExpression, DataExpression)>,

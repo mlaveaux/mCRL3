@@ -19,3 +19,5 @@ pub use lps::*;
 pub use pbes::*;
 pub use pbes_expression::*;
 pub use visitor::*;
+
+pub use mcrl2_sys::atermpp::ffi::_aterm;
