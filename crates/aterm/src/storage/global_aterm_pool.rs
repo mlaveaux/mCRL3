@@ -1,5 +1,4 @@
 use std::cell::UnsafeCell;
-use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -8,6 +7,7 @@ use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 
 use log::debug;
+use rustc_hash::FxHashSet;
 
 use merc_io::LargeFormatter;
 use merc_sharedmutex::GlobalBfSharedMutex;
@@ -54,9 +54,9 @@ pub struct GlobalTermPool {
 
     // Data structures used for garbage collection
     /// Used to avoid reallocations for the markings of all terms - uses pointers as keys
-    marked_terms: HashSet<ATermIndex>,
+    marked_terms: FxHashSet<ATermIndex>,
     /// Used to avoid reallocations for the markings of all symbols
-    marked_symbols: HashSet<SymbolIndex>,
+    marked_symbols: FxHashSet<SymbolIndex>,
     /// A stack used to mark terms recursively.
     stack: Vec<ATermIndex>,
 
@@ -85,8 +85,8 @@ impl GlobalTermPool {
             symbol_pool,
             thread_pools: ThreadPoolList(Vec::new()),
             send_term_protection_sets: Vec::new(),
-            marked_terms: HashSet::new(),
-            marked_symbols: HashSet::new(),
+            marked_terms: FxHashSet::default(),
+            marked_symbols: FxHashSet::default(),
             stack: Vec::new(),
             deletion_hooks: Vec::new(),
             garbage_collection: true,
@@ -444,8 +444,8 @@ impl fmt::Display for ProtectionMetrics<'_> {
 
 /// Helper struct to pass private data required to mark term recursively.
 pub struct Marker<'a> {
-    marked_terms: &'a mut HashSet<ATermIndex>,
-    marked_symbols: &'a mut HashSet<SymbolIndex>,
+    marked_terms: &'a mut FxHashSet<ATermIndex>,
+    marked_symbols: &'a mut FxHashSet<SymbolIndex>,
     stack: &'a mut Vec<ATermIndex>,
 }
 
