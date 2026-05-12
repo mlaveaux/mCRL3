@@ -183,13 +183,29 @@ struct CombineArgs {
     #[arg(long)]
     hide: Option<String>,
 
+    /// Reads the hide operator from a file.
+    #[arg(long)]
+    hide_file: Option<PathBuf>,
+
     /// Determines the action names for the allow operator.
     #[arg(long)]
     allow: Option<String>,
 
+    /// Reads the allow operator from a file.
+    #[arg(long)]
+    allow_file: Option<PathBuf>,
+
     /// Determines the communication expressions for the comm operator.
     #[arg(long)]
     comm: Option<String>,
+
+    /// Reads the comm operator from a file.
+    #[arg(long)]
+    comm_file: Option<PathBuf>,
+
+    /// Determines the number of threads to use for the parallel composition, defaults to one.
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
 
     /// Explicitly specify the LTS file format.
     #[arg(long)]
@@ -491,20 +507,35 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         .collect::<Result<Vec<LabelledTransitionSystem<LtsMultiAction>>, MercError>>()?;
 
     // Parse the hide, allow and comm arguments, if they are provided.
-    let hide = match &args.hide {
-        Some(arg) => parse_action_names(arg).map_err(|e| format!("Failed to parse --hide argument:\n{e}"))?,
+    let mut hide = match &args.hide {
+        Some(arg) => parse_action_names(&arg).map_err(|e| format!("Failed to parse --hide argument:\n{e}"))?,
         None => Vec::new(),
     };
 
-    let allow = match &args.allow {
-        Some(arg) => parse_allow_action_names(arg).map_err(|e| format!("Failed to parse --allow argument:\n{e}"))?,
+    if let Some(hide_file) = &args.hide_file {
+        let contents = std::fs::read_to_string(hide_file)?;
+        hide.extend(parse_action_names(&contents).map_err(|e| format!("Failed to parse --hide-file argument:\n{e}"))?);
+    }
+
+    let mut allow = match &args.allow {
+        Some(arg) => parse_allow_action_names(&arg).map_err(|e| format!("Failed to parse --allow argument:\n{e}"))?,
         None => Vec::new(),
     };
 
-    let comm = match &args.comm {
-        Some(arg) => parse_comm_expr_set(arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
+    if let Some(allow_file) = &args.allow_file {
+        let contents = std::fs::read_to_string(allow_file)?;
+        allow.extend(parse_allow_action_names(&contents).map_err(|e| format!("Failed to parse --allow-file argument:\n{e}"))?);
+    }
+
+    let mut comm = match &args.comm {
+        Some(arg) => parse_comm_expr_set(&arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
         None => Vec::new(),
     };
+
+    if let Some(comm_file) = &args.comm_file {
+        let contents = std::fs::read_to_string(comm_file)?;
+        comm.extend(parse_comm_expr_set(&contents).map_err(|e| format!("Failed to parse --comm-file argument:\n{e}"))?);
+    }
 
     if let Some(output) = &args.output {
         let mut builder = AutStream::new(File::create(output)?);
