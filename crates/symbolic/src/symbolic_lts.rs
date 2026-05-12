@@ -83,6 +83,10 @@ impl SymbolicLTS for SymbolicLts {
     fn transition_groups(&self) -> &[impl TransitionGroup] {
         &self.summand_groups
     }
+    
+    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+        &mut self.summand_groups
+    }
 
     fn action_labels(&self) -> &[String] {
         &self.action_labels
@@ -143,7 +147,7 @@ impl TransitionGroup for SummandGroup {
         Some(self.action_label_index)
     }
 
-    fn learn_successors(&self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
+    fn learn_successors(&mut self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
         // All states are already explored.
         Ok(storage.protect(storage.empty_set()))
     }

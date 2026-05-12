@@ -28,6 +28,9 @@ pub trait SymbolicLTS {
     /// Returns an iterator over the summand groups.
     fn transition_groups(&self) -> &[impl TransitionGroup];
 
+    /// Returns a mutable iterator over the summand groups.
+    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup];
+
     /// Returns the action labels for the LTS.
     fn action_labels(&self) -> &[String];
 
@@ -66,11 +69,13 @@ pub trait TransitionGroup: fmt::Debug {
     fn meta(&self) -> &Ldd;
 
     /// Learns the successors of the given set of states.
-    fn learn_successors(&self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError>;
+    /// 
+    /// The `todo` the set of vectors for which successors should be learned.
+    fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError>;
 }
 
 /// Performs reachability analysis using the given initial state and transitions read from a Sylvan file.
-pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &L) -> Result<usize, MercError> {
+pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L) -> Result<usize, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
@@ -86,8 +91,8 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &L) -> Result<us
     while todo != *storage.empty_set() {
         debug!("Iteration {}: todo size = {}", iteration, len(storage, &todo));
         let mut todo1 = storage.empty_set().clone();
-        for transition in lts.transition_groups() {
-            let new_successors = transition.learn_successors(storage, &todo)?;
+        for transition in lts.transition_groups_mut() {
+            let _new_successors = transition.learn_successors(storage, &todo)?;
             
             let result = relational_product(storage, &todo, transition.relation(), transition.meta());
             todo1 = union(storage, &todo1, &result);
