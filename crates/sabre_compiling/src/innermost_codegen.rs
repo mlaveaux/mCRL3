@@ -298,7 +298,7 @@ fn generate_rewrite_term_stack(
                 } else {
                     writeln!(
                         formatter,
-                        "let var_{stack_index} = unsafe {{ rewrite(&DataExpressionFFI::constant(DataExpressionRefFFI::from_ptr({:?}, 0)).copy()) }};",
+                        "let var_{stack_index} = unsafe {{ rewrite(&DataExpressionFFI::constant(DataExpressionRefFFI::from_ptr({:?}, 1)).copy()) }};",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                     )?;
                 }
@@ -324,6 +324,12 @@ fn generate_rewrite_term_stack(
         }
     }) {
         writeln!(formatter, "var_{last}.protect()")?;
+    } else if term_stack.stack_size == 1 && term_stack.variables.len() == 1 {
+        // The right-hand side is only a variable; return the matched subterm
+        // instead of the original term. Mirrors the special case in
+        // InnermostStack::integrate.
+        let (_, stack_index) = &term_stack.variables[0];
+        writeln!(formatter, "var_{stack_index}.protect()")?;
     } else {
         writeln!(formatter, "t.protect()")?;
     }
