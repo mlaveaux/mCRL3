@@ -716,16 +716,20 @@ mod tests {
             info!("Comm set {{{}}}", comm.iter().format(", "));
 
             // Use ltscombine to compute the combined LTS, which we will compare against our implementation's result
-            let status = traced_status(
-                Command::new(&mcrl2_ltscombine)
-                    .arg(&left_lts_path)
-                    .arg(&right_lts_path)
-                    .arg(format!("--allow={{{}}}", allow.iter().format(", ")))
-                    .arg(format!("--hide={{{}}}", hide.iter().format(", ")))
-                    .arg(format!("--comm={{{}}}", comm.iter().format(", ")))
-                    .arg(&output_path),
-            )
-            .expect("Failed to run ltscombine");
+            let mut command = Command::new(&mcrl2_ltscombine);
+            command.arg(&left_lts_path).arg(&right_lts_path);
+            if !allow.is_empty() {
+                command.arg(format!("--allow={{{}}}", allow.iter().format(", ")));
+            }
+            if !hide.is_empty() {
+                command.arg(format!("--hide={{{}}}", hide.iter().format(", ")));
+            }
+            if !comm.is_empty() {
+                command.arg(format!("--comm={{{}}}", comm.iter().format(", ")));
+            }
+            command.arg(&output_path);
+
+            let status = traced_status(&mut command).expect("Failed to run ltscombine");
             assert!(status.success(), "ltscombine failed with status: {status}");
 
             let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
