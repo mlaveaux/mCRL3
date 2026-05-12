@@ -187,7 +187,7 @@ impl SummandGroup {
             })
             .collect::<Result<Vec<Value>, _>>()?;
 
-        let meta = compute_meta(storage, &read_parameter_indices, &write_parameter_indices);
+        let meta = compute_meta(storage, &read_parameter_indices, &write_parameter_indices).0;
         let action_label_index = read_parameters.len() + write_parameters.len(); // The action label is the last index
 
         Ok(Self {

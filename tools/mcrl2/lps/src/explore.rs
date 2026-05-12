@@ -5,42 +5,47 @@ use std::rc::Rc;
 use itertools::Itertools;
 use log::debug;
 use log::trace;
+use streaming_iterator::StreamingIterator;
+
 use mcrl2::_aterm;
-use mcrl2::DataExpressionRef;
 use mcrl2::free_variables_data_expression;
+use mcrl2::preprocess;
 use mcrl2::ATerm;
+use mcrl2::ATermList;
+use mcrl2::DataExpression;
+use mcrl2::DataExpressionRef;
 use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
+use mcrl2::LinearProcessSpecification;
+use mcrl2::LinearSummand;
 use merc_collections::IndexedSet;
-use merc_ldd::Value;
+
 use merc_ldd::compute_meta;
 use merc_ldd::compute_proj;
 use merc_ldd::iterators::iter;
 use merc_ldd::project;
-use merc_ldd::Ldd;
-use merc_ldd::Storage;
 use merc_ldd::singleton;
 use merc_ldd::union;
+use merc_ldd::Ldd;
+use merc_ldd::Storage;
+use merc_ldd::Value;
 use merc_symbolic::reachability;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::TransitionGroup;
 use merc_utilities::MercError;
 
-use mcrl2::preprocess;
-use mcrl2::ATermList;
-use mcrl2::DataExpression;
-use mcrl2::LinearProcessSpecification;
-use mcrl2::LinearSummand;
-
-use streaming_iterator::StreamingIterator;
-
+use merc_utilities::Timing;
 /// Explore the linear process specification using symbolic reachability.
-pub fn explore_lps(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<usize, MercError> {
+pub fn explore_lps(
+    storage: &mut Storage,
+    lps: &LinearProcessSpecification,
+    timing: &Timing,
+) -> Result<usize, MercError> {
     let mut symbolic_lts = SymbolicLinearProcessSpecification::new(storage, lps)?;
 
     debug!("{symbolic_lts:?}");
 
-    reachability(storage, &mut symbolic_lts)
+    reachability(storage, &mut symbolic_lts, timing)
 }
 
 /// This struct provides a [merc_symbolic::SymbolicLTS] interface to a [mcrl2::LinearProcessSpecification].
@@ -80,7 +85,9 @@ impl SymbolicLinearProcessSpecification {
             ));
         }
 
-        let initial_state_vector = lps.initial_process().expressions()
+        let initial_state_vector = lps
+            .initial_process()
+            .expressions()
             .iter()
             .enumerate()
             .map(|(i, param)| {
@@ -122,10 +129,16 @@ struct SymbolicSummand {
 
     /// The indices of the parameters that are read by this summand, which is
     /// used to determine the projection of the state space for this summand.
-    read_indices: Vec<u32>,
+    read_indices: Vec<Value>,
+
+    /// The positions of `read_indices` in the short vector.
+    read_positions: Vec<Value>,
 
     /// The indices of the parameters that are written by this summand.
-    write_indices: Vec<u32>,
+    write_indices: Vec<Value>,
+
+    /// The positions of `write_indices` in the short vector.
+    write_positions: Vec<Value>,
 
     /// The meta information for this summand, which is required by the relational product.
     meta: Ldd,
@@ -203,7 +216,7 @@ impl SymbolicSummand {
         let relation = storage.protect(storage.empty_set());
         let project_ldd = compute_proj(storage, &read_indices);
 
-        let meta = compute_meta(storage, &read_indices, &write_indices);
+        let (meta, read_positions, write_positions) = compute_meta(storage, &read_indices, &write_indices);
 
         Self {
             project_ldd,
@@ -211,6 +224,8 @@ impl SymbolicSummand {
             read_indices,
             write_indices,
             meta,
+            read_positions,
+            write_positions,
             condition,
             summation_variables,
             assignments,
@@ -270,12 +285,15 @@ impl TransitionGroup for SymbolicSummand {
     fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError> {
         let proj = project(storage, todo, &self.project_ldd);
 
-        let mut output = Vec::new();
+        // The values to insert into the LDD.
+        let mut values = Vec::new();
+        let mut interleaved_values = Vec::new();
+        interleaved_values.resize(self.read_positions.len() + self.write_positions.len(), 0);
 
-        let mut state_iter = iter(storage, &proj);
-        while let Some(state) = state_iter.next() {
+        let mut proj_iter = iter(storage, &proj);
+        while let Some(short_state) = proj_iter.next() {
             // Convert the LDD state values back to aterm pointers for the read parameters.
-            let read_values: Vec<*const _aterm> = state
+            let read_values: Vec<*const _aterm> = short_state
                 .iter()
                 .enumerate()
                 .map(|(index, &val)| {
@@ -286,6 +304,12 @@ impl TransitionGroup for SymbolicSummand {
                 })
                 .collect();
 
+            for (offset, value) in self.read_positions.iter().zip(short_state.iter()) {
+                interleaved_values[*offset as usize] = *value;
+            }
+
+            // TODO: The callback should be able to immediately deal with the values.
+            let mut output = Vec::new();
             self.shared.borrow_mut().context.enumerate_raw(
                 &self.condition,
                 &self.summation_variables,
@@ -296,23 +320,30 @@ impl TransitionGroup for SymbolicSummand {
                     output.push(values.to_vec());
                 },
             );
-        }
 
-        let mut result = storage.protect(storage.empty_set());
-        let mut indexed_values = Vec::new();
-        for values in output {
-            trace!("Value {}", values.iter().format_with(", ", |value, f| f(&format_args!("{:?}", ATerm::from_ptr(*value)))));
+            for write in &output {
+                trace!(
+                    "written values {}",
+                    write
+                        .iter()
+                        .format_with(", ", |value, f| f(&format_args!("{:?}", ATerm::from_ptr(*value))))
+                );
 
-            indexed_values.clear();
-            for (i, value) in values.iter().enumerate() {
-                indexed_values.push(
-                    *self.shared.borrow_mut().mapping[self.write_indices[i] as usize]
+                for (offset, (i, value)) in self.write_positions.iter().zip(write.iter().enumerate()) {
+                    interleaved_values[*offset as usize] = *self.shared.borrow_mut().mapping
+                        [self.write_indices[i] as usize]
                         .insert(DataExpression::from(ATerm::from_ptr(*value)))
-                        .0 as Value
-                )
+                        .0 as Value;
+                }
             }
 
-            let cube = singleton(storage, &indexed_values);
+            values.push(interleaved_values.clone());
+        }
+
+        // TODO: In oxidd we could actually immediately compute the union.
+        let mut result = storage.protect(storage.empty_set());
+        for values in values {
+            let cube = singleton(storage, &values);
             result = union(storage, &result, &cube);
         }
 
@@ -330,7 +361,7 @@ impl fmt::Debug for SymbolicLinearProcessSpecification {
         for (i, param) in self._lps.parameters().iter().enumerate() {
             writeln!(f, "    {:?}: {:?}", i, param)?;
         }
-        
+
         writeln!(f, "  Summands:")?;
         for (i, summand) in self.symbolic_summands.iter().enumerate() {
             writeln!(f, "    {:?}: {:?}", i, summand)?;
@@ -341,12 +372,29 @@ impl fmt::Debug for SymbolicLinearProcessSpecification {
 
 impl fmt::Debug for SymbolicSummand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", DataExpressionRef::from(self.condition.copy()).pretty_print(),
-            self.assignments.iter().format_with(", ", |assignment, f| f(&format_args!("{} := {}",
-                DataExpressionRef::from(assignment.arg(0).copy()).pretty_print(),
-                DataExpressionRef::from(assignment.arg(1).copy()).pretty_print()
-            ))))?;
+        writeln!(
+            f,
+            "{} -> {}",
+            DataExpressionRef::from(self.condition.copy()).pretty_print(),
+            self.assignments
+                .iter()
+                .format_with(", ", |assignment, f| f(&format_args!(
+                    "{} := {}",
+                    DataExpressionRef::from(assignment.arg(0).copy()).pretty_print(),
+                    DataExpressionRef::from(assignment.arg(1).copy()).pretty_print()
+                )))
+        )?;
 
-        write!(f, "read: {:?}", self.read_parameters)
+        writeln!(
+            f,
+            "\t\tread: {:?}",
+            self.read_parameters
+                .iter()
+                .format_with(", ", |param, f| f(&format_args!("{:?}", ATerm::from_ptr(*param))))
+        )?;
+        writeln!(f, "\t\tread indices: {:?}", self.read_indices)?;
+        writeln!(f, "\t\tread positions: {:?}", self.read_positions)?;
+        writeln!(f, "\t\twrite indices: {:?}", self.write_indices)?;
+        writeln!(f, "\t\twrite positions: {:?}", self.write_positions)
     }
 }

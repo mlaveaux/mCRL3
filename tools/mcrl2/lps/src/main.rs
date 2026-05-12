@@ -75,7 +75,7 @@ fn main() -> Result<ExitCode, MercError> {
 
     if let Some(command) = cli.commands {
         match command {
-            Commands::Explore(args) => handle_explore(args)?,
+            Commands::Explore(args) => handle_explore(args, &timing)?,
         }
     }
 
@@ -86,7 +86,7 @@ fn main() -> Result<ExitCode, MercError> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn handle_explore(args: ExploreArgs) -> Result<(), MercError> {
+fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
     let format = args.format.unwrap_or(LpsFormat::Lps);
     let lps = match format {
         LpsFormat::Lps => read_lps(&args.filename)?,
@@ -94,7 +94,8 @@ fn handle_explore(args: ExploreArgs) -> Result<(), MercError> {
 
     let mut storage = Storage::new();
 
-    explore_lps(&mut storage, &lps)?;
+    let num_of_states = explore_lps(&mut storage, &lps, timing)?;
+    println!("Number of states: {}", num_of_states);
 
     Ok(())
 }
