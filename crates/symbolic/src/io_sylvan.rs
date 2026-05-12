@@ -31,7 +31,7 @@ pub fn read_sylvan<R: Read>(storage: &mut Storage, stream: &mut R) -> Result<Syl
         let (read_proj, write_proj) = read_projection(stream)?;
         groups.push(SylvanTransitionGroup::new(
             storage.empty_set().clone(),
-            compute_meta(storage, &read_proj, &write_proj),
+            compute_meta(storage, &read_proj, &write_proj).0,
             read_proj,
             write_proj,
         ));
@@ -182,7 +182,7 @@ mod test {
         let mut storage = Storage::new();
         let bytes = include_bytes!("../../../examples/ldd/anderson.4.ldd");
         let lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
-        reachability(&mut storage, &lts).expect("Reachability should work correctly");
+        reachability(&mut storage, &lts, &Timing::new()).expect("Reachability should work correctly");
     }
 
     #[test]

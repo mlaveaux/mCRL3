@@ -1,3 +1,8 @@
+use crate::cache_binary_op;
+use crate::cache_comm_binary_op;
+use crate::cache_terniary_op;
+use crate::cache_unary_function;
+use crate::iterators::*;
 use crate::BinaryOperator;
 use crate::Data;
 use crate::DataRef;
@@ -7,11 +12,6 @@ use crate::Storage;
 use crate::TernaryOperator;
 use crate::UnaryFunction;
 use crate::Value;
-use crate::cache_binary_op;
-use crate::cache_comm_binary_op;
-use crate::cache_terniary_op;
-use crate::cache_unary_function;
-use crate::iterators::*;
 
 use std::cmp::Ordering;
 use std::cmp::{self};
@@ -73,7 +73,11 @@ pub fn project(storage: &mut Storage, set: &LddRef, proj: &LddRef) -> Ldd {
     } else if set == storage.empty_set() {
         storage.empty_set().clone()
     } else {
-        debug_assert_ne!(set, storage.empty_vector(), "proj can be at most as high as set");
+        debug_assert_ne!(
+            set,
+            storage.empty_vector(),
+            "proj can be at most as high as set"
+        );
 
         let DataRef(proj_value, proj_down, _) = storage.get_ref(proj);
         let DataRef(value, down, right) = storage.get_ref(set);
@@ -105,7 +109,11 @@ pub fn project(storage: &mut Storage, set: &LddRef, proj: &LddRef) -> Ldd {
 ///
 /// The read and write projections are arrays of indices that are read,
 /// respectively written, by the corresponding sparse relation.
-pub fn compute_meta(storage: &mut Storage, read_proj: &[Value], write_proj: &[Value]) -> Ldd {
+pub fn compute_meta(
+    storage: &mut Storage,
+    read_proj: &[Value],
+    write_proj: &[Value],
+) -> (Ldd, Vec<Value>, Vec<Value>) {
     // Compute length of meta.
     let length = cmp::max(
         match read_proj.iter().max() {
@@ -119,24 +127,35 @@ pub fn compute_meta(storage: &mut Storage, read_proj: &[Value], write_proj: &[Va
     );
 
     // Convert projection vectors to meta.
+    let mut read_positions = Vec::new();
+    let mut write_positions = Vec::new();
+
     let mut meta: Vec<Value> = Vec::new();
+
+    let mut offset = 0;
     for i in 0..length {
         let read = read_proj.contains(&i);
         let write = write_proj.contains(&i);
-
         if read && write {
             meta.push(3);
             meta.push(4);
+            read_positions.push(offset);
+            write_positions.push(offset + 1);
+            offset += 2;
         } else if read {
             meta.push(1);
+            read_positions.push(offset);
+            offset += 1;
         } else if write {
             meta.push(2);
+            write_positions.push(offset);
+            offset += 1;
         } else {
             meta.push(0);
         }
     }
 
-    singleton(storage, &meta)
+    (singleton(storage, &meta), read_positions, write_positions)
 }
 
 /// Computes the set of vectors reachable in one step from the given set as defined by the sparse relation rel. Requires that meta = compute_meta(read_proj, write_proj).
@@ -191,8 +210,10 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         match set_value.cmp(&rel_value) {
                             Ordering::Less => relational_product(storage, &set_right, rel, meta),
                             Ordering::Equal => {
-                                let down_result = relational_product(storage, &set_down, &rel_down, &meta_down);
-                                let right_result = relational_product(storage, &set_right, &rel_right, meta);
+                                let down_result =
+                                    relational_product(storage, &set_down, &rel_down, &meta_down);
+                                let right_result =
+                                    relational_product(storage, &set_right, &rel_right, meta);
                                 if down_result == *storage.empty_set() {
                                     right_result
                                 } else {
@@ -219,7 +240,8 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         // Write the values present in the relation.
                         let DataRef(rel_value, rel_down, rel_right) = storage.get_ref(rel);
 
-                        let down_result = relational_product(storage, &combined, &rel_down, &meta_down);
+                        let down_result =
+                            relational_product(storage, &combined, &rel_down, &meta_down);
                         let right_result = relational_product(storage, set, &rel_right, meta);
                         if down_result == *storage.empty_set() {
                             right_result
@@ -234,8 +256,10 @@ pub fn relational_product(storage: &mut Storage, set: &LddRef, rel: &LddRef, met
                         match set_value.cmp(&rel_value) {
                             Ordering::Less => relational_product(storage, &set_right, rel, meta),
                             Ordering::Equal => {
-                                let down_result = relational_product(storage, &set_down, &rel_down, &meta_down);
-                                let right_result = relational_product(storage, &set_right, &rel_right, meta);
+                                let down_result =
+                                    relational_product(storage, &set_down, &rel_down, &meta_down);
+                                let right_result =
+                                    relational_product(storage, &set_right, &rel_right, meta);
                                 union(storage, &down_result, &right_result)
                             }
                             Ordering::Greater => relational_product(storage, set, &rel_right, meta),
@@ -434,8 +458,8 @@ mod tests {
 
     use merc_utilities::random_test;
 
-    use crate::LddDisplay;
     use crate::test_utility::*;
+    use crate::LddDisplay;
 
     // Compare the LDD element_of implementation for random inputs.
     #[test]
@@ -470,7 +494,10 @@ mod tests {
             for _ in 0..10 {
                 let len = rng.random_range(length + 1..20);
                 let short_vector = random_vector(rng, len, 10);
-                assert!(!element_of(&storage, &short_vector, &ldd), "Found longer vector in ldd");
+                assert!(
+                    !element_of(&storage, &short_vector, &ldd),
+                    "Found longer vector in ldd"
+                );
             }
 
             // Try vectors of correct size with both the set and ldd.
@@ -557,7 +584,11 @@ mod tests {
             let mut it = iter(&storage, &ldd);
             let result = it.next().unwrap();
             assert_eq!(vector, *result, "Contained vector did not match expected");
-            assert_eq!(it.next(), None, "The ldd should not contain any other vector");
+            assert_eq!(
+                it.next(),
+                None,
+                "The ldd should not contain any other vector"
+            );
         });
     }
 
@@ -571,7 +602,11 @@ mod tests {
             let set = random_vector_set(rng, 32, 10, 10);
             let ldd = from_iter(&mut storage, set.iter());
 
-            assert_eq!(set.len(), len(&mut storage, &ldd), "Length did not match expected set");
+            assert_eq!(
+                set.len(),
+                len(&mut storage, &ldd),
+                "Length did not match expected set"
+            );
         });
     }
 
@@ -752,7 +787,11 @@ mod tests {
             // Check the other way around
             let mut iter = iter(&storage, &result);
             while let Some(res) = iter.next() {
-                assert!(expected.contains(res), "Result unexpectedly contains vector {:?}.", res);
+                assert!(
+                    expected.contains(res),
+                    "Result unexpectedly contains vector {:?}.",
+                    res
+                );
             }
         });
     }
@@ -777,7 +816,10 @@ mod tests {
                 expected_result.insert(project_vector(element, &proj));
             }
             let expected = from_iter(&mut storage, expected_result.iter());
-            assert_eq!(result, expected, "projected result does not match vector projection.");
+            assert_eq!(
+                result, expected,
+                "projected result does not match vector projection."
+            );
         });
     }
 
@@ -801,7 +843,10 @@ mod tests {
             let expected = from_iter(&mut storage, expected_result.iter());
 
             print_differences(&storage, &result, &expected);
-            assert_eq!(result, expected, "appended result does not match vector append");
+            assert_eq!(
+                result, expected,
+                "appended result does not match vector append"
+            );
         });
     }
 }
