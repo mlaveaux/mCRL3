@@ -9,6 +9,7 @@ use merc_sabre::NaiveRewriter;
 use merc_sabre::RewriteEngine;
 use merc_sabre::RewriteSpecification;
 use merc_sabre::SabreRewriter;
+use merc_sabre_compiling::SabreCompilingRewriter;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -17,6 +18,8 @@ use merc_utilities::Timing;
 pub enum Rewriter {
     Naive,
     Innermost,
+    /// A variant of innermost that generates Rust code for the rewrite rules and compiles it to a dynamic library.
+    InnermostCompiling,
     Sabre,
 }
 
@@ -43,6 +46,17 @@ pub fn rewrite_rec(
             }
             Rewriter::Innermost => {
                 let mut inner = InnermostRewriter::new(spec);
+
+                for term in syntax_terms {
+                    let term = to_untyped_data_expression(term.clone(), None);
+                    let result = inner.rewrite(&term);
+                    if output {
+                        println!("{}", result)
+                    }
+                }
+            }
+            Rewriter::InnermostCompiling => {
+                let mut inner = SabreCompilingRewriter::new(spec, true, false)?;
 
                 for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);

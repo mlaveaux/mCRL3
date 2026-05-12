@@ -48,7 +48,9 @@ pub unsafe extern "C-unwind" fn data_expression_arg<'a>(
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C-unwind" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<'a>) -> DataFunctionSymbolRefFFI<'a> {
+pub unsafe extern "C-unwind" fn data_expression_symbol<'a>(
+    term: &DataExpressionRefFFI<'a>,
+) -> DataFunctionSymbolRefFFI<'a> {
     unsafe {
         DataFunctionSymbolRefFFI::from_index(
             DataExpressionRef::from(ATermRef::from_index(term.shared()))
