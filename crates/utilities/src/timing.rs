@@ -33,7 +33,7 @@ impl Timing {
         }
     }
 
-    /// Starts a new timer with the given name.
+    /// Measures the time taken for the given function and registers it under the given name.
     pub fn measure<F, O>(&self, name: &str, function: F) -> O
     where
         F: FnOnce() -> O,
