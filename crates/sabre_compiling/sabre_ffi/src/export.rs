@@ -19,7 +19,7 @@ use crate::DataFunctionSymbolRefFFI;
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn initialize_thread_local_term_pool(global_term_pool: *mut c_void) {
+pub unsafe extern "C-unwind" fn initialize_thread_local_term_pool(global_term_pool: *mut c_void) {
     unsafe {
         THREAD_TERM_POOL.with_borrow_mut(|tp| {
             tp.set_global_term_pool(global_term_pool as *mut GlobalBfSharedMutex<GlobalTermPool>)
@@ -31,7 +31,7 @@ pub unsafe extern "C" fn initialize_thread_local_term_pool(global_term_pool: *mu
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn data_expression_arg<'a>(
+pub unsafe extern "C-unwind" fn data_expression_arg<'a>(
     term: &DataExpressionRefFFI<'a>,
     index: usize,
 ) -> DataExpressionRefFFI<'a> {
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn data_expression_arg<'a>(
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<'a>) -> DataFunctionSymbolRefFFI<'a> {
+pub unsafe extern "C-unwind" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<'a>) -> DataFunctionSymbolRefFFI<'a> {
     unsafe {
         DataFunctionSymbolRefFFI::from_index(
             DataExpressionRef::from(ATermRef::from_index(term.shared()))
@@ -62,7 +62,7 @@ pub unsafe extern "C" fn data_expression_symbol<'a>(term: &DataExpressionRefFFI<
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn data_expression_arity(term: &DataExpressionRefFFI<'_>) -> usize {
+pub unsafe extern "C-unwind" fn data_expression_arity(term: &DataExpressionRefFFI<'_>) -> usize {
     unsafe {
         DataExpressionRef::from(ATermRef::from_index(term.shared()))
             .data_arguments()
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn data_expression_arity(term: &DataExpressionRefFFI<'_>) 
 ///
 /// See the documentation in the import module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn data_expression_protect(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {
+pub unsafe extern "C-unwind" fn data_expression_protect(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {
     unsafe {
         let t = ATermRef::from_index(term.shared()).protect();
 

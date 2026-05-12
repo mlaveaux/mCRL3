@@ -61,7 +61,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         /// First rewrites all arguments to normal form, reconstructs the term,
         /// and then tries to match the reconstructed term using the automaton.
         #[unsafe(no_mangle)]
-        pub unsafe extern \"C\" fn rewrite(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
+        pub unsafe extern \"C-unwind\" fn rewrite(term: &DataExpressionRefFFI<'_>) -> DataExpressionFFI {{
             let arity = term.arity();
             if arity == 0 {{
                 // Constant: just try to match directly
