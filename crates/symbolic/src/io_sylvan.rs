@@ -99,6 +99,10 @@ impl SymbolicLTS for SylvanLts {
         &self.transition_groups
     }
 
+    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+        &mut self.transition_groups
+    }
+
     fn action_labels(&self) -> &[String] {
         // A Sylvan LTS does not have action labels.
         &[]
@@ -151,7 +155,7 @@ impl TransitionGroup for SylvanTransitionGroup {
         &self.meta
     }
 
-    fn learn_successors(&self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
+    fn learn_successors(&mut self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
         // All states are already explored.
         Ok(storage.protect(storage.empty_set()))
     }
