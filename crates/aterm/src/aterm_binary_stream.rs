@@ -155,7 +155,7 @@ impl<W: Write> BinaryATermWriter<W> {
 
         let mut function_symbols = Protected::new(IndexedSet::new());
         // The term with function symbol index 0 indicates the end of the stream
-        let end_of_stream_symbol = Symbol::new(String::new(), 0);
+        let end_of_stream_symbol = Symbol::new("end_of_stream".to_string(), 0);
         function_symbols.write().insert(end_of_stream_symbol.copy());
 
         Ok(Self {
@@ -350,7 +350,7 @@ impl<R: Read> BinaryATermReader<R> {
 
         // The term with function symbol index 0 indicates the end of the stream
         let mut function_symbols = Protected::new(Vec::new());
-        let end_of_stream_symbol = Symbol::new(String::new(), 0);
+        let end_of_stream_symbol = Symbol::new("end_of_stream".to_string(), 0);
         function_symbols.write().push(end_of_stream_symbol.copy());
 
         Ok(Self {
@@ -456,7 +456,6 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         // When the arity is zero, no bits are read for the arguments.
                         let num_of_bits = if symbol.arity() > 0 { self.term_index_width() } else { 0 };
                         let mut write_terms = self.terms.write();
-                        for _ in 0..symbol.arity() {}
 
                         let term = ATerm::try_with_iter(
                             symbol,
