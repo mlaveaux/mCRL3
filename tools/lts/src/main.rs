@@ -491,21 +491,6 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
 fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercError> {
     let format = guess_lts_format_from_extension(&args.lts[0], args.format).ok_or("Unknown LTS file format.")?;
 
-    let lts_list = args
-        .lts
-        .iter()
-        .map(|path| {
-            let lts = read_explicit_lts(path, format, timing)?;
-
-            match lts {
-                GenericLts::Aut(aut) | GenericLts::Bcg(aut) => {
-                    Ok(aut.relabel(|label| LtsMultiAction::from_string(&label))?)
-                }
-                GenericLts::Lts(lts) => Ok(lts),
-            }
-        })
-        .collect::<Result<Vec<LabelledTransitionSystem<LtsMultiAction>>, MercError>>()?;
-
     // Parse the hide, allow and comm arguments, if they are provided.
     let mut hide = match &args.hide {
         Some(arg) => parse_action_names(&arg).map_err(|e| format!("Failed to parse --hide argument:\n{e}"))?,
@@ -513,6 +498,12 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
     };
 
     if let Some(hide_file) = &args.hide_file {
+        if !hide_file.exists() {
+            return Err(format!("--hide-file path does not exist: {}", hide_file.display()).into());
+        }
+        if !hide_file.is_file() {
+            return Err(format!("--hide-file path is not a file: {}", hide_file.display()).into());
+        }
         let contents = std::fs::read_to_string(hide_file)?;
         hide.extend(parse_action_names(&contents).map_err(|e| format!("Failed to parse --hide-file argument:\n{e}"))?);
     }
@@ -523,8 +514,16 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
     };
 
     if let Some(allow_file) = &args.allow_file {
+        if !allow_file.exists() {
+            return Err(format!("--allow-file path does not exist: {}", allow_file.display()).into());
+        }
+        if !allow_file.is_file() {
+            return Err(format!("--allow-file path is not a file: {}", allow_file.display()).into());
+        }
         let contents = std::fs::read_to_string(allow_file)?;
-        allow.extend(parse_allow_action_names(&contents).map_err(|e| format!("Failed to parse --allow-file argument:\n{e}"))?);
+        allow.extend(
+            parse_allow_action_names(&contents).map_err(|e| format!("Failed to parse --allow-file argument:\n{e}"))?,
+        );
     }
 
     let mut comm = match &args.comm {
@@ -533,9 +532,30 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
     };
 
     if let Some(comm_file) = &args.comm_file {
+        if !comm_file.exists() {
+            return Err(format!("--comm-file path does not exist: {}", comm_file.display()).into());
+        }
+        if !comm_file.is_file() {
+            return Err(format!("--comm-file path is not a file: {}", comm_file.display()).into());
+        }
         let contents = std::fs::read_to_string(comm_file)?;
         comm.extend(parse_comm_expr_set(&contents).map_err(|e| format!("Failed to parse --comm-file argument:\n{e}"))?);
     }
+
+    let lts_list = args
+        .lts
+        .iter()
+        .map(|path| {
+            let lts = read_explicit_lts(&path, format, timing)?;
+
+            match lts {
+                GenericLts::Aut(aut) | GenericLts::Bcg(aut) => {
+                    Ok(aut.relabel(|label| LtsMultiAction::from_string(&label))?)
+                }
+                GenericLts::Lts(lts) => Ok(lts),
+            }
+        })
+        .collect::<Result<Vec<LabelledTransitionSystem<LtsMultiAction>>, MercError>>()?;
 
     if let Some(output) = &args.output {
         let mut builder = AutStream::new(File::create(output)?);
