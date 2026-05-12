@@ -335,9 +335,9 @@ impl TransitionGroup for SymbolicSummand {
                         .insert(DataExpression::from(ATerm::from_ptr(*value)))
                         .0 as Value;
                 }
-            }
 
-            values.push(interleaved_values.clone());
+                values.push(interleaved_values.clone());
+            }
         }
 
         // TODO: In oxidd we could actually immediately compute the union.
