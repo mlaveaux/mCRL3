@@ -245,13 +245,13 @@ impl ATerm {
     }
 
     /// Creates an ATerm from a raw pointer. It will be protected on creation.
-    pub(crate) fn from_ptr(term: *const ffi::_aterm) -> Self {
+    pub fn from_ptr(term: *const ffi::_aterm) -> Self {
         debug_assert!(!term.is_null(), "Cannot create ATerm from null ptr");
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect(term))
     }
 
     /// Obtains the underlying pointer
-    pub(crate) fn get(&self) -> &_aterm {
+    pub fn get(&self) -> &_aterm {
         self.term.get()
     }
 
@@ -266,7 +266,7 @@ impl ATerm {
     }
 
     /// Returns the address of the underlying aterm
-    pub(crate) fn address(&self) -> *const ffi::_aterm {
+    pub fn address(&self) -> *const ffi::_aterm {
         self.term.term
     }
 }
