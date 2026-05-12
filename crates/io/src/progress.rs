@@ -44,4 +44,11 @@ impl<T> TimeProgress<T> {
             *self.last_update.borrow_mut() = now;
         }
     }
+
+    /// Returns true iff the progress tracker is due for an update.
+    pub fn is_due(&self) -> bool {
+        let now = Instant::now();
+        let last = *self.last_update.borrow();
+        now.duration_since(last) >= self.interval
+    }
 }

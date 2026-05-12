@@ -5,14 +5,15 @@ use log::info;
 use log::trace;
 use merc_data::DataExpression;
 use merc_io::TimeProgress;
-use merc_ldd::Ldd;
-use merc_ldd::LddDisplay;
-use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_ldd::minus;
 use merc_ldd::relational_product;
 use merc_ldd::union;
+use merc_ldd::Ldd;
+use merc_ldd::LddDisplay;
+use merc_ldd::Storage;
 use merc_utilities::MercError;
+use merc_utilities::Timing;
 
 use crate::DependencyGraph;
 use crate::Relation;
@@ -69,42 +70,62 @@ pub trait TransitionGroup: fmt::Debug {
     fn meta(&self) -> &Ldd;
 
     /// Learns the successors of the given set of states.
-    /// 
+    ///
     /// The `todo` the set of vectors for which successors should be learned.
     fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError>;
 }
 
 /// Performs reachability analysis using the given initial state and transitions read from a Sylvan file.
-pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L) -> Result<usize, MercError> {
+pub fn reachability<L: SymbolicLTS>(
+    storage: &mut Storage,
+    lts: &mut L,
+    timing: &Timing,
+) -> Result<usize, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
 
     trace!("states = {}", LddDisplay::new(storage, &states));
     let progress = TimeProgress::new(
-        |iteration: usize| {
-            info!("Iteration {}", iteration);
+        |(iteration, num_of_states)| {
+            info!("Iteration {}, found {} states", iteration, num_of_states);
         },
         1,
     );
 
-    while todo != *storage.empty_set() {
-        debug!("Iteration {}: todo size = {}", iteration, len(storage, &todo));
-        let mut todo1 = storage.empty_set().clone();
-        for transition in lts.transition_groups_mut() {
-            let _new_successors = transition.learn_successors(storage, &todo)?;
-            
-            let result = relational_product(storage, &todo, transition.relation(), transition.meta());
-            todo1 = union(storage, &todo1, &result);
+    timing.measure("reachability", || {
+        while todo != *storage.empty_set() {
+            debug!(
+                "Iteration {}: todo size = {}",
+                iteration,
+                len(storage, &todo)
+            );
+
+            // Learn successors for all the transition groups and compute the next todo set.
+            let mut todo1 = storage.empty_set().clone();
+            for (i, transition) in lts.transition_groups_mut().iter_mut().enumerate() {
+                trace!(
+                    "Learning successors for transition group {} with relation {}",
+                    i,
+                    LddDisplay::new(storage, transition.relation())
+                );
+                let _new_successors = transition.learn_successors(storage, &todo);
+
+                let result =
+                    relational_product(storage, &todo, transition.relation(), transition.meta());
+                todo1 = union(storage, &todo1, &result);
+            }
+
+            trace!("todo1 = {}", LddDisplay::new(storage, &todo1));
+
+            todo = minus(storage, &todo1, &states);
+            states = union(storage, &states, &todo);
+            if progress.is_due() {
+                progress.print((iteration, len(storage, &states)));
+            }
+            iteration += 1;
         }
 
-        trace!("todo1 = {}", LddDisplay::new(storage, &todo1));
-
-        todo = minus(storage, &todo1, &states);
-        states = union(storage, &states, &todo);
-        progress.print(iteration);
-        iteration += 1;
-    }
-
-    Ok(len(storage, &states))
+        Ok(len(storage, &states))
+    })
 }
