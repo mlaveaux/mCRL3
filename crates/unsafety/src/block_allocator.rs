@@ -308,12 +308,15 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
         let mut chunk_len = 0usize;
 
         for block_ptr in Self::iter_blocks(&guard) {
-            let data = unsafe { &*(*block_ptr.as_ptr()).data.get() };
-            for entry in data {
+            // Walk entries via raw pointers; deriving `*mut` from `&Entry<T>`
+            // would violate Stacked Borrows when we write through that pointer.
+            let data_ptr = unsafe { (*block_ptr.as_ptr()).data.get() as *mut Entry<T> };
+            for i in 0..N {
                 unsafe {
-                    if std::ptr::eq(*entry.next, nonexisting_value) {
-                        let entry_ptr = NonNull::new_unchecked(entry as *const Entry<T> as *mut Entry<T>);
-                        *(*entry_ptr.as_ptr()).next = std::ptr::null_mut();
+                    let entry_ptr = data_ptr.add(i);
+                    if std::ptr::eq(*(*entry_ptr).next, nonexisting_value) {
+                        *(*entry_ptr).next = std::ptr::null_mut();
+                        let entry_ptr = NonNull::new_unchecked(entry_ptr);
 
                         if let Some(tail) = chunk_tail {
                             *(*tail.as_ptr()).next = entry_ptr.as_ptr();
