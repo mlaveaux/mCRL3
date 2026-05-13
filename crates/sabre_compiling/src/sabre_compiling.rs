@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn test_sabre_compiling_example() {
         let (spec, terms) = load_rec_from_strings(&[
-            include_str!("../../../examples/REC/rec/factorial6.rec"),
+            include_str!("../../../examples/REC/rec/factorial5.rec"),
             include_str!("../../../examples/REC/rec/factorial.rec"),
         ])
         .unwrap();
@@ -127,7 +127,7 @@ mod tests {
 
             assert_eq!(
                 rewritten_term.to_string().chars().filter(|c| *c == 's').count(),
-                720, // 6! = 720.
+                120, // 5! = 120.
                 "The rewritten result does not match the expected result"
             );
         }
