@@ -140,7 +140,7 @@ fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {
         PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
     };
     let algorithm = SymmetryAlgorithm::new(&pbes, args.print_srf)?;
-    let _: () = if let Some(permutation) = &args.permutation {
+    if let Some(permutation) = &args.permutation {
         let pi = if permutation.trim_start().starts_with("[") {
             Permutation::from_mapping_notation(permutation)?
         } else {
@@ -180,7 +180,8 @@ fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {
                 }
             }
         }
-    };
+    }
+    
     Ok(())
 }
 

@@ -443,7 +443,11 @@ impl ATermSend {
 
 impl Drop for ATermSend {
     fn drop(&mut self) {
-        self.protection_set.lock().expect("Lock poisoned!").unprotect(self.root);
+        let mut guard = match self.protection_set.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard.unprotect(self.root);
     }
 }
 
