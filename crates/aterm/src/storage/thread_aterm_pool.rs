@@ -103,7 +103,7 @@ impl ThreadTermPool {
 
         if inserted {
             // Intentially called after the guard is dropped.
-            self.trigger_garbage_collection();
+            self.decrement_garbage_collection_counter();
         }
 
         result
@@ -115,6 +115,9 @@ impl ThreadTermPool {
         symbol: &'b S,
         args: &'b [T],
     ) -> Return<ATermRef<'static>> {
+        // We cannot perform garbage collection afterwards since the guard is alive in the return.
+        self.trigger_garbage_collection();
+
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
         let mut arguments = self.tmp_arguments.borrow_mut();
 
@@ -126,18 +129,10 @@ impl ThreadTermPool {
         }
 
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
-
-        let result = unsafe {
-            // SAFETY: The guard is guaranteed to live as long as the returned term, since it is thread local and Return cannot be sended to other threads.
-            Return::new(
-                std::mem::transmute::<RecursiveLockReadGuard<'_, _>, RecursiveLockReadGuard<'static, _>>(guard),
-                ATermRef::from_index(&index),
-            )
-        };
+        let result = self.make_return(index, guard);
 
         if inserted {
-            // Intentially called after the guard is dropped.
-            self.trigger_garbage_collection();
+            self.decrement_garbage_collection_counter();
         }
 
         result
@@ -151,7 +146,7 @@ impl ThreadTermPool {
 
         if inserted {
             // Intentially called after the guard is dropped.
-            self.trigger_garbage_collection();
+            self.decrement_garbage_collection_counter();
         }
 
         result
@@ -179,7 +174,7 @@ impl ThreadTermPool {
 
         if inserted {
             // Intentially called after the guard is dropped.
-            self.trigger_garbage_collection();
+            self.decrement_garbage_collection_counter();
         }
 
         result
@@ -202,12 +197,11 @@ impl ThreadTermPool {
         }
 
         let (index, inserted) = guard.create_term_array(symbol, &arguments);
-
         let result = Ok(self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) }));
 
         if inserted {
             // Intentially called after the guard is dropped.
-            self.trigger_garbage_collection();
+            self.decrement_garbage_collection_counter();
         }
 
         result
@@ -244,7 +238,7 @@ impl ThreadTermPool {
 
         if inserted {
             // Intentially called after the guard is dropped.
-            self.trigger_garbage_collection();
+            self.decrement_garbage_collection_counter();
         }
 
         result
@@ -387,10 +381,23 @@ impl ThreadTermPool {
         guard.automatic_garbage_collection(enabled);
     }
 
-    /// Forces a garbage collection to occur, regardless of the current counter value.
-    pub fn collect_garbage(&self) {
+    /// Forces a garbage collection to occur, regardless of the current counter value or whether it is enabled.
+    pub fn force_collect_garbage(&self) {
         let mut guard = self.term_pool.write().expect("Lock poisoned!");
         guard.collect_garbage();
+    }
+
+    /// Perform a garbage collection.
+    pub fn collect_garbage(&self) {
+        if !self.term_pool.is_locked() {
+            // Trigger garbage collection and acquire a new counter value.
+            let value = self
+                .term_pool
+                .write()
+                .expect("Lock poisoned!")
+                .trigger_garbage_collection();
+            self.garbage_collection_counter.set(value);
+        }
     }
 
     /// Triggers delayed garbage collection if the counter has reached zero.
@@ -409,6 +416,22 @@ impl ThreadTermPool {
         );
         if self.garbage_collection_counter.get() == 0 {
             self.trigger_garbage_collection();
+        }
+    }
+
+    /// Decrements the garbage collection counter and triggers garbage collection if necessary.
+    fn decrement_garbage_collection_counter(&self) {
+        // If the term was newly inserted, decrease the garbage collection counter and trigger garbage collection if necessary
+        self.garbage_collection_counter
+            .set(self.garbage_collection_counter.get().saturating_sub(1));
+
+        self.trigger_garbage_collection();
+    }
+
+    /// Triggers garbage collection if the counter has reached zero.
+    fn trigger_garbage_collection(&self) {
+        if self.garbage_collection_counter.get() == 0 && !self.term_pool.is_locked() {
+            self.collect_garbage();
         }
     }
 
@@ -436,22 +459,19 @@ impl ThreadTermPool {
             .replace(root, term);
     }
 
-    /// This triggers the global garbage collection based on heuristics.
-    fn trigger_garbage_collection(&self) {
-        // If the term was newly inserted, decrease the garbage collection counter and trigger garbage collection if necessary
-        let mut value = self.garbage_collection_counter.get();
-        value = value.saturating_sub(1);
-
-        if value == 0 && !self.term_pool.is_locked() {
-            // Trigger garbage collection and acquire a new counter value.
-            value = self
-                .term_pool
-                .write()
-                .expect("Lock poisoned!")
-                .trigger_garbage_collection();
+    /// Creates a Return for the given index and guard.
+    fn make_return(
+        &self,
+        index: ATermIndex,
+        guard: RecursiveLockReadGuard<'_, GlobalTermPool>,
+    ) -> Return<ATermRef<'static>> {
+        // SAFETY: The guard is guaranteed to live as long as the returned term, since it is thread local and Return cannot be sent to other threads.
+        unsafe {
+            Return::new(
+                std::mem::transmute::<RecursiveLockReadGuard<'_, _>, RecursiveLockReadGuard<'static, _>>(guard),
+                ATermRef::from_index(&index),
+            )
         }
-
-        self.garbage_collection_counter.set(value);
     }
 
     /// Returns the index of the protection set.

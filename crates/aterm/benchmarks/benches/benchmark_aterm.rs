@@ -103,7 +103,7 @@ fn benchmark_shared_creation(c: &mut Criterion) {
                         result += start.elapsed();
 
                         // For a garbage collection (not part of the measurement) to clean up the created terms.
-                        THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
+                        THREAD_TERM_POOL.with_borrow(|tp| tp.force_collect_garbage());
                     }
                     result
                 });
@@ -217,7 +217,7 @@ fn benchmark_unique_creation(c: &mut Criterion) {
                         result += start.elapsed();
 
                         // For a garbage collection (not part of the measurement) to clean up the created terms.
-                        THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
+                        THREAD_TERM_POOL.with_borrow(|tp| tp.force_collect_garbage());
                     }
 
                     result

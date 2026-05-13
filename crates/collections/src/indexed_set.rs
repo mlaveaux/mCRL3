@@ -284,6 +284,14 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         }
     }
 
+    /// Removes all elements in this indexed set.
+    pub fn clear(&mut self) {
+        self.table.clear();
+        self.index.clear();
+        self.free = None;
+        self.generation_counter = GenerationCounter::new();
+    }
+
     /// Returns true iff the set contains the given element.
     pub fn contains<Q>(&self, element: &Q) -> bool
     where

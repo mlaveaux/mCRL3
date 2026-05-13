@@ -26,6 +26,7 @@ use crate::SymbolRef;
 use crate::Term;
 use crate::is_int_symbol;
 use crate::is_int_term;
+use crate::storage::THREAD_TERM_POOL;
 
 /// The magic value for a binary aterm format stream.
 /// As of version 0x8305 the magic and version are written as 2 bytes not encoded as variable-width integers.
@@ -310,6 +311,12 @@ impl<W: Write> Drop for BinaryATermWriter<W> {
         if !self.flushed {
             ATermWrite::flush(self).expect("Panicked while flushing the stream when dropped");
         }
+
+        self.function_symbols.write().clear();
+        self.terms.write().clear();
+
+        // Perform garbage collection after clearing the terms, since they might become unreachable.
+        THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
     }
 }
 
@@ -502,6 +509,16 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
             reader: self,
             remaining: number_of_elements.value(),
         })
+    }
+}
+
+impl<R: Read> Drop for BinaryATermReader<R> {
+    fn drop(&mut self) {
+        self.function_symbols.write().clear();
+        self.terms.write().clear();
+
+        // Perform garbage collection after clearing the terms, since they might become unreachable.
+        THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
     }
 }
 
