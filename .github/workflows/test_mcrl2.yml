@@ -44,7 +44,7 @@ jobs:
       uses: actions/checkout@v6
       with:
         repository: mCRL2org/mCRL2
-        ref: 4f357eccc1e8b9105db95742f9dda03e069f0918
+        ref: 4e62c71e1f622e663ed466378f76c7d5ed4f398a
         path: mCRL2
         submodules: true
 
