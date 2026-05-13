@@ -239,12 +239,12 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
     let mut file = File::open(&args.filename)?;
     match format {
         SymFormat::Sylvan => {
-            let lts = timing.measure("read_symbolic_lts", || read_sylvan(&mut storage, &mut file))?;
-            explore_impl(&mut storage, cli, args, &lts, timing)?;
+            let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&mut storage, &mut file))?;
+            explore_impl(&mut storage, cli, args, &mut lts, timing)?;
         }
         SymFormat::Sym => {
-            let lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, &mut file))?;
-            explore_impl(&mut storage, cli, args, &lts, timing)?;
+            let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, &mut file))?;
+            explore_impl(&mut storage, cli, args, &mut lts, timing)?;
         }
     }
 
@@ -255,7 +255,7 @@ fn explore_impl<L: SymbolicLTS>(
     storage: &mut Storage,
     cli: &Cli,
     args: &ExploreArgs,
-    lts: &L,
+    lts: &mut L,
     timing: &Timing,
 ) -> Result<(), MercError> {
     if args.use_bdd {
@@ -276,7 +276,7 @@ fn explore_impl<L: SymbolicLTS>(
     } else {
         println!(
             "LTS has {} states",
-            timing.measure("explore", || reachability(storage, lts))?
+            timing.measure("explore", || reachability(storage, lts, timing))?
         );
     }
     Ok(())

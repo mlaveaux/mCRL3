@@ -122,6 +122,7 @@ pub fn reachability_bdd(
 
 #[cfg(test)]
 mod tests {
+    use merc_utilities::Timing;
     use merc_utilities::random_test;
 
     use crate::SymbolicLtsBdd;
@@ -136,8 +137,8 @@ mod tests {
             let mut storage = merc_ldd::Storage::new();
 
             // We don't really check anything here, just ensure that reachability runs without errors.
-            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
-            let num_reachable_states = reachability(&mut storage, &lts).unwrap();
+            let mut lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let num_reachable_states = reachability(&mut storage, &mut lts, &Timing::new()).unwrap();
 
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();

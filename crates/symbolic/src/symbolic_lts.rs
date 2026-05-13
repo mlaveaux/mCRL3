@@ -83,7 +83,7 @@ impl SymbolicLTS for SymbolicLts {
     fn transition_groups(&self) -> &[impl TransitionGroup] {
         &self.summand_groups
     }
-    
+
     fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
         &mut self.summand_groups
     }

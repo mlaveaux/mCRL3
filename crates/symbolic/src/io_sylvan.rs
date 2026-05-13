@@ -172,17 +172,20 @@ impl fmt::Debug for SylvanTransitionGroup {
 
 #[cfg(test)]
 mod test {
+    use merc_utilities::Timing;
+
     use crate::reachability;
 
-    use super::*;
+    use super::Storage;
+    use super::read_sylvan;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_load_anderson_4() {
         let mut storage = Storage::new();
         let bytes = include_bytes!("../../../examples/ldd/anderson.4.ldd");
-        let lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
-        reachability(&mut storage, &lts, &Timing::new()).expect("Reachability should work correctly");
+        let mut lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
+        reachability(&mut storage, &mut lts, &Timing::new()).expect("Reachability should work correctly");
     }
 
     #[test]
@@ -191,7 +194,7 @@ mod test {
     fn test_load_collision_4() {
         let mut storage = Storage::new();
         let bytes = include_bytes!("../../../examples/ldd/collision.4.ldd");
-        let lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
-        reachability(&mut storage, &lts).expect("Reachability should work correctly");
+        let mut lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
+        reachability(&mut storage, &mut lts, &Timing::new()).expect("Reachability should work correctly");
     }
 }

@@ -110,7 +110,7 @@ impl<T, S> IndexedSet<T, S> {
     }
 
     /// Returns a reference to the element at the given index, if it exists.
-    /// 
+    ///
     /// Does not check if the index is valid, so it is the caller's responsibility to ensure this.
     pub fn get_unchecked(&self, index: usize) -> Option<&T> {
         if let Some(entry) = self.table.get(index) {
