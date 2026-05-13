@@ -164,6 +164,10 @@ Removed the `ahash`, `arbitrary`, `arbtest`, and `rayon` dependencies since
 their use was only minimal. Fixed a bug where garbage collection of terms was
 not triggered properly.
 
+Reduced the size of terms by introducing fixed-size storages for small terms,
+and moving annotations to only the `ATermInt` type. Furthermore, use a block
+allocator to avoid the overhead of many small allocations for terms.
+
 ## Related work
 
 Further details on the implementation are explained in the following paper:
