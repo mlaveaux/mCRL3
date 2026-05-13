@@ -5,7 +5,6 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -23,6 +22,7 @@ use crate::ATermList;
 use crate::Markable;
 use crate::Symb;
 use crate::SymbolRef;
+use crate::Transmutable;
 use crate::is_empty_list_term;
 use crate::is_int_term;
 use crate::is_list_term;
@@ -480,35 +480,37 @@ impl<T> Return<T> {
         Return { term, guard }
     }
 
-    /// Consumes the return value and returns the inner term.
-    pub fn into(self) -> T {
-        self.term
+    /// Casts the inner term to another type, while keeping the same guard.
+    pub fn cast<U>(self) -> Return<U>
+    where
+        T: Into<U>,
+    {
+        Return {
+            term: self.term.into(),
+            guard: self.guard,
+        }
     }
 }
 
-impl<'a, 'b, T> Deref for Return<T>
-where
-    T: Term<'a, 'b>,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.term
+impl<T: Transmutable> Return<T> {
+    /// Maps the inner term to another type, while keeping the same guard.
+    pub fn inner(&self) -> &T::Target<'_> {
+        &self.term.transmute_lifetime()
     }
 }
 
-impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b Return<T>
+impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for Return<T>
 where
     'b: 'a,
 {
     delegate! {
         to self.term {
             fn protect(&self) -> ATerm;
-            fn arg(&self, index: usize) -> ATermRef<'a>;
-            fn arguments(&self) -> ATermArgs<'a>;
-            fn copy(&self) -> ATermRef<'a>;
-            fn get_head_symbol(&self) -> SymbolRef<'a>;
-            fn iter(&self) -> TermIterator<'a>;
+            fn arg(&'b self, index: usize) -> ATermRef<'a>;
+            fn arguments(&'b self) -> ATermArgs<'a>;
+            fn copy(&'b self) -> ATermRef<'a>;
+            fn get_head_symbol(&'b self) -> SymbolRef<'a>;
+            fn iter(&'b self) -> TermIterator<'a>;
             fn index(&self) -> usize;
             fn shared(&self) -> &ATermIndex;
         }
