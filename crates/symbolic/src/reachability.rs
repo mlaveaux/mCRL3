@@ -5,13 +5,13 @@ use log::info;
 use log::trace;
 use merc_data::DataExpression;
 use merc_io::TimeProgress;
+use merc_ldd::Ldd;
+use merc_ldd::LddDisplay;
+use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_ldd::minus;
 use merc_ldd::relational_product;
 use merc_ldd::union;
-use merc_ldd::Ldd;
-use merc_ldd::LddDisplay;
-use merc_ldd::Storage;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -76,11 +76,7 @@ pub trait TransitionGroup: fmt::Debug {
 }
 
 /// Performs reachability analysis using the given initial state and transitions read from a Sylvan file.
-pub fn reachability<L: SymbolicLTS>(
-    storage: &mut Storage,
-    lts: &mut L,
-    timing: &Timing,
-) -> Result<usize, MercError> {
+pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: &Timing) -> Result<usize, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
@@ -95,11 +91,7 @@ pub fn reachability<L: SymbolicLTS>(
 
     timing.measure("reachability", || {
         while todo != *storage.empty_set() {
-            debug!(
-                "Iteration {}: todo size = {}",
-                iteration,
-                len(storage, &todo)
-            );
+            debug!("Iteration {}: todo size = {}", iteration, len(storage, &todo));
 
             // Learn successors for all the transition groups and compute the next todo set.
             let mut todo1 = storage.empty_set().clone();
@@ -111,8 +103,7 @@ pub fn reachability<L: SymbolicLTS>(
                 );
                 let _new_successors = transition.learn_successors(storage, &todo);
 
-                let result =
-                    relational_product(storage, &todo, transition.relation(), transition.meta());
+                let result = relational_product(storage, &todo, transition.relation(), transition.meta());
                 todo1 = union(storage, &todo1, &result);
             }
 

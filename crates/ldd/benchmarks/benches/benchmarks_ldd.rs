@@ -107,7 +107,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             let ldd = from_iter(&mut storage, set.iter());
             let rel = from_iter(&mut storage, relation.iter());
 
-            let meta = compute_meta(&mut storage, &read_proj, &write_proj);
+            let meta = compute_meta(&mut storage, &read_proj, &write_proj).0;
             black_box(relational_product(&mut storage, &ldd, &rel, &meta));
         })
     });
