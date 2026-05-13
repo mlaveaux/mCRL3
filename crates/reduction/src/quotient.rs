@@ -339,4 +339,74 @@ mod tests {
             );
         });
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_random_weak_bisim_divergence_preserving_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimDivergencePreserving,
+                "test_random_weak_bisim_divergence_preserving_quotient",
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_random_weak_bisim_parallel_divergence_preserving_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimParallelDivergencePreserving,
+                "test_random_weak_bisim_parallel_divergence_preserving_quotient",
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_random_weak_bisim_sigref_divergence_preserving_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimSigrefDivergencePreserving,
+                "test_random_weak_bisim_sigref_divergence_preserving_quotient",
+            );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_random_weak_bisim_sigref_naive_divergence_preserving_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::WeakBisimSigrefNaiveDivergencePreserving,
+                "test_random_weak_bisim_sigref_naive_divergence_preserving_quotient",
+            );
+        });
+    }
+
+    #[test]
+    fn test_random_branching_bisim_divergence_preserving_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::BranchingBisimDivergencePreserving,
+                "test_random_branching_bisim_divergence_preserving_quotient",
+            );
+        });
+    }
+
+    #[test]
+    fn test_random_branching_bisim_divergence_preserving_naive_quotient() {
+        random_test(100, |rng| {
+            check_quotient_equivalence(
+                rng,
+                Equivalence::BranchingBisimDivergencePreservingNaive,
+                "test_random_branching_bisim_divergence_preserving_naive_quotient",
+            );
+        });
+    }
 }
