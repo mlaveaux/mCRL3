@@ -495,7 +495,7 @@ impl<T> Return<T> {
 impl<T: Transmutable> Return<T> {
     /// Maps the inner term to another type, while keeping the same guard.
     pub fn inner(&self) -> &T::Target<'_> {
-        &self.term.transmute_lifetime()
+        self.term.transmute_lifetime()
     }
 }
 

@@ -493,7 +493,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
 
     // Parse the hide, allow and comm arguments, if they are provided.
     let mut hide = match &args.hide {
-        Some(arg) => parse_action_names(&arg).map_err(|e| format!("Failed to parse --hide argument:\n{e}"))?,
+        Some(arg) => parse_action_names(arg).map_err(|e| format!("Failed to parse --hide argument:\n{e}"))?,
         None => Vec::new(),
     };
 
@@ -509,7 +509,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
     }
 
     let mut allow = match &args.allow {
-        Some(arg) => parse_allow_action_names(&arg).map_err(|e| format!("Failed to parse --allow argument:\n{e}"))?,
+        Some(arg) => parse_allow_action_names(arg).map_err(|e| format!("Failed to parse --allow argument:\n{e}"))?,
         None => Vec::new(),
     };
 
@@ -527,7 +527,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
     }
 
     let mut comm = match &args.comm {
-        Some(arg) => parse_comm_expr_set(&arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
+        Some(arg) => parse_comm_expr_set(arg).map_err(|e| format!("Failed to parse --comm argument:\n{e}"))?,
         None => Vec::new(),
     };
 
@@ -546,7 +546,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         .lts
         .iter()
         .map(|path| {
-            let lts = read_explicit_lts(&path, format, timing)?;
+            let lts = read_explicit_lts(path, format, timing)?;
 
             match lts {
                 GenericLts::Aut(aut) | GenericLts::Bcg(aut) => {
