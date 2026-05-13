@@ -473,12 +473,7 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
 }
 
 fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercError> {
-    let format = if let Some(format) = args.format {
-        format
-    } else {
-        // Guess the format from the first LTS file.
-        guess_lts_format_from_extension(&args.lts[0], None).ok_or("Unknown LTS file format.")?
-    };
+    let format = guess_lts_format_from_extension(&args.lts[0], args.format).ok_or("Unknown LTS file format.")?;
 
     let lts_list = args
         .lts
