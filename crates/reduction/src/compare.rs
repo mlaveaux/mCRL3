@@ -131,4 +131,89 @@ mod tests {
             ));
         })
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_weak_bisim_variants_agree() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let lts1 = random_lts::<String, _>(rng, 1000, 3);
+            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+
+            // All weak bisimulation variants should agree on whether two LTSs are equivalent
+            let weak_bisim = compare_lts(compare::Equivalence::WeakBisim, lts1.clone(), lts2.clone(), false, &mut timing);
+            let weak_bisim_parallel = compare_lts(compare::Equivalence::WeakBisimParallel, lts1.clone(), lts2.clone(), false, &mut timing);
+            let weak_bisim_sigref = compare_lts(compare::Equivalence::WeakBisimSigref, lts1.clone(), lts2.clone(), false, &mut timing);
+            let weak_bisim_sigref_naive = compare_lts(compare::Equivalence::WeakBisimSigrefNaive, lts1.clone(), lts2.clone(), false, &mut timing);
+
+            assert_eq!(weak_bisim, weak_bisim_parallel, "WeakBisim and WeakBisimParallel should agree");
+            assert_eq!(weak_bisim, weak_bisim_sigref, "WeakBisim and WeakBisimSigref should agree");
+            assert_eq!(weak_bisim, weak_bisim_sigref_naive, "WeakBisim and WeakBisimSigrefNaive should agree");
+        })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_weak_bisim_divergence_preserving_variants_agree() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let lts1 = random_lts::<String, _>(rng, 1000, 3);
+            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+
+            // All weak bisimulation divergence-preserving variants should agree
+            let weak_bisim_dp = compare_lts(compare::Equivalence::WeakBisimDivergencePreserving, lts1.clone(), lts2.clone(), false, &mut timing);
+            let weak_bisim_dp_parallel = compare_lts(compare::Equivalence::WeakBisimParallelDivergencePreserving, lts1.clone(), lts2.clone(), false, &mut timing);
+            let weak_bisim_dp_sigref = compare_lts(compare::Equivalence::WeakBisimSigrefDivergencePreserving, lts1.clone(), lts2.clone(), false, &mut timing);
+            let weak_bisim_dp_sigref_naive = compare_lts(compare::Equivalence::WeakBisimSigrefNaiveDivergencePreserving, lts1.clone(), lts2.clone(), false, &mut timing);
+
+            assert_eq!(weak_bisim_dp, weak_bisim_dp_parallel, "WeakBisimDivergencePreserving and WeakBisimParallelDivergencePreserving should agree");
+            assert_eq!(weak_bisim_dp, weak_bisim_dp_sigref, "WeakBisimDivergencePreserving and WeakBisimSigrefDivergencePreserving should agree");
+            assert_eq!(weak_bisim_dp, weak_bisim_dp_sigref_naive, "WeakBisimDivergencePreserving and WeakBisimSigrefNaiveDivergencePreserving should agree");
+        })
+    }
+
+    #[test]
+    fn test_strong_bisim_variants_agree() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let lts1 = random_lts::<String, _>(rng, 1000, 3);
+            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+
+            // Strong bisimulation variants should agree
+            let strong_bisim = compare_lts(compare::Equivalence::StrongBisim, lts1.clone(), lts2.clone(), false, &mut timing);
+            let strong_bisim_naive = compare_lts(compare::Equivalence::StrongBisimNaive, lts1.clone(), lts2.clone(), false, &mut timing);
+
+            assert_eq!(strong_bisim, strong_bisim_naive, "StrongBisim and StrongBisimNaive should agree");
+        })
+    }
+
+    #[test]
+    fn test_branching_bisim_variants_agree() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let lts1 = random_lts::<String, _>(rng, 1000, 3);
+            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+
+            // Branching bisimulation variants should agree
+            let branching_bisim = compare_lts(compare::Equivalence::BranchingBisim, lts1.clone(), lts2.clone(), false, &mut timing);
+            let branching_bisim_naive = compare_lts(compare::Equivalence::BranchingBisimNaive, lts1.clone(), lts2.clone(), false, &mut timing);
+
+            assert_eq!(branching_bisim, branching_bisim_naive, "BranchingBisim and BranchingBisimNaive should agree");
+        })
+    }
+
+    #[test]
+    fn test_branching_bisim_divergence_preserving_variants_agree() {
+        random_test(100, |rng| {
+            let mut timing = Timing::new();
+            let lts1 = random_lts::<String, _>(rng, 10, 3);
+            let lts2 = random_lts::<String, _>(rng, 10, 3);
+
+            // Branching bisimulation divergence-preserving variants should agree
+            let branching_bisim_dp = compare_lts(compare::Equivalence::BranchingBisimDivergencePreserving, lts1.clone(), lts2.clone(), false, &mut timing);
+            let branching_bisim_dp_naive = compare_lts(compare::Equivalence::BranchingBisimDivergencePreservingNaive, lts1.clone(), lts2.clone(), false, &mut timing);
+
+            assert_eq!(branching_bisim_dp, branching_bisim_dp_naive, "BranchingBisimDivergencePreserving and BranchingBisimDivergencePreservingNaive should agree");
+        })
+    }
 }
