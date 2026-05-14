@@ -50,6 +50,14 @@ impl<W: Write, L> AutStream<W, L> {
             _marker: PhantomData,
         }
     }
+
+    /// Sets the number of states to at least the given number. All states without transitions
+    /// will simply become deadlock states.
+    pub fn require_num_of_states(&mut self, num_states: usize) {
+        if num_states > self.number_of_states {
+            self.number_of_states = num_states;
+        }
+    }
 }
 
 impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
@@ -126,6 +134,7 @@ mod tests {
                     }
                 }
 
+                stream.require_num_of_states(lts.num_of_states());
                 stream.finish(lts.initial_state_index()).unwrap();
             }
 

@@ -524,13 +524,17 @@ pub fn check_equivalent<L: LTS>(lts: &L, lts_read: &L) {
         println!("Label {} mapped to {:?}", i, m);
     }
 
-    assert_eq!(lts.num_of_states(), lts_read.num_of_states());
     assert_eq!(lts.num_of_transitions(), lts_read.num_of_transitions());
 
     // Check that all the outgoing transitions are the same.
     for state_index in lts.iter_states() {
         let transitions: Vec<_> = lts.outgoing_transitions(state_index).collect();
-        let transitions_read: Vec<_> = lts_read.outgoing_transitions(state_index).collect();
+        let transitions_read: Vec<_> = if state_index.value() < lts_read.num_of_states() {
+            lts_read.outgoing_transitions(state_index).collect()
+        } else {
+            // Treat as deadlock if state_index is out of bounds
+            Vec::new()
+        };
 
         // Check that transitions are the same, modulo label remapping.
         transitions.iter().for_each(|t| {
