@@ -21,18 +21,15 @@ use merc_utilities::Timing;
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
 use crate::DivergencePreservingLts;
-use crate::Equivalence;
 use crate::Partition;
 use crate::Signature;
 use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
 use crate::branching_bisim_signature_inductive;
 use crate::branching_bisim_signature_sorted;
-#[cfg(test)]
-use crate::compare_lts;
 use crate::is_tau_hat;
 use crate::longest_tau_path;
-use crate::reduce_lts;
+use crate::quotient_lts_block;
 use crate::strong_bisim_signature;
 use crate::tau_cycle_elimination_and_reorder;
 use crate::weak_bisim_presignature_sorted;
@@ -226,14 +223,11 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
-        let lts = timing.measure("preprocess", || {
-            if divergence_preserving {
-                reduce_lts(lts, Equivalence::BranchingBisimDivergencePreserving, true, timing)
-            } else {
-                reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
-            }
-        });
-        weak_bisim_sigref_inductive_naive_impl(lts, state, divergence_preserving, timing)
+        let (preprocessed_lts, mapped_state, partition) =
+            branching_bisim_sigref(lts, state, divergence_preserving, timing);
+        let quotiented_state = StateIndex::new(*partition.block_number(mapped_state));
+        let lts = timing.measure("quotient", || quotient_lts_block::<_, true>(&preprocessed_lts, &partition));
+        weak_bisim_sigref_inductive_naive_impl(lts, quotiented_state, divergence_preserving, timing)
     } else {
         weak_bisim_sigref_inductive_naive_impl(lts, state, divergence_preserving, timing)
     }
@@ -273,14 +267,11 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex, IndexedPartition) {
     // Preprocess the LTS if desired.
     if preprocess {
-        let lts = timing.measure("preprocess", || {
-            if divergence_preserving {
-                reduce_lts(lts, Equivalence::BranchingBisimDivergencePreserving, true, timing)
-            } else {
-                reduce_lts(lts, Equivalence::BranchingBisim, true, timing)
-            }
-        });
-        weak_bisim_sigref_naive_impl(lts, state, divergence_preserving, timing)
+        let (preprocessed_lts, mapped_state, partition) =
+            branching_bisim_sigref(lts, state, divergence_preserving, timing);
+        let quotiented_state = StateIndex::new(*partition.block_number(mapped_state));
+        let lts = timing.measure("quotient", || quotient_lts_block::<_, true>(&preprocessed_lts, &partition));
+        weak_bisim_sigref_naive_impl(lts, quotiented_state, divergence_preserving, timing)
     } else {
         weak_bisim_sigref_naive_impl(lts, state, divergence_preserving, timing)
     }
@@ -823,7 +814,7 @@ where
 
 /// Compares our reduction against mCRL2's `ltsconvert` on random inputs.
 #[cfg(test)]
-pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equivalence, argument: &str) {
+pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: crate::Equivalence, argument: &str) {
     let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
         println!("Skipping test: MCRL2_PATH not set");
         return;
@@ -865,7 +856,7 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equi
         let ltsconvert_reduced = merc_lts::read_mcrl2_aut(std::fs::File::open(&output_path).unwrap()).unwrap();
 
         let mut timing = merc_utilities::Timing::new();
-        let our_reduced = reduce_lts(lts, equivalence, false, &timing);
+        let our_reduced = crate::reduce_lts(lts, equivalence, false, &timing);
 
         files
             .dump("reduced.aut", |writer| merc_lts::write_mcrl2_aut(writer, &our_reduced))
@@ -892,8 +883,8 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equi
         );
 
         assert!(
-            compare_lts(
-                Equivalence::StrongBisim,
+            crate::compare_lts(
+                crate::Equivalence::StrongBisim,
                 our_reduced,
                 ltsconvert_reduced,
                 false,
