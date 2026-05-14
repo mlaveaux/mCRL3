@@ -207,29 +207,29 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                     if !implementation
                         .attrs
                         .iter()
-                        .any(|attr| attr.meta.path().is_ident("mcrl2_ignore"))
-                    => {
-                        // Duplicate the implementation for the ATermRef struct that is generated above.
-                        let mut ref_implementation = implementation.clone();
+                        .any(|attr| attr.meta.path().is_ident("mcrl2_ignore")) =>
+                {
+                    // Duplicate the implementation for the ATermRef struct that is generated above.
+                    let mut ref_implementation = implementation.clone();
 
-                        // Remove ignore functions
-                        ref_implementation.items.retain(|item| match item {
-                            syn::ImplItem::Fn(func) => {
-                                !func.attrs.iter().any(|attr| attr.meta.path().is_ident("mcrl2_ignore"))
-                            }
-                            _ => true,
-                        });
-
-                        if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                            // Build an identifier TestRef<'_>
-                            let name_ref = format_ident!("{}Ref", path.path.get_ident().unwrap());
-                            let path = parse_quote!(#name_ref <'_>);
-
-                            ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
-
-                            added.push(Item::Verbatim(ref_implementation.into_token_stream()));
+                    // Remove ignore functions
+                    ref_implementation.items.retain(|item| match item {
+                        syn::ImplItem::Fn(func) => {
+                            !func.attrs.iter().any(|attr| attr.meta.path().is_ident("mcrl2_ignore"))
                         }
+                        _ => true,
+                    });
+
+                    if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
+                        // Build an identifier TestRef<'_>
+                        let name_ref = format_ident!("{}Ref", path.path.get_ident().unwrap());
+                        let path = parse_quote!(#name_ref <'_>);
+
+                        ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
+
+                        added.push(Item::Verbatim(ref_implementation.into_token_stream()));
                     }
+                }
                 _ => {
                     // Ignore the rest.
                 }
