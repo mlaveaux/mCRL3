@@ -153,8 +153,8 @@ struct SymbolicSummand {
     /// The summation variables of this summand.
     summation_variables: ATermList<DataVariable>,
 
-    /// The assignments of this summand.
-    assignments: ATermList<ATerm>,
+    /// Only the non-identity assignments (write parameters) of this summand.
+    write_assignments: ATermList<ATerm>,
 
     /// The shared context containing the rewriter/enumerator.
     shared: Rc<RefCell<Shared>>,
@@ -172,8 +172,10 @@ impl SymbolicSummand {
         let mut read_vars = free_variables_data_expression(&summand.condition().copy());
         let parameters = parameters.to_vec();
 
-        // Collect free variables from the update expressions.
+        // Collect free variables from the update expressions and identify write assignments.
         let mut write_vars = Vec::new();
+        let mut write_assignments = Vec::new();
+
         for assignment in summand.assignments().iter() {
             let lhs: DataVariable = assignment.arg(0).protect().into();
             let rhs = assignment.arg(1);
@@ -185,8 +187,12 @@ impl SymbolicSummand {
             // The parameter is written if the RHS differs from the LHS variable.
             if DataExpressionRef::from(lhs.copy()) != DataExpressionRef::from(rhs.copy()) {
                 write_vars.push(lhs);
+                write_assignments.push(assignment);
             }
         }
+
+        // Convert write assignments to an aterm list.
+        let write_assignments = ATermList::from_double_iter(write_assignment.iter());
 
         // Convert read variables to parameter indices.
         let read_indices: Vec<u32> = parameters
@@ -229,7 +235,7 @@ impl SymbolicSummand {
             write_positions,
             condition,
             summation_variables,
-            assignments,
+            write_assignments,
             shared,
             read_parameters,
         }
@@ -308,12 +314,11 @@ impl TransitionGroup for SymbolicSummand {
                 interleaved_values[*offset as usize] = *value;
             }
 
-            // TODO: The callback should be able to immediately deal with the values.
             let mut output = Vec::new();
             self.shared.borrow_mut().context.enumerate_raw(
                 &self.condition,
                 &self.summation_variables,
-                &self.assignments,
+                &self.write_assignments,
                 &self.read_parameters,
                 &read_values,
                 &mut |values: &[*const _aterm]| {
@@ -329,8 +334,8 @@ impl TransitionGroup for SymbolicSummand {
                         .format_with(", ", |value, f| f(&format_args!("{:?}", ATerm::from_ptr(*value))))
                 );
 
-                for (offset, (i, value)) in self.write_positions.iter().zip(write.iter().enumerate()) {
-                    interleaved_values[*offset as usize] = *self.shared.borrow_mut().mapping
+                for (&offset, (i, value)) in self.write_positions.iter().zip(write.iter().enumerate()) {
+                    interleaved_values[offset as usize] = *self.shared.borrow_mut().mapping
                         [self.write_indices[i] as usize]
                         .insert(DataExpression::from(ATerm::from_ptr(*value)))
                         .0 as Value;
@@ -376,7 +381,7 @@ impl fmt::Debug for SymbolicSummand {
             f,
             "{} -> {}",
             self.condition.pretty_print(),
-            self.assignments
+            self.write_assignments
                 .iter()
                 .format_with(", ", |assignment, f| f(&format_args!(
                     "{} := {}",

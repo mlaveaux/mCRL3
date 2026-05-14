@@ -101,7 +101,7 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: 
                     i,
                     LddDisplay::new(storage, transition.relation())
                 );
-                let _new_successors = transition.learn_successors(storage, &todo);
+                transition.learn_successors(storage, &todo)?;
 
                 let result = relational_product(storage, &todo, transition.relation(), transition.meta());
                 todo1 = union(storage, &todo1, &result);
