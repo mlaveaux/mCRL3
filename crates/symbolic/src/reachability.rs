@@ -75,7 +75,7 @@ pub trait TransitionGroup: fmt::Debug {
     fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError>;
 }
 
-/// Performs reachability analysis using the given initial state and transitions read from a Sylvan file.
+/// Performs reachability analysis using the given initial state and transitions from the symbolic LTS.
 pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: &Timing) -> Result<usize, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
