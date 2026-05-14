@@ -8,8 +8,6 @@ use log::trace;
 use streaming_iterator::StreamingIterator;
 
 use mcrl2::_aterm;
-use mcrl2::free_variables_data_expression;
-use mcrl2::preprocess;
 use mcrl2::ATerm;
 use mcrl2::ATermList;
 use mcrl2::DataExpression;
@@ -18,20 +16,22 @@ use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
+use mcrl2::free_variables_data_expression;
+use mcrl2::preprocess;
 use merc_collections::IndexedSet;
 
+use merc_ldd::Ldd;
+use merc_ldd::Storage;
+use merc_ldd::Value;
 use merc_ldd::compute_meta;
 use merc_ldd::compute_proj;
 use merc_ldd::iterators::iter;
 use merc_ldd::project;
 use merc_ldd::singleton;
 use merc_ldd::union;
-use merc_ldd::Ldd;
-use merc_ldd::Storage;
-use merc_ldd::Value;
-use merc_symbolic::reachability;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::TransitionGroup;
+use merc_symbolic::reachability;
 use merc_utilities::MercError;
 
 use merc_utilities::Timing;
@@ -55,6 +55,9 @@ struct SymbolicLinearProcessSpecification {
 
     /// The symbolic summands of the LPS, which are obtained by preprocessing the LPS.
     symbolic_summands: Vec<SymbolicSummand>,
+
+    /// The actions that are discovered for this summand.
+    action_labels: Vec<String>,
 
     /// Information shared between all summands and the LPS.
     _shared: Rc<RefCell<Shared>>,
@@ -103,6 +106,7 @@ impl SymbolicLinearProcessSpecification {
             symbolic_summands,
             _shared: shared,
             initial_state,
+            action_labels: Vec::new(),
         })
     }
 }
@@ -194,10 +198,7 @@ impl SymbolicSummand {
 
         let read_parameters: Vec<*const _aterm> = read_indices
             .iter()
-            .map(|&index| {
-                let var = parameters[index as usize].clone();
-                var.address()
-            })
+            .map(|&index| parameters[index as usize].address())
             .collect();
 
         // Convert write variables to parameter indices.
@@ -209,9 +210,9 @@ impl SymbolicSummand {
             .collect();
 
         // Store the condition, summation variables, and assignments for enumeration.
-        let condition: DataExpression = summand.condition().into();
-        let summation_variables: ATermList<DataVariable> = summand.summation_variables().into();
-        let assignments: ATermList<ATerm> = summand.assignments().into();
+        let condition: DataExpression = summand.condition();
+        let summation_variables: ATermList<DataVariable> = summand.summation_variables();
+        let assignments: ATermList<ATerm> = summand.assignments();
 
         let relation = storage.protect(storage.empty_set());
         let project_ldd = compute_proj(storage, &read_indices);
@@ -253,11 +254,11 @@ impl SymbolicLTS for SymbolicLinearProcessSpecification {
     }
 
     fn action_labels(&self) -> &[String] {
-        todo!()
+        &self.action_labels
     }
 
     fn parameter_values(&self) -> &[Vec<merc_data::DataExpression>] {
-        return &[];
+        &[]
     }
 }
 
@@ -287,8 +288,7 @@ impl TransitionGroup for SymbolicSummand {
 
         // The values to insert into the LDD.
         let mut values = Vec::new();
-        let mut interleaved_values = Vec::new();
-        interleaved_values.resize(self.read_positions.len() + self.write_positions.len(), 0);
+        let mut interleaved_values = vec![0; self.read_indices.len() + self.write_indices.len()];
 
         let mut proj_iter = iter(storage, &proj);
         while let Some(short_state) = proj_iter.next() {
@@ -298,7 +298,7 @@ impl TransitionGroup for SymbolicSummand {
                 .enumerate()
                 .map(|(index, &val)| {
                     self.shared.borrow().mapping[self.read_indices[index] as usize]
-                        .get_unchecked(val as usize)
+                        .get_by_index(val as usize)
                         .expect("The value should be in the mapping")
                         .address()
                 })
@@ -375,13 +375,13 @@ impl fmt::Debug for SymbolicSummand {
         writeln!(
             f,
             "{} -> {}",
-            DataExpressionRef::from(self.condition.copy()).pretty_print(),
+            self.condition.pretty_print(),
             self.assignments
                 .iter()
                 .format_with(", ", |assignment, f| f(&format_args!(
                     "{} := {}",
-                    DataExpressionRef::from(assignment.arg(0).copy()).pretty_print(),
-                    DataExpressionRef::from(assignment.arg(1).copy()).pretty_print()
+                    DataExpressionRef::from(assignment.arg(0)).pretty_print(),
+                    DataExpressionRef::from(assignment.arg(1)).pretty_print()
                 )))
         )?;
 

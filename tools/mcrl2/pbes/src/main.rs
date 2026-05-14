@@ -181,7 +181,7 @@ fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {
             }
         }
     }
-    
+
     Ok(())
 }
 
