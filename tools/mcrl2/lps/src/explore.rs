@@ -187,12 +187,12 @@ impl SymbolicSummand {
             // The parameter is written if the RHS differs from the LHS variable.
             if DataExpressionRef::from(lhs.copy()) != DataExpressionRef::from(rhs.copy()) {
                 write_vars.push(lhs);
-                write_assignments.push(assignment);
+                write_assignments.push(assignment.protect());
             }
         }
 
         // Convert write assignments to an aterm list.
-        let write_assignments = ATermList::from_double_iter(write_assignment.iter());
+        let write_assignments = ATermList::from_double_iter(write_assignments.into_iter());
 
         // Convert read variables to parameter indices.
         let read_indices: Vec<u32> = parameters
@@ -218,7 +218,6 @@ impl SymbolicSummand {
         // Store the condition, summation variables, and assignments for enumeration.
         let condition: DataExpression = summand.condition();
         let summation_variables: ATermList<DataVariable> = summand.summation_variables();
-        let assignments: ATermList<ATerm> = summand.assignments();
 
         let relation = storage.protect(storage.empty_set());
         let project_ldd = compute_proj(storage, &read_indices);
