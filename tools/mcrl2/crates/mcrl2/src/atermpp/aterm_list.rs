@@ -6,6 +6,7 @@ use mcrl2_sys::atermpp::ffi::_aterm;
 
 use crate::ATerm;
 use crate::ATermRef;
+use crate::THREAD_TERM_POOL;
 
 pub struct ATermList<T> {
     term: ATerm,
@@ -62,6 +63,40 @@ impl<T> ATermList<T> {
             term: self.term.clone(),
             _marker: PhantomData,
         }
+    }
+
+    /// Constructs a new empty list.
+    pub fn empty() -> Self {
+        ATermList {
+            term: THREAD_TERM_POOL.with_borrow(|tp| ATerm::constant(&tp.empty_list_symbol())),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Constructs a new list with the given item as head and this list as tail.
+    pub fn cons(&self, item: T) -> Self
+    where
+        T: Into<ATerm>,
+    {
+        let item: ATerm = item.into();
+        ATermList {
+            term: THREAD_TERM_POOL
+                .with_borrow(|tp| ATerm::with_args(&tp.list_symbol(), &[item.copy(), self.term.copy()])),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Constructs a new list from a double-ended iterator that is consumed.
+    pub fn from_double_iter<I>(iter: I) -> Self
+    where
+        T: Into<ATerm>,
+        I: DoubleEndedIterator<Item = T>,
+    {
+        let mut list = Self::empty();
+        for item in iter.rev() {
+            list = list.cons(item);
+        }
+        list
     }
 }
 
@@ -166,6 +201,23 @@ mod tests {
         assert_eq!(values[1], ATerm::from_string("g").unwrap());
         assert_eq!(values[2], ATerm::from_string("h").unwrap());
         assert_eq!(values[3], ATerm::from_string("i").unwrap());
+    }
+
+    #[test]
+    fn test_from_double_iter() {
+        let list = ATermList::from_double_iter(
+            vec![
+                ATerm::from_string("f").unwrap(),
+                ATerm::from_string("g").unwrap(),
+                ATerm::from_string("h").unwrap(),
+            ]
+            .into_iter(),
+        );
+
+        assert_eq!(list.head(), ATerm::from_string("f").unwrap());
+        assert_eq!(list.tail().head(), ATerm::from_string("g").unwrap());
+        assert_eq!(list.tail().tail().head(), ATerm::from_string("h").unwrap());
+        assert!(list.tail().tail().tail().is_empty());
     }
 }
 

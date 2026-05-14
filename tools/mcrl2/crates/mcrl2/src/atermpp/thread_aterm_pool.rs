@@ -10,7 +10,9 @@ use log::trace;
 use mcrl2_sys::atermpp::ffi;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_create;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_create_int;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_empty_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_from_string;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
@@ -50,6 +52,12 @@ pub struct ThreadTermPool {
     /// The index of the thread term pool in the list of thread pools.
     index: usize,
 
+    /// Function symbol for non-empty list constructors.
+    list_symbol: Symbol,
+
+    /// Function symbol for the empty list.
+    empty_list_symbol: Symbol,
+
     /// Function symbols to represent 'DataAppl' with any number of arguments.
     data_appl: RefCell<Vec<Symbol>>,
 
@@ -74,6 +82,8 @@ impl ThreadTermPool {
             protection_set,
             container_protection_set,
             index,
+            list_symbol: Symbol::from_ptr(mcrl2_aterm_list_function_symbol()),
+            empty_list_symbol: Symbol::from_ptr(mcrl2_aterm_empty_list_function_symbol()),
             gc_counter: Cell::new(TEST_GC_INTERVAL),
             data_appl: RefCell::new(vec![]),
             arguments: RefCell::new(vec![]),
@@ -177,6 +187,16 @@ impl ThreadTermPool {
     /// Creates a function symbol with the given name and arity.
     pub fn create_symbol(&self, name: &str, arity: usize) -> Symbol {
         Symbol::take(mcrl2_function_symbol_create(String::from(name), arity))
+    }
+
+    /// Returns the function symbol for non-empty list constructors.
+    pub fn list_symbol(&self) -> SymbolRef<'_> {
+        self.list_symbol.copy()
+    }
+
+    /// Returns the function symbol for the empty list.
+    pub fn empty_list_symbol(&self) -> SymbolRef<'_> {
+        self.empty_list_symbol.copy()
     }
 
     /// Creates a term with the FFI while taking care of the protection and garbage collection.
