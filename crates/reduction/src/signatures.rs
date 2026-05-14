@@ -379,7 +379,7 @@ pub fn tau_cycle_elimination_and_reorder<L: LTS>(
     eliminate_tau_loops: bool,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex) {
     let scc_partition = tau_scc_decomposition(&lts);
-    let tau_loop_free_lts = quotient_lts_naive(&lts, &scc_partition, eliminate_tau_loops);
+    let tau_loop_free_lts = quotient_lts_naive(&lts, &scc_partition, true, eliminate_tau_loops);
     let mapped_state = StateIndex::new(*scc_partition.block_number(state));
     drop(lts);
     drop(scc_partition);

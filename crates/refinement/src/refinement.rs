@@ -132,7 +132,7 @@ pub fn refines<L: LTS>(
         if refinement == RefinementType::ImpossibleFutures {
             // For impossible futures we need to remove tau loops from the implementation.
             let scc_partition = tau_scc_decomposition(&impl_lts);
-            let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true);
+            let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true, false);
 
             tau_loop_free_lts.merge_disjoint(&spec_lts)
         } else {

@@ -102,7 +102,7 @@ pub fn reduce_lts<L: LTS>(
         }
         Equivalence::StrongBisimNaive => {
             let (lts, partition) = strong_bisim_sigref_naive(lts, timing);
-            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, false))
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, false, false))
         }
         Equivalence::BranchingBisim => {
             let (lts, _, partition) = branching_bisim_sigref(lts, state, false, timing);
@@ -110,7 +110,7 @@ pub fn reduce_lts<L: LTS>(
         }
         Equivalence::BranchingBisimNaive => {
             let (lts, _, partition) = branching_bisim_sigref_naive(lts, state, false, timing);
-            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, false))
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true, false))
         }
         Equivalence::BranchingBisimDivergencePreserving => {
             let (lts, _, partition) = branching_bisim_sigref(lts, state, true, timing);
@@ -118,7 +118,7 @@ pub fn reduce_lts<L: LTS>(
         }
         Equivalence::BranchingBisimDivergencePreservingNaive => {
             let (lts, _, partition) = branching_bisim_sigref_naive(lts, state, true, timing);
-            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true))
+            timing.measure("quotient", || quotient_lts_naive(&lts, &partition, true, true))
         }
     }
 }
