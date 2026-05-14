@@ -560,10 +560,10 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_merge_disjoint");
 
-            let left = random_lts(rng, 10, 20, 2);
+            let left = random_lts::<String, _>(rng, 1000, 20);
             files.dump("left.aut", |w| write_aut(w, &left)).unwrap();
 
-            let right = random_lts(rng, 10, 20, 2);
+            let right = random_lts::<String, _>(rng, 1000, 20);
             files.dump("right.aut", |w| write_aut(w, &right)).unwrap();
 
             let (merged, right_initial) = left.clone().merge_disjoint(&right);

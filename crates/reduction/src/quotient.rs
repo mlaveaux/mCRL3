@@ -257,7 +257,7 @@ mod tests {
         let mut timing = Timing::new();
         let mut files = DumpFiles::new(test_name);
 
-        let lts = random_lts(rng, 20, 10, 2);
+        let lts = random_lts::<String, _>(rng, 1000, 3);
 
         files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
 

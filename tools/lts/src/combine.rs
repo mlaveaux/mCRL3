@@ -544,7 +544,7 @@ mod tests {
     use merc_lts::LtsMultiAction;
     use merc_lts::StateIndex;
     use merc_lts::TransitionLabel;
-    use merc_lts::random_lts_monolithic;
+    use merc_lts::random_lts;
     use merc_lts::read_lts;
     use merc_lts::write_mcrl2_aut;
     use merc_reduction::Equivalence;
@@ -625,10 +625,10 @@ mod tests {
         assert!(status.success(), "ltsconvert failed with status: {status}");
 
         random_test(100, |rng| {
-            let left_lts = random_lts_monolithic::<String, _>(rng, 1000, 3, 3)
+            let left_lts = random_lts::<String, _>(rng, 1000, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
-            let right_lts = random_lts_monolithic::<String, _>(rng, 1000, 3, 3)
+            let right_lts = random_lts::<String, _>(rng, 1000, 3)
                 .relabel(|label| LtsMultiAction::from_string(&label))
                 .unwrap();
 

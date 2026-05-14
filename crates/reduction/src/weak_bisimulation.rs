@@ -448,7 +448,6 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_lts::LTS;
     use merc_lts::random_lts;
-    use merc_lts::random_lts_monolithic;
     use merc_lts::write_aut;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
@@ -464,7 +463,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_weak_bisimulation");
 
-            let lts = random_lts(rng, 100, 10, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
@@ -493,7 +492,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_weak_bisimulation_parallel");
 
-            let lts = random_lts_monolithic::<String, _>(rng, 100, 10, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 

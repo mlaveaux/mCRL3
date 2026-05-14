@@ -35,7 +35,7 @@ const FREE_LIST_CHUNK_SIZE: usize = 1000;
 /// A single thread-local freelist is maintained per thread:
 /// - `free`: popped from during allocation and pushed to during deallocation.
 pub struct BlockAllocator<T: Send, const N: usize> {
-    /// Owns the block chain; only locked when a new block must be allocated.
+    /// Owns the block list; only locked when a new block must be allocated.
     /// This is the only shared state accessed during allocation.
     blocks: Mutex<BlockList<T, N>>,
 
@@ -59,7 +59,7 @@ struct BlockList<T, const N: usize> {
 
 impl<T, const N: usize> Drop for BlockList<T, N> {
     fn drop(&mut self) {
-        // Drop the head block; Block's Drop impl recursively drops the chain.
+        // Drop the head block; Block's Drop impl recursively drops the list.
         if let Some(block_ptr) = self.head_block.take() {
             // Safety: we own all blocks in the list.
             unsafe { drop(Box::from_raw(block_ptr.as_ptr())) };
@@ -140,7 +140,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
     fn allocate_new_block(&self, state: &ThreadLocalAllocState<T, N>) -> Result<NonNull<T>, AllocError> {
         let mut guard = self.blocks.lock().expect("Lock poisoned");
 
-        // Allocate a new block and link it to the existing chain.
+        // Allocate a new block and link it to the existing list.
         let mut new_block = Block::new();
         new_block.next = guard.head_block;
         let new_block_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_block))) };
@@ -524,7 +524,7 @@ impl<T, const N: usize> Block<T, N> {
 
 impl<T, const N: usize> Drop for Block<T, N> {
     fn drop(&mut self) {
-        // Iteratively drop the chain to avoid stack overflow on long lists.
+        // Iteratively drop the list to avoid stack overflow on long lists.
         let mut current = self.next.take();
         while let Some(block_ptr) = current {
             let mut block = unsafe { Box::from_raw(block_ptr.as_ptr()) };

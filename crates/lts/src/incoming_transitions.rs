@@ -137,7 +137,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_incoming_transitions");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
             let incoming = IncomingTransitions::new(&lts);
 

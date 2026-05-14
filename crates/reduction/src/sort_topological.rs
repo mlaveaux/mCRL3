@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_random_sort_topological_with_cycles() {
         random_test(100, |rng| {
-            let lts = random_lts(rng, 10, 3, 2);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             if let Ok(order) = sort_topological(&lts, |_, _| true, false) {
                 assert!(is_topologically_sorted(&lts, |_, _| true, |i| order[i], false))
             }
@@ -181,7 +181,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_reorder_states");
 
-            let lts = random_lts(rng, 10, 3, 2);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
             // Generate a random permutation.

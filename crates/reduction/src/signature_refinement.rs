@@ -839,7 +839,7 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equi
     merc_utilities::random_test(100, |rng| {
         let mut files = merc_io::DumpFiles::new(name);
 
-        let lts = merc_lts::random_lts(rng, 10, 3, 3);
+        let lts = merc_lts::random_lts::<String, _>(rng, 1000, 3);
         log::info!(
             "Generated random LTS with {} states and {} transitions",
             lts.num_of_states(),
@@ -992,7 +992,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_strong_bisim_sigref");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
             let mut timing = Timing::new();
@@ -1018,7 +1018,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_branching_bisim_sigref");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
             let mut timing = Timing::new();
@@ -1046,7 +1046,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_weak_bisim_sigref");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
             let mut timing = Timing::new();
@@ -1074,7 +1074,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_branching_bisim_sigref_naive");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
             let mut timing = Timing::new();
@@ -1096,7 +1096,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_weak_bisim_sigref_naive");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
             let mut timing = Timing::new();

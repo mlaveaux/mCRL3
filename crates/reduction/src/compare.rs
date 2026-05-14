@@ -106,7 +106,7 @@ mod tests {
             let mut timing = Timing::new();
             let mut files = DumpFiles::new("test_random_lts_permutation");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
 
             // Generate a random permutation of the state indices.

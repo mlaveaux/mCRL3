@@ -247,8 +247,8 @@ mod tests {
 
     use merc_io::DumpFiles;
     use merc_lts::mutate_lts;
-    use merc_lts::random_lts_monolithic;
-    use merc_lts::write_mcrl2_aut;
+    use merc_lts::random_lts;
+use merc_lts::write_mcrl2_aut;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
@@ -319,7 +319,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new(name);
 
-            let spec_lts = random_lts_monolithic::<String, _>(rng, 1000, 5, 3);
+            let spec_lts = random_lts::<String, _>(rng, 1000, 3);
             let impl_lts = mutate_lts(&spec_lts, rng, 100).unwrap();
 
             write_mcrl2_aut(&mut File::create(&impl_path).unwrap(), &impl_lts).unwrap();

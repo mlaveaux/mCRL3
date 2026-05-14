@@ -154,8 +154,8 @@ mod tests {
             let mut files = DumpFiles::new("test_random_lts_product");
 
             // This test only checks the assertions of an LTS internally.
-            let left = random_lts(rng, 10, 3, 3);
-            let right = random_lts(rng, 10, 3, 3);
+            let left = random_lts::<String, _>(rng, 1000, 3);
+            let right = random_lts::<String, _>(rng, 1000, 3);
 
             files.dump("left.aut", |f| write_aut(f, &left)).unwrap();
             files.dump("right.aut", |f| write_aut(f, &right)).unwrap();

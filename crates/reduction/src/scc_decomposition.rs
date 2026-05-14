@@ -70,7 +70,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_tau_scc_decomposition");
 
-            let lts = random_lts(rng, 10, 3, 3);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
             let partitioning = tau_scc_decomposition(&lts);

@@ -12,51 +12,18 @@ use crate::LtsBuilder;
 use crate::LtsBuilderFast;
 use crate::StateIndex;
 use crate::TransitionLabel;
-use crate::product_lts;
 
-/// Generates a random LTS with the desired number of states, labels and out
-/// degree by composing three smaller random LTSs using the synchronous product.
-/// This is often a more realistic structure than fully random LTSs, but
-/// otherwise see [`random_lts_monolithic`].
-pub fn random_lts<R: Rng>(
-    rng: &mut R,
-    num_of_states: usize,
-    num_of_labels: u32,
-    outdegree: usize,
-) -> LabelledTransitionSystem<String> {
-    let components: Vec<LabelledTransitionSystem<String>> = (0..3)
-        .map(|_| random_lts_monolithic(rng, num_of_states, num_of_labels, outdegree))
-        .collect();
-
-    // Synchronize on some of the labels.
-    let num_of_synchronized_labels = rng.random_range(0..num_of_labels);
-    let synchronized_labels: Vec<String> = if num_of_synchronized_labels > 0 {
-        (0..num_of_synchronized_labels)
-            .map(|i| String::from_index(i as usize))
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    components
-        .into_iter()
-        .reduce(|acc, lts| product_lts(&acc, &lts, Some(synchronized_labels.clone())))
-        .expect("At least one component should be present")
-}
-
-/// Generates a monolithic LTS with the desired number of states, labels, out
-/// degree and in degree for all the states. Uses the given TransitionLabel type
-/// to generate the transition labels.
+/// Generates a random LTS with the desired number of states and labels. Uses
+/// the given [crate::TransitionLabel] type to generate the transition labels.
 ///
 /// # Details
 ///
 /// The number of labels is limited to 26, since only singular alphabetic labels
 /// are used, because those are easier to read and understand.
-pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
+pub fn random_lts<L: TransitionLabel, R: Rng>(
     rng: &mut R,
     num_of_states: usize,
     num_of_labels: u32,
-    outdegree: usize,
 ) -> LabelledTransitionSystem<L> {
     assert!(
         num_of_labels < 26,
@@ -74,7 +41,7 @@ pub fn random_lts_monolithic<L: TransitionLabel, R: Rng>(
 
     for state_index in 0..num_of_states {
         // Introduce outgoing transitions for this state based on the desired out degree.
-        for _ in 0..rng.random_range(0..outdegree) {
+        for _ in 0..rng.random_range(0..num_of_labels) {
             // Pick a random label and state.
             let label = rng.random_range(0..num_of_labels);
             let to = rng.random_range(0..num_of_states);

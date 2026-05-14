@@ -9,7 +9,7 @@ use rand::rngs::StdRng;
 
 use merc_io::DumpFiles;
 use merc_lts::mutate_lts;
-use merc_lts::random_lts_monolithic;
+use merc_lts::random_lts;
 use merc_lts::write_aut;
 use merc_utilities::Timing;
 use merc_utilities::random_test;
@@ -177,7 +177,7 @@ fn is_refinement_test(
 ) {
     let mut files = DumpFiles::new(dump_name);
 
-    let spec_lts = random_lts_monolithic(rng, 1000, 5, 3);
+    let spec_lts = random_lts::<String, _>(rng, 1000, 3);
     let impl_lts = mutate_lts(&spec_lts, rng, 100).unwrap();
 
     files.dump("spec.aut", |w| write_aut(w, &spec_lts)).unwrap();

@@ -239,7 +239,7 @@ mod tests {
     use test_log::test;
 
     use crate::LTS;
-    use crate::random_lts_monolithic;
+    use crate::random_lts;
     use crate::read_aut;
     use crate::write_aut;
 
@@ -302,7 +302,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under Miri
     fn test_random_aut_io() {
         random_test(100, |rng| {
-            let lts = random_lts_monolithic::<String, _>(rng, 100, 3, 20);
+            let lts = random_lts::<String, _>(rng, 1000, 3);
 
             let mut buffer: Vec<u8> = Vec::new();
             write_aut(&mut buffer, &lts).unwrap();
