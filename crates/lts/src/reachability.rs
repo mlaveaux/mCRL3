@@ -2,7 +2,11 @@ use log::trace;
 
 use crate::LTS;
 use crate::LabelIndex;
+use crate::LabelledTransitionSystem;
+use crate::LtsBuilder;
+use crate::LtsBuilderFast;
 use crate::StateIndex;
+use crate::TransitionLabel;
 
 /// Performs a reachability analysis on the given LTS using a depth-first search
 /// from the initial state.
@@ -42,4 +46,49 @@ pub fn num_reachable_states<L: LTS>(lts: &L, state: StateIndex) -> usize {
     let mut count = 0;
     reachability(lts, state, |_| true, |_| count += 1);
     count
+}
+
+/// Returns a new LTS containing only the states and transitions reachable from
+/// the initial state of `lts`.
+pub fn reachable_lts<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::Label>
+where
+    L::Label: TransitionLabel,
+{
+    let initial = lts.initial_state_index();
+
+    // Collect reachable states in discovery order.
+    let mut old_to_new: Vec<Option<StateIndex>> = vec![None; lts.num_of_states()];
+    let mut new_to_old: Vec<StateIndex> = Vec::new();
+
+    reachability(
+        lts,
+        initial,
+        |_| true,
+        |state| {
+            let new_index = StateIndex::new(new_to_old.len());
+            old_to_new[state] = Some(new_index);
+            new_to_old.push(state);
+        },
+    );
+
+    let num_reachable = new_to_old.len();
+
+    // Use LtsBuilderFast to collect the reachable transitions with renumbered state indices.
+    let labels = lts.labels().to_vec();
+    let mut builder = LtsBuilderFast::new(labels, vec![]);
+    builder.require_num_of_states(num_reachable);
+
+    for &old_state in &new_to_old {
+        let new_from = old_to_new[old_state].expect("reachable state must have a mapping");
+        for t in lts.outgoing_transitions(old_state) {
+            if let Some(new_to) = old_to_new[t.to] {
+                let label = &lts.labels()[t.label.value()];
+                builder
+                    .add_transition(new_from, label, new_to)
+                    .expect("transition should be valid");
+            }
+        }
+    }
+
+    builder.finish(StateIndex::new(0), false)
 }

@@ -226,7 +226,9 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
         let (preprocessed_lts, mapped_state, partition) =
             branching_bisim_sigref(lts, state, divergence_preserving, timing);
         let quotiented_state = StateIndex::new(*partition.block_number(mapped_state));
-        let lts = timing.measure("quotient", || quotient_lts_block::<_, true>(&preprocessed_lts, &partition));
+        let lts = timing.measure("quotient", || {
+            quotient_lts_block::<_, true>(&preprocessed_lts, &partition, divergence_preserving)
+        });
         weak_bisim_sigref_inductive_naive_impl(lts, quotiented_state, divergence_preserving, timing)
     } else {
         weak_bisim_sigref_inductive_naive_impl(lts, state, divergence_preserving, timing)
@@ -270,7 +272,9 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
         let (preprocessed_lts, mapped_state, partition) =
             branching_bisim_sigref(lts, state, divergence_preserving, timing);
         let quotiented_state = StateIndex::new(*partition.block_number(mapped_state));
-        let lts = timing.measure("quotient", || quotient_lts_block::<_, true>(&preprocessed_lts, &partition));
+        let lts = timing.measure("quotient", || {
+            quotient_lts_block::<_, true>(&preprocessed_lts, &partition, divergence_preserving)
+        });
         weak_bisim_sigref_naive_impl(lts, quotiented_state, divergence_preserving, timing)
     } else {
         weak_bisim_sigref_naive_impl(lts, state, divergence_preserving, timing)
@@ -830,7 +834,8 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: crat
     merc_utilities::random_test(100, |rng| {
         let mut files = merc_io::DumpFiles::new(name);
 
-        let lts = merc_lts::random_lts::<String, _>(rng, 1000, 3);
+        // ltsconvert only works on the reachable part, so restrict our random LTS as well.
+        let lts = merc_lts::reachable_lts(&merc_lts::random_lts::<String, _>(rng, 1000, 3));
         log::info!(
             "Generated random LTS with {} states and {} transitions",
             lts.num_of_states(),

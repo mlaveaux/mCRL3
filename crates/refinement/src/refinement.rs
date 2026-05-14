@@ -100,7 +100,7 @@ pub fn refines<L: LTS>(
                 }
 
                 // After partitioning the block becomes the state in the reduced_lts.
-                let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition);
+                let reduced_lts = quotient_lts_block::<_, false>(&preprocess_lts, &partition, false);
                 (reduced_lts, StateIndex::new(*spec_block))
             }
             Equivalence::BranchingBisim | Equivalence::BranchingBisimDivergencePreserving => {
@@ -123,7 +123,11 @@ pub fn refines<L: LTS>(
                     return (true, None);
                 }
 
-                let reduced_lts = quotient_lts_block::<_, true>(&preprocess_lts, &partition);
+                let reduced_lts = quotient_lts_block::<_, true>(
+                    &preprocess_lts,
+                    &partition,
+                    reduction == Equivalence::BranchingBisimDivergencePreserving,
+                );
                 (reduced_lts, StateIndex::new(*spec_block))
             }
             _ => unimplemented!("Preprocessing for refinement type {refinement:?} has not been implemented yet."),
@@ -248,7 +252,7 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_lts::mutate_lts;
     use merc_lts::random_lts;
-use merc_lts::write_mcrl2_aut;
+    use merc_lts::write_mcrl2_aut;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
