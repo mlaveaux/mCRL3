@@ -99,6 +99,12 @@ impl SymbolicLinearProcessSpecification {
             })
             .collect::<Vec<u32>>();
 
+        debug_assert_eq!(
+            initial_state_vector.len(),
+            num_parameters,
+            "Initial state vector length must match number of parameters"
+        );
+
         let initial_state = singleton(storage, &initial_state_vector);
 
         Ok(SymbolicLinearProcessSpecification {
@@ -224,6 +230,32 @@ impl SymbolicSummand {
 
         let (meta, read_positions, write_positions) = compute_meta(storage, &read_indices, &write_indices);
 
+        debug_assert_eq!(
+            read_indices.len(),
+            read_parameters.len(),
+            "Number of read indices must match number of read parameters"
+        );
+        debug_assert_eq!(
+            read_indices.len(),
+            read_positions.len(),
+            "Number of read indices must match number of read positions"
+        );
+        debug_assert_eq!(
+            write_indices.len(),
+            write_positions.len(),
+            "Number of write indices must match number of write positions"
+        );
+        debug_assert_eq!(
+            write_indices.len(),
+            write_assignments.iter().count(),
+            "Number of write indices must match number of write assignments"
+        );
+        debug_assert!(read_indices.iter().is_sorted(), "Read indices must be strictly sorted");
+        debug_assert!(
+            write_indices.iter().is_sorted(),
+            "Write indices must be strictly sorted"
+        );
+
         Self {
             project_ldd,
             relation,
@@ -297,6 +329,12 @@ impl TransitionGroup for SymbolicSummand {
 
         let mut proj_iter = iter(storage, &proj);
         while let Some(short_state) = proj_iter.next() {
+            debug_assert_eq!(
+                short_state.len(),
+                self.read_indices.len(),
+                "Projected state must have one value per read index"
+            );
+
             // Convert the LDD state values back to aterm pointers for the read parameters.
             let read_values: Vec<*const _aterm> = short_state
                 .iter()
@@ -308,6 +346,12 @@ impl TransitionGroup for SymbolicSummand {
                         .address()
                 })
                 .collect();
+
+            debug_assert_eq!(
+                read_values.len(),
+                self.read_parameters.len(),
+                "Number of read values must match number of read parameters"
+            );
 
             for (offset, value) in self.read_positions.iter().zip(short_state.iter()) {
                 interleaved_values[*offset as usize] = *value;
@@ -326,11 +370,22 @@ impl TransitionGroup for SymbolicSummand {
             );
 
             for write in &output {
+                debug_assert_eq!(
+                    write.len(),
+                    self.write_indices.len(),
+                    "Enumerated values must match number of write indices"
+                );
+
                 trace!(
                     "written values {}",
-                    write
+                    self.write_positions
                         .iter()
-                        .format_with(", ", |value, f| f(&format_args!("{:?}", ATerm::from_ptr(*value))))
+                        .zip(write.iter())
+                        .format_with(", ", |(pos, value), f| f(&format_args!(
+                            "{:?}: {:?}",
+                            pos,
+                            ATerm::from_ptr(*value)
+                        )))
                 );
 
                 for (&offset, (i, value)) in self.write_positions.iter().zip(write.iter().enumerate()) {
