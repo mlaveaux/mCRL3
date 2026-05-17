@@ -446,3 +446,51 @@ impl fmt::Debug for SymbolicSummand {
         writeln!(f, "\t\twrite indices: {:?}", self.write_indices)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::process::Command;
+
+    use mcrl2::read_lps;
+    use merc_ldd::Storage;
+    use merc_utilities::Timing;
+
+    use super::explore_lps;
+
+    #[test]
+    fn test_mcrl2_explore_symbolic_abp() {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let mcrl22lps = Path::new(&mcrl2_path).join("mcrl22lps");
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let lps_path = temp_dir.path().join("abp.lps");
+
+        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../examples/mCRL2/academic/abp/abp.mcrl2");
+
+        // Run mcrl22lps on the ABP example to get an LPS file.
+        let status = Command::new(&mcrl22lps)
+            .arg(&spec_path)
+            .arg(&lps_path)
+            .status()
+            .expect("Failed to execute mcrl22lps");
+        assert!(status.success(), "mcrl22lps failed with status: {status}");
+
+        let lps = read_lps(lps_path.to_str().expect("LPS path is valid UTF-8")).expect("Failed to read LPS");
+
+        let mut storage = Storage::new();
+        let timing = Timing::new();
+
+        let num_of_states = explore_lps(&mut storage, &lps, &timing).expect("Failed to explore LPS");
+
+        assert_eq!(
+            num_of_states, 74,
+            "ABP should have 74 reachable states (see examples/lts/abp.aut)"
+        );
+    }
+}
