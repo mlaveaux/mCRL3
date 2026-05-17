@@ -84,7 +84,7 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: 
     trace!("states = {}", LddDisplay::new(storage, &states));
     let progress = TimeProgress::new(
         |(iteration, num_of_states)| {
-            info!("Iteration {}, found {} states", iteration, num_of_states);
+            info!("explored {} state(s) after {} iteration(s)", num_of_states, iteration);
         },
         1,
     );
@@ -97,11 +97,12 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: 
             let mut todo1 = storage.empty_set().clone();
             for (i, transition) in lts.transition_groups_mut().iter_mut().enumerate() {
                 trace!(
-                    "Learning successors for transition group {} with relation {}",
-                    i,
-                    LddDisplay::new(storage, transition.relation())
+                    "Learning successors for transition group {}:",
+                    i
                 );
-                transition.learn_successors(storage, &todo)?;
+                timing.measure(&format!("learn_successors_{}", i), || {
+                    transition.learn_successors(storage, &todo)
+                })?;
 
                 let result = relational_product(storage, &todo, transition.relation(), transition.meta());
                 todo1 = union(storage, &todo1, &result);

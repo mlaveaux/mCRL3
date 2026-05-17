@@ -376,18 +376,6 @@ impl TransitionGroup for SymbolicSummand {
                     "Enumerated values must match number of write indices"
                 );
 
-                trace!(
-                    "written values {}",
-                    self.write_positions
-                        .iter()
-                        .zip(write.iter())
-                        .format_with(", ", |(pos, value), f| f(&format_args!(
-                            "{:?}: {:?}",
-                            pos,
-                            ATerm::from_ptr(*value)
-                        )))
-                );
-
                 for (&offset, (i, value)) in self.write_positions.iter().zip(write.iter().enumerate()) {
                     interleaved_values[offset as usize] = *self.shared.borrow_mut().mapping
                         [self.write_indices[i] as usize]
@@ -396,7 +384,17 @@ impl TransitionGroup for SymbolicSummand {
                 }
 
                 values.push(interleaved_values.clone());
+                
+                trace!(
+                    "[{}] -> [{}]",
+                    short_state.iter().join(", "),
+                    self.write_positions
+                        .iter()
+                        .map(|&pos| interleaved_values[pos as usize])
+                        .join(", ")
+                );
             }
+
         }
 
         // TODO: In oxidd we could actually immediately compute the union.
@@ -444,16 +442,7 @@ impl fmt::Debug for SymbolicSummand {
                 )))
         )?;
 
-        writeln!(
-            f,
-            "\t\tread: {:?}",
-            self.read_parameters
-                .iter()
-                .format_with(", ", |param, f| f(&format_args!("{:?}", ATerm::from_ptr(*param))))
-        )?;
         writeln!(f, "\t\tread indices: {:?}", self.read_indices)?;
-        writeln!(f, "\t\tread positions: {:?}", self.read_positions)?;
-        writeln!(f, "\t\twrite indices: {:?}", self.write_indices)?;
-        writeln!(f, "\t\twrite positions: {:?}", self.write_positions)
+        writeln!(f, "\t\twrite indices: {:?}", self.write_indices)
     }
 }
