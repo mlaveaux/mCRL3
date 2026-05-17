@@ -70,7 +70,7 @@ impl fmt::Display for LddDisplay<'_> {
 
         let mut iter = iter(self.storage, self.ldd);
         while let Some(vector) = iter.next() {
-            writeln!(f, "[{}]", vector.iter().format(" "))?;
+            writeln!(f, "\t[{}]", vector.iter().format(" "))?;
         }
         write!(f, "}}")
     }
