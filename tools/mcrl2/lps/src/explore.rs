@@ -384,7 +384,7 @@ impl TransitionGroup for SymbolicSummand {
                 }
 
                 values.push(interleaved_values.clone());
-                
+
                 trace!(
                     "[{}] -> [{}]",
                     short_state.iter().join(", "),
@@ -394,7 +394,6 @@ impl TransitionGroup for SymbolicSummand {
                         .join(", ")
                 );
             }
-
         }
 
         // TODO: In oxidd we could actually immediately compute the union.
@@ -470,8 +469,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let lps_path = temp_dir.path().join("abp.lps");
 
-        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../examples/mCRL2/academic/abp/abp.mcrl2");
+        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/mCRL2/academic/abp/abp.mcrl2");
 
         // Run mcrl22lps on the ABP example to get an LPS file.
         let status = Command::new(&mcrl22lps)
