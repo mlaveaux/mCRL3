@@ -35,7 +35,7 @@ jobs:
       - name: Install Ubuntu Dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: grcov, libfontconfig1-dev, libfreetype6-dev
+          packages: build-essential, cmake, git, grcov, libboost-dev, libfontconfig1-dev, libfreetype6-dev
           version: 1.0
 
       - name: Setup sccache
@@ -57,25 +57,40 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: true
-  
+
       - name: Run doc tests
         run: cargo test --doc
         env:
           RUSTC_WRAPPER: sccache
 
+      - name: Run tools/mcrl2 doc tests
+        run: cargo test --doc
+        env:
+          working-directory: tools/mcrl2
+          RUSTC_WRAPPER: sccache
+
+      - name: Run tools/gui doc tests
+        run: cargo test --doc
+        env:
+          working-directory: tools/gui
+          RUSTC_WRAPPER: sccache
+
       - name: Generating Code Coverage
-        run: cargo +nightly xtask coverage nextest run       
+        run: cargo +nightly xtask coverage nextest run
         env:
           RUSTC_WRAPPER: sccache
 
       - name: Build Documentation
         run: |
           cargo doc --no-deps
+          cargo doc --no-deps --manifest-path tools/mcrl2/Cargo.toml
+          cargo doc --no-deps --manifest-path tools/gui/Cargo.toml
           cp -r target/coverage/html target/doc/coverage/
           echo "<meta http-equiv=\"refresh\" content=\"0; url=merc_aterm\">" > target/doc/index.html
         env:
           RUSTC_WRAPPER: sccache
           RUSTDOCFLAGS: "-D warnings"
+          MCRL2_PATH: ${{ github.workspace }}/mCRL2/build/stage/bin
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
