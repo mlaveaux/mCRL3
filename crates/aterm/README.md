@@ -158,7 +158,7 @@ leads to undefined behaviour. This is also only checked in debug mode.
 
 ## Changelog
 
-### Current
+### 2.0
 
 Removed the `ahash`, `arbitrary`, `arbtest`, and `rayon` dependencies since
 their use was only minimal. Fixed a bug where garbage collection of terms was

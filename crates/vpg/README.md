@@ -38,7 +38,7 @@ let (_solution, _strategy) = solve_zielonka(&parity_game, false);
 
 ## Changelog
 
-### Current
+### 2.0
 
 Added strategy computations to the regular Zielonka solver, which can also be
 checked for correctness using the `verify_solution` function.

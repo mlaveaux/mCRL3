@@ -17,6 +17,11 @@ that relies on randomness, as it allows for consistent and repeatable tests.
 Finally, it provides a `Timing` struct that can be used to measure and record
 the time taken by various operations in the MERC toolset.
 
+Furthermore, the `DumpFiles` struct can be used to manage dumping of
+intermediate results to files, which can be very useful for debugging failing
+tests. It uses an environment variable `MERC_DUMP` to determine the absolute
+path to dump the files.
+
 ## Safety
 
 This crate contains no unsafe code. If unsafe code is needed it should be in the

@@ -31,7 +31,9 @@ let mcrl2_spec = UntypedProcessSpecification::parse("
 
 ## Changelog
 
-### Current
+### 2.0
+
+Added various builders and visitors to manipulate the ASTs.
 
 Removed the `arbitrary` dependency since generating these expressions completely arbitrarily is not that useful.
 
