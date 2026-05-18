@@ -5,9 +5,10 @@ pub fn publish_crates() {
     // The list of crates to publish, they must be published in order of dependencies, i.e., downstream first.
     let crates = [
         "merc_utilities",
-        "merc_unsafety",
         "merc_number",
         "merc_io",
+        "merc_collections",
+        "merc_unsafety",
         "merc_sharedmutex",
         "merc_macros",
         "merc_data",
