@@ -60,7 +60,7 @@ struct SymbolicLinearProcessSpecification {
     action_labels: Vec<String>,
 
     /// Information shared between all summands and the LPS.
-    _shared: Rc<RefCell<Shared>>,
+    _shared: Rc<Shared>,
 
     /// The initial state of the LPS.
     initial_state: Ldd,
@@ -73,10 +73,10 @@ impl SymbolicLinearProcessSpecification {
         let parameters = lps.parameters();
         let num_parameters = parameters.len();
 
-        let shared = Rc::new(RefCell::new(Shared {
+        let shared = Rc::new(Shared {
             context: LearnSuccessorsContext::new(&lps),
-            mapping: (0..num_parameters).map(|_| IndexedSet::new()).collect(),
-        }));
+            mapping: RefCell::new((0..num_parameters).map(|_| IndexedSet::new()).collect()),
+        });
 
         let mut symbolic_summands = Vec::new();
         for index in 0..lps.num_summands() {
@@ -94,7 +94,7 @@ impl SymbolicLinearProcessSpecification {
             .iter()
             .enumerate()
             .map(|(i, param)| {
-                let (index, _) = shared.borrow_mut().mapping[i].insert(param.clone());
+                let (index, _) = shared.mapping.borrow_mut()[i].insert(param.clone());
                 *index as u32
             })
             .collect::<Vec<u32>>();
@@ -119,11 +119,13 @@ impl SymbolicLinearProcessSpecification {
 
 /// Information that is shared between all [SymbolicSummand]s.
 struct Shared {
-    /// Context used by mCRL2 to perform the enumeration.
+    /// Context used by mCRL2 to perform the enumeration. Uses interior
+    /// mutability so that the enumeration callback can access [Shared::mapping]
+    /// while a call into the context is in progress.
     context: LearnSuccessorsContext,
 
     /// Stores a bidirectional mapping between data expressions and indices.
-    mapping: Vec<IndexedSet<DataExpression>>,
+    mapping: RefCell<Vec<IndexedSet<DataExpression>>>,
 }
 
 /// Represents a symbolic summand of a [mcrl2::LinearProcessSpecification].
@@ -163,7 +165,7 @@ struct SymbolicSummand {
     write_assignments: ATermList<ATerm>,
 
     /// The shared context containing the rewriter/enumerator.
-    shared: Rc<RefCell<Shared>>,
+    shared: Rc<Shared>,
 }
 
 impl SymbolicSummand {
@@ -172,7 +174,7 @@ impl SymbolicSummand {
         storage: &mut Storage,
         summand: &LinearSummand,
         parameters: &ATermList<DataVariable>,
-        shared: Rc<RefCell<Shared>>,
+        shared: Rc<Shared>,
     ) -> Self {
         // Collect free variables from the condition.
         let mut read_vars = free_variables_data_expression(&summand.condition().copy());
@@ -320,32 +322,44 @@ impl TransitionGroup for SymbolicSummand {
         &self.meta
     }
 
-    fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError> {
+    fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<(), MercError> {
         let proj = project(storage, todo, &self.project_ldd);
 
-        // The values to insert into the LDD.
-        let mut values = Vec::new();
-        let mut interleaved_values = vec![0; self.read_indices.len() + self.write_indices.len()];
+        // Collect projected short states first so the iterator's borrow on `storage`
+        // is released before we start mutating it via `singleton`/`union` inside the
+        // enumeration callback below.
+        let short_states: Vec<Vec<Value>> = {
+            let mut proj_iter = iter(storage, &proj);
+            let mut collected = Vec::new();
+            while let Some(short_state) = proj_iter.next() {
+                debug_assert_eq!(
+                    short_state.len(),
+                    self.read_indices.len(),
+                    "Projected state must have one value per read index"
+                );
+                collected.push(short_state.to_vec());
+            }
+            collected
+        };
 
-        let mut proj_iter = iter(storage, &proj);
-        while let Some(short_state) = proj_iter.next() {
-            debug_assert_eq!(
-                short_state.len(),
-                self.read_indices.len(),
-                "Projected state must have one value per read index"
-            );
+        // Reused across short states to avoid per-iteration allocation.
+        let mut read_values: Vec<*const _aterm> = Vec::with_capacity(self.read_indices.len());
+        let mut interleaved_values: Vec<Value> = vec![0; self.read_indices.len() + self.write_indices.len()];
 
+        for short_state in &short_states {
             // Convert the LDD state values back to aterm pointers for the read parameters.
-            let read_values: Vec<*const _aterm> = short_state
-                .iter()
-                .enumerate()
-                .map(|(index, &val)| {
-                    self.shared.borrow().mapping[self.read_indices[index] as usize]
-                        .get_by_index(val as usize)
-                        .expect("The value should be in the mapping")
-                        .address()
-                })
-                .collect();
+            read_values.clear();
+            {
+                let mapping = self.shared.mapping.borrow();
+                for (index, &val) in short_state.iter().enumerate() {
+                    read_values.push(
+                        mapping[self.read_indices[index] as usize]
+                            .get_by_index(val as usize)
+                            .expect("The value should be in the mapping")
+                            .address(),
+                    );
+                }
+            }
 
             debug_assert_eq!(
                 read_values.len(),
@@ -357,55 +371,44 @@ impl TransitionGroup for SymbolicSummand {
                 interleaved_values[*offset as usize] = *value;
             }
 
-            let mut output = Vec::new();
-            self.shared.borrow_mut().context.enumerate_raw(
+            self.shared.context.enumerate_raw(
                 &self.condition,
                 &self.summation_variables,
                 &self.write_assignments,
                 &self.read_parameters,
                 &read_values,
-                &mut |values: &[*const _aterm]| {
-                    output.push(values.to_vec());
+                |values: &[*const _aterm]| {
+                    debug_assert_eq!(
+                        values.len(),
+                        self.write_indices.len(),
+                        "Enumerated values must match number of write indices"
+                    );
+
+                    {
+                        let mut mapping = self.shared.mapping.borrow_mut();
+                        for (&offset, (i, value)) in self.write_positions.iter().zip(values.iter().enumerate()) {
+                            interleaved_values[offset as usize] = *mapping[self.write_indices[i] as usize]
+                                .insert(DataExpression::from(ATerm::from_ptr(*value)))
+                                .0 as Value;
+                        }
+                    }
+
+                    trace!(
+                        "[{}] -> [{}]",
+                        short_state.iter().join(", "),
+                        self.write_positions
+                            .iter()
+                            .map(|&pos| interleaved_values[pos as usize])
+                            .join(", ")
+                    );
+
+                    let cube = singleton(storage, &interleaved_values);
+                    self.relation = union(storage, &self.relation, &cube);
                 },
             );
-
-            for write in &output {
-                debug_assert_eq!(
-                    write.len(),
-                    self.write_indices.len(),
-                    "Enumerated values must match number of write indices"
-                );
-
-                for (&offset, (i, value)) in self.write_positions.iter().zip(write.iter().enumerate()) {
-                    interleaved_values[offset as usize] = *self.shared.borrow_mut().mapping
-                        [self.write_indices[i] as usize]
-                        .insert(DataExpression::from(ATerm::from_ptr(*value)))
-                        .0 as Value;
-                }
-
-                values.push(interleaved_values.clone());
-
-                trace!(
-                    "[{}] -> [{}]",
-                    short_state.iter().join(", "),
-                    self.write_positions
-                        .iter()
-                        .map(|&pos| interleaved_values[pos as usize])
-                        .join(", ")
-                );
-            }
         }
 
-        // TODO: In oxidd we could actually immediately compute the union.
-        let mut result = storage.protect(storage.empty_set());
-        for values in values {
-            let cube = singleton(storage, &values);
-            result = union(storage, &result, &cube);
-        }
-
-        self.relation = union(storage, &self.relation, &result);
-
-        Ok(result)
+        Ok(())
     }
 }
 
