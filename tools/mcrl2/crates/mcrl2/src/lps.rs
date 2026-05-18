@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use mcrl2_sys::atermpp::ffi::_aterm;
 use mcrl2_sys::cxx::UniquePtr;
 use mcrl2_sys::lps::ffi::learn_successors_context;
@@ -131,16 +133,21 @@ pub fn preprocess(lps: &LinearProcessSpecification) -> Result<LinearProcessSpeci
 /// Context for learning successors during symbolic exploration.
 ///
 /// Contains a rewriter, substitution (sigma), and enumerator instance
-/// that are shared across all summands.
+/// that are shared across all summands. Uses interior mutability so that
+/// callers can keep a shared reference to the context while it is being
+/// used (e.g. so the enumeration callback can borrow other state held
+/// alongside the context).
 pub struct LearnSuccessorsContext {
-    context: UniquePtr<learn_successors_context>,
+    context: RefCell<UniquePtr<learn_successors_context>>,
 }
 
 impl LearnSuccessorsContext {
     /// Creates a new context from the given LPS specification.
     pub fn new(lps: &LinearProcessSpecification) -> Self {
         LearnSuccessorsContext {
-            context: mcrl2_lps_create_learn_successors_context(lps.lps.as_ref().expect("The lps is always defined")),
+            context: RefCell::new(mcrl2_lps_create_learn_successors_context(
+                lps.lps.as_ref().expect("The lps is always defined"),
+            )),
         }
     }
 
@@ -150,7 +157,7 @@ impl LearnSuccessorsContext {
     /// For each solution found, calls `callback` with a slice of the
     /// next-state values (one per assignment in the summand).
     pub fn enumerate<F>(
-        &mut self,
+        &self,
         summand: &LinearSummand,
         read_parameters: &[*const _aterm],
         read_values: &[*const _aterm],
@@ -176,7 +183,7 @@ impl LearnSuccessorsContext {
     /// This is useful when the summand's condition, summation variables, and
     /// assignments have already been extracted and stored as aterms.
     pub fn enumerate_raw<F>(
-        &mut self,
+        &self,
         // Information of the summand
         condition: &DataExpression,
         summation_variables: &ATermList<DataVariable>,
@@ -199,7 +206,7 @@ impl LearnSuccessorsContext {
     }
 
     fn enumerate_raw_inner<F>(
-        &mut self,
+        &self,
         condition: &_aterm,
         summation_variables: &_aterm,
         assignments: &_aterm,
@@ -217,9 +224,10 @@ impl LearnSuccessorsContext {
         }
 
         let mut callback_ref: &mut dyn FnMut(&[*const _aterm]) = &mut callback;
+        let mut context = self.context.borrow_mut();
         unsafe {
             mcrl2_lps_enumerate(
-                self.context.as_mut().expect("The context is always defined"),
+                context.as_mut().expect("The context is always defined"),
                 condition,
                 summation_variables,
                 assignments,

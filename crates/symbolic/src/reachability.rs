@@ -66,13 +66,15 @@ pub trait TransitionGroup: fmt::Debug {
     /// Returns the action label index for this summand group, if any.
     fn action_label_index(&self) -> Option<usize>;
 
-    /// Returns the meta information for this summand group.
+    /// Returns the meta information for this summand group required to perform the relational product.
     fn meta(&self) -> &Ldd;
 
     /// Learns the successors of the given set of states.
     ///
     /// The `todo` the set of vectors for which successors should be learned.
-    fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<Ldd, MercError>;
+    /// This function should update the [Self::relation] of the transition group
+    /// to include the new transitions from `todo` to their successors.
+    fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<(), MercError>;
 }
 
 /// Performs reachability analysis using the given initial state and transitions from the symbolic LTS.

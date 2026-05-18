@@ -147,9 +147,9 @@ impl TransitionGroup for SummandGroup {
         Some(self.action_label_index)
     }
 
-    fn learn_successors(&mut self, storage: &mut Storage, _todo: &Ldd) -> Result<Ldd, MercError> {
+    fn learn_successors(&mut self, _storage: &mut Storage, _todo: &Ldd) -> Result<(), MercError> {
         // All states are already explored.
-        Ok(storage.protect(storage.empty_set()))
+        Ok(())
     }
 }
 

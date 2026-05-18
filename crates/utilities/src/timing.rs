@@ -4,7 +4,7 @@ use std::io;
 use std::io::Write;
 use std::time::Instant;
 
-use log::info;
+use log::debug;
 
 /// A timing object to measure the time of different parts of the program. This
 /// is useful for debugging and profiling.
@@ -42,7 +42,7 @@ impl Timing {
         let result = function();
 
         let time = start.elapsed().as_secs_f64();
-        info!("Time {}: {:.3}s", name, time);
+        debug!("Time {}: {:.3}s", name, time);
 
         // Register the result.
         self.results.borrow_mut().push((name.to_string(), time as f32));
