@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_aterm"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "criterion",
  "env_logger",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_ldd"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "criterion",
  "merc_ldd",
@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_sabre"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "criterion",
@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks_sharedmutex"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "criterion",
  "merc_sharedmutex",
@@ -967,7 +967,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "merc-lts"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "env_logger",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "merc-rewrite"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "clap",
@@ -1008,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "merc-sym"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "duct",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "merc-vpg"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "duct",
@@ -1048,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "merc_aterm"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
  "dashmap",
@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "merc_collections"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitvec",
  "delegate",
@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "merc_data"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -1103,7 +1103,7 @@ dependencies = [
 
 [[package]]
 name = "merc_io"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitstream-io",
  "log",
@@ -1117,7 +1117,7 @@ dependencies = [
 
 [[package]]
 name = "merc_ldd"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -1162,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "merc_macros"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "delegate",
  "proc-macro2",
@@ -1172,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "merc_number"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitstream-io",
  "merc_utilities",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "merc_rec-tests"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "env_logger",
@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "merc_reduction"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitvec",
  "bumpalo",
@@ -1239,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "merc_refinement"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitvec",
  "bumpalo",
@@ -1259,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "merc_sabre"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "env_logger",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "merc_sharedmutex"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "crossbeam-utils",
  "delegate",
@@ -1290,7 +1290,7 @@ dependencies = [
 
 [[package]]
 name = "merc_symbolic"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "duct",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "merc_syntax"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "env_logger",
  "indoc",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "merc_tools"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "env_logger",
@@ -1342,7 +1342,7 @@ dependencies = [
 
 [[package]]
 name = "merc_unsafety"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
  "crossbeam-utils",
@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "merc_utilities"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "backtrace",
@@ -1376,7 +1376,7 @@ dependencies = [
 
 [[package]]
 name = "merc_vpg"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitvec",
  "clap",
@@ -2926,7 +2926,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "duct",

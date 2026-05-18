@@ -4,7 +4,7 @@ homepage = "https://mercorg.github.io/merc-website/"
 repository = "https://github.com/MERCorg/merc.git"
 license = "BSL-1.0"
 rust-version = "1.91.0"
-version = "1.0.0"
+version = "2.0.0"
 
 # Add debug information to the release binaries.
 [profile.release]
@@ -116,24 +116,24 @@ criterion = "0.8"
 bindgen = "0.72"
 
 # The workspace crates.
-merc_aterm = { version = "1.0", path = "crates/aterm" }
+merc_aterm = { version = "2.0", path = "crates/aterm" }
 merc_collections = { path = "crates/collections" }
-merc_data = { version = "1.0", path = "crates/data" }
-merc_io = { version = "1.0", path = "crates/io" }
+merc_data = { version = "2.0", path = "crates/data" }
+merc_io = { version = "2.0", path = "crates/io" }
 merc_ldd = { path = "crates/ldd" }
 merc_lts = { version = "2.0", path = "crates/lts" }
-merc_macros = { version = "1.0", path = "crates/macros" }
-merc_number = { version = "1.0", path = "crates/number" }
+merc_macros = { version = "2.0", path = "crates/macros" }
+merc_number = { version = "2.0", path = "crates/number" }
 merc_refinement = { path = "crates/refinement" }
 merc_rec-tests = { path = "crates/rec-tests" }
 merc_reduction = { path = "crates/reduction" }
 merc_sabre = { path = "crates/sabre" }
-merc_sharedmutex = { version = "1.0", path = "crates/sharedmutex" }
+merc_sharedmutex = { version = "2.0", path = "crates/sharedmutex" }
 merc_symbolic = { path = "crates/symbolic", features = ["clap"] }
-merc_syntax = { version = "1.0", path = "crates/syntax" }
+merc_syntax = { version = "2.0", path = "crates/syntax" }
 merc_tools = { path = "crates/tools" }
-merc_unsafety = { version = "1.0", path = "crates/unsafety" }
-merc_utilities = { version = "1.0", path = "crates/utilities" }
+merc_unsafety = { version = "2.0", path = "crates/unsafety" }
+merc_utilities = { version = "2.0", path = "crates/utilities" }
 merc_vpg = { path = "crates/vpg", features = ["clap"] }
 
 # Vendored libraries
