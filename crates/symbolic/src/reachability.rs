@@ -98,10 +98,7 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: 
             // Learn successors for all the transition groups and compute the next todo set.
             let mut todo1 = storage.empty_set().clone();
             for (i, transition) in lts.transition_groups_mut().iter_mut().enumerate() {
-                trace!(
-                    "Learning successors for transition group {}:",
-                    i
-                );
+                trace!("Learning successors for transition group {}:", i);
                 timing.measure(&format!("learn_successors_{}", i), || {
                     transition.learn_successors(storage, &todo)
                 })?;
