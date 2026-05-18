@@ -21,6 +21,7 @@ use merc_aterm::Transmutable;
 use merc_aterm::storage::Marker;
 use merc_collections::VecBag;
 use merc_data::DataExpression;
+use merc_data::DataFunctionSymbol;
 use merc_data::DataVariable;
 use merc_data::DataVariableRef;
 use merc_data::is_data_variable;
@@ -61,8 +62,8 @@ impl LtsMultiAction {
                 let args_str = &part[open_paren_index + 1..part.len() - 1];
                 let arguments: Vec<DataExpression> = args_str
                     .split(',')
-                    .map(|s| DataExpression::from_string(s.trim()))
-                    .collect::<Result<_, MercError>>()?;
+                    .map(|s| DataFunctionSymbol::new(s.trim()).into())
+                    .collect();
                 actions.insert(LtsAction {
                     label: label.to_string(),
                     arguments,
