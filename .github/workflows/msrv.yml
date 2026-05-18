@@ -49,13 +49,13 @@ jobs:
       env:        
         RUSTC_WRAPPER: sccache
 
-    - name: Test mCRL2 MSRV
+    - name: Test tools/mcrl2 MSRV
       run: cargo msrv verify --rust-version 1.91.0
       env:        
         RUSTC_WRAPPER: sccache        
       working-directory: tools/mcrl2
 
-    - name: Test GUI MSRV
+    - name: Test tools/gui MSRV
       run: cargo msrv verify --rust-version 1.92.0
       env:        
         RUSTC_WRAPPER: sccache        

@@ -52,7 +52,7 @@ jobs:
         RUST_LOG: debug
         RUSTC_WRAPPER: sccache
         
-    - name: Run mCRL2 tests
+    - name: Run tools/mcrl2 tests
       run: cargo +nightly xtask address-sanitizer test --no-fail-fast
       working-directory: tools/mcrl2
       env:

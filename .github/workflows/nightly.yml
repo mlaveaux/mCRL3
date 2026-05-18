@@ -56,13 +56,13 @@ jobs:
         RUSTC_WRAPPER: sccache
         RUST_MIN_STACK: 104857600
 
-    - name: Build mCRL2 Release
+    - name: Build tools/mcrl2 Release
       run: cargo build --release
       working-directory: tools/mcrl2
       env:        
         RUSTC_WRAPPER: sccache
 
-    - name: Run mCRL2 tests
+    - name: Run tools/mcrl2 tests
       run: cargo nextest run --release --no-fail-fast -- --include-ignored
       working-directory: tools/mcrl2
       env:
@@ -71,13 +71,13 @@ jobs:
         RUSTC_WRAPPER: sccache
         RUST_MIN_STACK: 104857600
 
-    - name: Build GUI Release
+    - name: Build tools/gui Release
       run: cargo build --release
       working-directory: tools/gui
       env:        
         RUSTC_WRAPPER: sccache
         
-    - name: Run GUI tests
+    - name: Run tools/gui tests
       run: cargo nextest run --release --no-fail-fast -- --include-ignored
       working-directory: tools/gui
       env:
