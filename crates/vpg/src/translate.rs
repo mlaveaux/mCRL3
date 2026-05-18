@@ -7,6 +7,7 @@ use log::info;
 
 use log::warn;
 use merc_collections::IndexedSet;
+use merc_collections::VecBag;
 use merc_io::TimeProgress;
 use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
@@ -571,7 +572,7 @@ fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
     match formula {
         ActFrm::True => true,
         ActFrm::False => false,
-        ActFrm::MultAct(expected_action) => expected_action == action,
+        ActFrm::MultAct(expected_action) => match_multi_action(expected_action, action),
         ActFrm::Binary { op, lhs, rhs } => match op {
             ActFrmBinaryOp::Union => match_action_formula(lhs, action) || match_action_formula(rhs, action),
             ActFrmBinaryOp::Intersect => match_action_formula(lhs, action) && match_action_formula(rhs, action),
@@ -584,6 +585,18 @@ fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
             unimplemented!("Cannot translate action formula {}", formula);
         }
     }
+}
+
+/// Returns true iff the two multi-actions denote the same multi-set of actions.
+///
+/// The order of actions within a multi-action is irrelevant, but the multiplicity of each action
+/// must match exactly (e.g. `a | a | b` does not match `a | b | b`).
+fn match_multi_action(expected: &MultiAction, actual: &MultiAction) -> bool {
+    if expected.actions.len() != actual.actions.len() {
+        return false;
+    }
+
+    VecBag::from_vec(expected.actions.clone()) == VecBag::from_vec(actual.actions.clone())
 }
 
 #[cfg(test)]
