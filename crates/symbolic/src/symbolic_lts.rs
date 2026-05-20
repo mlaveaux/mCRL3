@@ -7,6 +7,7 @@ use merc_ldd::Ldd;
 use merc_ldd::Storage;
 use merc_ldd::Value;
 use merc_ldd::compute_meta;
+use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
 use merc_utilities::MercError;
 
@@ -42,7 +43,7 @@ impl SymbolicLts {
         states: Ldd,
         initial_state: Ldd,
         summand_groups: Vec<SummandGroup>,
-        action_labels: Vec<LtsMultiAction>,
+        action_labels: Vec<LtsMultiAction<LtsAction>>,
         parameter_values: Vec<Vec<DataExpression>>,
     ) -> Self {
         let action_labels = action_labels

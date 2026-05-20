@@ -9,14 +9,16 @@ use merc_utilities::Timing;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
+use crate::LtsAction;
 use crate::LtsMultiAction;
+use crate::SimpleAction;
 use crate::read_aut;
 use crate::read_bcg;
 use crate::read_lts;
 use crate::read_mcrl2_aut;
 
-/// Convenience macro to call `GenericLts::apply` with the same function for both variants.
-/// Useful with generic functions that can be monomorphized for both label types.
+/// Convenience macro to call `GenericLts::apply` with the same function for all variants.
+/// Useful with generic functions that can be monomorphized for all label types.
 ///
 /// Examples:
 /// - apply_lts!(lts, my_fn)
@@ -24,10 +26,10 @@ use crate::read_mcrl2_aut;
 #[macro_export]
 macro_rules! apply_lts {
     ($lts:expr, $arguments:expr, $f:path) => {
-        $lts.apply($arguments, $f, $f)
+        $lts.apply($arguments, $f, $f, $f)
     };
     ($lts:expr, $arguments:expr, $f:expr) => {
-        $lts.apply($arguments, $f, $f)
+        $lts.apply($arguments, $f, $f, $f)
     };
 }
 
@@ -40,10 +42,10 @@ macro_rules! apply_lts {
 #[macro_export]
 macro_rules! apply_lts_pair {
     ($lhs:expr, $rhs:expr, $arguments:expr, $f:path) => {
-        $lhs.apply_pair($rhs, $arguments, $f, $f)
+        $lhs.apply_pair($rhs, $arguments, $f, $f, $f)
     };
     ($lhs:expr, $rhs:expr, $arguments:expr, $f:expr) => {
-        $lhs.apply_pair($rhs, $arguments, $f, $f)
+        $lhs.apply_pair($rhs, $arguments, $f, $f, $f)
     };
 }
 
@@ -56,10 +58,10 @@ macro_rules! apply_lts_pair {
 #[macro_export]
 macro_rules! apply_lts_slice {
     ($lts_slice:expr, $arguments:expr, $f:path) => {
-        $crate::apply_slice_impl($lts_slice, $arguments, $f, $f)
+        $crate::apply_slice($lts_slice, $arguments, $f, $f, $f)
     };
     ($lts_slice:expr, $arguments:expr, $f:expr) => {
-        $crate::apply_slice_impl($lts_slice, $arguments, $f, $f)
+        $crate::apply_slice($lts_slice, $arguments, $f, $f, $f)
     };
 }
 
@@ -100,8 +102,12 @@ pub fn guess_lts_format_from_extension(path: &Path, format: Option<LtsFormat>) -
 pub enum GenericLts {
     /// The LTS in the Aldebaran format.
     Aut(LabelledTransitionSystem<String>),
-    /// The LTS in the mCRL2 .lts format.
-    Lts(LabelledTransitionSystem<LtsMultiAction>),
+    /// The mCRL2 LTS in the Aldebaran format. Multi-action labels are stored as
+    /// [`SimpleAction`]s so the label name and string arguments are accessible.
+    AutMcrl2(LabelledTransitionSystem<LtsMultiAction<SimpleAction>>),
+    /// The LTS in the mCRL2 binary `.lts` format. Multi-action labels are
+    /// stored as proper terms so they can be written back via [`write_lts`].
+    Lts(LabelledTransitionSystem<LtsMultiAction<LtsAction>>),
     /// The LTS in the CADP BCG format.
     Bcg(LabelledTransitionSystem<String>),
 }
@@ -109,26 +115,45 @@ pub enum GenericLts {
 impl GenericLts {
     /// Applies the given function to both LTSs when they are the same variant.
     /// Returns an error if the variants do not match.
-    pub fn apply_pair<T, FAut, FLts, R>(self, other: GenericLts, arguments: T, apply_aut: FAut, apply_lts: FLts) -> R
+    pub fn apply_pair<T, FAut, FAutMcrl2, FLts, R>(
+        self,
+        other: GenericLts,
+        arguments: T,
+        apply_aut: FAut,
+        apply_aut_mcrl2: FAutMcrl2,
+        apply_lts: FLts,
+    ) -> R
     where
         FAut: FnOnce(LabelledTransitionSystem<String>, LabelledTransitionSystem<String>, T) -> R,
-        FLts: FnOnce(LabelledTransitionSystem<LtsMultiAction>, LabelledTransitionSystem<LtsMultiAction>, T) -> R,
+        FAutMcrl2: FnOnce(
+            LabelledTransitionSystem<LtsMultiAction<SimpleAction>>,
+            LabelledTransitionSystem<LtsMultiAction<SimpleAction>>,
+            T,
+        ) -> R,
+        FLts: FnOnce(
+            LabelledTransitionSystem<LtsMultiAction<LtsAction>>,
+            LabelledTransitionSystem<LtsMultiAction<LtsAction>>,
+            T,
+        ) -> R,
     {
         match (self, other) {
             (GenericLts::Aut(a), GenericLts::Aut(b)) => apply_aut(a, b, arguments),
+            (GenericLts::AutMcrl2(a), GenericLts::AutMcrl2(b)) => apply_aut_mcrl2(a, b, arguments),
             (GenericLts::Lts(a), GenericLts::Lts(b)) => apply_lts(a, b, arguments),
             (GenericLts::Bcg(a), GenericLts::Bcg(b)) => apply_aut(a, b, arguments),
             _ => unreachable!("Mismatched GenericLts variants in apply_pair; this indicates a programming error"),
         }
     }
 
-    pub fn apply<T, F, G, R>(self, arguments: T, apply_aut: F, apply_lts: G) -> R
+    pub fn apply<T, F, G, H, R>(self, arguments: T, apply_aut: F, apply_aut_mcrl2: G, apply_lts: H) -> R
     where
         F: FnOnce(LabelledTransitionSystem<String>, T) -> R,
-        G: FnOnce(LabelledTransitionSystem<LtsMultiAction>, T) -> R,
+        G: FnOnce(LabelledTransitionSystem<LtsMultiAction<SimpleAction>>, T) -> R,
+        H: FnOnce(LabelledTransitionSystem<LtsMultiAction<LtsAction>>, T) -> R,
     {
         match self {
             GenericLts::Aut(lts) => apply_aut(lts, arguments),
+            GenericLts::AutMcrl2(lts) => apply_aut_mcrl2(lts, arguments),
             GenericLts::Lts(lts) => apply_lts(lts, arguments),
             GenericLts::Bcg(lts) => apply_aut(lts, arguments),
         }
@@ -140,6 +165,7 @@ impl GenericLts {
     pub fn num_of_states(&self) -> usize {
         match self {
             GenericLts::Aut(lts) => lts.num_of_states(),
+            GenericLts::AutMcrl2(lts) => lts.num_of_states(),
             GenericLts::Lts(lts) => lts.num_of_states(),
             GenericLts::Bcg(lts) => lts.num_of_states(),
         }
@@ -149,6 +175,7 @@ impl GenericLts {
     pub fn num_of_transitions(&self) -> usize {
         match self {
             GenericLts::Aut(lts) => lts.num_of_transitions(),
+            GenericLts::AutMcrl2(lts) => lts.num_of_transitions(),
             GenericLts::Lts(lts) => lts.num_of_transitions(),
             GenericLts::Bcg(lts) => lts.num_of_transitions(),
         }
@@ -157,15 +184,17 @@ impl GenericLts {
 
 /// Internal helper function for the `apply_lts_slice!` macro.
 /// Applies a function to a slice of `GenericLts` when all are the same variant.
-pub fn apply_slice<T, FAut, FLts, R>(
+pub fn apply_slice<T, FAut, FAutMcrl2, FLts, R>(
     lts_slice: &[GenericLts],
     arguments: T,
     apply_aut: FAut,
+    apply_aut_mcrl2: FAutMcrl2,
     apply_lts: FLts,
 ) -> Result<R, MercError>
 where
     FAut: FnOnce(Vec<&LabelledTransitionSystem<String>>, T) -> R,
-    FLts: FnOnce(Vec<&LabelledTransitionSystem<LtsMultiAction>>, T) -> R,
+    FAutMcrl2: FnOnce(Vec<&LabelledTransitionSystem<LtsMultiAction<SimpleAction>>>, T) -> R,
+    FLts: FnOnce(Vec<&LabelledTransitionSystem<LtsMultiAction<LtsAction>>>, T) -> R,
 {
     if lts_slice.is_empty() {
         return Err("Cannot apply function to empty slice of GenericLts".into());
@@ -178,20 +207,29 @@ where
                 .enumerate()
                 .map(|(idx, lts)| match lts {
                     GenericLts::Aut(aut) | GenericLts::Bcg(aut) => Ok(aut),
-                    GenericLts::Lts(_) => Err(format!("Expected Aut/Bcg variant at index {}, got Lts", idx).into()),
+                    _ => Err(format!("Expected Aut/Bcg variant at index {}, got a different variant", idx).into()),
                 })
                 .collect();
             Ok(apply_aut(aut_lts?, arguments))
         }
+        GenericLts::AutMcrl2(_) => {
+            let aut_lts: Result<Vec<&LabelledTransitionSystem<LtsMultiAction<SimpleAction>>>, MercError> = lts_slice
+                .iter()
+                .enumerate()
+                .map(|(idx, lts)| match lts {
+                    GenericLts::AutMcrl2(aut) => Ok(aut),
+                    _ => Err(format!("Expected AutMcrl2 variant at index {}, got a different variant", idx).into()),
+                })
+                .collect();
+            Ok(apply_aut_mcrl2(aut_lts?, arguments))
+        }
         GenericLts::Lts(_) => {
-            let lts_lts: Result<Vec<&LabelledTransitionSystem<LtsMultiAction>>, MercError> = lts_slice
+            let lts_lts: Result<Vec<&LabelledTransitionSystem<LtsMultiAction<LtsAction>>>, MercError> = lts_slice
                 .iter()
                 .enumerate()
                 .map(|(idx, lts)| match lts {
                     GenericLts::Lts(lts_obj) => Ok(lts_obj),
-                    GenericLts::Aut(_) | GenericLts::Bcg(_) => {
-                        Err(format!("Expected Lts variant at index {}, got Aut/Bcg", idx).into())
-                    }
+                    _ => Err(format!("Expected Lts variant at index {}, got a different variant", idx).into()),
                 })
                 .collect();
             Ok(apply_lts(lts_lts?, arguments))
@@ -210,7 +248,7 @@ pub fn read_explicit_lts(path: &Path, format: LtsFormat, timing: &mut Timing) ->
             LtsFormat::AutMcrl2 => {
                 let file = File::open(path)?;
                 let lts = read_mcrl2_aut(&file)?;
-                GenericLts::Lts(lts.relabel(|label| LtsMultiAction::from_string(&label))?)
+                GenericLts::AutMcrl2(lts.relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label))?)
             }
             LtsFormat::Lts => {
                 let file = File::open(path)?;

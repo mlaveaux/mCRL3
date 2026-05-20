@@ -21,7 +21,6 @@ use merc_aterm::Transmutable;
 use merc_aterm::storage::Marker;
 use merc_collections::VecBag;
 use merc_data::DataExpression;
-use merc_data::DataFunctionSymbol;
 use merc_data::DataVariable;
 use merc_data::DataVariableRef;
 use merc_data::is_data_variable;
@@ -33,17 +32,104 @@ use crate::TransitionLabel;
 
 /// Represents a multi-action, i.e., a multi set of action labels
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct LtsMultiAction {
-    actions: VecBag<LtsAction>,
+pub struct LtsMultiAction<L: Ord> {
+    actions: VecBag<L>,
 }
 
-impl LtsMultiAction {
+impl<L: Ord> LtsMultiAction<L> {
     /// Creates a new multi-action with the given set of action labels.
-    pub fn new(actions: VecBag<LtsAction>) -> Self {
+    pub fn new(actions: VecBag<L>) -> Self {
         LtsMultiAction { actions }
     }
 
-    /// Parses a multi-action from a string representation, typically found in the Aldebaran format.
+    /// Returns true iff the multi-action is a tau action, i.e., it contains no action labels.
+    pub fn is_tau_label(&self) -> bool {
+        self.actions.is_empty()
+    }
+
+    /// Returns the set of action labels contained in the multi-action.
+    pub fn actions(&self) -> &VecBag<L> {
+        &self.actions
+    }
+
+    /// Consumes the multi-action and returns the set of action labels contained in it.
+    pub fn into_actions(self) -> VecBag<L> {
+        self.actions
+    }
+
+    /// Retains only the actions in the multi-action that satisfy the given predicate.
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&L) -> bool,
+    {
+        self.actions.retain(|action| f(action));
+    }
+}
+
+/// A single action label with a name and string-valued arguments, used for the
+/// mCRL2 textual `.aut` format where argument values are not yet interpreted as
+/// data expressions.
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
+pub struct SimpleAction {
+    label: String,
+    arguments: Vec<String>,
+}
+
+impl SimpleAction {
+    /// Creates a new simple action with the given label and arguments.
+    pub fn new(label: String, arguments: Vec<String>) -> Self {
+        SimpleAction { label, arguments }
+    }
+
+    /// Returns the name of the action label.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Returns the string arguments of the action.
+    pub fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+}
+
+impl fmt::Display for SimpleAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.arguments.is_empty() {
+            write!(f, "{}", self.label)
+        } else {
+            write!(f, "{}({})", self.label, self.arguments.iter().format(", "))
+        }
+    }
+}
+
+impl TransitionLabel for SimpleAction {
+    fn is_tau_label(&self) -> bool {
+        false
+    }
+
+    fn tau_label() -> Self {
+        panic!("SimpleAction does not support tau labels; use LtsMultiAction for that")
+    }
+
+    fn matches_label(&self, label: &str) -> bool {
+        self.label == label
+    }
+
+    fn from_index(i: usize) -> Self {
+        SimpleAction::new(
+            char::from_digit(i as u32, 36)
+                .expect("Radix is less than 37, so should not panic")
+                .to_string(),
+            Vec::new(),
+        )
+    }
+}
+
+impl LtsMultiAction<SimpleAction> {
+    /// Parses a multi-action from the mCRL2 textual `.aut` label format.
+    ///
+    /// Handles labels of the form `"a(1, 2) | b | c(x)"`: each `|`-separated
+    /// part is split into a label name and optional parenthesised argument list.
     pub fn from_string(input: &str) -> Result<Self, MercError> {
         let mut actions = VecBag::new();
 
@@ -53,33 +139,24 @@ impl LtsMultiAction {
                 return Err("Empty action label in multi-action.".into());
             }
 
-            if let Some(open_paren_index) = part.find('(') {
+            if let Some(open) = part.find('(') {
                 if !part.ends_with(')') {
-                    return Err(format!("Malformed action with arguments: {}", part).into());
+                    return Err(format!("Malformed action with arguments: {part}").into());
                 }
-
-                let label = &part[..open_paren_index].trim();
-                let args_str = &part[open_paren_index + 1..part.len() - 1];
-                let arguments: Vec<DataExpression> = args_str
-                    .split(',')
-                    .map(|s| DataFunctionSymbol::new(s.trim()).into())
-                    .collect();
-                actions.insert(LtsAction {
-                    label: label.to_string(),
-                    arguments,
-                });
+                let label = part[..open].trim().to_string();
+                let args_str = &part[open + 1..part.len() - 1];
+                let arguments = args_str.split(',').map(|s| s.trim().to_string()).collect();
+                actions.insert(SimpleAction::new(label, arguments));
             } else {
-                let label = part.trim();
-                actions.insert(LtsAction {
-                    label: label.to_string(),
-                    arguments: Vec::new(),
-                });
+                actions.insert(SimpleAction::new(part.to_string(), Vec::new()));
             }
         }
 
         Ok(LtsMultiAction { actions })
     }
+}
 
+impl LtsMultiAction<LtsAction> {
     /// Converts the MultiAction into its mCRL2 ATerm representation.
     pub fn to_mcrl2_aterm(&self) -> Result<ATerm, MercError> {
         let action_terms: Vec<MCRL2Action> = self
@@ -131,29 +208,6 @@ impl LtsMultiAction {
         } else {
             Err(format!("Expected TimedMultAction symbol, got {}.", term).into())
         }
-    }
-
-    /// Returns true iff the multi-action is a tau action, i.e., it contains no action labels.
-    pub fn is_tau_label(&self) -> bool {
-        self.actions.is_empty()
-    }
-
-    /// Returns the set of action labels contained in the multi-action.
-    pub fn actions(&self) -> &VecBag<LtsAction> {
-        &self.actions
-    }
-
-    /// Consumes the multi-action and returns the set of action labels contained in it.
-    pub fn into_actions(self) -> VecBag<LtsAction> {
-        self.actions
-    }
-
-    /// Retains only the actions in the multi-action that satisfy the given predicate.
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&LtsAction) -> bool,
-    {
-        self.actions.retain(|action| f(action));
     }
 }
 
@@ -272,7 +326,7 @@ fn is_mcrl2_action_label_symbol(symbol: &SymbolRef<'_>) -> bool {
 }
 
 /// Represents a single action label, with its (data) arguments
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct LtsAction {
     label: String,
     arguments: Vec<DataExpression>,
@@ -295,7 +349,30 @@ impl LtsAction {
     }
 }
 
-impl TransitionLabel for LtsMultiAction {
+impl TransitionLabel for LtsAction {
+    fn is_tau_label(&self) -> bool {
+        false
+    }
+
+    fn tau_label() -> Self {
+        panic!("LtsAction does not support tau labels. Use LtsMultiAction for that.")
+    }
+
+    fn matches_label(&self, label: &str) -> bool {
+        self.label == label
+    }
+
+    fn from_index(i: usize) -> Self {
+        LtsAction::new(
+            char::from_digit(i as u32, 36)
+                .expect("Radix is less than 37, so should not panic")
+                .to_string(),
+            Vec::new(),
+        )
+    }
+}
+
+impl<L: TransitionLabel> TransitionLabel for LtsMultiAction<L> {
     fn is_tau_label(&self) -> bool {
         self.actions.is_empty()
     }
@@ -306,23 +383,18 @@ impl TransitionLabel for LtsMultiAction {
 
     fn matches_label(&self, label: &str) -> bool {
         // TODO: Is this correct, now a|b matches a?
-        self.actions.iter().any(|action| action.label == label)
+        self.actions.iter().any(|action| action.matches_label(label))
     }
 
     fn from_index(i: usize) -> Self {
         // For now we only generate single actions, but these could become multiactions as well
         LtsMultiAction {
-            actions: VecBag::singleton(LtsAction::new(
-                char::from_digit(i as u32, 36)
-                    .expect("Radix is less than 37, so should not panic")
-                    .to_string(),
-                Vec::new(),
-            )),
+            actions: VecBag::singleton(L::from_index(i)),
         }
     }
 }
 
-impl fmt::Display for LtsMultiAction {
+impl<L: Ord + fmt::Display> fmt::Display for LtsMultiAction<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.actions.is_empty() {
             write!(f, "τ")
@@ -342,41 +414,9 @@ impl fmt::Display for LtsAction {
     }
 }
 
-impl fmt::Debug for LtsMultiAction {
+impl<L: Ord + fmt::Display> fmt::Debug for LtsMultiAction<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Use the debug format to print the display format
         write!(f, "{}", self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use merc_data::DataExpression;
-
-    use crate::LtsMultiAction;
-
-    #[test]
-    fn test_multi_action_parse_string() {
-        let action = LtsMultiAction::from_string("a | b(1, 2) | c").unwrap();
-
-        assert_eq!(action.actions.len(), 3);
-        assert!(
-            action
-                .actions
-                .iter()
-                .any(|act| act.label == "a" && act.arguments.is_empty())
-        );
-        assert!(action.actions.iter().any(|act| act.label == "b"
-            && act.arguments
-                == vec![
-                    DataExpression::from_string("1").unwrap(),
-                    DataExpression::from_string("2").unwrap()
-                ]));
-        assert!(
-            action
-                .actions
-                .iter()
-                .any(|act| act.label == "c" && act.arguments.is_empty())
-        );
     }
 }

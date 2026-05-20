@@ -25,6 +25,7 @@ use merc_utilities::MercError;
 
 use crate::LTS;
 use crate::LabelledTransitionSystem;
+use crate::LtsAction;
 use crate::LtsBuilder;
 use crate::LtsBuilderMem;
 use crate::LtsMultiAction;
@@ -34,7 +35,7 @@ use crate::StateIndex;
 pub fn read_lts<R: Read>(
     reader: R,
     read_state_labels: bool,
-) -> Result<LabelledTransitionSystem<LtsMultiAction>, MercError> {
+) -> Result<LabelledTransitionSystem<LtsMultiAction<LtsAction>>, MercError> {
     info!("Reading LTS in .lts format...");
 
     let mut reader = BinaryATermReader::new(BufReader::new(reader))?;
@@ -49,7 +50,7 @@ pub fn read_lts<R: Read>(
     let _actions = reader.read_aterm()?;
 
     // Use a cache to avoid translating the same multi-action multiple times.
-    let mut multi_actions: HashMap<ATerm, LtsMultiAction> = HashMap::new();
+    let mut multi_actions: HashMap<ATerm, LtsMultiAction<LtsAction>> = HashMap::new();
 
     // The initial state is not known yet.
     let mut initial_state: Option<StateIndex> = None;
@@ -156,7 +157,7 @@ pub fn read_lts<R: Read>(
 ///    `state_label: ATermList::<DataExpression>`
 pub fn write_lts<L, W>(writer: &mut W, lts: &L) -> Result<(), MercError>
 where
-    L: LTS<Label = LtsMultiAction>,
+    L: LTS<Label = LtsMultiAction<LtsAction>>,
     W: Write,
 {
     info!("Writing LTS in .lts format...");
@@ -236,6 +237,7 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::LTS;
+    use crate::LtsAction;
     use crate::LtsMultiAction;
     use crate::random_lts;
     use crate::read_lts;
@@ -255,7 +257,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_random_lts_io() {
         random_test(100, |rng| {
-            let lts = random_lts::<LtsMultiAction, _>(rng, 1000, 3);
+            let lts = random_lts::<LtsMultiAction<LtsAction>, _>(rng, 1000, 3);
 
             let mut buffer: Vec<u8> = Vec::new();
             write_lts(&mut buffer, &lts).unwrap();

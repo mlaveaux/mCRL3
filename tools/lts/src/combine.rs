@@ -8,13 +8,48 @@ use merc_lts::LabelIndex;
 use merc_lts::LtsAction;
 use merc_lts::LtsBuilder;
 use merc_lts::LtsMultiAction;
+use merc_lts::SimpleAction;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
+use merc_lts::TransitionLabel;
 use merc_syntax::CommExpr;
 use merc_syntax::MultiActionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
+
+/// The trait for labels used in the composition operator.
+pub trait CombineLabel: TransitionLabel + Ord {
+    /// Returns true iff the data arguments of two actions are compatible for communication.
+    /// Defaults to `true` for label types without structured arguments (e.g., `String`).
+    fn comm_args_compatible(&self, _other: &Self) -> bool {
+        true
+    }
+
+    /// Creates a new action as the result of a communication expression with the given `label`.
+    /// `representative` is one of the matched input actions and provides argument values.
+    fn from_comm(label: String, representative: &Self) -> Self;
+}
+
+impl CombineLabel for SimpleAction {
+    fn comm_args_compatible(&self, other: &Self) -> bool {
+        self.arguments() == other.arguments()
+    }
+
+    fn from_comm(label: String, representative: &Self) -> Self {
+        SimpleAction::new(label, representative.arguments().to_vec())
+    }
+}
+
+impl CombineLabel for LtsAction {
+    fn comm_args_compatible(&self, other: &Self) -> bool {
+        self.arguments() == other.arguments()
+    }
+
+    fn from_comm(label: String, representative: &Self) -> Self {
+        LtsAction::new(label, representative.arguments().to_vec())
+    }
+}
 
 /// Computes the parallel composition hide(allow(comm(L1 || ... || Ln))).
 ///
@@ -22,7 +57,7 @@ use streaming_iterator::StreamingIterator;
 /// stored immediately in a file.
 ///
 /// We interpret empty hide, allow and comm sets as the operator not being present.
-pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
+pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBuilder<L::Label>>(
     builder: &mut B,
     parallel_composition: Vec<L>,
     hide: &[String],
@@ -166,7 +201,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction>, B: LtsBuilder<L::Label>>(
 /// For each communication expression $a_1 | \cdots | a_n \rightarrow c$ in $C$,
 /// repeatedly finds matching sub-multisets of actions (with equal arguments)
 /// and replaces them with the result action $c$.
-fn communicate(comm: &[CommExpr], action: LtsMultiAction) -> LtsMultiAction {
+fn communicate<L: CombineLabel>(comm: &[CommExpr], action: LtsMultiAction<L>) -> LtsMultiAction<L> {
     let mut actions = action.into_actions().to_vec();
 
     for expr in comm {
@@ -184,7 +219,7 @@ fn communicate(comm: &[CommExpr], action: LtsMultiAction) -> LtsMultiAction {
 ///
 /// Returns the resulting action list with the matched actions replaced by the
 /// communicated action, or `None` if no match was found.
-fn find_communication_match(actions: &[LtsAction], expr: &CommExpr) -> Option<Vec<LtsAction>> {
+fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> Option<Vec<L>> {
     // For each action name in the communication expression's left-hand side,
     // find a matching action with the same label. All matched actions must
     // have the same arguments.
@@ -197,10 +232,10 @@ fn find_communication_match(actions: &[LtsAction], expr: &CommExpr) -> Option<Ve
             if matched_indices.contains(&i) {
                 continue;
             }
-            if action.label() == required_name {
+            if action.matches_label(required_name) {
                 // All matched actions must share the same arguments.
                 if let Some(first) = first_match {
-                    if action.arguments() != actions[first].arguments() {
+                    if !action.comm_args_compatible(&actions[first]) {
                         continue;
                     }
                 } else {
@@ -217,15 +252,15 @@ fn find_communication_match(actions: &[LtsAction], expr: &CommExpr) -> Option<Ve
     }
 
     // Build the result: remove matched actions and add the communicated action.
-    let mut result: Vec<LtsAction> = actions
+    let mut result: Vec<L> = actions
         .iter()
         .enumerate()
         .filter(|(i, _)| !matched_indices.contains(i))
         .map(|(_, a)| a.clone())
         .collect();
 
-    let args = first_match.map(|i| actions[i].arguments().to_vec()).unwrap_or_default();
-    result.push(LtsAction::new(expr.to.clone(), args));
+    let representative = &actions[first_match.expect("first_match is always Some when all actions are matched")];
+    result.push(L::from_comm(expr.to.clone(), representative));
     Some(result)
 }
 
@@ -235,7 +270,7 @@ fn find_communication_match(actions: &[LtsAction], expr: &CommExpr) -> Option<Ve
 /// - The action is tau (always allowed), or
 /// - The action label names, compared as sorted multisets, match one of the
 ///   entries in the allow set.
-fn is_allowed(allow: &[SortedMultiActionLabel], action: &SortedLtsMultiAction) -> bool {
+fn is_allowed<L: CombineLabel>(allow: &[SortedMultiActionLabel], action: &SortedLtsMultiAction<L>) -> bool {
     if action.is_tau_label() {
         return true;
     }
@@ -245,8 +280,8 @@ fn is_allowed(allow: &[SortedMultiActionLabel], action: &SortedLtsMultiAction) -
             && allowed
                 .actions
                 .iter()
-                .zip(action.labels())
-                .all(|(name, label)| name == label)
+                .zip(action.iter_actions())
+                .all(|(name, a)| a.matches_label(name))
     })
 }
 
@@ -254,9 +289,9 @@ fn is_allowed(allow: &[SortedMultiActionLabel], action: &SortedLtsMultiAction) -
 ///
 /// Removes all actions whose label is in the hide set $I$. If all actions are
 /// hidden the result is the tau action (empty multi-action).
-fn hide_action(hide: &[String], mut action: LtsMultiAction) -> LtsMultiAction {
+fn hide_action<L: CombineLabel>(hide: &[String], mut action: LtsMultiAction<L>) -> LtsMultiAction<L> {
     if !hide.is_empty() {
-        action.retain(|a| !hide.iter().any(|h| h == a.label()));
+        action.retain(|a| !hide.iter().any(|h| a.matches_label(h)));
     }
     action
 }
@@ -348,18 +383,16 @@ impl SortedMultiActionLabel {
     }
 }
 
-/// A view of an [`LtsMultiAction`] that provides label names in sorted order
-/// (ignoring action parameters), for proper multiset comparison with
-/// [`SortedMultiActionLabel`].
+/// A view of an [`LtsMultiAction`] for multiset comparison with [`SortedMultiActionLabel`].
 ///
-/// Since `VecBag<LtsAction>` sorts by `(label, arguments)`, the label names
-/// are already in non-decreasing order, so no additional sorting is needed.
-struct SortedLtsMultiAction<'a> {
-    action: &'a LtsMultiAction,
+/// Since `VecBag<L>` iterates in sorted order, the actions are already in
+/// non-decreasing order, so no additional sorting is needed here.
+struct SortedLtsMultiAction<'a, L: Ord> {
+    action: &'a LtsMultiAction<L>,
 }
 
-impl<'a> SortedLtsMultiAction<'a> {
-    fn new(action: &'a LtsMultiAction) -> Self {
+impl<'a, L: TransitionLabel> SortedLtsMultiAction<'a, L> {
+    fn new(action: &'a LtsMultiAction<L>) -> Self {
         SortedLtsMultiAction { action }
     }
 
@@ -367,9 +400,8 @@ impl<'a> SortedLtsMultiAction<'a> {
         self.action.is_tau_label()
     }
 
-    /// Returns an iterator over action label names in sorted order.
-    fn labels(&self) -> impl Iterator<Item = &str> {
-        self.action.actions().iter().map(|a| a.label())
+    fn iter_actions(&self) -> impl Iterator<Item = &L> {
+        self.action.actions().iter()
     }
 
     fn len(&self) -> usize {
@@ -539,7 +571,9 @@ mod tests {
     use itertools::Itertools;
     use log::info;
     use log::trace;
+    use merc_collections::VecBag;
     use merc_lts::LTS;
+    use merc_lts::LtsAction;
     use merc_lts::LtsBuilderFast;
     use merc_lts::LtsMultiAction;
     use merc_lts::StateIndex;
@@ -626,10 +660,10 @@ mod tests {
 
         random_test(100, |rng| {
             let left_lts = random_lts::<String, _>(rng, 1000, 3)
-                .relabel(|label| LtsMultiAction::from_string(&label))
+                .relabel(|label| Ok(LtsMultiAction::new(VecBag::singleton(LtsAction::new(label, vec![])))))
                 .unwrap();
             let right_lts = random_lts::<String, _>(rng, 1000, 3)
-                .relabel(|label| LtsMultiAction::from_string(&label))
+                .relabel(|label| Ok(LtsMultiAction::new(VecBag::singleton(LtsAction::new(label, vec![])))))
                 .unwrap();
 
             let left_path = temp_dir.path().join("left.aut");
@@ -736,7 +770,7 @@ mod tests {
             let expected_path = temp_dir.path().join("expected.aut");
             write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
-            let mut result: LtsBuilderFast<LtsMultiAction> = LtsBuilderFast::new(Vec::new(), Vec::new());
+            let mut result: LtsBuilderFast<LtsMultiAction<LtsAction>> = LtsBuilderFast::new(Vec::new(), Vec::new());
             combine_lts(
                 &mut result,
                 vec![left_lts, right_lts],

@@ -10,18 +10,22 @@ use clap::Subcommand;
 use log::info;
 
 use merc_io::LargeFormatter;
-use merc_lts::AutStream;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
-use merc_lts::LabelledTransitionSystem;
+use merc_lts::LtsBuilderFast;
 use merc_lts::LtsFormat;
 use merc_lts::LtsMultiAction;
+use merc_lts::SimpleAction;
+use merc_lts::StateIndex;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
+use merc_lts::read_lts;
+use merc_lts::read_mcrl2_aut;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
+use merc_lts::write_mcrl2_aut;
 use merc_reduction::Equivalence;
 use merc_reduction::reduce_lts;
 use merc_refinement::ExplorationStrategy;
@@ -210,6 +214,10 @@ struct CombineArgs {
     /// Explicitly specify the LTS file format.
     #[arg(long)]
     format: Option<LtsFormat>,
+
+    /// Explicitly specify the output LTS file format.
+    #[arg(long)]
+    output_format: Option<LtsFormat>,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -452,6 +460,25 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
                 return Err(format!("Conversion to {output_format:?} format is not yet implemented.").into());
             }
         },
+        GenericLts::AutMcrl2(lts) => match output_format {
+            LtsFormat::Aut | LtsFormat::AutMcrl2 => {
+                if let Some(path) = &args.output {
+                    write_aut(&mut File::create(path)?, &lts.relabel(|label| Ok(label.to_string()))?)?;
+                } else {
+                    write_aut(&mut stdout(), &lts.relabel(|label| Ok(label.to_string()))?)?;
+                }
+            }
+            LtsFormat::Bcg => {
+                if let Some(path) = &args.output {
+                    write_bcg(&lts.relabel(|label| Ok(label.to_string()))?, path)?;
+                } else {
+                    return Err("Output path must be specified when writing BCG files.".into());
+                }
+            }
+            LtsFormat::Lts => {
+                return Err("Conversion from AutMcrl2 to LTS is not yet implemented.".into());
+            }
+        },
         GenericLts::Lts(lts) => match output_format {
             LtsFormat::Aut | LtsFormat::AutMcrl2 => {
                 if let Some(path) = &args.output {
@@ -542,25 +569,50 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         comm.extend(parse_comm_expr_set(&contents).map_err(|e| format!("Failed to parse --comm-file argument:\n{e}"))?);
     }
 
-    let lts_list = args
-        .lts
-        .iter()
-        .map(|path| {
-            let lts = read_explicit_lts(path, format, timing)?;
+    match format {
+        LtsFormat::AutMcrl2 => {
+            let lts_list = args
+                .lts
+                .iter()
+                .map(|path| -> Result<_, MercError> {
+                    let file = File::open(path)?;
+                    read_mcrl2_aut(&file)?.relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
-            match lts {
-                GenericLts::Aut(aut) | GenericLts::Bcg(aut) => {
-                    Ok(aut.relabel(|label| LtsMultiAction::from_string(&label))?)
-                }
-                GenericLts::Lts(lts) => Ok(lts),
+            let mut builder = LtsBuilderFast::new(Vec::new(), Vec::new());
+            combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
+            let result = builder.finish(StateIndex::new(0), false);
+
+            if let Some(output) = &args.output {
+                write_mcrl2_aut(&mut File::create(output)?, &result)?;
+            } else {
+                write_mcrl2_aut(&mut stdout(), &result)?;
             }
-        })
-        .collect::<Result<Vec<LabelledTransitionSystem<LtsMultiAction>>, MercError>>()?;
+        }
+        LtsFormat::Aut | LtsFormat::Bcg => {
+            return Err(format!("Combining LTSs in {format:?} format is not yet implemented, please convert the LTSs to AutMcrl2 format first.").into());
+        }
+        LtsFormat::Lts => {
+            let lts_list = args
+                .lts
+                .iter()
+                .map(|path| -> Result<_, MercError> {
+                    let file = File::open(path)?;
+                    read_lts(&file, false)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
-    if let Some(output) = &args.output {
-        let mut builder = AutStream::new(File::create(output)?);
+            let mut builder = LtsBuilderFast::new(Vec::new(), Vec::new());
+            combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
+            let result = builder.finish(StateIndex::new(0), false);
 
-        combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
+            if let Some(output) = &args.output {
+                write_mcrl2_aut(&mut File::create(output)?, &result)?;
+            } else {
+                write_mcrl2_aut(&mut stdout(), &result)?;
+            }
+        }
     }
 
     Ok(())

@@ -25,7 +25,7 @@ macro_rules! vecbag {
 /// Mostly useful for a compact representation of bags that are not changed often.
 ///
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct VecBag<T> {
+pub struct VecBag<T: Ord> {
     /// The internal storage with the invariant that the array is sorted.
     sorted_array: Vec<T>,
 }
@@ -209,7 +209,7 @@ impl<T: Ord> Default for VecBag<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a VecBag<T> {
+impl<'a, T: Ord> IntoIterator for &'a VecBag<T> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
 
@@ -218,7 +218,7 @@ impl<'a, T> IntoIterator for &'a VecBag<T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for VecBag<T> {
+impl<T: Ord + fmt::Debug> fmt::Debug for VecBag<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{{:?}}}", self.sorted_array.iter().format(", "))
     }
