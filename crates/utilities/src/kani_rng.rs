@@ -1,13 +1,14 @@
 #[cfg(kani)]
 use rand::TryRng;
 
-#[cfg(kani)]
-use crate::random_lts;
-
 /// A simple wrapper around `kani::any` to implement the `TryRng` trait, which
 /// is required by the random LTS generation functions.
+///
+/// This adapter lets any test helper that takes a `TryRng` (e.g. `random_lts`)
+/// be reused inside a Kani harness without rewriting it: every drawn byte
+/// becomes a symbolic input that Kani enumerates.
 #[cfg(kani)]
-struct ArbRng {}
+pub struct ArbRng;
 
 #[cfg(kani)]
 impl TryRng for ArbRng {

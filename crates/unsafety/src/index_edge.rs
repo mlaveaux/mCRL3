@@ -28,3 +28,58 @@ pub fn index_edge<T, I: PartialEq + PartialOrd<usize> + SliceIndex<[T], Output =
         }
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    const LEN: usize = 4;
+
+    #[kani::proof]
+    fn index_edge_self_loop_returns_selfloop() {
+        let mut data: [u32; LEN] = kani::any();
+        let i: usize = kani::any();
+        kani::assume(i < LEN);
+
+        match index_edge(&mut data, i, i) {
+            Edge::Selfloop(_) => {}
+            Edge::Regular(_, _) => kani::cover!(false, "self-loop produced Regular"),
+        }
+    }
+
+    #[kani::proof]
+    fn index_edge_distinct_returns_regular() {
+        let mut data: [u32; LEN] = kani::any();
+        let a: usize = kani::any();
+        let b: usize = kani::any();
+        kani::assume(a < LEN);
+        kani::assume(b < LEN);
+        kani::assume(a != b);
+
+        match index_edge(&mut data, a, b) {
+            Edge::Regular(_, _) => {}
+            Edge::Selfloop(_) => kani::cover!(false, "distinct indices produced Selfloop"),
+        }
+    }
+
+    #[kani::proof]
+    fn index_edge_regular_writes_are_independent() {
+        let mut data: [u32; LEN] = [0; LEN];
+        let a: usize = kani::any();
+        let b: usize = kani::any();
+        kani::assume(a < LEN);
+        kani::assume(b < LEN);
+        kani::assume(a != b);
+
+        let va: u32 = kani::any();
+        let vb: u32 = kani::any();
+
+        if let Edge::Regular(ar, br) = index_edge(&mut data, a, b) {
+            *ar = va;
+            *br = vb;
+        }
+
+        assert_eq!(data[a], va);
+        assert_eq!(data[b], vb);
+    }
+}
