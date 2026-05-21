@@ -60,7 +60,7 @@ where
 
 /// Computes the strongly connected component partitioning of the given LTS using an iterative
 /// algorithm, based on the iterative Tarjan's SCC algorithm from the mCRL2 toolset (Wouter Schols).
-pub fn scc_decomposition_iterative<'g, F, G>(graph: &'g G, filter: F) -> IndexedPartition
+pub fn scc_decomposition_iterative<F, G>(graph: &G, filter: F) -> IndexedPartition
 where
     F: Fn(G::VertexIndex, G::LabelIndex, G::VertexIndex) -> bool,
     G: Graph,
@@ -86,11 +86,8 @@ where
     let mut discovery_time = 0usize;
     let mut eq_class = 0usize;
 
-    // Work stack: (vertex, remaining outgoing edges iterator).
-    let mut work: Vec<(
-        G::VertexIndex,
-        Box<dyn Iterator<Item = (G::LabelIndex, G::VertexIndex)> + 'g>,
-    )> = Vec::new();
+    // Work stack: (vertex, edge offset into outgoing_edges).
+    let mut work: Vec<(G::VertexIndex, usize)> = Vec::new();
 
     for root in graph.iter_vertices() {
         let s0 = root.index();
@@ -98,9 +95,9 @@ where
             continue;
         }
 
-        work.push((root, Box::new(graph.outgoing_edges(root))));
+        work.push((root, 0));
 
-        while let Some((s_vertex, mut edges)) = work.pop() {
+        while let Some((s_vertex, offset)) = work.pop() {
             let s = s_vertex.index();
 
             if low[s] == UNVISITED {
@@ -112,12 +109,14 @@ where
             }
 
             let mut child = None;
-            for (label, to) in edges.by_ref() {
+            let mut next_offset = offset;
+            for (label, to) in graph.outgoing_edges(s_vertex).skip(offset) {
+                next_offset += 1;
                 if filter(s_vertex, label, to) {
                     let v = to.index();
                     if disc[v] == UNVISITED {
                         disc[v] = 0; // Mark as queued to prevent double-pushing.
-                        child = Some(to);
+                        child = Some((to, next_offset));
                         break;
                     } else if on_scc_stack[v] {
                         low[s] = low[s].min(disc[v]);
@@ -125,10 +124,10 @@ where
                 }
             }
 
-            if let Some(child_vertex) = child {
+            if let Some((child_vertex, resume_offset)) = child {
                 // Push current state continuation, then recurse on child_vertex.
-                work.push((s_vertex, edges));
-                work.push((child_vertex, Box::new(graph.outgoing_edges(child_vertex))));
+                work.push((s_vertex, resume_offset));
+                work.push((child_vertex, 0));
             } else {
                 if disc[s] == low[s] {
                     // s is the root of an SCC; pop all members off the SCC stack.
