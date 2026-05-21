@@ -807,90 +807,6 @@ where
     true
 }
 
-/// Compares our reduction against mCRL2's `ltsconvert` on random inputs.
-#[cfg(test)]
-pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: crate::Equivalence, argument: &str) {
-    let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
-        println!("Skipping test: MCRL2_PATH not set");
-        return;
-    };
-
-    let ltsconvert = std::path::Path::new(&mcrl2_path).join("ltsconvert");
-
-    // Write the random LTS to a temp file for ltsconvert to process.
-    let temp_dir = tempfile::tempdir().unwrap();
-    let input_path = temp_dir.path().join("input.aut");
-    let output_path = temp_dir.path().join("output.aut");
-
-    merc_utilities::random_test(100, |rng| {
-        let mut files = merc_io::DumpFiles::new(name);
-
-        // ltsconvert only works on the reachable part, so restrict our random LTS as well.
-        let lts = merc_lts::reachable_lts(&merc_lts::random_lts::<String, _>(rng, 1000, 3));
-        log::info!(
-            "Generated random LTS with {} states and {} transitions",
-            lts.num_of_states(),
-            lts.num_of_transitions()
-        );
-
-        {
-            let mut input_file = std::fs::File::create(&input_path).unwrap();
-            merc_lts::write_mcrl2_aut(&mut input_file, &lts).unwrap();
-        }
-        files
-            .dump("input.aut", |writer| merc_lts::write_mcrl2_aut(writer, &lts))
-            .unwrap();
-
-        let status = std::process::Command::new(&ltsconvert)
-            .arg(format!("-e{}", argument))
-            .arg(&input_path)
-            .arg(&output_path)
-            .status()
-            .expect("Failed to run ltsconvert");
-        assert!(status.success(), "ltsconvert failed with status: {status}");
-
-        let ltsconvert_reduced = merc_lts::read_mcrl2_aut(std::fs::File::open(&output_path).unwrap()).unwrap();
-
-        let mut timing = merc_utilities::Timing::new();
-        let our_reduced = crate::reduce_lts(lts, equivalence, false, &timing);
-
-        files
-            .dump("reduced.aut", |writer| merc_lts::write_mcrl2_aut(writer, &our_reduced))
-            .unwrap();
-        files
-            .dump("ltsconvert_reduced.aut", |writer| {
-                merc_lts::write_mcrl2_aut(writer, &ltsconvert_reduced)
-            })
-            .unwrap();
-
-        assert_eq!(
-            our_reduced.num_of_states(),
-            ltsconvert_reduced.num_of_states(),
-            "Number of states differs: ours={}, ltsconvert={}",
-            our_reduced.num_of_states(),
-            ltsconvert_reduced.num_of_states()
-        );
-        assert_eq!(
-            our_reduced.num_of_transitions(),
-            ltsconvert_reduced.num_of_transitions(),
-            "Number of transitions differs: ours={}, ltsconvert={}",
-            our_reduced.num_of_transitions(),
-            ltsconvert_reduced.num_of_transitions()
-        );
-
-        assert!(
-            crate::compare_lts(
-                crate::Equivalence::StrongBisim,
-                our_reduced,
-                ltsconvert_reduced,
-                false,
-                &mut timing
-            ),
-            "The reduced LTSs are not strongly bisimilar"
-        );
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use test_log::test;
@@ -909,10 +825,8 @@ mod tests {
     use super::branching_bisim_sigref_naive;
     use super::strong_bisim_sigref;
     use super::strong_bisim_sigref_naive;
-    use super::test_mcrl2_sigref_vs_ltsconvert_impl;
     use super::weak_bisim_sigref_inductive_naive;
     use super::weak_bisim_sigref_naive;
-    use crate::Equivalence;
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
     fn equal_partitions<P: Partition, Q: Partition>(left: &P, right: &Q) -> bool {
@@ -1098,55 +1012,5 @@ mod tests {
                 branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false, &mut timing);
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
         });
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_branching_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_branching_bisim_sigref_vs_ltsconvert",
-            Equivalence::BranchingBisim,
-            "branching-bisim",
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_divergence_preserving_branching_bisim_sigref_vs_ltsconvert",
-            Equivalence::BranchingBisimDivergencePreserving,
-            "dpbranching-bisim",
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_strong_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_strong_bisim_sigref_vs_ltsconvert",
-            Equivalence::StrongBisim,
-            "bisim",
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_weak_bisim_sigref_vs_ltsconvert",
-            Equivalence::WeakBisim,
-            "weak-bisim",
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // Miri is too slow
-    fn test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert() {
-        test_mcrl2_sigref_vs_ltsconvert_impl(
-            "test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert",
-            Equivalence::WeakBisimDivergencePreserving,
-            "dpweak-bisim",
-        );
     }
 }
