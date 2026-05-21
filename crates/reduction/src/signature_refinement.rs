@@ -629,15 +629,6 @@ where {
     }
 
     trace!("Refinement partition {partition}");
-    // debug_assert!(
-    //     is_valid_refinement(lts, &partition, |state_index, partition, builder| signature(
-    //         state_index,
-    //         partition,
-    //         &state_to_signature,
-    //         builder
-    //     )),
-    //     "The resulting partition is not a valid partition."
-    // );
     partition
 }
 

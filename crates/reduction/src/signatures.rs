@@ -16,9 +16,9 @@ use rustc_hash::FxHashSet;
 
 use super::BlockPartition;
 use super::sort_topological;
-use super::tau_scc_decomposition;
 use crate::Partition;
 use crate::quotient_lts_naive;
+use crate::tau_scc_decomposition_iterative;
 
 /// The builder used to construct the signature.
 pub type SignatureBuilder = Vec<(LabelIndex, BlockIndex)>;
@@ -378,7 +378,7 @@ pub fn tau_cycle_elimination_and_reorder<L: LTS>(
     state: StateIndex,
     eliminate_tau_loops: bool,
 ) -> (LabelledTransitionSystem<L::Label>, StateIndex) {
-    let scc_partition = tau_scc_decomposition(&lts);
+    let scc_partition = tau_scc_decomposition_iterative(&lts);
     let tau_loop_free_lts = quotient_lts_naive(&lts, &scc_partition, true, eliminate_tau_loops);
     let mapped_state = StateIndex::new(*scc_partition.block_number(state));
     drop(lts);
