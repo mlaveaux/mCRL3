@@ -134,3 +134,38 @@ mod tests {
         Global.deallocate_slice_dst(ptr, 5);
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    #[kani::proof]
+    fn sized_type_layout_matches_layout_new() {
+        let layout_zero = <u32 as SliceDst>::layout_for(0).expect("layout for sized must succeed");
+        assert_eq!(layout_zero, Layout::new::<u32>());
+
+        let n: usize = kani::any();
+        let layout_n = <u32 as SliceDst>::layout_for(n).expect("layout for sized ignores length");
+        assert_eq!(layout_n, Layout::new::<u32>());
+    }
+
+    #[kani::proof]
+    fn sized_type_length_is_zero() {
+        let value: u32 = kani::any();
+        assert_eq!(<u32 as SliceDst>::length(&value), 0);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn repr_c_is_at_least_as_large_as_any_field() {
+        let a: Layout = Layout::new::<u32>();
+        let b: Layout = Layout::new::<u8>();
+        let composite = repr_c(&[a, b]).expect("layout composes for fixed inputs");
+
+        // pad_to_align preserves the maximum field alignment.
+        assert!(composite.align() >= a.align());
+        assert!(composite.align() >= b.align());
+        // The composite must be large enough to hold both fields back-to-back.
+        assert!(composite.size() >= a.size() + b.size());
+    }
+}

@@ -162,3 +162,84 @@ impl<'a, T: FreeListEntry> Iterator for FreeListIteratorMut<'a, T> {
         }
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// A minimal `FreeListEntry` node holding only the intrusive link.
+    struct Node {
+        next: Cell<*mut Node>,
+    }
+
+    impl Node {
+        fn new() -> Self {
+            Self {
+                next: Cell::new(std::ptr::null_mut()),
+            }
+        }
+    }
+
+    // Safety: `next` is the single link field; both methods read and write it.
+    unsafe impl FreeListEntry for Node {
+        unsafe fn get_next(ptr: *mut Self) -> *mut Self {
+            // SAFETY: caller guarantees `ptr` points to a valid node.
+            unsafe { (*ptr).next.get() }
+        }
+
+        unsafe fn set_next(ptr: *mut Self, next: *mut Self) {
+            // SAFETY: caller guarantees `ptr` points to a valid node.
+            unsafe { (*ptr).next.set(next) };
+        }
+    }
+
+    #[kani::proof]
+    fn freelist_new_is_empty() {
+        let fl: FreeList<Node> = FreeList::new();
+        assert!(fl.is_empty());
+        assert!(fl.try_pop().is_none());
+    }
+
+    #[kani::proof]
+    fn freelist_push_pop_roundtrip() {
+        let fl: FreeList<Node> = FreeList::new();
+        let mut node = Node::new();
+        let ptr = NonNull::from(&mut node);
+
+        fl.push(ptr);
+        assert!(!fl.is_empty());
+
+        let popped = fl.try_pop().expect("freelist contains exactly one entry");
+        assert!(std::ptr::eq(popped.as_ptr(), ptr.as_ptr()));
+        assert!(fl.is_empty());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn freelist_push_two_pops_lifo() {
+        let fl: FreeList<Node> = FreeList::new();
+        let mut a = Node::new();
+        let mut b = Node::new();
+        let pa = NonNull::from(&mut a);
+        let pb = NonNull::from(&mut b);
+
+        fl.push(pa);
+        fl.push(pb);
+
+        let first = fl.try_pop().expect("non-empty");
+        let second = fl.try_pop().expect("non-empty");
+        assert!(std::ptr::eq(first.as_ptr(), pb.as_ptr()));
+        assert!(std::ptr::eq(second.as_ptr(), pa.as_ptr()));
+        assert!(fl.is_empty());
+    }
+
+    #[kani::proof]
+    fn freelist_clear_makes_empty() {
+        let mut fl: FreeList<Node> = FreeList::new();
+        let mut node = Node::new();
+        fl.push(NonNull::from(&mut node));
+        fl.clear();
+        assert!(fl.is_empty());
+        assert!(fl.try_pop().is_none());
+    }
+}

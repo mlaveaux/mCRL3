@@ -384,3 +384,52 @@ mod tests {
         assert_eq!(set[idx3], "value3");
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Covers the protect/index/replace/unprotect round trip and the empty-set
+    /// pre/post conditions in a single harness.
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn protection_set_roundtrip() {
+        let mut ps: ProtectionSet<u32> = ProtectionSet::new();
+        assert!(ps.is_empty());
+
+        let v1: u32 = kani::any();
+        let v2: u32 = kani::any();
+
+        let idx = ps.protect(v1);
+        assert_eq!(ps.len(), 1);
+        assert!(ps.contains_root(idx));
+        assert_eq!(ps[idx], v1);
+
+        ps.replace(idx, v2);
+        assert_eq!(ps[idx], v2);
+
+        ps.unprotect(idx);
+        assert!(ps.is_empty());
+        assert!(!ps.contains_root(idx));
+        // The insertion counter is monotonic and is not affected by unprotect.
+        assert_eq!(ps.number_of_insertions(), 1);
+    }
+
+    /// The generation counter must invalidate stale indices even when their
+    /// underlying slot is reused — this is the load-bearing safety invariant.
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn protection_set_stale_index_after_slot_reuse() {
+        let mut ps: ProtectionSet<u32> = ProtectionSet::new();
+        let v1: u32 = kani::any();
+        let v2: u32 = kani::any();
+
+        let i1 = ps.protect(v1);
+        ps.unprotect(i1);
+        let i2 = ps.protect(v2);
+
+        assert!(ps.contains_root(i2));
+        assert!(!ps.contains_root(i1));
+        assert_eq!(ps[i2], v2);
+    }
+}

@@ -43,4 +43,4 @@ mimalloc = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }
 
 [lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(loom)'] }
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(loom)', 'cfg(kani)'] }
