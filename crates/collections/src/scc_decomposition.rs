@@ -58,6 +58,108 @@ where
     partition
 }
 
+/// Computes the strongly connected component partitioning of the given LTS using an iterative
+/// algorithm, based on the iterative Tarjan's SCC algorithm from the mCRL2 toolset (Wouter Schols).
+pub fn scc_decomposition_iterative<'g, F, G>(graph: &'g G, filter: F) -> IndexedPartition
+where
+    F: Fn(G::VertexIndex, G::LabelIndex, G::VertexIndex) -> bool,
+    G: Graph,
+    G::VertexIndex: MercIndex<Target = usize>,
+{
+    debug_assert!(
+        graph.iter_vertices().all(|v| v.index() < graph.num_of_vertices()),
+        "The graph contains vertices with indices larger than the number of vertices"
+    );
+
+    let n = graph.num_of_vertices();
+
+    let mut partition = IndexedPartition::with_subset(n, graph.iter_vertices().map(|v| v.index()));
+
+    // Sentinel value indicating not yet visited.
+    const UNVISITED: usize = usize::MAX;
+
+    let mut low = vec![UNVISITED; n];
+    // disc[v] == UNVISITED means never queued; disc[v] == 0 means queued but not yet initialized.
+    let mut disc = vec![UNVISITED; n];
+    let mut on_scc_stack = vec![false; n];
+    let mut scc_stack: Vec<usize> = Vec::new();
+    let mut discovery_time = 0usize;
+    let mut eq_class = 0usize;
+
+    // Work stack: (vertex, remaining outgoing edges iterator).
+    let mut work: Vec<(
+        G::VertexIndex,
+        Box<dyn Iterator<Item = (G::LabelIndex, G::VertexIndex)> + 'g>,
+    )> = Vec::new();
+
+    for root in graph.iter_vertices() {
+        let s0 = root.index();
+        if low[s0] != UNVISITED {
+            continue;
+        }
+
+        work.push((root, Box::new(graph.outgoing_edges(root))));
+
+        while let Some((s_vertex, mut edges)) = work.pop() {
+            let s = s_vertex.index();
+
+            if low[s] == UNVISITED {
+                disc[s] = discovery_time;
+                low[s] = discovery_time;
+                discovery_time += 1;
+                scc_stack.push(s);
+                on_scc_stack[s] = true;
+            }
+
+            let mut child = None;
+            for (label, to) in edges.by_ref() {
+                if filter(s_vertex, label, to) {
+                    let v = to.index();
+                    if disc[v] == UNVISITED {
+                        disc[v] = 0; // Mark as queued to prevent double-pushing.
+                        child = Some(to);
+                        break;
+                    } else if on_scc_stack[v] {
+                        low[s] = low[s].min(disc[v]);
+                    }
+                }
+            }
+
+            if let Some(child_vertex) = child {
+                // Push current state continuation, then recurse on child_vertex.
+                work.push((s_vertex, edges));
+                work.push((child_vertex, Box::new(graph.outgoing_edges(child_vertex))));
+            } else {
+                if disc[s] == low[s] {
+                    // s is the root of an SCC; pop all members off the SCC stack.
+                    loop {
+                        let u = scc_stack.pop().expect("scc_stack must not be empty");
+                        on_scc_stack[u] = false;
+                        trace!("Added state {} to block {}", u, eq_class);
+                        partition.set_block(u, BlockIndex::new(eq_class));
+                        if u == s {
+                            break;
+                        }
+                    }
+                    eq_class += 1;
+                }
+                // Propagate lowlink to parent.
+                if let Some((parent_vertex, _)) = work.last() {
+                    let p = parent_vertex.index();
+                    low[p] = low[p].min(low[s]);
+                }
+            }
+        }
+    }
+
+    trace!("SCC partition {partition}");
+    debug!(
+        "Found {} strongly connected components",
+        LargeFormatter(partition.num_of_blocks())
+    );
+    partition
+}
+
 /// Information about a state during the SCC computation.
 #[derive(Clone, Debug)]
 struct StateInfo {

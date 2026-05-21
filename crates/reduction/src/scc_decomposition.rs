@@ -3,6 +3,7 @@
 use merc_collections::IndexedPartition;
 
 use merc_collections::scc_decomposition;
+use merc_collections::scc_decomposition_iterative;
 use merc_lts::AsGraph;
 use merc_lts::LTS;
 
@@ -11,6 +12,11 @@ use crate::sort_topological;
 /// Computes the strongly connected tau component partitioning of the given LTS.
 pub fn tau_scc_decomposition<L: LTS>(lts: &L) -> IndexedPartition {
     scc_decomposition(&AsGraph(lts), |_, label_index, _| lts.is_hidden_label(label_index))
+}
+
+/// Computes the strongly connected tau component partitioning of the given LTS using the iterative algorithm.
+pub fn tau_scc_decomposition_iterative<L: LTS>(lts: &L) -> IndexedPartition {
+    scc_decomposition_iterative(&AsGraph(lts), |_, label_index, _| lts.is_hidden_label(label_index))
 }
 
 /// Returns true iff the labelled transition system has tau-loops.
@@ -26,6 +32,7 @@ mod tests {
     use merc_lts::StateIndex;
     use merc_lts::TransitionLabel;
     use merc_lts::random_lts;
+    use merc_lts::reachability;
     use merc_lts::write_aut;
     use merc_utilities::random_test;
     use test_log::test;
@@ -36,32 +43,17 @@ mod tests {
     use super::LTS;
     use super::has_tau_loop;
     use super::tau_scc_decomposition;
+    use super::tau_scc_decomposition_iterative;
 
-    /// Returns the reachable states from the given state index.
-    fn reachable_states<F, L>(lts: &L, state_index: StateIndex, filter: &F) -> Vec<usize>
-    where
-        F: Fn(StateIndex, LabelIndex, StateIndex) -> bool,
-        L: LTS,
-    {
-        let mut stack = vec![state_index];
-        let mut visited = vec![false; lts.num_of_states()];
-
-        // Depth first search to find all reachable states.
-        while let Some(inner_state_index) = stack.pop() {
-            for transition in lts.outgoing_transitions(inner_state_index) {
-                if filter(inner_state_index, LabelIndex::new(0), transition.to) && !visited[transition.to.value()] {
-                    visited[transition.to.value()] = true;
-                    stack.push(transition.to);
-                }
-            }
-        }
-
-        // All the states that were visited are reachable.
-        visited
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, visited)| if visited { Some(index) } else { None })
-            .collect()
+    /// Returns all states reachable from `state_index` via transitions accepted by `filter`.
+    fn reachable_states<L: LTS>(
+        lts: &L,
+        state_index: StateIndex,
+        filter: impl Fn(LabelIndex) -> bool,
+    ) -> Vec<StateIndex> {
+        let mut result = Vec::new();
+        reachability(lts, state_index, filter, |s| result.push(s));
+        result
     }
 
     #[test]
@@ -83,7 +75,7 @@ mod tests {
 
             // Check that states in a strongly connected component are reachable from each other.
             for state_index in lts.iter_states() {
-                let reachable = reachable_states(&lts, state_index, &|_, label, _| lts.is_hidden_label(label));
+                let reachable = reachable_states(&lts, state_index, |label| lts.is_hidden_label(label));
 
                 // All other states in the same block should be reachable.
                 let block = partitioning.block_number(state_index);
@@ -103,6 +95,35 @@ mod tests {
                 reduction.num_of_states() == tau_scc_decomposition(&reduction).num_of_blocks(),
                 "Applying SCC decomposition again should yield the same number of SCC after second application"
             );
+        });
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_random_tau_scc_decomposition_compare_iterative() {
+        random_test(100, |rng| {
+            let lts = random_lts::<String, _>(rng, 1000, 3);
+
+            let partition_recursive = tau_scc_decomposition(&lts);
+            let partition_iterative = tau_scc_decomposition_iterative(&lts);
+
+            assert_eq!(
+                partition_recursive.num_of_blocks(),
+                partition_iterative.num_of_blocks(),
+                "Both algorithms should find the same number of SCCs"
+            );
+
+            // Both partitions must agree on which pairs of states belong to the same SCC.
+            for s in lts.iter_states() {
+                for t in lts.iter_states() {
+                    let same_recursive = partition_recursive.block_number(s) == partition_recursive.block_number(t);
+                    let same_iterative = partition_iterative.block_number(s) == partition_iterative.block_number(t);
+                    assert_eq!(
+                        same_recursive, same_iterative,
+                        "States {s} and {t} should be in the same SCC in both algorithms"
+                    );
+                }
+            }
         });
     }
 
