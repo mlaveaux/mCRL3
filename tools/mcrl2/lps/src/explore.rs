@@ -5,7 +5,6 @@ use std::rc::Rc;
 use itertools::Itertools;
 use log::debug;
 use log::trace;
-use streaming_iterator::StreamingIterator;
 
 use mcrl2::_aterm;
 use mcrl2::ATerm;
@@ -25,7 +24,7 @@ use merc_ldd::Storage;
 use merc_ldd::Value;
 use merc_ldd::compute_meta;
 use merc_ldd::compute_proj;
-use merc_ldd::iterators::iter;
+use merc_ldd::iterators::for_each_mut;
 use merc_ldd::project;
 use merc_ldd::singleton;
 use merc_ldd::union;
@@ -325,28 +324,17 @@ impl TransitionGroup for SymbolicSummand {
     fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<(), MercError> {
         let proj = project(storage, todo, &self.project_ldd);
 
-        // Collect projected short states first so the iterator's borrow on `storage`
-        // is released before we start mutating it via `singleton`/`union` inside the
-        // enumeration callback below.
-        let short_states: Vec<Vec<Value>> = {
-            let mut proj_iter = iter(storage, &proj);
-            let mut collected = Vec::new();
-            while let Some(short_state) = proj_iter.next() {
-                debug_assert_eq!(
-                    short_state.len(),
-                    self.read_indices.len(),
-                    "Projected state must have one value per read index"
-                );
-                collected.push(short_state.to_vec());
-            }
-            collected
-        };
-
         // Reused across short states to avoid per-iteration allocation.
         let mut read_values: Vec<*const _aterm> = Vec::with_capacity(self.read_indices.len());
         let mut interleaved_values: Vec<Value> = vec![0; self.read_indices.len() + self.write_indices.len()];
 
-        for short_state in &short_states {
+        for_each_mut(storage, &proj, |storage, short_state| {
+            debug_assert_eq!(
+                short_state.len(),
+                self.read_indices.len(),
+                "Projected state must have one value per read index"
+            );
+
             // Convert the LDD state values back to aterm pointers for the read parameters.
             read_values.clear();
             {
@@ -406,7 +394,7 @@ impl TransitionGroup for SymbolicSummand {
                     self.relation = union(storage, &self.relation, &cube);
                 },
             );
-        }
+        });
 
         Ok(())
     }
