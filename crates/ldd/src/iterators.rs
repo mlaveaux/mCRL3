@@ -35,6 +35,61 @@ pub fn iter<'a>(storage: &'a Storage, ldd: &Ldd) -> Iter<'a> {
     }
 }
 
+// Calls `f` with `&mut storage` and each vector in the LDD.  Unlike `iter`, the closure receives a
+// mutable storage reference so it can insert nodes without a separate collection step.
+pub fn for_each_mut<F>(storage: &mut Storage, ldd: &Ldd, mut f: F)
+where
+    F: FnMut(&mut Storage, &[Value]),
+{
+    if ldd == storage.empty_vector() || ldd == storage.empty_set() {
+        return;
+    }
+
+    let mut vector: Vec<Value> = Vec::new();
+    let mut stack: Vec<Ldd> = vec![ldd.clone()];
+
+    loop {
+        // Descend to the next leaf (node whose down == empty_vector).
+        loop {
+            let (value, down) = {
+                let DataRef(value, down, _) = storage.get_ref(stack.last().unwrap());
+                let is_leaf = down == *storage.empty_vector();
+                let down_protected = (!is_leaf).then(|| storage.protect(&down));
+                (value, down_protected)
+            };
+            vector.push(value);
+            match down {
+                Some(down_ldd) => stack.push(down_ldd),
+                None => break, // reached leaf
+            }
+        }
+
+        // Storage is no longer borrowed — the closure may mutate it freely.
+        f(storage, &vector);
+
+        // Ascend to find the next right sibling.
+        while let Some(current) = stack.pop() {
+            vector.pop();
+            let right = {
+                let DataRef(_, _, right) = storage.get_ref(&current);
+                if right != *storage.empty_set() {
+                    Some(storage.protect(&right))
+                } else {
+                    None
+                }
+            };
+            if let Some(right_ldd) = right {
+                stack.push(right_ldd);
+                break;
+            }
+        }
+
+        if stack.is_empty() {
+            break;
+        }
+    }
+}
+
 // Returns an iterator over all nodes in the given LDD. Visits each node only if the predicate holds.
 pub fn iter_nodes<'a, P>(storage: &'a Storage, ldd: &Ldd, filter: P) -> IterNode<'a, P>
 where

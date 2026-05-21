@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "merc_aterm"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
  "dashmap",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "merc_collections"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitvec",
  "delegate",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "merc_data"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "merc_io"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitstream-io",
  "log",
@@ -1042,7 +1042,7 @@ dependencies = [
 
 [[package]]
 name = "merc_ldd"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -1084,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "merc_macros"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "delegate",
  "proc-macro2",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "merc_number"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "bitstream-io",
  "merc_utilities",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "merc_sharedmutex"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "crossbeam-utils",
  "delegate",
@@ -1135,7 +1135,7 @@ dependencies = [
 
 [[package]]
 name = "merc_symbolic"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "duct",
  "itertools 0.14.0",
@@ -1158,7 +1158,7 @@ dependencies = [
 
 [[package]]
 name = "merc_tools"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "env_logger",
@@ -1169,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "merc_unsafety"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
  "crossbeam-utils",
@@ -1187,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "merc_utilities"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "ahash",
  "backtrace",
