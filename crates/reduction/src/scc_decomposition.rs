@@ -66,7 +66,7 @@ mod tests {
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
             let partitioning = tau_scc_decomposition(&lts);
-            let reduction = quotient_lts_naive(&lts, &partitioning, true, false);
+            let reduction = quotient_lts_naive(&lts, &partitioning, true, true);
             assert!(!has_tau_loop(&reduction), "The SCC decomposition contains tau-loops");
 
             files

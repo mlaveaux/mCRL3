@@ -23,7 +23,7 @@ pub struct DivergencePreservingLts<'a, L: LTS> {
 
 impl<'a, L: LTS> DivergencePreservingLts<'a, L> {
     pub fn new(lts: &'a L) -> Self {
-        // We simply use the same tau label for the special label.
+        // We add a new label for the tau-self-loops.
         let tau_self_loops = lts.num_of_labels();
         let labels = lts
             .labels()

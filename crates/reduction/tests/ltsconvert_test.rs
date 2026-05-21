@@ -1,4 +1,8 @@
 use merc_lts::LTS;
+use merc_lts::random_lts;
+use merc_lts::reachable_lts;
+use merc_lts::read_mcrl2_aut;
+use merc_lts::write_mcrl2_aut;
 use merc_reduction::Equivalence;
 use merc_reduction::compare_lts;
 use merc_reduction::reduce_lts;
@@ -33,7 +37,7 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equi
             merc_lts::write_mcrl2_aut(&mut input_file, &lts).unwrap();
         }
         files
-            .dump("input.aut", |writer| merc_lts::write_mcrl2_aut(writer, &lts))
+            .dump("input.aut", |writer| write_mcrl2_aut(writer, &lts))
             .unwrap();
 
         let status = std::process::Command::new(&ltsconvert)
@@ -44,33 +48,29 @@ pub(crate) fn test_mcrl2_sigref_vs_ltsconvert_impl(name: &str, equivalence: Equi
             .expect("Failed to run ltsconvert");
         assert!(status.success(), "ltsconvert failed with status: {status}");
 
-        let ltsconvert_reduced = merc_lts::read_mcrl2_aut(std::fs::File::open(&output_path).unwrap()).unwrap();
+        let ltsconvert_reduced = read_mcrl2_aut(std::fs::File::open(&output_path).unwrap()).unwrap();
 
         let mut timing = merc_utilities::Timing::new();
         let our_reduced = reduce_lts(lts, equivalence, false, &timing);
 
         files
-            .dump("reduced.aut", |writer| merc_lts::write_mcrl2_aut(writer, &our_reduced))
+            .dump("reduced.aut", |writer| write_mcrl2_aut(writer, &our_reduced))
             .unwrap();
         files
             .dump("ltsconvert_reduced.aut", |writer| {
-                merc_lts::write_mcrl2_aut(writer, &ltsconvert_reduced)
+                write_mcrl2_aut(writer, &ltsconvert_reduced)
             })
             .unwrap();
 
         assert_eq!(
             our_reduced.num_of_states(),
             ltsconvert_reduced.num_of_states(),
-            "Number of states differs: ours={}, ltsconvert={}",
-            our_reduced.num_of_states(),
-            ltsconvert_reduced.num_of_states()
+            "Number of states differs",
         );
         assert_eq!(
             our_reduced.num_of_transitions(),
             ltsconvert_reduced.num_of_transitions(),
-            "Number of transitions differs: ours={}, ltsconvert={}",
-            our_reduced.num_of_transitions(),
-            ltsconvert_reduced.num_of_transitions()
+            "Number of transitions differs",
         );
 
         assert!(

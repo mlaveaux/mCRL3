@@ -19,14 +19,16 @@ use crate::diverges;
 /// Computes the existential quotient of the given LTS based on the given
 /// partition:
 ///
-/// > [p] -a-> [q] iff there exist states s in p and t in q such that s -a-> t
+/// > \[p\] -a-> \[q\] iff there exist states s in p and t in q such that s -a-> t
 ///
-/// If `eliminate_inert_taus` is true then tau steps [p] -tau-> [p] are eliminated.
+/// If `eliminate_inert_taus` is true then non-self-loop tau steps \[p\] -tau-> \[p\] are eliminated.
+/// If `eliminate_tau_loops` is true then tau self-loops s -tau-> s are eliminated.
+/// The two parameters are independent: each controls a disjoint set of transitions.
 pub fn quotient_lts_naive<L: LTS, P: Partition>(
     lts: &L,
     partition: &P,
     eliminate_inert_taus: bool,
-    keep_tau_loops: bool,
+    eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
     // Introduce the transitions based on the block numbers, the number of blocks is a decent approximation for the number of transitions.
     let mut builder = LtsBuilderFast::with_capacity(
@@ -40,9 +42,9 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
             let block = partition.block_number(state_index);
             let to_block = partition.block_number(transition.to);
 
-            // If we eliminate inert taus then check if the 'to' and 'from' end up in the same block
-            if !(eliminate_inert_taus && lts.is_hidden_label(transition.label) && block == to_block)
-                && !(keep_tau_loops && lts.is_hidden_label(transition.label) && state_index == transition.to)
+            // Eliminate non-self-loop inert taus and (independently) tau self-loops.
+            if !(eliminate_inert_taus && lts.is_hidden_label(transition.label) && block == to_block && state_index != transition.to)
+                && !(eliminate_tau_loops && lts.is_hidden_label(transition.label) && state_index == transition.to)
             {
                 debug_assert!(
                     partition.block_number(state_index) < partition.num_of_blocks(),
@@ -70,13 +72,13 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
 /// Returns a weak bisimulation quotient that additionally removes transitions
 /// subsumed by a one-hidden-step alternative.
 ///
-/// If `keep_tau_loops` is true then tau self loops are kept.
+/// If `eliminate_tau_loops` is true then tau self-loops are eliminated.
 pub fn quotient_lts_weak<L: LTS, P: Partition>(
     lts: &L,
     partition: &P,
-    keep_tau_loops: bool,
+    eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
-    let quotient = quotient_lts_naive(lts, partition, true, keep_tau_loops);
+    let quotient = quotient_lts_naive(lts, partition, true, eliminate_tau_loops);
     remove_redundant_transitions(&quotient)
 }
 
@@ -168,11 +170,11 @@ fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex,
 /// chosen state is a bottom state. For `BRANCHING` it assumes that the input LTS
 /// is non-divergent.
 ///
-/// If `keep_tau_loops` is true then tau self loops are kept.
+/// If `eliminate_tau_loops` is true then tau self-loops are eliminated.
 pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
     lts: &L,
     partition: &BlockPartition,
-    keep_tau_loops: bool,
+    eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
     let mut builder = LtsBuilderFast::new(lts.labels().into(), Vec::new());
 
@@ -225,7 +227,7 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
                 );
             }
 
-            if !(keep_tau_loops && lts.is_hidden_label(transition.label) && candidate == transition.to) {
+            if !(eliminate_tau_loops && lts.is_hidden_label(transition.label) && candidate == transition.to) {
                 builder
                     .add_transition(
                         StateIndex::new(*block),

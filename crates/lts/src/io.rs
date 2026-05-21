@@ -106,7 +106,7 @@ pub enum GenericLts {
     /// [`SimpleAction`]s so the label name and string arguments are accessible.
     AutMcrl2(LabelledTransitionSystem<LtsMultiAction<SimpleAction>>),
     /// The LTS in the mCRL2 binary `.lts` format. Multi-action labels are
-    /// stored as proper terms so they can be written back via [`write_lts`].
+    /// stored as proper terms so they can be written back via [`crate::write_lts`].
     Lts(LabelledTransitionSystem<LtsMultiAction<LtsAction>>),
     /// The LTS in the CADP BCG format.
     Bcg(LabelledTransitionSystem<String>),

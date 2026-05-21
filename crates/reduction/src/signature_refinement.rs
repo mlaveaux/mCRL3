@@ -227,7 +227,7 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
             branching_bisim_sigref(lts, state, divergence_preserving, timing);
         let quotiented_state = StateIndex::new(*partition.block_number(mapped_state));
         let lts = timing.measure("quotient", || {
-            quotient_lts_block::<_, true>(&preprocessed_lts, &partition, divergence_preserving)
+            quotient_lts_block::<_, true>(&preprocessed_lts, &partition, !divergence_preserving)
         });
         weak_bisim_sigref_inductive_naive_impl(lts, quotiented_state, divergence_preserving, timing)
     } else {
@@ -273,7 +273,7 @@ pub fn weak_bisim_sigref_naive<L: LTS>(
             branching_bisim_sigref(lts, state, divergence_preserving, timing);
         let quotiented_state = StateIndex::new(*partition.block_number(mapped_state));
         let lts = timing.measure("quotient", || {
-            quotient_lts_block::<_, true>(&preprocessed_lts, &partition, divergence_preserving)
+            quotient_lts_block::<_, true>(&preprocessed_lts, &partition, !divergence_preserving)
         });
         weak_bisim_sigref_naive_impl(lts, quotiented_state, divergence_preserving, timing)
     } else {
