@@ -236,6 +236,41 @@ mod tests {
     use crate::test_utility::from_iter;
     use crate::test_utility::random_vector_set;
 
+    // Test that iter and for_each_mut yield the same set of cubes.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_random_iter_for_each_mut() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+
+            let set = random_vector_set(rng, 32, 10, 10);
+            let ldd = from_iter(&mut storage, set.iter());
+
+            // Collect via iter.
+            let mut iter_result: Vec<Vec<Value>> = Vec::new();
+            let mut it = iter(&storage, &ldd);
+            while let Some(vector) = it.next() {
+                iter_result.push(vector.to_vec());
+            }
+
+            // Collect via for_each_mut.
+            let mut for_each_result: Vec<Vec<Value>> = Vec::new();
+            for_each_mut(&mut storage, &ldd, |_storage, vector| {
+                for_each_result.push(vector.to_vec());
+            });
+
+            for_each_result.sort();
+            let original_len = for_each_result.len();
+            for_each_result.dedup();
+            assert_eq!(original_len, for_each_result.len(), "for_each_mut returned duplicate vectors.");
+
+            assert_eq!(
+                iter_result, for_each_result,
+                "iter and for_each_mut yielded different sequences of cubes."
+            );
+        })
+    }
+
     // Test the iterator implementation.
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -251,10 +286,17 @@ mod tests {
                 "Number of iterations does not match the number of elements in the set."
             );
 
-            let mut iter = iter(&storage, &ldd);
-            while let Some(vector) = iter.next() {
+            let mut results: Vec<Vec<Value>> = Vec::new();
+            let mut it = iter(&storage, &ldd);
+            while let Some(vector) = it.next() {
                 assert!(set.contains(vector), "Found element not in the set.");
+                results.push(vector.to_vec());
             }
+
+            results.sort();
+            let original_len = results.len();
+            results.dedup();
+            assert_eq!(original_len, results.len(), "iter returned duplicate vectors.");
         })
     }
 }
