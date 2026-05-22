@@ -21,7 +21,7 @@ use crate::diverges;
 ///
 /// > \[p\] -a-> \[q\] iff there exist states s in p and t in q such that s -a-> t
 ///
-/// If `eliminate_inert_taus` is true then non-self-loop tau steps \[p\] -tau-> \[p\] are eliminated.
+/// If `eliminate_inert_taus` is true then non self-loop tau steps \[p\] -tau-> \[p\] are eliminated.
 /// If `eliminate_tau_loops` is true then tau self-loops s -tau-> s are eliminated.
 /// The two parameters are independent: each controls a disjoint set of transitions.
 pub fn quotient_lts_naive<L: LTS, P: Partition>(
@@ -143,6 +143,11 @@ fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex,
                     continue;
                 }
 
+                // Skip tau self-loops on the middle state, as they do not contribute to the redundancy.
+                if lts.is_hidden_label(transition.label) && middle == transition.to {
+                    continue;
+                }
+
                 reachability(
                     lts,
                     transition.to,
@@ -166,9 +171,9 @@ fn is_redundant_transition<L: LTS>(lts: &L, from: StateIndex, label: LabelIndex,
 
 /// Optimised implementation for block partitions.
 ///
-/// Chooses a single state in the block as representative. If `BRANCHING` then the
-/// chosen state is a bottom state. For `BRANCHING` it assumes that the input LTS
-/// is non-divergent.
+/// Chooses a single state in the block as representative. If `BRANCHING` then
+/// the chosen state is a bottom state. For `BRANCHING` we only consider bottom
+/// states as representatives.
 ///
 /// If `eliminate_tau_loops` is true then tau self-loops are eliminated.
 pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
