@@ -43,7 +43,10 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
             let to_block = partition.block_number(transition.to);
 
             // Eliminate non-self-loop inert taus and (independently) tau self-loops.
-            if !(eliminate_inert_taus && lts.is_hidden_label(transition.label) && block == to_block && state_index != transition.to)
+            if !(eliminate_inert_taus
+                && lts.is_hidden_label(transition.label)
+                && block == to_block
+                && state_index != transition.to)
                 && !(eliminate_tau_loops && lts.is_hidden_label(transition.label) && state_index == transition.to)
             {
                 debug_assert!(

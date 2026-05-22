@@ -262,7 +262,11 @@ mod tests {
             for_each_result.sort();
             let original_len = for_each_result.len();
             for_each_result.dedup();
-            assert_eq!(original_len, for_each_result.len(), "for_each_mut returned duplicate vectors.");
+            assert_eq!(
+                original_len,
+                for_each_result.len(),
+                "for_each_mut returned duplicate vectors."
+            );
 
             assert_eq!(
                 iter_result, for_each_result,
