@@ -304,7 +304,7 @@ fn explore_impl<L: SymbolicLTS>(
         println!(
             "LTS has {} states",
             timing.measure("explore", || -> Result<_, MercError> {
-                let states = reachability(storage, lts)?;
+                let states = reachability(storage, lts, timing)?;
 
                 Ok(len(storage, &states))
             })?

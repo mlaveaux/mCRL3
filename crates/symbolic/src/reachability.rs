@@ -78,7 +78,7 @@ pub trait TransitionGroup: fmt::Debug {
 }
 
 /// Performs reachability analysis using the given initial state and transitions from the symbolic LTS.
-pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: &Timing) -> Result<usize, MercError> {
+pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: &Timing) -> Result<Ldd, MercError> {
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone(); // The state space.
     let mut iteration = 0;
@@ -117,6 +117,6 @@ pub fn reachability<L: SymbolicLTS>(storage: &mut Storage, lts: &mut L, timing: 
             iteration += 1;
         }
 
-        Ok(len(storage, &states))
+        Ok(states)
     })
 }
