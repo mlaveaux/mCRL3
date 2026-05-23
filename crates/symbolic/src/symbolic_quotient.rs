@@ -55,15 +55,14 @@ fn quotient_naive(
     block_vars: &[VarNo],
 ) -> Result<BDDFunction, MercError> {
     // Merge target states to the new encoding (in b). T(s, b, a) := ∃s′ : T (s, s′, a) ∧ P(s′, b)
-    let (_block_var, block_variables) = compute_vars_bdd(manager_ref, block_vars)?;
-    let relation_blocks = relation.apply_exists(BooleanOperator::And, partition, &block_variables)?;
+    let (next_state_vars, next_state_vars_bdd) = compute_vars_bdd(manager_ref, next_state_variables)?;
+    let relation_blocks = relation.apply_exists(BooleanOperator::And, partition, &next_state_vars_bdd)?;
 
     // Rename b variables to s′ variables. T (s, s′, a) := T (s, b, a)[b ← s′].
-    let (next_state_vars, _) = compute_vars_bdd(manager_ref, next_state_variables)?;
     let substitution = Subst::new(block_vars, &next_state_vars);
     let relation_next = relation_blocks.substitute(&substitution)?;
 
-    // 4 P′(s, b) ← rename(P, [s′ ← s]).
+    // P′(s, b) ← rename(P, [s′ ← s]).
     let partition_prime = variable_rename_reverse(
         manager_ref,
         partition,
