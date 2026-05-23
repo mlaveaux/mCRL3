@@ -1,0 +1,36 @@
+name: Semver Checks
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: on
+
+jobs:
+  semver:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install stable rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.10
+
+    - name: Checkout the repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - name: Check semver
+      uses: obi1kenobi/cargo-semver-checks-action@v2
+      with:
+        feature-group: default-features
+        exclude: benchmarks_aterm, benchmarks_aterm, benchmarks_sharedmutex, merc-rewrite, merc-lts, merc-pbes, merc-lps, merc-sym, merc_rec-tests, merc_tools

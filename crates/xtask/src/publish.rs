@@ -10,17 +10,14 @@ pub fn publish_crates() {
         "merc_collections",
         "merc_unsafety",
         "merc_sharedmutex",
-
         "merc_macros",
         "merc_aterm",
         "merc_data",
-        
         "merc_lts",
         "merc_reduction",
         "merc_refinement",
         "merc_syntax",
         "merc_sabre",
-
         "merc_ldd",
         "merc_symbolic",
         "merc_vpg",

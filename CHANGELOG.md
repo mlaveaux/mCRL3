@@ -5,7 +5,7 @@ See the `README.md` of the individual crates for their own changelogs. The
 symbolically. This is currently not very efficient, but will be improved in
 future releases.
 
-**Full Changelog**: https://github.com/MERCorg/merc/commits/v2.0
+**Full Changelog**:  https://github.com/MERCorg/merc/compare/v1.1...v2.0
 
 # v1.1 (January 2026)
 
@@ -32,7 +32,7 @@ compute orderings using MINCE when the `kahypar` feature is enabled.
 See the `README.md` of the individual crates for their own changelogs.
 
 
-**Full Changelog**: https://github.com/MERCorg/merc/commits/v1.1
+**Full Changelog**: https://github.com/MERCorg/merc/compare/v1.0...v1.1
 
 # v1.0 (December 2025)
 

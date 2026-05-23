@@ -31,7 +31,10 @@ pub fn package() -> Result<(), Box<dyn Error>> {
 
     // Mapping from workspace paths to their binaries
     let workspace_binaries = [
-        (workspace_root.clone(), vec!["merc-lts", "merc-rewrite", "merc-vpg", "merc-sym"]),
+        (
+            workspace_root.clone(),
+            vec!["merc-lts", "merc-rewrite", "merc-vpg", "merc-sym"],
+        ),
         (workspace_root.join("tools/gui"), vec!["merc-ltsgraph"]),
         (workspace_root.join("tools/mcrl2"), vec!["merc-pbes", "merc-lps"]),
     ];
