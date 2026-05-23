@@ -38,7 +38,7 @@ assert_eq!(reduced.num_of_states(), 3);
 
 ## Changelog
 
-### 2.0
+### 2.0.0
 
 Fixed an issue with the compare function for branching bisimulation, which
 was not properly adapting the `initial_rhs` state to the processed LTS.
@@ -48,7 +48,8 @@ Kanellakis-Smolka inspired ones, which can use branching bisimulation as a
 preprocessing step.
 
 Added divergence-preserving variants of the branching and weak bisimulation
-algorithms.
+algorithms. Iterative SCC decomposition implemented to avoid stack overflows on
+large examples .
 
 Added the `clap` feature to conditionally enable the `clap` dependency to derive
 some convenience traits.

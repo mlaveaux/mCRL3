@@ -67,7 +67,7 @@ impl<'a, T: ?Sized> BfTermPool<T> {
     ///
     /// # Safety
     ///
-    /// Provides mutable access given that other threads use [write] and [read]
+    /// Provides mutable access given that other threads use [Self::write] and [Self::read]
     /// exclusively. If we are already in an exclusive context then lock can be
     /// set to false.
     pub unsafe fn write_exclusive(&'a self) -> BfTermPoolThreadWrite<'a, T> {

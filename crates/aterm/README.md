@@ -158,7 +158,7 @@ leads to undefined behaviour. This is also only checked in debug mode.
 
 ## Changelog
 
-### 2.0
+### 2.0.0
 
 Removed the `ahash`, `arbitrary`, `arbtest`, and `rayon` dependencies since
 their use was only minimal. Fixed a bug where garbage collection of terms was
@@ -166,7 +166,9 @@ not triggered properly.
 
 Reduced the size of terms by introducing fixed-size storages for small terms,
 and moving annotations to only the `ATermInt` type. Furthermore, use a block
-allocator to avoid the overhead of many small allocations for terms.
+allocator to avoid the overhead of many small allocations for terms. Garbage
+collection is now triggered properly and no longer leads to subtle bugs, and
+some unsound implementation of `Return<T>` has been removed.
 
 ## Related work
 

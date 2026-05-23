@@ -20,9 +20,27 @@ A new tool `merc-sym` can explore a symbolic state space given in Sylvan's binar
 
 See the `README.md` of the individual crates for their own changelogs.
 
+# v2.0 (June 2026)
+
+See the `README.md` of the individual crates for their own changelogs. The main change in this release is the introduction of the `merc_sym` crate, which can explore a symbolic state space given in Sylvan's binary `.ldd` format, or the mCRL2 symbolic binary `.sym` format. It can also compute orderings using MINCE when the `kahypar` feature is enabled. This functionality is available in the corresponding `merc-sym` tool.
+
+Furthermore, we have introduced a `merc_refinement` crate that can be used to
+check whether two labelled transition systems are related by various pre-order
+relations, which are (weak) trace, failure refinement and failures-divergence
+refinement and impossible futures. For these we can also produce counter
+examples in various forms.
+
+**Full Changelog**: https://github.com/MERCorg/merc/commits/v2.0
+
+# v1.1 (January 2026)
+
+This release was primarily made to force a Zenodo upload.
+
+**Full Changelog**: https://github.com/MERCorg/merc/commits/v1.1
+
 # v1.0 (December 2025)
 
-The initial release of the MERC toolset. Although nowhere near feature complete we opted to produce a 1.0 release to mark the initial milestone of the toolset instead of staying in zero version forever. We generally expect to release a single major version per year, without focusing too much on avoiding breaking changes to libraries for foreseeable future.
+The initial release of the MERC toolset. Although nowhere near feature complete we opted to produce a `1.0` release to mark the initial milestone of the toolset instead of staying in zero version forever. We generally expect to release a single major version per year, without focusing too much on avoiding breaking changes to libraries for foreseeable future.
 
 This release comes with a set of five tools:
   - `merc-lts` implements branching, strong and weak (signature-based) bisimulation reduction and comparison for labelled transition systems in the mCRL2 binary [`.lts`](https://www.mcrl2.org/web/user_manual/tools/lts.html) format and the **AUT**omaton (or ALDEBARAN) [`.aut`](https://cadp.inria.fr/man/aut.html) format.
