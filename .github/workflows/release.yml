@@ -41,6 +41,8 @@ jobs:
 
     - name: Check semver
       uses: obi1kenobi/cargo-semver-checks-action@v2
+      feature-group: default-features
+      exclude: benchmarks_aterm, benchmarks_aterm, benchmarks_sharedmutex, merc-rewrite, merc-lts, merc-pbes, merc-lps, merc-sym, merc_rec-tests, merc_tools
 
     - name: Run package task
       run: cargo xtask package

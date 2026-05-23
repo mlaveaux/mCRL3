@@ -7,6 +7,7 @@ use std::env;
 use std::error::Error;
 use std::fs::copy;
 use std::fs::create_dir_all;
+use std::path::PathBuf;
 
 /// Builds the project in release mode and packages specified binaries into a
 /// newly created 'package' directory.
@@ -30,16 +31,16 @@ pub fn package() -> Result<(), Box<dyn Error>> {
 
     // Mapping from workspace paths to their binaries
     let workspace_binaries = [
-        (workspace_root.clone(), vec!["merc-lts", "merc-rewrite", "merc-vpg"]),
+        (workspace_root.clone(), vec!["merc-lts", "merc-rewrite", "merc-vpg", "merc-sym"]),
         (workspace_root.join("tools/gui"), vec!["merc-ltsgraph"]),
-        (workspace_root.join("tools/mcrl2"), vec!["merc-pbes"]),
+        (workspace_root.join("tools/mcrl2"), vec!["merc-pbes", "merc-lps"]),
     ];
 
     // Build all workspaces in release mode
     for (workspace_path, binaries) in &workspace_binaries {
         cmd!("cargo", "build", "--release").dir(workspace_path).run()?;
 
-        let target_release_dir = workspace_path.join("target").join("release");
+        let target_release_dir = PathBuf::new().join("target").join("release");
 
         for binary_name in binaries {
             let source_path = if cfg!(windows) {

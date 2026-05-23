@@ -117,19 +117,19 @@ bindgen = "0.72"
 
 # The workspace crates.
 merc_aterm = { version = "2.0", path = "crates/aterm" }
-merc_collections = { path = "crates/collections" }
+merc_collections = { version = "2.0", path = "crates/collections" }
 merc_data = { version = "2.0", path = "crates/data" }
 merc_io = { version = "2.0", path = "crates/io" }
-merc_ldd = { path = "crates/ldd" }
+merc_ldd = { version = "2.0", path = "crates/ldd" }
 merc_lts = { version = "2.0", path = "crates/lts" }
 merc_macros = { version = "2.0", path = "crates/macros" }
 merc_number = { version = "2.0", path = "crates/number" }
-merc_refinement = { path = "crates/refinement" }
+merc_refinement = { version = "2.0", path = "crates/refinement" }
 merc_rec-tests = { path = "crates/rec-tests" }
-merc_reduction = { path = "crates/reduction" }
-merc_sabre = { path = "crates/sabre" }
+merc_reduction = { version = "2.0", path = "crates/reduction" }
+merc_sabre = { version = "2.0", path = "crates/sabre" }
 merc_sharedmutex = { version = "2.0", path = "crates/sharedmutex" }
-merc_symbolic = { path = "crates/symbolic", features = ["clap"] }
+merc_symbolic = { version = "2.0",path = "crates/symbolic", features = ["clap"] }
 merc_syntax = { version = "2.0", path = "crates/syntax" }
 merc_tools = { path = "crates/tools" }
 merc_unsafety = { version = "2.0", path = "crates/unsafety" }
@@ -137,5 +137,5 @@ merc_utilities = { version = "2.0", path = "crates/utilities" }
 merc_vpg = { path = "crates/vpg", features = ["clap"] }
 
 # Vendored libraries
-merc_pest_consume = { git = "https://github.com/MERCorg/pest_consume" }
-merc_pest_consume_macros = { git = "https://github.com/MERCorg/pest_consume" }
+merc_pest_consume = { version = "2.0", git = "https://github.com/MERCorg/pest_consume" }
+merc_pest_consume_macros = { version = "2.0", git = "https://github.com/MERCorg/pest_consume" }

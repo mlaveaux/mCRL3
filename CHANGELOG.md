@@ -1,3 +1,12 @@
+# v2.0 (June 2026)
+
+See the `README.md` of the individual crates for their own changelogs. The
+`merc-lps` tool can be used to explore mCRL2 linear process specifications
+symbolically. This is currently not very efficient, but will be improved in
+future releases.
+
+**Full Changelog**: https://github.com/MERCorg/merc/commits/v2.0
+
 # v1.1 (January 2026)
 
 This release was primarily made to force a Zenodo upload.
@@ -16,25 +25,12 @@ whether two labelled transition systems are related by various pre-order
 relations, which are (weak) trace, failure refinement and failures-divergence
 refinement and impossible futures.
 
-A new tool `merc-sym` can explore a symbolic state space given in Sylvan's binary `.ldd` format, or the mCRL2 symbolic binary `.sym` format. It can also compute orderings using MINCE when the `kahypar` feature is enabled.
+A new tool `merc-sym` can explore a symbolic state space given in Sylvan's
+binary `.ldd` format, or the mCRL2 symbolic binary `.sym` format. It can also
+compute orderings using MINCE when the `kahypar` feature is enabled.
 
 See the `README.md` of the individual crates for their own changelogs.
 
-# v2.0 (June 2026)
-
-See the `README.md` of the individual crates for their own changelogs. The main change in this release is the introduction of the `merc_sym` crate, which can explore a symbolic state space given in Sylvan's binary `.ldd` format, or the mCRL2 symbolic binary `.sym` format. It can also compute orderings using MINCE when the `kahypar` feature is enabled. This functionality is available in the corresponding `merc-sym` tool.
-
-Furthermore, we have introduced a `merc_refinement` crate that can be used to
-check whether two labelled transition systems are related by various pre-order
-relations, which are (weak) trace, failure refinement and failures-divergence
-refinement and impossible futures. For these we can also produce counter
-examples in various forms.
-
-**Full Changelog**: https://github.com/MERCorg/merc/commits/v2.0
-
-# v1.1 (January 2026)
-
-This release was primarily made to force a Zenodo upload.
 
 **Full Changelog**: https://github.com/MERCorg/merc/commits/v1.1
 
