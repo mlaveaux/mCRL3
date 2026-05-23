@@ -72,20 +72,52 @@ impl SymbolicLtsBdd {
     ) -> Result<Self, MercError> {
         info!("Converting symbolic LTS from LDD to BDD representation...");
 
-        // Determine the highest values for every layer in the LDD representing the states
-        let state_bits = compute_bits(&compute_highest(storage, lts.states()));
-        debug!("Determined number of bits for state variables: {:?}", state_bits);
+        // Determine the highest values for every state variable.
+        let mut state_highest = compute_highest(storage, lts.states());
 
         let mut action_label_highest = 0u32;
         for group in lts.transition_groups() {
             let highest = compute_highest(storage, group.relation());
 
             // Deal with the special empty case.
-            if !highest.is_empty() {
-                action_label_highest = action_label_highest
-                    .max(highest[group.action_label_index().ok_or("Action label index not found")?]);
+            if highest.is_empty() {
+                continue;
+            }
+
+            action_label_highest =
+                action_label_highest.max(highest[group.action_label_index().ok_or("Action label index not found")?]);
+
+            // Also consider the highest values read or written for the state
+            // variables in the relation.
+            let read_indices = group.read_indices();
+            let write_indices = group.write_indices();
+            let max_var = read_indices.iter().chain(write_indices.iter()).copied().max();
+            if let Some(max_var) = max_var {
+                let mut ldd_level = 0usize;
+                for var in 0..=(max_var as usize) {
+                    let var_value = var as Value;
+                    let is_read = read_indices.contains(&var_value);
+                    let is_write = write_indices.contains(&var_value);
+                    if is_read {
+                        if var >= state_highest.len() {
+                            state_highest.resize(var + 1, 0);
+                        }
+                        state_highest[var] = state_highest[var].max(highest[ldd_level]);
+                        ldd_level += 1;
+                    }
+                    if is_write {
+                        if var >= state_highest.len() {
+                            state_highest.resize(var + 1, 0);
+                        }
+                        state_highest[var] = state_highest[var].max(highest[ldd_level]);
+                        ldd_level += 1;
+                    }
+                }
             }
         }
+
+        let state_bits = compute_bits(&state_highest);
+        debug!("Determined number of bits for state variables: {:?}", state_bits);
 
         let action_label_bits = required_bits(action_label_highest);
         debug!(

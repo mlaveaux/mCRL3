@@ -224,16 +224,20 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
 
                 // Find the action label.
                 let action_bits = &transition[action_positions[group_index]..];
+                let action_value = to_value(action_bits);
                 let label = lts
                     .action_labels()
-                    .get(to_value(action_bits) as usize)
+                    .get(action_value as usize)
                     .ok_or("Found transition with unknown action label")?;
 
                 // Find the target state index.
                 let target_index = discovered
                     .index(&target)
                     .ok_or("Found state that was not in the state set")?;
-                if outgoing.insert((*state_index, *target_index)) {
+                // Include the action label in the dedup key: the same source/target pair can be
+                // connected by transitions with different labels, and dropping any of them would
+                // silently lose behavior.
+                if outgoing.insert((*state_index, action_value, *target_index)) {
                     trace!(
                         " Found transition in {group_index} from {:?} to {:?} with label {:?}",
                         cube, target, label
@@ -307,17 +311,17 @@ mod tests {
     use merc_ldd::Storage;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
-    // use merc_reduction::Equivalence;
-    // use merc_reduction::compare_lts;
-    // use merc_utilities::Timing;
-    // use merc_utilities::random_test;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
+    use merc_utilities::Timing;
+    use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
     use crate::SymbolicLtsBdd;
-    // use crate::convert_symbolic_lts;
+    use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
-    // use crate::random_symbolic_lts;
-    // use crate::reachability;
+    use crate::random_symbolic_lts;
+    use crate::reachability;
     use crate::read_symbolic_lts;
 
     #[test]
@@ -339,35 +343,38 @@ mod tests {
         assert_eq!(lts.num_of_transitions(), 92);
     }
 
-    // #[test]
-    // #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    // fn test_random_convert_symbolic_lts_bdd() {
-    //     random_test(100, |rng| {
-    //         let mut storage = Storage::new();
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_convert_symbolic_lts_bdd() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-    //         // We don't really check anything here, just ensure that reachability runs without errors.
-    //         let mut lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
-    //         let _reachable_states = reachability(&mut storage, &mut lts, &Timing::new()).unwrap();
+            // `random_symbolic_lts` generates the state set and the transitions independently,
+            // so the initial state set is not closed under transitions. Update it to the actual
+            // reachable set so both conversions iterate over a consistent state space.
+            let mut lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let reachable_states = reachability(&mut storage, &mut lts, &Timing::new()).unwrap();
+            lts.set_states(reachable_states);
 
-    //         let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-    //         let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
 
-    //         let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-    //         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-    //         let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-    //         let explicit_lts_bdd = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &lts_bdd).unwrap();
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts_bdd = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &lts_bdd).unwrap();
 
-    //         assert!(
-    //             compare_lts(
-    //                 Equivalence::StrongBisim,
-    //                 explicit_lts,
-    //                 explicit_lts_bdd,
-    //                 false,
-    //                 &mut Timing::new()
-    //             ),
-    //             "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
-    //         );
-    //     });
-    // }
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_lts,
+                    explicit_lts_bdd,
+                    false,
+                    &mut Timing::new()
+                ),
+                "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
+            );
+        });
+    }
 }

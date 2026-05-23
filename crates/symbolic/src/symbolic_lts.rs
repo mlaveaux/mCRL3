@@ -70,6 +70,11 @@ impl SymbolicLts {
     pub fn parameter_values(&self) -> &Vec<Vec<DataExpression>> {
         &self.parameter_values
     }
+
+    /// Replaces the set of states of the LTS, for example after running reachability.
+    pub fn set_states(&mut self, states: Ldd) {
+        self.states = states;
+    }
 }
 
 impl SymbolicLTS for SymbolicLts {

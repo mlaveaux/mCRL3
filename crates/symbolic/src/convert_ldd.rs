@@ -123,16 +123,19 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
                 }
 
                 // Find the action label.
-                let label = &lts.action_labels()[transition[group
+                let action_value = transition[group
                     .action_label_index()
-                    .ok_or("Transition vector should at least have the action label")?]
-                    as usize];
+                    .ok_or("Transition vector should at least have the action label")?];
+                let label = &lts.action_labels()[action_value as usize];
 
                 // Find the target state index.
                 let target_index = discovered
                     .index(&target)
                     .ok_or("Found state that was not in the state set")?;
-                if outgoing.insert((*state_index, *target_index)) {
+                // Include the action label in the dedup key: the same source/target pair can be
+                // connected by transitions with different labels, and dropping any of them would
+                // silently lose behavior.
+                if outgoing.insert((*state_index, action_value, *target_index)) {
                     trace!(
                         " Found transition in {group_index} from {:?} to {:?} with label {:?}",
                         state, target, label

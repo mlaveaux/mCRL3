@@ -185,8 +185,8 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
         b_prime_variables.push(b_prime_var);
 
         b_vars_bdd = manager_ref.with_manager_shared(|manager| b_vars_bdd.and(&BDDFunction::var(manager, b_var)?))?;
-        b_prime_vars_bdd =
-            manager_ref.with_manager_shared(|manager| b_prime_vars_bdd.and(&BDDFunction::var(manager, b_prime_var)?))?;
+        b_prime_vars_bdd = manager_ref
+            .with_manager_shared(|manager| b_prime_vars_bdd.and(&BDDFunction::var(manager, b_prime_var)?))?;
 
         b_to_b_prime.push((b_var, b_prime_var));
 
