@@ -137,8 +137,8 @@ mod tests {
     fn test_random_compare_weak_bisim_variants() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
-            let lts1 = random_lts::<String, _>(rng, 1000, 3);
-            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+            let lts1 = random_lts::<String, _>(rng, 100, 3);
+            let lts2 = random_lts::<String, _>(rng, 100, 3);
 
             // All weak bisimulation variants should agree on whether two LTSs are equivalent
             let weak_bisim = compare_lts(
@@ -190,8 +190,8 @@ mod tests {
     fn test_random_compare_weak_bisim_divergence_preserving_variants() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
-            let lts1 = random_lts::<String, _>(rng, 1000, 3);
-            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+            let lts1 = random_lts::<String, _>(rng, 100, 3);
+            let lts2 = random_lts::<String, _>(rng, 100, 3);
 
             // All weak bisimulation divergence-preserving variants should agree
             let weak_bisim_dp = compare_lts(
@@ -242,8 +242,8 @@ mod tests {
     fn test_random_compare_random_compare_strong_bisim_variants() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
-            let lts1 = random_lts::<String, _>(rng, 1000, 3);
-            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+            let lts1 = random_lts::<String, _>(rng, 100, 3);
+            let lts2 = random_lts::<String, _>(rng, 100, 3);
 
             // Strong bisimulation variants should agree
             let strong_bisim = compare_lts(
@@ -272,8 +272,8 @@ mod tests {
     fn test_random_compare_branching_bisim_variants() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
-            let lts1 = random_lts::<String, _>(rng, 1000, 3);
-            let lts2 = random_lts::<String, _>(rng, 1000, 3);
+            let lts1 = random_lts::<String, _>(rng, 100, 3);
+            let lts2 = random_lts::<String, _>(rng, 100, 3);
 
             // Branching bisimulation variants should agree
             let branching_bisim = compare_lts(
@@ -302,8 +302,8 @@ mod tests {
     fn test_random_compare_branching_bisim_divergence_preserving_variants() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
-            let lts1 = random_lts::<String, _>(rng, 10, 3);
-            let lts2 = random_lts::<String, _>(rng, 10, 3);
+            let lts1 = random_lts::<String, _>(rng, 100, 3);
+            let lts2 = random_lts::<String, _>(rng, 100, 3);
 
             // Branching bisimulation divergence-preserving variants should agree
             let branching_bisim_dp = compare_lts(

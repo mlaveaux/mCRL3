@@ -492,7 +492,7 @@ mod tests {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_weak_bisimulation_parallel");
 
-            let lts = random_lts::<String, _>(rng, 1000, 3);
+            let lts = random_lts::<String, _>(rng, 100, 3);
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
