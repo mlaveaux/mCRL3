@@ -7,6 +7,7 @@ use mcrl2::read_lps;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 use merc_ldd::Storage;
+use merc_ldd::len;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -95,7 +96,7 @@ fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
     let mut storage = Storage::new();
 
     let num_of_states = explore_lps(&mut storage, &lps, timing)?;
-    println!("Number of states: {}", num_of_states);
+    println!("Number of states: {}", len(&mut storage, &num_of_states));
 
     Ok(())
 }
