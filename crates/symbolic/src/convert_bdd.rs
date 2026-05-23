@@ -307,17 +307,17 @@ mod tests {
     use merc_ldd::Storage;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
-    use merc_reduction::Equivalence;
-    use merc_reduction::compare_lts;
-    use merc_utilities::Timing;
-    use merc_utilities::random_test;
+    // use merc_reduction::Equivalence;
+    // use merc_reduction::compare_lts;
+    // use merc_utilities::Timing;
+    // use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
     use crate::SymbolicLtsBdd;
-    use crate::convert_symbolic_lts;
+    // use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
-    use crate::random_symbolic_lts;
-    use crate::reachability;
+    // use crate::random_symbolic_lts;
+    // use crate::reachability;
     use crate::read_symbolic_lts;
 
     #[test]
