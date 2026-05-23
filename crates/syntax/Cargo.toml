@@ -12,6 +12,9 @@ repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[package.metadata.cargo-semver-checks.lints]
+workspace = true
+
 [dependencies]
 merc_lts.workspace = true
 merc_refinement.workspace = true

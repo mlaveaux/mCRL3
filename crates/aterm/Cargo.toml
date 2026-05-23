@@ -11,6 +11,9 @@ repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[package.metadata.cargo-semver-checks.lints]
+workspace = true
+
 [features]
 # The `debug` feature is used to enable additional run-time checks.
 debug = ["parking_lot/deadlock_detection"]

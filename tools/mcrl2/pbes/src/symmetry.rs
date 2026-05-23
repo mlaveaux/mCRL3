@@ -96,7 +96,7 @@ impl SymmetryAlgorithm {
 
     /// Returns compliant permutations.
     ///
-    /// See [clique_candidates] for the parameters.
+    /// See [Self::clique_candidates] for the parameters.
     pub fn candidates(
         &self,
         partition_data_sorts: bool,

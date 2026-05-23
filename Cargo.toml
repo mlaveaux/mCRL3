@@ -140,3 +140,7 @@ merc_vpg = { path = "crates/vpg", features = ["clap"] }
 # Vendored libraries
 merc_pest_consume = { version = "2.0", git = "https://github.com/MERCorg/pest_consume" }
 merc_pest_consume_macros = { version = "2.0", git = "https://github.com/MERCorg/pest_consume" }
+
+[workspace.metadata.cargo-semver-checks.lints]
+enum_no_repr_variant_discriminant_changed = "allow"
+partial_ord_enum_variants_reordered = "allow"
