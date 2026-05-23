@@ -2,13 +2,13 @@
 name = "merc_symbolic"
 description = "Implements various utility and I/O functionality for symbolic data structures, i.e., decision diagrams."
 readme = "README.md"
+version = "3.0.0"
 
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
 
 [features]
 # Derive additional traits for clap.

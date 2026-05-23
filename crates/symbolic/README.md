@@ -25,6 +25,12 @@ Furthermore, this crate can also compute variable ordering, for now only using
 the MINCE algorithm for a given dependency graph. This requires the
 [kahypar](https://github.com/kahypar/kahypar) tool.
 
+## Changelog
+
+### 3.0.0
+
+
+
 ## Safety
 
 This crate contains no `unsafe` code.
