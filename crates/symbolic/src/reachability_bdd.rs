@@ -120,7 +120,7 @@ mod tests {
     use oxidd::BooleanFunction;
     use oxidd::util::SatCountCache;
     use rustc_hash::FxBuildHasher;
-    
+
     use merc_ldd::len;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
