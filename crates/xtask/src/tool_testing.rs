@@ -27,6 +27,7 @@ pub fn test_tools(directory: &Path) -> Result<(), Box<dyn Error>> {
             "reduce",
             algorithm,
             "abp.aut",
+            "--output",
             format!("abp.{}.aut", algorithm)
         )
         .dir(tmp_path)

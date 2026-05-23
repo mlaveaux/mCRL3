@@ -47,14 +47,14 @@ jobs:
       env:        
         RUSTC_WRAPPER: sccache
 
-    - name: Run tool tests
-      run: cargo xtask test-tools package/
-      env:        
-        RUSTC_WRAPPER: sccache
-
     - name: Upload package artifact
       uses: actions/upload-artifact@v7
       with:
         name: package-${{ matrix.os }}
         path: package
         if-no-files-found: warn
+
+    - name: Run tool tests
+      run: cargo xtask test-tools package/
+      env:        
+        RUSTC_WRAPPER: sccache
