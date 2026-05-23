@@ -21,7 +21,7 @@ use crate::variable_rename;
 pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) -> Result<BDDFunction, MercError> {
     // Computes the BDD representing all (next) state variables.
     let state_vars = manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {
-        let mut bdd: BDDFunction = BDDFunction::f(manager);
+        let mut bdd: BDDFunction = BDDFunction::t(manager);
 
         for var in lts.state_variables().iter().chain(lts.next_state_variables().iter()) {
             let var = BDDFunction::var(manager, *var)?;
@@ -87,7 +87,7 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
 
     let p_bdd = compute_vars_bdd(manager_ref, lts.state_variables())?.1;
     let p_prime_bdd = compute_vars_bdd(manager_ref, lts.next_state_variables())?.1;
-    let _q_bdd = compute_vars_bdd(manager_ref, &q_variables)?.1;
+    let q_bdd = compute_vars_bdd(manager_ref, &q_variables)?.1;
     let q_prime_bdd = compute_vars_bdd(manager_ref, &q_prime_variables)?.1;
 
     // Create renamings from (p -> q), (q -> p'), (p' -> q').
@@ -158,7 +158,7 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
             is_stable = is_stable
                 && condition
                     .imp(&antecant)?
-                    .forall(&b_vars_bdd.and(&p_bdd)?.and(&p_prime_bdd)?.and(&q_prime_bdd)?)?
+                    .forall(&b_vars_bdd.and(&p_bdd)?.and(&p_prime_bdd)?.and(&q_bdd)?)?
                     .satisfiable();
             if !is_stable {
                 // We are not yet stable, so need to perform additional splitting.
@@ -186,20 +186,12 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
 
         b_vars_bdd = manager_ref.with_manager_shared(|manager| b_vars_bdd.and(&BDDFunction::var(manager, b_var)?))?;
         b_prime_vars_bdd =
-            manager_ref.with_manager_shared(|manager| b_vars_bdd.and(&BDDFunction::var(manager, b_prime_var)?))?;
+            manager_ref.with_manager_shared(|manager| b_prime_vars_bdd.and(&BDDFunction::var(manager, b_prime_var)?))?;
 
         b_to_b_prime.push((b_var, b_prime_var));
 
-        // Add the variables for b2
-        // let b_next_variables = manager_ref.with_manager_exclusive(|manager| {
-        //     let variables = manager.add_named_vars((0..block_variables.len()).map(|index| format!("b2_{index}")))?.collect();
-
-        //     let order = block_variables.
-
-        //     oxidd_reorder::set_var_order(manager, &order)
-        // })?;
-
-        // B_i+1(p,b b1 b2) = B_i(p, b1) /\  (b <=> exists p' Ra(p, p') /\ B_i(p', b2)).
+        // TODO: implement actual state splitting using the new b variable.
+        // B_{i+1}(p, b·b1) = B_i(p, b1) ∧ (b ⟺ ∃p': T_a(p, p') ∧ B_i(p', b1))
         blocks = manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
             blocks.and(&BDDFunction::var(
                 manager,
