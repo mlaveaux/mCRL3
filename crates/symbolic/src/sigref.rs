@@ -33,6 +33,7 @@ use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
 use crate::CubeIterAll;
+use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;
 use crate::ValuesIter;
 use crate::collect_children;
@@ -60,6 +61,91 @@ pub fn sigref_symbolic(
     merge_transitions: bool,
     visualize: bool,
 ) -> Result<(BDDFunction, Vec<VarNo>, usize), MercError> {
+    if merge_transitions && !extend_relation {
+        debug!("merge_transitions requires full-domain transition relations; enabling relation extension");
+    }
+
+    let use_extended_relations = extend_relation || merge_transitions;
+    let use_split_signature = split_signature && !merge_transitions;
+
+    let preprocessed_lts = preprocess_lts(manager_ref, lts, use_extended_relations, merge_transitions)?;
+
+    sigref_symbolic_impl(manager_ref, &preprocessed_lts, timing, use_split_signature, visualize)
+}
+
+/// Preprocess the LTS based on the input options.
+///
+/// # Details
+///
+/// When `extend_relations` is set, each transition relation is extended with `x = x'`
+/// for every state variable that is not written by the relation; the group's read
+/// and write variables then cover the full state domain. When `merge_transitions`
+/// is set, the (extended) relations are then combined into a single transition
+/// group covering the full state domain.
+fn preprocess_lts(
+    manager_ref: &BDDManagerRef,
+    lts: &SymbolicLtsBdd,
+    extend_relations: bool,
+    merge_transitions: bool,
+) -> Result<SymbolicLtsBdd, MercError> {
+    if !extend_relations && !merge_transitions {
+        let groups = lts
+            .transition_groups()
+            .iter()
+            .map(|group| {
+                SummandGroupBdd::new(
+                    group.relation().clone(),
+                    group.read_variables().to_vec(),
+                    group.write_variables().to_vec(),
+                )
+            })
+            .collect();
+        return Ok(SymbolicLtsBdd::with_transition_groups(lts, groups));
+    }
+
+    // Extend each transition relation to the full state/next-state domain.
+    let mut groups: Vec<SummandGroupBdd> = lts
+        .transition_groups()
+        .iter()
+        .map(|group| -> Result<SummandGroupBdd, MercError> {
+            let relation = extend_relation(
+                manager_ref,
+                group.relation(),
+                lts.state_variables(),
+                lts.next_state_variables(),
+                group.write_variables(),
+            )?;
+            Ok(SummandGroupBdd::new(
+                relation,
+                lts.state_variables().to_vec(),
+                lts.next_state_variables().to_vec(),
+            ))
+        })
+        .collect::<Result<Vec<_>, MercError>>()?;
+
+    if merge_transitions && !groups.is_empty() {
+        let mut merged_relation = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
+        for group in &groups {
+            merged_relation = merged_relation.or(group.relation())?;
+        }
+        groups = vec![SummandGroupBdd::new(
+            merged_relation,
+            lts.state_variables().to_vec(),
+            lts.next_state_variables().to_vec(),
+        )];
+    }
+
+    Ok(SymbolicLtsBdd::with_transition_groups(lts, groups))
+}
+
+/// Implementation of [sigref_symbolic] on an already preprocessed LTS.
+fn sigref_symbolic_impl(
+    manager_ref: &BDDManagerRef,
+    lts: &SymbolicLtsBdd,
+    timing: &Timing,
+    split_signature: bool,
+    visualize: bool,
+) -> Result<(BDDFunction, Vec<VarNo>, usize), MercError> {
     // There can only be one block per state, so we need as many bits as required to
     // represent all states.
     let number_of_states = lts
@@ -67,18 +153,11 @@ pub fn sigref_symbolic(
         .sat_count::<u64, FxBuildHasher>(lts.state_variables().len() as u32, &mut SatCountCache::default());
     debug!("Number of states: {}", number_of_states);
 
-    let use_split_signature = split_signature && !merge_transitions;
-    let split_partition_groups = if use_split_signature {
+    let split_partition_groups = if split_signature {
         combine_transition_groups(manager_ref, lts)?
     } else {
-        // We do not use the grouping
         Vec::new()
     };
-
-    let use_extended_relations = extend_relation || merge_transitions;
-    if merge_transitions && !extend_relation {
-        debug!("merge_transitions requires full-domain transition relations; enabling relation extension");
-    }
 
     let num_of_block_bits = required_bits_64(number_of_states);
     debug!("Number of block bits: {}", num_of_block_bits);
@@ -169,52 +248,13 @@ pub fn sigref_symbolic(
         )
     );
 
-    // Determine quantification variables for the full next-state domain.
-    let full_next_state_vars_bdd = compute_vars_bdd(manager_ref, lts.next_state_variables())?.1;
-
-    // Optionally extend each transition relation with x = x' for variables that are not written.
-    let mut transition_relations = lts
+    // Quantification BDD per transition group, derived from the (already
+    // preprocessed) write variables of that group.
+    let relation_quantified_next_state_vars: Vec<BDDFunction> = lts
         .transition_groups()
         .iter()
-        .map(|group| {
-            if use_extended_relations {
-                crate::sigref::extend_relation(
-                    manager_ref,
-                    group.relation(),
-                    lts.state_variables(),
-                    lts.next_state_variables(),
-                    group.write_variables(),
-                )
-                .map_err(MercError::from)
-            } else {
-                Ok(group.relation().clone())
-            }
-        })
-        .collect::<Result<Vec<BDDFunction>, MercError>>()?;
-
-    // Determine the quantification variables used per transition relation.
-    let mut relation_quantified_next_state_vars = if use_extended_relations {
-        vec![full_next_state_vars_bdd.clone(); transition_relations.len()]
-    } else {
-        lts.transition_groups()
-            .iter()
-            .map(|group| -> Result<_, MercError> {
-                let variables = group.write_variables().to_vec();
-                Ok(compute_vars_bdd(manager_ref, &variables)?.1)
-            })
-            .collect::<Result<Vec<BDDFunction>, MercError>>()?
-    };
-
-    if merge_transitions && !transition_relations.is_empty() {
-        // Convert into a single vector containing the full transition relation.
-        let mut merged_relation = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
-        for relation in &transition_relations {
-            merged_relation = merged_relation.or(relation)?;
-        }
-
-        transition_relations = vec![merged_relation];
-        relation_quantified_next_state_vars = vec![full_next_state_vars_bdd.clone()];
-    }
+        .map(|group| -> Result<_, MercError> { Ok(compute_vars_bdd(manager_ref, group.write_variables())?.1) })
+        .collect::<Result<Vec<_>, MercError>>()?;
 
     let mut signature_index = 0;
     loop {
@@ -226,37 +266,29 @@ pub fn sigref_symbolic(
         let signature = timing.measure("signature", || -> Result<BDDFunction, OutOfMemory> {
             let mut signature = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
 
-            if use_split_signature && !split_partition_groups.is_empty() {
-                // Only compute the signature w.r.t. all transition groups that share actions.
-                for index in &split_partition_groups[signature_index] {
-                    let group_signature = signature_strong(
+            // Select which transition groups to combine in this iteration: either a single
+            // partition class (split signature) or all groups at once.
+            let group_indices: Box<dyn Iterator<Item = usize>> =
+                if split_signature && !split_partition_groups.is_empty() {
+                    Box::new(split_partition_groups[signature_index].iter().copied())
+                } else {
+                    Box::new(0..lts.transition_groups().len())
+                };
+
+            for index in group_indices {
+                // We explicitly do not quantify over next-state variables that are not written
+                // by the transition group. Otherwise these s' would become unconstrained and,
+                // after the s -> s' rename below, would conflate states.
+                let group_signature = timing.measure(&format!("group_signature_{}", index), || {
+                    signature_strong(
                         &partition,
-                        &transition_relations[*index],
-                        &relation_quantified_next_state_vars[*index],
-                    )?;
+                        lts.transition_groups()[index].relation(),
+                        &relation_quantified_next_state_vars[index],
+                    )
+                })?;
 
-                    let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
-                    signature = timing.measure("signature_or", || signature.or(&group_signature))?;
-                }
-            } else {
-                // Compute the full signature by combining all transition groups.
-                for (index, (relation, write_vars)) in transition_relations
-                    .iter()
-                    .zip(relation_quantified_next_state_vars.iter())
-                    .enumerate()
-                {
-                    // Compute the signature for this transition group.
-                    //
-                    // We explicitly do not quantify over next-state variables that are not written
-                    // by the transition group. Otherwise these s' would become unconstrained and,
-                    // after the s -> s' rename below, would conflate states.
-                    let group_signature = timing.measure(&format!("group_signature_{}", index), || {
-                        signature_strong(&partition, relation, write_vars)
-                    })?;
-
-                    let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
-                    signature = timing.measure("signature_or", || signature.or(&group_signature))?;
-                }
+                let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
+                signature = timing.measure("signature_or", || signature.or(&group_signature))?;
             }
 
             Ok(signature)
@@ -319,7 +351,7 @@ pub fn sigref_symbolic(
         progress.print((iteration, num_of_blocks));
         iteration += 1;
 
-        if use_split_signature {
+        if split_signature {
             if signature_index == 0 && num_of_blocks == old_num_of_blocks {
                 // We only reached a fixed point if after a full cycle no changes occurred.
                 break;
