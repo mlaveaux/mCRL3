@@ -3,7 +3,6 @@
 
 slint::include_modules!();
 
-use std::ops::Deref;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -13,10 +12,6 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use clap::Parser;
-use clap::ValueEnum;
-use femtovg::Canvas;
-use femtovg::TextContext;
-use femtovg::renderer::WGPURenderer;
 use log::debug;
 use log::info;
 use log::warn;
@@ -25,9 +20,6 @@ use slint::Rgba8Pixel;
 use slint::SharedPixelBuffer;
 use slint::invoke_from_event_loop;
 use slint::quit_event_loop;
-use wgpu::TextureDescriptor;
-use wgpu::TextureFormat;
-use wgpu::TextureUsages;
 
 use merc_io::LargeFormatter;
 use merc_lts::LTS;
@@ -36,9 +28,7 @@ use merc_lts::LtsFormat;
 use merc_lts::apply_lts;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
-use merc_ltsgraph_lib::FemtovgRenderer;
 use merc_ltsgraph_lib::GraphLayout;
-use merc_ltsgraph_lib::SkiaRenderer;
 use merc_ltsgraph_lib::Viewer;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
@@ -47,21 +37,11 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use merc_ltsgraph::PauseableThread;
+use merc_ltsgraph::RenderSettings;
+use merc_ltsgraph::Renderer;
+use merc_ltsgraph::ViewerType;
 use merc_ltsgraph::init_wgpu;
 use merc_ltsgraph::show_error_dialog;
-
-/// Aligns a number up to the next multiple of the given alignment.
-pub const fn align_up(num: u32, align: u32) -> u32 {
-    ((num) + ((align) - 1)) & !((align) - 1)
-}
-
-#[derive(Clone, Debug, ValueEnum, PartialEq, Eq, PartialOrd, Ord)]
-enum ViewerType {
-    /// Uses `tiny-skia` to render the graph on the CPU.
-    Cpu,
-    /// Uses `femtovg` to render the graph on the GPU, with wgpu.
-    Gpu,
-}
 
 /// A GUI tool to view labelled transition systems.
 #[derive(Parser, Debug)]
@@ -95,7 +75,7 @@ pub struct Cli {
 struct State {
     graph_layout: Mutex<Option<GraphLayout>>,
     viewer: Mutex<Option<Viewer>>,
-    canvas: Mutex<SharedPixelBuffer<Rgba8Pixel>>,
+    canvas: Arc<Mutex<SharedPixelBuffer<Rgba8Pixel>>>,
     lts: Mutex<Option<Arc<LabelledTransitionSystem<String>>>>,
     reload_lts: AtomicBool,
 }
@@ -130,6 +110,19 @@ impl GuiSettings {
             ..Default::default()
         }
     }
+
+    pub fn to_render_settings(&self) -> RenderSettings {
+        RenderSettings {
+            width: self.width,
+            height: self.height,
+            state_radius: self.state_radius,
+            label_text_size: self.label_text_size,
+            draw_action_labels: self.draw_action_labels,
+            zoom_level: self.zoom_level,
+            view_x: self.view_x,
+            view_y: self.view_y,
+        }
+    }
 }
 
 // Initialize a tokio runtime for async calls
@@ -162,7 +155,7 @@ async fn main() -> Result<ExitCode, MercError> {
     let state = Arc::new(State {
         graph_layout: Mutex::new(None),
         viewer: Mutex::new(None),
-        canvas: Mutex::new(SharedPixelBuffer::new(1, 1)),
+        canvas: Arc::new(Mutex::new(SharedPixelBuffer::new(1, 1))),
         reload_lts: AtomicBool::new(false),
         lts: Mutex::new(None),
     });
@@ -200,238 +193,44 @@ async fn main() -> Result<ExitCode, MercError> {
         let app_weak: slint::Weak<Application> = app.as_weak();
         let settings = settings.clone();
         let settings_init = settings.clone();
-
-        /// Local information required for the femtovg renderer.
-        struct FemtovgInfo {
-            renderer: FemtovgRenderer,
-            canvas: Canvas<WGPURenderer>,
-            texture: wgpu::Texture,
-            buffer: Arc<wgpu::Buffer>,
-        }
+        let viewer_type = cli.viewer.clone();
 
         Arc::new(PauseableThread::new(
             "ltsgraph canvas worker",
             move || {
-                let settings = settings_init.lock().unwrap().clone();
-
-                Ok((
-                    None::<SkiaRenderer>,
-                    None::<FemtovgInfo>,
-                    SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height),
+                let initial = settings_init.lock().unwrap().clone();
+                Ok(Renderer::new(
+                    viewer_type.clone(),
+                    wgpu.clone(),
+                    initial.width,
+                    initial.height,
                 ))
             },
-            move |(skia_renderer, femtovg_info, pixel_buffer)| {
-                let settings = settings.lock().unwrap().clone();
+            move |renderer| {
+                let render_settings = settings.lock().unwrap().to_render_settings();
 
                 if state.reload_lts.load(Ordering::Relaxed) {
                     info!("Creating the renderer");
                     if let Some(lts) = state.lts.lock().unwrap().as_ref() {
-                        *skia_renderer = Some(SkiaRenderer::new(lts.clone()));
-
-                        *femtovg_info = if let Some((device, queue)) = &wgpu {
-                            // Ensure that we embed one font that can be used, since on Windows there are no default fonts.
-                            let text_context = TextContext::default();
-                            text_context.add_font_mem(include_bytes!("../data/NotoSans-Regular.ttf") as &[u8])?;
-
-                            let gpu_renderer = WGPURenderer::new(device.clone(), queue.clone());
-                            let canvas = Canvas::new_with_text_context(gpu_renderer, text_context)?;
-
-                            // Create the texture and buffer for the femtovg renderer
-                            let texture = device.create_texture(&TextureDescriptor {
-                                label: Some("ltsgraph canvas texture"),
-                                size: wgpu::Extent3d {
-                                    width: settings.width,
-                                    height: settings.height,
-                                    depth_or_array_layers: 1,
-                                },
-                                mip_level_count: 1,
-                                sample_count: 1,
-                                dimension: wgpu::TextureDimension::D2,
-                                format: TextureFormat::Rgba8UnormSrgb,
-                                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
-                                view_formats: &[],
-                            });
-
-                            // This buffer is used to copy the rendered image to the texture.
-                            let buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
-                                label: Some("ltsgraph canvas buffer"),
-                                size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
-                                    * settings.height
-                                    * 4) as u64,
-                                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                                mapped_at_creation: false,
-                            }));
-
-                            Some(FemtovgInfo {
-                                renderer: FemtovgRenderer::new(lts.clone()),
-                                canvas,
-                                texture,
-                                buffer,
-                            })
-                        } else {
-                            None
-                        };
+                        renderer.reload(lts.clone(), &render_settings)?;
                     }
                     state.reload_lts.store(false, Ordering::Relaxed);
                 }
 
                 if let Some(viewer) = state.viewer.lock().unwrap().as_mut() {
                     let start = Instant::now();
-
-                    match cli.viewer {
-                        ViewerType::Cpu => {
-                            // Resize the local pixel buffer if necessary
-                            if pixel_buffer.width() != settings.width || pixel_buffer.height() != settings.height {
-                                *pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height);
-                            }
-
-                            let mut image = tiny_skia::PixmapMut::from_bytes(
-                                pixel_buffer.make_mut_bytes(),
-                                settings.width,
-                                settings.height,
-                            )
-                            .unwrap();
-
-                            if let Some(skia_renderer) = skia_renderer {
-                                skia_renderer.render(
-                                    &mut image,
-                                    viewer,
-                                    settings.draw_action_labels,
-                                    settings.state_radius,
-                                    settings.view_x,
-                                    settings.view_y,
-                                    settings.width,
-                                    settings.height,
-                                    settings.zoom_level,
-                                    settings.label_text_size,
-                                );
-                            }
-
-                            *state.canvas.lock().unwrap() = pixel_buffer.clone();
-                        }
-                        ViewerType::Gpu => {
-                            let (device, queue) = wgpu.as_ref().expect("GPU rendering requires wgpu to be initialized");
-
-                            // Render the graph using femtovg on the GPU
-                            if let Some(femtovg_info) = femtovg_info {
-                                if femtovg_info.texture.width() != settings.width
-                                    || femtovg_info.texture.height() != settings.height
-                                {
-                                    // Create the texture and buffer for the femtovg renderer
-                                    femtovg_info.texture = device.create_texture(&TextureDescriptor {
-                                        label: Some("ltsgraph canvas texture"),
-                                        size: wgpu::Extent3d {
-                                            width: settings.width,
-                                            height: settings.height,
-                                            depth_or_array_layers: 1,
-                                        },
-                                        mip_level_count: 1,
-                                        sample_count: 1,
-                                        dimension: wgpu::TextureDimension::D2,
-                                        format: TextureFormat::Rgba8UnormSrgb,
-                                        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
-                                        view_formats: &[],
-                                    });
-
-                                    // This buffer is used to copy the rendered image to the texture.
-                                    femtovg_info.buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
-                                        label: Some("ltsgraph canvas buffer"),
-                                        size: (align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
-                                            * settings.height
-                                            * 4) as u64,
-                                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                                        mapped_at_creation: false,
-                                    }));
-                                }
-
-                                // Render the texture using femtovg
-                                femtovg_info.renderer.render(
-                                    &mut femtovg_info.canvas,
-                                    viewer,
-                                    settings.draw_action_labels,
-                                    settings.state_radius,
-                                    settings.view_x,
-                                    settings.view_y,
-                                    settings.width,
-                                    settings.height,
-                                    settings.zoom_level,
-                                    settings.label_text_size,
-                                )?;
-
-                                let buffer = femtovg_info
-                                    .canvas
-                                    .flush_to_output(&femtovg_info.texture)
-                                    .ok_or("Failed to flush the output")?;
-
-                                // Copy the texture to a buffer such that it can be mapped on the CPU
-                                let copy = femtovg_info.texture.as_image_copy();
-
-                                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("ltsgraph canvas encoder"),
-                                });
-
-                                encoder.copy_texture_to_buffer(
-                                    copy,
-                                    wgpu::TexelCopyBufferInfo {
-                                        buffer: &femtovg_info.buffer,
-                                        layout: wgpu::TexelCopyBufferLayout {
-                                            offset: 0,
-                                            bytes_per_row: Some(
-                                                align_up(settings.width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * 4,
-                                            ),
-                                            rows_per_image: Some(settings.height),
-                                        },
-                                    },
-                                    wgpu::Extent3d {
-                                        width: femtovg_info.texture.width(),
-                                        height: femtovg_info.texture.height(),
-                                        depth_or_array_layers: 1,
-                                    },
-                                );
-
-                                queue.submit([buffer, encoder.finish()]);
-
-                                let buffer = femtovg_info.buffer.clone();
-                                let state = state.clone();
-                                femtovg_info
-                                    .buffer
-                                    .slice(..)
-                                    .map_async(wgpu::MapMode::Read, move |result| {
-                                        if result.is_ok() {
-                                            // Copy the data from the buffer to the pixel buffer
-
-                                            let mut canvas = state.canvas.lock().unwrap();
-
-                                            *canvas = SharedPixelBuffer::clone_from_slice(
-                                                buffer.slice(..).get_mapped_range().deref(),
-                                                settings.width,
-                                                settings.height,
-                                            );
-
-                                            buffer.unmap();
-                                        }
-                                    });
-
-                                // Wait for the buffer to be mapped and the data to be copied.
-                                device.poll(wgpu::PollType::Wait {
-                                    submission_index: None,
-                                    timeout: None,
-                                })?;
-                            }
-                        }
-                    }
-
+                    renderer.render(viewer, &render_settings, &state.canvas)?;
                     debug!(
                         "Rendering step ({} by {}) took {} ms",
-                        settings.width,
-                        settings.height,
+                        render_settings.width,
+                        render_settings.height,
                         (Instant::now() - start).as_millis()
                     );
                 } else {
                     // If we are not rendering the graph, we still need to ensure the canvas is initialized.
                     let mut canvas = state.canvas.lock().unwrap();
-                    if canvas.width() != settings.width || canvas.height() != settings.height {
-                        *canvas = SharedPixelBuffer::<Rgba8Pixel>::new(settings.width, settings.height);
+                    if canvas.width() != render_settings.width || canvas.height() != render_settings.height {
+                        *canvas = SharedPixelBuffer::<Rgba8Pixel>::new(render_settings.width, render_settings.height);
                     }
                 }
 

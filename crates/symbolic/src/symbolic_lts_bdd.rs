@@ -91,7 +91,12 @@ impl SymbolicLtsBdd {
             // Also consider the highest values read or written for the state
             // variables in the relation. LDD levels follow the sorted merge of
             // read and write indices (read before write at the same variable).
-            for (ldd_level, var) in group.read_indices().iter().merge(group.write_indices().iter()).enumerate() {
+            for (ldd_level, var) in group
+                .read_indices()
+                .iter()
+                .merge(group.write_indices().iter())
+                .enumerate()
+            {
                 let var = *var as usize;
                 state_highest[var] = state_highest[var].max(highest[ldd_level]);
             }
