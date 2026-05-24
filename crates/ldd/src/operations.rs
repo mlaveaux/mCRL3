@@ -75,28 +75,30 @@ pub fn project(storage: &mut Storage, set: &LddRef, proj: &LddRef) -> Ldd {
     } else {
         debug_assert_ne!(set, storage.empty_vector(), "proj can be at most as high as set");
 
-        let DataRef(proj_value, proj_down, _) = storage.get_ref(proj);
-        let DataRef(value, down, right) = storage.get_ref(set);
+        cache_binary_op(storage, BinaryOperator::Project, set, proj, |storage, set, proj| {
+            let DataRef(proj_value, proj_down, _) = storage.get_ref(proj);
+            let DataRef(value, down, right) = storage.get_ref(set);
 
-        match proj_value {
-            0 => {
-                let right_result = project(storage, &right, proj);
-                let down_result = project(storage, &down, &proj_down);
-                union(storage, &right_result, &down_result)
-            }
-            1 => {
-                let right_result = project(storage, &right, proj);
-                let down_result = project(storage, &down, &proj_down);
-                if down_result == *storage.empty_set() {
-                    right_result
-                } else {
-                    storage.insert(value, &down_result, &right_result)
+            match proj_value {
+                0 => {
+                    let right_result = project(storage, &right, proj);
+                    let down_result = project(storage, &down, &proj_down);
+                    union(storage, &right_result, &down_result)
+                }
+                1 => {
+                    let right_result = project(storage, &right, proj);
+                    let down_result = project(storage, &down, &proj_down);
+                    if down_result == *storage.empty_set() {
+                        right_result
+                    } else {
+                        storage.insert(value, &down_result, &right_result)
+                    }
+                }
+                x => {
+                    panic!("proj has unexpected value {x}");
                 }
             }
-            x => {
-                panic!("proj has unexpected value {x}");
-            }
-        }
+        })
     }
 }
 

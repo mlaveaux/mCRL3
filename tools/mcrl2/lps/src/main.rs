@@ -3,16 +3,18 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::Subcommand;
 
-use mcrl2::read_lps;
-use mcrl2::set_reporting_level;
-use mcrl2::verbosity_to_log_level;
 use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+
+use mcrl2::read_lps;
+use mcrl2::set_reporting_level;
+use mcrl2::verbosity_to_log_level;
 
 use explore::explore_lps;
 
@@ -83,6 +85,8 @@ fn main() -> Result<ExitCode, MercError> {
     if cli.timings {
         timing.print();
     }
+
+    print_allocator_metrics();
 
     Ok(ExitCode::SUCCESS)
 }

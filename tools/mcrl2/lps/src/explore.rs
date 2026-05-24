@@ -440,8 +440,8 @@ mod tests {
     use std::process::Command;
 
     use mcrl2::read_lps;
-    use merc_ldd::len;
     use merc_ldd::Storage;
+    use merc_ldd::len;
     use merc_utilities::Timing;
 
     use super::explore_lps;

@@ -29,7 +29,7 @@ impl OperationCache {
         OperationCache {
             protection_set,
             caches1: vec![Cache::new()],
-            caches2: vec![Cache::new(); 3],
+            caches2: vec![Cache::new(); 4],
             caches3: vec![Cache::new()],
         }
     }
@@ -102,6 +102,7 @@ impl OperationCache {
             BinaryOperator::Union => &mut self.caches2[0],
             BinaryOperator::Merge => &mut self.caches2[1],
             BinaryOperator::Minus => &mut self.caches2[2],
+            BinaryOperator::Project => &mut self.caches2[3],
         }
     }
 
@@ -211,6 +212,7 @@ pub enum BinaryOperator {
     Union,
     Merge,
     Minus,
+    Project,
 }
 
 /// Any operator from LDD x LDD x LDD -> LDD.

@@ -945,6 +945,7 @@ dependencies = [
  "merc_ldd",
  "merc_symbolic",
  "merc_tools",
+ "merc_unsafety",
  "merc_utilities",
  "rand",
  "serde",

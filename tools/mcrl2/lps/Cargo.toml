@@ -13,6 +13,7 @@ merc_io.workspace = true
 merc_ldd.workspace = true
 merc_symbolic.workspace = true
 merc_tools.workspace = true
+merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
 clap.workspace = true
