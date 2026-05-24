@@ -65,6 +65,12 @@ where
 impl Display for MercError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         writeln!(f, "{}", self.inner.error)?;
+        {
+            let backtrace = &self.inner.backtrace;
+            if let std::backtrace::BacktraceStatus::Captured = backtrace.status() {
+                writeln!(f, "{backtrace}")?;
+            }
+        }
         Ok(())
     }
 }
