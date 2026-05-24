@@ -111,6 +111,8 @@ impl GuiSettings {
         }
     }
 
+    /// Converts the GUI settings to the render settings, which are used for
+    /// rendering the graph.
     pub fn to_render_settings(&self) -> RenderSettings {
         RenderSettings {
             width: self.width,
