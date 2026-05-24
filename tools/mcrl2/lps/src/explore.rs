@@ -440,6 +440,7 @@ mod tests {
     use std::process::Command;
 
     use mcrl2::read_lps;
+    use merc_ldd::len;
     use merc_ldd::Storage;
     use merc_utilities::Timing;
 
@@ -472,7 +473,8 @@ mod tests {
         let mut storage = Storage::new();
         let timing = Timing::new();
 
-        let num_of_states = explore_lps(&mut storage, &lps, &timing).expect("Failed to explore LPS");
+        let states = explore_lps(&mut storage, &lps, &timing).expect("Failed to explore LPS");
+        let num_of_states = len(&mut storage, &states);
 
         assert_eq!(
             num_of_states, 74,
