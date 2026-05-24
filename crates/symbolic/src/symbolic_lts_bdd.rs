@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use itertools::Itertools;
 use log::debug;
 use log::info;
 use oxidd::BooleanFunction;
@@ -88,31 +89,11 @@ impl SymbolicLtsBdd {
                 action_label_highest.max(highest[group.action_label_index().ok_or("Action label index not found")?]);
 
             // Also consider the highest values read or written for the state
-            // variables in the relation.
-            let read_indices = group.read_indices();
-            let write_indices = group.write_indices();
-            let max_var = read_indices.iter().chain(write_indices.iter()).copied().max();
-            if let Some(max_var) = max_var {
-                let mut ldd_level = 0usize;
-                for var in 0..=(max_var as usize) {
-                    let var_value = var as Value;
-                    let is_read = read_indices.contains(&var_value);
-                    let is_write = write_indices.contains(&var_value);
-                    if is_read {
-                        if var >= state_highest.len() {
-                            state_highest.resize(var + 1, 0);
-                        }
-                        state_highest[var] = state_highest[var].max(highest[ldd_level]);
-                        ldd_level += 1;
-                    }
-                    if is_write {
-                        if var >= state_highest.len() {
-                            state_highest.resize(var + 1, 0);
-                        }
-                        state_highest[var] = state_highest[var].max(highest[ldd_level]);
-                        ldd_level += 1;
-                    }
-                }
+            // variables in the relation. LDD levels follow the sorted merge of
+            // read and write indices (read before write at the same variable).
+            for (ldd_level, var) in group.read_indices().iter().merge(group.write_indices().iter()).enumerate() {
+                let var = *var as usize;
+                state_highest[var] = state_highest[var].max(highest[ldd_level]);
             }
         }
 
