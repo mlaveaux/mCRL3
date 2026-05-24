@@ -268,6 +268,31 @@ impl SymbolicLtsBdd {
         }
     }
 
+    /// Constructs a quotient symbolic LTS that reuses the action labels of `lts`
+    /// but encodes states and transitions over fresh state and next-state variables
+    /// (typically block-index variables produced by sigref).
+    pub fn with_quotient_state(
+        lts: &Self,
+        states: BDDFunction,
+        initial_state: BDDFunction,
+        transition_groups: Vec<SummandGroupBdd>,
+        state_variable_indices: Vec<VarNo>,
+        next_state_variables_indices: Vec<VarNo>,
+        state_variable_num_of_bits: Vec<Value>,
+    ) -> Self {
+        Self {
+            states,
+            initial_state,
+            transition_groups,
+            state_variable_num_of_bits,
+            state_variable_indices,
+            next_state_variables_indices,
+            action_variable_indices: lts.action_variable_indices.clone(),
+            action_labels: lts.action_labels.clone(),
+            parameter_values: Vec::new(),
+        }
+    }
+
     /// Returns the BDD representing the set of states.
     pub fn states(&self) -> &BDDFunction {
         &self.states

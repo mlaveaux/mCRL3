@@ -527,9 +527,7 @@ fn refine_edge<'id>(
     // topVar
     let lowest_level = {
         let slevel = match manager.get_node(&signature) {
-            Node::Terminal(_terminal) => {
-                unreachable!("The signature is always defined for every state variable in the partition");
-            }
+            Node::Terminal(_) => plevel,
             Node::Inner(node) => node.level(),
         };
         plevel.min(slevel)
@@ -537,29 +535,13 @@ fn refine_edge<'id>(
 
     let result = if next_state_variables.contains(&lowest_level) {
         // Match paths on the level s'_i, for irrelevant variables we take both paths.
-        let (s_high, s_low) = {
-            match manager.get_node(&signature) {
-                Node::Inner(node) => {
-                    if node.level() == lowest_level {
-                        collect_children(node)
-                    } else {
-                        (signature.borrowed(), signature.borrowed())
-                    }
-                }
-                _ => unreachable!("Not a terminal node"),
-            }
+        let (s_high, s_low) = match manager.get_node(&signature) {
+            Node::Inner(node) if node.level() == lowest_level => collect_children(node),
+            _ => (signature.borrowed(), signature.borrowed()),
         };
-        let (p_high, p_low) = {
-            match manager.get_node(&partition) {
-                Node::Inner(node) => {
-                    if node.level() == lowest_level {
-                        collect_children(node)
-                    } else {
-                        (partition.borrowed(), partition.borrowed())
-                    }
-                }
-                _ => unreachable!("Not a terminal node"),
-            }
+        let (p_high, p_low) = match manager.get_node(&partition) {
+            Node::Inner(node) if node.level() == lowest_level => collect_children(node),
+            _ => (partition.borrowed(), partition.borrowed()),
         };
 
         let low = refine_edge(
@@ -711,7 +693,7 @@ fn is_bdd_cube_edge<'id>(
 ///
 /// The resulting transition can then be used without considering the support
 /// explicitly.
-fn extend_relation(
+pub(crate) fn extend_relation(
     manager_ref: &BDDManagerRef,
     relation: &BDDFunction,
     state_variables: &[VarNo],
@@ -1017,13 +999,13 @@ mod tests {
     use std::ops::Range;
 
     use merc_ldd::Storage;
-    // use merc_lts::LtsBuilderMem;
-    // use merc_reduction::Equivalence;
-    // use merc_reduction::compare_lts;
+    use merc_lts::LtsBuilderMem;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
     use merc_utilities::Timing;
     use oxidd::BooleanFunction;
-    // use oxidd::Edge;
-    // use oxidd::Function;
+    use oxidd::Edge;
+    use oxidd::Function;
     use oxidd::Manager;
     use oxidd::ManagerRef;
     use oxidd::VarNo;
@@ -1035,16 +1017,16 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::SymbolicLtsBdd;
-    // use crate::convert_symbolic_lts;
-    // use crate::convert_symbolic_lts_bdd;
-    // use crate::quotient_symbolic;
-    // use crate::random_bdd;
-    // use crate::random_symbolic_lts;
+    use crate::convert_symbolic_lts;
+    use crate::convert_symbolic_lts_bdd;
+    use crate::quotient_symbolic;
+    use crate::random_bdd;
+    use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
     use crate::required_bits_64;
     use crate::sigref::decode_block;
     use crate::sigref::encode_block;
-    // use crate::sigref::is_bdd_cube_edge;
+    use crate::sigref::is_bdd_cube_edge;
     use crate::sigref_symbolic;
 
     #[test]
@@ -1152,67 +1134,67 @@ mod tests {
         assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
     }
 
-    //     #[test]
-    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    //     fn test_random_is_cube() {
-    //         random_test(100, |rng| {
-    //             let manager = oxidd::bdd::new_manager(2048, 1024, 1);
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_is_cube() {
+        random_test(100, |rng| {
+            let manager = oxidd::bdd::new_manager(2048, 1024, 1);
 
-    //             // Create variables in the BDD manager
-    //             let vars: Vec<VarNo> =
-    //                 manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
+            // Create variables in the BDD manager
+            let vars: Vec<VarNo> =
+                manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
 
-    //             let bdd_vars = manager
-    //                 .with_manager_exclusive(|manager| {
-    //                     vars.iter()
-    //                         .map(|v| BDDFunction::var(manager, *v))
-    //                         .collect::<Result<Vec<BDDFunction>, _>>()
-    //                 })
-    //                 .unwrap();
+            let bdd_vars = manager
+                .with_manager_exclusive(|manager| {
+                    vars.iter()
+                        .map(|v| BDDFunction::var(manager, *v))
+                        .collect::<Result<Vec<BDDFunction>, _>>()
+                })
+                .unwrap();
 
-    //             let bdd = random_bdd(&manager, rng, &bdd_vars, 1).unwrap();
+            let bdd = random_bdd(&manager, rng, &bdd_vars, 1).unwrap();
 
-    //             manager.with_manager_shared(|manager| {
-    //                 assert!(
-    //                     !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed()).unwrap(),
-    //                     "The bdd was created as a cube, so it should be a cube"
-    //                 );
-    //             })
-    //         })
-    //     }
+            manager.with_manager_shared(|manager| {
+                assert!(
+                    !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed()).unwrap(),
+                    "The bdd was created as a cube, so it should be a cube"
+                );
+            })
+        })
+    }
 
-    //     #[test]
-    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    //     fn test_random_sigref() {
-    //         random_test(100, |rng| {
-    //             let mut storage = Storage::new();
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_sigref() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-    //             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
 
-    //             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-    //             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-    //             let (partition, block_vars, _num_of_blocks) =
-    //                 sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
 
-    //             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-    //             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+            let (partition, block_vars, _num_of_blocks) =
+                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
 
-    //             let quotient = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
+            let quotient_lts = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
 
-    //             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-    //             let explicit_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient).unwrap();
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let symbolic_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient_lts).unwrap();
 
-    //             assert!(
-    //                 compare_lts(
-    //                     Equivalence::StrongBisim,
-    //                     explicit_lts,
-    //                     explicit_lts_reduced,
-    //                     false,
-    //                     &mut Timing::new()
-    //                 ),
-    //                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
-    //             );
-    //         });
-    //     }
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_lts,
+                    symbolic_lts_reduced,
+                    false,
+                    &mut Timing::new()
+                ),
+                "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
+            );
+        });
+    }
 }

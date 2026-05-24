@@ -321,7 +321,6 @@ mod tests {
     use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
     use crate::random_symbolic_lts;
-    use crate::reachability;
     use crate::read_symbolic_lts;
 
     #[test]
