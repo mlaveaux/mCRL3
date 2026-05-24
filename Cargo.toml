@@ -11,10 +11,10 @@ version = "2.0.0"
 lto = "thin"
 panic = "abort"
 debug = "line-tables-only"
-split-debuginfo= "packed"
+split-debuginfo = "packed"
 
 [profile.dev]
-split-debuginfo= "packed"
+split-debuginfo = "packed"
 
 [workspace]
 resolver = "3"
