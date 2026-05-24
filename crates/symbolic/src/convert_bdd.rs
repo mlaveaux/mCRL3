@@ -349,13 +349,7 @@ mod tests {
         random_test(100, |rng| {
             let mut storage = Storage::new();
 
-            // `random_symbolic_lts` generates the state set and the transitions independently,
-            // so the initial state set is not closed under transitions. Update it to the actual
-            // reachable set so both conversions iterate over a consistent state space.
-            let mut lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
-            let reachable_states = reachability(&mut storage, &mut lts, &Timing::new()).unwrap();
-            lts.set_states(reachable_states);
-
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
 

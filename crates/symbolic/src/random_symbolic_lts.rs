@@ -13,9 +13,11 @@ use merc_ldd::random_vector_set;
 use merc_lts::LtsMultiAction;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
+use merc_utilities::Timing;
 
 use crate::SummandGroup;
 use crate::SymbolicLts;
+use crate::reachability;
 
 /// Generates random symbolic LTSs for testing purposes.
 pub fn random_symbolic_lts<R: Rng>(
@@ -77,14 +79,20 @@ pub fn random_symbolic_lts<R: Rng>(
     }
 
     let initial_state_ldd = from_iter(storage, std::iter::once(initial_state));
-    let states_ldd = from_iter(storage, states.iter());
 
-    Ok(SymbolicLts::new(
+    // Compute the actual reachable state set, since the randomly generated transitions are not
+    // restricted to the random state set above.
+    let mut lts = SymbolicLts::new(
         DataSpecification::default(),
-        states_ldd,
+        initial_state_ldd.clone(),
         initial_state_ldd,
         summand_groups,
         action_labels,
         parameter_values,
-    ))
+    );
+
+    let reachable = reachability(storage, &mut lts, &Timing::new())?;
+    lts.set_states(reachable);
+
+    Ok(lts)
 }
