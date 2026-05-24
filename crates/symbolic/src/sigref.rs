@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::ops::Range;
 
@@ -101,7 +100,7 @@ pub fn sigref_symbolic(
 
     let mut signature_to_block = FxHashMap::default();
 
-    // Substitution to replace next state variables with current state variables.
+    // Substitution to replace state variables with next state variables.
     let state_substitution: Vec<(VarNo, VarNo)> = lts
         .state_variables()
         .iter()
@@ -248,17 +247,13 @@ pub fn sigref_symbolic(
                 {
                     // Compute the signature for this transition group.
                     //
-                    // Observe that we explicitly do not quantify over state
-                    // variables that are not written by the transition group.
-                    // Otherwise, these state variables would become unconstrained
-                    // and then after substituting next state variables with current
-                    // state variables, they would lead to spurious states.
+                    // We explicitly do not quantify over next-state variables that are not written
+                    // by the transition group. Otherwise these s' would become unconstrained and,
+                    // after the s -> s' rename below, would conflate states.
                     let group_signature = timing.measure(&format!("group_signature_{}", index), || {
                         signature_strong(&partition, relation, write_vars)
                     })?;
 
-                    // Substitute next state variables with current state variables to align
-                    // with the partition representation, required for `refine`.
                     let group_signature = variable_rename(manager_ref, &group_signature, &state_substitution)?;
                     signature = timing.measure("signature_or", || signature.or(&group_signature))?;
                 }
@@ -361,11 +356,12 @@ fn combine_transition_groups(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) 
     // In split signature mode we must ensure that the action labels of all transition groups are disjoint. We do this by merging
     // transition groups that share action labels.
 
-    // Computes the BDD representing all action labels.
-    let all_state_vars = manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {
-        let mut bdd: BDDFunction = BDDFunction::f(manager);
+    // Cube over the state and next-state variables; quantifying these out of a relation leaves
+    // only the action labels.
+    let state_and_next_state_vars = manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {
+        let mut bdd: BDDFunction = BDDFunction::t(manager);
 
-        for var in lts.state_variables().iter().chain(lts.action_variables().iter()) {
+        for var in lts.state_variables().iter().chain(lts.next_state_variables().iter()) {
             let var = BDDFunction::var(manager, *var)?;
             bdd = bdd.and(&var)?;
         }
@@ -377,28 +373,27 @@ fn combine_transition_groups(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) 
     let representatives = lts
         .transition_groups()
         .iter()
-        .map(|group| group.relation().exists(&all_state_vars))
+        .map(|group| group.relation().exists(&state_and_next_state_vars))
         .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
     // For the split signature we must ensure that all action labels are disjoint.
     let mut result: Vec<Vec<usize>> = Vec::new();
 
-    for (i, _transition_group) in lts.transition_groups().iter().enumerate() {
+    for i in 0..lts.transition_groups().len() {
         // See if the element can be added to an existing group, by taking the first element of
         // each group as representative.
-        if let Some(group) = result.iter_mut().find(|g: &&mut Vec<usize>| {
-            if let Some(first) = g.first() {
-                representatives[*first]
-                    .and(&representatives[i])
-                    .expect("Out of memory oxidd") // TODO: faillable try_find.
-                    .satisfiable()
-            } else {
-                false
+        let mut placed = false;
+        for group in result.iter_mut() {
+            let Some(first) = group.first() else {
+                continue;
+            };
+            if representatives[*first].and(&representatives[i])?.satisfiable() {
+                group.push(i);
+                placed = true;
+                break;
             }
-        }) {
-            // Add to existing group
-            group.push(i);
-        } else {
+        }
+        if !placed {
             // Create new group, and add the representative
             result.push(vec![i]);
         }
@@ -503,18 +498,17 @@ fn refine_edge<'id>(
             Node::Terminal(_terminal) => {
                 unreachable!("The signature is always defined for every state variable in the partition");
             }
-            // Reinterpret the current state variable as the next state variable (this relies on their order being interleaved s, s').
-            Node::Inner(node) => node.level() + 1,
+            Node::Inner(node) => node.level(),
         };
         plevel.min(slevel)
     };
 
     let result = if next_state_variables.contains(&lowest_level) {
-        // Match paths on the level s_i, for irrelevant variables we take both paths.
+        // Match paths on the level s'_i, for irrelevant variables we take both paths.
         let (s_high, s_low) = {
             match manager.get_node(&signature) {
                 Node::Inner(node) => {
-                    if node.level() + 1 == lowest_level {
+                    if node.level() == lowest_level {
                         collect_children(node)
                     } else {
                         (signature.borrowed(), signature.borrowed())
@@ -609,7 +603,7 @@ fn check_partition_function(
     domain: &[VarNo],
 ) -> Result<bool, MercError> {
     manager_ref.with_manager_shared(|manager| {
-        let mut cache = HashMap::new();
+        let mut cache = FxHashMap::default();
 
         check_partition_function_edge(manager, &mut cache, bdd.as_edge(manager).borrowed(), domain)
     })
@@ -618,7 +612,7 @@ fn check_partition_function(
 /// The recursive implementation of [check_partition_function] on edges.
 fn check_partition_function_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
-    cache: &mut HashMap<BDDFunction, bool>,
+    cache: &mut FxHashMap<BDDFunction, bool>,
     bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     domain: &[VarNo],
 ) -> Result<bool, MercError> {
@@ -810,14 +804,17 @@ fn decode_block<'id>(
     let mut block = block.borrowed();
 
     let f_edge = EdgeDropGuard::new(manager, BDDFunction::f_edge(manager));
-    while *block != *f_edge {
+    debug_assert!(*block != *f_edge, "decode_block called on the false terminal");
+    loop {
         match manager.get_node(&block) {
             Node::Inner(node) => {
                 let (b_high, b_low) = collect_children(node);
-                // For a cube: low satisfiable => bit 0, else => bit 1
+                // For a cube exactly one child is false; the other branch encodes the bit.
                 if *b_low != *f_edge {
+                    debug_assert!(*b_high == *f_edge, "decode_block input is not a cube");
                     block = b_low;
                 } else {
+                    debug_assert!(*b_high != *f_edge, "decode_block input is not a cube");
                     result |= mask;
                     block = b_high;
                 }
@@ -983,207 +980,207 @@ fn to_block_index(bits: &[OptBool]) -> u64 {
     value
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use std::ops::Range;
+#[cfg(test)]
+mod tests {
+    use std::ops::Range;
 
-//     use merc_ldd::Storage;
-//     use merc_lts::LtsBuilderMem;
-//     use merc_reduction::Equivalence;
-//     use merc_reduction::compare_lts;
-//     use merc_utilities::Timing;
-//     use oxidd::BooleanFunction;
-//     use oxidd::Edge;
-//     use oxidd::Function;
-//     use oxidd::Manager;
-//     use oxidd::ManagerRef;
-//     use oxidd::VarNo;
-//     use oxidd::bdd::BDDFunction;
-//     use oxidd::error::DuplicateVarName;
-//     use oxidd::util::Borrowed;
-//     use rand::RngExt;
+    use merc_ldd::Storage;
+    // use merc_lts::LtsBuilderMem;
+    // use merc_reduction::Equivalence;
+    // use merc_reduction::compare_lts;
+    use merc_utilities::Timing;
+    use oxidd::BooleanFunction;
+    // use oxidd::Edge;
+    // use oxidd::Function;
+    use oxidd::Manager;
+    use oxidd::ManagerRef;
+    use oxidd::VarNo;
+    use oxidd::bdd::BDDFunction;
+    use oxidd::error::DuplicateVarName;
+    use oxidd::util::Borrowed;
+    use rand::RngExt;
 
-//     use merc_utilities::random_test;
+    use merc_utilities::random_test;
 
-//     use crate::SymbolicLtsBdd;
-//     use crate::convert_symbolic_lts;
-//     use crate::convert_symbolic_lts_bdd;
-//     use crate::quotient_symbolic;
-//     use crate::random_bdd;
-//     use crate::random_symbolic_lts;
-//     use crate::read_symbolic_lts;
-//     use crate::required_bits_64;
-//     use crate::sigref::decode_block;
-//     use crate::sigref::encode_block;
-//     use crate::sigref::is_bdd_cube_edge;
-//     use crate::sigref_symbolic;
+    use crate::SymbolicLtsBdd;
+    // use crate::convert_symbolic_lts;
+    // use crate::convert_symbolic_lts_bdd;
+    // use crate::quotient_symbolic;
+    // use crate::random_bdd;
+    // use crate::random_symbolic_lts;
+    use crate::read_symbolic_lts;
+    use crate::required_bits_64;
+    use crate::sigref::decode_block;
+    use crate::sigref::encode_block;
+    // use crate::sigref::is_bdd_cube_edge;
+    use crate::sigref_symbolic;
 
-//     #[test]
-//     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-//     fn test_random_encode_blocks() {
-//         random_test(100, |rng| {
-//             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_encode_blocks() {
+        random_test(100, |rng| {
+            let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
-//             let block_number: u64 = rng.random();
+            let block_number: u64 = rng.random();
 
-//             let num_of_bits = required_bits_64(block_number);
-//             let block_variable_names = (0..num_of_bits).map(|i| format!("b_{}", i)).collect::<Vec<String>>();
+            let num_of_bits = required_bits_64(block_number);
+            let block_variable_names = (0..num_of_bits).map(|i| format!("b_{}", i)).collect::<Vec<String>>();
 
-//             // Create variables in the BDD manager
-//             let block_variables = manager_ref
-//                 .with_manager_exclusive(|manager| -> Result<Range<VarNo>, DuplicateVarName> {
-//                     manager.add_named_vars(block_variable_names)
-//                 })
-//                 .unwrap();
+            // Create variables in the BDD manager
+            let block_variables = manager_ref
+                .with_manager_exclusive(|manager| -> Result<Range<VarNo>, DuplicateVarName> {
+                    manager.add_named_vars(block_variable_names)
+                })
+                .unwrap();
 
-//             manager_ref.with_manager_shared(|manager| {
-//                 let block_variables_bdds = block_variables
-//                     .map(|var_no| BDDFunction::var(manager, var_no))
-//                     .collect::<Result<Vec<BDDFunction>, oxidd::util::OutOfMemory>>()
-//                     .unwrap();
+            manager_ref.with_manager_shared(|manager| {
+                let block_variables_bdds = block_variables
+                    .map(|var_no| BDDFunction::var(manager, var_no))
+                    .collect::<Result<Vec<BDDFunction>, oxidd::util::OutOfMemory>>()
+                    .unwrap();
 
-//                 let encoded = encode_block(manager, &block_variables_bdds, block_number).unwrap();
-//                 let decoded = decode_block(manager, Borrowed::new(encoded));
+                let encoded = encode_block(manager, &block_variables_bdds, block_number).unwrap();
+                let decoded = decode_block(manager, Borrowed::new(encoded));
 
-//                 assert_eq!(
-//                     block_number, decoded,
-//                     "Decoding the block number did not yield the original"
-//                 );
-//             });
-//         })
-//     }
+                assert_eq!(
+                    block_number, decoded,
+                    "Decoding the block number did not yield the original"
+                );
+            });
+        })
+    }
 
-//     #[test]
-//     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-//     fn test_random_sigref_split_signature() {
-//         random_test(100, |rng| {
-//             let mut storage = Storage::new();
+    //     #[test]
+    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    //     fn test_random_sigref_split_signature() {
+    //         random_test(100, |rng| {
+    //             let mut storage = Storage::new();
 
-//             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+    //             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
 
-//             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-//             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+    //             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+    //             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-//             let (_, _, expected_num_blocks) =
-//                 sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+    //             let (_, _, expected_num_blocks) =
+    //                 sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
 
-//             // Create a separate manager since sigref_symbolic creates new block variables.
-//             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
-//             let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
-//             let (_, _, split_num_blocks) = sigref_symbolic(
-//                 &manager_ref_split,
-//                 &lts_bdd_split,
-//                 &Timing::new(),
-//                 true,
-//                 false,
-//                 false,
-//                 false,
-//             )
-//             .unwrap();
+    //             // Create a separate manager since sigref_symbolic creates new block variables.
+    //             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
+    //             let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
+    //             let (_, _, split_num_blocks) = sigref_symbolic(
+    //                 &manager_ref_split,
+    //                 &lts_bdd_split,
+    //                 &Timing::new(),
+    //                 true,
+    //                 false,
+    //                 false,
+    //                 false,
+    //             )
+    //             .unwrap();
 
-//             assert_eq!(
-//                 expected_num_blocks, split_num_blocks,
-//                 "Split signature approach does not match actual signature refinement"
-//             );
-//         });
-//     }
+    //             assert_eq!(
+    //                 expected_num_blocks, split_num_blocks,
+    //                 "Split signature approach does not match actual signature refinement"
+    //             );
+    //         });
+    //     }
 
-//     #[test]
-//     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-//     fn test_szymanski_symbolic_refinement() {
-//         let mut storage = Storage::new();
-//         let lts_bdd = read_symbolic_lts(
-//             &mut storage,
-//             include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
-//         )
-//         .unwrap();
+    //     #[test]
+    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    //     fn test_szymanski_symbolic_refinement() {
+    //         let mut storage = Storage::new();
+    //         let lts_bdd = read_symbolic_lts(
+    //             &mut storage,
+    //             include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
+    //         )
+    //         .unwrap();
 
-//         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-//         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
+    //         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
+    //         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
 
-//         let (_, _, num_of_blocks) =
-//             sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
-//         assert_eq!(
-//             num_of_blocks, 1791,
-//             "The Szymanski example has 1791 bisimulation blocks"
-//         );
-//     }
+    //         let (_, _, num_of_blocks) =
+    //             sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+    //         assert_eq!(
+    //             num_of_blocks, 1791,
+    //             "The Szymanski example has 1791 bisimulation blocks"
+    //         );
+    //     }
 
-//     #[test]
-//     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-//     fn test_symbolic_signature_refinement_abp() {
-//         let mut storage = Storage::new();
-//         let lts = read_symbolic_lts(&mut storage, include_bytes!("../../../examples/lts/abp.sym") as &[u8]).unwrap();
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_symbolic_signature_refinement_abp() {
+        let mut storage = Storage::new();
+        let lts = read_symbolic_lts(&mut storage, include_bytes!("../../../examples/lts/abp.sym") as &[u8]).unwrap();
 
-//         let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-//         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+        let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-//         let (_, _, num_of_blocks) =
-//             sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
-//         assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
-//     }
+        let (_, _, num_of_blocks) =
+            sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+        assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
+    }
 
-//     #[test]
-//     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-//     fn test_random_is_cube() {
-//         random_test(100, |rng| {
-//             let manager = oxidd::bdd::new_manager(2048, 1024, 1);
+    //     #[test]
+    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    //     fn test_random_is_cube() {
+    //         random_test(100, |rng| {
+    //             let manager = oxidd::bdd::new_manager(2048, 1024, 1);
 
-//             // Create variables in the BDD manager
-//             let vars: Vec<VarNo> =
-//                 manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
+    //             // Create variables in the BDD manager
+    //             let vars: Vec<VarNo> =
+    //                 manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
 
-//             let bdd_vars = manager
-//                 .with_manager_exclusive(|manager| {
-//                     vars.iter()
-//                         .map(|v| BDDFunction::var(manager, *v))
-//                         .collect::<Result<Vec<BDDFunction>, _>>()
-//                 })
-//                 .unwrap();
+    //             let bdd_vars = manager
+    //                 .with_manager_exclusive(|manager| {
+    //                     vars.iter()
+    //                         .map(|v| BDDFunction::var(manager, *v))
+    //                         .collect::<Result<Vec<BDDFunction>, _>>()
+    //                 })
+    //                 .unwrap();
 
-//             let bdd = random_bdd(&manager, rng, &bdd_vars, 1).unwrap();
+    //             let bdd = random_bdd(&manager, rng, &bdd_vars, 1).unwrap();
 
-//             manager.with_manager_shared(|manager| {
-//                 assert!(
-//                     !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed()).unwrap(),
-//                     "The bdd was created as a cube, so it should be a cube"
-//                 );
-//             })
-//         })
-//     }
+    //             manager.with_manager_shared(|manager| {
+    //                 assert!(
+    //                     !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed()).unwrap(),
+    //                     "The bdd was created as a cube, so it should be a cube"
+    //                 );
+    //             })
+    //         })
+    //     }
 
-//     #[test]
-//     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-//     fn test_random_sigref() {
-//         random_test(100, |rng| {
-//             let mut storage = Storage::new();
+    //     #[test]
+    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    //     fn test_random_sigref() {
+    //         random_test(100, |rng| {
+    //             let mut storage = Storage::new();
 
-//             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+    //             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
 
-//             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-//             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+    //             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+    //             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-//             let (partition, block_vars, _num_of_blocks) =
-//                 sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+    //             let (partition, block_vars, _num_of_blocks) =
+    //                 sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
 
-//             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-//             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+    //             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+    //             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
 
-//             let quotient = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
+    //             let quotient = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
 
-//             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-//             let explicit_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient).unwrap();
+    //             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+    //             let explicit_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient).unwrap();
 
-//             assert!(
-//                 compare_lts(
-//                     Equivalence::StrongBisim,
-//                     explicit_lts,
-//                     explicit_lts_reduced,
-//                     false,
-//                     &mut Timing::new()
-//                 ),
-//                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
-//             );
-//         });
-//     }
-// }
+    //             assert!(
+    //                 compare_lts(
+    //                     Equivalence::StrongBisim,
+    //                     explicit_lts,
+    //                     explicit_lts_reduced,
+    //                     false,
+    //                     &mut Timing::new()
+    //                 ),
+    //                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
+    //             );
+    //         });
+    //     }
+}
