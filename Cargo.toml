@@ -121,7 +121,7 @@ merc_aterm = { version = "2.0", path = "crates/aterm" }
 merc_collections = { version = "2.0", path = "crates/collections" }
 merc_data = { version = "2.0", path = "crates/data" }
 merc_io = { version = "2.0", path = "crates/io" }
-merc_ldd = { version = "2.0", path = "crates/ldd" }
+merc_ldd = { version = "3.0", path = "crates/ldd" }
 merc_lts = { version = "2.0", path = "crates/lts" }
 merc_macros = { version = "2.0", path = "crates/macros" }
 merc_number = { version = "2.0", path = "crates/number" }

@@ -999,9 +999,11 @@ mod tests {
     use std::ops::Range;
 
     use merc_ldd::Storage;
+    use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
+    use merc_reduction::reduce_lts;
     use merc_utilities::Timing;
     use oxidd::BooleanFunction;
     use oxidd::Edge;
@@ -1064,61 +1066,61 @@ mod tests {
         })
     }
 
-    //     #[test]
-    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    //     fn test_random_sigref_split_signature() {
-    //         random_test(100, |rng| {
-    //             let mut storage = Storage::new();
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_sigref_split_signature() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
 
-    //             let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
 
-    //             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-    //             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
-    //             let (_, _, expected_num_blocks) =
-    //                 sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+            let (_, _, expected_num_blocks) =
+                sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
 
-    //             // Create a separate manager since sigref_symbolic creates new block variables.
-    //             let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
-    //             let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
-    //             let (_, _, split_num_blocks) = sigref_symbolic(
-    //                 &manager_ref_split,
-    //                 &lts_bdd_split,
-    //                 &Timing::new(),
-    //                 true,
-    //                 false,
-    //                 false,
-    //                 false,
-    //             )
-    //             .unwrap();
+            // Create a separate manager since sigref_symbolic creates new block variables.
+            let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
+            let (_, _, split_num_blocks) = sigref_symbolic(
+                &manager_ref_split,
+                &lts_bdd_split,
+                &Timing::new(),
+                true,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
 
-    //             assert_eq!(
-    //                 expected_num_blocks, split_num_blocks,
-    //                 "Split signature approach does not match actual signature refinement"
-    //             );
-    //         });
-    //     }
+            assert_eq!(
+                expected_num_blocks, split_num_blocks,
+                "Split signature approach does not match actual signature refinement"
+            );
+        });
+    }
 
-    //     #[test]
-    //     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    //     fn test_szymanski_symbolic_refinement() {
-    //         let mut storage = Storage::new();
-    //         let lts_bdd = read_symbolic_lts(
-    //             &mut storage,
-    //             include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
-    //         )
-    //         .unwrap();
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_szymanski_symbolic_refinement() {
+        let mut storage = Storage::new();
+        let lts_bdd = read_symbolic_lts(
+            &mut storage,
+            include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
+        )
+        .unwrap();
 
-    //         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-    //         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
+        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
 
-    //         let (_, _, num_of_blocks) =
-    //             sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
-    //         assert_eq!(
-    //             num_of_blocks, 1791,
-    //             "The Szymanski example has 1791 bisimulation blocks"
-    //         );
-    //     }
+        let (_, _, num_of_blocks) =
+            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+        assert_eq!(
+            num_of_blocks, 1791,
+            "The Szymanski example has 1791 bisimulation blocks"
+        );
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -1176,6 +1178,12 @@ mod tests {
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+            let explicit_lts_reduced = reduce_lts(
+                explicit_lts.clone(),
+                Equivalence::StrongBisim,
+                false,
+                &mut Timing::new(),
+            );
 
             let (partition, block_vars, _num_of_blocks) =
                 sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
@@ -1185,10 +1193,19 @@ mod tests {
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let symbolic_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient_lts).unwrap();
 
+            assert_eq!(
+                explicit_lts_reduced.num_of_states(),
+                symbolic_lts_reduced.num_of_states()
+            );
+            assert_eq!(
+                explicit_lts_reduced.num_of_transitions(),
+                symbolic_lts_reduced.num_of_transitions()
+            );
+
             assert!(
                 compare_lts(
                     Equivalence::StrongBisim,
-                    explicit_lts,
+                    explicit_lts_reduced,
                     symbolic_lts_reduced,
                     false,
                     &mut Timing::new()
