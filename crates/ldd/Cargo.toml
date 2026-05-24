@@ -4,7 +4,7 @@ description = "Implements algorithms and I/O for list decision diagrams."
 keywords = ["automata", "transition-systems"]
 categories = ["data-structures", "science"]
 readme = "README.md"
-version.workspace = true
+version = "3.0.0"
 
 edition.workspace = true
 homepage.workspace = true

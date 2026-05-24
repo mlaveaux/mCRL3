@@ -23,6 +23,13 @@ Note that since 'true' and 'false' are not very insightful and clash with
 Rust keywords we use 'empty vector' and 'empty set' for the constants 'true'
 and 'false' respectively.
 
+## Changelog
+
+### 3.0.0
+
+Added caching for the projection operation, which is used for state space
+exploration.
+
 ## Citations
 
 > \[Dijk18\] --- Tom van Dijk, Jaco van de Pol. Sylvan: multi-core framework for decision diagrams. International Journal on Software Tools for Technology Transfer. 19(6):675-696, 2017.
