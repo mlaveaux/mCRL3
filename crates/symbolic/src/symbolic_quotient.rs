@@ -1,11 +1,17 @@
+use std::ops::Range;
+
+use merc_ldd::Value;
 use merc_utilities::MercError;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
 use oxidd::FunctionSubst;
+use oxidd::Manager;
+use oxidd::ManagerRef;
 use oxidd::Subst;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
+use oxidd::error::DuplicateVarName;
 
 use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;
@@ -13,69 +19,92 @@ use crate::compute_vars_bdd;
 use crate::variable_rename_reverse;
 
 /// Computes the symbolic quotient of the given partition.
+///
+/// # Details
+///
+/// The returned LTS encodes its states as block indices over the supplied
+/// `block_vars` (used as the source-block bits) and over a freshly allocated
+/// set of "next-block" variables (used as the target-block bits).
+///
+/// The action variables and action labels are inherited from `lts`.
 pub fn quotient_symbolic(
     manager_ref: &BDDManagerRef,
     lts: &SymbolicLtsBdd,
     partition: &BDDFunction,
     block_vars: &[VarNo],
 ) -> Result<SymbolicLtsBdd, MercError> {
-    let mut quotient_relations = Vec::new();
+    let num_block_bits = block_vars.len();
+
+    // Allocate next-block variables in the manager (one per source-block bit).
+    let next_block_names = (0..num_block_bits)
+        .map(|i| format!("nb_{}", i))
+        .collect::<Vec<String>>();
+    let next_block_vars: Vec<VarNo> = manager_ref
+        .with_manager_exclusive(|manager| -> Result<Range<VarNo>, DuplicateVarName> {
+            manager.add_named_vars(next_block_names)
+        })
+        .map_err(|e| format!("Failed to create next-block variables: {e}"))?
+        .collect();
+
+    // P_source(s, b) = P(s', b)[s' <- s]
+    let s_prime_to_s_pairs: Vec<(VarNo, VarNo)> = lts
+        .state_variables()
+        .iter()
+        .zip(lts.next_state_variables().iter())
+        .map(|(s, s_prime)| (*s_prime, *s))
+        .collect();
+    let partition_source = variable_rename_reverse(manager_ref, partition, &s_prime_to_s_pairs)?;
+
+    // P_target(s', b') = P(s', b)[b <- b']
+    let (next_block_vars_bdd, _) = compute_vars_bdd(manager_ref, &next_block_vars)?;
+    let partition_target = partition.substitute(&Subst::new(block_vars, &next_block_vars_bdd))?;
+
+    // Cubes to quantify over.
+    let (_, state_vars_bdd) = compute_vars_bdd(manager_ref, lts.state_variables())?;
+    let (_, next_state_vars_bdd) = compute_vars_bdd(manager_ref, lts.next_state_variables())?;
+
+    // States_q(b) = ∃ s. states(s) ∧ P_source(s, b)
+    let states_q = lts
+        .states()
+        .apply_exists(BooleanOperator::And, &partition_source, &state_vars_bdd)?;
+
+    // InitialState_q(b) = ∃ s. initial_state(s) ∧ P_source(s, b)
+    let initial_state_q = lts
+        .initial_state()
+        .apply_exists(BooleanOperator::And, &partition_source, &state_vars_bdd)?;
+
+    // For each transition group, compute T_q(b, b', a) = ∃ s, s'. T_ext(s, s', a) ∧ P_source(s, b) ∧ P_target(s', b').
+    //
+    // The relation is extended with x = x' for non-written state variables so the existential
+    // quantification does not leave those variables unconstrained — otherwise non-written next-state
+    // bits would be free and we would conflate transitions with different target states.
+    let mut quotient_groups = Vec::with_capacity(lts.transition_groups().len());
     for group in lts.transition_groups() {
-        let relation = quotient_naive(
+        let extended = crate::sigref::extend_relation(
             manager_ref,
             group.relation(),
-            partition,
             lts.state_variables(),
             lts.next_state_variables(),
-            block_vars,
+            group.write_variables(),
         )?;
 
-        quotient_relations.push(SummandGroupBdd::new(
-            relation,
-            group.read_variables().to_vec(),
-            group.write_variables().to_vec(),
+        let tmp = extended.apply_exists(BooleanOperator::And, &partition_target, &next_state_vars_bdd)?;
+        let quotient = tmp.apply_exists(BooleanOperator::And, &partition_source, &state_vars_bdd)?;
+
+        quotient_groups.push(SummandGroupBdd::new(
+            quotient,
+            block_vars.to_vec(),
+            next_block_vars.clone(),
         ));
     }
 
-    Ok(SymbolicLtsBdd::with_transition_groups(lts, quotient_relations))
-}
-
-/// Computes a new "interactive" transition relation that can be used to compute
-/// the quotient of a partition.
-///
-/// # Details
-///
-/// The `relation` is defined over T(s, s', a) and `partition` is defined over P(s', b).
-fn quotient_naive(
-    manager_ref: &BDDManagerRef,
-    relation: &BDDFunction,
-    partition: &BDDFunction,
-    state_variables: &[VarNo],
-    next_state_variables: &[VarNo],
-    block_vars: &[VarNo],
-) -> Result<BDDFunction, MercError> {
-    // Merge target states to the new encoding (in b). T(s, b, a) := ∃s′ : T (s, s′, a) ∧ P(s′, b)
-    let (next_state_vars, next_state_vars_bdd) = compute_vars_bdd(manager_ref, next_state_variables)?;
-    let relation_blocks = relation.apply_exists(BooleanOperator::And, partition, &next_state_vars_bdd)?;
-
-    // Rename b variables to s′ variables. T (s, s′, a) := T (s, b, a)[b ← s′].
-    let substitution = Subst::new(block_vars, &next_state_vars);
-    let relation_next = relation_blocks.substitute(&substitution)?;
-
-    // P′(s, b) ← rename(P, [s′ ← s]).
-    let partition_prime = variable_rename_reverse(
-        manager_ref,
-        partition,
-        &state_variables
-            .iter()
-            .zip(next_state_variables.iter())
-            .map(|(s, s_prime)| (*s, *s_prime))
-            .collect::<Vec<(VarNo, VarNo)>>(),
-    )?;
-
-    // T (s′, b, a) := ∃s : T (s, s′, a) ∧ P′(s, b)
-    let (_, state_variables_bdd) = compute_vars_bdd(manager_ref, state_variables)?;
-    let relation_prev = relation_next.apply_exists(BooleanOperator::And, &partition_prime, &state_variables_bdd)?;
-
-    Ok(relation_prev)
+    Ok(SymbolicLtsBdd::with_quotient_state(
+        lts,
+        states_q,
+        initial_state_q,
+        quotient_groups,
+        block_vars.to_vec(),
+        next_block_vars,
+        vec![num_block_bits as Value],
+    ))
 }
