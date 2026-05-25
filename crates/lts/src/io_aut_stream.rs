@@ -9,7 +9,9 @@ use std::marker::PhantomData;
 
 use merc_utilities::MercError;
 
+use crate::AUT_TAU_LABEL;
 use crate::LtsBuilder;
+use crate::MCRL2_TAU_LABEL;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
@@ -19,6 +21,9 @@ use crate::TransitionLabel;
 /// the correct number of states and transitions is included in the header.
 pub struct AutStream<W: Write, L> {
     writer: BufWriter<W>,
+
+    /// The dialect to use when writing tau labels.
+    format: AutFormat,
 
     /// Keep track of the number of transitions added.
     number_of_transitions: usize,
@@ -30,10 +35,22 @@ pub struct AutStream<W: Write, L> {
 }
 
 impl<W: Write, L> AutStream<W, L> {
-    /// Creates a new AUT stream writer.
+    /// Creates a new AUT stream writer in the standard Aldebaran format
+    /// (`i` is used as the tau label).
     ///
     /// Note that the writer is buffered internally using a `BufWriter`.
     pub fn new(writer: W) -> Self {
+        Self::with_format(writer, AutFormat::Aut)
+    }
+
+    /// Creates a new AUT stream writer in the mCRL2 dialect
+    /// (`tau` is used as the tau label).
+    pub fn new_mcrl2(writer: W) -> Self {
+        Self::with_format(writer, AutFormat::AutMcrl2)
+    }
+
+    /// Creates a new AUT stream writer using the given format.
+    pub fn with_format(writer: W, format: AutFormat) -> Self {
         let mut writer = BufWriter::new(writer);
         // Write a placeholder for the header, which will be filled in later.
         // Reserve enough space for the header using the number of bits of
@@ -45,6 +62,7 @@ impl<W: Write, L> AutStream<W, L> {
 
         Self {
             writer,
+            format,
             number_of_transitions: 0,
             number_of_states: 0,
             _marker: PhantomData,
@@ -71,7 +89,12 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
         self.number_of_transitions += 1;
         self.number_of_states = self.number_of_states.max(from.value() + 1).max(to.value() + 1);
 
-        writeln!(self.writer, "({}, \"{}\", {})", from, label.to_owned(), to)?;
+        let owned = label.to_owned();
+        if owned.is_tau_label() {
+            writeln!(self.writer, "({}, \"{}\", {})", from, self.format.tau_label_str(), to)?;
+        } else {
+            writeln!(self.writer, "({}, \"{}\", {})", from, owned, to)?;
+        }
         Ok(())
     }
 
@@ -100,6 +123,26 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
     /// Returns the number of states added to the builder.
     fn num_of_states(&self) -> usize {
         self.number_of_states
+    }
+}
+
+/// The dialect of the AUT format, which controls the textual label used for
+/// internal (tau) transitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutFormat {
+    /// The standard Aldebaran format, which uses `i` for tau transitions.
+    Aut,
+    /// The mCRL2 dialect of the Aldebaran format, which uses `tau` for tau transitions.
+    AutMcrl2,
+}
+
+impl AutFormat {
+    /// Returns the string that represents the tau label in this format.
+    fn tau_label_str(self) -> &'static str {
+        match self {
+            AutFormat::Aut => AUT_TAU_LABEL,
+            AutFormat::AutMcrl2 => MCRL2_TAU_LABEL,
+        }
     }
 }
 

@@ -408,22 +408,29 @@ fn handle_convert(args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError>
     let mut file = File::open(&args.filename)?;
     let lts = read_symbolic_lts(&mut storage, &mut file)?;
 
-    let output_format = guess_lts_format_from_extension(&args.output, args.output_format)
-        .ok_or("Cannot determine output LTS format")?;
+    if let Some(output) = &args.output {
+        let output_format = guess_lts_format_from_extension(output, args.output_format)
+            .ok_or("Cannot determine output LTS format")?;
 
-    match output_format {
-        LtsFormat::Lts => {
-            unimplemented!("Writing LTS format is not yet implemented");
-        }
-        LtsFormat::Aut | LtsFormat::AutMcrl2 => {
-            let mut output = File::create(&args.output)?;
-            let mut stream = AutStream::new(&mut output);
-            convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
-        }
-        LtsFormat::Bcg => {
-            let explicit_lts =
-                convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
-            write_bcg(&explicit_lts, &args.output)?;
+        match output_format {
+            LtsFormat::Lts => {
+                unimplemented!("Writing LTS format is not yet implemented");
+            }
+            LtsFormat::Aut => {
+                let mut output = File::create(output)?;
+                let mut stream = AutStream::new(&mut output);
+                convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
+            }
+            LtsFormat::AutMcrl2 => {
+                let mut output = File::create(output)?;
+                let mut stream = AutStream::new_mcrl2(&mut output);
+                convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
+            }
+            LtsFormat::Bcg => {
+                let explicit_lts =
+                    convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
+                write_bcg(&explicit_lts, output)?;
+            }
         }
     }
 
