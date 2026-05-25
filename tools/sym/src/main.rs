@@ -19,8 +19,10 @@ use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::SymbolicLtsBdd;
 use merc_symbolic::convert_symbolic_lts;
+use merc_symbolic::convert_symbolic_lts_bdd;
 use merc_symbolic::guess_format_from_extension;
 use merc_symbolic::parse_compacted_dependency_graph;
+use merc_symbolic::quotient_symbolic;
 use merc_symbolic::reachability;
 use merc_symbolic::reachability_bdd;
 use merc_symbolic::read_sylvan;
@@ -35,13 +37,12 @@ use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use oxidd::BooleanFunction;
-use oxidd::bdd::BDDFunction;
 use oxidd::util::SatCountCache;
 use rustc_hash::FxBuildHasher;
 use which::which_in;
 
 /// Default node capacity for the Oxidd decision diagram manager.
-const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2028;
+const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2048;
 
 /// A command line tool for symbolic labelled transition systems
 #[derive(clap::Parser, Debug)]
@@ -145,7 +146,8 @@ struct ConvertArgs {
     output_format: Option<LtsFormat>,
 
     /// The output LTS file path.
-    output: PathBuf,
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum, Debug)]
@@ -169,6 +171,10 @@ struct ReduceArgs {
     /// Sets the output LTS format.
     #[arg(long)]
     output_format: Option<LtsFormat>,
+
+    /// The output LTS file path.
+    #[arg(long)]
+    output: Option<PathBuf>,
 
     /// Visualize the reduction steps in oxidd-vis.
     #[arg(long)]
@@ -442,7 +448,7 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
     let format =
         guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
     if format != SymFormat::Sym {
-        return Err("Currently only the .sym format is supported for conversion".into());
+        return Err("Currently only the .sym format is supported for reduction".into());
     }
 
     let mut storage = Storage::new();
@@ -455,21 +461,62 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
     })?;
 
-    let _quotient = timing.measure("reduction", || -> Result<BDDFunction, MercError> {
+    let quotient_lts = timing.measure("reduction", || -> Result<Option<SymbolicLtsBdd>, MercError> {
         match args.equivalence {
-            Equivalence::StrongBisimSigref => sigref_symbolic(
-                &manager_ref,
-                &lts_bdd,
-                timing,
-                args.split_signature,
-                args.extend_relation,
-                args.merge_transitions,
-                args.visualize,
-            )
-            .map(|(quotient, _, _)| quotient),
-            Equivalence::StrongBisim => refine_bisimulation(&manager_ref, &lts_bdd),
+            Equivalence::StrongBisimSigref => {
+                let (partition, block_vars, _num_of_blocks) = sigref_symbolic(
+                    &manager_ref,
+                    &lts_bdd,
+                    timing,
+                    args.split_signature,
+                    args.extend_relation,
+                    args.merge_transitions,
+                    args.visualize,
+                )?;
+
+                let quotient = timing.measure("quotient", || {
+                    quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars)
+                })?;
+                Ok(Some(quotient))
+            }
+            Equivalence::StrongBisim => {
+                refine_bisimulation(&manager_ref, &lts_bdd)?;
+                Ok(None)
+            }
         }
     })?;
+
+    if let Some(output) = &args.output {
+        let quotient_lts = quotient_lts
+            .ok_or("Writing the quotient is not yet supported for the selected equivalence")?;
+
+        let output_format = guess_lts_format_from_extension(output, args.output_format)
+            .ok_or("Cannot determine output LTS format")?;
+
+        match output_format {
+            LtsFormat::Lts => {
+                unimplemented!("Writing LTS format is not yet implemented");
+            }
+            LtsFormat::Aut => {
+                let mut output = File::create(output)?;
+                let mut stream = AutStream::new(&mut output);
+                convert_symbolic_lts_bdd(&manager_ref, &mut stream, &quotient_lts)?;
+            }
+            LtsFormat::AutMcrl2 => {
+                let mut output = File::create(output)?;
+                let mut stream = AutStream::new_mcrl2(&mut output);
+                convert_symbolic_lts_bdd(&manager_ref, &mut stream, &quotient_lts)?;
+            }
+            LtsFormat::Bcg => {
+                let explicit_lts = convert_symbolic_lts_bdd(
+                    &manager_ref,
+                    &mut LtsBuilderMem::new(Vec::new(), Vec::new()),
+                    &quotient_lts,
+                )?;
+                write_bcg(&explicit_lts, output)?;
+            }
+        }
+    }
 
     Ok(())
 }
