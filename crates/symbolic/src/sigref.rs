@@ -482,15 +482,18 @@ fn refine(
 
     manager_ref.with_manager_shared(|manager| {
         let mut cache = FxHashMap::default();
+        let mut ctx = RefineContext {
+            manager,
+            cache: &mut cache,
+            signature_to_block,
+            block_variables_bdds,
+            next_state_variables,
+        };
 
         Ok(BDDFunction::from_edge(
             manager,
             refine_edge(
-                manager,
-                &mut cache,
-                signature_to_block,
-                block_variables_bdds,
-                next_state_variables,
+                &mut ctx,
                 signature.as_edge(manager).borrowed(),
                 partition.as_edge(manager).borrowed(),
             )?,
@@ -498,16 +501,23 @@ fn refine(
     })
 }
 
+/// Shared state threaded through the [refine_edge] recursion.
+struct RefineContext<'a, 'id: 'a> {
+    manager: &'a <BDDFunction as Function>::Manager<'id>,
+    cache: &'a mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
+    signature_to_block: &'a mut FxHashMap<(BDDFunction, u64), u64>,
+    block_variables_bdds: &'a [BDDFunction],
+    next_state_variables: &'a [VarNo],
+}
+
 /// Recursive implementation of the [refine] function.
 fn refine_edge<'id>(
-    manager: &<BDDFunction as Function>::Manager<'id>,
-    cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
-    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
-    block_variables_bdds: &[BDDFunction],
-    next_state_variables: &[VarNo],
+    ctx: &mut RefineContext<'_, 'id>,
     signature: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
     partition: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
 ) -> Result<EdgeOfFunc<'id, BDDFunction>, OutOfMemory> {
+    let manager = ctx.manager;
+
     let plevel = match manager.get_node(&partition) {
         Node::Terminal(terminal) => {
             if terminal == BDDTerminal::False {
@@ -520,7 +530,7 @@ fn refine_edge<'id>(
         Node::Inner(node) => node.level(),
     };
 
-    if let Some(cached) = cache.get(&(
+    if let Some(cached) = ctx.cache.get(&(
         BDDFunction::from_edge(manager, manager.clone_edge(&signature)),
         BDDFunction::from_edge(manager, manager.clone_edge(&partition)),
     )) {
@@ -536,7 +546,7 @@ fn refine_edge<'id>(
         plevel.min(slevel)
     };
 
-    let result = if next_state_variables.contains(&lowest_level) {
+    let result = if ctx.next_state_variables.contains(&lowest_level) {
         // Match paths on the level s'_i, for irrelevant variables we take both paths.
         let (s_high, s_low) = match manager.get_node(&signature) {
             Node::Inner(node) if node.level() == lowest_level => collect_children(node),
@@ -547,24 +557,8 @@ fn refine_edge<'id>(
             _ => (partition.borrowed(), partition.borrowed()),
         };
 
-        let low = refine_edge(
-            manager,
-            cache,
-            signature_to_block,
-            block_variables_bdds,
-            next_state_variables,
-            s_low,
-            p_low,
-        )?;
-        let high = refine_edge(
-            manager,
-            cache,
-            signature_to_block,
-            block_variables_bdds,
-            next_state_variables,
-            s_high,
-            p_high,
-        )?;
+        let low = refine_edge(ctx, s_low, p_low)?;
+        let high = refine_edge(ctx, s_high, p_high)?;
 
         // 7. result := BDDnode(topVar, high, low)
         Ok(reduce(manager, lowest_level, high, low)?)
@@ -579,24 +573,24 @@ fn refine_edge<'id>(
         // Key by (signature, old block index) so the new partition is a strict refinement of
         // the old one.
         let key = (signature, block_index);
-        if let Some(block) = signature_to_block.get(&key) {
+        if let Some(block) = ctx.signature_to_block.get(&key) {
             if *block == block_index {
                 trace!("Found existing signature for {block_index}");
                 Ok(manager.clone_edge(&partition)) // The partition just encodes the current block.
             } else {
                 // New partition needed
                 trace!("Return existing block {block}");
-                Ok(encode_block(manager, block_variables_bdds, *block)?)
+                Ok(encode_block(manager, ctx.block_variables_bdds, *block)?)
             }
         } else {
-            let new_block_index = signature_to_block.len() as u64;
+            let new_block_index = ctx.signature_to_block.len() as u64;
             trace!("Creating new block {new_block_index}");
-            signature_to_block.insert(key, new_block_index);
-            Ok(encode_block(manager, block_variables_bdds, new_block_index)?)
+            ctx.signature_to_block.insert(key, new_block_index);
+            Ok(encode_block(manager, ctx.block_variables_bdds, new_block_index)?)
         }
     }?;
 
-    cache.insert(
+    ctx.cache.insert(
         (
             BDDFunction::from_edge(manager, manager.clone_edge(&signature)),
             BDDFunction::from_edge(manager, manager.clone_edge(&partition)),
