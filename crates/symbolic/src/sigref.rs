@@ -24,12 +24,10 @@ use oxidd::error::DuplicateVarName;
 use oxidd::util::Borrowed;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
-use oxidd::util::SatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
 use oxidd_dump::Visualizer;
 use oxidd_rules_bdd::simple::BDDTerminal;
-use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
 use crate::CubeIterAll;
@@ -146,20 +144,16 @@ fn sigref_symbolic_impl(
     split_signature: bool,
     visualize: bool,
 ) -> Result<(BDDFunction, Vec<VarNo>, usize), MercError> {
-    // There can only be one block per state, so we need as many bits as required to
-    // represent all states.
-    let number_of_states = lts
-        .states()
-        .sat_count::<u64, FxBuildHasher>(lts.state_variables().len() as u32, &mut SatCountCache::default());
-    debug!("Number of states: {}", number_of_states);
-
     let split_partition_groups = if split_signature {
         combine_transition_groups(manager_ref, lts)?
     } else {
         Vec::new()
     };
 
-    let num_of_block_bits = required_bits_64(number_of_states);
+    // We could restrict the number of bits to log(number_of_states), but
+    // computing the satcount of the states can exceed `usize` easily. So
+    // instead we simply use 64 bits.
+    let num_of_block_bits = 64;
     debug!("Number of block bits: {}", num_of_block_bits);
 
     let block_variable_names = (0..num_of_block_bits)
