@@ -251,6 +251,7 @@ fn sigref_symbolic_impl(
         .collect::<Result<Vec<_>, MercError>>()?;
 
     let mut signature_index = 0;
+    let mut changed_in_cycle = false;
     loop {
         // No fixed point reached yet, so keep refining.
         let old_num_of_blocks = num_of_blocks;
@@ -346,14 +347,18 @@ fn sigref_symbolic_impl(
         iteration += 1;
 
         if split_signature {
-            if signature_index == 0 && num_of_blocks == old_num_of_blocks {
-                // We only reached a fixed point if after a full cycle no changes occurred.
-                break;
+            if num_of_blocks != old_num_of_blocks {
+                changed_in_cycle = true;
             }
 
             signature_index += 1;
             if signature_index >= split_partition_groups.len() {
-                // Start from the first transition group again.
+                // Completed a full sweep over every partition class: we have a fixed point
+                // only if not a single class refined the partition during this sweep.
+                if !changed_in_cycle {
+                    break;
+                }
+                changed_in_cycle = false;
                 signature_index = 0;
             }
         } else if num_of_blocks == old_num_of_blocks {
@@ -402,28 +407,32 @@ fn combine_transition_groups(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) 
         .map(|group| group.relation().exists(&state_and_next_state_vars))
         .collect::<Result<Vec<BDDFunction>, OutOfMemory>>()?;
 
-    // For the split signature we must ensure that all action labels are disjoint.
-    let mut result: Vec<Vec<usize>> = Vec::new();
+    // Build connected components under "shares an action label". For each class we cache the
+    // union of its members' action-label BDDs so the overlap test stays a single `and` per
+    // pair, and we absorb every overlapping class — the relation is not transitive, so a
+    // single-pass check against one representative per class would miss merges that chain
+    // through other groups.
+    let mut classes: Vec<(Vec<usize>, BDDFunction)> = Vec::new();
 
     for i in 0..lts.transition_groups().len() {
-        // See if the element can be added to an existing group, by taking the first element of
-        // each group as representative.
-        let mut placed = false;
-        for group in result.iter_mut() {
-            let Some(first) = group.first() else {
-                continue;
-            };
-            if representatives[*first].and(&representatives[i])?.satisfiable() {
-                group.push(i);
-                placed = true;
-                break;
+        let mut merged_members = vec![i];
+        let mut merged_rep = representatives[i].clone();
+
+        let mut j = 0;
+        while j < classes.len() {
+            if classes[j].1.and(&merged_rep)?.satisfiable() {
+                let (members, rep) = classes.remove(j);
+                merged_members.extend(members);
+                merged_rep = merged_rep.or(&rep)?;
+            } else {
+                j += 1;
             }
         }
-        if !placed {
-            // Create new group, and add the representative
-            result.push(vec![i]);
-        }
+
+        classes.push((merged_members, merged_rep));
     }
+
+    let result: Vec<Vec<usize>> = classes.into_iter().map(|(members, _)| members).collect();
 
     debug!("Combined transition groups: {:?}", result);
     Ok(result)
@@ -1185,6 +1194,12 @@ mod tests {
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let symbolic_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient_lts).unwrap();
+
+            println!(
+                "Explicit LTS has {} states and {} transitions",
+                explicit_lts.num_of_states(),
+                explicit_lts.num_of_transitions()
+            );
 
             assert_eq!(
                 explicit_lts_reduced.num_of_states(),

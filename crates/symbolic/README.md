@@ -29,7 +29,10 @@ the MINCE algorithm for a given dependency graph. This requires the
 
 ### 3.0.0
 
-
+Fixed the implementation of the signature-based refinement algorithm for strong
+bisimulation, both the regular and the split signature variants should now yield
+the correct results. Furthermore, the implementation of the naive quotienting has
+also been fixed.
 
 ## Safety
 
