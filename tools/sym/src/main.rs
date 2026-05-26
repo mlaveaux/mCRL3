@@ -415,8 +415,8 @@ fn handle_convert(args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError>
     let lts = read_symbolic_lts(&mut storage, &mut file)?;
 
     if let Some(output) = &args.output {
-        let output_format = guess_lts_format_from_extension(output, args.output_format)
-            .ok_or("Cannot determine output LTS format")?;
+        let output_format =
+            guess_lts_format_from_extension(output, args.output_format).ok_or("Cannot determine output LTS format")?;
 
         match output_format {
             LtsFormat::Lts => {
@@ -487,11 +487,11 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
     })?;
 
     if let Some(output) = &args.output {
-        let quotient_lts = quotient_lts
-            .ok_or("Writing the quotient is not yet supported for the selected equivalence")?;
+        let quotient_lts =
+            quotient_lts.ok_or("Writing the quotient is not yet supported for the selected equivalence")?;
 
-        let output_format = guess_lts_format_from_extension(output, args.output_format)
-            .ok_or("Cannot determine output LTS format")?;
+        let output_format =
+            guess_lts_format_from_extension(output, args.output_format).ok_or("Cannot determine output LTS format")?;
 
         match output_format {
             LtsFormat::Lts => {

@@ -20,14 +20,6 @@ use crate::CubeIterAll;
 use crate::SymbolicLtsBdd;
 use crate::to_value;
 
-fn concretize_cube(cube: &mut [OptBool]) {
-    for bit in cube {
-        if *bit == OptBool::None {
-            *bit = OptBool::False;
-        }
-    }
-}
-
 /// Converts a symbolic LTS to an explicit LTS.
 ///
 /// # Details
@@ -67,44 +59,32 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
         offsets
     };
 
-    let read_groups = lts
-        .transition_groups()
-        .iter()
-        .map(|group| {
-            group
-                .read_variables()
-                .iter()
-                .map(|var| {
-                    *state_variable_indices
-                        .get(var)
-                        .expect("Read variable was not found in state variables")
-                })
-                .collect::<FxHashSet<usize>>()
-        })
-        .collect::<Vec<_>>();
-
-    let write_groups = lts
-        .transition_groups()
-        .iter()
-        .map(|group| {
-            group
-                .write_variables()
-                .iter()
-                .map(|var| {
-                    *next_state_variable_indices
-                        .get(var)
-                        .expect("Write variable was not found in next-state variables")
-                })
-                .collect::<FxHashSet<usize>>()
-        })
-        .collect::<Vec<_>>();
-
     let mut read_positions = Vec::new();
     let mut write_positions = Vec::new();
     let mut transition_variables = Vec::new();
     let mut action_positions = Vec::new();
 
-    for (group_index, _group) in lts.transition_groups().iter().enumerate() {
+    for group in lts.transition_groups() {
+        let read_group: FxHashSet<usize> = group
+            .read_variables()
+            .iter()
+            .map(|var| {
+                *state_variable_indices
+                    .get(var)
+                    .expect("Read variable was not found in state variables")
+            })
+            .collect();
+
+        let write_group: FxHashSet<usize> = group
+            .write_variables()
+            .iter()
+            .map(|var| {
+                *next_state_variable_indices
+                    .get(var)
+                    .expect("Write variable was not found in next-state variables")
+            })
+            .collect();
+
         let mut variables = Vec::new();
 
         let (rpos, wpos) = compute_positions(
@@ -112,8 +92,8 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
             &next_state_variables,
             &action_variables,
             &state_group_offsets,
-            &read_groups[group_index],
-            &write_groups[group_index],
+            &read_group,
+            &write_group,
             &mut variables,
         );
 
@@ -265,6 +245,15 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
         .ok_or("Initial state was not found in the discovered state set")?;
 
     output.finish(StateIndex::new(*initial_state_index))
+}
+
+/// Replace all don't-care bits in the cube with false, to get a concrete state vector.
+fn concretize_cube(cube: &mut [OptBool]) {
+    for bit in cube {
+        if *bit == OptBool::None {
+            *bit = OptBool::False;
+        }
+    }
 }
 
 /// Computes the positions of the read and write indices in the transition vector.
