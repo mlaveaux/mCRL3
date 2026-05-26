@@ -32,10 +32,10 @@ pub enum IOError {
 }
 
 /// The label used for internal transitions in the mCRL2 format.
-const MCRL2_TAU_LABEL: &str = "tau";
+pub const MCRL2_TAU_LABEL: &str = "tau";
 
 /// The label used for internal transitions in the Aldebaran format.
-const AUT_TAU_LABEL: &str = "i";
+pub const AUT_TAU_LABEL: &str = "i";
 
 /// Loads a labelled transition system in the [Aldebaran
 /// format](https://cadp.inria.fr/man/aldebaran.html) from the given reader.

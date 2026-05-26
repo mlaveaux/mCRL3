@@ -852,14 +852,14 @@ pub struct SignatureDisplay<'a> {
     block_bits: u32,
 
     /// The variables that contribute to the signature.
-    variables: &'a Vec<VarNo>,
+    variables: &'a [VarNo],
 }
 
 impl<'a> SignatureDisplay<'a> {
     /// Creates a new partition display helper.
     fn new(
         signature: &'a BDDFunction,
-        variables: &'a Vec<VarNo>,
+        variables: &'a [VarNo],
         num_of_bits: &'a [u32],
         action_bits: u32,
         block_bits: u32,

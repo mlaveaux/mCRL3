@@ -97,7 +97,7 @@ pub struct CubeIterAll<'a> {
     current_cube: Vec<OptBool>,
 
     /// Optional set of variable indices to project the output onto.
-    variable_indices: Option<&'a Vec<VarNo>>,
+    variable_indices: Option<&'a [VarNo]>,
 }
 
 impl<'a> CubeIterAll<'a> {
@@ -112,7 +112,7 @@ impl<'a> CubeIterAll<'a> {
     }
 
     /// Creates a new cube iterator that returns assignments only for the given variable indices.
-    pub fn with_variables(bdd: &'a BDDFunction, variable_indices: &'a Vec<VarNo>) -> Self {
+    pub fn with_variables(bdd: &'a BDDFunction, variable_indices: &'a [VarNo]) -> Self {
         Self {
             iter: CubeIter::new(bdd),
             cube: None,

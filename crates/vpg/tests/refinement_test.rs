@@ -95,7 +95,7 @@ fn test_random_impossible_futures_refinement() {
 fn test_random_trace_refinement_preprocessed() {
     random_test(100, |rng| {
         is_refinement_test(
-            "test_random_trace_refinement",
+            "test_random_trace_refinement_preprocessed",
             rng,
             RefinementType::Trace,
             ExplorationStrategy::BFS,
