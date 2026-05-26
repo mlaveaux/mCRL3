@@ -466,7 +466,7 @@ fn signature_strong(
 /// > For all states s, t it holds that P(s) == P(t) iff signature(s) == signature(t)
 fn refine(
     manager_ref: &BDDManagerRef,
-    signature_to_block: &mut FxHashMap<BDDFunction, u64>,
+    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
     block_variables_bdds: &[BDDFunction],
     next_state_variables: &[VarNo],
     signature: &BDDFunction,
@@ -499,7 +499,7 @@ fn refine(
 fn refine_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
-    signature_to_block: &mut FxHashMap<BDDFunction, u64>,
+    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
     block_variables_bdds: &[BDDFunction],
     next_state_variables: &[VarNo],
     signature: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
@@ -573,11 +573,10 @@ fn refine_edge<'id>(
         // 10. B := decode_block(partition)
         let block_index = decode_block(manager, partition.borrowed());
         let signature = BDDFunction::from_edge(manager, manager.clone_edge(&signature));
-        if let Some(block) = signature_to_block.get(&signature) {
-            // 11. If blocks[B].signature == \bottom then
-            // 12.     blocks[B].signature := signature
-            // 13. if blocks[B].signature == signature then
-            // 14.     return P
+        // Key by (signature, old block index) so the new partition is a strict refinement of
+        // the old one.
+        let key = (signature, block_index);
+        if let Some(block) = signature_to_block.get(&key) {
             if *block == block_index {
                 trace!("Found existing signature for {block_index}");
                 Ok(manager.clone_edge(&partition)) // The partition just encodes the current block.
@@ -589,7 +588,7 @@ fn refine_edge<'id>(
         } else {
             let new_block_index = signature_to_block.len() as u64;
             trace!("Creating new block {new_block_index}");
-            signature_to_block.insert(signature, new_block_index);
+            signature_to_block.insert(key, new_block_index);
             Ok(encode_block(manager, block_variables_bdds, new_block_index)?)
         }
     }?;
