@@ -29,6 +29,7 @@ use oxidd_core::util::EdgeDropGuard;
 use oxidd_dump::Visualizer;
 use oxidd_rules_bdd::simple::BDDTerminal;
 use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 
 use crate::CubeIterAll;
 use crate::SummandGroupBdd;
@@ -171,7 +172,13 @@ fn sigref_symbolic_impl(
     // Create BDD functions for the block variables
     let block_variables_bdds = compute_vars_bdd(manager_ref, &block_variable_indices)?.0;
 
-    let mut signature_to_block = FxHashMap::default();
+    // Caches for [refine]. `refine_cache` is the BDD-level memo and its allocation is reused across
+    // iterations (cleared each iteration). `claimed_blocks` records which old block ids have already
+    // been claimed (reused as-is) this iteration; `next_fresh_id` is the persistent counter handing
+    // out new block ids for splits, so num_of_blocks == next_fresh_id once refine returns.
+    let mut refine_cache: FxHashMap<(BDDFunction, BDDFunction), BDDFunction> = FxHashMap::default();
+    let mut claimed_blocks: FxHashSet<u64> = FxHashSet::default();
+    let mut next_fresh_id: u64 = 1;
 
     // Substitution to replace state variables with next state variables.
     let state_substitution: Vec<(VarNo, VarNo)> = lts
@@ -314,7 +321,9 @@ fn sigref_symbolic_impl(
         partition = timing.measure("refine", || {
             refine(
                 manager_ref,
-                &mut signature_to_block,
+                &mut refine_cache,
+                &mut claimed_blocks,
+                &mut next_fresh_id,
                 &block_variables_bdds,
                 lts.next_state_variables(),
                 &signature,
@@ -342,7 +351,7 @@ fn sigref_symbolic_impl(
             )
         );
 
-        num_of_blocks = signature_to_block.len();
+        num_of_blocks = next_fresh_id as usize;
         progress.print((iteration, num_of_blocks));
         iteration += 1;
 
@@ -365,8 +374,10 @@ fn sigref_symbolic_impl(
             break;
         }
 
-        // Clear the block assignment for the next iteration.
-        signature_to_block.clear();
+        // Per-iteration state is rebuilt; `next_fresh_id` is persistent so new ids never collide
+        // with ids carried over from the previous partition.
+        claimed_blocks.clear();
+        refine_cache.clear();
     }
 
     info!(
@@ -469,7 +480,9 @@ fn signature_strong(
 /// > For all states s, t it holds that P(s) == P(t) iff signature(s) == signature(t)
 fn refine(
     manager_ref: &BDDManagerRef,
-    signature_to_block: &mut FxHashMap<(BDDFunction, u64), u64>,
+    cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
+    claimed_blocks: &mut FxHashSet<u64>,
+    next_fresh_id: &mut u64,
     block_variables_bdds: &[BDDFunction],
     next_state_variables: &[VarNo],
     signature: &BDDFunction,
@@ -481,11 +494,11 @@ fn refine(
     );
 
     manager_ref.with_manager_shared(|manager| {
-        let mut cache = FxHashMap::default();
         let mut ctx = RefineContext {
             manager,
-            cache: &mut cache,
-            signature_to_block,
+            cache,
+            claimed_blocks,
+            next_fresh_id,
             block_variables_bdds,
             next_state_variables,
         };
@@ -505,7 +518,12 @@ fn refine(
 struct RefineContext<'a, 'id: 'a> {
     manager: &'a <BDDFunction as Function>::Manager<'id>,
     cache: &'a mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,
-    signature_to_block: &'a mut FxHashMap<(BDDFunction, u64), u64>,
+    /// Old block ids already claimed by some signature this iteration; their states' partition BDD
+    /// is returned as-is so the id is reused without reallocation.
+    claimed_blocks: &'a mut FxHashSet<u64>,
+    /// Strictly increasing counter for block ids allocated due to splits. Persisted across
+    /// iterations so fresh ids never collide with ids carried over from the previous partition.
+    next_fresh_id: &'a mut u64,
     block_variables_bdds: &'a [BDDFunction],
     next_state_variables: &'a [VarNo],
 }
@@ -563,29 +581,19 @@ fn refine_edge<'id>(
         // 7. result := BDDnode(topVar, high, low)
         Ok(reduce(manager, lowest_level, high, low)?)
     } else {
-        // 9. else:
-        // \sigma (the signature function) now encodes the state signature (a, B)
-        // P (the partition function) encodes the current block assignment
-
-        // 10. B := decode_block(partition)
+        // Leaf: \sigma encodes the (action, target block) signature and P encodes the old block id.
+        // Reuse the old id for the first signature that claims it (returning the partition edge
+        // unchanged); any further signatures sharing that old block are splits and get a fresh id
+        // from the persistent counter. The outer BDD memo above keys by (sig, partition) so
+        // repeated (sig, partition) pairs reuse this assignment without re-decoding.
         let block_index = decode_block(manager, partition.borrowed());
-        let signature = BDDFunction::from_edge(manager, manager.clone_edge(&signature));
-        // Key by (signature, old block index) so the new partition is a strict refinement of
-        // the old one.
-        let key = (signature, block_index);
-        if let Some(block) = ctx.signature_to_block.get(&key) {
-            if *block == block_index {
-                trace!("Found existing signature for {block_index}");
-                Ok(manager.clone_edge(&partition)) // The partition just encodes the current block.
-            } else {
-                // New partition needed
-                trace!("Return existing block {block}");
-                Ok(encode_block(manager, ctx.block_variables_bdds, *block)?)
-            }
+        if ctx.claimed_blocks.insert(block_index) {
+            trace!("Reusing old block {block_index}");
+            Ok(manager.clone_edge(&partition))
         } else {
-            let new_block_index = ctx.signature_to_block.len() as u64;
-            trace!("Creating new block {new_block_index}");
-            ctx.signature_to_block.insert(key, new_block_index);
+            let new_block_index = *ctx.next_fresh_id;
+            *ctx.next_fresh_id += 1;
+            trace!("Allocating fresh block {new_block_index} (split from {block_index})");
             Ok(encode_block(manager, ctx.block_variables_bdds, new_block_index)?)
         }
     }?;
