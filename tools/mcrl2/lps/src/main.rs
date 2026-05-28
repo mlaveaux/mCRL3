@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::stdout;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -5,6 +8,10 @@ use clap::Subcommand;
 
 use merc_ldd::Storage;
 use merc_ldd::len;
+use merc_lts::LTS;
+use merc_lts::LtsBuilderFast;
+use merc_lts::StateIndex;
+use merc_lts::write_aut;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -16,9 +23,11 @@ use mcrl2::read_lps;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 
-use explore::explore_lps;
+use explore_symbolic::explore_lps_symbolic;
+use explore_explicit::explore_lps_explicit;
 
-mod explore;
+mod explore_symbolic;
+mod explore_explicit;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum LpsFormat {
@@ -46,6 +55,8 @@ struct Cli {
 enum Commands {
     /// Explores the state space of an LPS symbolically
     Explore(ExploreArgs),
+    /// Explores the state space of an LPS explicitly
+    ExploreExplicit(ExploreExplicitArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -56,6 +67,20 @@ struct ExploreArgs {
     /// Explicitly choose the format of the input LPS file.
     #[arg(long, short('i'), value_enum)]
     format: Option<LpsFormat>,
+}
+
+#[derive(clap::Args, Debug)]
+struct ExploreExplicitArgs {
+    /// The input LPS file.
+    filename: String,
+
+    /// Explicitly choose the format of the input LPS file.
+    #[arg(long, short('i'), value_enum)]
+    format: Option<LpsFormat>,
+
+    /// Specify the output LTS in AUT format. If not given, the LTS is not written.
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -79,6 +104,7 @@ fn main() -> Result<ExitCode, MercError> {
     if let Some(command) = cli.commands {
         match command {
             Commands::Explore(args) => handle_explore(args, &timing)?,
+            Commands::ExploreExplicit(args) => handle_explore_explicit(args, &timing)?,
         }
     }
 
@@ -99,8 +125,30 @@ fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
 
     let mut storage = Storage::new();
 
-    let num_of_states = explore_lps(&mut storage, &lps, timing)?;
+    let num_of_states = explore_lps_symbolic(&mut storage, &lps, timing)?;
     println!("Number of states: {}", len(&mut storage, &num_of_states));
+
+    Ok(())
+}
+
+fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result<(), MercError> {
+    let format = args.format.unwrap_or(LpsFormat::Lps);
+    let lps = match format {
+        LpsFormat::Lps => read_lps(&args.filename)?,
+    };
+
+    let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
+    explore_lps_explicit(&mut builder, &lps, timing)?;
+    let lts = builder.finish(StateIndex::new(0), false);
+
+    println!("Number of states: {}", lts.num_of_states());
+    println!("Number of transitions: {}", lts.num_of_transitions());
+
+    if let Some(output) = &args.output {
+        write_aut(&mut File::create(output)?, &lts)?;
+    } else {
+        write_aut(&mut stdout(), &lts)?;
+    }
 
     Ok(())
 }

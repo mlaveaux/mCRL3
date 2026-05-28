@@ -36,7 +36,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 /// Explore the linear process specification using symbolic reachability.
-pub fn explore_lps(storage: &mut Storage, lps: &LinearProcessSpecification, timing: &Timing) -> Result<Ldd, MercError> {
+pub fn explore_lps_symbolic(storage: &mut Storage, lps: &LinearProcessSpecification, timing: &Timing) -> Result<Ldd, MercError> {
     let mut symbolic_lts = SymbolicLinearProcessSpecification::new(storage, lps)?;
 
     debug!("{symbolic_lts:?}");
@@ -444,7 +444,7 @@ mod tests {
     use merc_ldd::len;
     use merc_utilities::Timing;
 
-    use super::explore_lps;
+    use super::explore_lps_symbolic;
 
     #[test]
     fn test_mcrl2_explore_symbolic_abp() {
@@ -473,7 +473,7 @@ mod tests {
         let mut storage = Storage::new();
         let timing = Timing::new();
 
-        let states = explore_lps(&mut storage, &lps, &timing).expect("Failed to explore LPS");
+        let states = explore_lps_symbolic(&mut storage, &lps, &timing).expect("Failed to explore LPS");
         let num_of_states = len(&mut storage, &states);
 
         assert_eq!(

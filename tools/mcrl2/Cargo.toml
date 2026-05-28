@@ -47,8 +47,10 @@ mcrl2-macros = { path = "crates/mcrl2-macros" }
 mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "6e9d3946ae6724921de292dfec8417605bf565bc" }
 merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
+merc_explore = { path = "../../crates/explore" }
 merc_io = { path = "../../crates/io" }
 merc_ldd = { path = "../../crates/ldd" }
+merc_lts = { path = "../../crates/lts" }
 merc_symbolic = { path = "../../crates/symbolic" }
 merc_tools = { path = "../../crates/tools" }
 merc_unsafety = { path = "../../crates/unsafety" }
