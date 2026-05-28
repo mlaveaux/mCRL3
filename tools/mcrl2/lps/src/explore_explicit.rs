@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
@@ -15,6 +16,7 @@ use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
 use mcrl2::free_variables_data_expression;
 use mcrl2::preprocess;
+use mcrl2::pretty_print_multi_action;
 use merc_collections::IndexedSet;
 use merc_explore::LPS;
 use merc_explore::Summand;
@@ -140,13 +142,23 @@ struct ExplicitSummand {
     /// Only the non-identity assignments (write parameters) of this summand.
     write_assignments: ATermList<ATerm>,
 
-    /// The static label associated with this summand. This is the printed
-    /// multi-action template; data parameters bound by summation variables are
-    /// not currently substituted into the label.
-    label: String,
+    /// The multi-action of this summand.
+    multi_action: ATerm,
 
     /// Shared context owning the rewriter/enumerator and parameter mappings.
     shared: Rc<Shared>,
+
+    /// Reusable scratch buffer for the read parameter aterm pointers passed
+    /// to the enumerator on each call to `enumerate`.
+    read_values_buf: RefCell<Vec<*const _aterm>>,
+
+    /// Reusable scratch buffer for the next-state vector produced for each
+    /// enumerated solution. Reset and refilled for every solution.
+    next_state_buf: RefCell<Vec<u32>>,
+
+    /// Memoised pretty-printed multi-action labels, keyed by the rewritten
+    /// multi-action aterm pointer.
+    label_cache: RefCell<HashMap<*const _aterm, String>>,
 }
 
 impl ExplicitSummand {
@@ -213,7 +225,9 @@ impl ExplicitSummand {
             "Write indices must be strictly sorted"
         );
 
-        let label = format!("{}", summand.multi_action());
+        let multi_action = summand.multi_action();
+
+        let read_values_buf = RefCell::new(Vec::with_capacity(read_indices.len()));
 
         Self {
             read_indices,
@@ -222,8 +236,11 @@ impl ExplicitSummand {
             condition,
             summation_variables,
             write_assignments,
-            label,
+            multi_action,
             shared,
+            read_values_buf,
+            next_state_buf: RefCell::new(Vec::new()),
+            label_cache: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -248,37 +265,44 @@ impl Summand for ExplicitSummand {
 
     fn enumerate<F>(&self, state: &Self::State, mut report: F) -> Result<(), MercError>
     where
-        F: FnMut(Self::Label, Self::State) -> Result<(), MercError>,
+        F: FnMut(&Self::Label, &Self::State) -> Result<(), MercError>,
     {
-        // Translate the read parameter values from the current state into the
-        // aterm pointers expected by the mCRL2 enumerator.
-        let read_values: Vec<*const _aterm> = {
+        // Refill the cached read-values buffer with the aterm pointers
+        // expected by the mCRL2 enumerator for the current state.
+        {
+            let mut read_values = self.read_values_buf.borrow_mut();
+            read_values.clear();
             let mapping = self.shared.mapping.borrow();
-            self.read_indices
-                .iter()
-                .map(|&i| {
+            for &i in &self.read_indices {
+                read_values.push(
                     mapping[i as usize]
                         .get_by_index(state[i as usize] as usize)
                         .expect("Value must be in the mapping")
-                        .address()
-                })
-                .collect()
-        };
+                        .address(),
+                );
+            }
+        }
 
+        let read_values = self.read_values_buf.borrow();
         self.shared.context.enumerate_raw(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
+            &self.multi_action,
             &self.read_parameters,
             &read_values,
-            |values: &[*const _aterm]| {
+            |values: &[*const _aterm], multi_action: *const _aterm| {
                 debug_assert_eq!(
                     values.len(),
                     self.write_indices.len(),
                     "Enumerated values must match number of write indices"
                 );
 
-                let mut next_state = state.clone();
+                // Build the next-state vector in the cached buffer instead of
+                // allocating a fresh `Vec` per enumerated transition.
+                let mut next_state = self.next_state_buf.borrow_mut();
+                next_state.clear();
+                next_state.extend_from_slice(state);
                 {
                     let mut mapping = self.shared.mapping.borrow_mut();
                     for (i, &value) in values.iter().enumerate() {
@@ -290,8 +314,15 @@ impl Summand for ExplicitSummand {
                     }
                 }
 
+                // Memoise the pretty-printed multi-action by aterm pointer;
+                // aterms are maximally shared so equal terms share an address.
+                let mut label_cache = self.label_cache.borrow_mut();
+                let label = label_cache
+                    .entry(multi_action)
+                    .or_insert_with(|| pretty_print_multi_action(&ATerm::from_ptr(multi_action)));
+
                 // We cannot propagate errors from the C callback, so we panic on error and catch it in the caller.
-                report(self.label.clone(), next_state).expect("Failed to report successor state");
+                report(&*label, &*next_state).expect("Failed to report successor state");
             },
         );
 
@@ -318,7 +349,12 @@ impl fmt::Debug for ExplicitLinearProcessSpecification {
 
 impl fmt::Debug for ExplicitSummand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{} -> {}", self.condition.pretty_print(), self.label)?;
+        writeln!(
+            f,
+            "{} -> {}",
+            self.condition.pretty_print(),
+            pretty_print_multi_action(&self.multi_action)
+        )?;
         writeln!(f, "\t\tread indices: {:?}", self.read_indices)?;
         writeln!(f, "\t\twrite indices: {:?}", self.write_indices)
     }

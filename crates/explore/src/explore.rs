@@ -49,9 +49,14 @@ where
 
             for summand in lps.summands() {
                 summand.enumerate(&current_state, |label, next_state| {
-                    let (target_index, is_new) = discovered.insert(next_state);
+                    // Only clone the next-state vector when it is genuinely
+                    // new; for revisited states we just look up the index.
+                    let (target_index, is_new) = match discovered.index(next_state) {
+                        Some(idx) => (idx, false),
+                        None => discovered.insert(next_state.clone()),
+                    };
                     let to = StateIndex::new(*target_index);
-                    builder.add_transition(from, &label, to)?;
+                    builder.add_transition(from, label, to)?;
                     if is_new {
                         working.push(target_index);
                     }

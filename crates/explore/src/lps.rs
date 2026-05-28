@@ -47,9 +47,10 @@ pub trait Summand {
 
     /// Enumerate every outgoing transition produced by this summand from
     /// `state`. For each transition, `report(label, next_state)` is invoked
-    /// exactly once. Errors from the callback or from the summand itself are
-    /// propagated to the caller.
+    /// exactly once with borrowed values; the callback clones only when it
+    /// needs to retain them. Errors from the callback or from the summand
+    /// itself are propagated to the caller.
     fn enumerate<F>(&self, state: &Self::State, report: F) -> Result<(), MercError>
     where
-        F: FnMut(Self::Label, Self::State) -> Result<(), MercError>;
+        F: FnMut(&Self::Label, &Self::State) -> Result<(), MercError>;
 }

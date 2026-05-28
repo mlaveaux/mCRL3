@@ -11,6 +11,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_summation_variables;
 use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context;
 use mcrl2_sys::lps::ffi::mcrl2_lps_enumerate;
 use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_lps_file;
+use mcrl2_sys::lps::ffi::mcrl2_lps_multi_action_to_string;
 use mcrl2_sys::lps::ffi::mcrl2_lps_num_of_action_summands;
 use mcrl2_sys::lps::ffi::mcrl2_lps_preprocess_symbolic_exploration;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer;
@@ -116,6 +117,11 @@ impl LinearProcessInitializer {
     }
 }
 
+/// Pretty-prints a multi-action term using the mCRL2 pretty printer.
+pub fn pretty_print_multi_action(multi_action: &ATerm) -> String {
+    mcrl2_lps_multi_action_to_string(multi_action.get())
+}
+
 /// Read an LPS from a file in the binary mCRL2 format.
 pub fn read_lps(filename: &str) -> Result<LinearProcessSpecification, MercError> {
     Ok(LinearProcessSpecification {
@@ -155,7 +161,8 @@ impl LearnSuccessorsContext {
     /// read parameter assignments from the current state.
     ///
     /// For each solution found, calls `callback` with a slice of the
-    /// next-state values (one per assignment in the summand).
+    /// next-state values (one per assignment in the summand) and a pointer
+    /// to the rewritten multi-action term.
     pub fn enumerate<F>(
         &self,
         summand: &LinearSummand,
@@ -163,15 +170,17 @@ impl LearnSuccessorsContext {
         read_values: &[*const _aterm],
         callback: F,
     ) where
-        F: FnMut(&[*const _aterm]),
+        F: FnMut(&[*const _aterm], *const _aterm),
     {
         let condition = summand.condition();
         let summation_variables = summand.summation_variables();
         let assignments = summand.assignments();
+        let multi_action = summand.multi_action();
         self.enumerate_raw_inner(
             condition.get(),
             ATerm::from(summation_variables).get(),
             ATerm::from(assignments).get(),
+            multi_action.get(),
             read_parameters,
             read_values,
             callback,
@@ -180,50 +189,58 @@ impl LearnSuccessorsContext {
 
     /// Enumerate using stored ATerm values directly.
     ///
-    /// This is useful when the summand's condition, summation variables, and
-    /// assignments have already been extracted and stored as aterms.
+    /// This is useful when the summand's condition, summation variables,
+    /// assignments and multi-action have already been extracted and stored as
+    /// aterms. For each solution the callback receives a slice of next-state
+    /// values together with a pointer to the multi-action term rewritten under
+    /// the current substitution.
     pub fn enumerate_raw<F>(
         &self,
         // Information of the summand
         condition: &DataExpression,
         summation_variables: &ATermList<DataVariable>,
         assignments: &ATermList<ATerm>,
+        multi_action: &ATerm,
         // Encodes the current substitution
         read_parameters: &[*const _aterm],
         read_values: &[*const _aterm],
         callback: F,
     ) where
-        F: FnMut(&[*const _aterm]),
+        F: FnMut(&[*const _aterm], *const _aterm),
     {
         self.enumerate_raw_inner(
             condition.get(),
             summation_variables.get(),
             assignments.get(),
+            multi_action.get(),
             read_parameters,
             read_values,
             callback,
         );
     }
 
+    /// The implementation of enumeration that takes raw aterm pointers. This is
+    /// used by both `enumerate` and `enumerate_raw` to avoid code duplication.
     fn enumerate_raw_inner<F>(
         &self,
         condition: &_aterm,
         summation_variables: &_aterm,
         assignments: &_aterm,
+        multi_action: &_aterm,
         read_parameters: &[*const _aterm],
         read_values: &[*const _aterm],
         mut callback: F,
     ) where
-        F: FnMut(&[*const _aterm]),
+        F: FnMut(&[*const _aterm], *const _aterm),
     {
         /// Trampoline that casts the context pointer back to the closure and calls it.
-        fn trampoline(context: *mut u8, values: &[*const _aterm]) {
+        fn trampoline(context: *mut u8, values: &[*const _aterm], multi_action: *const _aterm) {
             // Safety: `context` points to a live `&mut dyn FnMut(...)` set by the caller below.
-            let callback = unsafe { &mut *(context as *mut &mut dyn FnMut(&[*const _aterm])) };
-            callback(values);
+            let callback = unsafe { &mut *(context as *mut &mut dyn FnMut(&[*const _aterm], *const _aterm)) };
+            callback(values, multi_action);
         }
 
-        let mut callback_ref: &mut dyn FnMut(&[*const _aterm]) = &mut callback;
+        let mut callback_ref: &mut dyn FnMut(&[*const _aterm], *const _aterm) = &mut callback;
         let mut context = self.context.borrow_mut();
         unsafe {
             mcrl2_lps_enumerate(
@@ -231,6 +248,7 @@ impl LearnSuccessorsContext {
                 condition,
                 summation_variables,
                 assignments,
+                multi_action,
                 read_parameters,
                 read_values,
                 &mut callback_ref as *mut _ as *mut u8,

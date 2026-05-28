@@ -160,6 +160,9 @@ struct SymbolicSummand {
     /// Only the non-identity assignments (write parameters) of this summand.
     write_assignments: ATermList<ATerm>,
 
+    /// The multi-action of this summand.
+    multi_action: ATerm,
+
     /// The shared context containing the rewriter/enumerator.
     shared: Rc<Shared>,
 }
@@ -222,6 +225,7 @@ impl SymbolicSummand {
         // Store the condition, summation variables, and assignments for enumeration.
         let condition: DataExpression = summand.condition();
         let summation_variables: ATermList<DataVariable> = summand.summation_variables();
+        let multi_action: ATerm = summand.multi_action();
 
         let relation = storage.protect(storage.empty_set());
         let project_ldd = compute_proj(storage, &read_indices);
@@ -265,6 +269,7 @@ impl SymbolicSummand {
             condition,
             summation_variables,
             write_assignments,
+            multi_action,
             shared,
             read_parameters,
         }
@@ -360,9 +365,10 @@ impl TransitionGroup for SymbolicSummand {
                 &self.condition,
                 &self.summation_variables,
                 &self.write_assignments,
+                &self.multi_action,
                 &self.read_parameters,
                 &read_values,
-                |values: &[*const _aterm]| {
+                |values: &[*const _aterm], _multi_action: *const _aterm| {
                     debug_assert_eq!(
                         values.len(),
                         self.write_indices.len(),
