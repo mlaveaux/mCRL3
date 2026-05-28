@@ -42,10 +42,7 @@ use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-
-use crate::combine::combine_lts;
-
-mod combine;
+use merc_explore::combine_lts;
 
 /// A command line tool for labelled transition systems.
 #[derive(clap::Parser, Debug)]

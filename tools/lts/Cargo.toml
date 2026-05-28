@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 merc_collections.workspace = true
+merc_explore.workspace = true
 merc_io.workspace = true
 merc_ldd.workspace = true
 merc_lts = { workspace = true, features = ["clap"] }
@@ -19,10 +20,4 @@ merc_utilities.workspace = true
 
 clap.workspace = true
 env_logger.workspace = true
-itertools.workspace = true
 log.workspace = true
-streaming-iterator.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
-rand.workspace = true

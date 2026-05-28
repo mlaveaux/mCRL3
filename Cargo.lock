@@ -971,9 +971,9 @@ version = "2.0.0"
 dependencies = [
  "clap",
  "env_logger",
- "itertools 0.14.0",
  "log",
  "merc_collections",
+ "merc_explore",
  "merc_io",
  "merc_ldd",
  "merc_lts",
@@ -983,9 +983,6 @@ dependencies = [
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
- "rand",
- "streaming-iterator",
- "tempfile",
 ]
 
 [[package]]
@@ -1100,6 +1097,24 @@ dependencies = [
  "merc_macros",
  "merc_utilities",
  "thiserror",
+]
+
+[[package]]
+name = "merc_explore"
+version = "2.0.0"
+dependencies = [
+ "itertools 0.14.0",
+ "log",
+ "merc_collections",
+ "merc_io",
+ "merc_lts",
+ "merc_reduction",
+ "merc_syntax",
+ "merc_unsafety",
+ "merc_utilities",
+ "rand",
+ "streaming-iterator",
+ "tempfile",
 ]
 
 [[package]]
