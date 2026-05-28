@@ -1,5 +1,8 @@
 use std::collections::HashSet;
+use std::fmt;
 
+use merc_io::LargeFormatter;
+use oxidd::BooleanFunction;
 use oxidd::Edge;
 use oxidd::Function;
 use oxidd::HasLevel;
@@ -13,12 +16,81 @@ use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::Borrowed;
 use oxidd::util::OutOfMemory;
+use oxidd::util::SatCountCache as OxiddSatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
+use oxidd_core::util::num::F64;
+use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 
 /// The BDD representing the support variables of a BDD function.
 pub type BDDSupport = BDDFunction;
+
+/// Result of [satcount], either an exact integer count or an f64 approximation.
+///
+/// The underlying [`BooleanFunction::sat_count`] initializes its accumulator to
+/// `2^vars`, so a u64 accumulator overflows once `vars >= 64` regardless of the
+/// actual count.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SatCount {
+    Exact(u64),
+    Approximate(f64),
+}
+
+impl SatCount {
+    /// The count converted to f64, lossy for [`SatCount::Exact`] values above `2^53`.
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            SatCount::Exact(n) => *n as f64,
+            SatCount::Approximate(x) => *x,
+        }
+    }
+
+    /// The exact count, or `None` if only an f64 approximation is available.
+    pub fn exact(&self) -> Option<u64> {
+        match self {
+            SatCount::Exact(n) => Some(*n),
+            SatCount::Approximate(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for SatCount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SatCount::Exact(n) => write!(f, "{}", LargeFormatter(*n)),
+            SatCount::Approximate(x) => write!(f, "~{:e}", x),
+        }
+    }
+}
+
+/// Reusable cache for [`satcount`], holding both the exact (`u64`) and the
+/// approximate (`f64`) sub-caches so the same instance can serve calls with
+/// any number of variables.
+#[derive(Default)]
+pub struct SatCountCache {
+    exact: OxiddSatCountCache<u64, FxBuildHasher>,
+    approximate: OxiddSatCountCache<F64, FxBuildHasher>,
+}
+
+impl SatCountCache {
+    /// Create an empty cache.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Counts the number of satisfying assignments of `bdd` over `vars` variables.
+///
+/// Returns an exact [`SatCount::Exact`] when `vars < 64`, and falls back to
+/// [`SatCount::Approximate`] otherwise (see [`SatCount`] for the reason).
+pub fn approx_satcount(bdd: &BDDFunction, vars: VarNo, cache: &mut SatCountCache) -> SatCount {
+    if vars < 64 {
+        SatCount::Exact(bdd.sat_count::<u64, FxBuildHasher>(vars, &mut cache.exact))
+    } else {
+        SatCount::Approximate(bdd.sat_count::<F64, FxBuildHasher>(vars, &mut cache.approximate).0)
+    }
+}
 
 /// Computes the support (set of variables) of the given BDD function.
 ///
@@ -66,7 +138,7 @@ pub type Substitution = [(VarNo, VarNo)];
 ///
 /// > f[x <- g] = (!g ∧ f[x <- false]) ∨ (g ∧ f[x <- true])
 ///
-/// but its computation can be fairly expensive.Restricting the substitution to
+/// but its computation can be fairly expensive. Restricting the substitution to
 /// only renaming variables from 'x' to 'x+1' allows for a more efficient
 /// implementation, as follows:
 ///
@@ -128,7 +200,7 @@ pub fn variable_rename_edge<'id>(
         let high_high = match manager.get_node(&high) {
             Node::Inner(node) => {
                 if node.level() == *to {
-                    // There are f[x <- true][x+1 <- true]
+                    // This is f[x <- true][x+1 <- true]
                     collect_children(node).0
                 } else {
                     high.borrowed()
@@ -183,13 +255,13 @@ pub fn variable_rename_edge<'id>(
 /// We can derive the following:
 ///
 /// > `f[x+1 <- x] = (!x ∧ f[x+1 <- false]) ∨ (x ∧ f[x+1 <- true])`
-/// > `            = make_node(x, f[x <- true][x+1 <- true] , f[x <- false][x+1 <- false])`
+/// > `            = make_node(x, f[x+1 <- true][x <- true] , f[x+1 <- false][x <- false])`
 pub fn variable_rename_reverse(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
     substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
-    // Every substitution must be from a lower variable to a higher variable.
+    // Every substitution must be from a higher variable to a lower variable.
     for (from, to) in substitution {
         debug_assert!(*from == to + 1, "Variable renaming must be from 'x+1' to 'x'");
     }
@@ -204,7 +276,7 @@ pub fn variable_rename_reverse(
     })
 }
 
-/// Implementation of [variable_rename].
+/// Implementation of [variable_rename_reverse].
 pub fn variable_rename_reverse_edge<'id, 'a>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<(BDDFunction, &'a Substitution), BDDFunction>,

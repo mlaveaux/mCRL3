@@ -1,10 +1,8 @@
 use log::info;
 use log::trace;
-use oxidd::BooleanFunction;
 use oxidd::VarNo;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
-use oxidd::util::SatCountCache;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -17,7 +15,9 @@ use merc_lts::StateIndex;
 use merc_utilities::MercError;
 
 use crate::CubeIterAll;
+use crate::SatCountCache;
 use crate::SymbolicLtsBdd;
+use crate::approx_satcount;
 use crate::to_value;
 
 /// Converts a symbolic LTS to an explicit LTS.
@@ -106,21 +106,21 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
     }
 
     // Total number of states for progress reporting.
-    let total_number_of_states: u64 = lts.states().sat_count(
+    let mut satcount_cache = SatCountCache::new();
+    let total_number_of_states = approx_satcount(
+        lts.states(),
         lts.state_variables().len() as VarNo,
-        &mut SatCountCache::<u64, FxBuildHasher>::default(),
+        &mut satcount_cache,
     );
-    info!(
-        "Converting symbolic LTS to explicit LTS with {} states",
-        LargeFormatter(total_number_of_states)
-    );
+    info!("Converting symbolic LTS to explicit LTS with {} states", total_number_of_states);
 
+    let total_states_f64 = total_number_of_states.as_f64();
     let state_progress = TimeProgress::new(
         move |number_of_states| {
             info!(
                 "Added {} states to discovered ({}%)",
                 LargeFormatter(number_of_states),
-                number_of_states * 100 / total_number_of_states as usize
+                (number_of_states as f64 * 100.0 / total_states_f64) as usize
             );
         },
         1,
@@ -144,7 +144,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
                 "Explored {} states and {} transitions ({}%)",
                 LargeFormatter(number_of_states),
                 LargeFormatter(number_of_transitions),
-                number_of_states * 100 / total_number_of_states as usize
+                (number_of_states as f64 * 100.0 / total_states_f64) as usize
             );
         },
         1,

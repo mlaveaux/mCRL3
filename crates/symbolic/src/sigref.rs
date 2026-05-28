@@ -39,6 +39,8 @@ use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::reduce;
 use crate::required_bits_64;
+use crate::SatCountCache;
+use crate::approx_satcount;
 use crate::to_value;
 use crate::variable_rename;
 
@@ -151,10 +153,9 @@ fn sigref_symbolic_impl(
         Vec::new()
     };
 
-    // We could restrict the number of bits to log(number_of_states), but
-    // computing the satcount of the states can exceed `usize` easily. So
-    // instead we simply use 64 bits.
-    let num_of_block_bits = 64;
+    let mut satcount_cache = SatCountCache::new();
+    let num_of_states = approx_satcount(lts.states(), lts.state_variables().len() as VarNo, &mut satcount_cache);
+    let num_of_block_bits = (num_of_states.as_f64().log2().ceil() as u32).max(1);
     debug!("Number of block bits: {}", num_of_block_bits);
 
     let block_variable_names = (0..num_of_block_bits)
