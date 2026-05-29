@@ -32,15 +32,15 @@ use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
 use crate::CubeIterAll;
+use crate::SatCountCache;
 use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;
 use crate::ValuesIter;
+use crate::approx_satcount;
 use crate::collect_children;
 use crate::compute_vars_bdd;
 use crate::reduce;
 use crate::required_bits_64;
-use crate::SatCountCache;
-use crate::approx_satcount;
 use crate::to_value;
 use crate::variable_rename;
 
@@ -426,9 +426,9 @@ fn combine_transition_groups(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) 
     // through other groups.
     let mut classes: Vec<(Vec<usize>, BDDFunction)> = Vec::new();
 
-    for i in 0..lts.transition_groups().len() {
+    for (i, representative) in representatives.iter().enumerate().take(lts.transition_groups().len()) {
         let mut merged_members = vec![i];
-        let mut merged_rep = representatives[i].clone();
+        let mut merged_rep = representative.clone();
 
         let mut j = 0;
         while j < classes.len() {

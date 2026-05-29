@@ -107,12 +107,12 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
 
     // Total number of states for progress reporting.
     let mut satcount_cache = SatCountCache::new();
-    let total_number_of_states = approx_satcount(
-        lts.states(),
-        lts.state_variables().len() as VarNo,
-        &mut satcount_cache,
+    let total_number_of_states =
+        approx_satcount(lts.states(), lts.state_variables().len() as VarNo, &mut satcount_cache);
+    info!(
+        "Converting symbolic LTS to explicit LTS with {} states",
+        total_number_of_states
     );
-    info!("Converting symbolic LTS to explicit LTS with {} states", total_number_of_states);
 
     let total_states_f64 = total_number_of_states.as_f64();
     let state_progress = TimeProgress::new(

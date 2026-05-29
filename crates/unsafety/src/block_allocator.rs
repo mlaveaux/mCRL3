@@ -106,7 +106,7 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                 ))
             };
         }
-        
+
         // Slow path: acquire the lock once and reuse it across refill /
         // new-block allocation.
         let mut guard = self.blocks.lock().expect("Lock poisoned");

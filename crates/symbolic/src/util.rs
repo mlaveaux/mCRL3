@@ -26,7 +26,7 @@ use rustc_hash::FxHashMap;
 /// The BDD representing the support variables of a BDD function.
 pub type BDDSupport = BDDFunction;
 
-/// Result of [satcount], either an exact integer count or an f64 approximation.
+/// Result of [`approx_satcount`], either an exact integer count or an f64 approximation.
 ///
 /// The underlying [`BooleanFunction::sat_count`] initializes its accumulator to
 /// `2^vars`, so a u64 accumulator overflows once `vars >= 64` regardless of the
@@ -64,7 +64,7 @@ impl fmt::Display for SatCount {
     }
 }
 
-/// Reusable cache for [`satcount`], holding both the exact (`u64`) and the
+/// Reusable cache for [`approx_satcount`], holding both the exact (`u64`) and the
 /// approximate (`f64`) sub-caches so the same instance can serve calls with
 /// any number of variables.
 #[derive(Default)]
