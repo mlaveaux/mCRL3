@@ -93,12 +93,6 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
             return Ok(entry.cast());
         }
 
-        if self.refill_local_free_from_chunks(state)
-            && let Some(entry) = state.free.try_pop()
-        {
-            return Ok(entry.cast());
-        }
-
         // Fast path 2: lock-free bump allocation from current thread's block.
         let block_ptr = state.current_block.get();
         let offset = state.bump_offset.get();
@@ -112,18 +106,29 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                 ))
             };
         }
+        
+        // Slow path: acquire the lock once and reuse it across refill /
+        // new-block allocation.
+        let mut guard = self.blocks.lock().expect("Lock poisoned");
 
-        // Slow path: allocate a new block under the mutex.
-        self.allocate_new_block(state)
+        if self.refill_local_free_from_chunks(state, &mut guard)
+            && let Some(entry) = state.free.try_pop()
+        {
+            return Ok(entry.cast());
+        }
+
+        self.allocate_new_block(state, guard)
     }
 
     /// Refills the calling thread's local freelist from one shared chunk.
-    fn refill_local_free_from_chunks(&self, state: &ThreadLocalAllocState<T, N>) -> bool {
-        let mut guard = self.blocks.lock().expect("Lock poisoned");
+    fn refill_local_free_from_chunks(
+        &self,
+        state: &ThreadLocalAllocState<T, N>,
+        guard: &mut MutexGuard<'_, BlockList<T, N>>,
+    ) -> bool {
         let Some(current) = guard.free_chunks.pop() else {
             return false;
         };
-        drop(guard);
 
         debug_assert!(
             state.free.is_empty(),
@@ -137,9 +142,11 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
 
     /// Slow path: allocate a new block and update thread-local state.
     #[cold]
-    fn allocate_new_block(&self, state: &ThreadLocalAllocState<T, N>) -> Result<NonNull<T>, AllocError> {
-        let mut guard = self.blocks.lock().expect("Lock poisoned");
-
+    fn allocate_new_block(
+        &self,
+        state: &ThreadLocalAllocState<T, N>,
+        mut guard: MutexGuard<'_, BlockList<T, N>>,
+    ) -> Result<NonNull<T>, AllocError> {
         // Allocate a new block and link it to the existing list.
         let mut new_block = Block::new();
         new_block.next = guard.head_block;
