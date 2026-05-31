@@ -17,6 +17,7 @@ use mcrl2_sys::data::ffi::mcrl2_data_expression_is_where_clause;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_replace_variables;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_to_string;
 use mcrl2_sys::data::ffi::mcrl2_is_data_sort_expression;
+use mcrl2_sys::data::ffi::mcrl2_sort_expression_to_string;
 
 use crate::ATerm;
 use crate::ATermRef;
@@ -146,6 +147,7 @@ mod inner {
     use super::is_variable;
     use super::is_where_clause;
     use super::mcrl2_data_expression_to_string;
+    use super::mcrl2_sort_expression_to_string;
 
     /// Represents a data::data_expression from the mCRL2 toolset.
     ///  A data expression can be any of:
@@ -368,11 +370,16 @@ mod inner {
             // We only change the lifetime, but that is fine since it is derived from the current term.
             unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
         }
+
+        /// Pretty prints the sort expression, e.g. `Pos -> Bool` for a function sort.
+        pub fn pretty_print(&self) -> String {
+            mcrl2_sort_expression_to_string(self.term.get())
+        }
     }
 
     impl fmt::Display for SortExpression {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.name())
+            write!(f, "{}", self.pretty_print())
         }
     }
 
@@ -606,5 +613,68 @@ impl<'a> From<DataExpressionRef<'a>> for DataWhereClauseRef<'a> {
 impl<'a> From<DataExpressionRef<'a>> for DataUntypedIdentifierRef<'a> {
     fn from(var: DataExpressionRef<'a>) -> Self {
         Self::new(var.into())
+    }
+}
+
+/// Serializes a [`DataExpression`] as a syntax tree of its head function
+/// symbols and arguments.
+///
+/// Every node is serialized as an object with the [`DataExpression::data_function_symbol`]
+/// in the `symbol` field, the pretty printed sort in the `sort` field and its
+/// (recursively serialized) [`DataExpression::data_arguments`] in the `args`
+/// field. Leaves, such as variables, function symbols without arguments and
+/// machine numbers, simply have an empty `args` array. Variables are serialized
+/// using just their name as the `symbol`, with their sort in the `sort` field.
+/// Nodes without an associated sort, such as machine numbers, have a `null`
+/// sort. For example `f(a, b)` becomes:
+///
+/// ```json
+/// { "symbol": "f", "sort": "A # B -> C", "args": [
+///     { "symbol": "a", "sort": "A", "args": [] },
+///     { "symbol": "b", "sort": "B", "args": [] }
+/// ] }
+/// ```
+///
+/// In contrast to [`DataExpressionTree`], this does not expose the underlying
+/// aterm structure (sorts, `DataAppl`, `OpId`, ...), but the higher level data
+/// expression view.
+impl serde::Serialize for DataExpression {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        DataExpressionRef::from(self.copy()).serialize(serializer)
+    }
+}
+
+impl serde::Serialize for DataExpressionRef<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+
+        let mut state = serializer.serialize_struct("DataExpression", 3)?;
+
+        if is_function_symbol(&self.term) || is_application(&self.term) {
+            // A function symbol `f` or an application `f(t_0, ..., t_n)`: emit
+            // the head symbol, its sort and recursively serialize the arguments.
+            let function_symbol = self.data_function_symbol();
+            state.serialize_field("symbol", function_symbol.name())?;
+            state.serialize_field("sort", &function_symbol.sort().to_string())?;
+
+            let arguments: Vec<DataExpressionRef<'_>> =
+                self.data_arguments().map(DataExpressionRef::from).collect();
+            state.serialize_field("args", &arguments)?;
+        } else if is_variable(&self.term) {
+            // A variable: emit just its name as the symbol and its sort
+            // separately.
+            let variable = DataVariableRef::from(self.term.copy());
+            state.serialize_field("symbol", &variable.name().to_string())?;
+            state.serialize_field("sort", &variable.sort().to_string())?;
+            state.serialize_field("args", &[(); 0])?;
+        } else {
+            // A leaf without a data function symbol or sort, such as a machine
+            // number. Use its displayed form as the symbol.
+            state.serialize_field("symbol", &self.to_string())?;
+            state.serialize_field("sort", &Option::<String>::None)?;
+            state.serialize_field("args", &[(); 0])?;
+        }
+
+        state.end()
     }
 }

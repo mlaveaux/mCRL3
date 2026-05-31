@@ -109,6 +109,545 @@
     "10": [],
     "11": []
   },
+  "expressions": {
+    "4": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "c1",
+            "sort": "Bool",
+            "args": []
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "@cInt",
+          "sort": "Nat -> Int",
+          "args": [
+            {
+              "symbol": "@most_significant_digitNat",
+              "sort": "@word -> Nat",
+              "args": [
+                {
+                  "symbol": "1",
+                  "sort": null,
+                  "args": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "symbol": "c2",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Int",
+          "args": []
+        }
+      ]
+    },
+    "5": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "c2",
+            "sort": "Bool",
+            "args": []
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Int",
+          "args": []
+        },
+        {
+          "symbol": "c2",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "@cInt",
+          "sort": "Nat -> Int",
+          "args": [
+            {
+              "symbol": "@most_significant_digitNat",
+              "sort": "@word -> Nat",
+              "args": [
+                {
+                  "symbol": "1",
+                  "sort": null,
+                  "args": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "6": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "c1",
+            "sort": "Bool",
+            "args": []
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "c1",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "@cInt",
+          "sort": "Nat -> Int",
+          "args": [
+            {
+              "symbol": "@most_significant_digitNat",
+              "sort": "@word -> Nat",
+              "args": [
+                {
+                  "symbol": "2",
+                  "sort": null,
+                  "args": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "symbol": "c2",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Int",
+          "args": []
+        }
+      ]
+    },
+    "7": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "c2",
+            "sort": "Bool",
+            "args": []
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Int",
+          "args": []
+        },
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "c2",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "@cInt",
+          "sort": "Nat -> Int",
+          "args": [
+            {
+              "symbol": "@most_significant_digitNat",
+              "sort": "@word -> Nat",
+              "args": [
+                {
+                  "symbol": "2",
+                  "sort": null,
+                  "args": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "8": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "&&",
+            "sort": "Bool # Bool -> Bool",
+            "args": [
+              {
+                "symbol": "!",
+                "sort": "Bool -> Bool",
+                "args": [
+                  {
+                    "symbol": "c1",
+                    "sort": "Bool",
+                    "args": []
+                  }
+                ]
+              },
+              {
+                "symbol": "&&",
+                "sort": "Bool # Bool -> Bool",
+                "args": [
+                  {
+                    "symbol": "!",
+                    "sort": "Bool -> Bool",
+                    "args": [
+                      {
+                        "symbol": "c2",
+                        "sort": "Bool",
+                        "args": []
+                      }
+                    ]
+                  },
+                  {
+                    "symbol": ">=",
+                    "sort": "Int # Int -> Bool",
+                    "args": [
+                      {
+                        "symbol": "+",
+                        "sort": "Int # Int -> Int",
+                        "args": [
+                          {
+                            "symbol": "d1",
+                            "sort": "Int",
+                            "args": []
+                          },
+                          {
+                            "symbol": "d2",
+                            "sort": "Int",
+                            "args": []
+                          }
+                        ]
+                      },
+                      {
+                        "symbol": "@cInt",
+                        "sort": "Nat -> Int",
+                        "args": [
+                          {
+                            "symbol": "@most_significant_digitNat",
+                            "sort": "@word -> Nat",
+                            "args": [
+                              {
+                                "symbol": "4",
+                                "sort": null,
+                                "args": []
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "c1",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "-",
+          "sort": "Int # Int -> Int",
+          "args": [
+            {
+              "symbol": "d1",
+              "sort": "Int",
+              "args": []
+            },
+            {
+              "symbol": "d2",
+              "sort": "Int",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "c2",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "-",
+          "sort": "Int # Int -> Int",
+          "args": [
+            {
+              "symbol": "d2",
+              "sort": "Int",
+              "args": []
+            },
+            {
+              "symbol": "d1",
+              "sort": "Int",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    "9": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "&&",
+            "sort": "Bool # Bool -> Bool",
+            "args": [
+              {
+                "symbol": "!",
+                "sort": "Bool -> Bool",
+                "args": [
+                  {
+                    "symbol": "c2",
+                    "sort": "Bool",
+                    "args": []
+                  }
+                ]
+              },
+              {
+                "symbol": "&&",
+                "sort": "Bool # Bool -> Bool",
+                "args": [
+                  {
+                    "symbol": "!",
+                    "sort": "Bool -> Bool",
+                    "args": [
+                      {
+                        "symbol": "c1",
+                        "sort": "Bool",
+                        "args": []
+                      }
+                    ]
+                  },
+                  {
+                    "symbol": ">=",
+                    "sort": "Int # Int -> Bool",
+                    "args": [
+                      {
+                        "symbol": "+",
+                        "sort": "Int # Int -> Int",
+                        "args": [
+                          {
+                            "symbol": "d2",
+                            "sort": "Int",
+                            "args": []
+                          },
+                          {
+                            "symbol": "d1",
+                            "sort": "Int",
+                            "args": []
+                          }
+                        ]
+                      },
+                      {
+                        "symbol": "@cInt",
+                        "sort": "Nat -> Int",
+                        "args": [
+                          {
+                            "symbol": "@most_significant_digitNat",
+                            "sort": "@word -> Nat",
+                            "args": [
+                              {
+                                "symbol": "4",
+                                "sort": null,
+                                "args": []
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "c1",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "-",
+          "sort": "Int # Int -> Int",
+          "args": [
+            {
+              "symbol": "d1",
+              "sort": "Int",
+              "args": []
+            },
+            {
+              "symbol": "d2",
+              "sort": "Int",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "c2",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "-",
+          "sort": "Int # Int -> Int",
+          "args": [
+            {
+              "symbol": "d2",
+              "sort": "Int",
+              "args": []
+            },
+            {
+              "symbol": "d1",
+              "sort": "Int",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    "10": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "!",
+            "sort": "Bool -> Bool",
+            "args": [
+              {
+                "symbol": "false",
+                "sort": "Bool",
+                "args": []
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": []
+    },
+    "11": {
+      "condition": {
+        "symbol": "true",
+        "sort": "Bool",
+        "args": []
+      },
+      "updates": []
+    }
+  },
   "src_tgt": {
     "0": [
       4,

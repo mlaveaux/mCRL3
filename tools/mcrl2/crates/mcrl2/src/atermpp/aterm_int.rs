@@ -13,6 +13,7 @@ pub fn is_aterm_int(term: &ATermRef<'_>) -> bool {
 mod inner {
     use mcrl2_macros::mcrl2_ignore;
     use mcrl2_macros::mcrl2_term;
+    use mcrl2_sys::atermpp::ffi::mcrl2_aterm_int_value;
 
     use crate::ATerm;
     use crate::ATermRef;
@@ -37,11 +38,8 @@ mod inner {
         }
 
         /// Returns the integer value.
-        ///
-        /// TODO: Implement via FFI once mcrl2-sys exposes a function to retrieve the
-        /// integer value from an aterm_int (e.g. `mcrl2_aterm_int_value`).
         pub fn value(&self) -> u64 {
-            unimplemented!("Cannot retrieve integer value yet; mcrl2-sys FFI binding required")
+            mcrl2_aterm_int_value(self.term.get())
         }
     }
 }
@@ -57,5 +55,19 @@ impl fmt::Display for ATermInt {
 impl fmt::Display for ATermIntRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.value())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aterm_int_value() {
+        for value in [0, 1, 42, u32::MAX as u64, u64::MAX] {
+            let term = ATermInt::with_value(value);
+            assert_eq!(term.value(), value);
+            assert_eq!(term.copy().value(), value);
+        }
     }
 }

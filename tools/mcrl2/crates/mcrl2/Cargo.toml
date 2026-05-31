@@ -17,6 +17,7 @@ itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
+serde.workspace = true
 
 [features]
 # Enables the compiling rewriter option for mCRL2.

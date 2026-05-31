@@ -70,6 +70,248 @@
     "7": [],
     "8": []
   },
+  "expressions": {
+    "4": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "==",
+            "sort": "Pos # Pos -> Bool",
+            "args": [
+              {
+                "symbol": "c1",
+                "sort": "Pos",
+                "args": []
+              },
+              {
+                "symbol": "@most_significant_digit",
+                "sort": "@word -> Pos",
+                "args": [
+                  {
+                    "symbol": "1",
+                    "sort": null,
+                    "args": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "@most_significant_digit",
+          "sort": "@word -> Pos",
+          "args": [
+            {
+              "symbol": "2",
+              "sort": null,
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "d1",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "c2",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Bool",
+          "args": []
+        }
+      ]
+    },
+    "5": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "==",
+            "sort": "Pos # Pos -> Bool",
+            "args": [
+              {
+                "symbol": "c1",
+                "sort": "Pos",
+                "args": []
+              },
+              {
+                "symbol": "@most_significant_digit",
+                "sort": "@word -> Pos",
+                "args": [
+                  {
+                    "symbol": "1",
+                    "sort": null,
+                    "args": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "@most_significant_digit",
+          "sort": "@word -> Pos",
+          "args": [
+            {
+              "symbol": "2",
+              "sort": null,
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "d1",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "c2",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Bool",
+          "args": []
+        }
+      ]
+    },
+    "6": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "==",
+            "sort": "Pos # Pos -> Bool",
+            "args": [
+              {
+                "symbol": "c2",
+                "sort": "Pos",
+                "args": []
+              },
+              {
+                "symbol": "@most_significant_digit",
+                "sort": "@word -> Pos",
+                "args": [
+                  {
+                    "symbol": "1",
+                    "sort": null,
+                    "args": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "@most_significant_digit",
+          "sort": "@word -> Pos",
+          "args": [
+            {
+              "symbol": "2",
+              "sort": null,
+              "args": []
+            }
+          ]
+        },
+        {
+          "symbol": "!",
+          "sort": "Bool -> Bool",
+          "args": [
+            {
+              "symbol": "d2",
+              "sort": "Bool",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    "7": {
+      "condition": {
+        "symbol": "&&",
+        "sort": "Bool # Bool -> Bool",
+        "args": [
+          {
+            "symbol": "!",
+            "sort": "Bool -> Bool",
+            "args": [
+              {
+                "symbol": "false",
+                "sort": "Bool",
+                "args": []
+              }
+            ]
+          },
+          {
+            "symbol": "true",
+            "sort": "Bool",
+            "args": []
+          }
+        ]
+      },
+      "updates": []
+    },
+    "8": {
+      "condition": {
+        "symbol": "true",
+        "sort": "Bool",
+        "args": []
+      },
+      "updates": []
+    }
+  },
   "src_tgt": {
     "0": [
       4,

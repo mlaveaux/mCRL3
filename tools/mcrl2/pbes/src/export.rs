@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use log::debug;
+use mcrl2::DataExpression;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataVariable;
 use mcrl2::Pbes;
@@ -73,6 +74,9 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     let mut ui = BTreeMap::new();
     let mut cb = BTreeMap::new();
 
+    // Keep track of the syntax trees of the condition and updates of each clause.
+    let mut expressions = BTreeMap::new();
+
     for equation in symmetries.srf_pbes().equations() {
         for (clause_index, clause) in equation.summands().iter().enumerate() {
             clauses.insert((equation.variable().name().to_string(), clause_index), unique_index);
@@ -123,6 +127,21 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                             .expect("variable must exist in unified parameters")
                     })
                     .collect(),
+            );
+
+            // Collect the syntax trees of the condition and the updates (i.e. the
+            // arguments of the propositional variable instantiation) of the clause.
+            let pvi: PbesPropositionalVariableInstantiation = clause.variable().into();
+            expressions.insert(
+                unique_index,
+                ClauseExpressions {
+                    condition: clause.condition().into(),
+                    updates: pvi
+                        .arguments()
+                        .iter()
+                        .map(|update| update.protect().into())
+                        .collect(),
+                },
             );
 
             unique_index += 1;
@@ -207,6 +226,8 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
         ui,
         cb,
 
+        expressions,
+
         src_tgt,
         copy,
     };
@@ -214,6 +235,8 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     serde_json::to_writer_pretty(write, &output)?;
     Ok(())
 }
+
+
 
 /// Returns the data variables that are used for the given clause, i.e. the data
 /// variables that occur in the condition of the clause.
@@ -348,6 +371,9 @@ struct Output {
     /// Maps from clause indices to the parameter indices that are changed by the clause.
     cb: BTreeMap<usize, Vec<usize>>,
 
+    /// Maps from clause indices to the syntax trees of the condition and updates of that clause.
+    expressions: BTreeMap<usize, ClauseExpressions>,
+
     /// Maps from parameter indices to the clause indices where they occur as source or target variables.
     src_tgt: BTreeMap<usize, Vec<usize>>,
 
@@ -356,6 +382,17 @@ struct Output {
 
     /// a mapping from control flow parameter indices to the clique they belong to.
     cliques: BTreeMap<usize, String>,
+}
+
+/// The syntax trees of the condition and the updates of a single clause.
+#[derive(serde::Serialize)]
+struct ClauseExpressions {
+    /// The syntax tree of the condition of the clause.
+    condition: DataExpression,
+
+    /// The syntax trees of the updates of the clause, i.e. one syntax tree for
+    /// each argument of the propositional variable instantiation.
+    updates: Vec<DataExpression>,
 }
 
 #[cfg(test)]
