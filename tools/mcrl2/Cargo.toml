@@ -44,7 +44,7 @@ duct = "1.1"
 # The workspace libraries.
 mcrl2 = { path = "crates/mcrl2" }
 mcrl2-macros = { path = "crates/mcrl2-macros" }
-mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "6e9d3946ae6724921de292dfec8417605bf565bc" }
+mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "8ebabee0fc80ab816eb20b193dd46df7789b92c3" }
 merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
 merc_explore = { path = "../../crates/explore" }

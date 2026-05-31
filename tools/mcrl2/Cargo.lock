@@ -901,6 +901,7 @@ dependencies = [
  "merc_utilities",
  "parking_lot",
  "rand",
+ "serde",
 ]
 
 [[package]]
@@ -915,7 +916,7 @@ dependencies = [
 [[package]]
 name = "mcrl2-sys"
 version = "1.0.0"
-source = "git+https://github.com/MERCorg/mCRL2-sys?rev=6e9d3946ae6724921de292dfec8417605bf565bc#6e9d3946ae6724921de292dfec8417605bf565bc"
+source = "git+https://github.com/MERCorg/mCRL2-sys?rev=8ebabee0fc80ab816eb20b193dd46df7789b92c3#8ebabee0fc80ab816eb20b193dd46df7789b92c3"
 dependencies = [
  "cargo-emit",
  "cc",
@@ -1033,14 +1034,18 @@ dependencies = [
 name = "merc_explore"
 version = "2.0.0"
 dependencies = [
+ "dashmap",
  "itertools 0.14.0",
  "log",
+ "merc_aterm",
  "merc_collections",
+ "merc_data",
  "merc_io",
  "merc_lts",
  "merc_syntax",
  "merc_unsafety",
  "merc_utilities",
+ "rayon",
  "streaming-iterator",
 ]
 
