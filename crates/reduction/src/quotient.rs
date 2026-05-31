@@ -287,6 +287,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_strong_bisim_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(rng, Equivalence::StrongBisim, "test_random_strong_bisim_quotient");
@@ -294,6 +295,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_strong_bisim_naive_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(
@@ -305,6 +307,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_branching_bisim_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(rng, Equivalence::BranchingBisim, "test_random_branching_bisim_quotient");
@@ -312,6 +315,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_branching_bisim_naive_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(
