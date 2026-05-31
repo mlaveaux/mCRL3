@@ -9,6 +9,7 @@ use clap::Parser;
 use clap::Subcommand;
 use log::info;
 
+use merc_explore::combine_lts;
 use merc_io::LargeFormatter;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
@@ -42,7 +43,6 @@ use merc_tools::format_key_values_json;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use merc_explore::combine_lts;
 
 /// A command line tool for labelled transition systems.
 #[derive(clap::Parser, Debug)]

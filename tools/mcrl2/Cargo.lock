@@ -1034,18 +1034,14 @@ dependencies = [
 name = "merc_explore"
 version = "2.0.0"
 dependencies = [
- "dashmap",
  "itertools 0.14.0",
  "log",
- "merc_aterm",
  "merc_collections",
- "merc_data",
  "merc_io",
  "merc_lts",
  "merc_syntax",
  "merc_unsafety",
  "merc_utilities",
- "rayon",
  "streaming-iterator",
 ]
 

@@ -136,11 +136,7 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
                 unique_index,
                 ClauseExpressions {
                     condition: clause.condition().into(),
-                    updates: pvi
-                        .arguments()
-                        .iter()
-                        .map(|update| update.protect().into())
-                        .collect(),
+                    updates: pvi.arguments().iter().map(|update| update.protect().into()).collect(),
                 },
             );
 
@@ -235,8 +231,6 @@ pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     serde_json::to_writer_pretty(write, &output)?;
     Ok(())
 }
-
-
 
 /// Returns the data variables that are used for the given clause, i.e. the data
 /// variables that occur in the condition of the clause.

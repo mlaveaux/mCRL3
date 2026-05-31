@@ -16,7 +16,7 @@ use crate::Summand;
 /// `builder`.
 ///
 /// # Details
-/// 
+///
 /// The `builder` is finalised before returning so the resulting LTS — whether
 /// in memory or streamed to disk — can be obtained from the builder by the
 /// caller.

@@ -322,7 +322,7 @@ impl Summand for ExplicitSummand {
                     .or_insert_with(|| pretty_print_multi_action(&ATerm::from_ptr(multi_action)));
 
                 // We cannot propagate errors from the C callback, so we panic on error and catch it in the caller.
-                report(&*label, &*next_state).expect("Failed to report successor state");
+                report(&*label, &next_state).expect("Failed to report successor state");
             },
         );
 

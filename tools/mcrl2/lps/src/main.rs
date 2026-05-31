@@ -23,11 +23,11 @@ use mcrl2::read_lps;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 
-use explore_symbolic::explore_lps_symbolic;
 use explore_explicit::explore_lps_explicit;
+use explore_symbolic::explore_lps_symbolic;
 
-mod explore_symbolic;
 mod explore_explicit;
+mod explore_symbolic;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum LpsFormat {

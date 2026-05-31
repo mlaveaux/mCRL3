@@ -640,7 +640,7 @@ impl<'a> From<DataExpressionRef<'a>> for DataUntypedIdentifierRef<'a> {
 /// expression view.
 impl serde::Serialize for DataExpression {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        DataExpressionRef::from(self.copy()).serialize(serializer)
+        self.copy().serialize(serializer)
     }
 }
 
@@ -657,8 +657,7 @@ impl serde::Serialize for DataExpressionRef<'_> {
             state.serialize_field("symbol", function_symbol.name())?;
             state.serialize_field("sort", &function_symbol.sort().to_string())?;
 
-            let arguments: Vec<DataExpressionRef<'_>> =
-                self.data_arguments().map(DataExpressionRef::from).collect();
+            let arguments: Vec<DataExpressionRef<'_>> = self.data_arguments().map(DataExpressionRef::from).collect();
             state.serialize_field("args", &arguments)?;
         } else if is_variable(&self.term) {
             // A variable: emit just its name as the symbol and its sort

@@ -1,7 +1,7 @@
-mod explore;
 mod combine;
+mod explore;
 mod lps;
 
-pub use explore::*;
 pub use combine::*;
+pub use explore::*;
 pub use lps::*;

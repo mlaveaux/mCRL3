@@ -36,7 +36,11 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 /// Explore the linear process specification using symbolic reachability.
-pub fn explore_lps_symbolic(storage: &mut Storage, lps: &LinearProcessSpecification, timing: &Timing) -> Result<Ldd, MercError> {
+pub fn explore_lps_symbolic(
+    storage: &mut Storage,
+    lps: &LinearProcessSpecification,
+    timing: &Timing,
+) -> Result<Ldd, MercError> {
     let mut symbolic_lts = SymbolicLinearProcessSpecification::new(storage, lps)?;
 
     debug!("{symbolic_lts:?}");
