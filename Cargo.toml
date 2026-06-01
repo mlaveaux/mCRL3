@@ -56,6 +56,7 @@ bitstream-io = "4.10"
 bitvec = "1.0"
 bumpalo = "3.20"
 clap = { version = "4.6", features = ["derive"] }
+cranelift-bforest = "0.132"
 dashmap = { version = "7.0.0-rc2", features = ["inline-more"] }
 delegate = "0.13"
 env_logger = { version = "0.11", features = ["kv"] }
