@@ -65,6 +65,17 @@ fn test_mcrl2_sigref_vs_ltsconvert(name: &str, equivalence: Equivalence, argumen
             })
             .unwrap();
 
+        assert_eq!(
+            our_reduced.num_of_states(),
+            ltsconvert_reduced.num_of_states(),
+            "Number of states differs",
+        );
+        assert_eq!(
+            our_reduced.num_of_transitions(),
+            ltsconvert_reduced.num_of_transitions(),
+            "Number of transitions differs",
+        );
+
         assert!(
             compare_lts(
                 Equivalence::StrongBisim,
@@ -75,17 +86,6 @@ fn test_mcrl2_sigref_vs_ltsconvert(name: &str, equivalence: Equivalence, argumen
             ),
             "The reduced LTSs are not strongly bisimilar"
         );
-
-        // assert_eq!(
-        //     our_reduced.num_of_states(),
-        //     ltsconvert_reduced.num_of_states(),
-        //     "Number of states differs",
-        // );
-        // assert_eq!(
-        //     our_reduced.num_of_transitions(),
-        //     ltsconvert_reduced.num_of_transitions(),
-        //     "Number of transitions differs",
-        // );
     });
 }
 
