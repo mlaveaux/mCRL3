@@ -15,7 +15,6 @@ merc_syntax.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
-cranelift-bforest.workspace = true
 hashbrown.workspace = true
 itertools.workspace = true
 log.workspace = true

@@ -6,16 +6,17 @@ use std::hash::Hash;
 use allocator_api2::alloc::Allocator;
 use allocator_api2::alloc::Global;
 use allocator_api2::vec::Vec;
-use cranelift_bforest::Map;
-use cranelift_bforest::MapForest;
 use hashbrown::HashTable;
 use rustc_hash::FxBuildHasher;
+
+use crate::BTreeForest;
+use crate::Tree;
 
 /// A stable handle to a state stored in a [`DiscoveredSet`].
 ///
 /// References are dense and assigned in insertion order starting from zero. A
-/// 32-bit representation is used to match the `cranelift_bforest` storage,
-/// which is optimised for 32-bit keys and values.
+/// 32-bit representation is used to match the [`BTreeForest`] storage, which is
+/// optimised for 32-bit keys and values.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct StateRef(usize);
@@ -30,24 +31,27 @@ impl StateRef {
 /// A set of `T` state vectors that deduplicates equal vectors and assigns each
 /// a stable [`StateRef`].
 ///
-/// The state vectors are stored as B-trees that share a single node pool; see
-/// the [module documentation](self) for the rationale. The auxiliary
-/// collections allocate from `A`.
+/// The state vectors are stored as hash-consed B-trees in a shared
+/// [`BTreeForest`], so positions and values common to many states are stored
+/// only once. The auxiliary collections allocate from `A`.
 pub struct DiscoveredSet<T = usize, A = Global>
 where
     T: Copy,
     A: Allocator,
 {
-    /// Shared node pool backing every stored state B-tree.
-    forest: MapForest<usize, T>,
-    /// Stored states indexed by [`StateRef`]; each maps `position -> value`.
-    states: Vec<Map<usize, T>, A>,
-    /// Precomputed hash for each stored state, kept parallel to `states` so the
-    /// hash table can be resized without reconstructing state vectors.
-    hashes: Vec<u64, A>,
-    /// Hash index from a state's content hash to its raw index into `states`.
+    /// Hash-consed forest backing every stored state B-tree. The key type is a
+    /// unit (zero-sized) type because positions are implicit in iteration order
+    /// and never looked up; this keeps leaves storing only values and lets nodes
+    /// be shared by content regardless of position.
+    forest: BTreeForest<(), T, A, 2>,
+    /// Stored states indexed by [`StateRef`]; each is the root of the state's
+    /// value B-tree.
+    states: Vec<Tree, A>,
+    /// Hash index from a state's canonical root to its raw index into `states`.
+    /// Hash consing makes the root a unique fingerprint of the whole vector, so
+    /// no separate content hash or comparison is needed.
     table: HashTable<usize, A>,
-    /// Hasher used to fingerprint state vectors.
+    /// Hasher used to fingerprint roots in `table`.
     hasher: FxBuildHasher,
 }
 
@@ -76,9 +80,8 @@ where
     /// from `alloc`.
     pub fn new_in(alloc: A) -> DiscoveredSet<T, A> {
         DiscoveredSet {
-            forest: MapForest::new(),
+            forest: BTreeForest::new_in(alloc.clone()),
             states: Vec::new_in(alloc.clone()),
-            hashes: Vec::new_in(alloc.clone()),
             table: HashTable::new_in(alloc),
             hasher: FxBuildHasher,
         }
@@ -89,9 +92,8 @@ where
     /// `alloc`.
     pub fn with_capacity_in(capacity: usize, alloc: A) -> DiscoveredSet<T, A> {
         DiscoveredSet {
-            forest: MapForest::new(),
+            forest: BTreeForest::new_in(alloc.clone()),
             states: Vec::with_capacity_in(capacity, alloc.clone()),
-            hashes: Vec::with_capacity_in(capacity, alloc.clone()),
             table: HashTable::with_capacity_in(capacity, alloc),
             hasher: FxBuildHasher,
         }
@@ -101,53 +103,41 @@ where
     /// true when the state was newly inserted and false when it was already
     /// present.
     pub fn insert(&mut self, state: &[T]) -> (StateRef, bool) {
-        let hash = self.hasher.hash_one(state);
+        // Intern the state's B-tree. Hash consing makes the resulting root a
+        // canonical fingerprint of the whole vector: equal vectors always yield
+        // the same root, so the root alone identifies the state. Re-interning an
+        // already known state allocates no new nodes.
+        let root = self.forest.build(state, |_| ());
+        let hash = self.hasher.hash_one(root);
 
-        // Look the state up first; the immutable borrow ends before we mutate
-        // the forest and table below on the miss path.
-        {
-            let DiscoveredSet {
-                table, forest, states, ..
-            } = &*self;
-            if let Some(&index) = table.find(hash, |&index| map_eq(forest, &states[index], state)) {
-                return (StateRef(index), false);
-            }
+        let DiscoveredSet {
+            table, states, hasher, ..
+        } = self;
+        if let Some(&index) = table.find(hash, |&index| states[index] == root) {
+            return (StateRef(index), false);
         }
 
-        let map = self.build_map(state);
-        let index = self.states.len();
-        self.states.push(map);
-        self.hashes.push(hash);
-
-        let DiscoveredSet { table, hashes, .. } = self;
-        table.insert_unique(hash, index, |&index| hashes[index]);
+        let index = states.len();
+        states.push(root);
+        table.insert_unique(hash, index, |&index| hasher.hash_one(states[index]));
 
         (StateRef(index), true)
     }
 
     /// Returns the handle of `state` if it is present, or `None` otherwise.
     pub fn index(&self, state: &[T]) -> Option<StateRef> {
-        let hash = self.hasher.hash_one(state);
-        let DiscoveredSet {
-            table, forest, states, ..
-        } = self;
-        table
-            .find(hash, |&index| map_eq(forest, &states[index], state))
+        // Resolve the canonical root without mutating the forest; a missing node
+        // means the state was never inserted.
+        let root = self.forest.find(state, |_| ())?;
+        let hash = self.hasher.hash_one(root);
+        self.table
+            .find(hash, |&index| self.states[index] == root)
             .map(|&index| StateRef(index))
     }
 
     /// Returns true if `state` is present in the set.
     pub fn contains(&self, state: &[T]) -> bool {
         self.index(state).is_some()
-    }
-
-    /// Builds a B-tree for `state` in the shared forest, keyed by position.
-    fn build_map(&mut self, state: &[T]) -> Map<usize, T> {
-        let mut map = Map::new();
-        for (position, &value) in state.iter().enumerate() {
-            map.insert(position, value, &mut self.forest, &());
-        }
-        map
     }
 }
 
@@ -173,8 +163,8 @@ where
     pub fn get_into(&self, reference: StateRef, out: &mut std::vec::Vec<T>) -> bool {
         out.clear();
         match self.states.get(reference.index()) {
-            Some(map) => {
-                out.extend(map.iter(&self.forest).map(|(_, value)| value));
+            Some(&tree) => {
+                out.extend(self.forest.iter(tree).map(|(_, value)| value));
                 true
             }
             None => false,
@@ -185,8 +175,8 @@ where
     ///
     /// Prefer [`DiscoveredSet::get_into`] on hot paths to reuse a buffer.
     pub fn get(&self, reference: StateRef) -> Option<std::vec::Vec<T>> {
-        let map = self.states.get(reference.index())?;
-        Some(map.iter(&self.forest).map(|(_, value)| value).collect())
+        let &tree = self.states.get(reference.index())?;
+        Some(self.forest.iter(tree).map(|(_, value)| value).collect())
     }
 
     /// Removes all states, invalidating every previously returned
@@ -194,7 +184,6 @@ where
     pub fn clear(&mut self) {
         self.forest.clear();
         self.states.clear();
-        self.hashes.clear();
         self.table.clear();
     }
 }
@@ -206,21 +195,4 @@ where
     fn default() -> DiscoveredSet<T, Global> {
         DiscoveredSet::new()
     }
-}
-
-/// Returns true if the B-tree `map` (stored in `forest`) represents exactly the
-/// state vector `state`.
-///
-/// States are stored with positions `0..state.len()`, so iterating the map
-/// yields values in position order and we can compare against `state` directly.
-fn map_eq<T: Copy + Eq>(forest: &MapForest<usize, T>, map: &Map<usize, T>, state: &[T]) -> bool {
-    let mut matched = 0;
-    for (position, value) in map.iter(forest) {
-        debug_assert_eq!(position, matched, "states are stored with dense positions");
-        if matched >= state.len() || state[matched] != value {
-            return false;
-        }
-        matched += 1;
-    }
-    matched == state.len()
 }
