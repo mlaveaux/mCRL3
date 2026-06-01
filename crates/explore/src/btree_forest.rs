@@ -3,20 +3,34 @@
 //!
 //! The crucial difference is that this implementation uses hash conscing to
 //! maximally share (immutable) nodes across trees. This makes it suitable to
-//! compactly represent large sets of similar trees.
+//! compactly represent large sets of similar sequences.
 //!
-//! The branching factor `N` is a const generic parameter (default 8) so it can
-//! be tuned for experiments.
+//! Each tree is a hash-consed *sequence* of values: positions are implicit in
+//! iteration order, so there are no separator keys. The branching factor `N` is
+//! a const generic parameter (default 8) so it can be tuned for experiments.
 //!
-//! When the key type is a zero-sized type such as `()`, the tree degenerates
-//! into a hash-consed *sequence*.
+//! Nodes are deliberately untyped: a node is a flat `[V; N]` array with no
+//! length field and no leaf/inner discriminant. Three things still have to be
+//! distinguished within that array, and each is encoded by the [`Slot`] trait
+//! rather than by extra per-node bytes:
+//!
+//!  * **Empty slots.** Unused trailing slots hold [`Slot::EMPTY`], so the live
+//!    length is implied by the first empty slot instead of stored.
+//!  * **Leaf values vs. child references.** A node at height zero holds values;
+//!    a node above it holds child indices encoded with [`Slot::from_child`].
+//!    Whether a slot is a value or a child is decided by the node's *height*,
+//!    which the [`Tree`] handle carries, not by a tag inside the node.
+//!
+//! Because a value and a child index could share a bit pattern, interning is
+//! partitioned by height: nodes are only ever deduplicated against other nodes
+//! at the same height, so `[5, 7]` interpreted as values never collides with
+//! `[5, 7]` interpreted as child references.
 //!
 //! Nodes are never freed individually; the forest is append-only and reclaimed
 //! all at once with [`BTreeForest::clear`].
 
 use std::hash::BuildHasher;
 use std::hash::Hash;
-use std::hash::Hasher;
 use std::mem;
 
 use allocator_api2::alloc::Allocator;
@@ -31,37 +45,80 @@ const DEFAULT_BRANCHING: usize = 8;
 /// Upper bound on the height of any tree.
 const MAX_DEPTH: usize = 48;
 
-/// A reference to a node in a [`BTreeForest`]. This is a dense index into the
-/// node pool.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct Node(usize);
+/// A value that can be stored in a [`BTreeForest`] node slot.
+///
+/// Nodes are untyped `[V; N]` arrays with neither a length nor a leaf/inner
+/// discriminant, so the slot type itself must represent three things: a real
+/// leaf value, an interior child reference, and an unused (empty) slot.
+///
+/// Implementations must keep these disjoint: [`Slot::EMPTY`] must never equal a
+/// real value, and a slot produced by [`Slot::from_child`] is only ever decoded
+/// with [`Slot::as_child`] when the traversal already knows (from the node's
+/// height) that the slot holds a child reference.
+pub trait Slot: Copy + Eq + Hash {
+    /// Sentinel stored in unused trailing slots, in place of a per-node length.
+    /// It must be a value the producer of real values never emits.
+    const EMPTY: Self;
+
+    /// Encodes a child node index into a slot value.
+    fn from_child(index: usize) -> Self;
+
+    /// Decodes a slot that the caller already knows (from the node's height)
+    /// holds a child index.
+    fn as_child(self) -> usize;
+}
+
+impl Slot for usize {
+    const EMPTY: usize = usize::MAX;
+
+    fn from_child(index: usize) -> usize {
+        index
+    }
+
+    fn as_child(self) -> usize {
+        self
+    }
+}
+
+impl Slot for u32 {
+    const EMPTY: u32 = u32::MAX;
+
+    fn from_child(index: usize) -> u32 {
+        // A `u32` slot caps the node pool at `u32::MAX`; the `usize` index is
+        // guaranteed to fit because the pool cannot have grown beyond that.
+        index as u32
+    }
+
+    fn as_child(self) -> usize {
+        self as usize
+    }
+}
 
 /// A handle to a single tree stored in a [`BTreeForest`].
 ///
 /// Handles are only meaningful for the forest that produced them and are
-/// invalidated by [`BTreeForest::clear`].
-#[repr(transparent)]
+/// invalidated by [`BTreeForest::clear`]. The handle carries the root node
+/// index together with the tree's height, which iteration uses to tell leaf
+/// values from child references without inspecting the nodes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct Tree(usize);
+pub struct Tree {
+    /// Index of the root node, or `usize::MAX` for the empty tree.
+    root: usize,
+    /// Height of the root: zero when the root is a leaf-level node holding
+    /// values, increasing by one per interior level.
+    height: u8,
+}
 
 impl Tree {
     /// The empty tree, holding no entries.
-    pub const EMPTY: Tree = Tree(usize::MAX);
-
-    /// Wraps the root node of a non-empty tree.
-    fn from_node(node: Node) -> Tree {
-        debug_assert!(node.0 != usize::MAX, "node pool exhausted");
-        Tree(node.0)
-    }
-
-    /// Returns the root node, or `None` for the empty tree.
-    fn node(self) -> Option<Node> {
-        if self.0 == usize::MAX { None } else { Some(Node(self.0)) }
-    }
+    pub const EMPTY: Tree = Tree {
+        root: usize::MAX,
+        height: 0,
+    };
 
     /// Returns true if this tree has no entries.
     pub fn is_empty(self) -> bool {
-        self.0 == usize::MAX
+        self.root == usize::MAX
     }
 }
 
@@ -71,249 +128,152 @@ impl Default for Tree {
     }
 }
 
-/// An immutable B+-tree node holding up to `N` entries (leaf) or children
-/// (inner). Only the first `size` slots of each array are valid.
-enum NodeData<K, V, const N: usize> {
-    /// `children` holds `size + 1` sub-trees and `keys[0..size]` are separators:
-    /// `keys[i]` is the smallest key in `children[i + 1]`, so all keys in
-    /// `children[i]` are strictly less than `keys[i]`. At most `N - 1` of the
-    /// `N` key slots are used.
-    Inner {
-        size: usize,
-        keys: [K; N],
-        children: [Node; N],
-    },
-    /// `keys[0..size]` and `vals[0..size]` are the stored pairs in key order.
-    Leaf { size: usize, keys: [K; N], vals: [V; N] },
+/// Hashes a node's full `[V; N]` slot array. Empty padding is canonical (always
+/// [`Slot::EMPTY`]), so the whole array can be hashed without a live length.
+fn hash_node<V: Hash, const N: usize>(hasher: &FxBuildHasher, data: &[V; N]) -> u64 {
+    hasher.hash_one(data)
 }
 
-/// Hashes the live portion of `data`, ignoring trailing padding.
-fn hash_node<K: Hash, V: Hash, const N: usize>(hasher: &FxBuildHasher, data: &NodeData<K, V, N>) -> u64 {
-    let mut state = hasher.build_hasher();
-    match data {
-        NodeData::Leaf { size, keys, vals } => {
-            0u8.hash(&mut state);
-            keys[..*size].hash(&mut state);
-            vals[..*size].hash(&mut state);
-        }
-        NodeData::Inner { size, keys, children } => {
-            1u8.hash(&mut state);
-            keys[..*size].hash(&mut state);
-            children[..*size + 1].hash(&mut state);
-        }
-    }
-    state.finish()
-}
-
-/// Builds the leaf node for `chunk`, whose first value has global index `base`.
-/// Returns the leaf's critical (first) key alongside it.
-fn make_leaf<K, V, const N: usize, F>(chunk: &[V], base: usize, key_at: &mut F) -> (K, NodeData<K, V, N>)
-where
-    K: Copy,
-    V: Copy,
-    F: FnMut(usize) -> K,
-{
-    let first_key = key_at(base);
-    let mut keys = [first_key; N];
-    let mut vals = [chunk[0]; N];
-    for (offset, &value) in chunk.iter().enumerate() {
-        keys[offset] = key_at(base + offset);
-        vals[offset] = value;
-    }
-    (
-        first_key,
-        NodeData::Leaf {
-            size: chunk.len(),
-            keys,
-            vals,
-        },
-    )
-}
-
-/// Builds the inner node grouping `chunk` of `(critical_key, node)` children.
-/// Returns the inner node's critical key (that of its first child) alongside it.
-fn make_inner<K, V, const N: usize>(chunk: &[(K, Node)]) -> (K, NodeData<K, V, N>)
-where
-    K: Copy,
-    V: Copy,
-{
-    let first_key = chunk[0].0;
-    let mut keys = [first_key; N];
-    let mut children = [chunk[0].1; N];
-    for (offset, &(_, node)) in chunk.iter().enumerate() {
-        children[offset] = node;
-    }
-    // `keys[i]` separates `children[i]` from `children[i + 1]`, so it is the
-    // critical key of the (i + 1)-th child.
-    for offset in 1..chunk.len() {
-        keys[offset - 1] = chunk[offset].0;
-    }
-    (
-        first_key,
-        NodeData::Inner {
-            size: chunk.len() - 1,
-            keys,
-            children,
-        },
-    )
-}
-
-/// Returns true if `a` and `b` have the same live content, ignoring padding.
-fn node_eq<K: Eq, V: Eq, const N: usize>(a: &NodeData<K, V, N>, b: &NodeData<K, V, N>) -> bool {
-    match (a, b) {
-        (
-            NodeData::Leaf {
-                size: sa,
-                keys: ka,
-                vals: va,
-            },
-            NodeData::Leaf {
-                size: sb,
-                keys: kb,
-                vals: vb,
-            },
-        ) => sa == sb && ka[..*sa] == kb[..*sa] && va[..*sa] == vb[..*sa],
-        (
-            NodeData::Inner {
-                size: sa,
-                keys: ka,
-                children: ca,
-            },
-            NodeData::Inner {
-                size: sb,
-                keys: kb,
-                children: cb,
-            },
-        ) => sa == sb && ka[..*sa] == kb[..*sa] && ca[..*sa + 1] == cb[..*sa + 1],
-        _ => false,
-    }
-}
-
-/// A forest of hash-consed B+-trees mapping `K` to `V` with branching factor
-/// `N`.
+/// A forest of hash-consed sequences of `V` with branching factor `N`.
 ///
-/// Keys and values are expected to be small `Copy` types, matching the
+/// Values are expected to be small `Copy` types, matching the
 /// `cranelift_bforest` design tradeoffs. The auxiliary collections allocate from
 /// `A`. The branching factor `N` defaults to 8 and can be overridden to
 /// experiment with node sizes; it must be at least two.
-pub struct BTreeForest<K, V, A = Global, const N: usize = DEFAULT_BRANCHING>
+pub struct BTreeForest<V, A = Global, const N: usize = DEFAULT_BRANCHING>
 where
-    K: Copy,
     V: Copy,
     A: Allocator,
 {
     /// The shared node pool; nodes are immutable once pushed and never freed
-    /// individually.
-    nodes: Vec<NodeData<K, V, N>, A>,
-    /// Interning index from a node's content hash to its index in `nodes`.
-    table: HashTable<usize, A>,
+    /// individually. Each node is a flat `[V; N]` array, padded with
+    /// [`Slot::EMPTY`].
+    nodes: Vec<[V; N], A>,
+    /// Interning index from a node's content hash to its index in `nodes`, with
+    /// one table per height so a value never deduplicates against a child
+    /// reference. Grown on demand as taller trees are built.
+    tables: Vec<HashTable<usize, A>, A>,
     /// Hasher used to fingerprint node content.
     hasher: FxBuildHasher,
     /// Scratch buffers reused by [`BTreeForest::build`] to assemble each tree
-    /// level without allocating per call. They hold `(critical_key, node)`
-    /// pairs for the level currently being built.
-    scratch_lo: Vec<(K, Node), A>,
-    scratch_hi: Vec<(K, Node), A>,
+    /// level without allocating per call. They hold the child node indices of
+    /// the level currently being built.
+    scratch_lo: Vec<usize, A>,
+    scratch_hi: Vec<usize, A>,
+    /// Allocator used to create the per-height interning tables on demand.
+    alloc: A,
 }
 
-impl<K, V, const N: usize> BTreeForest<K, V, Global, N>
+impl<V, const N: usize> BTreeForest<V, Global, N>
 where
-    K: Copy + Eq + Hash,
-    V: Copy + Eq + Hash,
+    V: Slot,
 {
     /// Creates a new empty forest backed by the global allocator.
-    pub fn new() -> BTreeForest<K, V, Global, N> {
+    pub fn new() -> BTreeForest<V, Global, N> {
         BTreeForest::new_in(Global)
     }
 }
 
-impl<K, V, A, const N: usize> BTreeForest<K, V, A, N>
+impl<V, A, const N: usize> BTreeForest<V, A, N>
 where
-    K: Copy + Eq + Hash,
-    V: Copy + Eq + Hash,
+    V: Slot,
     A: Allocator + Clone,
 {
     /// Creates a new empty forest whose collections allocate from `alloc`.
-    pub fn new_in(alloc: A) -> BTreeForest<K, V, A, N> {
+    pub fn new_in(alloc: A) -> BTreeForest<V, A, N> {
         const { assert!(N >= 2, "branching factor must be at least two") };
         BTreeForest {
             nodes: Vec::new_in(alloc.clone()),
-            table: HashTable::new_in(alloc.clone()),
+            tables: Vec::new_in(alloc.clone()),
             hasher: FxBuildHasher,
             scratch_lo: Vec::new_in(alloc.clone()),
-            scratch_hi: Vec::new_in(alloc),
+            scratch_hi: Vec::new_in(alloc.clone()),
+            alloc,
         }
     }
 
-    /// Builds a tree from `values`, keyed by `key_at` applied to each value's
-    /// global index. `values` must be sorted by the order `key_at` induces,
-    /// which holds trivially when `key_at` is monotonic (e.g. the identity for
-    /// dense `0..n` keys, or a constant for a zero-sized key type).
+    /// Builds a tree from the sequence `values`.
     ///
-    /// The tree is assembled bottom-up: contiguous sub-slices of `values` become
-    /// leaf nodes, then those are grouped into inner nodes, and so on until a
-    /// single root remains. Every node is interned, so nodes shared with
+    /// The tree is assembled bottom-up: contiguous chunks of `values` become
+    /// leaf-level nodes, then those are grouped into interior nodes, and so on
+    /// until a single root remains. Every node is interned, so nodes shared with
     /// previously built trees are reused rather than duplicated.
-    pub fn build<F>(&mut self, values: &[V], mut key_at: F) -> Tree
-    where
-        F: FnMut(usize) -> K,
-    {
+    pub fn build(&mut self, values: &[V]) -> Tree {
         if values.is_empty() {
             return Tree::EMPTY;
         }
 
         // Destructure so the scratch buffers can be borrowed independently of
-        // the node pool that `intern` mutates.
+        // the node pool and interning tables that `intern` mutates.
         let BTreeForest {
             nodes,
-            table,
+            tables,
             hasher,
             scratch_lo,
             scratch_hi,
+            alloc,
         } = self;
 
-        // Leaf level: each chunk of `values` is copied straight into a leaf.
+        // Leaf level (height 0): each chunk of `values` is copied straight into
+        // a node, padded with `EMPTY`.
         scratch_lo.clear();
-        for (chunk_index, chunk) in values.chunks(N).enumerate() {
-            let (first_key, data) = make_leaf(chunk, chunk_index * N, &mut key_at);
-            let node = Self::intern(nodes, table, hasher, data);
-            scratch_lo.push((first_key, node));
+        for chunk in values.chunks(N) {
+            let mut slots = [V::EMPTY; N];
+            for (offset, &value) in chunk.iter().enumerate() {
+                debug_assert!(value != V::EMPTY, "value collides with the empty-slot sentinel");
+                slots[offset] = value;
+            }
+            let node = Self::intern(nodes, tables, hasher, alloc, 0, slots);
+            scratch_lo.push(node);
         }
 
-        // Inner levels: group the previous level into inner nodes until one node
-        // remains. `src` is the level just built, `dst` the one being built.
+        // Interior levels: group the previous level into nodes of child indices
+        // until one node remains. `src` is the level just built, `dst` the one
+        // being built.
         let (mut src, mut dst) = (scratch_lo, scratch_hi);
+        let mut height = 0u8;
         while src.len() > 1 {
+            height += 1;
             dst.clear();
             for chunk in src.chunks(N) {
-                let (first_key, data) = make_inner(chunk);
-                let node = Self::intern(nodes, table, hasher, data);
-                dst.push((first_key, node));
+                let mut slots = [V::EMPTY; N];
+                for (offset, &child) in chunk.iter().enumerate() {
+                    slots[offset] = V::from_child(child);
+                }
+                let node = Self::intern(nodes, tables, hasher, alloc, height as usize, slots);
+                dst.push(node);
             }
             mem::swap(&mut src, &mut dst);
         }
 
-        Tree::from_node(src[0].1)
+        Tree { root: src[0], height }
     }
 
-    /// Interns `data`, returning the reference of the existing identical node if
-    /// one is present, or of a freshly allocated node otherwise.
+    /// Interns `data` at `height`, returning the index of the existing identical
+    /// node if one is present, or of a freshly allocated node otherwise.
     fn intern(
-        nodes: &mut Vec<NodeData<K, V, N>, A>,
-        table: &mut HashTable<usize, A>,
+        nodes: &mut Vec<[V; N], A>,
+        tables: &mut Vec<HashTable<usize, A>, A>,
         hasher: &FxBuildHasher,
-        data: NodeData<K, V, N>,
-    ) -> Node {
+        alloc: &A,
+        height: usize,
+        data: [V; N],
+    ) -> usize {
+        while tables.len() <= height {
+            tables.push(HashTable::new_in(alloc.clone()));
+        }
+        let table = &mut tables[height];
+
         let hash = hash_node(hasher, &data);
-        if let Some(&index) = table.find(hash, |&index| node_eq(&nodes[index], &data)) {
-            return Node(index);
+        if let Some(&index) = table.find(hash, |&index| nodes[index] == data) {
+            return index;
         }
 
         let index = nodes.len();
         debug_assert!(index != usize::MAX, "node pool exhausted");
         nodes.push(data);
         table.insert_unique(hash, index, |&index| hash_node(hasher, &nodes[index]));
-        Node(index)
+        index
     }
 
     /// Resolves the tree that [`BTreeForest::build`] would produce for `values`
@@ -324,44 +284,71 @@ where
     /// its nodes was interned by an earlier `build`. This is the read-only
     /// membership counterpart to `build`; it allocates scratch on the heap since
     /// it is not on the hot insertion path.
-    pub fn find<F>(&self, values: &[V], mut key_at: F) -> Option<Tree>
-    where
-        F: FnMut(usize) -> K,
-    {
+    pub fn find(&self, values: &[V]) -> Option<Tree> {
         if values.is_empty() {
             return Some(Tree::EMPTY);
         }
 
-        let mut level: std::vec::Vec<(K, Node)> = std::vec::Vec::new();
-        for (chunk_index, chunk) in values.chunks(N).enumerate() {
-            let (first_key, data) = make_leaf(chunk, chunk_index * N, &mut key_at);
-            level.push((first_key, self.find_node(&data)?));
+        let mut level: std::vec::Vec<usize> = std::vec::Vec::new();
+        for chunk in values.chunks(N) {
+            let mut slots = [V::EMPTY; N];
+            for (offset, &value) in chunk.iter().enumerate() {
+                slots[offset] = value;
+            }
+            level.push(self.find_node(0, &slots)?);
         }
 
+        let mut height = 0u8;
         while level.len() > 1 {
+            height += 1;
             let mut next = std::vec::Vec::with_capacity(level.len().div_ceil(N));
             for chunk in level.chunks(N) {
-                let (first_key, data) = make_inner(chunk);
-                next.push((first_key, self.find_node(&data)?));
+                let mut slots = [V::EMPTY; N];
+                for (offset, &child) in chunk.iter().enumerate() {
+                    slots[offset] = V::from_child(child);
+                }
+                next.push(self.find_node(height as usize, &slots)?);
             }
             level = next;
         }
 
-        Some(Tree::from_node(level[0].1))
+        Some(Tree { root: level[0], height })
     }
 
-    /// Returns the reference of the interned node equal to `data`, if any.
-    fn find_node(&self, data: &NodeData<K, V, N>) -> Option<Node> {
+    /// Returns the index of the interned node at `height` equal to `data`, if
+    /// any.
+    fn find_node(&self, height: usize, data: &[V; N]) -> Option<usize> {
+        let table = self.tables.get(height)?;
         let hash = hash_node(&self.hasher, data);
-        self.table
-            .find(hash, |&index| node_eq(&self.nodes[index], data))
-            .map(|&index| Node(index))
+        table
+            .find(hash, |&index| self.nodes[index] == *data)
+            .copied()
     }
 }
 
-impl<K, V, A, const N: usize> BTreeForest<K, V, A, N>
+impl<V, A, const N: usize> BTreeForest<V, A, N>
 where
-    K: Copy,
+    V: Slot,
+    A: Allocator,
+{
+    /// Returns an iterator over the values of `tree` in sequence order.
+    pub fn iter(&self, tree: Tree) -> Iter<'_, V, A, N> {
+        let mut stack = [(0usize, 0u32, 0u8); MAX_DEPTH];
+        let mut depth = 0;
+        if !tree.is_empty() {
+            stack[0] = (tree.root, 0, tree.height);
+            depth = 1;
+        }
+        Iter {
+            nodes: &self.nodes,
+            stack,
+            depth,
+        }
+    }
+}
+
+impl<V, A, const N: usize> BTreeForest<V, A, N>
+where
     V: Copy,
     A: Allocator,
 {
@@ -376,152 +363,72 @@ where
     /// [`Tree`] handles.
     pub fn clear(&mut self) {
         self.nodes.clear();
-        self.table.clear();
+        self.tables.clear();
         self.scratch_lo.clear();
         self.scratch_hi.clear();
     }
-
-    /// Looks up `key` in `tree`.
-    ///
-    /// Only meaningful for an order-preserving key type; for a zero-sized key
-    /// type the result is unspecified (use [`BTreeForest::iter`] instead).
-    pub fn get(&self, tree: Tree, key: K) -> Option<V>
-    where
-        K: Ord,
-    {
-        let mut node = tree.node()?;
-        loop {
-            match &self.nodes[node.0] {
-                NodeData::Inner { size, keys, children } => {
-                    // The child index is the number of separator keys that are
-                    // less than or equal to `key`.
-                    let child = keys[..*size].partition_point(|&separator| separator <= key);
-                    node = children[child];
-                }
-                NodeData::Leaf { size, keys, vals } => {
-                    return match keys[..*size].binary_search(&key) {
-                        Ok(index) => Some(vals[index]),
-                        Err(_) => None,
-                    };
-                }
-            }
-        }
-    }
-
-    /// Returns an iterator over the `(key, value)` pairs of `tree` in key order.
-    pub fn iter(&self, tree: Tree) -> Iter<'_, K, V, A, N> {
-        let mut iter = Iter {
-            nodes: &self.nodes,
-            stack: [(Node(0), 0); MAX_DEPTH],
-            depth: 0,
-            leaf: None,
-            pos: 0,
-        };
-        if let Some(root) = tree.node() {
-            iter.descend(root);
-        }
-        iter
-    }
 }
 
-impl<K, V, const N: usize> Default for BTreeForest<K, V, Global, N>
+impl<V, const N: usize> Default for BTreeForest<V, Global, N>
 where
-    K: Copy + Eq + Hash,
-    V: Copy + Eq + Hash,
+    V: Slot,
 {
-    fn default() -> BTreeForest<K, V, Global, N> {
+    fn default() -> BTreeForest<V, Global, N> {
         BTreeForest::new()
     }
 }
 
-/// In-order iterator over the entries of a single tree.
+/// In-order iterator over the values of a single tree.
 ///
 /// The descent stack is a fixed-size array, so no heap allocation is performed,
 /// which keeps reconstruction cheap on hot paths.
-pub struct Iter<'a, K, V, A, const N: usize>
+pub struct Iter<'a, V, A, const N: usize>
 where
-    K: Copy,
     V: Copy,
     A: Allocator,
 {
-    nodes: &'a Vec<NodeData<K, V, N>, A>,
-    /// Inner-node frames on the path to the current leaf, each paired with the
-    /// index of the next child to descend into.
-    stack: [(Node, usize); MAX_DEPTH],
+    nodes: &'a Vec<[V; N], A>,
+    /// Frames on the path from the root, each holding the node, the index of the
+    /// next slot to visit in it, and the node's height.
+    stack: [(usize, u32, u8); MAX_DEPTH],
     depth: usize,
-    /// The leaf currently being yielded from, if any.
-    leaf: Option<Node>,
-    /// Index of the next entry to yield from `leaf`.
-    pos: usize,
 }
 
-impl<K, V, A, const N: usize> Iter<'_, K, V, A, N>
+impl<V, A, const N: usize> Iterator for Iter<'_, V, A, N>
 where
-    K: Copy,
-    V: Copy,
+    V: Slot,
     A: Allocator,
 {
-    /// Walks down the left spine starting at `node`, pushing the inner nodes
-    /// onto the stack, until a leaf is reached and made current.
-    fn descend(&mut self, mut node: Node) {
-        loop {
-            debug_assert!(self.depth < MAX_DEPTH, "tree deeper than MAX_DEPTH");
-            match &self.nodes[node.0] {
-                NodeData::Inner { children, .. } => {
-                    // Descend into child 0; the next child to visit is 1.
-                    self.stack[self.depth] = (node, 1);
-                    self.depth += 1;
-                    node = children[0];
-                }
-                NodeData::Leaf { .. } => {
-                    self.leaf = Some(node);
-                    self.pos = 0;
-                    return;
-                }
-            }
-        }
-    }
-}
+    type Item = V;
 
-impl<K, V, A, const N: usize> Iterator for Iter<'_, K, V, A, N>
-where
-    K: Copy,
-    V: Copy,
-    A: Allocator,
-{
-    type Item = (K, V);
+    fn next(&mut self) -> Option<V> {
+        while self.depth > 0 {
+            let top = self.depth - 1;
+            let (node, slot, height) = self.stack[top];
+            let slot = slot as usize;
+            let slots = &self.nodes[node];
 
-    fn next(&mut self) -> Option<(K, V)> {
-        loop {
-            // Yield the next entry from the current leaf if one remains.
-            if let Some(leaf) = self.leaf {
-                if let NodeData::Leaf { size, keys, vals } = &self.nodes[leaf.0]
-                    && self.pos < *size
-                {
-                    let entry = (keys[self.pos], vals[self.pos]);
-                    self.pos += 1;
-                    return Some(entry);
-                }
-                self.leaf = None;
-            }
-
-            // The current leaf is exhausted; find the next leaf by advancing the
-            // nearest ancestor that still has unvisited children.
-            loop {
-                if self.depth == 0 {
-                    return None;
-                }
-                let (node, child) = self.stack[self.depth - 1];
-                if let NodeData::Inner { size, children, .. } = &self.nodes[node.0]
-                    && child <= *size
-                {
-                    self.stack[self.depth - 1].1 = child + 1;
-                    self.descend(children[child]);
-                    break;
-                }
+            // A slot past the end or holding the empty sentinel exhausts this
+            // node; pop back to its parent.
+            if slot >= N || slots[slot] == V::EMPTY {
                 self.depth -= 1;
+                continue;
             }
+
+            let value = slots[slot];
+            self.stack[top].1 += 1;
+
+            if height == 0 {
+                // Height zero means the slot holds a leaf value.
+                return Some(value);
+            }
+
+            // Otherwise it is a child reference; descend into it.
+            debug_assert!(self.depth < MAX_DEPTH, "tree deeper than MAX_DEPTH");
+            self.stack[self.depth] = (value.as_child(), 0, height - 1);
+            self.depth += 1;
         }
+        None
     }
 }
 
@@ -529,55 +436,47 @@ where
 mod tests {
     use super::*;
 
-    /// Builds a tree from a slice of values with dense `0..n` keys.
-    fn build_dense(forest: &mut BTreeForest<usize, u32>, values: &[u32]) -> Tree {
-        forest.build(values, |position| position)
-    }
-
-    /// Collects the values of a tree in key order.
-    fn collect_values(forest: &BTreeForest<usize, u32>, tree: Tree) -> std::vec::Vec<u32> {
-        forest.iter(tree).map(|(_, value)| value).collect()
+    /// Collects the values of a tree in sequence order.
+    fn collect<A: Allocator, const N: usize>(forest: &BTreeForest<u32, A, N>, tree: Tree) -> std::vec::Vec<u32> {
+        forest.iter(tree).collect()
     }
 
     #[test]
     fn empty_tree() {
-        let forest: BTreeForest<usize, u32> = BTreeForest::new();
+        let forest: BTreeForest<u32> = BTreeForest::new();
         assert!(Tree::EMPTY.is_empty());
         assert_eq!(forest.iter(Tree::EMPTY).count(), 0);
-        assert_eq!(forest.get(Tree::EMPTY, 0), None);
     }
 
     #[test]
     fn roundtrip_various_sizes() {
-        let mut forest = BTreeForest::new();
-        for len in 0..200usize {
-            let values: std::vec::Vec<u32> = (0..len as u32).map(|v| v * 7 + 1).collect();
-            let tree = build_dense(&mut forest, &values);
-            assert_eq!(collect_values(&forest, tree), values, "len = {len}");
-            for (position, &value) in values.iter().enumerate() {
-                assert_eq!(forest.get(tree, position), Some(value), "len = {len}");
-            }
-            assert_eq!(forest.get(tree, len), None);
+        let mut forest: BTreeForest<u32> = BTreeForest::new();
+        for len in 0..200u32 {
+            let values: std::vec::Vec<u32> = (0..len).map(|v| v * 7 + 1).collect();
+            let tree = forest.build(&values);
+            assert_eq!(collect(&forest, tree), values, "len = {len}");
+            // A second build of the same sequence must round-trip to the same
+            // root.
+            assert_eq!(forest.build(&values), tree, "len = {len}");
         }
     }
 
     #[test]
     fn roundtrip_small_branching() {
         // The smallest legal branching factor exercises the deepest trees.
-        let mut forest: BTreeForest<usize, u32, Global, 2> = BTreeForest::new();
+        let mut forest: BTreeForest<u32, Global, 2> = BTreeForest::new();
         let values: std::vec::Vec<u32> = (0..100).map(|v| v * 3).collect();
-        let tree = forest.build(&values, |position| position);
-        let got: std::vec::Vec<u32> = forest.iter(tree).map(|(_, value)| value).collect();
-        assert_eq!(got, values);
+        let tree = forest.build(&values);
+        assert_eq!(collect(&forest, tree), values);
     }
 
     #[test]
     fn identical_inputs_share_root() {
-        let mut forest = BTreeForest::new();
+        let mut forest: BTreeForest<u32> = BTreeForest::new();
         let values: std::vec::Vec<u32> = (0..100).collect();
-        let a = build_dense(&mut forest, &values);
+        let a = forest.build(&values);
         let nodes_after_first = forest.node_count();
-        let b = build_dense(&mut forest, &values);
+        let b = forest.build(&values);
         // Re-building the same input must not allocate any new node and must
         // yield the very same root.
         assert_eq!(a, b);
@@ -585,59 +484,55 @@ mod tests {
     }
 
     #[test]
-    fn shared_prefix_shares_leaves() {
-        let mut forest = BTreeForest::new();
-        // Two equally long vectors differing only in the last position share
-        // every leaf except the final one, so the second build adds far fewer
-        // nodes than the first.
+    fn shared_prefix_shares_nodes() {
+        let mut forest: BTreeForest<u32, Global, 2> = BTreeForest::new();
+        // Two equally long sequences differing only in the last position share
+        // every node except those on the path to the final value, so the second
+        // build adds far fewer nodes than the first.
         let base: std::vec::Vec<u32> = (0..100).collect();
-        let _ = build_dense(&mut forest, &base);
+        let _ = forest.build(&base);
         let nodes_after_first = forest.node_count();
 
         let mut other = base.clone();
         *other.last_mut().unwrap() = 9999;
-        let _ = build_dense(&mut forest, &other);
+        let _ = forest.build(&other);
         let added = forest.node_count() - nodes_after_first;
 
         assert!(added < nodes_after_first, "added {added} new nodes");
     }
 
     #[test]
-    fn zero_sized_key_shares_by_value() {
-        // With a zero-sized key, leaves are deduplicated purely by their values,
-        // so a repeated block of values at different positions is shared.
-        let mut forest: BTreeForest<(), u32> = BTreeForest::new();
+    fn repeated_block_shares_nodes() {
+        // A block of values reused at an aligned position shares its node(s).
+        let mut forest: BTreeForest<u32, Global, 2> = BTreeForest::new();
         let block: std::vec::Vec<u32> = (0..8).collect();
-        let a = forest.build(&block, |_| ());
+        let a = forest.build(&block);
         let nodes_after_first = forest.node_count();
 
-        // The same block again at the front of a longer vector reuses the
-        // leaf(s) of the first build.
         let mut longer = block.clone();
         longer.extend(100..108);
-        let _ = forest.build(&longer, |_| ());
-        let got: std::vec::Vec<u32> = forest.iter(a).map(|(_, value)| value).collect();
-        assert_eq!(got, block);
+        let _ = forest.build(&longer);
+        assert_eq!(collect(&forest, a), block);
         assert!(forest.node_count() >= nodes_after_first);
     }
 
     #[test]
     fn distinct_trees_are_independent() {
-        let mut forest = BTreeForest::new();
-        let a = build_dense(&mut forest, &[1, 2, 3]);
-        let b = build_dense(&mut forest, &[4, 5, 6, 7, 8]);
-        assert_eq!(collect_values(&forest, a), [1, 2, 3]);
-        assert_eq!(collect_values(&forest, b), [4, 5, 6, 7, 8]);
+        let mut forest: BTreeForest<u32> = BTreeForest::new();
+        let a = forest.build(&[1, 2, 3]);
+        let b = forest.build(&[4, 5, 6, 7, 8]);
+        assert_eq!(collect(&forest, a), [1, 2, 3]);
+        assert_eq!(collect(&forest, b), [4, 5, 6, 7, 8]);
     }
 
     #[test]
     fn clear_resets_forest() {
-        let mut forest = BTreeForest::new();
-        let _ = build_dense(&mut forest, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        let mut forest: BTreeForest<u32> = BTreeForest::new();
+        let _ = forest.build(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         assert!(forest.node_count() > 0);
         forest.clear();
         assert_eq!(forest.node_count(), 0);
-        let tree = build_dense(&mut forest, &[42]);
-        assert_eq!(collect_values(&forest, tree), [42]);
+        let tree = forest.build(&[42]);
+        assert_eq!(collect(&forest, tree), [42]);
     }
 }

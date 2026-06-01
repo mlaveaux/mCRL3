@@ -1,7 +1,6 @@
-//! A discovered set that stores state vectors as maximally shared B-trees.
+//! A discovered set that stores state vectors as maximally shared sequences.
 
 use std::hash::BuildHasher;
-use std::hash::Hash;
 
 use allocator_api2::alloc::Allocator;
 use allocator_api2::alloc::Global;
@@ -10,13 +9,12 @@ use hashbrown::HashTable;
 use rustc_hash::FxBuildHasher;
 
 use crate::BTreeForest;
+use crate::Slot;
 use crate::Tree;
 
 /// A stable handle to a state stored in a [`DiscoveredSet`].
 ///
-/// References are dense and assigned in insertion order starting from zero. A
-/// 32-bit representation is used to match the [`BTreeForest`] storage, which is
-/// optimised for 32-bit keys and values.
+/// References are dense and assigned in insertion order starting from zero.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct StateRef(usize);
@@ -31,7 +29,7 @@ impl StateRef {
 /// A set of `T` state vectors that deduplicates equal vectors and assigns each
 /// a stable [`StateRef`].
 ///
-/// The state vectors are stored as hash-consed B-trees in a shared
+/// The state vectors are stored as hash-consed sequences in a shared
 /// [`BTreeForest`], so positions and values common to many states are stored
 /// only once. The auxiliary collections allocate from `A`.
 pub struct DiscoveredSet<T = usize, A = Global>
@@ -39,13 +37,12 @@ where
     T: Copy,
     A: Allocator,
 {
-    /// Hash-consed forest backing every stored state B-tree. The key type is a
-    /// unit (zero-sized) type because positions are implicit in iteration order
-    /// and never looked up; this keeps leaves storing only values and lets nodes
-    /// be shared by content regardless of position.
-    forest: BTreeForest<(), T, A, 2>,
+    /// Hash-consed forest backing every stored state sequence; positions are
+    /// implicit in iteration order, so nodes are shared by content regardless of
+    /// position.
+    forest: BTreeForest<T, A, 2>,
     /// Stored states indexed by [`StateRef`]; each is the root of the state's
-    /// value B-tree.
+    /// value sequence.
     states: Vec<Tree, A>,
     /// Hash index from a state's canonical root to its raw index into `states`.
     /// Hash consing makes the root a unique fingerprint of the whole vector, so
@@ -57,7 +54,7 @@ where
 
 impl<T> DiscoveredSet<T, Global>
 where
-    T: Copy + Eq + Hash,
+    T: Slot,
 {
     /// Creates a new empty discovered set backed by the global allocator.
     pub fn new() -> DiscoveredSet<T, Global> {
@@ -73,7 +70,7 @@ where
 
 impl<T, A> DiscoveredSet<T, A>
 where
-    T: Copy + Eq + Hash,
+    T: Slot,
     A: Allocator + Clone,
 {
     /// Creates a new empty discovered set whose auxiliary collections allocate
@@ -103,11 +100,11 @@ where
     /// true when the state was newly inserted and false when it was already
     /// present.
     pub fn insert(&mut self, state: &[T]) -> (StateRef, bool) {
-        // Intern the state's B-tree. Hash consing makes the resulting root a
+        // Intern the state's sequence. Hash consing makes the resulting root a
         // canonical fingerprint of the whole vector: equal vectors always yield
         // the same root, so the root alone identifies the state. Re-interning an
         // already known state allocates no new nodes.
-        let root = self.forest.build(state, |_| ());
+        let root = self.forest.build(state);
         let hash = self.hasher.hash_one(root);
 
         let DiscoveredSet {
@@ -128,7 +125,7 @@ where
     pub fn index(&self, state: &[T]) -> Option<StateRef> {
         // Resolve the canonical root without mutating the forest; a missing node
         // means the state was never inserted.
-        let root = self.forest.find(state, |_| ())?;
+        let root = self.forest.find(state)?;
         let hash = self.hasher.hash_one(root);
         self.table
             .find(hash, |&index| self.states[index] == root)
@@ -156,6 +153,20 @@ where
         self.states.is_empty()
     }
 
+    /// Removes all states, invalidating every previously returned
+    /// [`StateRef`].
+    pub fn clear(&mut self) {
+        self.forest.clear();
+        self.states.clear();
+        self.table.clear();
+    }
+}
+
+impl<T, A> DiscoveredSet<T, A>
+where
+    T: Slot,
+    A: Allocator,
+{
     /// Reconstructs the state vector for `reference` into the freshly cleared
     /// `out` buffer. Reusing a buffer avoids an allocation per lookup, which
     /// matters on the hot exploration path. Returns false if the reference is
@@ -164,7 +175,7 @@ where
         out.clear();
         match self.states.get(reference.index()) {
             Some(&tree) => {
-                out.extend(self.forest.iter(tree).map(|(_, value)| value));
+                out.extend(self.forest.iter(tree));
                 true
             }
             None => false,
@@ -176,21 +187,13 @@ where
     /// Prefer [`DiscoveredSet::get_into`] on hot paths to reuse a buffer.
     pub fn get(&self, reference: StateRef) -> Option<std::vec::Vec<T>> {
         let &tree = self.states.get(reference.index())?;
-        Some(self.forest.iter(tree).map(|(_, value)| value).collect())
-    }
-
-    /// Removes all states, invalidating every previously returned
-    /// [`StateRef`].
-    pub fn clear(&mut self) {
-        self.forest.clear();
-        self.states.clear();
-        self.table.clear();
+        Some(self.forest.iter(tree).collect())
     }
 }
 
 impl<T> Default for DiscoveredSet<T, Global>
 where
-    T: Copy + Eq + Hash,
+    T: Slot,
 {
     fn default() -> DiscoveredSet<T, Global> {
         DiscoveredSet::new()
