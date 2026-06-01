@@ -43,10 +43,9 @@ where
 /// Explicit-state view of a [mcrl2::LinearProcessSpecification] that implements
 /// the [merc_explore::LPS] trait.
 ///
-/// State vectors are `Vec<u32>` where each entry is an index into a
-/// per-parameter [IndexedSet] of the data expressions observed for that
-/// parameter (see [Shared::mapping]). Labels are the printed multi-actions of
-/// the summands.
+/// State vectors are indexed into a per-parameter [IndexedSet] of the data
+/// expressions observed for that parameter (see [Shared::mapping]). Labels are
+/// the printed multi-actions of the summands.
 struct ExplicitLinearProcessSpecification {
     /// The (preprocessed) underlying LPS.
     _lps: LinearProcessSpecification,
@@ -58,7 +57,7 @@ struct ExplicitLinearProcessSpecification {
     _shared: Rc<Shared>,
 
     /// The initial state vector.
-    initial_state: Vec<u32>,
+    initial_state: Vec<usize>,
 }
 
 impl ExplicitLinearProcessSpecification {
@@ -89,9 +88,9 @@ impl ExplicitLinearProcessSpecification {
             .enumerate()
             .map(|(i, param)| {
                 let (index, _) = shared.mapping.borrow_mut()[i].insert(param.clone());
-                *index as u32
+                *index
             })
-            .collect::<Vec<u32>>();
+            .collect::<Vec<usize>>();
 
         debug_assert_eq!(
             initial_state.len(),
@@ -123,7 +122,7 @@ struct Shared {
 /// A single summand of the LPS, prepared for explicit enumeration.
 struct ExplicitSummand {
     /// The indices of the parameters that this summand reads.
-    read_indices: Vec<u32>,
+    read_indices: Vec<usize>,
 
     /// Cached aterm pointers for the read parameters, in the same order as
     /// `read_indices`.
@@ -131,7 +130,7 @@ struct ExplicitSummand {
 
     /// The indices of the parameters that this summand writes (non-identity
     /// assignments).
-    write_indices: Vec<u32>,
+    write_indices: Vec<usize>,
 
     /// The condition of this summand.
     condition: DataExpression,
@@ -154,7 +153,7 @@ struct ExplicitSummand {
 
     /// Reusable scratch buffer for the next-state vector produced for each
     /// enumerated solution. Reset and refilled for every solution.
-    next_state_buf: RefCell<Vec<u32>>,
+    next_state_buf: RefCell<Vec<usize>>,
 
     /// Memoised pretty-printed multi-action labels, keyed by the rewritten
     /// multi-action aterm pointer.
@@ -187,23 +186,21 @@ impl ExplicitSummand {
 
         let write_assignments = ATermList::from_double_iter(write_assignments.into_iter());
 
-        let read_indices: Vec<u32> = parameters
+        let read_indices: Vec<usize> = parameters
             .iter()
             .enumerate()
             .filter(|(_, param)| read_vars.contains(param))
-            .map(|(i, _)| i as u32)
+            .map(|(i, _)| i)
             .collect();
 
-        let read_parameters: Vec<*const _aterm> = read_indices
-            .iter()
-            .map(|&index| parameters[index as usize].address())
-            .collect();
+        let read_parameters: Vec<*const _aterm> =
+            read_indices.iter().map(|&index| parameters[index].address()).collect();
 
-        let write_indices: Vec<u32> = parameters
+        let write_indices: Vec<usize> = parameters
             .iter()
             .enumerate()
             .filter(|(_, param)| write_vars.contains(param))
-            .map(|(i, _)| i as u32)
+            .map(|(i, _)| i)
             .collect();
 
         let condition: DataExpression = summand.condition();
@@ -246,11 +243,11 @@ impl ExplicitSummand {
 }
 
 impl LPS for ExplicitLinearProcessSpecification {
-    type State = Vec<u32>;
+    type Value = usize;
     type Label = String;
     type Summand = ExplicitSummand;
 
-    fn initial_state(&self) -> Self::State {
+    fn initial_state(&self) -> Vec<usize> {
         self.initial_state.clone()
     }
 
@@ -260,12 +257,12 @@ impl LPS for ExplicitLinearProcessSpecification {
 }
 
 impl Summand for ExplicitSummand {
-    type State = Vec<u32>;
+    type Value = usize;
     type Label = String;
 
-    fn enumerate<F>(&self, state: &Self::State, mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
     where
-        F: FnMut(&Self::Label, &Self::State) -> Result<(), MercError>,
+        F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
         // Refill the cached read-values buffer with the aterm pointers
         // expected by the mCRL2 enumerator for the current state.
@@ -275,8 +272,8 @@ impl Summand for ExplicitSummand {
             let mapping = self.shared.mapping.borrow();
             for &i in &self.read_indices {
                 read_values.push(
-                    mapping[i as usize]
-                        .get_by_index(state[i as usize] as usize)
+                    mapping[i]
+                        .get_by_index(state[i])
                         .expect("Value must be in the mapping")
                         .address(),
                 );
@@ -306,11 +303,11 @@ impl Summand for ExplicitSummand {
                 {
                     let mut mapping = self.shared.mapping.borrow_mut();
                     for (i, &value) in values.iter().enumerate() {
-                        let param_index = self.write_indices[i] as usize;
+                        let param_index = self.write_indices[i];
                         let new_index = mapping[param_index]
                             .insert(DataExpression::from(ATerm::from_ptr(value)))
                             .0;
-                        next_state[param_index] = *new_index as u32;
+                        next_state[param_index] = *new_index;
                     }
                 }
 
