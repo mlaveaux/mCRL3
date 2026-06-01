@@ -916,7 +916,6 @@ dependencies = [
 [[package]]
 name = "mcrl2-sys"
 version = "1.0.0"
-source = "git+https://github.com/MERCorg/mCRL2-sys?rev=8ebabee0fc80ab816eb20b193dd46df7789b92c3#8ebabee0fc80ab816eb20b193dd46df7789b92c3"
 dependencies = [
  "cargo-emit",
  "cc",
@@ -1037,7 +1036,6 @@ dependencies = [
 <<<<<<< HEAD
 =======
  "allocator-api2 0.2.21",
- "cranelift-bforest",
  "dashmap",
  "hashbrown 0.17.1",
 >>>>>>> f934d866 (Use the DiscoveredSet in state space exploration to avoid allocations)
@@ -1232,6 +1230,7 @@ dependencies = [
  "log",
  "merc_lts",
  "merc_pest_consume",
+ "merc_reduction",
  "merc_refinement",
  "merc_utilities",
  "pest",

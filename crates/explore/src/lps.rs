@@ -10,10 +10,15 @@ use std::hash::Hash;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 
+use crate::Slot;
+
 /// A Linear Process Specification trait.
 pub trait LPS {
     /// The type of the values stored at each position of a state vector.
-    type Value: Copy + Eq + Hash;
+    ///
+    /// The value must be a [`Slot`] so state vectors can be stored compactly in
+    /// the discovered set's hash-consed sequence forest.
+    type Value: Slot;
 
     /// The action label produced for each enumerated transition.
     type Label: TransitionLabel;
