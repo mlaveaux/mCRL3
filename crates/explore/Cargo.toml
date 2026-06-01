@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# Pinned to 0.2 to match the allocator-api2 version that `hashbrown` uses
+allocator-api2 = "0.2"
 merc_collections.workspace = true
 merc_io.workspace = true
 merc_lts.workspace = true
