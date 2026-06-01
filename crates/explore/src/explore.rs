@@ -41,6 +41,7 @@ where
     // Reusable buffer holding the current state vector reconstructed from the
     // discovered set, avoiding an allocation per explored state.
     let mut current_state: Vec<P::Value> = Vec::new();
+    let mut context = lps.create_context();
     timing.measure("explore", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
             // Reconstruct the state vector into the reusable buffer so
@@ -48,9 +49,10 @@ where
             // below.
             discovered.get_into(current, &mut current_state);
             let from = StateIndex::new(current.index());
+            lps.prepare_context(&current_state, &mut context);
 
             for summand in lps.summands() {
-                summand.enumerate(&current_state, |label, next_state| {
+                summand.enumerate(&current_state, &mut context, |label, next_state| {
                     // The discovered set deduplicates and only the `is_new` flag
                     // tells us whether the state vector still needs exploring.
                     let (target_ref, is_new) = discovered.insert(next_state);

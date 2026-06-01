@@ -17,6 +17,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_preprocess_symbolic_exploration;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer_expressions;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_parameters;
+use mcrl2_sys::lps::ffi::mcrl2_lps_set_assignments;
 use mcrl2_sys::lps::ffi::stochastic_action_summand;
 use mcrl2_sys::lps::ffi::stochastic_process_initializer;
 use mcrl2_sys::lps::ffi::stochastic_specification;
@@ -176,14 +177,25 @@ impl LearnSuccessorsContext {
         let summation_variables = summand.summation_variables();
         let assignments = summand.assignments();
         let multi_action = summand.multi_action();
+        self.set_assignments(read_parameters, read_values);
         self.enumerate_raw_inner(
             condition.get(),
             ATerm::from(summation_variables).get(),
             ATerm::from(assignments).get(),
             multi_action.get(),
-            read_parameters,
-            read_values,
             callback,
+        );
+    }
+
+    /// Assign variables in the persistent substitution (sigma).
+    pub fn set_assignments(&self, variables: &[*const _aterm], values: &[*const _aterm]) {
+        assert_eq!(variables.len(), values.len(), "Variables and values must have equal length");
+
+        let mut context = self.context.borrow_mut();
+        mcrl2_lps_set_assignments(
+            context.as_mut().expect("The context is always defined"),
+            variables,
+            values,
         );
     }
 
@@ -208,13 +220,33 @@ impl LearnSuccessorsContext {
     ) where
         F: FnMut(&[*const _aterm], *const _aterm),
     {
+        self.set_assignments(read_parameters, read_values);
         self.enumerate_raw_inner(
             condition.get(),
             summation_variables.get(),
             assignments.get(),
             multi_action.get(),
-            read_parameters,
-            read_values,
+            callback,
+        );
+    }
+
+    /// Enumerate using stored ATerm values directly with assignments that are
+    /// already present in sigma.
+    pub fn enumerate_raw_with_current_assignments<F>(
+        &self,
+        condition: &DataExpression,
+        summation_variables: &ATermList<DataVariable>,
+        assignments: &ATermList<ATerm>,
+        multi_action: &ATerm,
+        callback: F,
+    ) where
+        F: FnMut(&[*const _aterm], *const _aterm),
+    {
+        self.enumerate_raw_inner(
+            condition.get(),
+            summation_variables.get(),
+            assignments.get(),
+            multi_action.get(),
             callback,
         );
     }
@@ -227,8 +259,6 @@ impl LearnSuccessorsContext {
         summation_variables: &_aterm,
         assignments: &_aterm,
         multi_action: &_aterm,
-        read_parameters: &[*const _aterm],
-        read_values: &[*const _aterm],
         mut callback: F,
     ) where
         F: FnMut(&[*const _aterm], *const _aterm),
@@ -249,8 +279,6 @@ impl LearnSuccessorsContext {
                 summation_variables,
                 assignments,
                 multi_action,
-                read_parameters,
-                read_values,
                 &mut callback_ref as *mut _ as *mut u8,
                 trampoline,
             );
