@@ -12,21 +12,17 @@ use merc_utilities::MercError;
 
 /// A Linear Process Specification trait.
 pub trait LPS {
-    /// The explicit state vector type.
-    ///
-    /// Typically a `Vec<T>` for some primitive `T`, but kept generic so
-    /// callers can pick a representation that suits their domain (e.g. a
-    /// fixed-size array or a packed integer).
-    type State: Clone + Eq + Hash;
+    /// The type of the values stored at each position of a state vector.
+    type Value: Copy + Eq + Hash;
 
     /// The action label produced for each enumerated transition.
     type Label: TransitionLabel;
 
     /// A single condition action effect summand of the LPS.
-    type Summand: Summand<State = Self::State, Label = Self::Label>;
+    type Summand: Summand<Value = Self::Value, Label = Self::Label>;
 
-    /// Returns the initial state of the LPS.
-    fn initial_state(&self) -> Self::State;
+    /// Returns the initial state vector of the LPS.
+    fn initial_state(&self) -> Vec<Self::Value>;
 
     /// Returns the summands that together define the transition relation.
     fn summands(&self) -> &[Self::Summand];
@@ -39,18 +35,18 @@ pub trait LPS {
 /// produces by invoking the `report` callback. Implementations are free to
 /// short-circuit when the callback returns an error.
 pub trait Summand {
-    /// The explicit state vector type, matching [`LPS::State`].
-    type State;
+    /// The state vector element type, matching [`LPS::Value`].
+    type Value;
 
     /// The action label type, matching [`LPS::Label`].
     type Label;
 
-    /// Enumerate every outgoing transition produced by this summand from
-    /// `state`. For each transition, `report(label, next_state)` is invoked
-    /// exactly once with borrowed values; the callback clones only when it
-    /// needs to retain them. Errors from the callback or from the summand
-    /// itself are propagated to the caller.
-    fn enumerate<F>(&self, state: &Self::State, report: F) -> Result<(), MercError>
+    /// Enumerate every outgoing transition produced by this summand from the
+    /// state vector `state`.
+    ///
+    /// For each transition, `report(label, next_state)` is invoked exactly once
+    /// with borrowed values.
+    fn enumerate<F>(&self, state: &[Self::Value], report: F) -> Result<(), MercError>
     where
-        F: FnMut(&Self::Label, &Self::State) -> Result<(), MercError>;
+        F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>;
 }

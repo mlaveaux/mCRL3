@@ -18,12 +18,12 @@ use rustc_hash::FxBuildHasher;
 /// which is optimised for 32-bit keys and values.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct StateRef(u32);
+pub struct StateRef(usize);
 
 impl StateRef {
     /// Returns the underlying index as a `usize`.
     pub fn index(self) -> usize {
-        self.0 as usize
+        self.0
     }
 }
 
@@ -33,15 +33,15 @@ impl StateRef {
 /// The state vectors are stored as B-trees that share a single node pool; see
 /// the [module documentation](self) for the rationale. The auxiliary
 /// collections allocate from `A`.
-pub struct DiscoveredSet<T = u32, A = Global>
+pub struct DiscoveredSet<T = usize, A = Global>
 where
     T: Copy,
     A: Allocator,
 {
     /// Shared node pool backing every stored state B-tree.
-    forest: MapForest<u32, T>,
+    forest: MapForest<usize, T>,
     /// Stored states indexed by [`StateRef`]; each maps `position -> value`.
-    states: Vec<Map<u32, T>, A>,
+    states: Vec<Map<usize, T>, A>,
     /// Precomputed hash for each stored state, kept parallel to `states` so the
     /// hash table can be resized without reconstructing state vectors.
     hashes: Vec<u64, A>,
@@ -106,9 +106,11 @@ where
         // Look the state up first; the immutable borrow ends before we mutate
         // the forest and table below on the miss path.
         {
-            let DiscoveredSet { table, forest, states, .. } = &*self;
+            let DiscoveredSet {
+                table, forest, states, ..
+            } = &*self;
             if let Some(&index) = table.find(hash, |&index| map_eq(forest, &states[index], state)) {
-                return (StateRef(index as u32), false);
+                return (StateRef(index), false);
             }
         }
 
@@ -120,16 +122,18 @@ where
         let DiscoveredSet { table, hashes, .. } = self;
         table.insert_unique(hash, index, |&index| hashes[index]);
 
-        (StateRef(index as u32), true)
+        (StateRef(index), true)
     }
 
     /// Returns the handle of `state` if it is present, or `None` otherwise.
     pub fn index(&self, state: &[T]) -> Option<StateRef> {
         let hash = self.hasher.hash_one(state);
-        let DiscoveredSet { table, forest, states, .. } = self;
+        let DiscoveredSet {
+            table, forest, states, ..
+        } = self;
         table
             .find(hash, |&index| map_eq(forest, &states[index], state))
-            .map(|&index| StateRef(index as u32))
+            .map(|&index| StateRef(index))
     }
 
     /// Returns true if `state` is present in the set.
@@ -138,10 +142,10 @@ where
     }
 
     /// Builds a B-tree for `state` in the shared forest, keyed by position.
-    fn build_map(&mut self, state: &[T]) -> Map<u32, T> {
+    fn build_map(&mut self, state: &[T]) -> Map<usize, T> {
         let mut map = Map::new();
         for (position, &value) in state.iter().enumerate() {
-            map.insert(position as u32, value, &mut self.forest, &());
+            map.insert(position, value, &mut self.forest, &());
         }
         map
     }
@@ -209,10 +213,10 @@ where
 ///
 /// States are stored with positions `0..state.len()`, so iterating the map
 /// yields values in position order and we can compare against `state` directly.
-fn map_eq<T: Copy + Eq>(forest: &MapForest<u32, T>, map: &Map<u32, T>, state: &[T]) -> bool {
+fn map_eq<T: Copy + Eq>(forest: &MapForest<usize, T>, map: &Map<usize, T>, state: &[T]) -> bool {
     let mut matched = 0;
     for (position, value) in map.iter(forest) {
-        debug_assert_eq!(position as usize, matched, "states are stored with dense positions");
+        debug_assert_eq!(position, matched, "states are stored with dense positions");
         if matched >= state.len() || state[matched] != value {
             return false;
         }

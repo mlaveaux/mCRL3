@@ -1034,14 +1034,28 @@ dependencies = [
 name = "merc_explore"
 version = "2.0.0"
 dependencies = [
+<<<<<<< HEAD
+=======
+ "allocator-api2 0.2.21",
+ "cranelift-bforest",
+ "dashmap",
+ "hashbrown 0.17.1",
+>>>>>>> f934d866 (Use the DiscoveredSet in state space exploration to avoid allocations)
  "itertools 0.14.0",
  "log",
+ "merc_aterm",
  "merc_collections",
+ "merc_data",
  "merc_io",
  "merc_lts",
  "merc_syntax",
  "merc_unsafety",
  "merc_utilities",
+<<<<<<< HEAD
+=======
+ "rayon",
+ "rustc-hash 2.1.2",
+>>>>>>> f934d866 (Use the DiscoveredSet in state space exploration to avoid allocations)
  "streaming-iterator",
 ]
 

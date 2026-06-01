@@ -1,15 +1,15 @@
 //! Generic explicit-state space exploration for an [`LPS`].
 
 use log::info;
-use merc_collections::IndexedSet;
-use merc_collections::SetIndex;
 use merc_io::TimeProgress;
 use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use crate::DiscoveredSet;
 use crate::LPS;
+use crate::StateRef;
 use crate::Summand;
 
 /// Explores the state space of `lps` and feeds the discovered transitions to
@@ -25,9 +25,10 @@ where
     P: LPS,
     B: LtsBuilder<P::Label>,
 {
-    // Map from discovered state vectors to their `StateIndex`.
-    let mut discovered: IndexedSet<P::State> = IndexedSet::new();
-    let (initial_index, _) = discovered.insert(lps.initial_state());
+    // Map from discovered state vectors to their `StateRef`. The discovered set
+    // owns the compact (maximally shared) representation of every state vector.
+    let mut discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
+    let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
     let progress = TimeProgress::new(
         |(states, transitions): (usize, usize)| {
@@ -36,29 +37,27 @@ where
         1,
     );
 
-    let mut working: Vec<SetIndex> = vec![initial_index];
+    let mut working: Vec<StateRef> = vec![initial_ref];
+    // Reusable buffer holding the current state vector reconstructed from the
+    // discovered set, avoiding an allocation per explored state.
+    let mut current_state: Vec<P::Value> = Vec::new();
     timing.measure("explore", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
-            // Clone the state vector so `discovered` can be mutated by inserts
-            // inside the summand callback below.
-            let current_state = discovered
-                .get(current)
-                .expect("State must be in the discovered set")
-                .clone();
-            let from = StateIndex::new(*current);
+            // Reconstruct the state vector into the reusable buffer so
+            // `discovered` can be mutated by inserts inside the summand callback
+            // below.
+            discovered.get_into(current, &mut current_state);
+            let from = StateIndex::new(current.index());
 
             for summand in lps.summands() {
                 summand.enumerate(&current_state, |label, next_state| {
-                    // Only clone the next-state vector when it is genuinely
-                    // new; for revisited states we just look up the index.
-                    let (target_index, is_new) = match discovered.index(next_state) {
-                        Some(idx) => (idx, false),
-                        None => discovered.insert(next_state.clone()),
-                    };
-                    let to = StateIndex::new(*target_index);
+                    // The discovered set deduplicates and only the `is_new` flag
+                    // tells us whether the state vector still needs exploring.
+                    let (target_ref, is_new) = discovered.insert(next_state);
+                    let to = StateIndex::new(target_ref.index());
                     builder.add_transition(from, label, to)?;
                     if is_new {
-                        working.push(target_index);
+                        working.push(target_ref);
                     }
                     Ok(())
                 })?;
@@ -76,6 +75,6 @@ where
         builder.num_of_transitions()
     );
 
-    builder.finish(StateIndex::new(*initial_index))?;
+    builder.finish(StateIndex::new(initial_ref.index()))?;
     Ok(())
 }
