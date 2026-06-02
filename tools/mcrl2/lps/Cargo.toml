@@ -12,7 +12,7 @@ merc_data.workspace = true
 merc_explore = { workspace = true, features = ["clap"] }
 merc_io.workspace = true
 merc_ldd.workspace = true
-merc_lts.workspace = true
+merc_lts = { workspace = true, features = ["clap"] }
 merc_symbolic.workspace = true
 merc_tools.workspace = true
 merc_unsafety.workspace = true
