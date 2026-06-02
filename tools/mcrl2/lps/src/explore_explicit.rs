@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
@@ -18,13 +17,16 @@ use mcrl2::free_variables_data_expression;
 use mcrl2::is_variable;
 use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
+use mcrl2::tau_multi_action;
 use merc_collections::IndexedSet;
 use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
+use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
 use merc_explore::explore;
 use merc_lts::LtsBuilder;
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -34,16 +36,71 @@ pub fn explore_lps_explicit<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
     caching: CachingStrategy,
+    strategy: ExplorationStrategy,
     timing: &Timing,
 ) -> Result<(), MercError>
 where
-    B: LtsBuilder<String>,
+    B: LtsBuilder<Mcrl2MultiActionLabel>,
 {
     let lps = ExplicitLinearProcessSpecification::new(lps)?;
     debug!("{lps:?}");
 
     let cached = CacheLPS::new(lps, caching);
-    explore(builder, &cached, timing)
+    explore(builder, &cached, strategy, timing)?;
+    debug!("{}", cached.metrics());
+    Ok(())
+}
+
+/// A typed mCRL2 multi-action label backed by an [`ATerm`].
+///
+/// We keep the term itself so labels remain maximally shared and can be used
+/// as hash/ordering keys. Display uses mCRL2's pretty-printer.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct Mcrl2MultiActionLabel {
+    term: ATerm,
+}
+
+impl Mcrl2MultiActionLabel {
+    fn from_multi_action_term(term: ATerm) -> Self {
+        debug_assert!(
+            is_mcrl2_timed_multi_action_term(&term),
+            "Expected TimedMultAct term as transition label"
+        );
+        Self { term }
+    }
+
+    fn as_aterm(&self) -> &ATerm {
+        &self.term
+    }
+}
+
+impl fmt::Display for Mcrl2MultiActionLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", pretty_print_multi_action(&self.term))
+    }
+}
+
+impl TransitionLabel for Mcrl2MultiActionLabel {
+    fn tau_label() -> Self {
+        Self::from_multi_action_term(tau_multi_action())
+    }
+
+    fn is_tau_label(&self) -> bool {
+        self == &Self::tau_label()
+    }
+
+    fn matches_label(&self, label: &str) -> bool {
+        pretty_print_multi_action(&self.term) == label
+    }
+
+    fn from_index(_i: usize) -> Self {
+        panic!("Mcrl2MultiActionLabel does not support synthetic label generation")
+    }
+}
+
+fn is_mcrl2_timed_multi_action_term(term: &ATerm) -> bool {
+    let symbol = term.get_head_symbol();
+    symbol.name() == "TimedMultAct" && symbol.arity() == 2
 }
 
 /// Explicit-state view of a [mcrl2::LinearProcessSpecification] that implements
@@ -156,7 +213,7 @@ struct ExplicitSummand {
     write_assignments: ATermList<ATerm>,
 
     /// The multi-action of this summand.
-    multi_action: ATerm,
+    multi_action: Mcrl2MultiActionLabel,
 
     /// Shared context owning the rewriter/enumerator and parameter mappings.
     shared: Rc<Shared>,
@@ -164,14 +221,6 @@ struct ExplicitSummand {
     /// Reusable scratch buffer for the next-state vector produced for each
     /// enumerated solution. Reset and refilled for every solution.
     next_state_buf: RefCell<Vec<usize>>,
-
-    /// Memoised pretty-printed multi-action labels, keyed by the rewritten
-    /// multi-action term. The key is a protected [`ATerm`] rather than a raw
-    /// pointer: the term handed to the callback is a temporary that C++ frees
-    /// once the callback returns, so a raw-pointer key could alias a different
-    /// multi-action later allocated at the same address. Holding the term keeps
-    /// it alive, and maximal sharing makes equal multi-actions share an address.
-    label_cache: RefCell<HashMap<ATerm, String>>,
 }
 
 impl ExplicitSummand {
@@ -202,12 +251,7 @@ impl ExplicitSummand {
 
         // The multi-action's data arguments (and time) may reference process
         // parameters that occur neither in the condition nor in any next-state
-        // update. Such parameters still determine the produced label, so they
-        // must be part of the cache key; otherwise two source states differing
-        // only in such a parameter would share a cache entry and the cached
-        // (stale) label would be replayed. Collecting every variable occurrence
-        // is a safe over-approximation: non-parameter variables are filtered
-        // out below.
+        // update.
         for subterm in summand.multi_action().iter() {
             if is_variable(&subterm) {
                 read_vars.push(subterm.protect().into());
@@ -242,7 +286,7 @@ impl ExplicitSummand {
             "Write indices must be strictly sorted"
         );
 
-        let multi_action = summand.multi_action();
+        let multi_action = Mcrl2MultiActionLabel::from_multi_action_term(summand.multi_action());
 
         Self {
             read_indices,
@@ -253,14 +297,13 @@ impl ExplicitSummand {
             multi_action,
             shared,
             next_state_buf: RefCell::new(Vec::new()),
-            label_cache: RefCell::new(HashMap::new()),
         }
     }
 }
 
 impl LPS for ExplicitLinearProcessSpecification {
     type Value = usize;
-    type Label = String;
+    type Label = Mcrl2MultiActionLabel;
     type Context = ExplicitEnumerationContext;
     type Summand = ExplicitSummand;
 
@@ -305,7 +348,7 @@ impl LPS for ExplicitLinearProcessSpecification {
 
 impl Summand for ExplicitSummand {
     type Value = usize;
-    type Label = String;
+    type Label = Mcrl2MultiActionLabel;
     type Context = ExplicitEnumerationContext;
 
     fn read_positions(&self) -> &[usize] {
@@ -324,7 +367,7 @@ impl Summand for ExplicitSummand {
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
-            &self.multi_action,
+            self.multi_action.as_aterm(),
             |values: &[*const _aterm], multi_action: *const _aterm| {
                 debug_assert_eq!(
                     values.len(),
@@ -348,18 +391,14 @@ impl Summand for ExplicitSummand {
                     }
                 }
 
-                // Memoise the pretty-printed multi-action, keyed by the
-                // protected term so the cache outlives the temporary the
-                // callback received. Aterms are maximally shared, so equal
-                // multi-actions map to the same key.
-                let multi_action = ATerm::from_ptr(multi_action);
-                let mut label_cache = self.label_cache.borrow_mut();
-                let label = label_cache
-                    .entry(multi_action.clone())
-                    .or_insert_with(|| pretty_print_multi_action(&multi_action));
+                // Wrap the rewritten multi-action term as a typed label. The
+                // ATerm protects the term beyond the temporary handed to the
+                // callback, and aterms are maximally shared so equal
+                // multi-actions still share storage.
+                let label = Mcrl2MultiActionLabel::from_multi_action_term(ATerm::from_ptr(multi_action));
 
                 // We cannot propagate errors from the C callback, so we panic on error and catch it in the caller.
-                report(&*label, &next_state).expect("Failed to report successor state");
+                report(&label, &next_state).expect("Failed to report successor state");
             },
         );
 
@@ -390,7 +429,7 @@ impl fmt::Debug for ExplicitSummand {
             f,
             "{} -> {}",
             self.condition.pretty_print(),
-            pretty_print_multi_action(&self.multi_action)
+            self.multi_action
         )?;
         writeln!(f, "\t\tread indices: {:?}", self.read_indices)?;
         writeln!(f, "\t\twrite indices: {:?}", self.write_indices)

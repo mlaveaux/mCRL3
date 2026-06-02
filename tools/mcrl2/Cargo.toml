@@ -44,13 +44,13 @@ duct = "1.1"
 # The workspace libraries.
 mcrl2 = { path = "crates/mcrl2" }
 mcrl2-macros = { path = "crates/mcrl2-macros" }
-mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "8ebabee0fc80ab816eb20b193dd46df7789b92c3" }
+mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "5b6f5f1b8913d5a06057108ddb546db12831b6eb" }
 merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
 merc_explore = { path = "../../crates/explore", features = ["clap"] }
 merc_io = { path = "../../crates/io" }
 merc_ldd = { path = "../../crates/ldd" }
-merc_lts = { path = "../../crates/lts" }
+merc_lts = { path = "../../crates/lts", features = ["clap"] }
 merc_reduction = { path = "../../crates/reduction" }
 merc_symbolic = { path = "../../crates/symbolic" }
 merc_tools = { path = "../../crates/tools" }
@@ -58,5 +58,5 @@ merc_unsafety = { path = "../../crates/unsafety" }
 merc_utilities = { path = "../../crates/utilities" }
 
 # Use a local version of mCRL2-sys for development.
-[patch."https://github.com/MERCorg/mCRL2-sys"]
-mcrl2-sys = { path = "crates/mCRL2-sys" }
+# [patch."https://github.com/MERCorg/mCRL2-sys"]
+# mcrl2-sys = { path = "crates/mCRL2-sys" }
