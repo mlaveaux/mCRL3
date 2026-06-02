@@ -1,0 +1,207 @@
+#![forbid(unsafe_code)]
+
+use std::collections::BTreeSet;
+use std::fmt;
+
+use merc_lts::LTS;
+use merc_lts::LabelIndex;
+use merc_lts::StateIndex;
+use rustc_hash::FxHashMap;
+
+use crate::Partition;
+
+/// A stable global identifier for a node in the block-history forest.
+pub type NodeIndex = usize;
+
+/// A node of the block-history tree. Together with its parent it forms the
+/// immutable forest that is recorded during refinement.
+#[derive(Clone, Copy, Debug)]
+struct TreeNode {
+    /// The refinement round at which the block was created.
+    level: usize,
+    /// The index of the parent block (the coarser block it was split out of). The
+    /// root is its own parent.
+    parent: NodeIndex,
+}
+          
+/// A block-history tree recorded while an existing refinement algorithm refines
+/// a partition.
+///
+/// Every node is a block that existed at some refinement level. Internal nodes
+/// are coarser blocks from earlier levels; the leaves ([`Self::final_blocks`])
+/// are the blocks of the final (stable) partition. The forest plus the quotient
+/// edges of the final partition are everything needed to reconstruct a
+/// minimal-depth distinguishing formula.
+///
+/// The recorded `level` of a block equals the iteration at which it first split
+/// off, so for a level-synchronized refinement it is the minimal modal depth at
+/// which its states become distinguishable.
+pub struct PartitionTree {
+    /// Node `i` stores its creation level and parent. Node `0` is the root.
+    nodes: Vec<TreeNode>,
+    /// The leaf nodes, i.e. the blocks of the final partition. Filled by
+    /// [`RefinementForest::finalize`].
+    final_blocks: BTreeSet<NodeIndex>,
+    /// Maps every state to its final block node. Filled by
+    /// [`RefinementForest::finalize`].
+    state_to_node: Vec<NodeIndex>,
+    /// Quotient edges of the final partition: `outgoing[b]` contains `(label, c)`
+    /// whenever some state of block `b` has a `label`-transition into block `c`.
+    outgoing: FxHashMap<NodeIndex, BTreeSet<(LabelIndex, NodeIndex)>>,
+
+    /// The forest node every block of the most recently recorded partition maps
+    /// to (indexed by that partition's local block number).
+    current_local_to_node: Vec<NodeIndex>,
+    /// The wave number of the next [`RefinementForest::record_level`] call.
+    level: usize,
+}
+
+/// A sink that records the block-history forest while a partition is refined.
+///
+/// Existing refinement algorithms drive this trait to enable counter-example
+/// construction without taking on any cost when none is needed: the no-op `()`
+/// implementation monomorphizes away, so an algorithm can always accept a
+/// `&mut impl RefinementForest` and pass `&mut ()` on the common path.
+pub trait RefinementForest {
+    /// Records one refinement wave that turned the `previous` partition into the
+    /// finer `next` partition. The two partitions must be consecutive: the
+    /// `previous` of each call equals the `next` of the prior call (the very
+    /// first `previous` is the initial single-block partition).
+    fn record_level<P: Partition, Q: Partition>(&mut self, previous: &P, next: &Q);
+
+    /// Records the final (stable) partition: its quotient edges and the block
+    /// every state belongs to. `partition` must equal the `next` of the last
+    /// [`RefinementForest::record_level`] call.
+    fn finalize<L: LTS, P: Partition>(&mut self, lts: &L, partition: &P);
+}
+
+impl RefinementForest for () {
+    fn record_level<P: Partition, Q: Partition>(&mut self, _previous: &P, _next: &Q) {}
+
+    fn finalize<L: LTS, P: Partition>(&mut self, _lts: &L, _partition: &P) {}
+}
+
+impl RefinementForest for PartitionTree {
+    fn record_level<P: Partition, Q: Partition>(&mut self, previous: &P, next: &Q) {
+        let next_count = next.num_of_blocks();
+
+        // Determine, for every new block, the old block it was split from (shared
+        // by all of its states), and how many new blocks each old block produced.
+        let mut new_block_old: Vec<Option<usize>> = vec![None; next_count];
+        let mut old_child_count: Vec<usize> = vec![0; self.current_local_to_node.len()];
+        for element in 0..next.len() {
+            let state = StateIndex::new(element);
+            let new_block = next.block_number(state).value();
+            if new_block_old[new_block].is_none() {
+                let old_block = previous.block_number(state).value();
+                new_block_old[new_block] = Some(old_block);
+                old_child_count[old_block] += 1;
+            }
+        }
+
+        // Map each new block to a forest node. A block that is the sole child of
+        // its parent did not actually split, so it keeps the parent's node (and
+        // hence its earlier, lower level). A parent that produced two or more
+        // children gets a fresh node per child at the current level.
+        let mut new_local_to_node = vec![0; next_count];
+        for new_block in 0..next_count {
+            let Some(old_block) = new_block_old[new_block] else {
+                continue; // Empty block, never referenced.
+            };
+            let parent_node = self.current_local_to_node[old_block];
+
+            new_local_to_node[new_block] = if old_child_count[old_block] == 1 {
+                parent_node
+            } else {
+                let node = self.nodes.len();
+                self.nodes.push(TreeNode {
+                    level: self.level,
+                    parent: parent_node,
+                });
+                node
+            };
+        }
+
+        self.current_local_to_node = new_local_to_node;
+        self.level += 1;
+    }
+
+    fn finalize<L: LTS, P: Partition>(&mut self, lts: &L, partition: &P) {
+        let num_states = partition.len();
+
+        self.state_to_node = (0..num_states)
+            .map(|element| self.current_local_to_node[partition.block_number(StateIndex::new(element)).value()])
+            .collect();
+        self.final_blocks = self.state_to_node.iter().copied().collect();
+
+        self.outgoing.clear();
+        for element in 0..num_states {
+            let state = StateIndex::new(element);
+            let from_block = self.state_to_node[element];
+            for transition in lts.outgoing_transitions(state) {
+                let to_block = self.state_to_node[transition.to.value()];
+                self.outgoing
+                    .entry(from_block)
+                    .or_default()
+                    .insert((transition.label, to_block));
+            }
+        }
+    }
+}
+
+impl PartitionTree {
+    /// Creates an empty forest for an LTS with `num_states` states, consisting of
+    /// a single root block (level 0) that holds all states.
+    pub fn new(num_states: usize) -> PartitionTree {
+        PartitionTree {
+            nodes: vec![TreeNode { level: 0, parent: 0 }],
+            final_blocks: BTreeSet::new(),
+            state_to_node: Vec::with_capacity(num_states),
+            outgoing: FxHashMap::default(),
+            current_local_to_node: vec![0],
+            level: 1,
+        }
+    }
+
+    /// Reconstructs a minimal-depth distinguishing formula for two states.
+    ///
+    /// Returns [`None`] when the two states are in the same final block (i.e.
+    /// they are bisimilar). Otherwise returns a formula that holds in `s` but not
+    /// in `t`, with label indices resolved through `labels`.
+    pub fn distinguish<L: Clone>(&self, s: StateIndex, t: StateIndex, labels: &[L]) -> Option<DistinguishingFormula<L>> {
+        if self.state_to_node[s.value()] == self.state_to_node[t.value()] {
+            None
+        } else {
+            Some(self.distinguish_states(s, t, labels))
+        }
+    }
+
+    /// Reconstructs a minimal-depth distinguishing formula for two states that
+    /// belong to different final blocks.
+    ///
+    /// Label indices are resolved to concrete labels through `labels`.
+    fn distinguish_states<L: Clone>(&self, s: StateIndex, t: StateIndex, labels: &[L]) -> DistinguishingFormula<L> {
+        let mut reconstructor = Reconstructor {
+            tree: self,
+            gca_memo: FxHashMap::default(),
+        };
+
+        let formula = reconstructor.distinguish(self.state_to_node[s.value()], self.state_to_node[t.value()]);
+        formula.into_public(labels)
+    }
+
+    /// Returns the creation level of a node.
+    fn level(&self, node: NodeIndex) -> usize {
+        self.nodes[node].level
+    }
+
+    /// Returns the parent of a node.
+    fn parent(&self, node: NodeIndex) -> NodeIndex {
+        self.nodes[node].parent
+    }
+
+    /// Returns the outgoing quotient edges of a final block.
+    fn outgoing(&self, block: NodeIndex) -> impl Iterator<Item = (LabelIndex, NodeIndex)> + '_ {
+        self.outgoing.get(&block).into_iter().flatten().copied()
+    }
+}
