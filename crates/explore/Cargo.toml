@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+clap = ["dep:clap"]
+
 [dependencies]
 # Pinned to 0.2 to match the allocator-api2 version that `hashbrown` uses
 allocator-api2 = "0.2"
@@ -15,6 +18,7 @@ merc_syntax.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
+clap ={ workspace = true, optional = true }
 hashbrown.workspace = true
 itertools.workspace = true
 log.workspace = true

@@ -130,7 +130,7 @@ fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
     };
 
     let mut storage = Storage::new();
-    
+
     let num_of_states = explore_lps_symbolic(&mut storage, &lps, timing)?;
     println!("Number of states: {}", len(&mut storage, &num_of_states));
 

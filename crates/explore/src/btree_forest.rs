@@ -320,9 +320,7 @@ where
     fn find_node(&self, height: usize, data: &[V; N]) -> Option<usize> {
         let table = self.tables.get(height)?;
         let hash = hash_node(&self.hasher, data);
-        table
-            .find(hash, |&index| self.nodes[index] == *data)
-            .copied()
+        table.find(hash, |&index| self.nodes[index] == *data).copied()
     }
 }
 

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use log::info;
 use merc_utilities::MercError;
+use tempfile::TempDir;
 
 /// A utility for dumping files, mostly used for testing and debugging
 ///
@@ -57,5 +58,22 @@ impl DumpFiles {
             info!("No MERC_DUMP set, skipping dump: {}", filename);
         }
         Ok(())
+    }
+}
+
+/// Uses `MERC_DUMP` as the temporary directory if set, and otherwise the default temp directory.
+pub fn temp_dir(name: &str) -> Result<TempDir, MercError> {
+    if let Ok(dump_dir) = std::env::var("MERC_DUMP") {
+        // Check if the directory is an absolute path
+        if !Path::new(dump_dir.as_str()).is_absolute() {
+            panic!("MERC_DUMP must be an absolute path, because tests write relative to their source file.");
+        }
+
+        // If we are asking for MERC_DUMP, disable cleanup.
+        let mut dir = TempDir::with_prefix_in(name, dump_dir)?;
+        dir.disable_cleanup(true);
+        Ok(dir)
+    } else {
+        tempfile::tempdir().map_err(|e| e.into())
     }
 }

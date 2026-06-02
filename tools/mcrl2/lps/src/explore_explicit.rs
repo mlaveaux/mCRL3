@@ -40,7 +40,7 @@ where
 {
     let lps = ExplicitLinearProcessSpecification::new(lps)?;
     debug!("{lps:?}");
-    
+
     let cached = CacheLPS::new(lps, caching);
     explore(builder, &cached, timing)
 }

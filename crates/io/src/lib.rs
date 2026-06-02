@@ -6,9 +6,11 @@ mod dumpfiles;
 mod format;
 mod line_iterator;
 mod progress;
+mod traced_command;
 
 pub use bitstream::*;
 pub use dumpfiles::*;
 pub use format::*;
 pub use line_iterator::*;
 pub use progress::*;
+pub use traced_command::*;
