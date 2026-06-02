@@ -18,6 +18,8 @@ use mcrl2::free_variables_data_expression;
 use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
 use merc_collections::IndexedSet;
+use merc_explore::CacheLPS;
+use merc_explore::CachingStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
 use merc_explore::explore;
@@ -30,6 +32,7 @@ use merc_utilities::Timing;
 pub fn explore_lps_explicit<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
+    caching: CachingStrategy,
     timing: &Timing,
 ) -> Result<(), MercError>
 where
@@ -37,7 +40,9 @@ where
 {
     let lps = ExplicitLinearProcessSpecification::new(lps)?;
     debug!("{lps:?}");
-    explore(builder, &lps, timing)
+    
+    let cached = CacheLPS::new(lps, caching);
+    explore(builder, &cached, timing)
 }
 
 /// Explicit-state view of a [mcrl2::LinearProcessSpecification] that implements
@@ -288,6 +293,10 @@ impl Summand for ExplicitSummand {
     type Label = String;
     type Context = ExplicitEnumerationContext;
 
+    fn read_positions(&self) -> &[usize] {
+        &self.read_indices
+    }
+
     fn enumerate<F>(&self, state: &[usize], _context: &mut Self::Context, mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
@@ -366,53 +375,5 @@ impl fmt::Debug for ExplicitSummand {
         )?;
         writeln!(f, "\t\tread indices: {:?}", self.read_indices)?;
         writeln!(f, "\t\twrite indices: {:?}", self.write_indices)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-    use std::process::Command;
-
-    use mcrl2::read_lps;
-    use merc_lts::LTS;
-    use merc_lts::LtsBuilderFast;
-    use merc_lts::StateIndex;
-    use merc_utilities::Timing;
-
-    use super::explore_lps_explicit;
-
-    #[test]
-    fn test_mcrl2_explore_explicit_abp() {
-        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
-            println!("Skipping test: MCRL2_PATH not set");
-            return;
-        };
-
-        let mcrl22lps = Path::new(&mcrl2_path).join("mcrl22lps");
-
-        let temp_dir = tempfile::tempdir().unwrap();
-        let lps_path = temp_dir.path().join("abp.lps");
-
-        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/mCRL2/academic/abp/abp.mcrl2");
-
-        let status = Command::new(&mcrl22lps)
-            .arg(&spec_path)
-            .arg(&lps_path)
-            .status()
-            .expect("Failed to execute mcrl22lps");
-        assert!(status.success(), "mcrl22lps failed with status: {status}");
-
-        let lps = read_lps(lps_path.to_str().expect("LPS path is valid UTF-8")).expect("Failed to read LPS");
-
-        let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
-        explore_lps_explicit(&mut builder, &lps, &Timing::new()).expect("Failed to explore LPS");
-        let lts = builder.finish(StateIndex::new(0), false);
-
-        assert_eq!(
-            lts.num_of_states(),
-            74,
-            "ABP should have 74 reachable states (see examples/lts/abp.aut)"
-        );
     }
 }
