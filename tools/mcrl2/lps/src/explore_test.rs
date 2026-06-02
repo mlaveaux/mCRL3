@@ -6,6 +6,7 @@ mod tests {
     use std::process::Command;
 
     use mcrl2::read_lps;
+    use merc_explore::CachingStrategy;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
     use merc_lts::StateIndex;
@@ -54,7 +55,7 @@ mod tests {
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
-        explore_lps_explicit(&mut builder, &lps, &Timing::new()).expect("Failed to explore LPS");
+        explore_lps_explicit(&mut builder, &lps, CachingStrategy::None, &Timing::new()).expect("Failed to explore LPS");
         let result_lts = builder.finish(StateIndex::new(0), false);
 
         assert_eq!(

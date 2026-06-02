@@ -1103,7 +1103,12 @@ dependencies = [
 name = "merc_explore"
 version = "0.1.0"
 dependencies = [
+<<<<<<< Updated upstream
  "allocator-api2 0.2.21",
+=======
+ "clap",
+ "dashmap",
+>>>>>>> Stashed changes
  "hashbrown 0.17.0",
  "itertools 0.14.0",
  "log",
@@ -1343,6 +1348,7 @@ dependencies = [
  "log",
  "merc_lts",
  "merc_pest_consume",
+ "merc_reduction",
  "merc_refinement",
  "merc_utilities",
  "pest",

@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::Subcommand;
 
+use merc_explore::CachingStrategy;
 use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_lts::LTS;
@@ -82,6 +83,9 @@ struct ExploreExplicitArgs {
     /// Specify the output LTS in AUT format. If not given, the LTS is not written.
     #[arg(long)]
     output: Option<PathBuf>,
+
+    #[arg(long, short('c'), value_enum, default_value_t = CachingStrategy::None)]
+    caching: CachingStrategy,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -118,6 +122,7 @@ fn main() -> Result<ExitCode, MercError> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Handles symbolic exploration of an LPS.
 fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
     let format = args.format.unwrap_or(LpsFormat::Lps);
     let lps = match format {
@@ -125,13 +130,14 @@ fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
     };
 
     let mut storage = Storage::new();
-
+    
     let num_of_states = explore_lps_symbolic(&mut storage, &lps, timing)?;
     println!("Number of states: {}", len(&mut storage, &num_of_states));
 
     Ok(())
 }
 
+/// Handles the explicit exploration of an LPS.
 fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result<(), MercError> {
     let format = args.format.unwrap_or(LpsFormat::Lps);
     let lps = match format {
@@ -139,7 +145,7 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
     };
 
     let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
-    explore_lps_explicit(&mut builder, &lps, timing)?;
+    explore_lps_explicit(&mut builder, &lps, args.caching, timing)?;
     let lts = builder.finish(StateIndex::new(0), false);
 
     println!("Number of states: {}", lts.num_of_states());
