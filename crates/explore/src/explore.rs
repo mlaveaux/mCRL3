@@ -1,5 +1,7 @@
 //! Generic explicit-state space exploration for an [`LPS`].
 
+use std::collections::VecDeque;
+
 use log::info;
 use merc_io::TimeProgress;
 use merc_lts::LtsBuilder;
@@ -12,6 +14,22 @@ use crate::LPS;
 use crate::StateRef;
 use crate::Summand;
 
+/// Order in which discovered states are explored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum ExplorationStrategy {
+    /// Depth-first exploration (LIFO).
+    Dfs,
+    /// Breadth-first exploration (FIFO).
+    Bfs,
+}
+
+impl Default for ExplorationStrategy {
+    fn default() -> Self {
+        Self::Dfs
+    }
+}
+
 /// Explores the state space of `lps` and feeds the discovered transitions to
 /// `builder`.
 ///
@@ -20,7 +38,12 @@ use crate::Summand;
 /// The `builder` is finalised before returning so the resulting LTS — whether
 /// in memory or streamed to disk — can be obtained from the builder by the
 /// caller.
-pub fn explore<P, B>(builder: &mut B, lps: &P, timing: &Timing) -> Result<(), MercError>
+pub fn explore<P, B>(
+    builder: &mut B,
+    lps: &P,
+    strategy: ExplorationStrategy,
+    timing: &Timing,
+) -> Result<(), MercError>
 where
     P: LPS,
     B: LtsBuilder<P::Label>,
@@ -37,13 +60,19 @@ where
         1,
     );
 
-    let mut working: Vec<StateRef> = vec![initial_ref];
+    let mut working: VecDeque<StateRef> = VecDeque::from([initial_ref]);
     // Reusable buffer holding the current state vector reconstructed from the
     // discovered set, avoiding an allocation per explored state.
     let mut current_state: Vec<P::Value> = Vec::new();
     let mut context = lps.create_context();
     timing.measure("explore", || -> Result<(), MercError> {
-        while let Some(current) = working.pop() {
+        loop {
+            let current = match strategy {
+                ExplorationStrategy::Dfs => working.pop_back(),
+                ExplorationStrategy::Bfs => working.pop_front(),
+            };
+            let Some(current) = current else { break };
+
             // Reconstruct the state vector into the reusable buffer so
             // `discovered` can be mutated by inserts inside the summand callback
             // below.
@@ -57,9 +86,9 @@ where
                     // tells us whether the state vector still needs exploring.
                     let (target_ref, is_new) = discovered.insert(next_state);
                     let to = StateIndex::new(target_ref.index());
-                    builder.add_transition(from, label, to)?;
+                    // builder.add_transition(from, label, to)?;
                     if is_new {
-                        working.push(target_ref);
+                        working.push_back(target_ref);
                     }
                     Ok(())
                 })?;
