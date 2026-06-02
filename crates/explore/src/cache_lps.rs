@@ -11,7 +11,7 @@ use crate::Slot;
 use crate::Summand;
 use crate::Tree;
 
-/// Controls the enumeration caching behaviour of [`CacheLPS`].
+/// Controls the enumeration caching behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum CachingStrategy {
@@ -26,8 +26,12 @@ pub enum CachingStrategy {
 /// A wrapper around an [`LPS`] that caches summand enumeration results.
 ///
 /// The cache key for each summand is formed by projecting the state vector
-/// onto the summand's [`Summand::read_positions`]. Keys and next-state vectors
-/// are interned in a [`BTreeForest`] for compact, hash-consed storage.
+/// onto the summand's [`Summand::read_positions`]. The cached value stores, per
+/// enumerated transition, the label together with the next-state values at the
+/// summand's [`Summand::write_positions`] only; the remaining (pass-through)
+/// positions are reconstructed from the live source state on each cache hit.
+/// Keys and write-value vectors are interned in a [`BTreeForest`] for compact,
+/// hash-consed storage.
 pub struct CacheLPS<P: LPS> {
     inner: P,
     summands: Vec<CacheSummandWrapper<P>>,
@@ -45,6 +49,7 @@ struct CacheShared<V: Slot, L: Clone> {
 pub struct CacheSummandWrapper<P: LPS> {
     index: usize,
     read_positions: Vec<usize>,
+    write_positions: Vec<usize>,
     strategy: CachingStrategy,
     shared: Rc<CacheShared<P::Value, P::Label>>,
     _marker: PhantomData<P>,
@@ -76,6 +81,7 @@ impl<P: LPS> CacheLPS<P> {
             .map(|(i, s)| CacheSummandWrapper {
                 index: i,
                 read_positions: s.read_positions().to_vec(),
+                write_positions: s.write_positions().to_vec(),
                 strategy,
                 shared: Rc::clone(&shared),
                 _marker: PhantomData,
@@ -170,18 +176,34 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
                 CachingStrategy::None => unreachable!(),
             };
 
+            // Each cached tree holds only the values at the write positions.
+            // The remaining positions are passed through unchanged, so they
+            // must be taken from the *live* source state rather than the state
+            // for which the entry was originally computed.
             let mut replay_buf = self.shared.replay_buf.borrow_mut();
-            for (label, state_tree) in &results {
+            for (label, write_tree) in &results {
                 replay_buf.clear();
-                replay_buf.extend(self.shared.forest.borrow().iter(*state_tree));
+                replay_buf.extend_from_slice(state);
+                for (&pos, value) in self.write_positions.iter().zip(self.shared.forest.borrow().iter(*write_tree))
+                {
+                    replay_buf[pos] = value;
+                }
                 report(label, &replay_buf)?;
             }
         } else {
-            // Cache MISS: delegate to inner summand, capture results.
+            // Cache MISS: delegate to inner summand, capture results. Only the
+            // values at the write positions are stored; on replay they are
+            // scattered back onto the live source state (see the hit branch).
             let mut captured: Vec<(P::Label, Tree)> = Vec::new();
 
             inner_summands[self.index].enumerate(state, &mut context.inner_context, |label, next_state| {
-                let tree = self.shared.forest.borrow_mut().build(next_state);
+                let mut scratch = self.shared.key_buf.borrow_mut();
+                scratch.clear();
+                for &pos in &self.write_positions {
+                    scratch.push(next_state[pos]);
+                }
+                let tree = self.shared.forest.borrow_mut().build(&scratch);
+                drop(scratch);
                 captured.push((label.clone(), tree));
                 report(label, next_state)
             })?;
@@ -206,5 +228,9 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
     fn read_positions(&self) -> &[usize] {
         &self.read_positions
+    }
+
+    fn write_positions(&self) -> &[usize] {
+        &self.write_positions
     }
 }

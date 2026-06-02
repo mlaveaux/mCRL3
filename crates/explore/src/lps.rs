@@ -75,4 +75,11 @@ pub trait Summand {
     fn read_positions(&self) -> &[usize] {
         &[]
     }
+
+    /// Returns the indices into the state vector that this summand may change.
+    /// Every position *not* in this set is passed through unchanged from the
+    /// source state to each enumerated next state.
+    fn write_positions(&self) -> &[usize] {
+        &[]
+    }
 }

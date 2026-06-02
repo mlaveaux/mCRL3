@@ -23,6 +23,12 @@ mod tests {
     /// LPS with `explore_lps_explicit`, and asserts strong bisimilarity between
     /// the two resulting LTSs.
     fn compare_with_lps2lts(spec_relative_path: &str) {
+        compare_with_lps2lts_caching(spec_relative_path, CachingStrategy::None);
+    }
+
+    /// Like [`compare_with_lps2lts`] but explores the LPS with the given
+    /// [`CachingStrategy`].
+    fn compare_with_lps2lts_caching(spec_relative_path: &str, strategy: CachingStrategy) {
         let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
             println!("Skipping test: MCRL2_PATH not set");
             return;
@@ -50,7 +56,7 @@ mod tests {
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
-        explore_lps_explicit(&mut builder, &lps, CachingStrategy::None, &Timing::new()).expect("Failed to explore LPS");
+        explore_lps_explicit(&mut builder, &lps, strategy, &Timing::new()).expect("Failed to explore LPS");
         let result_lts = builder.finish(StateIndex::new(0), false);
 
         write_mcrl2_aut(&mut File::create(temp_dir.path().join("result.aut")).unwrap(), &result_lts)
@@ -59,12 +65,12 @@ mod tests {
         assert_eq!(
             reference_lts.num_of_states(),
             result_lts.num_of_states(),
-            "State count mismatch for {spec_relative_path}"
+            "State count mismatch for {spec_relative_path} with {strategy:?}"
         );
         assert_eq!(
             reference_lts.num_of_transitions(),
             result_lts.num_of_transitions(),
-            "Transition count mismatch for {spec_relative_path}"
+            "Transition count mismatch for {spec_relative_path} with {strategy:?}"
         );
         assert!(
             compare_lts(
@@ -74,7 +80,7 @@ mod tests {
                 false,
                 &mut Timing::new(),
             ),
-            "LTSs are not strongly bisimilar for {spec_relative_path}"
+            "LTSs are not strongly bisimilar for {spec_relative_path} with {strategy:?}"
         );
     }
 
@@ -111,5 +117,45 @@ mod tests {
     #[test]
     fn test_explore_onebit() {
         compare_with_lps2lts("../../../examples/mCRL2/academic/onebit/onebit.mcrl2");
+    }
+
+    #[test]
+    fn test_explore_abp_local_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/abp/abp.mcrl2", CachingStrategy::Local);
+    }
+
+    #[test]
+    fn test_explore_abp_global_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/abp/abp.mcrl2", CachingStrategy::Global);
+    }
+
+    #[test]
+    fn test_explore_cabp_local_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/cabp/cabp.mcrl2", CachingStrategy::Local);
+    }
+
+    #[test]
+    fn test_explore_cabp_global_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/cabp/cabp.mcrl2", CachingStrategy::Global);
+    }
+
+    #[test]
+    fn test_explore_dining3_local_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/dining/dining3.mcrl2", CachingStrategy::Local);
+    }
+
+    #[test]
+    fn test_explore_dining3_global_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/dining/dining3.mcrl2", CachingStrategy::Global);
+    }
+
+    #[test]
+    fn test_explore_onebit_local_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/onebit/onebit.mcrl2", CachingStrategy::Local);
+    }
+
+    #[test]
+    fn test_explore_onebit_global_cache() {
+        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/onebit/onebit.mcrl2", CachingStrategy::Global);
     }
 }

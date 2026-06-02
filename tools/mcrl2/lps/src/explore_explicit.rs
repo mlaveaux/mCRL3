@@ -15,6 +15,7 @@ use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
 use mcrl2::free_variables_data_expression;
+use mcrl2::is_variable;
 use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
 use merc_collections::IndexedSet;
@@ -199,6 +200,20 @@ impl ExplicitSummand {
 
         let write_assignments = ATermList::from_double_iter(write_assignments.into_iter());
 
+        // The multi-action's data arguments (and time) may reference process
+        // parameters that occur neither in the condition nor in any next-state
+        // update. Such parameters still determine the produced label, so they
+        // must be part of the cache key; otherwise two source states differing
+        // only in such a parameter would share a cache entry and the cached
+        // (stale) label would be replayed. Collecting every variable occurrence
+        // is a safe over-approximation: non-parameter variables are filtered
+        // out below.
+        for subterm in summand.multi_action().iter() {
+            if is_variable(&subterm) {
+                read_vars.push(subterm.protect().into());
+            }
+        }
+
         let read_indices: Vec<usize> = parameters
             .iter()
             .enumerate()
@@ -295,6 +310,10 @@ impl Summand for ExplicitSummand {
 
     fn read_positions(&self) -> &[usize] {
         &self.read_indices
+    }
+
+    fn write_positions(&self) -> &[usize] {
+        &self.write_indices
     }
 
     fn enumerate<F>(&self, state: &[usize], _context: &mut Self::Context, mut report: F) -> Result<(), MercError>
