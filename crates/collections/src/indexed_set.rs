@@ -155,10 +155,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     {
         let hash = self.hasher.hash_one(value);
 
-        if let Some(&existing) = self
-            .index
-            .find(hash, |&i| entry_matches(&self.table, i, value))
-        {
+        if let Some(&existing) = self.index.find(hash, |&i| entry_matches(&self.table, i, value)) {
             // The element is already in the set, so return the index.
             return (SetIndex(self.generation_counter.recall_index(existing)), false);
         }
@@ -169,9 +166,8 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         let index = self.insert_into_table(value);
         let hasher_ref = &self.hasher;
         let table_ref = &self.table;
-        self.index.insert_unique(hash, index, |&i| {
-            entry_hash(table_ref, hasher_ref, i)
-        });
+        self.index
+            .insert_unique(hash, index, |&i| entry_hash(table_ref, hasher_ref, i));
         (SetIndex(self.generation_counter.create_index(index)), true)
     }
 
@@ -181,10 +177,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     pub fn insert(&mut self, value: T) -> (SetIndex, bool) {
         let hash = self.hasher.hash_one(&value);
 
-        if let Some(&existing) = self
-            .index
-            .find(hash, |&i| entry_matches(&self.table, i, &value))
-        {
+        if let Some(&existing) = self.index.find(hash, |&i| entry_matches(&self.table, i, &value)) {
             // The element is already in the set, so return the index.
             return (SetIndex(self.generation_counter.recall_index(existing)), false);
         }
@@ -192,9 +185,8 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         let index = self.insert_into_table(value);
         let hasher_ref = &self.hasher;
         let table_ref = &self.table;
-        self.index.insert_unique(hash, index, |&i| {
-            entry_hash(table_ref, hasher_ref, i)
-        });
+        self.index
+            .insert_unique(hash, index, |&i| entry_hash(table_ref, hasher_ref, i));
         (SetIndex(self.generation_counter.create_index(index)), true)
     }
 
@@ -241,10 +233,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     pub fn remove(&mut self, element: &T) -> bool {
         let hash = self.hasher.hash_one(element);
 
-        if let Ok(entry) = self
-            .index
-            .find_entry(hash, |&i| entry_matches(&self.table, i, element))
-        {
+        if let Ok(entry) = self.index.find_entry(hash, |&i| entry_matches(&self.table, i, element)) {
             let (removed_index, _) = entry.remove();
             let next = match self.free {
                 Some(next) => next,

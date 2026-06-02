@@ -18,8 +18,8 @@ mod tests {
     use merc_reduction::compare_lts;
     use merc_utilities::Timing;
 
-    use crate::explore_lps_explicit;
     use crate::explore_explicit::Mcrl2MultiActionLabel;
+    use crate::explore_lps_explicit;
 
     /// Runs `mcrl22lps` and `lps2lts` on a `.mcrl2` specification, explores the
     /// LPS with `explore_lps_explicit`, and asserts strong bisimilarity between
@@ -58,11 +58,15 @@ mod tests {
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
-        explore_lps_explicit(&mut builder, &lps, strategy, ExplorationStrategy::Dfs, &Timing::new()).expect("Failed to explore LPS");
+        explore_lps_explicit(&mut builder, &lps, strategy, ExplorationStrategy::Dfs, &Timing::new())
+            .expect("Failed to explore LPS");
         let result_lts = builder.finish(StateIndex::new(0), false);
 
-        write_mcrl2_aut(&mut File::create(temp_dir.path().join("result.aut")).unwrap(), &result_lts)
-            .expect("Failed to write result .aut");
+        write_mcrl2_aut(
+            &mut File::create(temp_dir.path().join("result.aut")).unwrap(),
+            &result_lts,
+        )
+        .expect("Failed to write result .aut");
 
         assert_eq!(
             reference_lts.num_of_states(),
@@ -78,9 +82,7 @@ mod tests {
             compare_lts(
                 Equivalence::StrongBisim,
                 reference_lts,
-                result_lts.relabel(|label| {
-                    Ok(label.to_string())
-                }).unwrap(),
+                result_lts.relabel(|label| { Ok(label.to_string()) }).unwrap(),
                 false,
                 &mut Timing::new(),
             ),
@@ -130,36 +132,57 @@ mod tests {
 
     #[test]
     fn test_explore_abp_global_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/abp/abp.mcrl2", CachingStrategy::Global);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/abp/abp.mcrl2",
+            CachingStrategy::Global,
+        );
     }
 
     #[test]
     fn test_explore_cabp_local_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/cabp/cabp.mcrl2", CachingStrategy::Local);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/cabp/cabp.mcrl2",
+            CachingStrategy::Local,
+        );
     }
 
     #[test]
     fn test_explore_cabp_global_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/cabp/cabp.mcrl2", CachingStrategy::Global);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/cabp/cabp.mcrl2",
+            CachingStrategy::Global,
+        );
     }
 
     #[test]
     fn test_explore_dining3_local_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/dining/dining3.mcrl2", CachingStrategy::Local);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/dining/dining3.mcrl2",
+            CachingStrategy::Local,
+        );
     }
 
     #[test]
     fn test_explore_dining3_global_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/dining/dining3.mcrl2", CachingStrategy::Global);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/dining/dining3.mcrl2",
+            CachingStrategy::Global,
+        );
     }
 
     #[test]
     fn test_explore_onebit_local_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/onebit/onebit.mcrl2", CachingStrategy::Local);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/onebit/onebit.mcrl2",
+            CachingStrategy::Local,
+        );
     }
 
     #[test]
     fn test_explore_onebit_global_cache() {
-        compare_with_lps2lts_caching("../../../examples/mCRL2/academic/onebit/onebit.mcrl2", CachingStrategy::Global);
+        compare_with_lps2lts_caching(
+            "../../../examples/mCRL2/academic/onebit/onebit.mcrl2",
+            CachingStrategy::Global,
+        );
     }
 }

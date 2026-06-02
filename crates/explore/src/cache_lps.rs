@@ -5,7 +5,8 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use allocator_api2::alloc::Global;
-use hashbrown::HashMap;
+use rustc_hash::FxHashMap;
+
 use merc_utilities::MercError;
 
 use crate::BTreeForest;
@@ -22,7 +23,7 @@ pub enum CachingStrategy {
     None,
     /// Each summand maintains its own independent cache.
     Local,
-    /// All summands share a single global cache keyed by (summand_index, key).
+    /// All summands share a single global cache.
     Global,
 }
 
@@ -37,28 +38,39 @@ pub struct CacheLPS<P: LPS> {
 
 struct CacheShared<V: Slot, L: Clone> {
     /// Stores the nodes for all the cached keys and values, ensuring that the cache is stored compactly.
-    forest: RefCell<BTreeForest<V, Global, 2>>,
+    forest: RefCell<BTreeForest<V, Global>>,
 
-    /// A list of summand local caches.
-    local_caches: RefCell<Vec<HashMap<Tree, Vec<(L, Tree)>>>>,
+    /// An array of summand local caches.
+    local_caches: RefCell<Vec<FxHashMap<Tree, Vec<(L, Tree)>>>>,
 
-    ///
-    global_cache: RefCell<HashMap<(usize, Tree), Vec<(L, Tree)>>>,
+    /// A single global cache mapping (summand_index, key) to cached results.
+    global_cache: RefCell<FxHashMap<(usize, Tree), Vec<(L, Tree)>>>,
+
     key_buf: RefCell<Vec<V>>,
     replay_buf: RefCell<Vec<V>>,
 }
 
 /// Thin metadata wrapper for a single summand in a [`CacheLPS`].
 pub struct CacheSummandWrapper<P: LPS> {
+    /// Index of the summand in the LPS, used for cache lookups.
     index: usize,
+
+    /// Positions in the state vector that are read by this summand; these form the cache key.
     read_positions: Vec<usize>,
+    /// Positions in the state vector that are written by this summand; these are stored in the cache values.
     write_positions: Vec<usize>,
+
+    /// Caching strategy in effect for this summand.
     strategy: CachingStrategy,
+
+    /// Shared cache data structures.
     shared: Rc<CacheShared<P::Value, P::Label>>,
+
     /// Number of enumerations served from the cache.
     hits: Cell<u64>,
     /// Number of enumerations that had to be delegated to the inner summand.
     misses: Cell<u64>,
+
     _marker: PhantomData<P>,
 }
 
@@ -75,8 +87,8 @@ impl<P: LPS> CacheLPS<P> {
         let num_summands = inner.summands().len();
         let shared = Rc::new(CacheShared {
             forest: RefCell::new(BTreeForest::new()),
-            local_caches: RefCell::new(vec![HashMap::new(); num_summands]),
-            global_cache: RefCell::new(HashMap::new()),
+            local_caches: RefCell::new(vec![FxHashMap::default(); num_summands]),
+            global_cache: RefCell::new(FxHashMap::default()),
             key_buf: RefCell::new(Vec::new()),
             replay_buf: RefCell::new(Vec::new()),
         });
@@ -135,7 +147,7 @@ impl<P: LPS> CacheLPS<P> {
     }
 }
 
-/// Cache metrics for a single summand of a [`CacheLPS`].
+/// Cache metrics for a single summand.
 #[derive(Clone, Copy, Debug)]
 pub struct SummandCacheMetrics {
     /// Index of the summand in the LPS.
@@ -196,7 +208,11 @@ impl CacheMetrics {
     pub fn hit_rate(&self) -> f64 {
         let hits = self.total_hits();
         let lookups = hits + self.total_misses();
-        if lookups == 0 { 0.0 } else { hits as f64 / lookups as f64 }
+        if lookups == 0 {
+            0.0
+        } else {
+            hits as f64 / lookups as f64
+        }
     }
 }
 
@@ -329,7 +345,10 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
             for (label, write_tree) in &results {
                 replay_buf.clear();
                 replay_buf.extend_from_slice(state);
-                for (&pos, value) in self.write_positions.iter().zip(self.shared.forest.borrow().iter(*write_tree))
+                for (&pos, value) in self
+                    .write_positions
+                    .iter()
+                    .zip(self.shared.forest.borrow().iter(*write_tree))
                 {
                     replay_buf[pos] = value;
                 }

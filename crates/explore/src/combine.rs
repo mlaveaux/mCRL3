@@ -540,8 +540,10 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
         for i in 0..self.lts_list.len() {
             if self.current_subset & (1 << i) != 0 {
                 let state = ctx.base_target[i];
+                // This is necessary to avoid introducing the ExactSizeIterator bound on L::outgoing_transitions.
+                let iter = self.lts_list[i].outgoing_transitions(state);
+                let len = iter.count();
                 let mut iter = self.lts_list[i].outgoing_transitions(state);
-                let len = iter.len();
                 let Some(first) = iter.next() else {
                     return false;
                 };

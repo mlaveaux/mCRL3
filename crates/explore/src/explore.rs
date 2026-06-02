@@ -17,18 +17,15 @@ use crate::Summand;
 /// Order in which discovered states are explored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[derive(Default)]
 pub enum ExplorationStrategy {
     /// Depth-first exploration (LIFO).
+    #[default]
     Dfs,
     /// Breadth-first exploration (FIFO).
     Bfs,
 }
 
-impl Default for ExplorationStrategy {
-    fn default() -> Self {
-        Self::Dfs
-    }
-}
 
 /// Explores the state space of `lps` and feeds the discovered transitions to
 /// `builder`.
@@ -38,12 +35,7 @@ impl Default for ExplorationStrategy {
 /// The `builder` is finalised before returning so the resulting LTS — whether
 /// in memory or streamed to disk — can be obtained from the builder by the
 /// caller.
-pub fn explore<P, B>(
-    builder: &mut B,
-    lps: &P,
-    strategy: ExplorationStrategy,
-    timing: &Timing,
-) -> Result<(), MercError>
+pub fn explore<P, B>(builder: &mut B, lps: &P, strategy: ExplorationStrategy, timing: &Timing) -> Result<(), MercError>
 where
     P: LPS,
     B: LtsBuilder<P::Label>,
@@ -86,7 +78,7 @@ where
                     // tells us whether the state vector still needs exploring.
                     let (target_ref, is_new) = discovered.insert(next_state);
                     let to = StateIndex::new(target_ref.index());
-                    // builder.add_transition(from, label, to)?;
+                    builder.add_transition(from, label, to)?;
                     if is_new {
                         working.push_back(target_ref);
                     }
