@@ -945,6 +945,7 @@ dependencies = [
  "merc_io",
  "merc_ldd",
  "merc_lts",
+ "merc_reduction",
  "merc_symbolic",
  "merc_tools",
  "merc_unsafety",
@@ -1036,6 +1037,7 @@ dependencies = [
 <<<<<<< HEAD
 =======
  "allocator-api2 0.2.21",
+ "clap",
  "dashmap",
  "hashbrown 0.17.1",
 >>>>>>> f934d866 (Use the DiscoveredSet in state space exploration to avoid allocations)

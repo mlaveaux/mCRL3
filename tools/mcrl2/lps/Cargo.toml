@@ -9,7 +9,7 @@ rust-version.workspace = true
 mcrl2.workspace = true
 merc_collections.workspace = true
 merc_data.workspace = true
-merc_explore.workspace = true
+merc_explore = { workspace = true, features = ["clap"] }
 merc_io.workspace = true
 merc_ldd.workspace = true
 merc_lts.workspace = true
@@ -29,4 +29,5 @@ streaming-iterator.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+merc_reduction.workspace = true
 tempfile.workspace = true
