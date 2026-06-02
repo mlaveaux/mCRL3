@@ -95,6 +95,10 @@ struct ExploreExplicitArgs {
 
     #[arg(long, short('c'), value_enum, default_value_t = CachingStrategy::None)]
     caching: CachingStrategy,
+
+    /// Order in which discovered states are explored.
+    #[arg(long, short('s'), value_enum, default_value_t = ExplorationStrategy::Dfs)]
+    strategy: ExplorationStrategy,
 }
 
 fn main() -> Result<ExitCode, MercError> {
