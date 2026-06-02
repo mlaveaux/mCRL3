@@ -2,9 +2,11 @@
 
 mod block_partition;
 mod compare;
+mod distinguishing_formula;
 mod divergence_preserving;
 mod diverges;
 mod longest_tau_path;
+mod partition_tree;
 mod partition;
 mod quotient;
 mod reduce;
@@ -17,9 +19,11 @@ mod weak_bisimulation;
 
 pub use block_partition::*;
 pub use compare::*;
+pub use distinguishing_formula::*;
 pub use divergence_preserving::*;
 pub use diverges::*;
 pub use longest_tau_path::*;
+pub use partition_tree::*;
 pub use partition::*;
 pub use quotient::*;
 pub use reduce::*;
