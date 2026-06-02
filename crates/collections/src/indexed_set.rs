@@ -2,18 +2,16 @@ use core::panic;
 use std::fmt;
 use std::hash::BuildHasher;
 use std::hash::Hash;
-use std::hash::Hasher;
 use std::ops::Deref;
 use std::ops::Index;
 use std::ops::IndexMut;
 
 use hashbrown::Equivalent;
-use hashbrown::HashSet;
+use hashbrown::HashTable;
 use rustc_hash::FxBuildHasher;
 
 use merc_utilities::GenerationCounter;
 use merc_utilities::GenerationalIndex;
-use merc_utilities::NoHasherBuilder;
 use merc_utilities::cast;
 
 /// A type-safe index for use with [IndexedSet]. Uses generational indices in debug builds to assert
@@ -46,8 +44,9 @@ impl fmt::Display for SetIndex {
 pub struct IndexedSet<T, S = FxBuildHasher> {
     /// The table of elements, which can be either filled or empty.
     table: Vec<IndexSetEntry<T>>,
-    /// Indexes of the elements in the set, using NoHasher to directly use precomputed hashes.
-    index: HashSet<IndexEntry, NoHasherBuilder>,
+    /// Indexes of the elements in the set. Stores only the index; the hash is recomputed via the
+    /// stored `hasher` on lookup using [`HashTable`]'s explicit-hash API.
+    index: HashTable<usize>,
     /// A list of free nodes, where the value is the first free node.
     free: Option<usize>,
     /// The number of generations
@@ -67,7 +66,7 @@ impl<T, S: BuildHasher + Default> IndexedSet<T, S> {
     pub fn new() -> IndexedSet<T, S> {
         IndexedSet {
             table: Vec::default(),
-            index: HashSet::with_hasher(NoHasherBuilder),
+            index: HashTable::new(),
             free: None,
             generation_counter: GenerationCounter::new(),
             hasher: S::default(),
@@ -80,7 +79,7 @@ impl<T, S> IndexedSet<T, S> {
     pub fn with_hasher(hash_builder: S) -> IndexedSet<T, S> {
         IndexedSet {
             table: Vec::default(),
-            index: HashSet::with_hasher(NoHasherBuilder),
+            index: HashTable::new(),
             free: None,
             generation_counter: GenerationCounter::new(),
             hasher: hash_builder,
@@ -154,44 +153,25 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
         Q: Hash + Equivalent<T>,
         T: From<&'a Q>,
     {
-        let equivalent = IndexValueEquivalent::new(value, &self.hasher, &self.table);
+        let hash = self.hasher.hash_one(value);
 
-        if let Some(entry) = self.index.get(&equivalent) {
+        if let Some(&existing) = self
+            .index
+            .find(hash, |&i| entry_matches(&self.table, i, value))
+        {
             // The element is already in the set, so return the index.
-            return (SetIndex(self.generation_counter.recall_index(entry.index)), false);
+            return (SetIndex(self.generation_counter.recall_index(existing)), false);
         }
 
         let value: T = value.into();
-        let hash = self.hasher.hash_one(&value);
+        debug_assert_eq!(hash, self.hasher.hash_one(&value), "Hash values should be the same");
 
-        debug_assert_eq!(hash, equivalent.hash(), "Hash values should be the same");
-
-        let index = match self.free {
-            Some(first) => {
-                let next = match self.table[first] {
-                    IndexSetEntry::Empty(x) => x,
-                    IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
-                };
-
-                if first == next {
-                    // The list is now empty as its first element points to itself.
-                    self.free = None;
-                } else {
-                    // Update free to be the next element in the list.
-                    self.free = Some(next);
-                }
-
-                self.table[first] = IndexSetEntry::Filled(value);
-                first
-            }
-            None => {
-                // No free positions so insert new.
-                self.table.push(IndexSetEntry::Filled(value));
-                self.table.len() - 1
-            }
-        };
-
-        self.index.insert(IndexEntry::new(index, hash));
+        let index = self.insert_into_table(value);
+        let hasher_ref = &self.hasher;
+        let table_ref = &self.table;
+        self.index.insert_unique(hash, index, |&i| {
+            entry_hash(table_ref, hasher_ref, i)
+        });
         (SetIndex(self.generation_counter.create_index(index)), true)
     }
 
@@ -199,41 +179,22 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     ///
     /// Returns the corresponding index and a boolean indicating if the element was inserted.
     pub fn insert(&mut self, value: T) -> (SetIndex, bool) {
-        let equivalent = IndexValueEquivalent::new(&value, &self.hasher, &self.table);
+        let hash = self.hasher.hash_one(&value);
 
-        if let Some(entry) = self.index.get(&equivalent) {
+        if let Some(&existing) = self
+            .index
+            .find(hash, |&i| entry_matches(&self.table, i, &value))
+        {
             // The element is already in the set, so return the index.
-            return (SetIndex(self.generation_counter.recall_index(entry.index)), false);
+            return (SetIndex(self.generation_counter.recall_index(existing)), false);
         }
 
-        let hash = equivalent.hash();
-
-        let index = match self.free {
-            Some(first) => {
-                let next = match self.table[first] {
-                    IndexSetEntry::Empty(x) => x,
-                    IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
-                };
-
-                if first == next {
-                    // The list is now empty as its first element points to itself.
-                    self.free = None;
-                } else {
-                    // Update free to be the next element in the list.
-                    self.free = Some(next);
-                }
-
-                self.table[first] = IndexSetEntry::Filled(value);
-                first
-            }
-            None => {
-                // No free positions so insert new.
-                self.table.push(IndexSetEntry::Filled(value));
-                self.table.len() - 1
-            }
-        };
-
-        self.index.insert(IndexEntry::new(index, hash));
+        let index = self.insert_into_table(value);
+        let hasher_ref = &self.hasher;
+        let table_ref = &self.table;
+        self.index.insert_unique(hash, index, |&i| {
+            entry_hash(table_ref, hasher_ref, i)
+        });
         (SetIndex(self.generation_counter.create_index(index)), true)
     }
 
@@ -242,11 +203,10 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     where
         Q: Hash + Equivalent<T>,
     {
-        let equivalent = IndexValueEquivalent::new(key, &self.hasher, &self.table);
-
+        let hash = self.hasher.hash_one(key);
         self.index
-            .get(&equivalent)
-            .map(|entry| SetIndex(self.generation_counter.recall_index(entry.index)))
+            .find(hash, |&i| entry_matches(&self.table, i, key))
+            .map(|&i| SetIndex(self.generation_counter.recall_index(i)))
     }
 
     /// Erases all elements for which f(index, element) returns false. Allows
@@ -259,11 +219,9 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
             if let IndexSetEntry::Filled(value) = element
                 && !f(SetIndex(self.generation_counter.recall_index(index)), value)
             {
-                // Find and remove the IndexEntry from the index set
-                let entry_to_remove = self.index.iter().find(|entry| entry.index == index).cloned();
-
-                if let Some(entry) = entry_to_remove {
-                    self.index.remove(&entry);
+                let hash = self.hasher.hash_one(value);
+                if let Ok(entry) = self.index.find_entry(hash, |&i| i == index) {
+                    entry.remove();
                 }
 
                 match self.free {
@@ -281,16 +239,20 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
 
     /// Removes the given element from the set.
     pub fn remove(&mut self, element: &T) -> bool {
-        let equivalent = IndexValueEquivalent::new(element, &self.hasher, &self.table);
+        let hash = self.hasher.hash_one(element);
 
-        if let Some(entry) = self.index.take(&equivalent) {
+        if let Ok(entry) = self
+            .index
+            .find_entry(hash, |&i| entry_matches(&self.table, i, element))
+        {
+            let (removed_index, _) = entry.remove();
             let next = match self.free {
                 Some(next) => next,
-                None => entry.index,
+                None => removed_index,
             };
 
-            self.table[entry.index] = IndexSetEntry::Empty(next);
-            self.free = Some(entry.index);
+            self.table[removed_index] = IndexSetEntry::Empty(next);
+            self.free = Some(removed_index);
             true
         } else {
             // The element was not found in the set.
@@ -311,9 +273,39 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     where
         Q: Hash + Equivalent<T>,
     {
-        // Compute the hash using our hash_builder
-        let equivalent = IndexValueEquivalent::new(element, &self.hasher, &self.table);
-        self.index.contains(&equivalent)
+        let hash = self.hasher.hash_one(element);
+        self.index
+            .find(hash, |&i| entry_matches(&self.table, i, element))
+            .is_some()
+    }
+
+    /// Inserts `value` into the `table`, reusing a free slot if one is available, and returns
+    /// its index. Does not modify the secondary hash index.
+    fn insert_into_table(&mut self, value: T) -> usize {
+        match self.free {
+            Some(first) => {
+                let next = match self.table[first] {
+                    IndexSetEntry::Empty(x) => x,
+                    IndexSetEntry::Filled(_) => panic!("The free list contains a filled element"),
+                };
+
+                if first == next {
+                    // The list is now empty as its first element points to itself.
+                    self.free = None;
+                } else {
+                    // Update free to be the next element in the list.
+                    self.free = Some(next);
+                }
+
+                self.table[first] = IndexSetEntry::Filled(value);
+                first
+            }
+            None => {
+                // No free positions so insert new.
+                self.table.push(IndexSetEntry::Filled(value));
+                self.table.len() - 1
+            }
+        }
     }
 }
 
@@ -346,69 +338,23 @@ impl<T, S: BuildHasher> IndexMut<SetIndex> for IndexedSet<T, S> {
     }
 }
 
-/// An entry in the index that stores both the index and a precomputed hash value
-#[derive(Copy, Clone, PartialEq, Eq)]
-struct IndexEntry {
-    /// The index into the table
-    index: usize,
-    /// Precomputed hash value of the element at this index
-    hash: u64,
-}
-
-impl IndexEntry {
-    /// Creates a new IndexEntry with the given index and hash value
-    fn new(index: usize, hash: u64) -> Self {
-        Self { index, hash }
+/// Returns whether the element stored at `table[index]` is equivalent to `value`.
+///
+/// Returns `false` for free slots, which should never appear in the secondary hash index.
+fn entry_matches<T, Q: Equivalent<T>>(table: &[IndexSetEntry<T>], index: usize, value: &Q) -> bool {
+    match &table[index] {
+        IndexSetEntry::Filled(element) => value.equivalent(element),
+        IndexSetEntry::Empty(_) => false,
     }
 }
 
-impl Hash for IndexEntry {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // Simply use the precomputed hash value
-        state.write_u64(self.hash);
-    }
-}
-
-/// An equivalent wrapper that allows looking up elements in a set using the original value.
-/// This avoids duplicating the key in both the table and index.
-struct IndexValueEquivalent<'a, T, Q> {
-    value: &'a Q,
-    hash: u64,
-    table: &'a Vec<IndexSetEntry<T>>,
-}
-
-impl<T, Q> IndexValueEquivalent<'_, T, Q> {
-    fn hash(&self) -> u64 {
-        // This is a placeholder for the actual hash function
-        self.hash
-    }
-}
-
-impl<'a, T, Q: Hash> IndexValueEquivalent<'a, T, Q> {
-    /// Creates a new IndexValueEquivalent with the given value and table.
-    fn new<S: BuildHasher>(value: &'a Q, hasher: &S, table: &'a Vec<IndexSetEntry<T>>) -> Self {
-        // Constructor allows for centralized creation logic
-        Self {
-            value,
-            table,
-            hash: hasher.hash_one(value),
-        }
-    }
-}
-
-impl<T, Q: Equivalent<T>> Equivalent<IndexEntry> for IndexValueEquivalent<'_, T, Q> {
-    fn equivalent(&self, key: &IndexEntry) -> bool {
-        if let Some(IndexSetEntry::Filled(element)) = self.table.get(key.index) {
-            self.value.equivalent(element)
-        } else {
-            false
-        }
-    }
-}
-
-impl<T, Q> Hash for IndexValueEquivalent<'_, T, Q> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
+/// Computes the hash of the filled element stored at `table[index]` using `hasher`.
+///
+/// Used as the rehasher callback for [`HashTable`] operations.
+fn entry_hash<T: Hash, S: BuildHasher>(table: &[IndexSetEntry<T>], hasher: &S, index: usize) -> u64 {
+    match &table[index] {
+        IndexSetEntry::Filled(element) => hasher.hash_one(element),
+        IndexSetEntry::Empty(_) => panic!("entry_hash called on an empty slot"),
     }
 }
 
