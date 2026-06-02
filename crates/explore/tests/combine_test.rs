@@ -8,7 +8,10 @@ use itertools::Itertools;
 use log::info;
 use log::trace;
 use merc_collections::VecBag;
+use merc_io::temp_dir;
+use merc_io::traced_command;
 use merc_lts::LTS;
+use merc_lts::LtsAction;
 use merc_lts::LtsBuilderFast;
 use merc_lts::LtsMultiAction;
 use merc_lts::StateIndex;
@@ -28,38 +31,7 @@ use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
 use tempfile::TempDir;
 
-use merc_explore::LtsActionSend;
 use merc_explore::combine_lts;
-
-/// Uses `MERC_DUMP` as the temporary directory if set, and otherwise the default temp directory.
-fn temp_dir(name: &str) -> Result<TempDir, MercError> {
-    if let Ok(dump_dir) = std::env::var("MERC_DUMP") {
-        // Check if the directory is an absolute path
-        if !Path::new(dump_dir.as_str()).is_absolute() {
-            panic!("MERC_DUMP must be an absolute path, because tests write relative to their source file.");
-        }
-
-        // If we are asking for MERC_DUMP, disable cleanup.
-        let mut dir = tempfile::TempDir::with_prefix_in(name, dump_dir)?;
-        dir.disable_cleanup(true);
-        Ok(dir)
-    } else {
-        tempfile::tempdir().map_err(|e| e.into())
-    }
-}
-
-fn traced_status(command: &mut Command) -> io::Result<std::process::ExitStatus> {
-    trace!(
-        "{} {}",
-        command.get_program().to_string_lossy(),
-        command
-            .get_args()
-            .map(|arg| arg.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    command.status()
-}
 
 /// Returns a random multi-action label with action names sampled from the given list.
 fn random_multi_action<R: rand::Rng>(rng: &mut R, actions: &[String], max_size: usize) -> MultiActionLabel {
@@ -90,26 +62,16 @@ fn test_mcrl2_ltscombine() {
     // Generate a dummy linear process specification to convert the .aut files to .lts format.
     writeln!(&mut File::create(&spec_path).unwrap(), "act a, b, c; init delta;").unwrap();
 
-    let status = traced_status(Command::new(&mcrl2_mcrl22lps).arg(&spec_path).arg(&lps_path))
+    let status = traced_command(Command::new(&mcrl2_mcrl22lps).arg(&spec_path).arg(&lps_path))
         .expect("Failed to run ltsconvert");
     assert!(status.success(), "ltsconvert failed with status: {status}");
 
     random_test(100, |rng| {
         let left_lts = random_lts::<String, _>(rng, 1000, 3)
-            .relabel(|label| {
-                Ok(LtsMultiAction::new(VecBag::singleton(LtsActionSend::new(
-                    label,
-                    vec![],
-                ))))
-            })
+            .relabel(|label| Ok(LtsMultiAction::new(VecBag::singleton(LtsAction::new(label, vec![])))))
             .unwrap();
         let right_lts = random_lts::<String, _>(rng, 1000, 3)
-            .relabel(|label| {
-                Ok(LtsMultiAction::new(VecBag::singleton(LtsActionSend::new(
-                    label,
-                    vec![],
-                ))))
-            })
+            .relabel(|label| Ok(LtsMultiAction::new(VecBag::singleton(LtsAction::new(label, vec![])))))
             .unwrap();
 
         let left_path = temp_dir.path().join("left.aut");
@@ -120,7 +82,7 @@ fn test_mcrl2_ltscombine() {
         // For mCRL2's ltscombine we need to convert the inputs to the mCRL2 LTS format.
         let left_lts_path = temp_dir.path().join("left.lts");
         let right_lts_path = temp_dir.path().join("right.lts");
-        let status = traced_status(
+        let status = traced_command(
             Command::new(&mcrl2_ltsconvert)
                 .arg("-enone")
                 .arg(&left_path)
@@ -131,7 +93,7 @@ fn test_mcrl2_ltscombine() {
         .expect("Failed to run ltsconvert");
         assert!(status.success(), "ltsconvert failed with status: {status}");
 
-        let status = traced_status(
+        let status = traced_command(
             Command::new(&mcrl2_ltsconvert)
                 .arg("-enone")
                 .arg(&right_path)
@@ -209,14 +171,14 @@ fn test_mcrl2_ltscombine() {
         }
         command.arg(&output_path);
 
-        let status = traced_status(&mut command).expect("Failed to run ltscombine");
+        let status = traced_command(&mut command).expect("Failed to run ltscombine");
         assert!(status.success(), "ltscombine failed with status: {status}");
 
         let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
         let expected_path = temp_dir.path().join("expected.aut");
         write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
-        let mut result: LtsBuilderFast<LtsMultiAction<LtsActionSend>> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        let mut result: LtsBuilderFast<LtsMultiAction<LtsAction>> = LtsBuilderFast::new(Vec::new(), Vec::new());
         combine_lts(
             &mut result,
             vec![left_lts, right_lts],
@@ -226,14 +188,7 @@ fn test_mcrl2_ltscombine() {
             &mut Timing::new(),
         )
         .unwrap();
-        let result_lts = result
-            .finish(StateIndex::new(0), false)
-            .relabel(|label| {
-                Ok(LtsMultiAction::new(
-                    label.into_actions().iter().map(|a| a.to_action()).collect(),
-                ))
-            })
-            .unwrap();
+        let result_lts = result.finish(StateIndex::new(0), false);
 
         let result_path = temp_dir.path().join("result.aut");
         write_mcrl2_aut(&mut File::create(&result_path).unwrap(), &result_lts).unwrap();

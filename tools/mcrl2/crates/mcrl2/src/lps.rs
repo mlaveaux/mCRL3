@@ -189,7 +189,11 @@ impl LearnSuccessorsContext {
 
     /// Assign variables in the persistent substitution (sigma).
     pub fn set_assignments(&self, variables: &[*const _aterm], values: &[*const _aterm]) {
-        assert_eq!(variables.len(), values.len(), "Variables and values must have equal length");
+        assert_eq!(
+            variables.len(),
+            values.len(),
+            "Variables and values must have equal length"
+        );
 
         let mut context = self.context.borrow_mut();
         mcrl2_lps_set_assignments(

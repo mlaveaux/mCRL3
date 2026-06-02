@@ -9,7 +9,6 @@ use clap::Parser;
 use clap::Subcommand;
 use log::info;
 
-use merc_explore::LtsActionSend;
 use merc_explore::combine_lts;
 use merc_io::LargeFormatter;
 use merc_lts::GenericLts;

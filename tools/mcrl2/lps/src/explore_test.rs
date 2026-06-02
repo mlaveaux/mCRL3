@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -7,10 +6,13 @@ mod tests {
 
     use mcrl2::read_lps;
     use merc_explore::CachingStrategy;
+    use merc_io::temp_dir;
+    use merc_io::traced_command;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
     use merc_lts::StateIndex;
     use merc_lts::read_mcrl2_aut;
+    use merc_lts::write_mcrl2_aut;
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
     use merc_utilities::Timing;
@@ -32,31 +34,27 @@ mod tests {
         let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(spec_relative_path);
         assert!(spec_path.exists(), "Spec file not found: {}", spec_path.display());
 
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = temp_dir("test_explore_lps").unwrap();
         let lps_path = temp_dir.path().join("spec.lps");
         let aut_path = temp_dir.path().join("reference.aut");
 
-        let status = Command::new(&mcrl22lps)
-            .arg(&spec_path)
-            .arg(&lps_path)
-            .status()
+        let status = traced_command(Command::new(&mcrl22lps).arg(&spec_path).arg(&lps_path))
             .expect("Failed to execute mcrl22lps");
         assert!(status.success(), "mcrl22lps failed with status: {status}");
 
-        let status = Command::new(&lps2lts)
-            .arg(&lps_path)
-            .arg(&aut_path)
-            .status()
-            .expect("Failed to execute lps2lts");
+        let status =
+            traced_command(Command::new(&lps2lts).arg(&lps_path).arg(&aut_path)).expect("Failed to execute lps2lts");
         assert!(status.success(), "lps2lts failed with status: {status}");
 
-        let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap())
-            .expect("Failed to read reference .aut");
+        let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap()).expect("Failed to read reference .aut");
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
         explore_lps_explicit(&mut builder, &lps, CachingStrategy::None, &Timing::new()).expect("Failed to explore LPS");
         let result_lts = builder.finish(StateIndex::new(0), false);
+
+        write_mcrl2_aut(&mut File::create(temp_dir.path().join("result.aut")).unwrap(), &result_lts)
+            .expect("Failed to write result .aut");
 
         assert_eq!(
             reference_lts.num_of_states(),
