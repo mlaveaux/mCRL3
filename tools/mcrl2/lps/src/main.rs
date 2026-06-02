@@ -28,6 +28,7 @@ use explore_symbolic::explore_lps_symbolic;
 
 mod explore_explicit;
 mod explore_symbolic;
+mod explore_test;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum LpsFormat {
