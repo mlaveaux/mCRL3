@@ -1,13 +1,14 @@
 use std::fs::File;
 use std::io::Write;
+use std::io::{self};
 use std::path::Path;
 use std::process::Command;
 
 use itertools::Itertools;
 use log::info;
+use log::trace;
 use merc_collections::VecBag;
-use merc_io::temp_dir;
-use merc_io::traced_command;
+use merc_io::{temp_dir, traced_command};
 use merc_lts::LTS;
 use merc_lts::LtsAction;
 use merc_lts::LtsBuilderFast;
@@ -21,11 +22,13 @@ use merc_reduction::Equivalence;
 use merc_reduction::compare_lts;
 use merc_syntax::CommExpr;
 use merc_syntax::MultiActionLabel;
+use merc_utilities::MercError;
 use merc_utilities::Timing;
 use merc_utilities::random_test;
 use rand::RngExt;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
+use tempfile::TempDir;
 
 use merc_explore::combine_lts;
 

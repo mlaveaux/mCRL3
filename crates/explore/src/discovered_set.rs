@@ -40,7 +40,7 @@ where
     /// Hash-consed forest backing every stored state sequence; positions are
     /// implicit in iteration order, so nodes are shared by content regardless of
     /// position.
-    forest: BTreeForest<T, A, 2>,
+    forest: BTreeForest<T, A>,
     /// Stored states indexed by [`StateRef`]; each is the root of the state's
     /// value sequence.
     states: Vec<Tree, A>,

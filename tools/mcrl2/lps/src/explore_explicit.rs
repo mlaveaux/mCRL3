@@ -425,12 +425,7 @@ impl fmt::Debug for ExplicitLinearProcessSpecification {
 
 impl fmt::Debug for ExplicitSummand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{} -> {}",
-            self.condition.pretty_print(),
-            self.multi_action
-        )?;
+        writeln!(f, "{} -> {}", self.condition.pretty_print(), self.multi_action)?;
         writeln!(f, "\t\tread indices: {:?}", self.read_indices)?;
         writeln!(f, "\t\twrite indices: {:?}", self.write_indices)
     }
