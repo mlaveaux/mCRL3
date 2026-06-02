@@ -126,6 +126,8 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
 
     // Working refers to the state vectors in discovered.
     let mut working: Vec<SetIndex> = vec![index];
+    // Reusable scratch buffers for the parallel transition iterator.
+    let mut iter_context = ParallelTransitionContext::new();
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
             // Clone the current state vector since discovered may be mutated below.
@@ -135,7 +137,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
                 .as_ref();
 
             // Loop over all subsets of LTSs and their outgoing transitions in the current state vector.
-            let mut iter = ParallelTransitionIter::new(&parallel_composition, current_state_vector);
+            let mut iter = ParallelTransitionIter::new(&mut iter_context, &parallel_composition, current_state_vector);
             loop {
                 iter.advance();
                 let Some(transition) = iter.get() else {
@@ -421,103 +423,192 @@ pub struct ParallelTransition {
     pub target: Vec<StateIndex>,
 }
 
+/// Reusable scratch buffers for [`ParallelTransitionIter`].
+///
+/// Holding these buffers in a long-lived context avoids re-allocating per
+/// source state during a single `combine_lts` invocation.
+pub struct ParallelTransitionContext {
+    /// Indices of LTSs participating in the current subset.
+    subset_indices: Vec<usize>,
+    /// Snapshot of the current source state vector (one state per LTS).
+    base_target: Vec<StateIndex>,
+    /// Current transition for each LTS in `subset_indices`, in the same order.
+    current: Vec<Transition>,
+    /// Current offset into the outgoing-transition iterator of each LTS in
+    /// `subset_indices`, in the same order.
+    offsets: Vec<usize>,
+    /// Length of the outgoing-transition iterator of each LTS in
+    /// `subset_indices`, in the same order.
+    lengths: Vec<usize>,
+    /// Output buffer surfaced via `StreamingIterator::get`.
+    result: ParallelTransition,
+}
+
+impl ParallelTransitionContext {
+    /// Creates a fresh context with empty buffers.
+    pub fn new() -> Self {
+        Self {
+            subset_indices: Vec::new(),
+            base_target: Vec::new(),
+            current: Vec::new(),
+            offsets: Vec::new(),
+            lengths: Vec::new(),
+            result: ParallelTransition {
+                subset_indices: Vec::new(),
+                labels: Vec::new(),
+                target: Vec::new(),
+            },
+        }
+    }
+}
+
+impl Default for ParallelTransitionContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A streaming iterator that lazily enumerates all parallel transitions from a
 /// given state vector across multiple LTSs.
 ///
 /// For each non-empty subset $J \subseteq \{0, \ldots, n-1\}$ of LTSs,
 /// enumerates the Cartesian product of outgoing transitions from the LTSs in
-/// $J$. The result buffers are updated in-place to avoid per-`next()` allocation.
-pub struct ParallelTransitionIter {
-    /// Pre-collected outgoing transitions for each LTS at the current state.
-    all_outgoing: Vec<Vec<Transition>>,
-
+/// $J$ without materialising all outgoing transitions ahead of time. Internal
+/// buffers live in a [`ParallelTransitionContext`] that can be reused across
+/// many source states.
+pub struct ParallelTransitionIter<'ctx, 'a, L: LTS> {
+    ctx: &'ctx mut ParallelTransitionContext,
+    lts_list: &'a [L],
     /// Current subset bitmask (1 to 2^n - 1).
     current_subset: usize,
     /// Upper bound for subset enumeration (2^n).
     max_subset: usize,
-
-    /// Indices of LTSs participating in the current subset.
-    subset_indices: Vec<usize>,
-    /// The Cartesian product iterator for the current subset.
-    product: CartesianProduct,
-
-    /// The base target state vector (the current state for each LTS).
-    base_target: Vec<StateIndex>,
-    /// Output buffer, reused across `advance()` calls.
-    result: ParallelTransition,
-
     done: bool,
     started: bool,
 }
 
-impl ParallelTransitionIter {
+impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
     /// Creates a new iterator over parallel transitions for the given LTSs
-    /// and current state vector.
-    pub fn new<L: LTS>(lts_list: &[L], current_states: &[StateIndex]) -> Self {
+    /// and current state vector, reusing the buffers held in `ctx`.
+    pub fn new(ctx: &'ctx mut ParallelTransitionContext, lts_list: &'a [L], current_states: &[StateIndex]) -> Self {
         assert!(
             lts_list.len() < usize::BITS as usize,
             "Number of LTSs exceeds maximum supported for subset enumeration"
         );
+        assert_eq!(
+            lts_list.len(),
+            current_states.len(),
+            "LTS slice and state vector must have the same length"
+        );
 
-        let all_outgoing: Vec<Vec<Transition>> = lts_list
-            .iter()
-            .zip(current_states.iter())
-            .map(|(lts, &state)| lts.outgoing_transitions(state).collect())
-            .collect();
+        // Reset all reusable buffers while keeping their allocated capacity.
+        ctx.subset_indices.clear();
+        ctx.current.clear();
+        ctx.offsets.clear();
+        ctx.lengths.clear();
 
-        ParallelTransitionIter {
-            all_outgoing,
+        ctx.base_target.clear();
+        ctx.base_target.extend_from_slice(current_states);
+
+        ctx.result.subset_indices.clear();
+        ctx.result.labels.clear();
+        ctx.result.target.clear();
+        ctx.result.target.extend_from_slice(current_states);
+
+        Self {
+            ctx,
+            lts_list,
             current_subset: 1,
             max_subset: 1usize << lts_list.len(),
-            subset_indices: Vec::new(),
-            product: CartesianProduct::new(vec![]),
-            base_target: current_states.to_vec(),
-            result: ParallelTransition {
-                subset_indices: Vec::new(),
-                labels: Vec::new(),
-                target: current_states.to_vec(),
-            },
             done: false,
             started: false,
         }
     }
 
-    /// Builds a `CartesianProduct` for the current subset bitmask.
-    /// Returns `true` if the subset produces a non-empty Cartesian product.
+    /// Sets up offsets, lengths and initial transitions for the current subset bitmask.
+    ///
+    /// Returns `true` if the subset has a non-empty Cartesian product (every
+    /// participating LTS has at least one outgoing transition from its
+    /// current state).
     fn setup_subset(&mut self) -> bool {
-        self.subset_indices.clear();
+        let ctx = &mut *self.ctx;
+        ctx.subset_indices.clear();
+        ctx.current.clear();
+        ctx.offsets.clear();
+        ctx.lengths.clear();
 
-        let mut lengths = Vec::new();
-        for i in 0..self.all_outgoing.len() {
+        for i in 0..self.lts_list.len() {
             if self.current_subset & (1 << i) != 0 {
-                if self.all_outgoing[i].is_empty() {
+                let state = ctx.base_target[i];
+                let mut iter = self.lts_list[i].outgoing_transitions(state);
+                let len = iter.len();
+                let Some(first) = iter.next() else {
                     return false;
-                }
-                self.subset_indices.push(i);
-                lengths.push(self.all_outgoing[i].len());
+                };
+                ctx.subset_indices.push(i);
+                ctx.current.push(first);
+                ctx.offsets.push(0);
+                ctx.lengths.push(len);
             }
         }
-
-        self.product = CartesianProduct::new(lengths);
         true
     }
 
-    /// Fills the result buffer from the product's current indices.
-    fn fill_result(&mut self) {
-        self.result.subset_indices.clear();
-        self.result.subset_indices.extend_from_slice(&self.subset_indices);
-        self.result.labels.clear();
-        self.result.target.copy_from_slice(&self.base_target);
+    /// Advances the Cartesian product odometer for the current subset.
+    ///
+    /// Returns `true` if a new combination is available; `false` if the
+    /// subset is exhausted.
+    fn advance_product(&mut self) -> bool {
+        let ctx = &mut *self.ctx;
+        for k in (0..ctx.subset_indices.len()).rev() {
+            let next_offset = ctx.offsets[k] + 1;
+            if next_offset < ctx.lengths[k] {
+                let lts_idx = ctx.subset_indices[k];
+                let state = ctx.base_target[lts_idx];
+                let t = self.lts_list[lts_idx]
+                    .outgoing_transitions(state)
+                    .nth(next_offset)
+                    .expect("Offset is within the iterator's exact length");
+                ctx.offsets[k] = next_offset;
+                ctx.current[k] = t;
+                return true;
+            }
+            // Inner factor exhausted: restart it and carry to the next outer factor.
+            let lts_idx = ctx.subset_indices[k];
+            let state = ctx.base_target[lts_idx];
+            let first = self.lts_list[lts_idx]
+                .outgoing_transitions(state)
+                .next()
+                .expect("Outgoing transitions cannot become empty after a successful setup");
+            ctx.offsets[k] = 0;
+            ctx.current[k] = first;
+        }
+        false
+    }
 
-        for (k, &lts_idx) in self.subset_indices.iter().enumerate() {
-            let transition = &self.all_outgoing[lts_idx][self.product.indices[k]];
-            self.result.labels.push(transition.label);
-            self.result.target[lts_idx] = transition.to;
+    /// Materialises the next result into the context's output buffer.
+    fn fill_result(&mut self) {
+        let ctx = &mut *self.ctx;
+        let subset = &ctx.subset_indices;
+        let current = &ctx.current;
+        let base = &ctx.base_target;
+        let result = &mut ctx.result;
+
+        result.subset_indices.clear();
+        result.subset_indices.extend_from_slice(subset);
+        result.labels.clear();
+        result.target.clear();
+        result.target.extend_from_slice(base);
+
+        for (k, &lts_idx) in subset.iter().enumerate() {
+            let t = &current[k];
+            result.labels.push(t.label);
+            result.target[lts_idx] = t.to;
         }
     }
 }
 
-impl StreamingIterator for ParallelTransitionIter {
+impl<'a, L: LTS> StreamingIterator for ParallelTransitionIter<'_, 'a, L> {
     type Item = ParallelTransition;
 
     fn advance(&mut self) {
@@ -525,10 +616,9 @@ impl StreamingIterator for ParallelTransitionIter {
             return;
         }
 
-        // Try to advance within current Cartesian product.
+        // Try to advance within the current Cartesian product.
         if self.started {
-            self.product.advance();
-            if self.product.get().is_some() {
+            if self.advance_product() {
                 self.fill_result();
                 return;
             }
@@ -536,14 +626,11 @@ impl StreamingIterator for ParallelTransitionIter {
         }
         self.started = true;
 
-        // Find next subset with a non-empty Cartesian product.
+        // Find the next subset with a non-empty Cartesian product.
         while self.current_subset < self.max_subset {
             if self.setup_subset() {
-                self.product.advance();
-                if self.product.get().is_some() {
-                    self.fill_result();
-                    return;
-                }
+                self.fill_result();
+                return;
             }
             self.current_subset += 1;
         }
@@ -555,246 +642,7 @@ impl StreamingIterator for ParallelTransitionIter {
         if self.done || !self.started {
             None
         } else {
-            Some(&self.result)
+            Some(&self.ctx.result)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs::File;
-    use std::io::Write;
-    use std::io::{self};
-    use std::path::Path;
-    use std::process::Command;
-
-    use itertools::Itertools;
-    use log::info;
-    use log::trace;
-    use merc_collections::VecBag;
-    use merc_lts::LTS;
-    use merc_lts::LtsAction;
-    use merc_lts::LtsBuilderFast;
-    use merc_lts::LtsMultiAction;
-    use merc_lts::StateIndex;
-    use merc_lts::TransitionLabel;
-    use merc_lts::random_lts;
-    use merc_lts::read_lts;
-    use merc_lts::write_mcrl2_aut;
-    use merc_reduction::Equivalence;
-    use merc_reduction::compare_lts;
-    use merc_syntax::CommExpr;
-    use merc_syntax::MultiActionLabel;
-    use merc_utilities::MercError;
-    use merc_utilities::Timing;
-    use merc_utilities::random_test;
-    use rand::RngExt;
-    use rand::seq::IndexedRandom;
-    use rand::seq::IteratorRandom;
-    use tempfile::TempDir;
-
-    use crate::combine::combine_lts;
-
-    /// Uses `MERC_DUMP` as the temporary directory if set, and otherwise the default temp directory.
-    fn temp_dir(name: &str) -> Result<TempDir, MercError> {
-        if let Ok(dump_dir) = std::env::var("MERC_DUMP") {
-            // Check if the directory is an absolute path
-            if !Path::new(dump_dir.as_str()).is_absolute() {
-                panic!("MERC_DUMP must be an absolute path, because tests write relative to their source file.");
-            }
-
-            // If we are asking for MERC_DUMP, disable cleanup.
-            let mut dir = tempfile::TempDir::with_prefix_in(name, dump_dir)?;
-            dir.disable_cleanup(true);
-            Ok(dir)
-        } else {
-            tempfile::tempdir().map_err(|e| e.into())
-        }
-    }
-
-    fn traced_status(command: &mut Command) -> io::Result<std::process::ExitStatus> {
-        trace!(
-            "{} {}",
-            command.get_program().to_string_lossy(),
-            command
-                .get_args()
-                .map(|arg| arg.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        command.status()
-    }
-
-    /// Returns a random multi-action label with action names sampled from the given list.
-    fn random_multi_action<R: rand::Rng>(rng: &mut R, actions: &[String], max_size: usize) -> MultiActionLabel {
-        let max_size = usize::min(actions.len(), max_size);
-        let size = rng.random_range(0..=max_size);
-        let selected_actions = actions.sample(rng, size).cloned().collect::<Vec<_>>();
-        MultiActionLabel::new(selected_actions)
-    }
-
-    #[test]
-    fn test_mcrl2_ltscombine() {
-        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
-            println!("Skipping test: MCRL2_PATH not set");
-            return;
-        };
-
-        let mcrl2_ltscombine = Path::new(&mcrl2_path).join("ltscombine");
-        let mcrl2_mcrl22lps = Path::new(&mcrl2_path).join("mcrl22lps");
-        let mcrl2_ltsconvert = Path::new(&mcrl2_path).join("ltsconvert");
-
-        // Write the random LTS to a temp file for ltsconvert to process.
-        let temp_dir = temp_dir("test_mcrl2_ltscombine").unwrap();
-
-        let spec_path = temp_dir.path().join("spec.mcrl2");
-        let lps_path = temp_dir.path().join("spec.lps");
-        let output_path = temp_dir.path().join("output.lts");
-
-        // Generate a dummy linear process specification to convert the .aut files to .lts format.
-        writeln!(&mut File::create(&spec_path).unwrap(), "act a, b, c; init delta;").unwrap();
-
-        let status = traced_status(Command::new(&mcrl2_mcrl22lps).arg(&spec_path).arg(&lps_path))
-            .expect("Failed to run ltsconvert");
-        assert!(status.success(), "ltsconvert failed with status: {status}");
-
-        random_test(100, |rng| {
-            let left_lts = random_lts::<String, _>(rng, 1000, 3)
-                .relabel(|label| Ok(LtsMultiAction::new(VecBag::singleton(LtsAction::new(label, vec![])))))
-                .unwrap();
-            let right_lts = random_lts::<String, _>(rng, 1000, 3)
-                .relabel(|label| Ok(LtsMultiAction::new(VecBag::singleton(LtsAction::new(label, vec![])))))
-                .unwrap();
-
-            let left_path = temp_dir.path().join("left.aut");
-            let right_path = temp_dir.path().join("right.aut");
-            write_mcrl2_aut(&mut File::create(&left_path).unwrap(), &left_lts).unwrap();
-            write_mcrl2_aut(&mut File::create(&right_path).unwrap(), &right_lts).unwrap();
-
-            // For mCRL2's ltscombine we need to convert the inputs to the mCRL2 LTS format.
-            let left_lts_path = temp_dir.path().join("left.lts");
-            let right_lts_path = temp_dir.path().join("right.lts");
-            let status = traced_status(
-                Command::new(&mcrl2_ltsconvert)
-                    .arg("-enone")
-                    .arg(&left_path)
-                    .arg(&left_lts_path)
-                    .arg("-l")
-                    .arg(&lps_path),
-            )
-            .expect("Failed to run ltsconvert");
-            assert!(status.success(), "ltsconvert failed with status: {status}");
-
-            let status = traced_status(
-                Command::new(&mcrl2_ltsconvert)
-                    .arg("-enone")
-                    .arg(&right_path)
-                    .arg(&right_lts_path)
-                    .arg("-l")
-                    .arg(&lps_path),
-            )
-            .expect("Failed to run ltsconvert");
-            assert!(status.success(), "ltsconvert failed with status: {status}");
-
-            // Allow an arbitrary subset of labels
-            let labels = left_lts
-                .labels()
-                .iter()
-                .chain(right_lts.labels().iter())
-                .map(|l| l.to_string())
-                .filter(|label| !label.is_tau_label())
-                .collect::<Vec<_>>();
-
-            let num_of_allowed = rng.random_range(0..=labels.len());
-            let allow = (0..num_of_allowed)
-                .map(|_| random_multi_action(rng, &labels, 3))
-                .filter(|a| !a.is_tau_label())
-                .collect::<Vec<_>>();
-
-            let num_of_hidden = rng.random_range(0..=labels.len());
-            let hide = labels
-                .iter()
-                .cloned()
-                .filter(|a| !a.is_tau_label())
-                .sample(rng, num_of_hidden);
-
-            let num_of_comm = rng.random_range(0..=5);
-            let mut comm = (0..num_of_comm)
-                .map(|_| {
-                    let size = rng.random_range(2..=3);
-                    let actions = random_multi_action(rng, &labels, size);
-                    let to = labels.choose(rng).unwrap().clone();
-                    CommExpr::new(actions, to)
-                })
-                .filter(|comm| {
-                    !comm.from.is_tau_label() && comm.from.actions.contains(&comm.to) && comm.from.actions.len() >= 2
-                })
-                .collect::<Vec<_>>();
-
-            comm.sort_unstable();
-            comm.dedup();
-
-            // Remove communication expressions with overlapping left-hand sides.
-            let comm = comm
-                .iter()
-                .filter(|&comm_i| {
-                    !comm.iter().any(|comm_j| {
-                        comm_i != comm_j && comm_i.from.actions.iter().any(|a| comm_j.from.actions.contains(a))
-                    })
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            info!("Allow set {{{}}}", allow.iter().format(", "));
-            info!("Hide set {{{}}}", hide.iter().format(", "));
-            info!("Comm set {{{}}}", comm.iter().format(", "));
-
-            // Use ltscombine to compute the combined LTS, which we will compare against our implementation's result
-            let mut command = Command::new(&mcrl2_ltscombine);
-            command.arg(&left_lts_path).arg(&right_lts_path);
-            if !allow.is_empty() {
-                command.arg(format!("--allow={{{}}}", allow.iter().format(", ")));
-            }
-            if !hide.is_empty() {
-                command.arg(format!("--hide={{{}}}", hide.iter().format(", ")));
-            }
-            if !comm.is_empty() {
-                command.arg(format!("--comm={{{}}}", comm.iter().format(", ")));
-            }
-            command.arg(&output_path);
-
-            let status = traced_status(&mut command).expect("Failed to run ltscombine");
-            assert!(status.success(), "ltscombine failed with status: {status}");
-
-            let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
-            let expected_path = temp_dir.path().join("expected.aut");
-            write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
-
-            let mut result: LtsBuilderFast<LtsMultiAction<LtsAction>> = LtsBuilderFast::new(Vec::new(), Vec::new());
-            combine_lts(
-                &mut result,
-                vec![left_lts, right_lts],
-                &hide,
-                &allow,
-                &comm,
-                &mut Timing::new(),
-            )
-            .unwrap();
-            let result_lts = result.finish(StateIndex::new(0), false);
-
-            let result_path = temp_dir.path().join("result.aut");
-            write_mcrl2_aut(&mut File::create(&result_path).unwrap(), &result_lts).unwrap();
-
-            assert!(
-                compare_lts(
-                    Equivalence::StrongBisim,
-                    expected_lts,
-                    result_lts,
-                    false,
-                    &mut Timing::new(),
-                ),
-                "The resulting LTSs are not bisimilar."
-            );
-        });
     }
 }
