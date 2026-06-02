@@ -1,7 +1,10 @@
+use std::cell::Cell;
 use std::cell::RefCell;
+use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use allocator_api2::alloc::Global;
 use hashbrown::HashMap;
 use merc_utilities::MercError;
 
@@ -25,21 +28,21 @@ pub enum CachingStrategy {
 
 /// A wrapper around an [`LPS`] that caches summand enumeration results.
 ///
-/// The cache key for each summand is formed by projecting the state vector
-/// onto the summand's [`Summand::read_positions`]. The cached value stores, per
-/// enumerated transition, the label together with the next-state values at the
-/// summand's [`Summand::write_positions`] only; the remaining (pass-through)
-/// positions are reconstructed from the live source state on each cache hit.
-/// Keys and write-value vectors are interned in a [`BTreeForest`] for compact,
-/// hash-consed storage.
+/// The cache key for each summand is formed by projecting the state vector onto
+/// the summand's read positions.
 pub struct CacheLPS<P: LPS> {
     inner: P,
     summands: Vec<CacheSummandWrapper<P>>,
 }
 
 struct CacheShared<V: Slot, L: Clone> {
-    forest: RefCell<BTreeForest<V>>,
+    /// Stores the nodes for all the cached keys and values, ensuring that the cache is stored compactly.
+    forest: RefCell<BTreeForest<V, Global, 2>>,
+
+    /// A list of summand local caches.
     local_caches: RefCell<Vec<HashMap<Tree, Vec<(L, Tree)>>>>,
+
+    ///
     global_cache: RefCell<HashMap<(usize, Tree), Vec<(L, Tree)>>>,
     key_buf: RefCell<Vec<V>>,
     replay_buf: RefCell<Vec<V>>,
@@ -52,6 +55,10 @@ pub struct CacheSummandWrapper<P: LPS> {
     write_positions: Vec<usize>,
     strategy: CachingStrategy,
     shared: Rc<CacheShared<P::Value, P::Label>>,
+    /// Number of enumerations served from the cache.
+    hits: Cell<u64>,
+    /// Number of enumerations that had to be delegated to the inner summand.
+    misses: Cell<u64>,
     _marker: PhantomData<P>,
 }
 
@@ -84,11 +91,148 @@ impl<P: LPS> CacheLPS<P> {
                 write_positions: s.write_positions().to_vec(),
                 strategy,
                 shared: Rc::clone(&shared),
+                hits: Cell::new(0),
+                misses: Cell::new(0),
                 _marker: PhantomData,
             })
             .collect();
 
         CacheLPS { inner, summands }
+    }
+
+    /// Collects per-summand cache metrics for this [`CacheLPS`].
+    ///
+    /// The returned [`CacheMetrics`] implements [`fmt::Display`] for a
+    /// human-readable summary of cache hits, misses and occupancy.
+    pub fn metrics(&self) -> CacheMetrics {
+        let summands = self
+            .summands
+            .iter()
+            .map(|s| {
+                let entries = match s.strategy {
+                    CachingStrategy::None => 0,
+                    CachingStrategy::Local => s.shared.local_caches.borrow()[s.index].len(),
+                    CachingStrategy::Global => s
+                        .shared
+                        .global_cache
+                        .borrow()
+                        .keys()
+                        .filter(|(index, _)| *index == s.index)
+                        .count(),
+                };
+
+                SummandCacheMetrics {
+                    index: s.index,
+                    strategy: s.strategy,
+                    hits: s.hits.get(),
+                    misses: s.misses.get(),
+                    entries,
+                }
+            })
+            .collect();
+
+        CacheMetrics { summands }
+    }
+}
+
+/// Cache metrics for a single summand of a [`CacheLPS`].
+#[derive(Clone, Copy, Debug)]
+pub struct SummandCacheMetrics {
+    /// Index of the summand in the LPS.
+    pub index: usize,
+    /// Caching strategy in effect for this summand.
+    pub strategy: CachingStrategy,
+    /// Number of enumerations served from the cache.
+    pub hits: u64,
+    /// Number of enumerations delegated to the inner summand.
+    pub misses: u64,
+    /// Number of distinct keys currently stored for this summand.
+    pub entries: usize,
+}
+
+impl SummandCacheMetrics {
+    /// Total number of enumeration lookups (hits plus misses).
+    pub fn lookups(&self) -> u64 {
+        self.hits + self.misses
+    }
+
+    /// Fraction of lookups served from the cache, in `[0.0, 1.0]`.
+    ///
+    /// Returns `0.0` when there were no lookups.
+    pub fn hit_rate(&self) -> f64 {
+        let lookups = self.lookups();
+        if lookups == 0 {
+            0.0
+        } else {
+            self.hits as f64 / lookups as f64
+        }
+    }
+}
+
+/// Aggregated cache metrics for every summand of a [`CacheLPS`].
+#[derive(Clone, Debug)]
+pub struct CacheMetrics {
+    /// Per-summand metrics, ordered by summand index.
+    pub summands: Vec<SummandCacheMetrics>,
+}
+
+impl CacheMetrics {
+    /// Total number of cache hits across all summands.
+    pub fn total_hits(&self) -> u64 {
+        self.summands.iter().map(|s| s.hits).sum()
+    }
+
+    /// Total number of cache misses across all summands.
+    pub fn total_misses(&self) -> u64 {
+        self.summands.iter().map(|s| s.misses).sum()
+    }
+
+    /// Total number of cached entries across all summands.
+    pub fn total_entries(&self) -> usize {
+        self.summands.iter().map(|s| s.entries).sum()
+    }
+
+    /// Fraction of lookups served from the cache across all summands.
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.total_hits();
+        let lookups = hits + self.total_misses();
+        if lookups == 0 { 0.0 } else { hits as f64 / lookups as f64 }
+    }
+}
+
+impl fmt::Display for CacheMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "summand cache metrics:")?;
+        writeln!(
+            f,
+            "  {:>7}  {:>8}  {:>10}  {:>10}  {:>8}  {:>8}",
+            "summand", "strategy", "hits", "misses", "hit%", "entries"
+        )?;
+        for s in &self.summands {
+            let strategy = match s.strategy {
+                CachingStrategy::None => "none",
+                CachingStrategy::Local => "local",
+                CachingStrategy::Global => "global",
+            };
+            writeln!(
+                f,
+                "  {:>7}  {:>8}  {:>10}  {:>10}  {:>7.1}%  {:>8}",
+                s.index,
+                strategy,
+                s.hits,
+                s.misses,
+                s.hit_rate() * 100.0,
+                s.entries
+            )?;
+        }
+        write!(
+            f,
+            "  total: {} hits, {} misses ({:.1}% hit rate), {} entries",
+            self.total_hits(),
+            self.total_misses(),
+            self.hit_rate() * 100.0,
+            self.total_entries()
+        )
     }
 }
 
@@ -163,6 +307,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
         };
 
         if cached {
+            self.hits.set(self.hits.get() + 1);
             // Cache HIT: replay stored results.
             let results = match self.strategy {
                 CachingStrategy::Local => {
@@ -191,6 +336,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
                 report(label, &replay_buf)?;
             }
         } else {
+            self.misses.set(self.misses.get() + 1);
             // Cache MISS: delegate to inner summand, capture results. Only the
             // values at the write positions are stored; on replay they are
             // scattered back onto the live source state (see the hit branch).
