@@ -129,6 +129,7 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
 /// The dialect of the AUT format, which controls the textual label used for
 /// internal (tau) transitions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum AutFormat {
     /// The standard Aldebaran format, which uses `i` for tau transitions.
     Aut,

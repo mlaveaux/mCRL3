@@ -1091,6 +1091,7 @@ dependencies = [
  "bindgen",
  "bumpalo",
  "cargo-emit",
+ "clap",
  "delegate",
  "itertools 0.14.0",
  "log",

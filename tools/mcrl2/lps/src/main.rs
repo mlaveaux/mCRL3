@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::BufWriter;
 use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -7,12 +8,16 @@ use clap::Parser;
 use clap::Subcommand;
 
 use merc_explore::CachingStrategy;
+use merc_explore::ExplorationStrategy;
 use merc_ldd::Storage;
 use merc_ldd::len;
+use merc_lts::AutFormat;
+use merc_lts::AutStream;
 use merc_lts::LTS;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
 use merc_lts::write_aut;
+use merc_lts::write_mcrl2_aut;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -24,6 +29,7 @@ use mcrl2::read_lps;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 
+use explore_explicit::Mcrl2MultiActionLabel;
 use explore_explicit::explore_lps_explicit;
 use explore_symbolic::explore_lps_symbolic;
 
@@ -79,6 +85,9 @@ struct ExploreExplicitArgs {
     /// Explicitly choose the format of the input LPS file.
     #[arg(long, short('i'), value_enum)]
     format: Option<LpsFormat>,
+
+    #[arg(long, short('o'), value_enum, default_value_t = AutFormat::Aut)]
+    out_format: AutFormat,
 
     /// Specify the output LTS in AUT format. If not given, the LTS is not written.
     #[arg(long)]
@@ -144,17 +153,22 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         LpsFormat::Lps => read_lps(&args.filename)?,
     };
 
-    let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
-    explore_lps_explicit(&mut builder, &lps, args.caching, timing)?;
-    let lts = builder.finish(StateIndex::new(0), false);
-
-    println!("Number of states: {}", lts.num_of_states());
-    println!("Number of transitions: {}", lts.num_of_transitions());
-
     if let Some(output) = &args.output {
-        write_aut(&mut File::create(output)?, &lts)?;
+        let mut file = BufWriter::new(File::create(output)?);
+        let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format);
+        explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
     } else {
-        write_aut(&mut stdout(), &lts)?;
+        let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
+        let lts = builder.finish(StateIndex::new(0), false);
+
+        println!("Number of states: {}", lts.num_of_states());
+        println!("Number of transitions: {}", lts.num_of_transitions());
+
+        match args.out_format {
+            AutFormat::Aut => write_aut(&mut stdout(), &lts)?,
+            AutFormat::AutMcrl2 => write_mcrl2_aut(&mut stdout(), &lts)?,
+        }
     }
 
     Ok(())
