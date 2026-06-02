@@ -6,6 +6,7 @@ mod tests {
 
     use mcrl2::read_lps;
     use merc_explore::CachingStrategy;
+    use merc_explore::ExplorationStrategy;
     use merc_io::temp_dir;
     use merc_io::traced_command;
     use merc_lts::LTS;
@@ -18,6 +19,7 @@ mod tests {
     use merc_utilities::Timing;
 
     use crate::explore_lps_explicit;
+    use crate::explore_explicit::Mcrl2MultiActionLabel;
 
     /// Runs `mcrl22lps` and `lps2lts` on a `.mcrl2` specification, explores the
     /// LPS with `explore_lps_explicit`, and asserts strong bisimilarity between
@@ -55,8 +57,8 @@ mod tests {
         let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap()).expect("Failed to read reference .aut");
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-        let mut builder: LtsBuilderFast<String> = LtsBuilderFast::new(Vec::new(), Vec::new());
-        explore_lps_explicit(&mut builder, &lps, strategy, &Timing::new()).expect("Failed to explore LPS");
+        let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        explore_lps_explicit(&mut builder, &lps, strategy, ExplorationStrategy::Dfs, &Timing::new()).expect("Failed to explore LPS");
         let result_lts = builder.finish(StateIndex::new(0), false);
 
         write_mcrl2_aut(&mut File::create(temp_dir.path().join("result.aut")).unwrap(), &result_lts)
@@ -76,7 +78,9 @@ mod tests {
             compare_lts(
                 Equivalence::StrongBisim,
                 reference_lts,
-                result_lts,
+                result_lts.relabel(|label| {
+                    Ok(label.to_string())
+                }).unwrap(),
                 false,
                 &mut Timing::new(),
             ),

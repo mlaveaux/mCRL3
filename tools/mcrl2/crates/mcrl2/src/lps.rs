@@ -18,6 +18,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer_expressions;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_parameters;
 use mcrl2_sys::lps::ffi::mcrl2_lps_set_assignments;
+use mcrl2_sys::lps::ffi::mcrl2_lps_tau_multi_action;
 use mcrl2_sys::lps::ffi::stochastic_action_summand;
 use mcrl2_sys::lps::ffi::stochastic_process_initializer;
 use mcrl2_sys::lps::ffi::stochastic_specification;
@@ -121,6 +122,11 @@ impl LinearProcessInitializer {
 /// Pretty-prints a multi-action term using the mCRL2 pretty printer.
 pub fn pretty_print_multi_action(multi_action: &ATerm) -> String {
     mcrl2_lps_multi_action_to_string(multi_action.get())
+}
+
+/// Returns the tau (empty) multi-action term as a protected [`ATerm`].
+pub fn tau_multi_action() -> ATerm {
+    ATerm::from_ptr(mcrl2_lps_tau_multi_action())
 }
 
 /// Read an LPS from a file in the binary mCRL2 format.
