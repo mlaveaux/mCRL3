@@ -7,8 +7,10 @@ use crate::RegFrm;
 use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmOp;
+use crate::StateFrmUnaryOp;
 use crate::StateVarDecl;
 use merc_lts::TransitionLabel;
+use merc_reduction::DistinguishingFormula;
 use merc_refinement::CounterExample;
 
 /// Generates a formula that characterizes the counter example trace.
@@ -90,6 +92,40 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
             weaktrace_formula(trace, expr, ModalityOperator::Diamond)
         }
     }
+}
+
+/// Generates a state formula AST for a minimal-depth strong-bisimulation
+/// distinguishing formula (a counter-example produced by
+/// [`merc_reduction::strong_bisim_distinguishing_formula`]).
+///
+/// The resulting formula holds in one of the two compared states but not the
+/// other, witnessing that they are not strongly bisimilar.
+pub fn generate_distinguishing_formula<L: TransitionLabel>(formula: &DistinguishingFormula<L>) -> StateFrm {
+    match formula {
+        DistinguishingFormula::Diamond { label, conjuncts } => StateFrm::Modality {
+            operator: ModalityOperator::Diamond,
+            formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
+            expr: Box::new(distinguishing_conjunction(conjuncts)),
+        },
+        DistinguishingFormula::Negate(inner) => StateFrm::Unary {
+            op: StateFrmUnaryOp::Negation,
+            expr: Box::new(generate_distinguishing_formula(inner)),
+        },
+    }
+}
+
+/// Builds the conjunction `c_0 && c_1 && ...` of the converted conjuncts, which
+/// is `true` when there are no conjuncts.
+fn distinguishing_conjunction<L: TransitionLabel>(conjuncts: &[DistinguishingFormula<L>]) -> StateFrm {
+    conjuncts
+        .iter()
+        .map(generate_distinguishing_formula)
+        .reduce(|lhs, rhs| StateFrm::Binary {
+            op: StateFrmOp::Conjunction,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        })
+        .unwrap_or(StateFrm::True)
 }
 
 /// Generates a formula `[tau* . label1 . tau* . label2. ... . tau*]expr`, or
