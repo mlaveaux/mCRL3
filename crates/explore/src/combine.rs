@@ -1,6 +1,4 @@
 use log::info;
-use merc_collections::IndexedSet;
-use merc_collections::SetIndex;
 use merc_collections::VecBag;
 use merc_io::TimeProgress;
 use merc_lts::LTS;
@@ -17,6 +15,9 @@ use merc_syntax::MultiActionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
+
+use crate::DiscoveredSet;
+use crate::StateRef;
 
 /// The trait for labels used in the composition operator.
 pub trait CombineLabel: TransitionLabel + Ord {
@@ -105,14 +106,15 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
         }
     }
 
-    // Keep track of the discovered states in the combined LTS.
-    let mut discovered: IndexedSet<Vec<StateIndex>> = IndexedSet::new();
-    let (index, _) = discovered.insert(
-        parallel_composition
-            .iter()
-            .map(|lts| lts.initial_state_index())
-            .collect(),
-    );
+    // Keep track of the discovered states in the combined LTS. State vectors
+    // are stored as maximally shared sequences of raw `usize` indices in the
+    // discovered set; we convert to/from `StateIndex` at the boundary.
+    let mut discovered: DiscoveredSet<usize> = DiscoveredSet::new();
+    let initial_vector: Vec<usize> = parallel_composition
+        .iter()
+        .map(|lts| lts.initial_state_index().value())
+        .collect();
+    let (initial_ref, _) = discovered.insert(&initial_vector);
 
     let progress = TimeProgress::new(
         |(states, transitions): (usize, usize)| {
@@ -125,19 +127,23 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     let sorted_allow: Vec<SortedMultiActionLabel> = allow.iter().map(SortedMultiActionLabel::new).collect();
 
     // Working refers to the state vectors in discovered.
-    let mut working: Vec<SetIndex> = vec![index];
+    let mut working: Vec<StateRef> = vec![initial_ref];
     // Reusable scratch buffers for the parallel transition iterator.
     let mut iter_context = ParallelTransitionContext::new();
+    // Reusable buffers for reconstructing the current state vector from the
+    // discovered set and for building target vectors prior to insertion.
+    let mut current_state_raw: Vec<usize> = Vec::new();
+    let mut current_state_vector: Vec<StateIndex> = Vec::new();
+    let mut target_raw: Vec<usize> = Vec::new();
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
-            // Clone the current state vector since discovered may be mutated below.
-            let current_state_vector = discovered
-                .get(current)
-                .expect("State must be in the discovered set")
-                .as_ref();
+            // Reconstruct the current state vector from the discovered set.
+            discovered.get_into(current, &mut current_state_raw);
+            current_state_vector.clear();
+            current_state_vector.extend(current_state_raw.iter().copied().map(StateIndex::new));
 
             // Loop over all subsets of LTSs and their outgoing transitions in the current state vector.
-            let mut iter = ParallelTransitionIter::new(&mut iter_context, &parallel_composition, current_state_vector);
+            let mut iter = ParallelTransitionIter::new(&mut iter_context, &parallel_composition, &current_state_vector);
             loop {
                 iter.advance();
                 let Some(transition) = iter.get() else {
@@ -166,15 +172,16 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
                 // Apply hide: alpha = tau_I(alpha).
                 let multi_action = hide_action(hide, multi_action);
 
-                // Copy the target before advancing invalidates it.
-                let target_vec = transition.target.to_vec();
+                // Convert the target vector into raw indices for the discovered set.
+                target_raw.clear();
+                target_raw.extend(transition.target.iter().map(|s| s.value()));
 
-                let (target_index, is_new) = discovered.insert(target_vec);
-                let to = StateIndex::new(*target_index);
-                builder.add_transition(StateIndex::new(*current), &multi_action, to)?;
+                let (target_ref, is_new) = discovered.insert(&target_raw);
+                let to = StateIndex::new(target_ref.index());
+                builder.add_transition(StateIndex::new(current.index()), &multi_action, to)?;
 
                 if is_new {
-                    working.push(target_index);
+                    working.push(target_ref);
                 }
             }
 
@@ -190,7 +197,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
         builder.num_of_transitions()
     );
 
-    builder.finish(StateIndex::new(*index))?;
+    builder.finish(StateIndex::new(initial_ref.index()))?;
     Ok(())
 }
 
