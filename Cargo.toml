@@ -90,7 +90,7 @@ loom = { version = "0.7", features = ["checkpoint"] }
 mimalloc = "0.1"
 streaming-iterator = "0.1"
 thread_local = "1.1"
-tikv-jemallocator = "0.6"
+tikv-jemallocator = "0.7"
 
 # Used in macros
 proc-macro2 = "1.0"
