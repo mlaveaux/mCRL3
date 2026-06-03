@@ -619,14 +619,7 @@ impl<'a> From<DataExpressionRef<'a>> for DataUntypedIdentifierRef<'a> {
 /// Serializes a [`DataExpression`] as a syntax tree of its head function
 /// symbols and arguments.
 ///
-/// Every node is serialized as an object with the [`DataExpression::data_function_symbol`]
-/// in the `symbol` field, the pretty printed sort in the `sort` field and its
-/// (recursively serialized) [`DataExpression::data_arguments`] in the `args`
-/// field. Leaves, such as variables, function symbols without arguments and
-/// machine numbers, simply have an empty `args` array. Variables are serialized
-/// using just their name as the `symbol`, with their sort in the `sort` field.
-/// Nodes without an associated sort, such as machine numbers, have a `null`
-/// sort. For example `f(a, b)` becomes:
+/// For example `f(a, b)` becomes:
 ///
 /// ```json
 /// { "symbol": "f", "sort": "A # B -> C", "args": [
@@ -634,10 +627,6 @@ impl<'a> From<DataExpressionRef<'a>> for DataUntypedIdentifierRef<'a> {
 ///     { "symbol": "b", "sort": "B", "args": [] }
 /// ] }
 /// ```
-///
-/// In contrast to [`DataExpressionTree`], this does not expose the underlying
-/// aterm structure (sorts, `DataAppl`, `OpId`, ...), but the higher level data
-/// expression view.
 impl serde::Serialize for DataExpression {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.copy().serialize(serializer)

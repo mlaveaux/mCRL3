@@ -167,6 +167,7 @@ mod tests {
     use super::sort_topological;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_sort_topological_with_cycles() {
         random_test(100, |rng| {
             let lts = random_lts::<String, _>(rng, 1000, 3);
@@ -177,6 +178,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_reorder_states() {
         random_test(100, |rng| {
             let mut files = DumpFiles::new("test_random_reorder_states");

@@ -359,6 +359,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_weak_bisim_sigref_naive_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(
@@ -418,6 +419,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_branching_bisim_divergence_preserving_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(
@@ -429,6 +431,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_branching_bisim_divergence_preserving_naive_quotient() {
         random_test(100, |rng| {
             check_quotient_equivalence(
