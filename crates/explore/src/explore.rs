@@ -26,7 +26,6 @@ pub enum ExplorationStrategy {
     Bfs,
 }
 
-
 /// Explores the state space of `lps` and feeds the discovered transitions to
 /// `builder`.
 ///

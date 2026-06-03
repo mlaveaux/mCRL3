@@ -166,9 +166,6 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
         let lts = builder.finish(StateIndex::new(0), false);
 
-        println!("Number of states: {}", lts.num_of_states());
-        println!("Number of transitions: {}", lts.num_of_transitions());
-
         match args.out_format {
             AutFormat::Aut => write_aut(&mut stdout(), &lts)?,
             AutFormat::AutMcrl2 => write_mcrl2_aut(&mut stdout(), &lts)?,

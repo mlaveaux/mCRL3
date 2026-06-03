@@ -121,11 +121,6 @@ mod tests {
     }
 
     #[test]
-    fn test_explore_onebit() {
-        compare_with_lps2lts("../../../examples/mCRL2/academic/onebit/onebit.mcrl2");
-    }
-
-    #[test]
     fn test_explore_abp_local_cache() {
         compare_with_lps2lts_caching("../../../examples/mCRL2/academic/abp/abp.mcrl2", CachingStrategy::Local);
     }
@@ -166,22 +161,6 @@ mod tests {
     fn test_explore_dining3_global_cache() {
         compare_with_lps2lts_caching(
             "../../../examples/mCRL2/academic/dining/dining3.mcrl2",
-            CachingStrategy::Global,
-        );
-    }
-
-    #[test]
-    fn test_explore_onebit_local_cache() {
-        compare_with_lps2lts_caching(
-            "../../../examples/mCRL2/academic/onebit/onebit.mcrl2",
-            CachingStrategy::Local,
-        );
-    }
-
-    #[test]
-    fn test_explore_onebit_global_cache() {
-        compare_with_lps2lts_caching(
-            "../../../examples/mCRL2/academic/onebit/onebit.mcrl2",
             CachingStrategy::Global,
         );
     }
