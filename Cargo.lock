@@ -1363,11 +1363,8 @@ name = "merc_sabre-ffi"
 version = "2.0.0"
 dependencies = [
  "merc_aterm",
- "merc_collections",
  "merc_data",
- "merc_sharedmutex",
  "merc_unsafety",
- "merc_utilities",
 ]
 
 [[package]]

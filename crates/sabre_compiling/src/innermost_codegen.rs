@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use indoc::indoc;
 
 use itertools::Itertools;
-use merc_aterm::Symb;
 use merc_aterm::Term;
 use merc_sabre::AnnouncementInnermost;
 use merc_sabre::RewriteSpecification;
@@ -40,15 +39,17 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         #![allow(improper_ctypes_definitions)]
 
         use std::ffi::c_void;
-        
-        use merc_sabre_ffi::initialize_thread_local_term_pool;
+
+        use merc_sabre_ffi::set_rewrite_vtable;
+        use merc_sabre_ffi::SabreRewriteVTable;
         use merc_sabre_ffi::DataExpressionFFI;
         use merc_sabre_ffi::DataExpressionRefFFI;
 
-        /// The initialisation function used to pass the GLOBAL_TERM_POOL to the shared library.
+        /// The initialisation function used to install the host vtable into the shared library.
+        /// All term pool access is routed back into the host through it.
         #[unsafe(no_mangle)]
-        pub unsafe extern \"C-unwind\" fn initialise(global_term_pool: *mut c_void) {{
-            unsafe {{ initialize_thread_local_term_pool(global_term_pool); }}
+        pub unsafe extern \"C-unwind\" fn initialise(vtable: *mut c_void) {{
+            unsafe {{ set_rewrite_vtable(vtable as *const SabreRewriteVTable); }}
         }}
 
         /// Generic rewrite function using the innermost strategy.
@@ -370,9 +371,8 @@ fn generate_rewrite_term_stack_impl(
                 if *arity > 0 {
                     writeln!(
                         formatter,
-                        "let {prefix}var_{stack_index} = unsafe {{ match_term(&DataExpressionFFI::create(DataExpressionRefFFI::from_ptr({:?}, {}), &[{}]).copy()) }};",
+                        "let {prefix}var_{stack_index} = match_term(&DataExpressionFFI::create(DataExpressionRefFFI::from_ptr({:?}), &[{}]).copy());",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
-                        arity,
                         arg_indices
                             .iter()
                             .map(|i| format!("{prefix}var_{i}.copy()"))
@@ -381,7 +381,7 @@ fn generate_rewrite_term_stack_impl(
                 } else {
                     writeln!(
                         formatter,
-                        "let {prefix}var_{stack_index} = unsafe {{ match_term(&DataExpressionFFI::constant(DataExpressionRefFFI::from_ptr({:?}, 1)).copy()) }};",
+                        "let {prefix}var_{stack_index} = match_term(&DataExpressionFFI::constant(DataExpressionRefFFI::from_ptr({:?})).copy());",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                     )?;
                 }
@@ -389,9 +389,8 @@ fn generate_rewrite_term_stack_impl(
             Config::Term(data_expression_ref, index) => {
                 writeln!(
                     formatter,
-                    "let {prefix}var_{index} = unsafe {{ match_term(&DataExpressionFFI::from_ptr({:?}, {})).copy() }};",
+                    "let {prefix}var_{index} = match_term(&DataExpressionRefFFI::from_ptr({:?}));",
                     data_expression_ref.shared().ptr().as_ptr() as *mut () as usize,
-                    data_expression_ref.get_head_symbol().arity()
                 )?;
             }
             Config::Rewrite(_) | Config::Return() => {

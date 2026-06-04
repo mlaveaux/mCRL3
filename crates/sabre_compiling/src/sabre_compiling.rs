@@ -8,14 +8,15 @@ use log::info;
 use tempfile::tempdir;
 use toml::Table;
 
-use merc_aterm::ATermRef;
-use merc_aterm::Term;
-use merc_aterm::storage::GLOBAL_TERM_POOL;
 use merc_data::DataExpression;
 use merc_sabre::RewriteEngine;
 use merc_sabre::RewriteSpecification;
 use merc_sabre_ffi::DataExpressionFFI;
 use merc_sabre_ffi::DataExpressionRefFFI;
+use merc_sabre_ffi::SabreRewriteVTable;
+use merc_sabre_ffi::data_expression_ref_from_term;
+use merc_sabre_ffi::into_data_expression;
+use merc_sabre_ffi::rewrite_vtable;
 use merc_utilities::MercError;
 
 use crate::generate;
@@ -23,23 +24,29 @@ use crate::library::RuntimeLibrary;
 
 pub struct SabreCompilingRewriter {
     library: Library,
-    //rewrite_func: Symbol<unsafe extern fn() -> u32>,
+    /// Whether the host vtable has already been installed into `library`.
+    initialised: bool,
 }
 
 impl RewriteEngine for SabreCompilingRewriter {
     fn rewrite(&mut self, term: &DataExpression) -> DataExpression {
-        // TODO: This ought to be stored somewhere for repeated calls.
         unsafe {
-            // Ensure that the library is initialized to the actual global aterm library.
-            let initialize: Symbol<extern "C" fn(*mut c_void)> = self.library.get(b"initialise").unwrap();
+            // Install the host vtable into the loaded library exactly once. All
+            // term-pool access in the library is routed back through it, so the
+            // library never touches its own (duplicated) term pool.
+            if !self.initialised {
+                let initialise: Symbol<extern "C-unwind" fn(*mut c_void)> = self.library.get(b"initialise").unwrap();
 
-            initialize(std::ptr::addr_of!(GLOBAL_TERM_POOL) as *mut c_void);
+                let vtable: SabreRewriteVTable = rewrite_vtable();
+                initialise(std::ptr::addr_of!(vtable) as *mut c_void);
+                self.initialised = true;
+            }
 
-            let func: Symbol<extern "C" fn(&DataExpressionRefFFI) -> DataExpressionFFI> =
+            let func: Symbol<extern "C-unwind" fn(&DataExpressionRefFFI) -> DataExpressionFFI> =
                 self.library.get(b"rewrite").unwrap();
 
-            let result = func(&DataExpressionRefFFI::from_index(term.shared()));
-            ATermRef::from_index(result.index()).protect().into()
+            let result = func(&data_expression_ref_from_term(term));
+            into_data_expression(result)
         }
     }
 }
@@ -93,7 +100,10 @@ impl SabreCompilingRewriter {
         generate(spec, compilation_crate.source_dir())?;
 
         let library = compilation_crate.compile()?;
-        Ok(SabreCompilingRewriter { library })
+        Ok(SabreCompilingRewriter {
+            library,
+            initialised: false,
+        })
     }
 }
 
@@ -108,6 +118,7 @@ mod tests {
     use super::SabreCompilingRewriter;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Miri does not support FFI.
     fn test_sabre_compiling_example() {
         let (spec, terms) = load_rec_from_strings(&[
             include_str!("../../../examples/REC/rec/factorial5.rec"),
