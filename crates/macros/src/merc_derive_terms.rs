@@ -249,7 +249,7 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
-                            impl Transmutable for #name_ref #generics_static {
+                            unsafe impl Transmutable for #name_ref #generics_static {
                                 type Target #generics_ref = #name_ref #generics_ref;
 
                                 fn transmute_lifetime<'a>(&self) -> &'a Self::Target #generics_ref {

@@ -83,7 +83,7 @@ impl Markable for Config<'_> {
     }
 }
 
-impl Transmutable for Config<'static> {
+unsafe impl Transmutable for Config<'static> {
     type Target<'a> = Config<'a>;
 
     fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a> {
@@ -200,12 +200,14 @@ impl TermStack {
 
                         // Add the term on the stack.
                         write_terms.drain(length - arity..);
-                        let t = write_terms.protect(&term);
+                        // Safety: t is stored in the container on the next line.
+                        let t = unsafe { write_terms.protect(&term) };
                         write_terms[index] = Some(t.into());
                     }
                     Config::Term(term, index) => {
                         let mut write_terms = stack.terms.write();
-                        let t = write_terms.protect(&term);
+                        // Safety: t is stored in the container on the next line.
+                        let t = unsafe { write_terms.protect(&term) };
                         write_terms[index] = Some(t.into());
                     }
                     Config::Rewrite(_) => {
