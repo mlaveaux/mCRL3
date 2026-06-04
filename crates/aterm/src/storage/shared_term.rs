@@ -17,6 +17,7 @@ use crate::ATermRef;
 use crate::Symb;
 use crate::SymbolRef;
 use crate::Term;
+use crate::Transmutable;
 
 /// The underlying type of terms that are maximally shared.
 ///
@@ -34,7 +35,7 @@ pub struct SharedTerm {
 
 impl PartialEq for SharedTerm {
     fn eq(&self, other: &Self) -> bool {
-        self.symbol == other.symbol && self.arguments() == other.arguments()
+        self.symbol == other.symbol && self.arguments == other.arguments
     }
 }
 
@@ -92,8 +93,8 @@ impl SharedTerm {
     }
 
     /// Returns the arguments of the term.
-    pub fn arguments(&self) -> &[ATermRef<'static>] {
-        &self.arguments
+    pub fn arguments(&self) -> &[ATermRef<'_>] {
+        self.arguments.transmute_lifetime()
     }
 
     /// Returns a unique index for this shared term.
@@ -132,7 +133,7 @@ impl SharedTerm {
 impl Hash for SharedTerm {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.symbol.hash(state);
-        self.arguments().hash(state);
+        self.arguments.hash(state);
     }
 }
 
@@ -145,7 +146,7 @@ pub(crate) struct SharedTermLookup<'a> {
 
 impl Equivalent<SharedTerm> for SharedTermLookup<'_> {
     fn equivalent(&self, other: &SharedTerm) -> bool {
-        self.symbol == other.symbol && self.arguments == other.arguments()
+        self.symbol == other.symbol && self.arguments == &other.arguments
     }
 }
 

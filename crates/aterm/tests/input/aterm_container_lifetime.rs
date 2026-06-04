@@ -10,7 +10,7 @@ fn main() {
     // Add stuff to the container to test soundness
     {
         let mut write = container.write();
-        let t = write.protect(&ATerm::constant(&Symbol::new("a", 0)));
+        let t = unsafe { write.protect(&ATerm::constant(&Symbol::new("a", 0))) };
         write.push(t);
     }
 

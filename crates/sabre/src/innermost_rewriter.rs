@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use log::info;
 
 use merc_aterm::storage::THREAD_TERM_POOL;
@@ -109,7 +107,8 @@ impl InnermostRewriter {
                             write_terms.push(Default::default());
                         }
 
-                        let symbol = write_configs.protect(&symbol);
+                        // Safety: symbol is stored in the container on the next line.
+                        let symbol = unsafe { write_configs.protect(&symbol) };
                         InnermostStack::add_result(&mut write_configs, symbol.into(), arguments.len(), result);
                         for (offset, arg) in arguments.into_iter().enumerate() {
                             InnermostStack::add_rewrite(
@@ -163,7 +162,8 @@ impl InnermostRewriter {
                             None => {
                                 // Add the term on the stack.
                                 let mut write_terms = stack.terms.write();
-                                write_terms[index] = Some(write_terms.protect(&term).into());
+                                // Safety: term is stored in the container on the same line.
+                                write_terms[index] = Some(unsafe { write_terms.protect(&term) }.into());
                             }
                         }
                     }

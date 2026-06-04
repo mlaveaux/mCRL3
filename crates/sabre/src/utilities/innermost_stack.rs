@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::fmt;
 
 use merc_aterm::Protected;
@@ -55,7 +53,8 @@ impl InnermostStack {
                     }
                 }
                 Config::Term(term, index) => {
-                    let term = write_configs.protect(term);
+                    // Safety: term is pushed into the container on the next line.
+                    let term = unsafe { write_configs.protect(term) };
                     write_configs.push(Config::Term(term.into(), *index));
                 }
                 Config::Rewrite(_) => {
@@ -83,16 +82,15 @@ impl InnermostStack {
         if rhs_stack.stack_size == 1 && rhs_stack.variables.len() == 1 {
             // This is a special case where we place the result on the correct position immediately.
             // The right hand side is only a variable
-            write_terms[result_index] = Some(
-                write_terms
-                    .protect(&term.get_data_position(&rhs_stack.variables[0].0))
-                    .into(),
-            );
+            // Safety: term is stored in the container on the next line.
+            write_terms[result_index] =
+                Some(unsafe { write_terms.protect(&term.get_data_position(&rhs_stack.variables[0].0)) }.into());
         } else {
             for (position, index) in &rhs_stack.variables {
                 // Add the positions to the stack.
+                // Safety: term is stored in the container on the same line.
                 write_terms[top_of_stack + index - 1] =
-                    Some(write_terms.protect(&term.get_data_position(position)).into());
+                    Some(unsafe { write_terms.protect(&term.get_data_position(position)) }.into());
             }
         }
     }
@@ -104,7 +102,8 @@ impl InnermostStack {
         arity: usize,
         index: usize,
     ) {
-        let symbol = write_configs.protect(&symbol);
+        // Safety: symbol is pushed into the container on the next line.
+        let symbol = unsafe { write_configs.protect(&symbol) };
         write_configs.push(Config::Construct(symbol.into(), arity, index));
     }
 
@@ -115,7 +114,8 @@ impl InnermostStack {
         term: DataExpressionRef<'_>,
         index: usize,
     ) {
-        let term = write_terms.protect(&term);
+        // Safety: term is pushed into the container two lines below.
+        let term = unsafe { write_terms.protect(&term) };
         write_configs.push(Config::Rewrite(index));
         write_terms.push(Some(term.into()));
     }

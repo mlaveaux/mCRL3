@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use merc_aterm::Protected;
 use merc_aterm::Term;
 use merc_aterm::storage::ThreadTermPool;
@@ -60,10 +58,12 @@ fn substitute_rec(
         let mut write_args = args.write();
         for (index, arg) in t.arguments().enumerate() {
             if index == new_child_index {
-                let t = write_args.protect(&new_child);
+                // Safety: t is pushed into the container on the next line.
+                let t = unsafe { write_args.protect(&new_child) };
                 write_args.push(t.into());
             } else {
-                let t = write_args.protect(&arg);
+                // Safety: t is pushed into the container on the next line.
+                let t = unsafe { write_args.protect(&arg) };
                 write_args.push(t.into());
             }
         }
