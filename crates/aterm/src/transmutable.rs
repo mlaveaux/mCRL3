@@ -6,8 +6,8 @@ use merc_collections::IndexedSet;
 use crate::SymbolRef;
 use crate::aterm::ATermRef;
 
-pub trait Transmutable {
-    type Target<'a>
+pub unsafe trait Transmutable {
+    type Target<'a>: ?Sized
     where
         Self: 'a;
 
@@ -18,7 +18,7 @@ pub trait Transmutable {
     fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a>;
 }
 
-impl Transmutable for ATermRef<'static> {
+unsafe impl Transmutable for ATermRef<'static> {
     type Target<'a> = ATermRef<'a>;
 
     fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
@@ -30,7 +30,7 @@ impl Transmutable for ATermRef<'static> {
     }
 }
 
-impl Transmutable for SymbolRef<'static> {
+unsafe impl Transmutable for SymbolRef<'static> {
     type Target<'a> = SymbolRef<'a>;
 
     fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
@@ -42,7 +42,7 @@ impl Transmutable for SymbolRef<'static> {
     }
 }
 
-impl<T: Transmutable> Transmutable for Option<T> {
+unsafe impl<T: Transmutable> Transmutable for Option<T> {
     type Target<'a>
         = Option<T>
     where
@@ -57,7 +57,10 @@ impl<T: Transmutable> Transmutable for Option<T> {
     }
 }
 
-impl<T: Transmutable> Transmutable for Vec<T> {
+unsafe impl<T: Transmutable> Transmutable for Vec<T>
+where
+    for<'a> T::Target<'a>: Sized,
+{
     type Target<'a>
         = Vec<T::Target<'a>>
     where
@@ -72,7 +75,10 @@ impl<T: Transmutable> Transmutable for Vec<T> {
     }
 }
 
-impl<T: Transmutable> Transmutable for VecDeque<T> {
+unsafe impl<T: Transmutable> Transmutable for VecDeque<T>
+where
+    for<'a> T::Target<'a>: Sized,
+{
     type Target<'a>
         = VecDeque<T::Target<'a>>
     where
@@ -87,7 +93,10 @@ impl<T: Transmutable> Transmutable for VecDeque<T> {
     }
 }
 
-impl<T: Transmutable> Transmutable for IndexedSet<T> {
+unsafe impl<T: Transmutable> Transmutable for IndexedSet<T>
+where
+    for<'a> T::Target<'a>: Sized,
+{
     type Target<'a>
         = IndexedSet<T::Target<'a>>
     where
@@ -103,7 +112,11 @@ impl<T: Transmutable> Transmutable for IndexedSet<T> {
 }
 
 // In Rust Its not yet possible to implement it for any tuples, so we implement it for some common sizes.
-impl<T1: Transmutable, T2: Transmutable> Transmutable for (T1, T2) {
+unsafe impl<T1: Transmutable, T2: Transmutable> Transmutable for (T1, T2)
+where
+    for<'a> T1::Target<'a>: Sized,
+    for<'a> T2::Target<'a>: Sized,
+{
     type Target<'a>
         = (T1::Target<'a>, T2::Target<'a>)
     where
@@ -119,7 +132,25 @@ impl<T1: Transmutable, T2: Transmutable> Transmutable for (T1, T2) {
     }
 }
 
-impl Transmutable for bool {
+unsafe impl<T: Transmutable> Transmutable for [T]
+where
+    for<'a> T::Target<'a>: Sized,
+{
+    type Target<'a>
+        = [T::Target<'a>]
+    where
+        T: 'a;
+
+    fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
+        unsafe { transmute::<&Self, &'a [T::Target<'a>]>(self) }
+    }
+
+    fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
+        unsafe { transmute::<&mut Self, &'a mut [T::Target<'a>]>(self) }
+    }
+}
+
+unsafe impl Transmutable for bool {
     type Target<'a> = bool;
 
     fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
