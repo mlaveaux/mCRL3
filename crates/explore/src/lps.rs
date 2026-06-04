@@ -23,11 +23,14 @@ pub trait LPS {
 
     /// Context reused while enumerating all summands for a state.
     ///
-    /// Implementations can cache expensive per-state data in this context.
-    type Context;
+    /// The lifetime `'ctx` is the borrow of `&self` passed to
+    /// [`LPS::create_context`] / [`LPS::prepare_context`], allowing
+    /// implementations to store references into `self` (e.g. the summand
+    /// slice) without raw pointers.
+    type Context<'ctx>;
 
     /// A single condition action effect summand of the LPS.
-    type Summand: Summand<Value = Self::Value, Label = Self::Label, Context = Self::Context>;
+    type Summand: for<'ctx> Summand<Value = Self::Value, Label = Self::Label, Context<'ctx> = Self::Context<'ctx>>;
 
     /// Returns the initial state vector of the LPS.
     fn initial_state(&self) -> Vec<Self::Value>;
@@ -36,10 +39,10 @@ pub trait LPS {
     fn summands(&self) -> &[Self::Summand];
 
     /// Create an enumeration context that can be reused during exploration.
-    fn create_context(&self) -> Self::Context;
+    fn create_context(&self) -> Self::Context<'_>;
 
     /// Prepare `context` for enumerating transitions from `state`.
-    fn prepare_context(&self, state: &[Self::Value], context: &mut Self::Context);
+    fn prepare_context<'ctx>(&'ctx self, state: &[Self::Value], context: &mut Self::Context<'ctx>);
 }
 
 /// A condition action effect summand of an [`LPS`].
@@ -56,14 +59,16 @@ pub trait Summand {
     type Label;
 
     /// Shared mutable context prepared by [`LPS::prepare_context`].
-    type Context;
+    ///
+    /// The lifetime `'ctx` matches the one on [`LPS::Context`].
+    type Context<'ctx>;
 
     /// Enumerate every outgoing transition produced by this summand from the
     /// state vector `state`.
     ///
     /// For each transition, `report(label, next_state)` is invoked exactly once
     /// with borrowed values.
-    fn enumerate<F>(&self, state: &[Self::Value], context: &mut Self::Context, report: F) -> Result<(), MercError>
+    fn enumerate<'ctx, F>(&self, state: &[Self::Value], context: &mut Self::Context<'ctx>, report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>;
 
