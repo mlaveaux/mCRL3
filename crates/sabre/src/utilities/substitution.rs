@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use merc_aterm::ATerm;
 use merc_aterm::ATermRef;
 use merc_aterm::Protected;
@@ -62,10 +60,12 @@ fn substitute_rec<'a, 'b, T: Term<'a, 'b>>(
         let mut write_args = args.write();
         for (index, arg) in t.arguments().enumerate() {
             if index == new_child_index {
-                let t = write_args.protect(&new_child);
+                // Safety: t is pushed into the container on the next line.
+                let t = unsafe { write_args.protect(&new_child) };
                 write_args.push(t);
             } else {
-                let t = write_args.protect(&arg);
+                // Safety: t is pushed into the container on the next line.
+                let t = unsafe { write_args.protect(&arg) };
                 write_args.push(t);
             }
         }

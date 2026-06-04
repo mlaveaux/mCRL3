@@ -116,7 +116,10 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
             "arg({index}) is not defined for term {self:?}"
         );
 
-        self.shared().arguments()[index].borrow().copy()
+        // Safety: self is ATermRef<'a>, so the GC keeps all its arguments
+        // protected for 'a. We copy the stable pointer rather than borrowing
+        // through the short-lived slice reference.
+        unsafe { ATermRef::from_index(self.shared().arguments()[index].shared()) }
     }
 
     fn arguments(&self) -> ATermArgs<'a> {

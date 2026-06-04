@@ -25,6 +25,7 @@ use std::marker::PhantomData;
 use std::sync::OnceLock;
 
 mod host;
+
 pub use host::*;
 
 /// Table of host-provided operations. Every field is an `extern "C-unwind"`
@@ -96,9 +97,7 @@ impl DataExpressionFFI {
         // SAFETY: the vtable is installed and `args` is a valid slice. The
         // lifetime on the references is erased for the call; the host only
         // reads them synchronously.
-        unsafe {
-            (vtable().create)(symbol.node, args.as_ptr().cast(), args.len())
-        }
+        unsafe { (vtable().create)(symbol.node, args.as_ptr().cast(), args.len()) }
     }
 
     /// Constructs the constant denoted by the given data function symbol.

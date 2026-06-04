@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::fmt;
 
 use merc_aterm::Protected;
@@ -200,7 +198,8 @@ impl<'a> ConfigurationStack<'a> {
 
         // Push the term belonging to the leaf.
         let mut write_terms = self.terms.write();
-        let t = write_terms.protect(&write_terms[c].get_data_position(pos));
+        // Safety: t is pushed into the container on the next line.
+        let t = unsafe { write_terms.protect(&write_terms[c].get_data_position(pos)) };
         write_terms.push(t.into());
 
         self.current_node = Some(c + 1);
@@ -227,13 +226,16 @@ impl<'a> ConfigurationStack<'a> {
         // Update the subterm stored at the prune point.
         // Note that the subterm stored earlier may not have been up to date. We replace it with a term that is up to date
         let mut write_terms = self.terms.write();
-        let subterm = write_terms.protect(&data_substitute_with(
-            &mut self.substitution_builder,
-            tp,
-            &write_terms[depth],
-            new_subterm,
-            automaton.states()[self.stack[depth].state].label(),
-        ));
+        // Safety: subterm is stored in the container on the next line.
+        let subterm = unsafe {
+            write_terms.protect(&data_substitute_with(
+                &mut self.substitution_builder,
+                tp,
+                &write_terms[depth],
+                new_subterm,
+                automaton.states()[self.stack[depth].state].label(),
+            ))
+        };
         write_terms[depth] = subterm.into();
 
         self.oldest_reliable_subterm = depth;
@@ -281,7 +283,8 @@ impl<'a> ConfigurationStack<'a> {
         }
 
         let mut write_terms = self.terms.write();
-        let mut subterm = write_terms.protect(&write_terms[up_to_date]);
+        // Safety: subterm is kept in write_terms throughout this function.
+        let mut subterm = unsafe { write_terms.protect(&write_terms[up_to_date]) };
 
         // Go over the configurations one by one until we reach 'end'
         while up_to_date > end {
@@ -296,20 +299,23 @@ impl<'a> ConfigurationStack<'a> {
                         subterm.protect().into(),
                         position,
                     );
-                    write_terms.protect(&t)
+                    // Safety: subterm is kept in write_terms throughout this function.
+                    unsafe { write_terms.protect(&t) }
                 }
             };
             up_to_date -= 1;
 
             if store_intermediate {
-                let subterm = write_terms.protect(&subterm);
+                // Safety: subterm is stored in the container on the next line.
+                let subterm = unsafe { write_terms.protect(&subterm) };
                 write_terms[up_to_date] = subterm.into();
             }
         }
 
         self.oldest_reliable_subterm = up_to_date;
 
-        let subterm = write_terms.protect(&subterm);
+        // Safety: subterm is stored in the container on the next line.
+        let subterm = unsafe { write_terms.protect(&subterm) };
         write_terms[up_to_date] = subterm.into();
     }
 

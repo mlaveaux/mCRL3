@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::collections::VecDeque;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -426,7 +424,8 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                     debug_trace!("Read symbol {symbol}");
 
                     let mut write_symbols = self.function_symbols.write();
-                    let s = write_symbols.protect_symbol(&symbol);
+                    // Safety: s is pushed into the container on the next line.
+                    let s = unsafe { write_symbols.protect_symbol(&symbol) };
                     write_symbols.push(s);
                     self.function_symbol_index_width = bits_for_value(write_symbols.len());
                 }
@@ -456,7 +455,8 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         debug_trace!("Read int term: {term}");
 
                         let mut write_terms = self.terms.write();
-                        let t = write_terms.protect(&term);
+                        // Safety: t is pushed into the container on the next line.
+                        let t = unsafe { write_terms.protect(&term) };
                         write_terms.push(t);
                         self.term_index_width = bits_for_value(write_terms.len());
                     } else {
@@ -483,7 +483,8 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                         }
                         debug_trace!("Read term: {term}");
 
-                        let t = write_terms.protect(&term);
+                        // Safety: t is pushed into the container on the next line.
+                        let t = unsafe { write_terms.protect(&term) };
                         write_terms.push(t);
                         self.term_index_width = bits_for_value(write_terms.len());
                     }
