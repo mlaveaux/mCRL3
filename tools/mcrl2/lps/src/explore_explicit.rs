@@ -304,7 +304,7 @@ impl ExplicitSummand {
 impl LPS for ExplicitLinearProcessSpecification {
     type Value = usize;
     type Label = Mcrl2MultiActionLabel;
-    type Context = ExplicitEnumerationContext;
+    type Context<'ctx> = ExplicitEnumerationContext;
     type Summand = ExplicitSummand;
 
     fn initial_state(&self) -> Vec<usize> {
@@ -315,13 +315,13 @@ impl LPS for ExplicitLinearProcessSpecification {
         &self.summands
     }
 
-    fn create_context(&self) -> Self::Context {
+    fn create_context(&self) -> Self::Context<'_> {
         ExplicitEnumerationContext {
             parameter_values: Vec::with_capacity(self.process_parameters.len()),
         }
     }
 
-    fn prepare_context(&self, state: &[Self::Value], context: &mut Self::Context) {
+    fn prepare_context<'ctx>(&'ctx self, state: &[Self::Value], context: &mut Self::Context<'ctx>) {
         debug_assert_eq!(
             state.len(),
             self.process_parameters.len(),
@@ -349,7 +349,7 @@ impl LPS for ExplicitLinearProcessSpecification {
 impl Summand for ExplicitSummand {
     type Value = usize;
     type Label = Mcrl2MultiActionLabel;
-    type Context = ExplicitEnumerationContext;
+    type Context<'ctx> = ExplicitEnumerationContext;
 
     fn read_positions(&self) -> &[usize] {
         &self.read_indices
@@ -359,7 +359,7 @@ impl Summand for ExplicitSummand {
         &self.write_indices
     }
 
-    fn enumerate<F>(&self, state: &[usize], _context: &mut Self::Context, mut report: F) -> Result<(), MercError>
+    fn enumerate<'ctx, F>(&self, state: &[usize], _context: &mut Self::Context<'ctx>, mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
