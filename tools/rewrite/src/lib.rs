@@ -17,9 +17,11 @@ use merc_utilities::Timing;
 #[derive(ValueEnum, Debug, Clone)]
 pub enum Rewriter {
     Naive,
+    /// An innermost rewriter that uses set automata for efficient matching.
     Innermost,
     /// A variant of innermost that generates Rust code for the rewrite rules and compiles it to a dynamic library.
     InnermostCompiling,
+    /// A set automaton-based rewriter that applies rules outermost.
     Sabre,
 }
 
@@ -31,11 +33,11 @@ pub fn rewrite_rec(
     output: bool,
     timing: &Timing,
 ) -> Result<(), MercError> {
-    timing.measure("rewrite_rec", || {
-        match rewriter {
-            Rewriter::Naive => {
-                let mut inner = NaiveRewriter::new(spec);
+    match rewriter {
+        Rewriter::Naive => {
+            let mut inner = timing.measure("rewriter_construction", || NaiveRewriter::new(spec));
 
+            timing.measure("rewrite_rec", || {
                 for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = inner.rewrite(&term);
@@ -43,10 +45,13 @@ pub fn rewrite_rec(
                         println!("{}", result)
                     }
                 }
-            }
-            Rewriter::Innermost => {
-                let mut inner = InnermostRewriter::new(spec);
+            });
+        }
+        Rewriter::Innermost => {
+            let mut inner =
+                timing.measure("rewriter_construction", || InnermostRewriter::new(spec));
 
+            timing.measure("rewrite_rec", || {
                 for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = inner.rewrite(&term);
@@ -54,10 +59,15 @@ pub fn rewrite_rec(
                         println!("{}", result)
                     }
                 }
-            }
-            Rewriter::InnermostCompiling => {
-                let mut inner = SabreCompilingRewriter::new(spec, true, false)?;
+            });
+        }
+        Rewriter::InnermostCompiling => {
+            let mut inner = timing
+                .measure("rewriter_construction", || {
+                    SabreCompilingRewriter::new(spec, true, false)
+                })?;
 
+            timing.measure("rewrite_rec", || {
                 for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = inner.rewrite(&term);
@@ -65,10 +75,12 @@ pub fn rewrite_rec(
                         println!("{}", result)
                     }
                 }
-            }
-            Rewriter::Sabre => {
-                let mut sa = SabreRewriter::new(spec);
+            });
+        }
+        Rewriter::Sabre => {
+            let mut sa = timing.measure("rewriter_construction", || SabreRewriter::new(spec));
 
+            timing.measure("rewrite_rec", || {
                 for term in syntax_terms {
                     let term = to_untyped_data_expression(term.clone(), None);
                     let result = sa.rewrite(&term);
@@ -76,9 +88,9 @@ pub fn rewrite_rec(
                         println!("{}", result)
                     }
                 }
-            }
+            });
         }
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
