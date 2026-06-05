@@ -12,8 +12,10 @@ use std::rc::Rc;
 use mcrl2::ATerm;
 use mcrl2::ATermList;
 use mcrl2::DataExpression;
+use mcrl2::DataExpressionRef;
 use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
+use mcrl2::free_variables_data_expression;
 use mcrl2::Pbes;
 use mcrl2::PbesPropositionalVariableInstantiation;
 use mcrl2::SrfPbes;
@@ -105,6 +107,14 @@ pub struct PbesSrfSummand {
     /// Number of data parameters, used to size the next-state buffer.
     num_params: usize,
 
+    /// Positions in the state vector that fully determine this summand's
+    /// enumeration result; position 0 (equation index) is always included.
+    read_positions: Vec<usize>,
+
+    /// Positions in the state vector that this summand may change; position 0
+    /// (equation index) is always included.
+    write_positions: Vec<usize>,
+
     /// Reusable buffer holding the next-state vector.
     next_state_buf: RefCell<Vec<usize>>,
 }
@@ -180,6 +190,8 @@ impl PbesSrfLps {
         for (eq_idx, eq) in srf.equations().iter().enumerate() {
             // The parameters list of this equation (LHS of the assignment list).
             let eq_param_term: ATerm = eq.variable().parameters().into();
+            let params_vec: Vec<DataVariable> = eq.variable().parameters().iter().collect();
+
             for srf_summand in eq.summands() {
                 let target_pvi: PbesPropositionalVariableInstantiation = srf_summand.variable().into();
                 let target_eq_name = target_pvi.name().to_string();
@@ -191,6 +203,28 @@ impl PbesSrfLps {
                 let assignments_term = make_data_assignment_list(&eq_param_term, &target_args);
                 let write_assignments: ATermList<ATerm> = ATermList::new(assignments_term);
 
+                // Collect free variables from the condition.
+                let condition_de: DataExpression = srf_summand.condition().into();
+                let mut read_vars = free_variables_data_expression(&condition_de.copy());
+
+                // Position 0 (equation index) is always read; extend with positions
+                // whose parameter appears free in the condition or any target argument.
+                // Also compute write positions: position 0 is always written; position
+                // k+1 is written iff the k-th target argument is not the identity (param_k).
+                let mut read_positions = vec![0usize];
+                let mut write_positions = vec![0usize];
+                for (k, (param, arg)) in params_vec.iter().zip(target_pvi.arguments().iter()).enumerate() {
+                    read_vars.extend(free_variables_data_expression(&arg.copy()));
+                    if Into::<DataExpressionRef<'_>>::into(param.copy()) != arg.copy() {
+                        write_positions.push(k + 1);
+                    }
+                }
+                for (i, param) in params_vec.iter().enumerate() {
+                    if read_vars.contains(param) {
+                        read_positions.push(i + 1);
+                    }
+                }
+
                 summands.push(PbesSrfSummand {
                     equation_index: eq_idx,
                     target_equation_index: target_eq_idx,
@@ -199,6 +233,8 @@ impl PbesSrfLps {
                     write_assignments,
                     shared: Rc::clone(&shared),
                     num_params,
+                    read_positions,
+                    write_positions,
                     next_state_buf: RefCell::new(vec![0; 1 + num_params]),
                 });
             }
@@ -265,6 +301,14 @@ impl Summand for PbesSrfSummand {
     type Value = usize;
     type Label = ();
 
+    fn read_positions(&self) -> &[usize] {
+        &self.read_positions
+    }
+
+    fn write_positions(&self) -> &[usize] {
+        &self.write_positions
+    }
+
     fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
@@ -304,9 +348,6 @@ impl Summand for PbesSrfSummand {
             },
         );
 
-        // PBES has no read/write position tracking that the cache would use,
-        // so we silently ignore `state` beyond the equation-index check above.
-        let _ = state;
         Ok(())
     }
 }
