@@ -436,8 +436,10 @@ pub fn height_edge<'id>(
     match manager.get_node(&ldd) {
         Node::Terminal(_) => 0,
         Node::Inner(node) => {
-            let (down, right) = collect_children(node);
-            1 + usize::max(height_edge(manager, down), height_edge(manager, right))
+            // All right siblings share the same height, so only the down chain
+            // contributes to the height of the LDD.
+            let (down, _right) = collect_children(node);
+            1 + height_edge(manager, down)
         }
     }
 }
