@@ -20,17 +20,14 @@ use mcrl2::free_variables_data_expression;
 use mcrl2::preprocess;
 use merc_collections::IndexedSet;
 
-use merc_ldd::Ldd;
-use merc_ldd::Storage;
-use merc_ldd::Value;
-use merc_ldd::compute_meta;
-use merc_ldd::compute_proj;
-use merc_ldd::iterators::for_each_mut;
-use merc_ldd::project;
-use merc_ldd::singleton;
-use merc_ldd::union;
+use oxidd::ldd::LDDFunction;
+use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::Value;
+use streaming_iterator::StreamingIterator;
+
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::TransitionGroup;
+use merc_symbolic::iter;
 use merc_symbolic::reachability;
 use merc_utilities::MercError;
 
@@ -38,10 +35,10 @@ use merc_utilities::Timing;
 
 /// Explore the linear process specification using symbolic reachability.
 pub(crate) fn explore_lps_symbolic(
-    storage: &mut Storage,
+    storage: &LDDManagerRef,
     lps: &LinearProcessSpecification,
     timing: &Timing,
-) -> Result<Ldd, MercError> {
+) -> Result<LDDFunction, MercError> {
     let mut symbolic_lts = SymbolicLinearProcessSpecification::new(storage, lps)?;
 
     debug!("{symbolic_lts:?}");
@@ -64,11 +61,11 @@ struct SymbolicLinearProcessSpecification {
     _shared: Rc<Shared>,
 
     /// The initial state of the LPS.
-    initial_state: Ldd,
+    initial_state: LDDFunction,
 }
 
 impl SymbolicLinearProcessSpecification {
-    pub(crate) fn new(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<Self, MercError> {
+    pub fn new(storage: &LDDManagerRef, lps: &LinearProcessSpecification) -> Result<Self, MercError> {
         // We need the constants to be present in the symbolic summands for the enumeration.
         let options = PreprocessOptions {
             replace_constants_by_variables: false,
@@ -91,7 +88,7 @@ impl SymbolicLinearProcessSpecification {
                 &lps.action_summand(index)?,
                 &parameters,
                 Rc::clone(&shared),
-            ));
+            )?);
         }
 
         let initial_state_vector = lps
@@ -111,7 +108,7 @@ impl SymbolicLinearProcessSpecification {
             "Initial state vector length must match number of parameters"
         );
 
-        let initial_state = singleton(storage, &initial_state_vector);
+        let initial_state = LDDFunction::singleton(storage, &initial_state_vector)?;
 
         Ok(SymbolicLinearProcessSpecification {
             _lps: lps,
@@ -137,10 +134,10 @@ struct Shared {
 /// Represents a symbolic summand of a [mcrl2::LinearProcessSpecification].
 struct SymbolicSummand {
     /// The LDD encoding the projection of the state space on the read variables of this summand.
-    project_ldd: Ldd,
+    project_ldd: LDDFunction,
 
     /// The relation encoding the transition relation of this summand.
-    relation: Ldd,
+    relation: LDDFunction,
 
     /// The parameters that are read by this summand.
     read_parameters: Vec<*const _aterm>,
@@ -150,16 +147,16 @@ struct SymbolicSummand {
     read_indices: Vec<Value>,
 
     /// The positions of `read_indices` in the short vector.
-    read_positions: Vec<Value>,
+    read_positions: Vec<usize>,
 
     /// The indices of the parameters that are written by this summand.
     write_indices: Vec<Value>,
 
     /// The positions of `write_indices` in the short vector.
-    write_positions: Vec<Value>,
+    write_positions: Vec<usize>,
 
     /// The meta information for this summand, which is required by the relational product.
-    meta: Ldd,
+    meta: LDDFunction,
 
     /// The condition of this summand.
     condition: DataExpression,
@@ -180,11 +177,11 @@ struct SymbolicSummand {
 impl SymbolicSummand {
     /// Extract the required information from the given action summand that is required for symbolic exploration.
     pub(crate) fn new(
-        storage: &mut Storage,
+        storage: &LDDManagerRef,
         summand: &LinearSummand,
         parameters: &ATermList<DataVariable>,
         shared: Rc<Shared>,
-    ) -> Self {
+    ) -> Result<Self, MercError> {
         // Collect free variables from the condition.
         let mut read_vars = free_variables_data_expression(&summand.condition().copy());
         let parameters = parameters.to_vec();
@@ -237,10 +234,11 @@ impl SymbolicSummand {
         let summation_variables: ATermList<DataVariable> = summand.summation_variables();
         let multi_action: ATerm = summand.multi_action();
 
-        let relation = storage.protect(storage.empty_set());
-        let project_ldd = compute_proj(storage, &read_indices);
+        let relation = LDDFunction::empty_set(storage)?;
+        let project_ldd = LDDFunction::projection_meta(storage, &read_indices)?;
 
-        let (meta, read_positions, write_positions) = compute_meta(storage, &read_indices, &write_indices);
+        let (meta, read_positions, write_positions) =
+            LDDFunction::relation_product_meta(storage, &read_indices, &write_indices)?;
 
         debug_assert_eq!(
             read_indices.len(),
@@ -268,7 +266,7 @@ impl SymbolicSummand {
             "Write indices must be strictly sorted"
         );
 
-        Self {
+        Ok(Self {
             project_ldd,
             relation,
             read_indices,
@@ -282,16 +280,16 @@ impl SymbolicSummand {
             multi_action,
             shared,
             read_parameters,
-        }
+        })
     }
 }
 
 impl SymbolicLTS for SymbolicLinearProcessSpecification {
-    fn states(&self) -> &Ldd {
+    fn states(&self) -> &LDDFunction {
         unreachable!("The SymbolicLTS interface can only be explored");
     }
 
-    fn initial_state(&self) -> &Ldd {
+    fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
@@ -313,7 +311,7 @@ impl SymbolicLTS for SymbolicLinearProcessSpecification {
 }
 
 impl TransitionGroup for SymbolicSummand {
-    fn relation(&self) -> &Ldd {
+    fn relation(&self) -> &LDDFunction {
         &self.relation
     }
 
@@ -329,18 +327,19 @@ impl TransitionGroup for SymbolicSummand {
         None
     }
 
-    fn meta(&self) -> &Ldd {
+    fn meta(&self) -> &LDDFunction {
         &self.meta
     }
 
-    fn learn_successors(&mut self, storage: &mut Storage, todo: &Ldd) -> Result<(), MercError> {
-        let proj = project(storage, todo, &self.project_ldd);
+    fn learn_successors(&mut self, storage: &LDDManagerRef, todo: &LDDFunction) -> Result<(), MercError> {
+        let proj = todo.project(&self.project_ldd)?;
 
         // Reused across short states to avoid per-iteration allocation.
         let mut read_values: Vec<*const _aterm> = Vec::with_capacity(self.read_indices.len());
         let mut interleaved_values: Vec<Value> = vec![0; self.read_indices.len() + self.write_indices.len()];
 
-        for_each_mut(storage, &proj, |storage, short_state| {
+        let mut states = iter(&proj);
+        while let Some(short_state) = states.next() {
             debug_assert_eq!(
                 short_state.len(),
                 self.read_indices.len(),
@@ -368,7 +367,7 @@ impl TransitionGroup for SymbolicSummand {
             );
 
             for (offset, value) in self.read_positions.iter().zip(short_state.iter()) {
-                interleaved_values[*offset as usize] = *value;
+                interleaved_values[*offset] = *value;
             }
 
             self.shared.context.enumerate_raw(
@@ -391,7 +390,7 @@ impl TransitionGroup for SymbolicSummand {
                             // SAFETY: `*value` is a live enumerated term handed to
                             // this callback by the mCRL2 enumerator.
                             let term = unsafe { ATerm::from_ptr(*value) };
-                            interleaved_values[offset as usize] = *mapping[self.write_indices[i] as usize]
+                            interleaved_values[offset] = mapping[self.write_indices[i] as usize]
                                 .insert(DataExpression::from(term))
                                 .0 as Value;
                         }
@@ -402,15 +401,16 @@ impl TransitionGroup for SymbolicSummand {
                         short_state.iter().join(", "),
                         self.write_positions
                             .iter()
-                            .map(|&pos| interleaved_values[pos as usize])
+                            .map(|&pos| interleaved_values[pos])
                             .join(", ")
                     );
 
-                    let cube = singleton(storage, &interleaved_values);
-                    self.relation = union(storage, &self.relation, &cube);
+                    let cube =
+                        LDDFunction::singleton(storage, &interleaved_values).expect("Failed to allocate LDD singleton");
+                    self.relation = self.relation.union(&cube).expect("Failed to allocate LDD union");
                 },
             );
-        });
+        }
 
         Ok(())
     }
@@ -459,8 +459,6 @@ mod tests {
     use std::process::Command;
 
     use mcrl2::read_lps;
-    use merc_ldd::Storage;
-    use merc_ldd::len;
     use merc_utilities::Timing;
 
     use super::explore_lps_symbolic;
@@ -490,11 +488,11 @@ mod tests {
 
         let lps = read_lps(lps_path.to_str().expect("LPS path is valid UTF-8")).expect("Failed to read LPS");
 
-        let mut storage = Storage::new();
+        let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);
         let timing = Timing::new();
 
-        let states = explore_lps_symbolic(&mut storage, &lps, &timing).expect("Failed to explore LPS");
-        let num_of_states = len(&mut storage, &states);
+        let states = explore_lps_symbolic(&storage, &lps, &timing).expect("Failed to explore LPS");
+        let num_of_states = states.len();
 
         assert_eq!(
             num_of_states, 74,
