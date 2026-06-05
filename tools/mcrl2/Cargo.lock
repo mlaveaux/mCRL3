@@ -89,8 +89,6 @@ dependencies = [
 [[package]]
 name = "arcslab"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67d525761a6913dc2115b17c9c72379de20e9fd7b12ad479bbadbb544b20b32b"
 dependencies = [
  "crossbeam-utils",
  "derive-where",
@@ -595,9 +593,9 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "flume"
-version = "0.11.1"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
+checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
 dependencies = [
  "spin",
 ]
@@ -695,8 +693,6 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "hugealloc"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "542733215a252c27c674e5d875a910d7de509cb74123d0bdbaa050f871ec84c2"
 dependencies = [
  "allocator-api2 0.2.21",
  "libc",
@@ -837,8 +833,6 @@ dependencies = [
 [[package]]
 name = "linear-hashtbl"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b11269ceb6867559e0fce487ff8148933040c7ac091ee4ecc904821f1db1e0fa"
 
 [[package]]
 name = "link-cplusplus"
@@ -958,7 +952,6 @@ dependencies = [
  "merc_data",
  "merc_explore",
  "merc_io",
- "merc_ldd",
  "merc_lts",
  "merc_reduction",
  "merc_symbolic",
@@ -966,6 +959,7 @@ dependencies = [
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
+ "oxidd",
  "rand",
  "rayon",
  "serde",
@@ -1054,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "merc_explore"
-version = "2.0.0"
+version = "0.1.0"
 dependencies = [
  "boxcar",
  "clap",
@@ -1220,7 +1214,7 @@ dependencies = [
 name = "merc_symbolic"
 version = "3.0.0"
 dependencies = [
- "clap",
+ "delegate",
  "duct",
  "itertools 0.15.0",
  "log",
@@ -1228,14 +1222,15 @@ dependencies = [
  "merc_collections",
  "merc_data",
  "merc_io",
- "merc_ldd",
  "merc_lts",
+ "merc_number",
  "merc_utilities",
  "oxidd",
  "oxidd-core",
  "oxidd-dump",
  "oxidd-reorder",
  "oxidd-rules-bdd",
+ "oxidd-rules-ldd",
  "rand",
  "rustc-hash 2.1.2",
  "streaming-iterator",
@@ -1462,8 +1457,6 @@ dependencies = [
 [[package]]
 name = "oxidd"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c984e2c820ff1306f7bd10ac166a542c69cce2d87331eb4caa1b78ca381e5c0b"
 dependencies = [
  "cfg-if",
  "derive-where",
@@ -1476,6 +1469,7 @@ dependencies = [
  "oxidd-manager-pointer",
  "oxidd-reorder",
  "oxidd-rules-bdd",
+ "oxidd-rules-ldd",
  "oxidd-rules-mtbdd",
  "oxidd-rules-tdd",
  "oxidd-rules-zbdd",
@@ -1485,8 +1479,6 @@ dependencies = [
 [[package]]
 name = "oxidd-cache"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea87b04767bd71ec9a0f0f1b95b3e1be822365d611ae692734bf84dffdc1aae9"
 dependencies = [
  "allocator-api2 0.2.21",
  "document-features",
@@ -1498,8 +1490,6 @@ dependencies = [
 [[package]]
 name = "oxidd-core"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4ce8a17e276f5df5a9a2aabdc0fd1ccf2b3b73bc3b5ef7627f26f6ecc9afee3"
 dependencies = [
  "nanorand",
 ]
@@ -1507,8 +1497,6 @@ dependencies = [
 [[package]]
 name = "oxidd-derive"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96cb7e36aee287b5ad1921fb98050a1b9e5771bf5d34381f24b0548083aefeb3"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1519,8 +1507,6 @@ dependencies = [
 [[package]]
 name = "oxidd-dump"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "675fcc8144350309a3b94a4a3522d953472c29df06b783fe0dfafbc6b1d39b4b"
 dependencies = [
  "document-features",
  "fixedbitset",
@@ -1534,8 +1520,6 @@ dependencies = [
 [[package]]
 name = "oxidd-manager-index"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1339eb2952e23d62d3421f444fdf36d7f36b6a63707ae3d4fef1d1bfb007a47"
 dependencies = [
  "crossbeam-utils",
  "derive-where",
@@ -1550,8 +1534,6 @@ dependencies = [
 [[package]]
 name = "oxidd-manager-pointer"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad78ecc8d113d3e3a2d06a47299d8a557088f016323f0f22f363622ff239ebb8"
 dependencies = [
  "arcslab",
  "derive-where",
@@ -1567,8 +1549,6 @@ dependencies = [
 [[package]]
 name = "oxidd-reorder"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6863dd156fb2713ad1f6b7528d08da3cc675ae27e24b6e9a0df9d0fea8d9a839"
 dependencies = [
  "flume",
  "is_sorted",
@@ -1580,8 +1560,6 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-bdd"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c56b5465552bdc2c1f38c433f8751703d1561396f4be16315999cc47eed6e2ce"
 dependencies = [
  "document-features",
  "fixedbitset",
@@ -1591,10 +1569,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxidd-rules-ldd"
+version = "0.11.0"
+dependencies = [
+ "oxidd-core",
+ "oxidd-derive",
+]
+
+[[package]]
 name = "oxidd-rules-mtbdd"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49740035de417b58fad2fe420b5539081604e601c266841f3092ca8bb5db1da7"
 dependencies = [
  "document-features",
  "fixedbitset",
@@ -1606,8 +1590,6 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-tdd"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb13c585037127f6066e3ca928e96bdc21df19a41b0242dfcb9e95faf723558c"
 dependencies = [
  "document-features",
  "oxidd-core",
@@ -1618,8 +1600,6 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-zbdd"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "917c941a721e884817a5b510ff818cb6d7033216817c0fd1e0b154f4cc7cfe5b"
 dependencies = [
  "document-features",
  "fixedbitset",

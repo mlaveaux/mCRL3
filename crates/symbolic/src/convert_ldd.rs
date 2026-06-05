@@ -73,7 +73,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
         debug_assert!(inserted, "State space contains duplicate states");
         state_progress.print(discovered.len())
     }
-    
+
     // Total number of states for progress reporting.
     let progress = TimeProgress::new(
         move |(number_of_states, number_of_transitions)| {

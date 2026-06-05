@@ -269,12 +269,12 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
     let mut file = File::open(&args.filename)?;
     match format {
         SymFormat::Sylvan => {
-            let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&mut storage, &mut file))?;
-            explore_impl(&mut storage, cli, args, &mut lts, timing)?;
+            let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&storage, &mut file))?;
+            explore_impl(&storage, cli, args, &mut lts, timing)?;
         }
         SymFormat::Sym => {
-            let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&mut storage, &mut file))?;
-            explore_impl(&mut storage, cli, args, &mut lts, timing)?;
+            let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&storage, &mut file))?;
+            explore_impl(&storage, cli, args, &mut lts, timing)?;
         }
     }
 
@@ -413,7 +413,7 @@ fn handle_convert(cli: &Cli, args: &ConvertArgs, _timing: &Timing) -> Result<(),
     }
 
     let mut file = File::open(&args.filename)?;
-    let lts = read_symbolic_lts(&mut storage, &mut file)?;
+    let lts = read_symbolic_lts(&storage, &mut file)?;
 
     if let Some(output) = &args.output {
         let output_format =
@@ -426,16 +426,16 @@ fn handle_convert(cli: &Cli, args: &ConvertArgs, _timing: &Timing) -> Result<(),
             LtsFormat::Aut => {
                 let mut output = File::create(output)?;
                 let mut stream = AutStream::new(&mut output)?;
-                convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
+                convert_symbolic_lts(&storage, &mut stream, &lts)?;
             }
             LtsFormat::AutMcrl2 => {
                 let mut output = File::create(output)?;
                 let mut stream = AutStream::new_mcrl2(&mut output)?;
-                convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
+                convert_symbolic_lts(&storage, &mut stream, &lts)?;
             }
             LtsFormat::Bcg => {
                 let explicit_lts =
-                    convert_symbolic_lts(&mut storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
+                    convert_symbolic_lts(&storage, &mut LtsBuilderMem::new(Vec::new(), Vec::new()), &lts)?;
                 write_bcg(&explicit_lts, output)?;
             }
         }
@@ -456,10 +456,10 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
     let manager_ref = init_bdd_manager(cli);
 
     let mut file = File::open(&args.filename)?;
-    let lts = read_symbolic_lts(&mut storage, &mut file)?;
+    let lts = read_symbolic_lts(&storage, &mut file)?;
 
     let lts_bdd = timing.measure("convert_bdd", || {
-        SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts)
+        SymbolicLtsBdd::from_symbolic_lts(&storage, &manager_ref, &lts)
     })?;
 
     let quotient_lts = timing.measure("reduction", || -> Result<Option<SymbolicLtsBdd>, MercError> {
