@@ -74,11 +74,6 @@ pub struct CacheSummandWrapper<P: LPS> {
     misses: Cell<u64>,
 }
 
-/// Exploration context for [`CacheLPS`], wrapping the inner LPS context.
-pub struct CacheLPSContext<'ctx, P: LPS> {
-    inner_context: P::Context<'ctx>,
-}
-
 impl<P: LPS> CacheLPS<P> {
     pub fn new(inner: P, strategy: CachingStrategy) -> Self {
         let inner = Rc::new(inner);
@@ -253,7 +248,7 @@ impl fmt::Display for CacheMetrics {
 impl<P: LPS> LPS for CacheLPS<P> {
     type Value = P::Value;
     type Label = P::Label;
-    type Context<'ctx> = CacheLPSContext<'ctx, P>;
+    type StateInfo = P::StateInfo;
     type Summand = CacheSummandWrapper<P>;
 
     fn initial_state(&self) -> Vec<Self::Value> {
@@ -264,28 +259,25 @@ impl<P: LPS> LPS for CacheLPS<P> {
         &self.summands
     }
 
-    fn create_context(&self) -> Self::Context<'_> {
-        CacheLPSContext {
-            inner_context: self.inner.create_context(),
-        }
+    fn prepare(&self, state: &[Self::Value]) {
+        self.inner.prepare(state);
     }
 
-    fn prepare_context<'ctx>(&'ctx self, state: &[Self::Value], context: &mut Self::Context<'ctx>) {
-        self.inner.prepare_context(state, &mut context.inner_context);
+    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
+        self.inner.state_info(state)
     }
 }
 
 impl<P: LPS> Summand for CacheSummandWrapper<P> {
     type Value = P::Value;
     type Label = P::Label;
-    type Context<'ctx> = CacheLPSContext<'ctx, P>;
 
-    fn enumerate<'ctx, F>(&self, state: &[Self::Value], context: &mut Self::Context<'ctx>, mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, state: &[Self::Value], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>,
     {
         if self.strategy == CachingStrategy::None || self.read_positions.is_empty() {
-            return self.inner.summands()[self.index].enumerate(state, &mut context.inner_context, report);
+            return self.inner.summands()[self.index].enumerate(state, report);
         }
 
         // Project state vector onto read positions to form the cache key.
@@ -354,7 +346,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
             // scattered back onto the live source state (see the hit branch).
             let mut captured: Vec<(P::Label, Tree)> = Vec::new();
 
-            self.inner.summands()[self.index].enumerate(state, &mut context.inner_context, |label, next_state| {
+            self.inner.summands()[self.index].enumerate(state, |label, next_state| {
                 let mut scratch = self.shared.key_buf.borrow_mut();
                 scratch.clear();
                 for &pos in &self.write_positions {

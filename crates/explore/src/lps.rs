@@ -1,16 +1,14 @@
-//! Trait abstractions for Linear Process Specifications (LPSs).
-//!
-//! An LPS describes an LTS implicitly by giving an initial state vector and a
-//! collection of condition action effect summands. The exploration algorithm in
-//! [`crate::explore`] enumerates the state space by repeatedly applying these
-//! summands to discovered states.
+//! Trait abstractions for Linear Process Specifications (LPSs) and similar
+//! state-space generators (e.g. PBES in SRF form).
 
-use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 
 use crate::Slot;
 
 /// A Linear Process Specification trait.
+///
+/// An [`LPS`] describes a transition system implicitly by giving an initial
+/// state vector and a collection of condition action effect summands.
 pub trait LPS {
     /// The type of the values stored at each position of a state vector.
     ///
@@ -18,19 +16,16 @@ pub trait LPS {
     /// the discovered set's hash-consed sequence forest.
     type Value: Slot;
 
-    /// The action label produced for each enumerated transition.
-    type Label: TransitionLabel;
+    /// The label produced for each enumerated transition.
+    type Label: Clone;
 
-    /// Context reused while enumerating all summands for a state.
+    /// Metadata reported once per discovered state to the exploration caller.
     ///
-    /// The lifetime `'ctx` is the borrow of `&self` passed to
-    /// [`LPS::create_context`] / [`LPS::prepare_context`], allowing
-    /// implementations to store references into `self` (e.g. the summand
-    /// slice) without raw pointers.
-    type Context<'ctx>;
+    /// Plain LPSs typically use `()`.
+    type StateInfo;
 
     /// A single condition action effect summand of the LPS.
-    type Summand: for<'ctx> Summand<Value = Self::Value, Label = Self::Label, Context<'ctx> = Self::Context<'ctx>>;
+    type Summand: Summand<Value = Self::Value, Label = Self::Label>;
 
     /// Returns the initial state vector of the LPS.
     fn initial_state(&self) -> Vec<Self::Value>;
@@ -38,11 +33,15 @@ pub trait LPS {
     /// Returns the summands that together define the transition relation.
     fn summands(&self) -> &[Self::Summand];
 
-    /// Create an enumeration context that can be reused during exploration.
-    fn create_context(&self) -> Self::Context<'_>;
+    /// Prepares the implementation for enumerating transitions from `state`.
+    ///
+    /// The exploration loop calls this exactly once before iterating over the
+    /// summands of a given source state. Implementations typically use it to
+    /// stage a substitution in their enumeration backend.
+    fn prepare(&self, state: &[Self::Value]);
 
-    /// Prepare `context` for enumerating transitions from `state`.
-    fn prepare_context<'ctx>(&'ctx self, state: &[Self::Value], context: &mut Self::Context<'ctx>);
+    /// Returns the state-level metadata for the given source `state`.
+    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo;
 }
 
 /// A condition action effect summand of an [`LPS`].
@@ -58,17 +57,12 @@ pub trait Summand {
     /// The action label type, matching [`LPS::Label`].
     type Label;
 
-    /// Shared mutable context prepared by [`LPS::prepare_context`].
-    ///
-    /// The lifetime `'ctx` matches the one on [`LPS::Context`].
-    type Context<'ctx>;
-
     /// Enumerate every outgoing transition produced by this summand from the
     /// state vector `state`.
     ///
     /// For each transition, `report(label, next_state)` is invoked exactly once
     /// with borrowed values.
-    fn enumerate<'ctx, F>(&self, state: &[Self::Value], context: &mut Self::Context<'ctx>, report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, state: &[Self::Value], report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>;
 

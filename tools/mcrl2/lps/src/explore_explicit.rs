@@ -24,7 +24,7 @@ use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
-use merc_explore::explore;
+use merc_explore::explore_to_lts;
 use merc_lts::LtsBuilder;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
@@ -46,7 +46,7 @@ where
     debug!("{lps:?}");
 
     let cached = CacheLPS::new(lps, caching);
-    explore(builder, &cached, strategy, timing)?;
+    explore_to_lts(builder, &cached, strategy, timing)?;
     debug!("{}", cached.metrics());
     Ok(())
 }
@@ -138,6 +138,7 @@ impl ExplicitLinearProcessSpecification {
         let shared = Rc::new(Shared {
             context: LearnSuccessorsContext::new(&lps),
             mapping: RefCell::new((0..num_parameters).map(|_| IndexedSet::new()).collect()),
+            parameter_values: RefCell::new(Vec::with_capacity(num_parameters)),
         });
 
         let mut summands = Vec::new();
@@ -176,12 +177,6 @@ impl ExplicitLinearProcessSpecification {
     }
 }
 
-/// Reusable context for explicit summand enumeration from one source state.
-struct ExplicitEnumerationContext {
-    /// Parameter values for the current source state, in process-parameter order.
-    parameter_values: Vec<*const _aterm>,
-}
-
 /// State shared between [ExplicitSummand]s and the enclosing LPS.
 struct Shared {
     /// Context used by mCRL2 to perform the enumeration. Behind a `RefCell` so
@@ -192,6 +187,11 @@ struct Shared {
     /// Bidirectional mapping between data expressions and indices, one
     /// [IndexedSet] per process parameter.
     mapping: RefCell<Vec<IndexedSet<DataExpression>>>,
+
+    /// Reusable scratch buffer holding the parameter values resolved from the
+    /// current source state. Filled during [`LPS::prepare`] and consumed
+    /// immediately by [`LearnSuccessorsContext::set_assignments`].
+    parameter_values: RefCell<Vec<*const _aterm>>,
 }
 
 /// A single summand of the LPS, prepared for explicit enumeration.
@@ -304,7 +304,7 @@ impl ExplicitSummand {
 impl LPS for ExplicitLinearProcessSpecification {
     type Value = usize;
     type Label = Mcrl2MultiActionLabel;
-    type Context<'ctx> = ExplicitEnumerationContext;
+    type StateInfo = ();
     type Summand = ExplicitSummand;
 
     fn initial_state(&self) -> Vec<usize> {
@@ -315,23 +315,18 @@ impl LPS for ExplicitLinearProcessSpecification {
         &self.summands
     }
 
-    fn create_context(&self) -> Self::Context<'_> {
-        ExplicitEnumerationContext {
-            parameter_values: Vec::with_capacity(self.process_parameters.len()),
-        }
-    }
-
-    fn prepare_context<'ctx>(&'ctx self, state: &[Self::Value], context: &mut Self::Context<'ctx>) {
+    fn prepare(&self, state: &[Self::Value]) {
         debug_assert_eq!(
             state.len(),
             self.process_parameters.len(),
             "State vector length must match number of process parameters"
         );
 
-        context.parameter_values.clear();
+        let mut parameter_values = self._shared.parameter_values.borrow_mut();
+        parameter_values.clear();
         let mapping = self._shared.mapping.borrow();
         for (i, value_index) in state.iter().enumerate() {
-            context.parameter_values.push(
+            parameter_values.push(
                 mapping[i]
                     .get_by_index(*value_index)
                     .expect("Value must be in the mapping")
@@ -342,14 +337,15 @@ impl LPS for ExplicitLinearProcessSpecification {
 
         self._shared
             .context
-            .set_assignments(&self.process_parameters, &context.parameter_values);
+            .set_assignments(&self.process_parameters, &parameter_values);
     }
+
+    fn state_info(&self, _state: &[Self::Value]) -> Self::StateInfo {}
 }
 
 impl Summand for ExplicitSummand {
     type Value = usize;
     type Label = Mcrl2MultiActionLabel;
-    type Context<'ctx> = ExplicitEnumerationContext;
 
     fn read_positions(&self) -> &[usize] {
         &self.read_indices
@@ -359,7 +355,7 @@ impl Summand for ExplicitSummand {
         &self.write_indices
     }
 
-    fn enumerate<'ctx, F>(&self, state: &[usize], _context: &mut Self::Context<'ctx>, mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {

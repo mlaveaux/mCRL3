@@ -56,6 +56,7 @@ merc_symbolic = { path = "../../crates/symbolic" }
 merc_tools = { path = "../../crates/tools" }
 merc_unsafety = { path = "../../crates/unsafety" }
 merc_utilities = { path = "../../crates/utilities" }
+merc_vpg = { path = "../../crates/vpg" }
 
 # Use a local version of mCRL2-sys for development.
 # [patch."https://github.com/MERCorg/mCRL2-sys"]
