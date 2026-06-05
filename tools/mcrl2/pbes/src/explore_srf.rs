@@ -50,6 +50,10 @@ struct PbesSrfShared {
     /// the current source state. Filled during [`LPS::prepare`] and consumed
     /// immediately by [`LearnSuccessorsContext::set_assignments`].
     parameter_values: RefCell<Vec<*const _aterm>>,
+
+    /// Cached tau multi-action term; protected once at construction instead of
+    /// on every summand enumeration.
+    tau: ATerm,
 }
 
 /// Explicit-state view of a PBES in SRF normal form.
@@ -166,10 +170,14 @@ impl PbesSrfLps {
             context: LearnSuccessorsContext::from_data_spec(&pbes.data_specification()),
             mapping: RefCell::new((0..num_params).map(|_| IndexedSet::new()).collect()),
             parameter_values: RefCell::new(Vec::with_capacity(num_params)),
+            tau: tau_multi_action(),
         });
 
         // Build the initial state vector from the initial PVI.
-        let initial_pvi = pbes.initial_state();
+        // After `unify_parameters`, the SRF's initial PVI has `num_params`
+        // arguments; the original `pbes.initial_state()` may have fewer.
+        let srf_as_pbes = srf.to_pbes();
+        let initial_pvi = srf_as_pbes.initial_state();
         let initial_eq_name = initial_pvi.name().to_string();
         let initial_eq_idx = *name_to_eq
             .get(&initial_eq_name)
@@ -318,13 +326,11 @@ impl Summand for PbesSrfSummand {
             return Ok(());
         }
 
-        let tau = tau_multi_action();
-
         self.shared.context.enumerate_raw_with_current_assignments(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
-            &tau,
+            &self.shared.tau,
             |next_values: &[*const _aterm], _multi_action| {
                 debug_assert_eq!(
                     next_values.len(),
