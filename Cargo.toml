@@ -70,10 +70,11 @@ itertools = "0.15"
 log = { version = "0.4", features = ["kv"] }
 num = "0.4"
 oxidd = { version = "0.11", features = ["manager-pointer"] }
-oxidd-core = "0.11"
 oxidd-dump = "0.6"
+oxidd-core = "0.11"
 oxidd-reorder = "0.6"
 oxidd-rules-bdd = "0.11"
+oxidd-rules-ldd = "0.11"
 parking_lot = "0.12"
 pest = "2.8"
 pest_derive  = "2.8"
@@ -131,7 +132,6 @@ merc_collections = { version = "2.0", path = "crates/collections" }
 merc_data = { version = "3.0", path = "crates/data" }
 merc_explore = { version = "2.0", path = "crates/explore" }
 merc_io = { version = "3.0", path = "crates/io" }
-merc_ldd = { version = "3.0", path = "crates/ldd" }
 merc_lts = { version = "2.0", path = "crates/lts" }
 merc_macros = { version = "2.0", path = "crates/macros" }
 merc_number = { version = "2.0", path = "crates/number" }
@@ -156,3 +156,13 @@ merc_pest_consume_macros = { version = "2.0", git = "https://github.com/MERCorg/
 [workspace.metadata.cargo-semver-checks.lints]
 enum_no_repr_variant_discriminant_changed = "allow"
 partial_ord_enum_variants_reordered = "allow"
+
+
+# Use a fork of oxidd until the LDD branch is integrated.
+[patch.crates-io]
+oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
+oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
+oxidd-dump = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
+oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
+oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
+oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }

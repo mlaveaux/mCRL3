@@ -262,7 +262,7 @@ fn handle_info(cli: &Cli, args: &InfoArgs, timing: &Timing) -> Result<(), MercEr
 
 /// Explores the given symbolic LTS.
 fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), MercError> {
-    let mut storage = init_ldd_manager(cli);
+    let storage = init_ldd_manager(cli);
 
     let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
 
@@ -404,7 +404,7 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
 
 /// Converts a symbolic LTS to an explicit LTS.
 fn handle_convert(cli: &Cli, args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError> {
-    let mut storage = init_ldd_manager(cli);
+    let storage = init_ldd_manager(cli);
 
     let format =
         guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
@@ -452,7 +452,7 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         return Err("Currently only the .sym format is supported for reduction".into());
     }
 
-    let mut storage = init_ldd_manager(cli);
+    let storage = init_ldd_manager(cli);
     let manager_ref = init_bdd_manager(cli);
 
     let mut file = File::open(&args.filename)?;

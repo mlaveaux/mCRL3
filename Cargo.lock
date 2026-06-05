@@ -119,6 +119,7 @@ dependencies = [
 [[package]]
 name = "arcslab"
 version = "0.1.2"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "crossbeam-utils",
  "derive-where",
@@ -834,6 +835,7 @@ dependencies = [
 [[package]]
 name = "hugealloc"
 version = "0.1.1"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "allocator-api2 0.2.21",
  "libc",
@@ -994,6 +996,7 @@ dependencies = [
 [[package]]
 name = "linear-hashtbl"
 version = "0.1.4"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 
 [[package]]
 name = "linux-raw-sys"
@@ -1223,25 +1226,6 @@ dependencies = [
  "streaming-iterator",
  "tempfile",
  "thiserror",
-]
-
-[[package]]
-name = "merc_ldd"
-version = "3.0.0"
-dependencies = [
- "ahash",
- "delegate",
- "itertools 0.15.0",
- "log",
- "merc_aterm",
- "merc_collections",
- "merc_io",
- "merc_number",
- "merc_unsafety",
- "merc_utilities",
- "rand",
- "rustc-hash 2.1.2",
- "streaming-iterator",
 ]
 
 [[package]]
@@ -1717,6 +1701,7 @@ dependencies = [
 [[package]]
 name = "oxidd"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "cfg-if",
  "derive-where",
@@ -1739,6 +1724,7 @@ dependencies = [
 [[package]]
 name = "oxidd-cache"
 version = "0.11.1"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "allocator-api2 0.2.21",
  "document-features",
@@ -1750,6 +1736,7 @@ dependencies = [
 [[package]]
 name = "oxidd-core"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "nanorand",
 ]
@@ -1757,6 +1744,7 @@ dependencies = [
 [[package]]
 name = "oxidd-derive"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1767,6 +1755,7 @@ dependencies = [
 [[package]]
 name = "oxidd-dump"
 version = "0.6.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
@@ -1780,6 +1769,7 @@ dependencies = [
 [[package]]
 name = "oxidd-manager-index"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "crossbeam-utils",
  "derive-where",
@@ -1794,6 +1784,7 @@ dependencies = [
 [[package]]
 name = "oxidd-manager-pointer"
 version = "0.6.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "arcslab",
  "derive-where",
@@ -1809,6 +1800,7 @@ dependencies = [
 [[package]]
 name = "oxidd-reorder"
 version = "0.6.1"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "flume",
  "is_sorted",
@@ -1820,6 +1812,7 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-bdd"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
@@ -1831,6 +1824,7 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-ldd"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "oxidd-core",
  "oxidd-derive",
@@ -1839,6 +1833,7 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-mtbdd"
 version = "0.6.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
@@ -1850,6 +1845,7 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-tdd"
 version = "0.6.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "document-features",
  "oxidd-core",
@@ -1860,6 +1856,7 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-zbdd"
 version = "0.11.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=4ed048be1f064f6dc4497a396204de35e4c1568b#4ed048be1f064f6dc4497a396204de35e4c1568b"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
