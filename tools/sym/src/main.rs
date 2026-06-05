@@ -8,8 +8,6 @@ use clap::Subcommand;
 
 use itertools::Itertools;
 use merc_io::LargeFormatter;
-use merc_ldd::Storage;
-use merc_ldd::len;
 use merc_lts::AutStream;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
@@ -242,8 +240,8 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
 }
 
 /// Reads the given symbolic LTS and prints information about it.
-fn handle_info(args: &InfoArgs, timing: &Timing) -> Result<(), MercError> {
-    let mut storage = Storage::new();
+fn handle_info(cli: &Cli, args: &InfoArgs, timing: &Timing) -> Result<(), MercError> {
+    let storage = init_ldd_manager(cli);
 
     let format =
         guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
@@ -253,13 +251,10 @@ fn handle_info(args: &InfoArgs, timing: &Timing) -> Result<(), MercError> {
     }
 
     let lts = timing.measure("read_symbolic_lts", || {
-        read_symbolic_lts(&mut storage, File::open(&args.filename)?)
+        read_symbolic_lts(&storage, File::open(&args.filename)?)
     })?;
 
-    println!(
-        "Number of states: {}",
-        LargeFormatter(merc_ldd::len(&mut storage, lts.states()))
-    );
+    println!("Number of states: {}", LargeFormatter(lts.states().len()));
     println!("Number of summand groups: {}", lts.transition_groups().len());
 
     Ok(())
@@ -267,7 +262,7 @@ fn handle_info(args: &InfoArgs, timing: &Timing) -> Result<(), MercError> {
 
 /// Explores the given symbolic LTS.
 fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), MercError> {
-    let mut storage = Storage::new();
+    let mut storage = init_ldd_manager(cli);
 
     let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
 
@@ -287,7 +282,7 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
 }
 
 fn explore_impl<L: SymbolicLTS>(
-    storage: &mut Storage,
+    storage: &oxidd::ldd::LDDManagerRef,
     cli: &Cli,
     args: &ExploreArgs,
     lts: &mut L,
@@ -318,7 +313,7 @@ fn explore_impl<L: SymbolicLTS>(
             timing.measure("explore", || -> Result<_, MercError> {
                 let states = reachability(storage, lts, timing)?;
 
-                Ok(len(storage, &states))
+                Ok(states.len())
             })?
         );
     }
@@ -408,8 +403,8 @@ fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError>
 }
 
 /// Converts a symbolic LTS to an explicit LTS.
-fn handle_convert(args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError> {
-    let mut storage = Storage::new();
+fn handle_convert(cli: &Cli, args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError> {
+    let mut storage = init_ldd_manager(cli);
 
     let format =
         guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input symbolic LTS format")?;
@@ -457,7 +452,7 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         return Err("Currently only the .sym format is supported for reduction".into());
     }
 
-    let mut storage = Storage::new();
+    let mut storage = init_ldd_manager(cli);
     let manager_ref = init_bdd_manager(cli);
 
     let mut file = File::open(&args.filename)?;

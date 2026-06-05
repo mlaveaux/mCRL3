@@ -85,8 +85,6 @@ pub fn reachability_bdd(
             //
             // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))`
             // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
-            // This can be seen from the following: `exists a. (todo(s) ∧ R(s, s', a))`
-            // is equal to `todo(s)` if `support(R) = a`, where quantifying over `s` would
             // result in `T`. And `todo(s)[s' <- s]` is equal to `todo(s)`.
             let tmp = todo.apply_exists(BooleanOperator::And, transition.relation(), relation_vars)?;
 
@@ -121,7 +119,6 @@ mod tests {
     use oxidd::util::SatCountCache;
     use rustc_hash::FxBuildHasher;
 
-    use merc_ldd::len;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
@@ -134,15 +131,15 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_reachability() {
         random_test(100, |rng| {
-            let mut storage = merc_ldd::Storage::new();
+            let manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
             // We don't really check anything here, just ensure that reachability runs without errors.
-            let mut lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
-            let reachable_states = reachability(&mut storage, &mut lts, &Timing::new()).unwrap();
-            let num_reachable_states = len(&mut storage, &reachable_states);
+            let mut lts = random_symbolic_lts(rng, &manager, 10, 5).unwrap();
+            let reachable_states = reachability(&manager, &mut lts, &Timing::new()).unwrap();
+            let num_reachable_states = reachable_states.len();
 
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&manager, &manager_ref, &lts).unwrap();
 
             let reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, false).unwrap();
             let num_reachable_states_bdd = reachable_states_bdd

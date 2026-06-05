@@ -297,7 +297,6 @@ fn compute_positions(
 
 #[cfg(test)]
 mod tests {
-    use merc_ldd::Storage;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
     use merc_reduction::Equivalence;
@@ -319,13 +318,13 @@ mod tests {
 
         let input = include_bytes!("../../../examples/lts/abp.sym");
 
-        let mut storage = Storage::new();
-        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-        let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
-        let symbolic_lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
+        let symbolic_lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();
+        let symbolic_lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &symbolic_lts).unwrap();
 
         let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-        let lts = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &symbolic_lts_bdd).unwrap();
+        let lts = convert_symbolic_lts_bdd(&bdd_manager, &mut builder, &symbolic_lts_bdd).unwrap();
 
         assert_eq!(lts.num_of_states(), 74);
         assert_eq!(lts.num_of_transitions(), 92);
@@ -335,17 +334,17 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_convert_symbolic_lts_bdd() {
         random_test(100, |rng| {
-            let mut storage = Storage::new();
+            let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
-            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let lts = random_symbolic_lts(rng, &ldd_manager, 10, 5).unwrap();
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+            let explicit_lts = convert_symbolic_lts(&ldd_manager, &mut builder, &lts).unwrap();
 
-            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let bdd_manager = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-            let explicit_lts_bdd = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &lts_bdd).unwrap();
+            let explicit_lts_bdd = convert_symbolic_lts_bdd(&bdd_manager, &mut builder, &lts_bdd).unwrap();
 
             assert!(
                 compare_lts(
