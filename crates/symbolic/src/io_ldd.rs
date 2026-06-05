@@ -41,8 +41,8 @@ impl<W: BitStreamWrite> BinaryLddWriter<W> {
 
         // Add the true and false constants
         let mut nodes = IndexedSet::new();
-        nodes.insert(LDDFunction::empty_vector(manager)?);
         nodes.insert(LDDFunction::empty_set(manager)?);
+        nodes.insert(LDDFunction::empty_vector(manager)?);
 
         Ok(Self {
             writer,
