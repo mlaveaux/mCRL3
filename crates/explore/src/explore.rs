@@ -1,11 +1,10 @@
-//! Generic explicit-state space exploration for an [`LPS`].
-
 use std::collections::VecDeque;
 
 use log::info;
 use merc_io::TimeProgress;
 use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -26,24 +25,40 @@ pub enum ExplorationStrategy {
     Bfs,
 }
 
-/// Explores the state space of `lps` and feeds the discovered transitions to
-/// `builder`.
+/// Explores the state space of `lps`, invoking caller-supplied closures for
+/// each discovered state and transition.
 ///
-/// # Details
+/// # Closures
 ///
-/// The `builder` is finalised before returning so the resulting LTS — whether
-/// in memory or streamed to disk — can be obtained from the builder by the
-/// caller.
-pub fn explore<P, B>(builder: &mut B, lps: &P, strategy: ExplorationStrategy, timing: &Timing) -> Result<(), MercError>
+/// The mutable caller context `ctx` (typically a builder) is passed into
+/// every closure invocation so the closures themselves can stay
+/// non-capturing of the outer mutable state.
+///
+/// - `on_state(ctx, state_index, &state_info)` is called exactly once per
+///   discovered state, in the order the state was popped from the working set,
+///   after the implementation has been prepared for that state.
+/// - `on_transition(ctx, from, &label, to)` is called for every transition
+///   produced by the summands.
+///
+/// Returns the [`StateIndex`] assigned to the initial state of `lps`. The
+/// caller is responsible for finalising any builder it owns.
+pub fn explore<P, Ctx, OnState, OnTransition>(
+    lps: &P,
+    strategy: ExplorationStrategy,
+    timing: &Timing,
+    ctx: &mut Ctx,
+    mut on_state: OnState,
+    mut on_transition: OnTransition,
+) -> Result<StateIndex, MercError>
 where
     P: LPS,
-    B: LtsBuilder<P::Label>,
+    OnState: FnMut(&mut Ctx, StateIndex, &P::StateInfo) -> Result<(), MercError>,
+    OnTransition: FnMut(&mut Ctx, StateIndex, &P::Label, StateIndex) -> Result<(), MercError>,
 {
-    // Map from discovered state vectors to their `StateRef`. The discovered set
-    // owns the compact (maximally shared) representation of every state vector.
     let mut discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
+    let mut num_transitions = 0usize;
     let progress = TimeProgress::new(
         |(states, transitions): (usize, usize)| {
             info!("Explored {states} states, {transitions} transitions...");
@@ -55,7 +70,7 @@ where
     // Reusable buffer holding the current state vector reconstructed from the
     // discovered set, avoiding an allocation per explored state.
     let mut current_state: Vec<P::Value> = Vec::new();
-    let mut context = lps.create_context();
+
     timing.measure("explore", || -> Result<(), MercError> {
         loop {
             let current = match strategy {
@@ -69,15 +84,17 @@ where
             // below.
             discovered.get_into(current, &mut current_state);
             let from = StateIndex::new(current.index());
-            lps.prepare_context(&current_state, &mut context);
+            lps.prepare(&current_state);
+
+            let info = lps.state_info(&current_state);
+            on_state(ctx, from, &info)?;
 
             for summand in lps.summands() {
-                summand.enumerate(&current_state, &mut context, |label, next_state| {
-                    // The discovered set deduplicates and only the `is_new` flag
-                    // tells us whether the state vector still needs exploring.
+                summand.enumerate(&current_state, |label, next_state| {
                     let (target_ref, is_new) = discovered.insert(next_state);
                     let to = StateIndex::new(target_ref.index());
-                    builder.add_transition(from, label, to)?;
+                    on_transition(ctx, from, label, to)?;
+                    num_transitions += 1;
                     if is_new {
                         working.push_back(target_ref);
                     }
@@ -85,7 +102,7 @@ where
                 })?;
             }
 
-            progress.print((discovered.len(), builder.num_of_transitions()));
+            progress.print((discovered.len(), num_transitions));
         }
 
         Ok(())
@@ -94,9 +111,33 @@ where
     info!(
         "Exploration complete: {} states, {} transitions",
         discovered.len(),
-        builder.num_of_transitions()
+        num_transitions,
     );
 
-    builder.finish(StateIndex::new(initial_ref.index()))?;
+    Ok(StateIndex::new(initial_ref.index()))
+}
+
+/// Explores the state space of `lps` and feeds the discovered transitions to
+/// the [`LtsBuilder`] `builder`.
+pub fn explore_to_lts<P, B>(
+    builder: &mut B,
+    lps: &P,
+    strategy: ExplorationStrategy,
+    timing: &Timing,
+) -> Result<(), MercError>
+where
+    P: LPS,
+    P::Label: TransitionLabel,
+    B: LtsBuilder<P::Label>,
+{
+    let initial = explore(
+        lps,
+        strategy,
+        timing,
+        builder,
+        |_, _, _| Ok(()),
+        |b, from, label, to| b.add_transition(from, label, to),
+    )?;
+    builder.finish(initial)?;
     Ok(())
 }
