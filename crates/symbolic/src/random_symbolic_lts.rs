@@ -1,3 +1,4 @@
+use oxidd::ldd::LDDManagerRef;
 use rand::Rng;
 use rand::RngExt;
 use rand::seq::IndexedRandom;
@@ -7,9 +8,6 @@ use merc_aterm::ATermString;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
-use merc_ldd::Storage;
-use merc_ldd::from_iter;
-use merc_ldd::random_vector_set;
 use merc_lts::LtsMultiAction;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
@@ -17,12 +15,14 @@ use merc_utilities::Timing;
 
 use crate::SummandGroup;
 use crate::SymbolicLts;
+use crate::from_iter;
+use crate::random_vector_set;
 use crate::reachability;
 
 /// Generates random symbolic LTSs for testing purposes.
 pub fn random_symbolic_lts<R: Rng>(
     rng: &mut R,
-    storage: &mut Storage,
+    manager: &LDDManagerRef,
     num_state_variables: usize,
     num_action_labels: usize,
 ) -> Result<SymbolicLts, MercError> {
@@ -67,10 +67,10 @@ pub fn random_symbolic_lts<R: Rng>(
 
         // Reserve additional space for action labels.
         let relation = random_vector_set(rng, 10, read_parameters.len() + write_parameters.len() + 1, 5);
-        let relation_bdd = from_iter(storage, relation.iter());
+        let relation_bdd = from_iter(manager, relation.iter());
 
         summand_groups.push(SummandGroup::new(
-            storage,
+            manager,
             &parameters,
             read_parameters,
             write_parameters,
@@ -78,7 +78,7 @@ pub fn random_symbolic_lts<R: Rng>(
         )?)
     }
 
-    let initial_state_ldd = from_iter(storage, std::iter::once(initial_state));
+    let initial_state_ldd = from_iter(manager, std::iter::once(initial_state));
 
     // Compute the actual reachable state set, since the randomly generated transitions are not
     // restricted to the random state set above.
@@ -91,7 +91,7 @@ pub fn random_symbolic_lts<R: Rng>(
         parameter_values,
     );
 
-    let reachable = reachability(storage, &mut lts, &Timing::new())?;
+    let reachable = reachability(manager, &mut lts, &Timing::new())?;
     lts.set_states(reachable);
 
     Ok(lts)

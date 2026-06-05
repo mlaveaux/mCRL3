@@ -1,47 +1,47 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::io::Read;
 
 use log::info;
 use merc_data::DataExpression;
-use merc_ldd::Ldd;
-use merc_ldd::Storage;
-use merc_ldd::SylvanReader;
-use merc_ldd::Value;
-use merc_ldd::compute_meta;
-use merc_ldd::read_u32;
 use merc_utilities::MercError;
+use oxidd::ldd::LDDFunction;
+use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::Value;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
 
 /// Returns the (initial state, transitions) read from the file in Sylvan's format.
-pub fn read_sylvan<R: Read>(storage: &mut Storage, stream: &mut R) -> Result<SylvanLts, MercError> {
+pub fn read_sylvan<R: Read>(manager: &LDDManagerRef, stream: &mut R) -> Result<SylvanLts, MercError> {
     info!("Reading symbolic LTS in Sylvan format...");
     let mut reader = SylvanReader::new();
 
     let _vector_length = read_u32(stream)?;
 
     let _unused = read_u32(stream)?; // This is called 'k' in Sylvan's ldd2bdd.c, but unused.
-    let initial_state = reader.read_ldd(storage, stream)?;
+    let initial_state = reader.read_ldd(manager, stream)?;
     let num_transitions: usize = read_u32(stream)? as usize;
     let mut groups: Vec<SylvanTransitionGroup> = Vec::new();
 
     // Read all the transition groups.
     for _ in 0..num_transitions {
         let (read_proj, write_proj) = read_projection(stream)?;
+
+        let meta = LDDFunction::relation_product_meta(manager, &read_proj, &write_proj)?.0;
         groups.push(SylvanTransitionGroup::new(
-            storage.empty_set().clone(),
-            compute_meta(storage, &read_proj, &write_proj).0,
+            LDDFunction::empty_set(manager)?,
+            meta,
             read_proj,
             write_proj,
         ));
     }
 
     for transition in groups.iter_mut().take(num_transitions) {
-        transition.relation = reader.read_ldd(storage, stream)?;
+        transition.relation = reader.read_ldd(manager, stream)?;
     }
 
-    Ok(SylvanLts::new(storage.empty_set().clone(), initial_state, groups))
+    Ok(SylvanLts::new(LDDFunction::empty_set(manager)?, initial_state, groups))
 }
 
 /// Reads the read and write projections from the given stream.
@@ -68,16 +68,16 @@ pub fn read_projection<R: Read>(file: &mut R) -> Result<(Vec<Value>, Vec<Value>)
 
 /// A symbolic labelled transition system read from a Sylvan file.
 pub struct SylvanLts {
-    initial_state: merc_ldd::Ldd,
+    initial_state: LDDFunction,
 
     transition_groups: Vec<SylvanTransitionGroup>, // (relation, meta)
 
-    empty_set: Ldd,
+    empty_set: LDDFunction,
 }
 
 impl SylvanLts {
     /// Creates a new Sylvan LTS.
-    pub fn new(empty_set: Ldd, initial_state: Ldd, transition_groups: Vec<SylvanTransitionGroup>) -> Self {
+    pub fn new(empty_set: LDDFunction, initial_state: LDDFunction, transition_groups: Vec<SylvanTransitionGroup>) -> Self {
         Self {
             initial_state,
             transition_groups,
@@ -87,11 +87,11 @@ impl SylvanLts {
 }
 
 impl SymbolicLTS for SylvanLts {
-    fn states(&self) -> &Ldd {
+    fn states(&self) -> &LDDFunction {
         &self.empty_set
     }
 
-    fn initial_state(&self) -> &Ldd {
+    fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
@@ -116,15 +116,15 @@ impl SymbolicLTS for SylvanLts {
 
 /// A transition group read from a Sylvan file.
 pub struct SylvanTransitionGroup {
-    relation: Ldd,
-    meta: Ldd,
+    relation: LDDFunction,
+    meta: LDDFunction,
     read_proj: Vec<u32>,
     write_proj: Vec<u32>,
 }
 
 impl SylvanTransitionGroup {
     /// Creates a new Sylvan transition group.
-    pub fn new(relation: Ldd, meta: Ldd, read_proj: Vec<u32>, write_proj: Vec<u32>) -> Self {
+    pub fn new(relation: LDDFunction, meta: LDDFunction, read_proj: Vec<u32>, write_proj: Vec<u32>) -> Self {
         Self {
             relation,
             meta,
@@ -135,7 +135,7 @@ impl SylvanTransitionGroup {
 }
 
 impl TransitionGroup for SylvanTransitionGroup {
-    fn relation(&self) -> &Ldd {
+    fn relation(&self) -> &LDDFunction {
         &self.relation
     }
 
@@ -151,11 +151,11 @@ impl TransitionGroup for SylvanTransitionGroup {
         None
     }
 
-    fn meta(&self) -> &Ldd {
+    fn meta(&self) -> &LDDFunction {
         &self.meta
     }
 
-    fn learn_successors(&mut self, _storage: &mut Storage, _todo: &Ldd) -> Result<(), MercError> {
+    fn learn_successors(&mut self, _manager: &LDDManagerRef, _todo: &LDDFunction) -> Result<(), MercError> {
         // All states are already explored.
         Ok(())
     }
@@ -170,31 +170,117 @@ impl fmt::Debug for SylvanTransitionGroup {
     }
 }
 
+/// A reader for LDDs in the Sylvan .ldd format.
+pub struct SylvanReader {
+    indexed_set: HashMap<u64, LDDFunction>, // Assigns LDDs to every index.
+    last_index: u64,                // The index of the last LDD read from file.
+}
+
+impl SylvanReader {
+    pub fn new() -> Self {
+        Self {
+            indexed_set: HashMap::new(),
+            last_index: 2,
+        }
+    }
+
+    /// Returns an LDD read from the given stream in the Sylvan format.
+    pub fn read_ldd<R: Read>(&mut self, manager: &LDDManagerRef, stream: &mut R) -> Result<LDDFunction, MercError> {
+        let count = read_u64(stream)?;
+        //println!("node count = {}", count);
+
+        for _ in 0..count {
+            // Read a single MDD node. It has the following structure: u64 | u64
+            // RmRR RRRR RRRR VVVV | VVVV DcDD DDDD DDDD (little endian)
+            // Every character is 4 bits, V = value, D = down, R = right, m = marked, c = copy.
+            let a = read_u64(stream)?;
+            let b = read_u64(stream)?;
+            //println!("{:064b} | {:064b}", a, b);
+
+            let right = (a & 0x0000ffffffffffff) >> 1;
+            let down = b >> 17;
+
+            let mut bytes: [u8; 4] = Default::default();
+            bytes[0..2].copy_from_slice(&a.to_le_bytes()[6..8]);
+            bytes[2..4].copy_from_slice(&b.to_le_bytes()[0..2]);
+            let value = u32::from_le_bytes(bytes);
+
+            let copy = right & 0x10000;
+            if copy != 0 {
+                panic!("We do not yet deal with copy nodes.");
+            }
+
+            let down = self.node_from_index(manager, down)?;
+            let right = self.node_from_index(manager, right)?;
+
+            let ldd = LDDFunction::make_node(manager, value as Value, &down, &right)?;
+            self.indexed_set.insert(self.last_index, ldd);
+
+            self.last_index += 1;
+        }
+
+        let result = read_u64(stream)?;
+        self.node_from_index(manager, result)
+    }
+
+    /// Returns the LDD belonging to the given index.
+    fn node_from_index(&self, manager: &LDDManagerRef, index: u64) -> Result<LDDFunction, MercError> {
+        if index == 0 {
+            Ok(LDDFunction::empty_set(manager)?)
+        } else if index == 1 {
+            Ok(LDDFunction::empty_vector(manager)?)
+        } else {
+            Ok(self.indexed_set.get(&index).unwrap().clone())
+        }
+    }
+}
+
+impl Default for SylvanReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Returns a single u32 read from the given stream.
+pub fn read_u32<R: Read>(stream: &mut R) -> Result<u32, MercError> {
+    let mut buffer: [u8; 4] = Default::default();
+    stream.read_exact(&mut buffer)?;
+
+    Ok(u32::from_le_bytes(buffer))
+}
+
+/// Returns a single u64 read from the given stream.
+pub fn read_u64<R: Read>(stream: &mut R) -> Result<u64, MercError> {
+    let mut buffer: [u8; 8] = Default::default();
+    stream.read_exact(&mut buffer)?;
+
+    Ok(u64::from_le_bytes(buffer))
+}
+
 #[cfg(test)]
 mod test {
     use merc_utilities::Timing;
 
     use crate::reachability;
 
-    use super::Storage;
     use super::read_sylvan;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_load_anderson_4() {
-        let mut storage = Storage::new();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let bytes = include_bytes!("../../../examples/ldd/anderson.4.ldd");
-        let mut lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
-        reachability(&mut storage, &mut lts, &Timing::new()).expect("Reachability should work correctly");
+        let mut lts = read_sylvan(&ldd_manager, &mut &bytes[..]).expect("Loading should work correctly");
+        reachability(&ldd_manager, &mut lts, &Timing::new()).expect("Reachability should work correctly");
     }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow
     #[cfg(not(debug_assertions))]
     fn test_load_collision_4() {
-        let mut storage = Storage::new();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let bytes = include_bytes!("../../../examples/ldd/collision.4.ldd");
-        let mut lts = read_sylvan(&mut storage, &mut &bytes[..]).expect("Loading should work correctly");
-        reachability(&mut storage, &mut lts, &Timing::new()).expect("Reachability should work correctly");
+        let mut lts = read_sylvan(&ldd_manager, &mut &bytes[..]).expect("Loading should work correctly");
+        reachability(&ldd_manager, &mut lts, &Timing::new()).expect("Reachability should work correctly");
     }
 }

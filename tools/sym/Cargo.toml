@@ -7,7 +7,6 @@ rust-version.workspace = true
 
 [dependencies]
 merc_io.workspace = true
-merc_ldd.workspace = true
 merc_lts = { workspace = true, features = ["clap"] }
 merc_symbolic = { workspace = true, features = ["clap"] }
 merc_tools.workspace = true

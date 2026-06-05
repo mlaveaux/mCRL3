@@ -1,6 +1,7 @@
 use log::debug;
 use log::info;
 use log::trace;
+use oxidd::ldd::LDDManagerRef;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashSet;
 use streaming_iterator::StreamingIterator;
@@ -8,16 +9,14 @@ use streaming_iterator::StreamingIterator;
 use merc_collections::IndexedSet;
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
-use merc_ldd::Storage;
-use merc_ldd::height;
-use merc_ldd::iterators::iter;
-use merc_ldd::len;
 use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
+use crate::height;
+use crate::iter;
 
 /// Converts a symbolic BDD LTS to an explicit LTS.
 ///
@@ -26,7 +25,7 @@ use crate::TransitionGroup;
 /// This basically applies the symbolic transitions to every state in the state
 /// space, and constructs the explicit LTS.
 pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
-    storage: &mut Storage,
+    manager: &LDDManagerRef,
     output: &mut B,
     lts: &L,
 ) -> Result<B::LTS, MercError> {
@@ -49,7 +48,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     }
 
     // Total number of states for progress reporting.
-    let total_number_of_states = len(storage, lts.states());
+    let total_number_of_states = lts.states().len();
     info!(
         "Converting symbolic LTS to explicit LTS with {} states",
         LargeFormatter(total_number_of_states)
@@ -68,13 +67,13 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
 
     // All states have been explored, so add them to the discovered set immediately.
     let mut discovered: IndexedSet<Vec<u32>, FxBuildHasher> = IndexedSet::new();
-    let mut state_iter = iter(storage, lts.states());
-    while let Some(state) = state_iter.next() {
+    let mut all_states_iter = iter(lts.states());
+    while let Some(state) = all_states_iter.next() {
         let (_, inserted) = discovered.insert(state.clone());
         debug_assert!(inserted, "State space contains duplicate states");
         state_progress.print(discovered.len())
     }
-
+    
     // Total number of states for progress reporting.
     let progress = TimeProgress::new(
         move |(number_of_states, number_of_transitions)| {
@@ -92,9 +91,9 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     let mut outgoing = FxHashSet::default();
 
     // Avoid reallocations.
-    let mut target = vec![0u32; height(storage, lts.states())];
+    let mut target = vec![0u32; height(manager, lts.states())];
 
-    let mut state_iter = iter(storage, lts.states());
+    let mut state_iter = iter(lts.states());
     let mut index: usize = 0;
 
     while let Some(state) = state_iter.next() {
@@ -105,7 +104,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
 
         // Apply every transition group to this state.
         for (group_index, group) in lts.transition_groups().iter().enumerate() {
-            let mut iter_transitions = iter(storage, group.relation());
+            let mut iter_transitions = iter(group.relation());
             'skip: while let Some(transition) = iter_transitions.next() {
                 // Try to match the read parameters of this vector.
                 for (index, i) in group.read_indices().iter().enumerate() {
@@ -154,7 +153,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     }
 
     // Find the initial state.
-    let mut state_iter = iter(storage, lts.initial_state());
+    let mut state_iter = iter(lts.initial_state());
     let initial_state = state_iter.next().ok_or("Symbolic LTS has no initial state")?;
 
     let initial_state_index = discovered
@@ -204,7 +203,6 @@ fn compute_positions<G: TransitionGroup>(group: &G) -> (Vec<usize>, Vec<usize>) 
 
 #[cfg(test)]
 mod tests {
-    use merc_ldd::Storage;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
     use merc_utilities::test_logger;
@@ -219,11 +217,11 @@ mod tests {
 
         let input = include_bytes!("../../../examples/lts/abp.sym");
 
-        let mut storage = Storage::new();
-        let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
+        let manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let symbolic_lts = read_symbolic_lts(&manager, &input[..]).unwrap();
 
         let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-        let lts = convert_symbolic_lts(&mut storage, &mut builder, &symbolic_lts).unwrap();
+        let lts = convert_symbolic_lts(&manager, &mut builder, &symbolic_lts).unwrap();
 
         debug_assert_eq!(lts.num_of_states(), 74);
         debug_assert_eq!(lts.num_of_transitions(), 92);

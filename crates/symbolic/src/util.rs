@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+
+use std::cmp::Ordering;
 use std::fmt;
 
 use merc_io::LargeFormatter;
@@ -14,11 +16,15 @@ use oxidd::Node;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
+use oxidd::ldd::LDDFunction;
+use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::Value;
 use oxidd::util::Borrowed;
 use oxidd::util::OutOfMemory;
 use oxidd::util::SatCountCache as OxiddSatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
+use oxidd_rules_ldd::LDDTerminal;
 use oxidd_core::util::num::F64;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
@@ -413,8 +419,55 @@ pub(crate) fn reduce<'id>(
     }
     oxidd_core::LevelView::get_or_insert(
         &mut manager.level(level),
-        <<BDDFunction as Function>::Manager<'id> as Manager>::InnerNode::new(level, [t, e]),
+        <<BDDFunction as Function>::Manager<'id> as Manager>::InnerNode::new(level, [t, e], ()),
     )
+}
+
+/// Returns the height of the LDD tree.
+pub fn height(manager: &LDDManagerRef, ldd: &LDDFunction) -> usize {
+    manager.with_manager_shared(|manager| height_edge(manager, ldd.as_edge(manager).borrowed()))
+}
+
+/// The edge variant of [height].
+pub fn height_edge<'id>(
+    manager: &<LDDFunction as Function>::Manager<'id>,
+    ldd: Borrowed<EdgeOfFunc<'id, LDDFunction>>,
+) -> usize {
+    match manager.get_node(&ldd) {
+        Node::Terminal(_) => 0,
+        Node::Inner(node) => {
+            let (down, right) = collect_children(node);
+            1 + usize::max(height_edge(manager, down), height_edge(manager, right))
+        }
+    }
+}
+
+/// Returns true iff the set contains the vector.
+pub fn element_of(manager: &LDDManagerRef, vector: &[Value], ldd: &LDDFunction) -> bool {
+    manager.with_manager_shared(|manager| element_of_edge(manager, vector, ldd.as_edge(manager).borrowed()))
+}
+
+fn element_of_edge<'id>(
+    manager: &<LDDFunction as Function>::Manager<'id>,
+    vector: &[Value],
+    ldd: Borrowed<EdgeOfFunc<'id, LDDFunction>>,
+) -> bool {
+    match manager.get_node(&ldd) {
+        Node::Terminal(LDDTerminal::True) => vector.is_empty(),
+        Node::Terminal(LDDTerminal::Empty) => false,
+        Node::Inner(node) => {
+            let value = *node.get_value();
+            let (down, right) = collect_children(node);
+            match vector.first() {
+                None => false,
+                Some(&first) => match value.cmp(&first) {
+                    Ordering::Less => element_of_edge(manager, vector, right),
+                    Ordering::Equal => element_of_edge(manager, &vector[1..], down),
+                    Ordering::Greater => false,
+                },
+            }
+        }
+    }
 }
 
 #[cfg(test)]

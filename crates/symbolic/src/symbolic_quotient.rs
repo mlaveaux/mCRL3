@@ -1,7 +1,5 @@
 use std::ops::Range;
 
-use merc_ldd::Value;
-use merc_utilities::MercError;
 use oxidd::BooleanFunctionQuant;
 use oxidd::BooleanOperator;
 use oxidd::FunctionSubst;
@@ -12,6 +10,9 @@ use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::error::DuplicateVarName;
+use oxidd::ldd::Value;
+
+use merc_utilities::MercError;
 
 use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;

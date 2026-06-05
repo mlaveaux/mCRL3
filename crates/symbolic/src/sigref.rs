@@ -999,13 +999,6 @@ fn to_block_index(bits: &[OptBool]) -> u64 {
 mod tests {
     use std::ops::Range;
 
-    use merc_ldd::Storage;
-    use merc_lts::LTS;
-    use merc_lts::LtsBuilderMem;
-    use merc_reduction::Equivalence;
-    use merc_reduction::compare_lts;
-    use merc_reduction::reduce_lts;
-    use merc_utilities::Timing;
     use oxidd::BooleanFunction;
     use oxidd::Edge;
     use oxidd::Function;
@@ -1017,6 +1010,12 @@ mod tests {
     use oxidd::util::Borrowed;
     use rand::RngExt;
 
+    use merc_lts::LTS;
+    use merc_lts::LtsBuilderMem;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
+    use merc_reduction::reduce_lts;
+    use merc_utilities::Timing;
     use merc_utilities::random_test;
 
     use crate::SymbolicLtsBdd;
@@ -1071,21 +1070,21 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_sigref_split_signature() {
         random_test(100, |rng| {
-            let mut storage = Storage::new();
+            let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
-            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let lts = random_symbolic_lts(rng, &ldd_manager, 10, 5).unwrap();
 
-            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let bdd_manager = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
             let (_, _, expected_num_blocks) =
-                sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+                sigref_symbolic(&bdd_manager, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
 
             // Create a separate manager since sigref_symbolic creates new block variables.
-            let manager_ref_split = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref_split, &lts).unwrap();
+            let bdd_manager_split = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd_split = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager_split, &lts).unwrap();
             let (_, _, split_num_blocks) = sigref_symbolic(
-                &manager_ref_split,
+                &bdd_manager_split,
                 &lts_bdd_split,
                 &Timing::new(),
                 true,
@@ -1105,18 +1104,18 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_szymanski_symbolic_refinement() {
-        let mut storage = Storage::new();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let lts_bdd = read_symbolic_lts(
-            &mut storage,
+            &ldd_manager,
             include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
         )
         .unwrap();
 
-        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts_bdd).unwrap();
+        let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts_bdd).unwrap();
 
         let (_, _, num_of_blocks) =
-            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+            sigref_symbolic(&bdd_manager, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
         assert_eq!(
             num_of_blocks, 1791,
             "The Szymanski example has 1791 bisimulation blocks"
@@ -1126,14 +1125,14 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_symbolic_signature_refinement_abp() {
-        let mut storage = Storage::new();
-        let lts = read_symbolic_lts(&mut storage, include_bytes!("../../../examples/lts/abp.sym") as &[u8]).unwrap();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let lts = read_symbolic_lts(&ldd_manager, include_bytes!("../../../examples/lts/abp.sym") as &[u8]).unwrap();
 
-        let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+        let bdd_manager = oxidd::bdd::new_manager(2028, 2028, 1);
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
         let (_, _, num_of_blocks) =
-            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+            sigref_symbolic(&bdd_manager, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
         assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
     }
 
@@ -1141,13 +1140,13 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_is_cube() {
         random_test(100, |rng| {
-            let manager = oxidd::bdd::new_manager(2048, 1024, 1);
+            let ldd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
 
             // Create variables in the BDD manager
             let vars: Vec<VarNo> =
-                manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
+                ldd_manager.with_manager_exclusive(|manager| manager.add_vars(8).collect::<Vec<VarNo>>());
 
-            let bdd_vars = manager
+            let bdd_vars = ldd_manager
                 .with_manager_exclusive(|manager| {
                     vars.iter()
                         .map(|v| BDDFunction::var(manager, *v))
@@ -1155,9 +1154,9 @@ mod tests {
                 })
                 .unwrap();
 
-            let bdd = random_bdd(&manager, rng, &bdd_vars, 1).unwrap();
+            let bdd = random_bdd(&ldd_manager, rng, &bdd_vars, 1).unwrap();
 
-            manager.with_manager_shared(|manager| {
+            ldd_manager.with_manager_shared(|manager| {
                 assert!(
                     !bdd.satisfiable() || is_bdd_cube_edge(manager, bdd.as_edge(manager).borrowed()).unwrap(),
                     "The bdd was created as a cube, so it should be a cube"
@@ -1170,25 +1169,29 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_sigref() {
         random_test(100, |rng| {
-            let mut storage = Storage::new();
+            let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
-            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let lts = random_symbolic_lts(rng, &ldd_manager, 10, 5).unwrap();
 
-            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let bdd_manager = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
-            let explicit_lts_reduced =
-                reduce_lts(explicit_lts.clone(), Equivalence::StrongBisim, false, &Timing::new());
+            let explicit_lts = convert_symbolic_lts(&ldd_manager, &mut builder, &lts).unwrap();
+            let explicit_lts_reduced = reduce_lts(
+                explicit_lts.clone(),
+                Equivalence::StrongBisim,
+                false,
+                &mut Timing::new(),
+            );
 
             let (partition, block_vars, _num_of_blocks) =
-                sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+                sigref_symbolic(&bdd_manager, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
 
-            let quotient_lts = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
+            let quotient_lts = quotient_symbolic(&bdd_manager, &lts_bdd, &partition, &block_vars).unwrap();
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-            let symbolic_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient_lts).unwrap();
+            let symbolic_lts_reduced = convert_symbolic_lts_bdd(&bdd_manager, &mut builder, &quotient_lts).unwrap();
 
             println!(
                 "Explicit LTS has {} states and {} transitions",

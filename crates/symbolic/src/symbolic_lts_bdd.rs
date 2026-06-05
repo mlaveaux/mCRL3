@@ -10,13 +10,13 @@ use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::error::DuplicateVarName;
+use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::Value;
+use oxidd::util::OutOfMemory;
 
 use merc_data::DataExpression;
-use merc_ldd::Storage;
-use merc_ldd::Value;
-use merc_ldd::singleton;
 use merc_utilities::MercError;
-use oxidd::util::OutOfMemory;
+use oxidd::ldd::LDDFunction;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
@@ -67,18 +67,18 @@ impl SymbolicLtsBdd {
     /// of the LDD symbolic LTS, as unreachable states may not be representable
     /// with the number of bits assigned to each state variable.
     pub fn from_symbolic_lts<L: SymbolicLTS>(
-        storage: &mut Storage,
-        manager_ref: &BDDManagerRef,
+        manager: &LDDManagerRef,
+        manager_bdd: &BDDManagerRef,
         lts: &L,
     ) -> Result<Self, MercError> {
         info!("Converting symbolic LTS from LDD to BDD representation...");
 
         // Determine the highest values for every state variable.
-        let mut state_highest = compute_highest(storage, lts.states());
+        let mut state_highest = compute_highest(manager, lts.states());
 
         let mut action_label_highest = 0u32;
         for group in lts.transition_groups() {
-            let highest = compute_highest(storage, group.relation());
+            let highest = compute_highest(manager, group.relation());
 
             // Deal with the special empty case.
             if highest.is_empty() {
@@ -141,12 +141,12 @@ impl SymbolicLtsBdd {
         }
 
         // Check for existing variables.
-        if manager_ref.with_manager_shared(|manager| manager.num_vars()) != 0 {
+        if manager_bdd.with_manager_shared(|manager| manager.num_vars()) != 0 {
             return Err("BDD manager must not contain any variables yet".into());
         }
 
         // Ensure that the BDD manager is empty.
-        manager_ref.with_manager_exclusive(|manager| {
+        manager_bdd.with_manager_exclusive(|manager| {
             debug_assert_eq!(
                 manager.num_vars(),
                 0,
@@ -156,7 +156,7 @@ impl SymbolicLtsBdd {
 
         // Create variables in the BDD manager
         let number_of_vars = vars.len();
-        let variables = manager_ref
+        let variables = manager_bdd
             .with_manager_exclusive(|manager| -> Result<Range<VarNo>, DuplicateVarName> {
                 manager.add_named_vars(vars)
             })
@@ -169,12 +169,12 @@ impl SymbolicLtsBdd {
         );
 
         // Convert the states to a BDD representation.
-        let bits_dd = singleton(storage, &state_bits);
+        let bits_dd = LDDFunction::singleton(manager, &state_bits)?;
         let all_state_variables_bits: Vec<VarNo> = state_variables_bits.iter().flatten().cloned().collect();
-        let states = ldd_to_bdd(storage, manager_ref, lts.states(), &bits_dd, &all_state_variables_bits)?;
+        let states = ldd_to_bdd(manager, manager_bdd, lts.states(), &bits_dd, &all_state_variables_bits)?;
         let initial_state = ldd_to_bdd(
-            storage,
-            manager_ref,
+            manager,
+            manager_bdd,
             lts.initial_state(),
             &bits_dd,
             &all_state_variables_bits,
@@ -220,8 +220,8 @@ impl SymbolicLtsBdd {
                 index, group, relation_bits, variables
             );
 
-            let bits_dd = singleton(storage, &relation_bits);
-            let relation_bdd = ldd_to_bdd(storage, manager_ref, group.relation(), &bits_dd, &variables)?;
+            let bits_dd = LDDFunction::singleton(manager, &relation_bits)?;
+            let relation_bdd = ldd_to_bdd(manager, manager_bdd, group.relation(), &bits_dd, &variables)?;
 
             transition_groups.push(SummandGroupBdd::new(
                 relation_bdd,
@@ -399,7 +399,6 @@ pub fn compute_vars_bdd(
 
 #[cfg(test)]
 mod tests {
-    use merc_ldd::Storage;
     use merc_utilities::test_logger;
 
     use crate::SymbolicLtsBdd;
@@ -412,11 +411,11 @@ mod tests {
 
         let input = include_bytes!("../../../examples/lts/abp.sym");
 
-        let mut storage = Storage::new();
-        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
-        let symbolic_lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
+        let symbolic_lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();
 
         // This only tests that the conversion does not panic.
-        SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &symbolic_lts).unwrap();
+        SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &symbolic_lts).unwrap();
     }
 }

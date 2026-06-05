@@ -13,11 +13,11 @@ use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
 use merc_io::BitStreamRead;
-use merc_ldd::BinaryLddReader;
-use merc_ldd::Storage;
 use merc_lts::LtsMultiAction;
 use merc_utilities::MercError;
+use oxidd::ldd::LDDManagerRef;
 
+use crate::BinaryLddReader;
 use crate::SummandGroup;
 use crate::SymbolicLts;
 
@@ -54,11 +54,11 @@ use crate::SymbolicLts;
 ///   For each write parameter:
 ///     <write parameter>: ATerm
 /// ```
-pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<SymbolicLts, MercError> {
+pub fn read_symbolic_lts<R: Read>(manager: &LDDManagerRef, reader: R) -> Result<SymbolicLts, MercError> {
     info!("Reading symbolic LTS in the mCRL2 symbolic format...");
 
     let aterm_stream = BinaryATermReader::new(BufReader::new(reader))?;
-    let mut stream = BinaryLddReader::new(storage, aterm_stream)?;
+    let mut stream = BinaryLddReader::new(manager, aterm_stream)?;
 
     if ATermRead::read_aterm(&mut stream)? != Some(symbolic_labelled_transition_system_mark()) {
         return Err("Expected symbolic labelled transition system stream".into());
@@ -68,8 +68,8 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
     let process_parameters: ATermList<DataVariable> = stream.read_aterm()?.ok_or("Expected process parameters")?.into();
     let process_parameters: Vec<DataVariable> = process_parameters.to_vec();
 
-    let initial_state = stream.read_ldd(storage)?;
-    let states = stream.read_ldd(storage)?;
+    let initial_state = stream.read_ldd(manager)?;
+    let states = stream.read_ldd(manager)?;
 
     // Read the values for the process parameters.
     let mut parameter_values: Vec<Vec<DataExpression>> = Vec::with_capacity(process_parameters.len());
@@ -122,10 +122,10 @@ pub fn read_symbolic_lts<R: Read>(storage: &mut Storage, reader: R) -> Result<Sy
             write_parameters.push(stream.read_aterm()?.ok_or("Unexpected end of stream")?.into());
         }
 
-        let relation = stream.read_ldd(storage)?;
+        let relation = stream.read_ldd(manager)?;
 
         summand_groups.push(SummandGroup::new(
-            storage,
+            manager,
             &process_parameters,
             read_parameters,
             write_parameters,
@@ -161,7 +161,7 @@ mod tests {
         test_logger();
         let input = include_bytes!("../../../examples/lts/WMS.sym");
 
-        let mut storage = Storage::new();
-        let _lts = read_symbolic_lts(&mut storage, &input[..]).unwrap();
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let _lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();
     }
 }

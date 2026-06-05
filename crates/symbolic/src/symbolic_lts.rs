@@ -3,13 +3,12 @@ use std::fmt;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
-use merc_ldd::Ldd;
-use merc_ldd::Storage;
-use merc_ldd::Value;
-use merc_ldd::compute_meta;
 use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
 use merc_utilities::MercError;
+use oxidd::ldd::LDDFunction;
+use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::Value;
 
 use crate::SymbolicLTS;
 use crate::TransitionGroup;
@@ -17,10 +16,10 @@ use crate::TransitionGroup;
 /// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
 pub struct SymbolicLts {
     data_specification: DataSpecification,
-    states: Ldd,
+    states: LDDFunction,
 
     /// A singleton LDD representing the initial state.
-    initial_state: Ldd,
+    initial_state: LDDFunction,
     summand_groups: Vec<SummandGroup>,
 
     /// The action labels of the LTS, stored as their string representation,
@@ -40,8 +39,8 @@ impl SymbolicLts {
     /// in the LDDs.
     pub fn new(
         data_specification: DataSpecification,
-        states: Ldd,
-        initial_state: Ldd,
+        states: LDDFunction,
+        initial_state: LDDFunction,
         summand_groups: Vec<SummandGroup>,
         action_labels: Vec<LtsMultiAction<LtsAction>>,
         parameter_values: Vec<Vec<DataExpression>>,
@@ -72,17 +71,17 @@ impl SymbolicLts {
     }
 
     /// Replaces the set of states of the LTS, for example after running reachability.
-    pub fn set_states(&mut self, states: Ldd) {
+    pub fn set_states(&mut self, states: LDDFunction) {
         self.states = states;
     }
 }
 
 impl SymbolicLTS for SymbolicLts {
-    fn states(&self) -> &Ldd {
+    fn states(&self) -> &LDDFunction {
         &self.states
     }
 
-    fn initial_state(&self) -> &Ldd {
+    fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
@@ -123,21 +122,21 @@ pub struct SummandGroup {
     write_parameter_indices: Vec<Value>,
 
     /// The transition relation T' -> U' for this summand group.
-    relation: Ldd,
+    relation: LDDFunction,
 
     /// The meta information for this summand group.
-    meta: Ldd,
+    meta: LDDFunction,
 
     /// The action label index for this summand group.
     action_label_index: usize,
 }
 
 impl TransitionGroup for SummandGroup {
-    fn relation(&self) -> &Ldd {
+    fn relation(&self) -> &LDDFunction {
         &self.relation
     }
 
-    fn meta(&self) -> &Ldd {
+    fn meta(&self) -> &LDDFunction {
         &self.meta
     }
 
@@ -153,7 +152,7 @@ impl TransitionGroup for SummandGroup {
         Some(self.action_label_index)
     }
 
-    fn learn_successors(&mut self, _storage: &mut Storage, _todo: &Ldd) -> Result<(), MercError> {
+    fn learn_successors(&mut self, _storage: &LDDManagerRef, _todo: &LDDFunction) -> Result<(), MercError> {
         // All states are already explored.
         Ok(())
     }
@@ -164,11 +163,11 @@ impl SummandGroup {
     ///
     /// This can fail if one of the read or write parameters is not in the list of all parameters.
     pub fn new(
-        storage: &mut Storage,
+        manager: &LDDManagerRef,
         parameters: &[DataVariable],
         read_parameters: Vec<DataVariable>,
         write_parameters: Vec<DataVariable>,
-        relation: Ldd,
+        relation: LDDFunction,
     ) -> Result<Self, MercError> {
         // Find the position of every variable in the parameter list.
         let mut read_parameter_indices: Vec<Value> = read_parameters
@@ -197,7 +196,7 @@ impl SummandGroup {
         write_parameter_indices.sort();
         read_parameter_indices.sort();
 
-        let meta = compute_meta(storage, &read_parameter_indices, &write_parameter_indices).0;
+        let meta = LDDFunction::relation_product_meta(manager, &read_parameter_indices, &write_parameter_indices)?.0;
         let action_label_index = read_parameters.len() + write_parameters.len(); // The action label is the last index
 
         Ok(Self {
@@ -212,7 +211,7 @@ impl SummandGroup {
     }
 
     /// Returns the transition relation LDD for this summand group.
-    pub fn relation(&self) -> &Ldd {
+    pub fn relation(&self) -> &LDDFunction {
         &self.relation
     }
 
