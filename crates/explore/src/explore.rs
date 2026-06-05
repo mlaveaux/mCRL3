@@ -137,7 +137,7 @@ where
         timing,
         builder,
         |_, _, _| Ok(()),
-        |b, from, label, to| Ok(()),
+        |b, from, label, to| b.add_transition(from, label, to),
     )?;
     builder.finish(initial)?;
     Ok(())
