@@ -7,7 +7,7 @@ homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
+version = "3.0.0"
 
 [features]
 # Enables the debug_trace macro to show additional log messages.
