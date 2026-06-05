@@ -22,6 +22,7 @@ use merc_vpg::PG;
 
 mod clone_iterator;
 mod explore_srf;
+mod explore_srf_test;
 mod export;
 mod permutation;
 mod symmetry;
