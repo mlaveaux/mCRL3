@@ -139,12 +139,18 @@ impl<R: BitStreamRead> BinaryLddReader<R> {
             let down = self
                 .nodes
                 .get(down_index)
-                .ok_or(format!("Read invalid down ldd index {down_index}, length {}", self.nodes.len()))?
+                .ok_or(format!(
+                    "Read invalid down ldd index {down_index}, length {}",
+                    self.nodes.len()
+                ))?
                 .clone();
             let right = self
                 .nodes
                 .get(right_index)
-                .ok_or(format!("Read invalid right ldd index {right_index}, length {}", self.nodes.len()))?
+                .ok_or(format!(
+                    "Read invalid right ldd index {right_index}, length {}",
+                    self.nodes.len()
+                ))?
                 .clone();
             let ldd = LDDFunction::make_node(storage, value as u32, &down, &right)?;
             self.nodes.push(ldd);

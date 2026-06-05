@@ -24,8 +24,8 @@ use oxidd::util::OutOfMemory;
 use oxidd::util::SatCountCache as OxiddSatCountCache;
 use oxidd_core::function::EdgeOfFunc;
 use oxidd_core::util::EdgeDropGuard;
-use oxidd_rules_ldd::LDDTerminal;
 use oxidd_core::util::num::F64;
+use oxidd_rules_ldd::LDDTerminal;
 use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashMap;
 

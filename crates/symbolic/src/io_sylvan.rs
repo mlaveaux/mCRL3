@@ -77,7 +77,11 @@ pub struct SylvanLts {
 
 impl SylvanLts {
     /// Creates a new Sylvan LTS.
-    pub fn new(empty_set: LDDFunction, initial_state: LDDFunction, transition_groups: Vec<SylvanTransitionGroup>) -> Self {
+    pub fn new(
+        empty_set: LDDFunction,
+        initial_state: LDDFunction,
+        transition_groups: Vec<SylvanTransitionGroup>,
+    ) -> Self {
         Self {
             initial_state,
             transition_groups,
@@ -173,7 +177,7 @@ impl fmt::Debug for SylvanTransitionGroup {
 /// A reader for LDDs in the Sylvan .ldd format.
 pub struct SylvanReader {
     indexed_set: HashMap<u64, LDDFunction>, // Assigns LDDs to every index.
-    last_index: u64,                // The index of the last LDD read from file.
+    last_index: u64,                        // The index of the last LDD read from file.
 }
 
 impl SylvanReader {

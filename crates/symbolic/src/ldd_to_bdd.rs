@@ -106,10 +106,16 @@ pub fn ldd_to_bdd_edge<'id>(
         let var = EdgeDropGuard::new(bdd_manager, BDDFunction::var_edge(bdd_manager, var_no)?);
         if value & (1 << i) != 0 {
             // bit is 1
-            down_bdd = EdgeDropGuard::new(bdd_manager, BDDFunction::ite_edge(bdd_manager, &var, &down_bdd, &f_edge)?);
+            down_bdd = EdgeDropGuard::new(
+                bdd_manager,
+                BDDFunction::ite_edge(bdd_manager, &var, &down_bdd, &f_edge)?,
+            );
         } else {
             // bit is 0
-            down_bdd = EdgeDropGuard::new(bdd_manager, BDDFunction::ite_edge(bdd_manager, &var, &f_edge, &down_bdd)?);
+            down_bdd = EdgeDropGuard::new(
+                bdd_manager,
+                BDDFunction::ite_edge(bdd_manager, &var, &f_edge, &down_bdd)?,
+            );
         }
     }
 
@@ -172,7 +178,8 @@ pub fn bdd_to_ldd_edge<'id>(
                         // There are don't care variables in this BDD that have been skipped, so generate both branches.
                         if num_bits == current_bit {
                             // We reached the last bit for this layer, variable still belongs to next layer.
-                            let down = bdd_to_ldd_edge(ldd_manager, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
+                            let down =
+                                bdd_to_ldd_edge(ldd_manager, manager, bdd, variables, &bits_per_layer[1..], 0, 0)?;
                             let right = LDDFunction::empty_set(ldd_manager)?;
                             return LDDFunction::make_node(ldd_manager, current_value, &down, &right);
                         }
