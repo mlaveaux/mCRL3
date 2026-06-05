@@ -13,7 +13,6 @@ use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_lts::AutFormat;
 use merc_lts::AutStream;
-use merc_lts::LTS;
 use merc_lts::LtsBuilderFast;
 use merc_lts::StateIndex;
 use merc_lts::write_aut;
@@ -26,6 +25,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use mcrl2::read_lps;
+use mcrl2::read_lps_text;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 
@@ -40,6 +40,7 @@ mod explore_test;
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum LpsFormat {
     Lps,
+    Text,
 }
 
 /// A command line tool for linear process specifications (LPSs)
@@ -140,6 +141,7 @@ fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
     let format = args.format.unwrap_or(LpsFormat::Lps);
     let lps = match format {
         LpsFormat::Lps => read_lps(&args.filename)?,
+        LpsFormat::Text => read_lps_text(&args.filename)?,
     };
 
     let mut storage = Storage::new();
@@ -155,6 +157,7 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
     let format = args.format.unwrap_or(LpsFormat::Lps);
     let lps = match format {
         LpsFormat::Lps => read_lps(&args.filename)?,
+        LpsFormat::Text => read_lps_text(&args.filename)?,
     };
 
     if let Some(output) = &args.output {

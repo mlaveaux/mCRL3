@@ -59,7 +59,11 @@ pub trait DataExpressionVisitor {
     }
 
     fn visit_where_clause(&mut self, where_: &DataWhereClauseRef<'_>) -> Option<DataExpression> {
-        let _body = self.visit(&where_.body());
+        for decl in where_.declarations().iter() {
+            let rhs = DataExpression::new(decl.arg(1).protect());
+            self.visit(&rhs.copy());
+        }
+        self.visit(&where_.body());
         None
     }
 
@@ -223,8 +227,27 @@ pub fn free_variables_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataV
 
     impl DataExpressionVisitor for FreeVariableOccurrences<'_> {
         fn visit_abstraction(&mut self, abstraction: &DataAbstractionRef<'_>) -> Option<DataExpression> {
+            let prev_len = self.context.len();
             self.context.extend(abstraction.variables().iter());
-            self.visit(&abstraction.body())
+            self.visit(&abstraction.body());
+            self.context.truncate(prev_len);
+            None
+        }
+
+        fn visit_where_clause(&mut self, where_: &DataWhereClauseRef<'_>) -> Option<DataExpression> {
+            // Where clauses are non-recursive: RHS expressions see the outer scope.
+            for decl in where_.declarations().iter() {
+                let rhs = DataExpression::new(decl.arg(1).protect());
+                self.visit(&rhs.copy());
+            }
+            // The body sees the outer scope extended with the declared variables.
+            let prev_len = self.context.len();
+            for decl in where_.declarations().iter() {
+                self.context.push(DataVariable::new(decl.arg(0).protect()));
+            }
+            self.visit(&where_.body());
+            self.context.truncate(prev_len);
+            None
         }
 
         fn visit_variable(&mut self, var: &DataVariableRef<'_>) -> Option<DataExpression> {

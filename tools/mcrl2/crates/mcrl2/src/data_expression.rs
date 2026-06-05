@@ -413,6 +413,13 @@ mod inner {
         pub fn body(&self) -> DataExpressionRef<'_> {
             self.term.arg(0).into()
         }
+
+        /// Returns the declarations of the where clause as a list of assignments.
+        /// Each element is an assignment term with `arg(0)` = bound variable and
+        /// `arg(1)` = defining expression.
+        pub fn declarations(&self) -> ATermList<ATerm> {
+            self.term.arg(1).protect().into()
+        }
     }
 
     /// Represents a data::untyped_identifier from the mCRL2 toolset.
