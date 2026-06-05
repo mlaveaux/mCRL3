@@ -12,6 +12,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context;
 use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context_from_data_spec;
 use mcrl2_sys::lps::ffi::mcrl2_lps_enumerate;
 use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_lps_file;
+use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_text_file;
 use mcrl2_sys::lps::ffi::mcrl2_lps_multi_action_to_string;
 use mcrl2_sys::lps::ffi::mcrl2_lps_num_of_action_summands;
 use mcrl2_sys::lps::ffi::mcrl2_lps_preprocess_symbolic_exploration;
@@ -135,6 +136,13 @@ pub fn tau_multi_action() -> ATerm {
 pub fn read_lps(filename: &str) -> Result<LinearProcessSpecification, MercError> {
     Ok(LinearProcessSpecification {
         lps: mcrl2_lps_load_from_lps_file(filename)?,
+    })
+}
+
+/// Read an LPS from a textual mCRL2 process specification file.
+pub fn read_lps_text(filename: &str) -> Result<LinearProcessSpecification, MercError> {
+    Ok(LinearProcessSpecification {
+        lps: mcrl2_lps_load_from_text_file(filename)?,
     })
 }
 

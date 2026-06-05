@@ -916,7 +916,7 @@ dependencies = [
 [[package]]
 name = "mcrl2-sys"
 version = "1.0.0"
-source = "git+https://github.com/MERCorg/mCRL2-sys?rev=5b6f5f1b8913d5a06057108ddb546db12831b6eb#5b6f5f1b8913d5a06057108ddb546db12831b6eb"
+source = "git+https://github.com/MERCorg/mCRL2-sys?rev=c2795702c92d6ce5078296ad2d8c335f1b901ac0#c2795702c92d6ce5078296ad2d8c335f1b901ac0"
 dependencies = [
  "cargo-emit",
  "cc",
@@ -968,9 +968,13 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "mcrl2",
+ "merc_collections",
+ "merc_explore",
  "merc_io",
+ "merc_lts",
  "merc_tools",
  "merc_utilities",
+ "merc_vpg",
  "rand",
  "serde",
  "serde_json",
@@ -1197,6 +1201,7 @@ dependencies = [
 name = "merc_symbolic"
 version = "3.0.0"
 dependencies = [
+ "clap",
  "duct",
  "itertools 0.14.0",
  "log",
@@ -1272,6 +1277,29 @@ dependencies = [
  "pest",
  "rand",
  "toml",
+]
+
+[[package]]
+name = "merc_vpg"
+version = "2.0.0"
+dependencies = [
+ "bitvec",
+ "delegate",
+ "itertools 0.14.0",
+ "log",
+ "merc_collections",
+ "merc_io",
+ "merc_lts",
+ "merc_macros",
+ "merc_symbolic",
+ "merc_syntax",
+ "merc_utilities",
+ "oxidd",
+ "oxidd-core",
+ "rand",
+ "regex",
+ "streaming-iterator",
+ "thiserror",
 ]
 
 [[package]]
