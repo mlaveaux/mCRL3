@@ -8,8 +8,6 @@ use clap::Subcommand;
 
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
-use merc_ldd::Storage;
-use merc_ldd::len;
 use merc_lts::AutFormat;
 use merc_lts::AutStream;
 use merc_lts::MutexLtsBuilder;
@@ -37,6 +35,9 @@ mod explore_explicit;
 mod explore_symbolic;
 mod explore_test;
 
+/// Default number of nodes for the Oxidd LDD manager.
+const DEFAULT_OXIDD_NODE_CAPACITY: usize = 1 << 24;
+
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum LpsFormat {
     Lps,
@@ -56,8 +57,29 @@ struct Cli {
     #[arg(long, global = true)]
     timings: bool,
 
+    /// The number of worker threads for the Oxidd LDD manager.
+    #[arg(long, global = true, default_value_t = 1)]
+    oxidd_workers: u32,
+
+    /// The number of nodes for the Oxidd LDD manager.
+    #[arg(long, global = true, default_value_t = DEFAULT_OXIDD_NODE_CAPACITY)]
+    oxidd_node_capacity: usize,
+
+    /// The apply cache capacity for the Oxidd LDD manager, defaults to the node capacity.
+    #[arg(long, global = true)]
+    oxidd_cache_capacity: Option<usize>,
+
     #[command(subcommand)]
     commands: Option<Commands>,
+}
+
+/// Initializes the Oxidd LDD manager based on CLI arguments.
+fn init_ldd_manager(cli: &Cli) -> oxidd::ldd::LDDManagerRef {
+    oxidd::ldd::new_manager(
+        cli.oxidd_node_capacity,
+        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
+        cli.oxidd_workers,
+    )
 }
 
 #[derive(Debug, Subcommand)]
@@ -134,9 +156,9 @@ fn main() -> Result<ExitCode, MercError> {
 
     let timing = Timing::new();
 
-    if let Some(command) = cli.commands {
+    if let Some(command) = &cli.commands {
         match command {
-            Commands::Explore(args) => handle_explore(args, &timing)?,
+            Commands::Explore(args) => handle_explore(&cli, args, &timing)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args, &timing)?,
         }
     }
@@ -151,24 +173,24 @@ fn main() -> Result<ExitCode, MercError> {
 }
 
 /// Handles symbolic exploration of an LPS.
-fn handle_explore(args: ExploreArgs, timing: &Timing) -> Result<(), MercError> {
-    let format = args.format.unwrap_or(LpsFormat::Lps);
+fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), MercError> {
+    let format = args.format.clone().unwrap_or(LpsFormat::Lps);
     let lps = match format {
         LpsFormat::Lps => read_lps(&args.filename)?,
         LpsFormat::Text => read_lps_text(&args.filename)?,
     };
 
-    let mut storage = Storage::new();
+    let storage = init_ldd_manager(cli);
 
-    let num_of_states = explore_lps_symbolic(&mut storage, &lps, timing)?;
-    println!("Number of states: {}", len(&mut storage, &num_of_states));
+    let states = explore_lps_symbolic(&storage, &lps, timing)?;
+    println!("Number of states: {}", states.len());
 
     Ok(())
 }
 
 /// Handles the explicit exploration of an LPS.
-fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result<(), MercError> {
-    let format = args.format.unwrap_or(LpsFormat::Lps);
+fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing) -> Result<(), MercError> {
+    let format = args.format.clone().unwrap_or(LpsFormat::Lps);
     let lps = match format {
         LpsFormat::Lps => read_lps(&args.filename)?,
         LpsFormat::Text => read_lps_text(&args.filename)?,

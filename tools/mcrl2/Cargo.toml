@@ -51,7 +51,6 @@ merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
 merc_explore = { path = "../../crates/explore", features = ["clap"] }
 merc_io = { path = "../../crates/io" }
-merc_ldd = { path = "../../crates/ldd" }
 merc_lts = { path = "../../crates/lts", features = ["clap"] }
 merc_reduction = { path = "../../crates/reduction" }
 merc_symbolic = { path = "../../crates/symbolic" }
