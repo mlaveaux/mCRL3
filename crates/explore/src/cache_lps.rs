@@ -268,6 +268,34 @@ impl<P: LPS> LPS for CacheLPS<P> {
     }
 }
 
+impl<P: LPS> CacheSummandWrapper<P> {
+    fn replay_cached(
+        &self,
+        state: &[P::Value],
+        results: &[(P::Label, Tree)],
+        report: &mut impl FnMut(&P::Label, &[P::Value]) -> Result<(), MercError>,
+    ) -> Result<(), MercError> {
+        // Each cached tree holds only the values at the write positions.
+        // The remaining positions are passed through unchanged, so they
+        // must be taken from the *live* source state rather than the state
+        // for which the entry was originally computed.
+        let mut replay_buf = self.shared.replay_buf.borrow_mut();
+        for (label, write_tree) in results {
+            replay_buf.clear();
+            replay_buf.extend_from_slice(state);
+            for (&pos, value) in self
+                .write_positions
+                .iter()
+                .zip(self.shared.forest.borrow().iter(*write_tree))
+            {
+                replay_buf[pos] = value;
+            }
+            report(label, &replay_buf)?;
+        }
+        Ok(())
+    }
+}
+
 impl<P: LPS> Summand for CacheSummandWrapper<P> {
     type Value = P::Value;
     type Label = P::Label;
@@ -294,52 +322,31 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
             self.shared.forest.borrow_mut().build(&key_buf)
         };
 
-        // Look up in the appropriate cache.
-        let cached = match self.strategy {
+        let hit = match self.strategy {
             CachingStrategy::Local => {
                 let caches = self.shared.local_caches.borrow();
-                caches[self.index].get(&key_tree).is_some()
+                if let Some(results) = caches[self.index].get(&key_tree) {
+                    self.hits.set(self.hits.get() + 1);
+                    self.replay_cached(state, results, &mut report)?;
+                    true
+                } else {
+                    false
+                }
             }
             CachingStrategy::Global => {
                 let cache = self.shared.global_cache.borrow();
-                cache.get(&(self.index, key_tree)).is_some()
+                if let Some(results) = cache.get(&(self.index, key_tree)) {
+                    self.hits.set(self.hits.get() + 1);
+                    self.replay_cached(state, results, &mut report)?;
+                    true
+                } else {
+                    false
+                }
             }
             CachingStrategy::None => unreachable!(),
         };
 
-        if cached {
-            self.hits.set(self.hits.get() + 1);
-            // Cache HIT: replay stored results.
-            let results = match self.strategy {
-                CachingStrategy::Local => {
-                    let caches = self.shared.local_caches.borrow();
-                    caches[self.index].get(&key_tree).unwrap().clone()
-                }
-                CachingStrategy::Global => {
-                    let cache = self.shared.global_cache.borrow();
-                    cache.get(&(self.index, key_tree)).unwrap().clone()
-                }
-                CachingStrategy::None => unreachable!(),
-            };
-
-            // Each cached tree holds only the values at the write positions.
-            // The remaining positions are passed through unchanged, so they
-            // must be taken from the *live* source state rather than the state
-            // for which the entry was originally computed.
-            let mut replay_buf = self.shared.replay_buf.borrow_mut();
-            for (label, write_tree) in &results {
-                replay_buf.clear();
-                replay_buf.extend_from_slice(state);
-                for (&pos, value) in self
-                    .write_positions
-                    .iter()
-                    .zip(self.shared.forest.borrow().iter(*write_tree))
-                {
-                    replay_buf[pos] = value;
-                }
-                report(label, &replay_buf)?;
-            }
-        } else {
+        if !hit {
             self.misses.set(self.misses.get() + 1);
             // Cache MISS: delegate to inner summand, capture results. Only the
             // values at the write positions are stored; on replay they are

@@ -16,7 +16,11 @@ mod tests {
             .arg(pbes_path)
             .output()
             .expect("Failed to execute pbessolve");
-        assert!(output.status.success(), "pbessolve failed with status: {}", output.status);
+        assert!(
+            output.status.success(),
+            "pbessolve failed with status: {}",
+            output.status
+        );
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined = format!("{stdout}{stderr}");
@@ -25,7 +29,10 @@ mod tests {
         } else if combined.to_lowercase().contains("false") {
             false
         } else {
-            panic!("pbessolve produced unexpected output for {}: stdout={stdout:?} stderr={stderr:?}", pbes_path.display())
+            panic!(
+                "pbessolve produced unexpected output for {}: stdout={stdout:?} stderr={stderr:?}",
+                pbes_path.display()
+            )
         }
     }
 
@@ -41,7 +48,11 @@ mod tests {
         let pbessolve = Path::new(&mcrl2_path).join("pbessolve");
 
         let text_pbes_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(text_pbes_relative_path);
-        assert!(text_pbes_path.exists(), "Text PBES file not found: {}", text_pbes_path.display());
+        assert!(
+            text_pbes_path.exists(),
+            "Text PBES file not found: {}",
+            text_pbes_path.display()
+        );
 
         let temp = temp_dir("test_explore_srf").unwrap();
         let pbes_path = temp.path().join("spec.pbes");
@@ -78,7 +89,11 @@ mod tests {
         let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(spec_relative_path);
         let formula_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(formula_relative_path);
         assert!(spec_path.exists(), "Spec file not found: {}", spec_path.display());
-        assert!(formula_path.exists(), "Formula file not found: {}", formula_path.display());
+        assert!(
+            formula_path.exists(),
+            "Formula file not found: {}",
+            formula_path.display()
+        );
 
         let temp = temp_dir("test_explore_srf").unwrap();
         let lps_path = temp.path().join("spec.lps");
@@ -106,8 +121,7 @@ mod tests {
         let result = solution[0][0];
 
         assert_eq!(
-            result,
-            reference,
+            result, reference,
             "PBES solution mismatch for {spec_relative_path} with {formula_relative_path}: \
              our solver says {result}, pbessolve says {reference}"
         );

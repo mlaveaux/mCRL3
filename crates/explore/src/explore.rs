@@ -82,7 +82,10 @@ where
             // Reconstruct the state vector into the reusable buffer so
             // `discovered` can be mutated by inserts inside the summand callback
             // below.
-            discovered.get_into(current, &mut current_state);
+            debug_assert!(
+                discovered.get_into(current, &mut current_state),
+                "StateRef from working queue must be valid"
+            );
             let from = StateIndex::new(current.index());
             lps.prepare(&current_state);
 

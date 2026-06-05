@@ -14,23 +14,23 @@ use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_name;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_outgoing_edges;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_value;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertices;
+use mcrl2_sys::pbes::ffi::mcrl2_make_data_assignment_list;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_data_specification;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_propositional_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_variables;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_propositional_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_srf_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_string;
-use mcrl2_sys::pbes::ffi::mcrl2_srf_equations_summands;
-use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_conjunctive;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_mu;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_equations_summands;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equations;
-use mcrl2_sys::pbes::ffi::mcrl2_srf_summand_parameters;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_to_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_unify_parameters;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_summand_parameters;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_equation_predicate_variables;
-use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
-use mcrl2_sys::pbes::ffi::mcrl2_make_data_assignment_list;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_cfg;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_cfgs;
@@ -118,10 +118,7 @@ impl Pbes {
 /// `data_expression_list`. The returned term can be passed to `LearnSuccessorsContext` as the
 /// `assignments` argument when enumerating PBES SRF summands.
 pub fn make_data_assignment_list(variables: &ATerm, values: &ATerm) -> ATerm {
-    ATerm::from_unique_ptr(mcrl2_make_data_assignment_list(
-        variables.get(),
-        values.get(),
-    ))
+    ATerm::from_unique_ptr(mcrl2_make_data_assignment_list(variables.get(), values.get()))
 }
 
 impl fmt::Display for Pbes {
@@ -486,9 +483,12 @@ impl SrfSummand {
 
     /// Returns the summation (existential) parameters of the summand.
     pub fn parameters(&self) -> ATermList<DataVariable> {
-        ATermList::new(ATerm::from_ptr(unsafe {
-            mcrl2_srf_summand_parameters(self.summand.as_ref().expect("Pointer should be valid"))
-        }).protect())
+        ATermList::new(
+            ATerm::from_ptr(unsafe {
+                mcrl2_srf_summand_parameters(self.summand.as_ref().expect("Pointer should be valid"))
+            })
+            .protect(),
+        )
     }
 
     /// Creates a new [`SrfSummand`] from the given FFI summand pointer.

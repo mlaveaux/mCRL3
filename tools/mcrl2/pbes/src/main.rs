@@ -14,9 +14,9 @@ use merc_tools::VersionFlag;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use crate::explore_srf::parity_game_from_pbes;
 use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
-use crate::explore_srf::parity_game_from_pbes;
 use merc_explore::ExplorationStrategy;
 use merc_vpg::PG;
 
@@ -49,7 +49,6 @@ struct Cli {
     #[command(subcommand)]
     commands: Option<Commands>,
 }
-
 
 #[derive(Debug, Subcommand)]
 enum Commands {
@@ -109,7 +108,6 @@ struct ExportArgs {
     format: Option<PbesFormat>,
 }
 
-
 #[derive(clap::Args, Debug)]
 struct ExploreExplicitArgs {
     /// The input PBES file.
@@ -119,7 +117,6 @@ struct ExploreExplicitArgs {
     #[arg(long, short('i'), value_enum)]
     format: Option<PbesFormat>,
 }
-
 
 fn main() -> Result<ExitCode, MercError> {
     let cli = Cli::parse();
