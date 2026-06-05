@@ -138,7 +138,10 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
             // Reconstruct the current state vector from the discovered set.
-            discovered.get_into(current, &mut current_state_raw);
+            debug_assert!(
+                discovered.get_into(current, &mut current_state_raw),
+                "StateRef from working set must be valid"
+            );
             current_state_vector.clear();
             current_state_vector.extend(current_state_raw.iter().copied().map(StateIndex::new));
 
@@ -547,13 +550,11 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
         for i in 0..self.lts_list.len() {
             if self.current_subset & (1 << i) != 0 {
                 let state = ctx.base_target[i];
-                // This is necessary to avoid introducing the ExactSizeIterator bound on L::outgoing_transitions.
-                let iter = self.lts_list[i].outgoing_transitions(state);
-                let len = iter.count();
                 let mut iter = self.lts_list[i].outgoing_transitions(state);
                 let Some(first) = iter.next() else {
                     return false;
                 };
+                let len = 1 + iter.count();
                 ctx.subset_indices.push(i);
                 ctx.current.push(first);
                 ctx.offsets.push(0);

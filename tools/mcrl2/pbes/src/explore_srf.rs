@@ -9,17 +9,17 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use mcrl2::_aterm;
 use mcrl2::ATerm;
 use mcrl2::ATermList;
 use mcrl2::DataExpression;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
-use mcrl2::free_variables_data_expression;
 use mcrl2::Pbes;
 use mcrl2::PbesPropositionalVariableInstantiation;
 use mcrl2::SrfPbes;
-use mcrl2::_aterm;
+use mcrl2::free_variables_data_expression;
 use mcrl2::make_data_assignment_list;
 use mcrl2::tau_multi_action;
 use merc_collections::IndexedSet;
@@ -180,7 +180,7 @@ impl PbesSrfLps {
         {
             let mut mapping = shared.mapping.borrow_mut();
             for (i, arg) in initial_pvi.arguments().iter().enumerate() {
-                let (idx, _) = mapping[i].insert(arg.into());
+                let (idx, _) = mapping[i].insert(arg);
                 initial_state.push(*idx);
             }
         }
@@ -195,9 +195,9 @@ impl PbesSrfLps {
             for srf_summand in eq.summands() {
                 let target_pvi: PbesPropositionalVariableInstantiation = srf_summand.variable().into();
                 let target_eq_name = target_pvi.name().to_string();
-                let target_eq_idx = *name_to_eq.get(&target_eq_name).ok_or_else(|| {
-                    MercError::from(format!("Unknown target equation: {target_eq_name}"))
-                })?;
+                let target_eq_idx = *name_to_eq
+                    .get(&target_eq_name)
+                    .ok_or_else(|| MercError::from(format!("Unknown target equation: {target_eq_name}")))?;
 
                 let target_args: ATerm = target_pvi.arguments().protect().into();
                 let assignments_term = make_data_assignment_list(&eq_param_term, &target_args);
