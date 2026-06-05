@@ -22,10 +22,15 @@ use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_srf_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_string;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equations_summands;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equation_variable;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_conjunctive;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_mu;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equations;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_summand_parameters;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_to_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_unify_parameters;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_equation_predicate_variables;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
+use mcrl2_sys::pbes::ffi::mcrl2_make_data_assignment_list;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_cfg;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_cfgs;
@@ -100,6 +105,23 @@ impl Pbes {
     pub(crate) fn new(pbes: UniquePtr<pbes>) -> Self {
         Pbes { pbes }
     }
+
+    /// Returns the initial state (propositional variable instantiation) of the PBES.
+    pub fn initial_state(&self) -> PbesPropositionalVariableInstantiation {
+        PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(mcrl2_pbes_initial_state(
+            self.pbes.as_ref().expect("pbes UniquePtr should not be null"),
+        )))
+    }
+}
+
+/// Build a `data::assignment_list` from two parallel ATerm lists: a `variable_list` and a
+/// `data_expression_list`. The returned term can be passed to `LearnSuccessorsContext` as the
+/// `assignments` argument when enumerating PBES SRF summands.
+pub fn make_data_assignment_list(variables: &ATerm, values: &ATerm) -> ATerm {
+    ATerm::from_unique_ptr(mcrl2_make_data_assignment_list(
+        variables.get(),
+        values.get(),
+    ))
 }
 
 impl fmt::Display for Pbes {
@@ -411,6 +433,16 @@ impl SrfEquation {
         &self.summands
     }
 
+    /// Returns true when the equation is conjunctive (universal, ∀), false for disjunctive (existential, ∃).
+    pub fn is_conjunctive(&self) -> bool {
+        mcrl2_srf_equation_is_conjunctive(self.as_ref())
+    }
+
+    /// Returns true when the equation has a μ (least) fixed-point symbol.
+    pub fn is_mu(&self) -> bool {
+        mcrl2_srf_equation_is_mu(self.as_ref())
+    }
+
     /// Creates a new [`SrfEquation`] from the given FFI equation pointer.
     pub(crate) fn new(equation: *const srf_equation) -> Self {
         let mut summands_ffi = CxxVector::new();
@@ -450,6 +482,13 @@ impl SrfSummand {
         PbesExpression::new(ATerm::from_ptr(unsafe {
             mcrl2_sys::pbes::ffi::mcrl2_srf_summand_variable(self.summand.as_ref().expect("Pointer should be valid"))
         }))
+    }
+
+    /// Returns the summation (existential) parameters of the summand.
+    pub fn parameters(&self) -> ATermList<DataVariable> {
+        ATermList::new(ATerm::from_ptr(unsafe {
+            mcrl2_srf_summand_parameters(self.summand.as_ref().expect("Pointer should be valid"))
+        }).protect())
     }
 
     /// Creates a new [`SrfSummand`] from the given FFI summand pointer.
