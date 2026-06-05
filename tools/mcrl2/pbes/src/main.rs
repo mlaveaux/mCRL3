@@ -16,8 +16,12 @@ use merc_utilities::Timing;
 
 use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
+use crate::explore_srf::parity_game_from_pbes;
+use merc_explore::ExplorationStrategy;
+use merc_vpg::PG;
 
 mod clone_iterator;
+mod explore_srf;
 mod export;
 mod permutation;
 mod symmetry;
@@ -45,12 +49,15 @@ struct Cli {
     commands: Option<Commands>,
 }
 
+
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Analyze symmetries of a PBES
     Symmetry(SymmetryArgs),
     /// Exports the control flow graphs of a PBES in JSON format.
     Export(ExportArgs),
+    /// Explore a PBES explicitly into a parity game.
+    ExploreExplicit(ExploreExplicitArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -101,6 +108,18 @@ struct ExportArgs {
     format: Option<PbesFormat>,
 }
 
+
+#[derive(clap::Args, Debug)]
+struct ExploreExplicitArgs {
+    /// The input PBES file.
+    filename: String,
+
+    /// Explicitly choose the format of the input PBES file.
+    #[arg(long, short('i'), value_enum)]
+    format: Option<PbesFormat>,
+}
+
+
 fn main() -> Result<ExitCode, MercError> {
     let cli = Cli::parse();
 
@@ -123,6 +142,7 @@ fn main() -> Result<ExitCode, MercError> {
         match command {
             Commands::Symmetry(args) => handle_symmetry(args)?,
             Commands::Export(args) => handle_export(args)?,
+            Commands::ExploreExplicit(args) => handle_explore_explicit(args)?,
         }
     }
 
@@ -131,6 +151,21 @@ fn main() -> Result<ExitCode, MercError> {
     }
 
     Ok(ExitCode::SUCCESS)
+}
+
+fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
+    let format = args.format.unwrap_or(PbesFormat::Pbes);
+    let pbes = match format {
+        PbesFormat::Pbes => Pbes::from_file(&args.filename)?,
+        PbesFormat::Text => Pbes::from_text_file(&args.filename)?,
+    };
+    let game = parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs)?;
+    println!(
+        "Parity game: {} vertices, {} edges",
+        game.num_of_vertices(),
+        game.num_of_edges()
+    );
+    Ok(())
 }
 
 fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {

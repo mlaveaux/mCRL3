@@ -9,6 +9,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_condition;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_multi_action;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_summation_variables;
 use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context;
+use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context_from_data_spec;
 use mcrl2_sys::lps::ffi::mcrl2_lps_enumerate;
 use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_lps_file;
 use mcrl2_sys::lps::ffi::mcrl2_lps_multi_action_to_string;
@@ -28,6 +29,7 @@ use merc_utilities::MercError;
 use crate::ATerm;
 use crate::ATermList;
 use crate::DataExpression;
+use crate::DataSpecification;
 use crate::DataVariable;
 
 /// A linear process specification.
@@ -160,6 +162,15 @@ impl LearnSuccessorsContext {
         LearnSuccessorsContext {
             context: RefCell::new(mcrl2_lps_create_learn_successors_context(
                 lps.lps.as_ref().expect("The lps is always defined"),
+            )),
+        }
+    }
+
+    /// Creates a new context from a data specification (used when no LPS is available).
+    pub fn from_data_spec(data_spec: &DataSpecification) -> Self {
+        LearnSuccessorsContext {
+            context: RefCell::new(mcrl2_lps_create_learn_successors_context_from_data_spec(
+                data_spec.get(),
             )),
         }
     }
