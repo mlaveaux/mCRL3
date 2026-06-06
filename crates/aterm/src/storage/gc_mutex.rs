@@ -21,6 +21,8 @@ pub struct GcMutex<T> {
 }
 
 unsafe impl<T: Send> Send for GcMutex<T> {}
+// SAFETY: Sharing &GcMutex<T> across threads gives shared &T access, so T must be Sync.
+unsafe impl<T: Send + Sync> Sync for GcMutex<T> {}
 unsafe impl<T: Send + Sync> Sync for GcMutex<T> {}
 
 impl<T> GcMutex<T> {

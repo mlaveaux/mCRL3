@@ -74,12 +74,12 @@ where
             // Next time we can actually process the current node.
             self.stack.push((current.clone(), true));
 
-            // Add unvisited children to stack
-            if (self.predicate)(&down) {
+            // Add unvisited children to stack (skip terminals: empty set / empty vector)
+            if down.node().is_some() && (self.predicate)(&down) {
                 self.stack.push((down, false));
             }
 
-            if (self.predicate)(&right) {
+            if right.node().is_some() && (self.predicate)(&right) {
                 self.stack.push((right, false));
             }
         }

@@ -83,6 +83,14 @@ impl<W: BitStreamWrite> BinaryLddWriter<W> {
             }
         }
 
+        // iter_nodes yields nothing for terminals; emit the output marker directly.
+        if ldd.node().is_none() {
+            let nodes = self.nodes.borrow();
+            let index = nodes.index(ldd).expect("terminals are pre-inserted in new()");
+            self.writer.write_bits(1, 1)?;
+            self.writer.write_bits(*index as u64, Self::ldd_index_width(&nodes))?;
+        }
+
         Ok(())
     }
 
@@ -192,6 +200,26 @@ mod tests {
     use crate::random_vector_set;
 
     use super::*;
+
+    #[test]
+    fn test_binary_ldd_stream_terminals() {
+        let manager = oxidd::ldd::new_manager(2048, 1024, 1);
+
+        for term in [
+            LDDFunction::empty_set(&manager).unwrap(),
+            LDDFunction::empty_vector(&manager).unwrap(),
+        ] {
+            let mut vector: Vec<u8> = Vec::new();
+            let stream = BitStreamWriter::new(&mut vector);
+            let mut output_stream = BinaryLddWriter::new(&manager, stream).unwrap();
+            output_stream.write_ldd(&term, &manager).unwrap();
+            drop(output_stream);
+
+            let mut input_stream =
+                BinaryLddReader::new(&manager, BitStreamReader::new(&vector[..])).unwrap();
+            assert!(term == input_stream.read_ldd(&manager).unwrap(), "terminal round-trip failed");
+        }
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)]
