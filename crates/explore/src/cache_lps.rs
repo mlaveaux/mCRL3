@@ -37,7 +37,7 @@ pub struct CacheLPS<P: LPS> {
 
 struct CacheShared<V: Slot, L: Clone> {
     /// Stores the nodes for all the cached keys and values, ensuring that the cache is stored compactly.
-    forest: RefCell<BTreeForest<V, Global>>,
+    forest: RefCell<BTreeForest<V, Global, 2>>,
 
     /// An array of summand local caches.
     local_caches: RefCell<Vec<FxHashMap<Tree, Vec<(L, Tree)>>>>,
