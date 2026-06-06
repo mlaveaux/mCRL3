@@ -1217,6 +1217,7 @@ dependencies = [
 name = "merc_symbolic"
 version = "3.0.0"
 dependencies = [
+ "clap",
  "delegate",
  "duct",
  "itertools 0.15.0",

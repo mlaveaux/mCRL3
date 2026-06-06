@@ -81,7 +81,7 @@ pub fn reachability<L: SymbolicLTS>(
     timing: &Timing,
 ) -> Result<LDDFunction, MercError> {
     let mut todo = lts.initial_state().clone();
-    let mut states = lts.initial_state().clone(); // The state space.
+    let mut states = lts.initial_state().clone();
     let mut iteration = 0;
 
     trace!("states = {}", LddDisplay::new(&states));

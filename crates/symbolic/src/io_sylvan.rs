@@ -70,7 +70,7 @@ pub fn read_projection<R: Read>(file: &mut R) -> Result<(Vec<Value>, Vec<Value>)
 pub struct SylvanLts {
     initial_state: LDDFunction,
 
-    transition_groups: Vec<SylvanTransitionGroup>, // (relation, meta)
+    transition_groups: Vec<SylvanTransitionGroup>,
 
     empty_set: LDDFunction,
 }
@@ -191,7 +191,6 @@ impl SylvanReader {
     /// Returns an LDD read from the given stream in the Sylvan format.
     pub fn read_ldd<R: Read>(&mut self, manager: &LDDManagerRef, stream: &mut R) -> Result<LDDFunction, MercError> {
         let count = read_u64(stream)?;
-        //println!("node count = {}", count);
 
         for _ in 0..count {
             // Read a single MDD node. It has the following structure: u64 | u64
@@ -199,8 +198,6 @@ impl SylvanReader {
             // Every character is 4 bits, V = value, D = down, R = right, m = marked, c = copy.
             let a = read_u64(stream)?;
             let b = read_u64(stream)?;
-            //println!("{:064b} | {:064b}", a, b);
-
             let right = (a & 0x0000ffffffffffff) >> 1;
             let down = b >> 17;
 
@@ -211,7 +208,7 @@ impl SylvanReader {
 
             let copy = right & 0x10000;
             if copy != 0 {
-                panic!("We do not yet deal with copy nodes.");
+                return Err("Sylvan copy nodes are not supported".into());
             }
 
             let down = self.node_from_index(manager, down)?;
@@ -234,7 +231,11 @@ impl SylvanReader {
         } else if index == 1 {
             Ok(LDDFunction::empty_vector(manager)?)
         } else {
-            Ok(self.indexed_set.get(&index).unwrap().clone())
+            Ok(self
+                .indexed_set
+                .get(&index)
+                .ok_or_else(|| format!("LDD index {index} not found in table of {} entries", self.indexed_set.len()))?
+                .clone())
         }
     }
 }
