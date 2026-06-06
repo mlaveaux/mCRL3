@@ -168,6 +168,15 @@ pub fn variable_rename(
 }
 
 /// Implementation of [variable_rename].
+///
+/// # Cache key
+///
+/// The cache is keyed only on the BDD node (not on the substitution slice)
+/// because `from < to`: as we traverse top-down, any node at level `L` has
+/// already consumed all entries with `from < L`, either at the matching
+/// `from`-level node or via the `level > from` branch.  The remaining
+/// substitution suffix is therefore uniquely determined by the node's level
+/// alone, so two paths to the same node always arrive with the same slice.
 pub fn variable_rename_edge<'id>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<BDDFunction, BDDFunction>,
@@ -277,6 +286,23 @@ pub fn variable_rename_reverse(
 }
 
 /// Implementation of [variable_rename_reverse].
+///
+/// # Cache key
+///
+/// The cache is keyed on `(BDDFunction, &Substitution)` — the node *and* the
+/// current substitution slice — because `to < from`: the `to`-level appears
+/// above the `from`-level in the BDD.  A node at level `> from` can be reached
+/// via two distinct paths:
+///
+/// 1. Through a `to`-level node, which consumes the entry and passes
+///    `substitution[1..]` to its cofactors.
+/// 2. Directly from an ancestor above `to` that skips the `to`-level (because
+///    the function doesn't depend on that variable along that path), which
+///    preserves the full slice.
+///
+/// The same BDD node can therefore be visited with different substitution
+/// slices, so the slice must be part of the cache key to avoid returning a
+/// stale result.
 pub fn variable_rename_reverse_edge<'id, 'a>(
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<(BDDFunction, &'a Substitution), BDDFunction>,
