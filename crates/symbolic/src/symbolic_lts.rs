@@ -65,8 +65,7 @@ impl SymbolicLts {
         &self.data_specification
     }
 
-    /// Returns the parameter values of the LTS.
-    pub fn parameter_values(&self) -> &Vec<Vec<DataExpression>> {
+    pub fn parameter_values(&self) -> &[Vec<DataExpression>] {
         &self.parameter_values
     }
 
