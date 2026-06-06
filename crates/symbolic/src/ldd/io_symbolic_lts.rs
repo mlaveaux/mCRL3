@@ -159,7 +159,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_read_symbolic_lts_wms_sym() {
         test_logger();
-        let input = include_bytes!("../../../examples/lts/WMS.sym");
+        let input = include_bytes!("../../../../examples/lts/WMS.sym");
 
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let _lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();

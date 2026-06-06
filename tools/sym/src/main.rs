@@ -14,6 +14,7 @@ use merc_lts::LtsFormat;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::write_bcg;
 use merc_symbolic::SymFormat;
+use merc_symbolic::SymbolicLPS;
 use merc_symbolic::SymbolicLTS;
 use merc_symbolic::SymbolicLtsBdd;
 use merc_symbolic::convert_symbolic_lts;
@@ -270,7 +271,13 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
     match format {
         SymFormat::Sylvan => {
             let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&storage, &mut file))?;
-            explore_impl(&storage, cli, args, &mut lts, timing)?;
+            // Sylvan format carries no action labels or parameter values, so BDD conversion is not supported.
+            println!(
+                "LTS has {} states",
+                timing.measure("explore", || -> Result<_, MercError> {
+                    Ok(reachability(&storage, &mut lts, timing)?.len())
+                })?
+            );
         }
         SymFormat::Sym => {
             let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&storage, &mut file))?;

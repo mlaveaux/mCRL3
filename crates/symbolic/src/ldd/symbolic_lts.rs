@@ -1,0 +1,94 @@
+use merc_data::DataExpression;
+use merc_data::DataSpecification;
+use merc_lts::LtsAction;
+use merc_lts::LtsMultiAction;
+use oxidd::ldd::LDDFunction;
+
+use crate::SummandGroup;
+use crate::SymbolicLPS;
+use crate::SymbolicLTS;
+use crate::TransitionGroup;
+
+/// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
+pub struct SymbolicLts {
+    data_specification: DataSpecification,
+    states: LDDFunction,
+
+    /// A singleton LDD representing the initial state.
+    initial_state: LDDFunction,
+    summand_groups: Vec<SummandGroup>,
+
+    /// The action labels of the LTS, stored as their string representation,
+    /// their position corresponds to the LDD values.
+    action_labels: Vec<String>,
+
+    /// The possible values for each process parameter, their position
+    /// corresponds to the LDD values.
+    parameter_values: Vec<Vec<DataExpression>>,
+}
+
+impl SymbolicLts {
+    /// Creates a new symbolic LTS.
+    ///
+    /// `states` is the known state space (pass `initial_state.clone()` when the full set is not
+    /// yet known, or provide the reachable set computed by [crate::reachability]).
+    pub fn new(
+        data_specification: DataSpecification,
+        states: LDDFunction,
+        initial_state: LDDFunction,
+        summand_groups: Vec<SummandGroup>,
+        action_labels: Vec<LtsMultiAction<LtsAction>>,
+        parameter_values: Vec<Vec<DataExpression>>,
+    ) -> Self {
+        let action_labels = action_labels
+            .into_iter()
+            .map(|aterm| format!("{}", aterm))
+            .collect::<Vec<String>>();
+
+        Self {
+            data_specification,
+            states,
+            initial_state,
+            summand_groups,
+            action_labels,
+            parameter_values,
+        }
+    }
+
+    /// Returns the data specification of the LTS.
+    pub fn data_specification(&self) -> &DataSpecification {
+        &self.data_specification
+    }
+
+    pub fn parameter_values(&self) -> &[Vec<DataExpression>] {
+        &self.parameter_values
+    }
+}
+
+impl SymbolicLPS for SymbolicLts {
+    fn initial_state(&self) -> &LDDFunction {
+        &self.initial_state
+    }
+
+    fn transition_groups(&self) -> &[impl TransitionGroup] {
+        &self.summand_groups
+    }
+
+    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+        &mut self.summand_groups
+    }
+}
+
+impl SymbolicLTS for SymbolicLts {
+    fn states(&self) -> &LDDFunction {
+        &self.states
+    }
+
+    fn action_labels(&self) -> &[String] {
+        &self.action_labels
+    }
+
+    fn parameter_values(&self) -> &[Vec<DataExpression>] {
+        &self.parameter_values
+    }
+}

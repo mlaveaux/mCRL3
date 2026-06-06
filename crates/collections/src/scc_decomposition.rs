@@ -7,7 +7,10 @@ use crate::Graph;
 use crate::IndexedPartition;
 use merc_io::LargeFormatter;
 
-/// Computes the strongly connected component partitioning of the given LTS.
+/// Computes the strongly connected component partitioning of the given graph.
+///
+/// Uses recursive Tarjan's algorithm. For large graphs that may cause a stack overflow,
+/// prefer [`scc_decomposition_iterative`] instead.
 pub fn scc_decomposition<F, G>(graph: &G, filter: F) -> IndexedPartition
 where
     F: Fn(G::VertexIndex, G::LabelIndex, G::VertexIndex) -> bool,

@@ -25,7 +25,7 @@ use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
 use streaming_iterator::StreamingIterator;
 
-use merc_symbolic::SymbolicLTS;
+use merc_symbolic::SymbolicLPS;
 use merc_symbolic::TransitionGroup;
 use merc_symbolic::iter;
 use merc_symbolic::reachability;
@@ -284,11 +284,7 @@ impl SymbolicSummand {
     }
 }
 
-impl SymbolicLTS for SymbolicLinearProcessSpecification {
-    fn states(&self) -> &LDDFunction {
-        unreachable!("The SymbolicLTS interface can only be explored");
-    }
-
+impl SymbolicLPS for SymbolicLinearProcessSpecification {
     fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
@@ -299,14 +295,6 @@ impl SymbolicLTS for SymbolicLinearProcessSpecification {
 
     fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
         &mut self.symbolic_summands
-    }
-
-    fn action_labels(&self) -> &[String] {
-        &self.action_labels
-    }
-
-    fn parameter_values(&self) -> &[Vec<merc_data::DataExpression>] {
-        &[]
     }
 }
 

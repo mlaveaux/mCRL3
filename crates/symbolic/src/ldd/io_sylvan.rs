@@ -3,13 +3,12 @@ use std::fmt;
 use std::io::Read;
 
 use log::info;
-use merc_data::DataExpression;
 use merc_utilities::MercError;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
 
-use crate::SymbolicLTS;
+use crate::SymbolicLPS;
 use crate::TransitionGroup;
 
 /// Returns the (initial state, transitions) read from the file in Sylvan's format.
@@ -41,7 +40,7 @@ pub fn read_sylvan<R: Read>(manager: &LDDManagerRef, stream: &mut R) -> Result<S
         transition.relation = reader.read_ldd(manager, stream)?;
     }
 
-    Ok(SylvanLts::new(LDDFunction::empty_set(manager)?, initial_state, groups))
+    Ok(SylvanLts::new(initial_state, groups))
 }
 
 /// Reads the read and write projections from the given stream.
@@ -69,32 +68,20 @@ pub fn read_projection<R: Read>(file: &mut R) -> Result<(Vec<Value>, Vec<Value>)
 /// A symbolic labelled transition system read from a Sylvan file.
 pub struct SylvanLts {
     initial_state: LDDFunction,
-
     transition_groups: Vec<SylvanTransitionGroup>,
-
-    empty_set: LDDFunction,
 }
 
 impl SylvanLts {
     /// Creates a new Sylvan LTS.
-    pub fn new(
-        empty_set: LDDFunction,
-        initial_state: LDDFunction,
-        transition_groups: Vec<SylvanTransitionGroup>,
-    ) -> Self {
+    pub fn new(initial_state: LDDFunction, transition_groups: Vec<SylvanTransitionGroup>) -> Self {
         Self {
             initial_state,
             transition_groups,
-            empty_set,
         }
     }
 }
 
-impl SymbolicLTS for SylvanLts {
-    fn states(&self) -> &LDDFunction {
-        &self.empty_set
-    }
-
+impl SymbolicLPS for SylvanLts {
     fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
@@ -105,16 +92,6 @@ impl SymbolicLTS for SylvanLts {
 
     fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
         &mut self.transition_groups
-    }
-
-    fn action_labels(&self) -> &[String] {
-        // A Sylvan LTS does not have action labels.
-        &[]
-    }
-
-    fn parameter_values(&self) -> &[Vec<DataExpression>] {
-        // A Sylvan LTS does not have parameter values.
-        &[]
     }
 }
 
@@ -234,7 +211,12 @@ impl SylvanReader {
             Ok(self
                 .indexed_set
                 .get(&index)
-                .ok_or_else(|| format!("LDD index {index} not found in table of {} entries", self.indexed_set.len()))?
+                .ok_or_else(|| {
+                    format!(
+                        "LDD index {index} not found in table of {} entries",
+                        self.indexed_set.len()
+                    )
+                })?
                 .clone())
         }
     }
@@ -274,7 +256,7 @@ mod test {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_load_anderson_4() {
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
-        let bytes = include_bytes!("../../../examples/ldd/anderson.4.ldd");
+        let bytes = include_bytes!("../../../../examples/ldd/anderson.4.ldd");
         let mut lts = read_sylvan(&ldd_manager, &mut &bytes[..]).expect("Loading should work correctly");
         reachability(&ldd_manager, &mut lts, &Timing::new()).expect("Reachability should work correctly");
     }
@@ -284,7 +266,7 @@ mod test {
     #[cfg(not(debug_assertions))]
     fn test_load_collision_4() {
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
-        let bytes = include_bytes!("../../../examples/ldd/collision.4.ldd");
+        let bytes = include_bytes!("../../../../examples/ldd/collision.4.ldd");
         let mut lts = read_sylvan(&ldd_manager, &mut &bytes[..]).expect("Loading should work correctly");
         reachability(&ldd_manager, &mut lts, &Timing::new()).expect("Reachability should work correctly");
     }

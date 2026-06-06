@@ -83,7 +83,8 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     where
         F: Fn(usize) -> bool,
     {
-        // Size of the new block.
+        // Swaps elements in the block so that the elements for which the
+        // predicate holds are at the beginning of the block.
         let mut size = 0usize;
 
         for state in self.blocks[block_index].begin..self.blocks[block_index].end {
@@ -251,7 +252,14 @@ impl Iterator for BlockIter<'_> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.end - self.index;
+        (remaining, Some(remaining))
+    }
 }
+
+impl ExactSizeIterator for BlockIter<'_> {}
 
 #[cfg(test)]
 mod tests {

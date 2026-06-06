@@ -409,7 +409,7 @@ mod tests {
     fn test_from_symbolic_lts_bdd_abp() {
         test_logger();
 
-        let input = include_bytes!("../../../examples/lts/abp.sym");
+        let input = include_bytes!("../../../../examples/lts/abp.sym");
 
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);

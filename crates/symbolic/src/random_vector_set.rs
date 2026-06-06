@@ -7,7 +7,6 @@ use rand::Rng;
 use rand::RngExt;
 use std::collections::HashSet;
 
-
 /// Returns a vector of the given length with random u64 values (from 0..max_value).
 pub fn random_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Vec<Value> {
     let mut vector: Vec<Value> = Vec::new();
@@ -16,15 +15,6 @@ pub fn random_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Ve
     }
 
     vector
-}
-
-/// Returns a sorted vector of the given length with unique u64 values (from 0..max_value).
-pub fn random_sorted_vector<R: Rng>(rng: &mut R, length: usize, max_value: Value) -> Vec<Value> {
-    use rand::prelude::IteratorRandom;
-
-    let mut result = (0..max_value).sample(rng, length);
-    result.sort();
-    result
 }
 
 /// Returns a set of 'amount' vectors where every vector has the given length.
@@ -51,15 +41,5 @@ where
         result = result.union(&single).expect("Failed to compute the union");
     }
 
-    result
-}
-
-
-/// Returns project(vector, proj), see [project]. Requires proj to be sorted.
-pub fn project_vector(vector: &[Value], proj: &[Value]) -> Vec<Value> {
-    let mut result = Vec::<Value>::new();
-    for i in proj {
-        result.push(vector[*i as usize]);
-    }
     result
 }

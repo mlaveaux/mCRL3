@@ -214,7 +214,6 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
 
 #[cfg(test)]
 mod tests {
-    use merc_ldd::Storage;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderMem;
     use merc_reduction::Equivalence;
@@ -235,15 +234,15 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_refine() {
         random_test(100, |rng| {
-            let mut storage = Storage::new();
+            let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
-            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+            let lts = random_symbolic_lts(rng, &ldd_manager, 10, 5).unwrap();
 
             let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
-            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &manager_ref, &lts).unwrap();
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+            let explicit_lts = convert_symbolic_lts(&ldd_manager, &mut builder, &lts).unwrap();
             let explicit_lts_reduced =
                 reduce_lts(explicit_lts.clone(), Equivalence::StrongBisim, false, &Timing::new());
 

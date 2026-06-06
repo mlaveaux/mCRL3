@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "merc_explore"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "boxcar",
  "clap",
@@ -1084,25 +1084,6 @@ dependencies = [
  "streaming-iterator",
  "tempfile",
  "thiserror",
-]
-
-[[package]]
-name = "merc_ldd"
-version = "3.0.0"
-dependencies = [
- "ahash",
- "delegate",
- "itertools 0.15.0",
- "log",
- "merc_aterm",
- "merc_collections",
- "merc_io",
- "merc_number",
- "merc_unsafety",
- "merc_utilities",
- "rand",
- "rustc-hash 2.1.2",
- "streaming-iterator",
 ]
 
 [[package]]

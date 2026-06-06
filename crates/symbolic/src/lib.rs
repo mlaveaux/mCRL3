@@ -1,51 +1,27 @@
 #![forbid(unsafe_code)]
 
-mod convert_bdd;
-mod convert_ldd;
-mod cube_iter;
-mod cube_iter_ldd;
+mod bdd;
 mod dependency_graph;
-mod display;
-mod format;
 mod io;
-mod io_ldd;
-mod io_sylvan;
-mod io_symbolic_lts;
-mod ldd_to_bdd;
+mod ldd;
 mod mince_variable_order;
-mod random_bdd;
-mod random_symbolic_lts;
-mod random_vector_set;
-mod reachability;
-mod reachability_bdd;
-mod refine;
-mod sigref;
-mod symbolic_lts;
-mod symbolic_lts_bdd;
-mod symbolic_quotient;
+mod symbolic_lps;
 mod util;
 
-pub use convert_bdd::*;
-pub use convert_ldd::*;
-pub use cube_iter::*;
-pub use cube_iter_ldd::*;
+#[cfg(test)]
+mod random_symbolic_lts;
+#[cfg(test)]
+mod random_vector_set;
+
+pub use bdd::*;
 pub use dependency_graph::*;
-pub use display::*;
-pub use format::*;
 pub use io::*;
-pub use io_ldd::*;
-pub use io_sylvan::*;
-pub use io_symbolic_lts::*;
-pub use ldd_to_bdd::*;
+pub use ldd::*;
 pub use mince_variable_order::*;
-pub use random_bdd::*;
-pub(crate) use random_symbolic_lts::*;
-pub(crate) use random_vector_set::*;
-pub use reachability::*;
-pub use reachability_bdd::*;
-pub use refine::*;
-pub use sigref::*;
-pub use symbolic_lts::*;
-pub use symbolic_lts_bdd::*;
-pub use symbolic_quotient::*;
+pub use symbolic_lps::*;
 pub use util::*;
+
+#[cfg(test)]
+pub(crate) use random_symbolic_lts::*;
+#[cfg(test)]
+pub(crate) use random_vector_set::*;
