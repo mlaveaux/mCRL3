@@ -81,7 +81,7 @@ pub fn quotient_symbolic(
     // bits would be free and we would conflate transitions with different target states.
     let mut quotient_groups = Vec::with_capacity(lts.transition_groups().len());
     for group in lts.transition_groups() {
-        let extended = crate::sigref::extend_relation(
+        let extended = crate::extend_relation(
             manager_ref,
             group.relation(),
             lts.state_variables(),

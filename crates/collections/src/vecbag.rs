@@ -15,7 +15,7 @@ macro_rules! vecbag {
     };
     ($($x:expr),+ $(,)?) => {{
         let mut __bag = $crate::VecBag::new();
-        $( let _ = __bag.insert($x); )*
+        $( __bag.insert($x); )*
         __bag
     }};
 }
@@ -117,28 +117,23 @@ impl<T: Ord> VecBag<T> {
     }
 
     /// Inserts one occurrence of the given element into the bag.
-    pub fn insert(&mut self, element: T) -> bool {
+    pub fn insert(&mut self, element: T) {
         // Finds the location where to insert the element to keep the array sorted.
         let position = match self.sorted_array.binary_search(&element) {
             Ok(position) | Err(position) => position,
         };
 
         self.sorted_array.insert(position, element);
-        true
     }
 
-    /// Extends this bag with the elements from the given iterator, returns true iff at least one element was inserted.
-    pub fn extend<'a, I: IntoIterator<Item = &'a T>>(&mut self, iter: I) -> bool
+    /// Extends this bag with the elements from the given iterator.
+    pub fn extend<'a, I: IntoIterator<Item = &'a T>>(&mut self, iter: I)
     where
         T: Clone + 'a,
     {
-        let mut inserted = false;
         for element in iter {
             self.insert(element.clone());
-            inserted = true;
         }
-
-        inserted
     }
 
     /// Returns an iterator over the elements in the bag, they are yielded in sorted order.

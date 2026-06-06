@@ -429,7 +429,14 @@ impl<T: CompressedEntry> Iterator for ByteCompressedVecIterator<'_, T> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.end - self.current;
+        (remaining, Some(remaining))
+    }
 }
+
+impl<T: CompressedEntry> ExactSizeIterator for ByteCompressedVecIterator<'_, T> {}
 
 pub trait CompressedEntry {
     // Returns the entry as a byte vector

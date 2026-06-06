@@ -1,3 +1,4 @@
+use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use rand::Rng;
 use rand::RngExt;
@@ -14,7 +15,9 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use crate::SummandGroup;
+use crate::SymbolicLPS;
 use crate::SymbolicLts;
+use crate::TransitionGroup;
 use crate::from_iter;
 use crate::random_vector_set;
 use crate::reachability;
@@ -28,29 +31,24 @@ pub fn random_symbolic_lts<R: Rng>(
 ) -> Result<SymbolicLts, MercError> {
     let num_of_values = 5usize;
 
-    // Determine the state set.
     let states = random_vector_set(rng, 100, num_state_variables, num_of_values as u32);
     let initial_state = states.iter().choose(rng).ok_or("at least one state generated")?;
 
-    // The action labels
     let mut action_labels = Vec::new();
     for i in 0..num_action_labels {
         action_labels.push(LtsMultiAction::from_index(i));
     }
 
-    // The parameter values
     let mut parameter_values = Vec::new();
     let value = DataExpression::from_string("1")?;
     for _ in 0..num_state_variables {
         parameter_values.push(Vec::from_iter(std::iter::repeat_n(value.clone(), num_of_values)));
     }
 
-    // The parameter names
     let parameters = (0..num_state_variables)
         .map(|i| DataVariable::new(ATermString::new(format!("p{i}"))))
         .collect::<Vec<_>>();
 
-    // Determine the summand groups.
     let mut summand_groups = Vec::new();
     for _ in 0..5 {
         let num_of_read_variables = rng.random_range(0..parameters.len());
@@ -65,7 +63,6 @@ pub fn random_symbolic_lts<R: Rng>(
             .cloned()
             .collect::<Vec<_>>();
 
-        // Reserve additional space for action labels.
         let relation = random_vector_set(rng, 10, read_parameters.len() + write_parameters.len() + 1, 5);
         let relation_bdd = from_iter(manager, relation.iter());
 
@@ -80,19 +77,40 @@ pub fn random_symbolic_lts<R: Rng>(
 
     let initial_state_ldd = from_iter(manager, std::iter::once(initial_state));
 
-    // Compute the actual reachable state set, since the randomly generated transitions are not
-    // restricted to the random state set above.
-    let mut lts = SymbolicLts::new(
-        DataSpecification::default(),
-        initial_state_ldd.clone(),
-        initial_state_ldd,
+    // Explore via a lightweight wrapper so SymbolicLts is only constructed at the end
+    // with the actual reachable state set.
+    let mut lps = ExplorationLps {
+        initial_state: initial_state_ldd.clone(),
         summand_groups,
+    };
+    let reachable = reachability(manager, &mut lps, &Timing::new())?;
+
+    Ok(SymbolicLts::new(
+        DataSpecification::default(),
+        reachable,
+        initial_state_ldd,
+        lps.summand_groups,
         action_labels,
         parameter_values,
-    );
+    ))
+}
 
-    let reachable = reachability(manager, &mut lts, &Timing::new())?;
-    lts.set_states(reachable);
+/// Minimal [SymbolicLPS] wrapper used during exploration before the final [SymbolicLts] is built.
+struct ExplorationLps {
+    initial_state: LDDFunction,
+    summand_groups: Vec<SummandGroup>,
+}
 
-    Ok(lts)
+impl SymbolicLPS for ExplorationLps {
+    fn initial_state(&self) -> &LDDFunction {
+        &self.initial_state
+    }
+
+    fn transition_groups(&self) -> &[impl TransitionGroup] {
+        &self.summand_groups
+    }
+
+    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+        &mut self.summand_groups
+    }
 }

@@ -1018,6 +1018,9 @@ mod tests {
     use merc_utilities::Timing;
     use merc_utilities::random_test;
 
+    use super::decode_block;
+    use super::encode_block;
+    use super::is_bdd_cube_edge;
     use crate::SymbolicLtsBdd;
     use crate::convert_symbolic_lts;
     use crate::convert_symbolic_lts_bdd;
@@ -1026,9 +1029,6 @@ mod tests {
     use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
     use crate::required_bits_64;
-    use crate::sigref::decode_block;
-    use crate::sigref::encode_block;
-    use crate::sigref::is_bdd_cube_edge;
     use crate::sigref_symbolic;
 
     #[test]
@@ -1107,7 +1107,7 @@ mod tests {
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let lts_bdd = read_symbolic_lts(
             &ldd_manager,
-            include_bytes!("../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
+            include_bytes!("../../../../examples/lts/Szymanski_3-bit_lin_wait_alt.sym") as &[u8],
         )
         .unwrap();
 
@@ -1126,13 +1126,17 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_symbolic_signature_refinement_abp() {
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
-        let lts = read_symbolic_lts(&ldd_manager, include_bytes!("../../../examples/lts/abp.sym") as &[u8]).unwrap();
+        let lts = read_symbolic_lts(
+            &ldd_manager,
+            include_bytes!("../../../../examples/lts/abp.sym") as &[u8],
+        )
+        .unwrap();
 
         let bdd_manager = oxidd::bdd::new_manager(2028, 2028, 1);
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
         let (_, _, num_of_blocks) =
-            sigref_symbolic(&bdd_manager, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+            sigref_symbolic(&bdd_manager, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
         assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
     }
 
@@ -1178,15 +1182,11 @@ mod tests {
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let explicit_lts = convert_symbolic_lts(&ldd_manager, &mut builder, &lts).unwrap();
-            let explicit_lts_reduced = reduce_lts(
-                explicit_lts.clone(),
-                Equivalence::StrongBisim,
-                false,
-                &mut Timing::new(),
-            );
+            let explicit_lts_reduced =
+                reduce_lts(explicit_lts.clone(), Equivalence::StrongBisim, false, &Timing::new());
 
             let (partition, block_vars, _num_of_blocks) =
-                sigref_symbolic(&bdd_manager, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+                sigref_symbolic(&bdd_manager, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
 
             let quotient_lts = quotient_symbolic(&bdd_manager, &lts_bdd, &partition, &block_vars).unwrap();
 

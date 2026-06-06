@@ -215,7 +215,7 @@ mod tests {
     fn test_convert_symbolic_lts() {
         test_logger();
 
-        let input = include_bytes!("../../../examples/lts/abp.sym");
+        let input = include_bytes!("../../../../examples/lts/abp.sym");
 
         let manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let symbolic_lts = read_symbolic_lts(&manager, &input[..]).unwrap();

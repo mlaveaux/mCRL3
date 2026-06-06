@@ -215,9 +215,11 @@ mod tests {
             output_stream.write_ldd(&term, &manager).unwrap();
             drop(output_stream);
 
-            let mut input_stream =
-                BinaryLddReader::new(&manager, BitStreamReader::new(&vector[..])).unwrap();
-            assert!(term == input_stream.read_ldd(&manager).unwrap(), "terminal round-trip failed");
+            let mut input_stream = BinaryLddReader::new(&manager, BitStreamReader::new(&vector[..])).unwrap();
+            assert!(
+                term == input_stream.read_ldd(&manager).unwrap(),
+                "terminal round-trip failed"
+            );
         }
     }
 

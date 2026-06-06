@@ -151,6 +151,7 @@ pub fn bdd_to_ldd(
 
 /// Recursive implementation of [bdd_to_ldd].
 #[allow(clippy::mutable_key_type)]
+#[allow(clippy::too_many_arguments)]
 pub fn bdd_to_ldd_edge<'id>(
     ldd_manager: &LDDManagerRef,
     manager: &<BDDFunction as Function>::Manager<'id>,
@@ -176,7 +177,12 @@ pub fn bdd_to_ldd_edge<'id>(
 
                     // If there are still variables left, we must generate don't cares for the remaining layers.
                     // Cache this because the True terminal can be reached via many shared BDD paths.
-                    let cache_key = (BDDFunction::from_edge_ref(manager, &*bdd), variables.len(), current_bit, current_value);
+                    let cache_key = (
+                        BDDFunction::from_edge_ref(manager, &*bdd),
+                        variables.len(),
+                        current_bit,
+                        current_value,
+                    );
                     if let Some(cached) = cache.get(&cache_key) {
                         return Ok(cached.clone());
                     }
@@ -227,7 +233,12 @@ pub fn bdd_to_ldd_edge<'id>(
 
     // Cache lookup: shared BDD subgraphs are expanded independently each time without this,
     // causing exponential blowup when the same inner node is reachable via multiple paths.
-    let cache_key = (BDDFunction::from_edge_ref(manager, &*bdd), variables.len(), current_bit, current_value);
+    let cache_key = (
+        BDDFunction::from_edge_ref(manager, &*bdd),
+        variables.len(),
+        current_bit,
+        current_value,
+    );
     if let Some(cached) = cache.get(&cache_key) {
         return Ok(cached.clone());
     }
