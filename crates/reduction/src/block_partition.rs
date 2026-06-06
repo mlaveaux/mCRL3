@@ -455,7 +455,7 @@ impl Block {
     }
 
     /// Returns an iterator over the elements in this block.
-    pub fn iter<'a>(&self, elements: &'a Vec<StateIndex>) -> BlockIter<'a> {
+    pub fn iter<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.begin,
@@ -464,7 +464,7 @@ impl Block {
     }
 
     /// Returns an iterator over the marked elements in this block.
-    pub fn iter_marked<'a>(&self, elements: &'a Vec<StateIndex>) -> BlockIter<'a> {
+    pub fn iter_marked<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.marked_split,
@@ -473,7 +473,7 @@ impl Block {
     }
 
     /// Returns an iterator over the unmarked elements in this block.
-    pub fn iter_unmarked<'a>(&self, elements: &'a Vec<StateIndex>) -> BlockIter<'a> {
+    pub fn iter_unmarked<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.begin,
@@ -538,7 +538,7 @@ impl Block {
 }
 
 pub struct BlockIter<'a> {
-    elements: &'a Vec<StateIndex>,
+    elements: &'a [StateIndex],
     index: usize,
     end: usize,
 }

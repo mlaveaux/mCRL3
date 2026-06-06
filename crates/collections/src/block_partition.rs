@@ -33,7 +33,7 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     /// Create a block partition from an indexed partition.
     pub fn from_indexed_partition(partition: &IndexedPartition) -> Self {
         let mut blocks = vec![Block::new_empty(); partition.num_of_blocks()];
-        let num_of_blocks = partition.iter().count();
+        let num_of_elements = partition.iter_elements().count();
 
         // Figure out the number of elements per block.
         for (_, block_index) in partition.iter_elements() {
@@ -50,7 +50,7 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
         }
 
         // Create the elements vector.
-        let mut elements = vec![0; num_of_blocks];
+        let mut elements = vec![0; num_of_elements];
         for (element_index, block_index) in partition.iter_elements() {
             // Add the element to the block, and update the end index.
             let block = &mut blocks[block_index];

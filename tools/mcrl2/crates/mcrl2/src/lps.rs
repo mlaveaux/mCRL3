@@ -299,6 +299,10 @@ impl LearnSuccessorsContext {
             callback(values, multi_action);
         }
 
+        // Unsized coercion: &mut F → &mut dyn FnMut(...) produces a fat pointer (data + vtable).
+        // Must be a named binding so its stack address is stable for the *mut u8 cast below;
+        // an inline temporary would be dropped before the unsafe block, dangling the raw pointer.
+        // NLL sees this borrow of the local `callback` as disjoint from the `self.context` borrow below.
         let mut callback_ref: &mut dyn FnMut(&[*const _aterm], *const _aterm) = &mut callback;
         let mut context = self.context.borrow_mut();
         unsafe {

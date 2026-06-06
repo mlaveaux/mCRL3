@@ -88,7 +88,7 @@ impl<T, S> IndexedSet<T, S> {
 
     /// Returns the number of elements in the set.
     pub fn len(&self) -> usize {
-        self.table.len()
+        self.index.len()
     }
 
     /// Returns true if the set is empty.
