@@ -2,21 +2,26 @@ use merc_aterm::ATerm;
 use merc_aterm::ATermRead;
 use merc_aterm::ATermStreamable;
 use merc_aterm::ATermWrite;
-use merc_aterm::Symbol;
 use merc_utilities::MercError;
 
-/// TODO: Not yet useful, but can be used to read the data specification from a binary stream.
+/// Stores the five sections of an mCRL2 data specification as raw terms, enabling lossless
+/// round-trip serialization of binary formats that embed a data specification.
 #[derive(Default)]
-pub struct DataSpecification {}
+pub struct DataSpecification {
+    sorts: Vec<ATerm>,
+    aliases: Vec<ATerm>,
+    constructors: Vec<ATerm>,
+    mappings: Vec<ATerm>,
+    equations: Vec<ATerm>,
+}
 
 impl ATermStreamable for DataSpecification {
     fn write<W: ATermWrite>(&self, writer: &mut W) -> Result<(), MercError> {
-        writer.write_aterm_iter((0..0).map(|_| ATerm::constant(&Symbol::new("unimportant", 0))))?;
-        writer.write_aterm_iter((0..0).map(|_| ATerm::constant(&Symbol::new("unimportant", 0))))?;
-        writer.write_aterm_iter((0..0).map(|_| ATerm::constant(&Symbol::new("unimportant", 0))))?;
-        writer.write_aterm_iter((0..0).map(|_| ATerm::constant(&Symbol::new("unimportant", 0))))?;
-        writer.write_aterm_iter((0..0).map(|_| ATerm::constant(&Symbol::new("unimportant", 0))))?;
-
+        writer.write_aterm_iter(self.sorts.iter().cloned())?;
+        writer.write_aterm_iter(self.aliases.iter().cloned())?;
+        writer.write_aterm_iter(self.constructors.iter().cloned())?;
+        writer.write_aterm_iter(self.mappings.iter().cloned())?;
+        writer.write_aterm_iter(self.equations.iter().cloned())?;
         Ok(())
     }
 
@@ -24,13 +29,12 @@ impl ATermStreamable for DataSpecification {
     where
         Self: Sized,
     {
-        let _sorts: Result<Vec<ATerm>, MercError> = reader.read_aterm_iter()?.collect();
-        let _aliases: Result<Vec<ATerm>, MercError> = reader.read_aterm_iter()?.collect();
-        let _constructors: Result<Vec<ATerm>, MercError> = reader.read_aterm_iter()?.collect();
-        let _user_defined_mappings: Result<Vec<ATerm>, MercError> = reader.read_aterm_iter()?.collect();
-        let _user_defined_equations: Result<Vec<ATerm>, MercError> = reader.read_aterm_iter()?.collect();
+        let sorts = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
+        let aliases = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
+        let constructors = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
+        let mappings = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
+        let equations = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
 
-        // Ignore results for now.
-        Ok(DataSpecification {})
+        Ok(DataSpecification { sorts, aliases, constructors, mappings, equations })
     }
 }
