@@ -48,8 +48,7 @@ pub fn rewrite_rec(
             });
         }
         Rewriter::Innermost => {
-            let mut inner =
-                timing.measure("rewriter_construction", || InnermostRewriter::new(spec));
+            let mut inner = timing.measure("rewriter_construction", || InnermostRewriter::new(spec));
 
             timing.measure("rewrite_rec", || {
                 for term in syntax_terms {
@@ -62,10 +61,9 @@ pub fn rewrite_rec(
             });
         }
         Rewriter::InnermostCompiling => {
-            let mut inner = timing
-                .measure("rewriter_construction", || {
-                    SabreCompilingRewriter::new(spec, true, false)
-                })?;
+            let mut inner = timing.measure("rewriter_construction", || {
+                SabreCompilingRewriter::new(spec, true, false)
+            })?;
 
             timing.measure("rewrite_rec", || {
                 for term in syntax_terms {

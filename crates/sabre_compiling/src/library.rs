@@ -124,11 +124,20 @@ impl RuntimeLibrary {
 
         // Figure out the path to the library (it is based on platform: linux, windows and then macos)
         let profile = if release { "release" } else { "debug" };
-        let mut path = self.temp_dir.clone().join(format!("./target/{profile}/libsabre_generated.so"));
+        let mut path = self
+            .temp_dir
+            .clone()
+            .join(format!("./target/{profile}/libsabre_generated.so"));
         if !path.exists() {
-            path = self.temp_dir.clone().join(format!("./target/{profile}/sabre_generated.dll"));
+            path = self
+                .temp_dir
+                .clone()
+                .join(format!("./target/{profile}/sabre_generated.dll"));
             if !path.exists() {
-                path = self.temp_dir.clone().join(format!("./target/{profile}/libsabre_generated.dylib"));
+                path = self
+                    .temp_dir
+                    .clone()
+                    .join(format!("./target/{profile}/libsabre_generated.dylib"));
                 if !path.exists() {
                     return Err("Could not find the compiled library!".into());
                 }
