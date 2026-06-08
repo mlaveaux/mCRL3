@@ -47,7 +47,7 @@ impl DumpFiles {
     {
         if let Some(directory) = &self.directory {
             // Ensure the dump directory exists.
-            let _ = std::fs::create_dir_all(directory);
+            std::fs::create_dir_all(directory)?;
 
             let path = Path::new(&directory).join(filename);
             let mut file = File::create(&path)?;
