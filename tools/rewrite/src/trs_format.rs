@@ -1,3 +1,6 @@
+//! Serializes a rewrite specification to the AProVE TRS format.
+//! Format reference: https://aprove.informatik.rwth-aachen.de/help_new/trs.html
+
 use std::fmt;
 
 use ahash::HashSet;

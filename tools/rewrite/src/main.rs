@@ -45,7 +45,8 @@ enum Commands {
     /// Rewrite a term using the rewrite rules specified in a REC file or mCRL2 specification
     Rewrite(RewriteArgs),
 
-    /// Convert a REC specification to the TRS format
+    /// Convert a REC specification to the TRS format, which is the format used
+    /// by the term rewrite system termination checking tool called AProVE.
     Convert(ConvertArgs),
 }
 
