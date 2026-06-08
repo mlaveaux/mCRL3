@@ -128,22 +128,26 @@ mod tests {
     }
 
     #[test]
-    fn test_a_text_pbes() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_a_text_pbes() {
         compare_text_pbes_with_pbessolve("../../../examples/pbes/a.text.pbes");
     }
 
     #[test]
-    fn test_b_text_pbes() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_b_text_pbes() {
         compare_text_pbes_with_pbessolve("../../../examples/pbes/b.text.pbes");
     }
 
     #[test]
-    fn test_c_text_pbes() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_c_text_pbes() {
         compare_text_pbes_with_pbessolve("../../../examples/pbes/c.text.pbes");
     }
 
     #[test]
-    fn test_par_nodeadlock() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_par_nodeadlock() {
         compare_mcrl2_spec_with_pbessolve(
             "../../../examples/mCRL2/academic/par/par.mcrl2",
             "../../../examples/mCRL2/academic/par/nodeadlock.mcf",
@@ -151,7 +155,8 @@ mod tests {
     }
 
     #[test]
-    fn test_allow_nodeadlock() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_allow_nodeadlock() {
         compare_mcrl2_spec_with_pbessolve(
             "../../../examples/mCRL2/academic/allow/allow.mcrl2",
             "../../../examples/mCRL2/academic/allow/nodeadlock.mcf",
@@ -159,7 +164,8 @@ mod tests {
     }
 
     #[test]
-    fn test_block_nodeadlock() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_block_nodeadlock() {
         compare_mcrl2_spec_with_pbessolve(
             "../../../examples/mCRL2/academic/block/block.mcrl2",
             "../../../examples/mCRL2/academic/block/nodeadlock.mcf",
@@ -167,7 +173,8 @@ mod tests {
     }
 
     #[test]
-    fn test_abp() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_abp() {
         compare_mcrl2_spec_with_pbessolve(
             "../../../examples/mCRL2/academic/abp/abp.mcrl2",
             "../../../examples/mCRL2/academic/abp/infinitely_often_enabled_then_infinitely_often_taken.mcf",
@@ -175,7 +182,8 @@ mod tests {
     }
 
     #[test]
-    fn test_cabp() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_cabp() {
         compare_mcrl2_spec_with_pbessolve(
             "../../../examples/mCRL2/academic/cabp/cabp.mcrl2",
             "../../../examples/mCRL2/academic/cabp/infinitely_often_enabled_then_infinitely_often_taken.mcf",
@@ -183,7 +191,8 @@ mod tests {
     }
 
     #[test]
-    fn test_dining3_nodeadlock() {
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_dining3_nodeadlock() {
         compare_mcrl2_spec_with_pbessolve(
             "../../../examples/mCRL2/academic/dining/dining3.mcrl2",
             "../../../examples/mCRL2/academic/dining/nodeadlock.mcf",

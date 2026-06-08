@@ -55,6 +55,7 @@ merc_reduction = { path = "../../crates/reduction" }
 merc_symbolic = { path = "../../crates/symbolic" }
 merc_tools = { path = "../../crates/tools" }
 merc_unsafety = { path = "../../crates/unsafety" }
+merc_syntax = { path = "../../crates/syntax" }
 merc_utilities = { path = "../../crates/utilities" }
 merc_vpg = { path = "../../crates/vpg" }
 

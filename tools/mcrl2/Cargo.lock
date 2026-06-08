@@ -948,6 +948,7 @@ dependencies = [
  "merc_lts",
  "merc_reduction",
  "merc_symbolic",
+ "merc_syntax",
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
@@ -983,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "merc_aterm"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
  "dashmap",
@@ -1024,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "merc_data"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -1056,7 +1057,7 @@ dependencies = [
 
 [[package]]
 name = "merc_io"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "bitstream-io",
  "log",
@@ -1234,6 +1235,7 @@ dependencies = [
  "merc_utilities",
  "pest",
  "pest_derive",
+ "rand",
 ]
 
 [[package]]
@@ -1267,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "merc_utilities"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "ahash",
  "backtrace",

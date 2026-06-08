@@ -457,6 +457,7 @@ mod tests {
     use super::explore_lps_symbolic;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_mcrl2_explore_symbolic_abp() {
         let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
             println!("Skipping test: MCRL2_PATH not set");
