@@ -35,6 +35,12 @@ impl ATermStreamable for DataSpecification {
         let mappings = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
         let equations = reader.read_aterm_iter()?.collect::<Result<Vec<ATerm>, _>>()?;
 
-        Ok(DataSpecification { sorts, aliases, constructors, mappings, equations })
+        Ok(DataSpecification {
+            sorts,
+            aliases,
+            constructors,
+            mappings,
+            equations,
+        })
     }
 }

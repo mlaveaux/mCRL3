@@ -198,7 +198,10 @@ fn random_leaf<R: Rng>(
     match *table.choose(rng).expect("table always contains at least Delta and Tau") {
         0 => ProcessExpr::Delta,
         1 => ProcessExpr::Tau,
-        2 => ProcessExpr::Action((*actions.choose(rng).expect("actions is non-empty")).to_string(), Vec::new()),
+        2 => ProcessExpr::Action(
+            (*actions.choose(rng).expect("actions is non-empty")).to_string(),
+            Vec::new(),
+        ),
         3 => {
             let pv = proc_vars.choose(rng).expect("proc_vars is non-empty");
             random_process_instance(rng, pv, freevars)
@@ -312,7 +315,10 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
             let mut pool = actions.to_vec();
             let ai = rng.random_range(0..pool.len());
             let from = pool.remove(ai).to_string();
-            let to = (*pool.choose(rng).expect("pool has at least one element after removing from")).to_string();
+            let to = (*pool
+                .choose(rng)
+                .expect("pool has at least one element after removing from"))
+            .to_string();
             ProcessExpr::Rename {
                 renames: vec![Rename { from, to }],
                 operand: Box::new(expr),
@@ -325,7 +331,10 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
             let a = pool.remove(ai);
             let bi = rng.random_range(0..pool.len());
             let b = pool.remove(bi);
-            let c = pool.choose(rng).expect("pool has at least one element after removing a and b").clone();
+            let c = pool
+                .choose(rng)
+                .expect("pool has at least one element after removing a and b")
+                .clone();
             ProcessExpr::Comm {
                 comm: vec![CommExpr::new(MultiActionLabel::new(vec![a, b]), c)],
                 operand: Box::new(expr),
@@ -335,8 +344,9 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
             let mut labels: Vec<MultiActionLabel> = (0..5)
                 .map(|_| {
                     let size = rng.random_range(1..=2usize);
-                    let mut acts: Vec<String> =
-                        (0..size).map(|_| (*actions.choose(rng).expect("actions is non-empty")).to_string()).collect();
+                    let mut acts: Vec<String> = (0..size)
+                        .map(|_| (*actions.choose(rng).expect("actions is non-empty")).to_string())
+                        .collect();
                     acts.sort();
                     acts.dedup();
                     MultiActionLabel::new(acts)

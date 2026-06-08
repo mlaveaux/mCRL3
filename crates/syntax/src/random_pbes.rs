@@ -110,7 +110,7 @@ fn random_leaf<R: Rng>(
 }
 
 /// Generates a random PBES expression with the given parameters.  
-/// 
+///
 /// `depth` controls the maximum depth of the generated expression, and
 /// `propvar_probability` controls how likely a leaf is to be a predicate variable
 /// instantiation versus a `val(...)` atom.  If `use_quantifiers` is false, no

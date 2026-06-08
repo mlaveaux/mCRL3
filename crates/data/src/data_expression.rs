@@ -314,7 +314,6 @@ mod inner {
 
             self.term.arg(index + 1).into()
         }
-
     }
 
     impl fmt::Display for DataApplication {
