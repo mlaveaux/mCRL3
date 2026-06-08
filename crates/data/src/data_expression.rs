@@ -80,20 +80,27 @@ mod inner {
             }
         }
 
-        /// Returns the arguments of a data expression
+        /// Returns the data sub-expressions of a data expression.
         ///     - function symbol                  f -> []
+        ///     - variable                         x -> []
+        ///     - machine number                   n -> []
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
+        ///
+        /// Panics for binders and where clauses, which have structured sub-terms that do not
+        /// map cleanly to a flat argument list.
         #[merc_ignore]
         pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'_>> + use<'_> {
             let mut result = self.term.arguments();
             if is_data_application(&self.term) {
-                result.next();
+                result.next(); // skip head function symbol
             } else if is_data_function_symbol(&self.term) || is_data_variable(&self.term) {
-                result.next();
-                result.next();
+                result.next(); // skip name
+                result.next(); // skip sort
+            } else if is_data_machine_number(&self.term) {
+                // Int terms carry no ATerm children; exhausting the iterator is a no-op.
+                while result.next().is_some() {}
             } else {
-                // This can only happen if the term is an incorrect data expression.
-                panic!("data_arguments not implemented for {self}");
+                panic!("data_arguments is not defined for binders and where clauses: {self}");
             }
 
             result.map(|t| t.into())
@@ -123,9 +130,11 @@ mod inner {
             self.term.arg(index + 1).into()
         }
 
-        /// Returns the arguments of a data expression
-        ///     - function symbol                  f -> []
-        ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
+        /// Returns the sort of a data expression.
+        ///
+        /// Only defined for function symbols and variables. Panics for applications (the result
+        /// sort requires traversing the SortArrow chain), machine numbers, binders, and where
+        /// clauses.
         pub fn data_sort(&self) -> SortExpression {
             if is_data_function_symbol(&self.term) {
                 DataFunctionSymbolRef::from(self.term.copy()).sort().protect()
@@ -267,7 +276,7 @@ mod inner {
 
         /// Create a new data application with the given head and arguments.
         ///
-        /// arity must be equal to the number of arguments + 1.
+        /// `arity` must equal the number of elements the `arguments` iterator yields.
         #[merc_ignore]
         pub fn with_iter<'a, 'b, 'c, 'd, T, H, I>(head: &'b H, arity: usize, arguments: I) -> DataApplication
         where
@@ -306,11 +315,6 @@ mod inner {
             self.term.arg(index + 1).into()
         }
 
-        /// Returns the sort of a data application.
-        pub fn sort(&self) -> SortExpressionRef<'_> {
-            // We only change the lifetime, but that is fine since it is derived from the current term.
-            SortExpressionRef::from(self.term.arg(0))
-        }
     }
 
     impl fmt::Display for DataApplication {
@@ -411,13 +415,14 @@ impl<'a> DataExpressionRef<'a> {
     pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'a>> + use<'a> {
         let mut result = self.term.arguments();
         if is_data_application(&self.term) {
-            result.next();
+            result.next(); // skip head function symbol
         } else if is_data_function_symbol(&self.term) || is_data_variable(&self.term) {
-            result.next();
-            result.next();
+            result.next(); // skip name
+            result.next(); // skip sort
+        } else if is_data_machine_number(&self.term) {
+            while result.next().is_some() {}
         } else {
-            // This can only happen if the term is not a data expression.
-            panic!("data_arguments not implemented for {self}");
+            panic!("data_arguments is not defined for binders and where clauses: {self}");
         }
 
         result.map(|t| t.into())
@@ -461,8 +466,8 @@ pub fn to_untyped_data_expression(t: ATerm, variables: Option<&AHashSet<String>>
                     }
                 },
                 |_tp, input, args| {
-                    let arity = args.clone().count();
-                    Ok(DataApplication::with_iter(&input, arity, args).into())
+                    let args: Vec<ATerm> = args.cloned().collect();
+                    Ok(DataApplication::with_args(&input, &args).into())
                 },
             )
             .unwrap()

@@ -15,6 +15,9 @@ thread_local! {
 /// Defines default symbols and terms for data elements.
 ///
 /// These mirror the mCRL2 definitions since that is convenient for loading the mCRL2 binary formats.
+///
+/// All `Symbol` fields are wrapped in `ManuallyDrop` so that their destructors never run at thread
+/// exit.
 pub struct DataSymbols {
     // Sorts
     pub basic_sort_symbol: ManuallyDrop<Symbol>,
@@ -118,18 +121,27 @@ impl DataSymbols {
     /// Returns the data application symbol for the given arity, creating it if necessary.
     pub fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
         // It can be that data_applications are created without create_data_application in the mcrl2 ffi.
-        while self.data_appl.len() <= arity {
-            let symbol = Symbol::new("DataAppl", self.data_appl.len());
-
-            self.data_appl.push(symbol);
+        if self.data_appl.len() <= arity {
+            self.data_appl.reserve(arity + 1 - self.data_appl.len());
+            while self.data_appl.len() <= arity {
+                let symbol = Symbol::new("DataAppl", self.data_appl.len());
+                self.data_appl.push(symbol);
+            }
         }
 
         &self.data_appl[arity]
     }
 
-    /// Returns true iff the given term is a sort expression.
+    /// Returns true iff the given term is any sort expression (basic, arrow, container, structured,
+    /// or untyped).
     pub fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
-        self.is_basic_sort(term)
+        let sym = term.get_head_symbol();
+        sym == **self.basic_sort_symbol
+            || sym == **self.function_sort_symbol
+            || sym == **self.container_sort_symbol
+            || sym == **self.structured_sort_symbol
+            || sym == **self.untyped_sort_symbol
+            || sym == **self.untyped_possible_sorts_symbol
     }
 
     /// Returns true iff the given term is a basic sort.
