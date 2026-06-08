@@ -1418,6 +1418,7 @@ dependencies = [
  "merc_utilities",
  "pest",
  "pest_derive",
+ "rand",
  "test-case",
 ]
 
