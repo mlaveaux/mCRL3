@@ -1083,7 +1083,7 @@ dependencies = [
 
 [[package]]
 name = "merc_aterm"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
  "dashmap",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "merc_data"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "ahash",
  "delegate",
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "merc_io"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "bitstream-io",
  "log",

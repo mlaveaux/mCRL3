@@ -2,12 +2,12 @@
 name = "merc_io"
 description = "Internal MERC toolset package containing various I/O related functionality."
 readme = "README.md"
+version = "3.0.0"
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
 
 [dependencies]
 merc_number.workspace = true

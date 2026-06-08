@@ -4,13 +4,13 @@ description = "Defines data expressions on top of terms that are compatible with
 keywords = ["term"]
 categories = []
 readme = "README.md"
+version = "3.0.0"
 
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
 
 [dependencies]
 merc_aterm.workspace = true
