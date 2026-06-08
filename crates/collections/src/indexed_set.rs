@@ -193,7 +193,7 @@ impl<T: Hash + Eq, S: BuildHasher> IndexedSet<T, S> {
     /// Returns the index for the given element, or None if it does not exist.
     pub fn index<Q>(&self, key: &Q) -> Option<SetIndex>
     where
-        Q: Hash + Equivalent<T>,
+        Q: Hash + Equivalent<T> + ?Sized,
     {
         let hash = self.hasher.hash_one(key);
         self.index
@@ -330,7 +330,7 @@ impl<T, S: BuildHasher> IndexMut<SetIndex> for IndexedSet<T, S> {
 /// Returns whether the element stored at `table[index]` is equivalent to `value`.
 ///
 /// Returns `false` for free slots, which should never appear in the secondary hash index.
-fn entry_matches<T, Q: Equivalent<T>>(table: &[IndexSetEntry<T>], index: usize, value: &Q) -> bool {
+fn entry_matches<T, Q: Equivalent<T> + ?Sized>(table: &[IndexSetEntry<T>], index: usize, value: &Q) -> bool {
     match &table[index] {
         IndexSetEntry::Filled(element) => value.equivalent(element),
         IndexSetEntry::Empty(_) => false,
