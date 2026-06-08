@@ -595,11 +595,11 @@ impl fmt::Display for ConstructorDecl {
 impl fmt::Display for ProcDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.params.is_empty() {
-            write!(f, "{} = {};", self.identifier, self.body)
+            write!(f, "{} = {}", self.identifier, self.body)
         } else {
             write!(
                 f,
-                "{}({}) = {};",
+                "{}({}) = {}",
                 self.identifier,
                 self.params.iter().format(", "),
                 self.body
