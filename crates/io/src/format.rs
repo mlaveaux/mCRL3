@@ -32,8 +32,8 @@ impl<T: ToString> fmt::Display for LargeFormatter<T> {
 
         // Handle an optional leading '-' sign separately so comma positions are
         // calculated only over the digit characters.
-        let (sign, digits) = if num_str.starts_with('-') {
-            ("-", &num_str[1..])
+        let (sign, digits) = if let Some(stripped) = num_str.strip_prefix('-') {
+            ("-", stripped)
         } else {
             ("", num_str.as_str())
         };
