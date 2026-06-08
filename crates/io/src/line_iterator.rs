@@ -1,3 +1,4 @@
+use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
@@ -7,6 +8,7 @@ use streaming_iterator::StreamingIterator;
 pub struct LineIterator<T: Read> {
     reader: BufReader<T>,
     buffer: String,
+    error: Option<io::Error>,
     end: bool,
 }
 
@@ -15,8 +17,14 @@ impl<T: Read> LineIterator<T> {
         LineIterator {
             reader: BufReader::new(reader),
             buffer: String::new(),
+            error: None,
             end: false,
         }
+    }
+
+    /// Returns the I/O error that terminated iteration, if any.
+    pub fn error(&self) -> Option<&io::Error> {
+        self.error.as_ref()
     }
 }
 
@@ -35,7 +43,10 @@ impl<T: Read> StreamingIterator for LineIterator<T> {
                 }
             }
             Ok(_) => self.end = true,
-            Err(_) => self.end = true,
+            Err(e) => {
+                self.error = Some(e);
+                self.end = true;
+            }
         }
     }
 
