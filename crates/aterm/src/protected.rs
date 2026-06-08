@@ -18,6 +18,7 @@ use crate::Transmutable;
 use crate::aterm::ATermRef;
 use crate::storage::GcMutex;
 use crate::storage::GcMutexGuard;
+use crate::storage::GcMutexReadGuard;
 use crate::storage::THREAD_TERM_POOL;
 
 /// A container of objects, typically either terms or objects containing terms,
@@ -32,7 +33,7 @@ pub struct Protected<C> {
     _unsend: PhantomUnsend,
 }
 
-impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
+impl<C: Markable + Send + Sync + Transmutable + 'static> Protected<C> {
     /// Creates a new Protected container from a given container.
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(GcMutex::new(container));
@@ -48,7 +49,14 @@ impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
 
     /// Provides mutable access to the underlying container, returning a [ProtectedWriteGuard].
     pub fn write(&mut self) -> ProtectedWriteGuard<'_, C> {
-        ProtectedWriteGuard::new(self.container.lock())
+        // SAFETY: `Protected<C>` is `!Send` (`PhantomUnsend`), so it is only ever
+        // used from one thread.  `write` takes `&mut self`, which guarantees no
+        // other borrow of `Protected` — and therefore no other guard — exists at
+        // the same time.  `container` is a private field, so `Arc` is the sole
+        // path to the `GcMutex<C>`.  Together these invariants make the cast to
+        // `&mut GcMutex<C>` sound.
+        let mutex = unsafe { &mut *(Arc::as_ptr(&self.container) as *mut GcMutex<C>) };
+        ProtectedWriteGuard::new(mutex.lock_mut())
     }
 
     /// Provides immutable access to the underlying container, returning a [ProtectedReadGuard].
@@ -57,13 +65,13 @@ impl<C: Markable + Send + Transmutable + 'static> Protected<C> {
     }
 }
 
-impl<C: Default + Markable + Send + Transmutable + 'static> Default for Protected<C> {
+impl<C: Default + Markable + Send + Sync + Transmutable + 'static> Default for Protected<C> {
     fn default() -> Self {
         Protected::new(Default::default())
     }
 }
 
-impl<C: Clone + Markable + Send + Transmutable + 'static> Clone for Protected<C> {
+impl<C: Clone + Markable + Send + Sync + Transmutable + 'static> Clone for Protected<C> {
     fn clone(&self) -> Self {
         Protected::new(self.container.lock().clone())
     }
@@ -214,11 +222,11 @@ impl<C: Markable + Transmutable> DerefMut for ProtectedWriteGuard<'_, C> {
 }
 
 pub struct ProtectedReadGuard<'a, C> {
-    reference: GcMutexGuard<'a, C>,
+    reference: GcMutexReadGuard<'a, C>,
 }
 
 impl<'a, C> ProtectedReadGuard<'a, C> {
-    fn new(reference: GcMutexGuard<'a, C>) -> Self {
+    fn new(reference: GcMutexReadGuard<'a, C>) -> Self {
         Self { reference }
     }
 }
