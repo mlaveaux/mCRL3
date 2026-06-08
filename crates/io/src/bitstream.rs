@@ -57,7 +57,7 @@ impl<W: Write> BitStreamWriter<W> {
 impl<W: Write> Drop for BitStreamWriter<W> {
     fn drop(&mut self) {
         if self.flush().is_err() {
-            error!("Panicked while flushing the stream when dropped!")
+            error!("Error flushing the stream when dropped!")
         }
     }
 }
@@ -80,7 +80,9 @@ impl<R: Read> BitStreamReader<R> {
 
 impl<W: Write> BitStreamWrite for BitStreamWriter<W> {
     fn write_bits(&mut self, value: u64, number_of_bits: u8) -> Result<(), MercError> {
-        debug_assert!(number_of_bits <= 64);
+        if number_of_bits > 64 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "number_of_bits must be <= 64").into());
+        }
         Ok(self.writer.write_var(number_of_bits as u32, value)?)
     }
 
@@ -105,22 +107,29 @@ impl<W: Write> BitStreamWrite for BitStreamWriter<W> {
 
 impl<R: Read> BitStreamRead for BitStreamReader<R> {
     fn read_bits(&mut self, number_of_bits: u8) -> Result<u64, MercError> {
-        debug_assert!(number_of_bits <= 64);
+        if number_of_bits > 64 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "number_of_bits must be <= 64").into());
+        }
         Ok(self.reader.read_var(number_of_bits as u32)?)
     }
 
     fn read_string(&mut self) -> Result<String, MercError> {
         let length = self.read_integer()?;
         self.text_buffer.clear();
+        let length_usize: usize = length
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "string length exceeds usize"))?;
         self.text_buffer
-            .reserve(length.try_into().expect("String size exceeds usize!"));
+            .try_reserve(length_usize)
+            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "string too large to allocate"))?;
 
         for _ in 0..length {
             let byte = self.reader.read::<8, u8>()?;
             self.text_buffer.push(byte);
         }
 
-        Ok(String::from_utf8(self.text_buffer.clone()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?)
+        String::from_utf8(std::mem::take(&mut self.text_buffer))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e).into())
     }
 
     fn read_integer(&mut self) -> Result<u64, MercError> {
@@ -161,7 +170,7 @@ mod tests {
     fn test_arbitrary_bitstream() {
         random_test(100, |rng| {
             let instructions: Vec<Instruction> = (0..100)
-                .map(|_| match rng.random_range(0..2) {
+                .map(|_| match rng.random_range(0..3) {
                     0 => {
                         let string = rng.sample_iter(&Alphanumeric).take(7).map(char::from).collect();
                         Instruction::String(string)
@@ -171,7 +180,7 @@ mod tests {
                         let value: u64 = rng.random();
                         Instruction::Bits(value, required_bits(value))
                     }
-                    _ => unreachable!("The range is from 0 to 2"),
+                    _ => unreachable!("The range is from 0 to 3"),
                 })
                 .collect();
 
