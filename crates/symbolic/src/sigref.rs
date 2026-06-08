@@ -824,23 +824,18 @@ fn decode_block<'id>(
 
     let f_edge = EdgeDropGuard::new(manager, BDDFunction::f_edge(manager));
     debug_assert!(*block != *f_edge, "decode_block called on the false terminal");
-    loop {
-        match manager.get_node(&block) {
-            Node::Inner(node) => {
-                let (b_high, b_low) = collect_children(node);
-                // For a cube exactly one child is false; the other branch encodes the bit.
-                if *b_low != *f_edge {
-                    debug_assert!(*b_high == *f_edge, "decode_block input is not a cube");
-                    block = b_low;
-                } else {
-                    debug_assert!(*b_high != *f_edge, "decode_block input is not a cube");
-                    result |= mask;
-                    block = b_high;
-                }
-                mask <<= 1;
-            }
-            Node::Terminal(_) => break,
+    while let Node::Inner(node) = manager.get_node(&block) {
+        let (b_high, b_low) = collect_children(node);
+        // For a cube exactly one child is false; the other branch encodes the bit.
+        if *b_low != *f_edge {
+            debug_assert!(*b_high == *f_edge, "decode_block input is not a cube");
+            block = b_low;
+        } else {
+            debug_assert!(*b_high != *f_edge, "decode_block input is not a cube");
+            result |= mask;
+            block = b_high;
         }
+        mask <<= 1;
     }
 
     result

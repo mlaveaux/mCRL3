@@ -6,6 +6,12 @@ use merc_collections::IndexedSet;
 use crate::SymbolRef;
 use crate::aterm::ATermRef;
 
+/// A trait for transmuting the lifetime of an object to a shorter lifetime.
+/// 
+/// # Safety
+/// 
+/// The implementation of this trait must ensure that the transmuted lifetime is
+/// always shorter than the original lifetime.
 pub unsafe trait Transmutable {
     type Target<'a>: ?Sized
     where
