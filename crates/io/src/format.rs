@@ -30,13 +30,24 @@ impl<T: ToString> fmt::Display for LargeFormatter<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let num_str = self.0.to_string();
 
-        // Add spaces every three digits from the right
-        let len = num_str.len();
-        for (i, ch) in num_str.chars().enumerate() {
+        // Handle an optional leading '-' sign separately so comma positions are
+        // calculated only over the digit characters.
+        let (sign, digits) = if num_str.starts_with('-') {
+            ("-", &num_str[1..])
+        } else {
+            ("", num_str.as_str())
+        };
+
+        if !sign.is_empty() {
+            write!(f, "{sign}")?;
+        }
+
+        let len = digits.len();
+        for (i, ch) in digits.chars().enumerate() {
             if i > 0 && (len - i).is_multiple_of(3) {
                 write!(f, ",")?;
             }
-            write!(f, "{}", ch)?;
+            write!(f, "{ch}")?;
         }
 
         Ok(())
@@ -57,5 +68,12 @@ mod tests {
     fn test_large_formatter_millions() {
         assert_eq!(format!("{}", LargeFormatter(1234567)), "1,234,567");
         assert_eq!(format!("{}", LargeFormatter(12345678)), "12,345,678");
+    }
+
+    #[test]
+    fn test_large_formatter_negative() {
+        assert_eq!(format!("{}", LargeFormatter(-123456i64)), "-123,456");
+        assert_eq!(format!("{}", LargeFormatter(-1234567i64)), "-1,234,567");
+        assert_eq!(format!("{}", LargeFormatter(-123456789i64)), "-123,456,789");
     }
 }
