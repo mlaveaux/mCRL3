@@ -138,6 +138,7 @@ mod inner {
     use crate::Markable;
     use crate::Todo;
 
+    use super::is_abstraction;
     use super::is_application;
     use super::is_data_expression;
     use super::is_function_symbol;
@@ -307,7 +308,7 @@ mod inner {
     }
 
     /// Represents a data::abstraction from the mCRL2 toolset.
-    #[mcrl2_term(is_application)]
+    #[mcrl2_term(is_abstraction)]
     pub struct DataAbstraction {
         term: ATerm,
     }
