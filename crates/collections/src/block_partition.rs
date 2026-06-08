@@ -289,6 +289,31 @@ mod tests {
             let block_partition: BlockPartition<()> = BlockPartition::from_indexed_partition(&partition);
             trace!("Output partition {block_partition}");
 
+            // The block partition must contain exactly the same number of
+            // elements as the indexed partition (regression: was sized by
+            // num_of_blocks instead of num_of_elements).
+            assert_eq!(
+                block_partition.len(),
+                partition.iter_elements().count(),
+                "block_partition.len() does not match the number of elements in the indexed partition"
+            );
+
+            // Every element in the indexed partition must appear in the block
+            // partition exactly once.
+            let mut seen = vec![false; 100];
+            for block in 0..block_partition.num_of_blocks() {
+                for element in block_partition.iter_block(BlockIndex::new(block)) {
+                    assert!(
+                        !seen[element],
+                        "Element {element} appears more than once in block partition"
+                    );
+                    seen[element] = true;
+                }
+            }
+            for (element, _) in partition.iter_elements() {
+                assert!(seen[element], "Element {element} is missing from block partition");
+            }
+
             // Check that each block in the block partition contains only
             // elements from the same indexed-partition block.
             for block in 0..block_partition.num_of_blocks() {
