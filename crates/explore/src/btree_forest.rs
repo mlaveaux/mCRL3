@@ -22,9 +22,6 @@ use rustc_hash::FxBuildHasher;
 /// The default branching factor, matches a standard cache line of words.
 const DEFAULT_BRANCHING: usize = 8;
 
-/// Upper bound on the height of any tree.
-const MAX_DEPTH: usize = 48;
-
 /// A value that can be stored in a [`BTreeForest`] node slot.
 ///
 /// Nodes are untyped `[V; N]` arrays with neither a length nor a leaf/inner
@@ -282,6 +279,23 @@ where
 
 }
 
+
+/// Returns the maximum useful tree depth for a branching factor of `n`.
+///
+/// A tree of height `h` can hold at most `n^(h+1)` leaf values, so once
+/// `h+1 > usize::BITS / floor(log2(n))` the tree would need more nodes than
+/// a `usize` can index. This ceiling is therefore a tight upper bound on any
+/// reachable depth.
+pub const fn max_depth(n: usize) -> usize {
+    // floor(log2(n))
+    let log2_n = (usize::BITS - n.leading_zeros() - 1) as usize;
+    // ceil(usize::BITS / log2_n)
+    (usize::BITS as usize + log2_n - 1) / log2_n
+}
+
+/// Upper bound on the height of any tree.
+const MAX_DEPTH: usize = max_depth(2);
+
 impl<V, A, const N: usize> BTreeForest<V, A, N>
 where
     V: Slot,
@@ -380,7 +394,7 @@ where
             }
 
             // Otherwise it is a child reference; descend into it.
-            debug_assert!(self.depth < MAX_DEPTH, "tree deeper than MAX_DEPTH");
+            assert!(self.depth < max_depth(N), "tree deeper than max_depth({N})");
             self.stack[self.depth] = (value.as_child(), 0, height - 1);
             self.depth += 1;
         }
