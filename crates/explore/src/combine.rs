@@ -233,13 +233,13 @@ fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> 
     // For each action name in the communication expression's left-hand side,
     // find a matching action with the same label. All matched actions must
     // have the same arguments.
-    let mut matched_indices = Vec::new();
+    let mut matched = vec![false; actions.len()];
     let mut first_match: Option<usize> = None;
 
     for required_name in &expr.from.actions {
         let mut found = false;
         for (i, action) in actions.iter().enumerate() {
-            if matched_indices.contains(&i) {
+            if matched[i] {
                 continue;
             }
             if action.matches_label(required_name) {
@@ -251,7 +251,7 @@ fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> 
                 } else {
                     first_match = Some(i);
                 }
-                matched_indices.push(i);
+                matched[i] = true;
                 found = true;
                 break;
             }
@@ -265,7 +265,7 @@ fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> 
     let mut result: Vec<L> = actions
         .iter()
         .enumerate()
-        .filter(|(i, _)| !matched_indices.contains(i))
+        .filter(|(i, _)| !matched[*i])
         .map(|(_, a)| a.clone())
         .collect();
 

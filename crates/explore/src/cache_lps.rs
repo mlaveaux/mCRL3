@@ -109,6 +109,10 @@ impl<P: LPS> CacheLPS<P> {
     ///
     /// The returned [`CacheMetrics`] implements [`fmt::Display`] for a
     /// human-readable summary of cache hits, misses and occupancy.
+    ///
+    /// # Cost
+    ///
+    /// For [`CachingStrategy::Global`] this scans the cache once per summand.
     pub fn metrics(&self) -> CacheMetrics {
         let summands = self
             .summands
