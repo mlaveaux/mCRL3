@@ -74,31 +74,52 @@ impl Slot for u32 {
     }
 }
 
+/// Number of bits reserved for the height in the packed `Tree` field.
+/// Six bits suffice because `MAX_DEPTH` (48) is less than 64.
+const HEIGHT_BITS: u32 = 6;
+const HEIGHT_MASK: u64 = (1 << HEIGHT_BITS) - 1;
+
+/// All-ones in the 58-bit root field; used as the empty-tree sentinel.
+const ROOT_EMPTY: u64 = (1u64 << (64 - HEIGHT_BITS)) - 1;
+
 /// A handle to a single tree stored in a [`BTreeForest`].
 ///
 /// Handles are only meaningful for the forest that produced them and are
-/// invalidated by [`BTreeForest::clear`]. The handle carries the root node
-/// index together with the tree's height, which iteration uses to tell leaf
-/// values from child references without inspecting the nodes.
+/// invalidated by [`BTreeForest::clear`]. The handle packs the root node
+/// index (58 bits, upper) and the tree's height (6 bits, lower) into a
+/// single `u64`, halving the struct size versus separate fields.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Tree {
-    /// Index of the root node, or `usize::MAX` for the empty tree.
-    root: usize,
-    /// Height of the root. Zero when the root is a leaf-level node holding
-    /// values.
-    height: u8,
+    /// Bits [63:6] hold the root node index; bits [5:0] hold the height.
+    /// When bits [63:6] equal `ROOT_EMPTY` the tree is empty.
+    packed: u64,
 }
 
 impl Tree {
     /// The empty tree, holding no entries.
     pub const EMPTY: Tree = Tree {
-        root: usize::MAX,
-        height: 0,
+        packed: ROOT_EMPTY << HEIGHT_BITS,
     };
+
+    /// Creates a new tree with the given root and height.
+    fn new(root: usize, height: u8) -> Tree {
+        debug_assert!((root as u64) < ROOT_EMPTY, "node pool exhausted");
+        Tree { packed: ((root as u64) << HEIGHT_BITS) | (height as u64) }
+    }
+
+    /// Returns the root node index and height of this tree.
+    fn root(self) -> usize {
+        (self.packed >> HEIGHT_BITS) as usize
+    }
+
+    /// Returns the height of this tree.
+    fn height(self) -> u8 {
+        (self.packed & HEIGHT_MASK) as u8
+    }
 
     /// Returns true if this tree has no entries.
     pub fn is_empty(self) -> bool {
-        self.root == usize::MAX
+        self.packed >> HEIGHT_BITS == ROOT_EMPTY
     }
 }
 
@@ -227,7 +248,7 @@ where
             mem::swap(&mut src, &mut dst);
         }
 
-        Tree { root: src[0], height }
+        Tree::new(src[0], height)
     }
 
     /// Interns `data` at `height`, returning the index of the existing identical
@@ -251,7 +272,7 @@ where
         }
 
         let index = nodes.len();
-        debug_assert!(index != usize::MAX, "node pool exhausted");
+        debug_assert!((index as u64) < ROOT_EMPTY, "node pool exhausted");
         nodes.push(data);
         table.insert_unique(hash, index, |&index| hash_node(hasher, &nodes[index]));
         index
@@ -271,7 +292,7 @@ where
         let mut stack = [(0usize, 0u32, 0u8); MAX_DEPTH];
         let mut depth = 0;
         if !tree.is_empty() {
-            stack[0] = (tree.root, 0, tree.height);
+            stack[0] = (tree.root(), 0, tree.height());
             depth = 1;
         }
         Iter {
