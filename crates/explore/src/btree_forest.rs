@@ -101,7 +101,9 @@ impl Tree {
     /// Creates a new tree with the given root and height.
     fn new(root: usize, height: u8) -> Tree {
         debug_assert!((root as u64) < ROOT_EMPTY, "node pool exhausted");
-        Tree { packed: ((root as u64) << HEIGHT_BITS) | (height as u64) }
+        Tree {
+            packed: ((root as u64) << HEIGHT_BITS) | (height as u64),
+        }
     }
 
     /// Returns the root node index and height of this tree.
@@ -274,11 +276,7 @@ where
         table.insert_unique(hash, index, |&index| hash_node(hasher, &nodes[index]));
         index
     }
-
-
-
 }
-
 
 /// Returns the maximum useful tree depth for a branching factor of `n`.
 ///
