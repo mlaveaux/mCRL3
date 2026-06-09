@@ -14,7 +14,8 @@ use merc_utilities::MercError;
 
 use crate::DependencyGraph;
 
-/// Default implementation of reorder when `kahypar` feature is not enabled.
+/// Computes a variable order for the given dependency graph using the MINCE
+/// algorithm and the KaHyPar partitioning tool.
 pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     debug!("Total span: {}", graph.total_span());
 

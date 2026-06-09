@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use log::info;
+
 use merc_io::TimeProgress;
 use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
@@ -18,10 +19,10 @@ use crate::Summand;
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[derive(Default)]
 pub enum ExplorationStrategy {
-    /// Depth-first exploration (LIFO).
+    /// Depth-first exploration.
     #[default]
     Dfs,
-    /// Breadth-first exploration (FIFO).
+    /// Breadth-first exploration.
     Bfs,
 }
 

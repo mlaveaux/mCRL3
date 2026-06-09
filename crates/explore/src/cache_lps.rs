@@ -156,7 +156,7 @@ pub struct SummandCacheMetrics {
 }
 
 impl SummandCacheMetrics {
-    /// Total number of enumeration lookups (hits plus misses).
+    /// Total number of enumeration lookups.
     pub fn lookups(&self) -> u64 {
         self.hits + self.misses
     }
@@ -319,7 +319,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         let key_tree = {
             let key_buf = self.shared.key_buf.borrow();
-            self.shared.forest.borrow_mut().build(&key_buf)
+            self.shared.forest.borrow_mut().insert(&key_buf)
         };
 
         let hit = match self.strategy {
@@ -359,7 +359,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
                 for &pos in &self.write_positions {
                     scratch.push(next_state[pos]);
                 }
-                let tree = self.shared.forest.borrow_mut().build(&scratch);
+                let tree = self.shared.forest.borrow_mut().insert(&scratch);
                 drop(scratch);
                 captured.push((label.clone(), tree));
                 report(label, next_state)

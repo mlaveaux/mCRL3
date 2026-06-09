@@ -35,8 +35,7 @@ where
 {
     /// Hash-consed forest backing every stored state sequence.
     forest: BTreeForest<T, A, 2>,
-    /// Stored states indexed by [`StateRef`]; each is the root of the state's
-    /// value sequence.
+    /// Stores the canonical root of each state vector, necessary for dense indexing.
     states: Vec<Tree, A>,
     /// Hash index from a state's canonical root to its raw index into `states`.
     table: HashTable<usize, A>,

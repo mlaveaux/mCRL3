@@ -52,12 +52,10 @@ impl CombineLabel for LtsAction {
     }
 }
 
-/// Computes the parallel composition hide(allow(comm(L1 || ... || Ln))).
+/// Computes the parallel composition hide(H, allow(A, comm(C, L1 || ... || Ln))).
 ///
 /// The `builder` is used to construct the resulting LTS, which can also be
 /// stored immediately in a file.
-///
-/// We interpret empty hide, allow and comm sets as the operator not being present.
 pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBuilder<L::Label>>(
     builder: &mut B,
     parallel_composition: Vec<L>,
