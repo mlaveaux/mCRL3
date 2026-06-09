@@ -40,16 +40,16 @@ jobs:
     - name: Run cargo clippy
       uses: auguwu/clippy-action@1.5.0
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Run cargo clippy for GUI tools
       uses: auguwu/clippy-action@1.5.0
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         working-directory: tools/gui
         
     - name: Run cargo clippy for mCRL2 tools
       uses: auguwu/clippy-action@1.5.0
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         working-directory: tools/mcrl2/
