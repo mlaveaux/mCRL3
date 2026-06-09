@@ -8,26 +8,6 @@
 //! Each tree is a hash-consed *sequence* of values: positions are implicit in
 //! iteration order, so there are no separator keys. The branching factor `N` is
 //! a const generic parameter (default 8) so it can be tuned for experiments.
-//!
-//! Nodes are deliberately untyped: a node is a flat `[V; N]` array with no
-//! length field and no leaf/inner discriminant. Three things still have to be
-//! distinguished within that array, and each is encoded by the [`Slot`] trait
-//! rather than by extra per-node bytes:
-//!
-//!  * **Empty slots.** Unused trailing slots hold [`Slot::EMPTY`], so the live
-//!    length is implied by the first empty slot instead of stored.
-//!  * **Leaf values vs. child references.** A node at height zero holds values;
-//!    a node above it holds child indices encoded with [`Slot::from_child`].
-//!    Whether a slot is a value or a child is decided by the node's *height*,
-//!    which the [`Tree`] handle carries, not by a tag inside the node.
-//!
-//! Because a value and a child index could share a bit pattern, interning is
-//! partitioned by height: nodes are only ever deduplicated against other nodes
-//! at the same height, so `[5, 7]` interpreted as values never collides with
-//! `[5, 7]` interpreted as child references.
-//!
-//! Nodes are never freed individually; the forest is append-only and reclaimed
-//! all at once with [`BTreeForest::clear`].
 
 use std::hash::BuildHasher;
 use std::hash::Hash;
@@ -104,8 +84,8 @@ impl Slot for u32 {
 pub struct Tree {
     /// Index of the root node, or `usize::MAX` for the empty tree.
     root: usize,
-    /// Height of the root: zero when the root is a leaf-level node holding
-    /// values, increasing by one per interior level.
+    /// Height of the root. Zero when the root is a leaf-level node holding
+    /// values.
     height: u8,
 }
 
@@ -140,26 +120,29 @@ fn hash_node<V: Hash, const N: usize>(hasher: &FxBuildHasher, data: &[V; N]) -> 
 /// `cranelift_bforest` design tradeoffs. The auxiliary collections allocate from
 /// `A`. The branching factor `N` defaults to 8 and can be overridden to
 /// experiment with node sizes; it must be at least two.
+///
+/// Because a value and a child index could share a bit pattern, interning is
+/// partitioned by height: nodes are only ever deduplicated against other nodes
+/// at the same height, so `[5, 7]` interpreted as values never collides with
+/// `[5, 7]` interpreted as child references.
+///
+/// Nodes are never freed individually; the forest is append-only and reclaimed
+/// all at once with [`BTreeForest::clear`].
 pub struct BTreeForest<V, A = Global, const N: usize = DEFAULT_BRANCHING>
 where
     V: Copy,
     A: Allocator,
 {
-    /// The shared node pool; nodes are immutable once pushed and never freed
-    /// individually. Each node is a flat `[V; N]` array, padded with
-    /// [`Slot::EMPTY`].
+    /// The shared node pool.
     nodes: Vec<[V; N], A>,
-    /// Interning index from a node's content hash to its index in `nodes`, with
-    /// one table per height so a value never deduplicates against a child
-    /// reference. Grown on demand as taller trees are built.
+    /// Interning index from a node's content hash to its index in `nodes`.
     tables: Vec<HashTable<usize, A>, A>,
-    /// Hasher used to fingerprint node content.
-    hasher: FxBuildHasher,
     /// Scratch buffers reused by [`BTreeForest::build`] to assemble each tree
     /// level without allocating per call. They hold the child node indices of
     /// the level currently being built.
     scratch_lo: Vec<usize, A>,
     scratch_hi: Vec<usize, A>,
+    hasher: FxBuildHasher,
     /// Allocator used to create the per-height interning tables on demand.
     alloc: A,
 }
@@ -192,13 +175,12 @@ where
         }
     }
 
-    /// Builds a tree from the sequence `values`.
-    ///
-    /// The tree is assembled bottom-up: contiguous chunks of `values` become
-    /// leaf-level nodes, then those are grouped into interior nodes, and so on
-    /// until a single root remains. Every node is interned, so nodes shared with
-    /// previously built trees are reused rather than duplicated.
-    pub fn build(&mut self, values: &[V]) -> Tree {
+    /// Interns the sequence `values` and returns a handle to its tree,
+    /// reusing any already-interned nodes. Equal sequences always yield the
+    /// same handle. The tree is assembled bottom-up: contiguous chunks of
+    /// `values` become leaf-level nodes, then those are grouped into interior
+    /// nodes, and so on until a single root remains.
+    pub fn insert(&mut self, values: &[V]) -> Tree {
         if values.is_empty() {
             return Tree::EMPTY;
         }
@@ -214,8 +196,8 @@ where
             alloc,
         } = self;
 
-        // Leaf level (height 0): each chunk of `values` is copied straight into
-        // a node, padded with `EMPTY`.
+        //  Each chunk of `values` is copied straight into a node, padded with
+        // `EMPTY`.
         scratch_lo.clear();
         for chunk in values.chunks(N) {
             let mut slots = [V::EMPTY; N];
@@ -227,9 +209,8 @@ where
             scratch_lo.push(node);
         }
 
-        // Interior levels: group the previous level into nodes of child indices
-        // until one node remains. `src` is the level just built, `dst` the one
-        // being built.
+        // Group the previous level into nodes of child indices until one node
+        // remains. `src` is the level just built, `dst` the one being built.
         let (mut src, mut dst) = (scratch_lo, scratch_hi);
         let mut height = 0u8;
         while src.len() > 1 {
@@ -276,52 +257,8 @@ where
         index
     }
 
-    /// Resolves the tree that [`BTreeForest::build`] would produce for `values`
-    /// *without* mutating the forest, returning `None` if any required node is
-    /// not already interned.
-    ///
-    /// Because nodes are hash-consed, a tree exists in full only if every one of
-    /// its nodes was interned by an earlier `build`. This is the read-only
-    /// membership counterpart to `build`; it allocates scratch on the heap since
-    /// it is not on the hot insertion path.
-    pub fn find(&self, values: &[V]) -> Option<Tree> {
-        if values.is_empty() {
-            return Some(Tree::EMPTY);
-        }
 
-        let mut level: std::vec::Vec<usize> = std::vec::Vec::new();
-        for chunk in values.chunks(N) {
-            let mut slots = [V::EMPTY; N];
-            for (offset, &value) in chunk.iter().enumerate() {
-                slots[offset] = value;
-            }
-            level.push(self.find_node(0, &slots)?);
-        }
 
-        let mut height = 0u8;
-        while level.len() > 1 {
-            height += 1;
-            let mut next = std::vec::Vec::with_capacity(level.len().div_ceil(N));
-            for chunk in level.chunks(N) {
-                let mut slots = [V::EMPTY; N];
-                for (offset, &child) in chunk.iter().enumerate() {
-                    slots[offset] = V::from_child(child);
-                }
-                next.push(self.find_node(height as usize, &slots)?);
-            }
-            level = next;
-        }
-
-        Some(Tree { root: level[0], height })
-    }
-
-    /// Returns the index of the interned node at `height` equal to `data`, if
-    /// any.
-    fn find_node(&self, height: usize, data: &[V; N]) -> Option<usize> {
-        let table = self.tables.get(height)?;
-        let hash = hash_node(&self.hasher, data);
-        table.find(hash, |&index| self.nodes[index] == *data).copied()
-    }
 }
 
 impl<V, A, const N: usize> BTreeForest<V, A, N>

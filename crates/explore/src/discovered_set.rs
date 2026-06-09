@@ -28,25 +28,17 @@ impl StateRef {
 
 /// A set of `T` state vectors that deduplicates equal vectors and assigns each
 /// a stable [`StateRef`].
-///
-/// The state vectors are stored as hash-consed sequences in a shared
-/// [`BTreeForest`], so positions and values common to many states are stored
-/// only once. The auxiliary collections allocate from `A`.
 pub struct DiscoveredSet<T = usize, A = Global>
 where
     T: Copy,
     A: Allocator,
 {
-    /// Hash-consed forest backing every stored state sequence; positions are
-    /// implicit in iteration order, so nodes are shared by content regardless of
-    /// position.
+    /// Hash-consed forest backing every stored state sequence.
     forest: BTreeForest<T, A, 2>,
     /// Stored states indexed by [`StateRef`]; each is the root of the state's
     /// value sequence.
     states: Vec<Tree, A>,
     /// Hash index from a state's canonical root to its raw index into `states`.
-    /// Hash consing makes the root a unique fingerprint of the whole vector, so
-    /// no separate content hash or comparison is needed.
     table: HashTable<usize, A>,
     /// Hasher used to fingerprint roots in `table`.
     hasher: FxBuildHasher,
@@ -100,11 +92,7 @@ where
     /// true when the state was newly inserted and false when it was already
     /// present.
     pub fn insert(&mut self, state: &[T]) -> (StateRef, bool) {
-        // Intern the state's sequence. Hash consing makes the resulting root a
-        // canonical fingerprint of the whole vector: equal vectors always yield
-        // the same root, so the root alone identifies the state. Re-interning an
-        // already known state allocates no new nodes.
-        let root = self.forest.build(state);
+        let root = self.forest.insert(state);
         let hash = self.hasher.hash_one(root);
 
         let DiscoveredSet {
@@ -122,10 +110,8 @@ where
     }
 
     /// Returns the handle of `state` if it is present, or `None` otherwise.
-    pub fn index(&self, state: &[T]) -> Option<StateRef> {
-        // Resolve the canonical root without mutating the forest; a missing node
-        // means the state was never inserted.
-        let root = self.forest.find(state)?;
+    pub fn index(&mut self, state: &[T]) -> Option<StateRef> {
+        let root = self.forest.insert(state);
         let hash = self.hasher.hash_one(root);
         self.table
             .find(hash, |&index| self.states[index] == root)
@@ -133,7 +119,7 @@ where
     }
 
     /// Returns true if `state` is present in the set.
-    pub fn contains(&self, state: &[T]) -> bool {
+    pub fn contains(&mut self, state: &[T]) -> bool {
         self.index(state).is_some()
     }
 }
