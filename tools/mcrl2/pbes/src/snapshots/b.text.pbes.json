@@ -217,7 +217,28 @@
           }
         ]
       },
-      "updates": []
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "c2",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Bool",
+          "args": []
+        }
+      ]
     },
     "7": {
       "condition": {
@@ -225,7 +246,28 @@
         "sort": "Bool",
         "args": []
       },
-      "updates": []
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "c2",
+          "sort": "Pos",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Bool",
+          "args": []
+        }
+      ]
     }
   },
   "src_tgt": {

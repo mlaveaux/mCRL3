@@ -637,7 +637,28 @@
           }
         ]
       },
-      "updates": []
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Int",
+          "args": []
+        },
+        {
+          "symbol": "c2",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Int",
+          "args": []
+        }
+      ]
     },
     "11": {
       "condition": {
@@ -645,7 +666,28 @@
         "sort": "Bool",
         "args": []
       },
-      "updates": []
+      "updates": [
+        {
+          "symbol": "c1",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d1",
+          "sort": "Int",
+          "args": []
+        },
+        {
+          "symbol": "c2",
+          "sort": "Bool",
+          "args": []
+        },
+        {
+          "symbol": "d2",
+          "sort": "Int",
+          "args": []
+        }
+      ]
     }
   },
   "src_tgt": {
