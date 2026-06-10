@@ -397,9 +397,31 @@ impl SrfPbes {
         ))
     }
 
+    /// Returns the initial state (propositional variable instantiation) of the SRF PBES.
+    pub fn initial_state(&self) -> PbesPropositionalVariableInstantiation {
+        PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(
+            mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_initial_state(
+                self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null"),
+            ),
+        ))
+    }
+
     /// Unify all parameters of the equations.
+    ///
+    /// After unification the C++ `srf_pbes` object is updated in-place, so the
+    /// Rust-side equation snapshot must be refreshed to stay consistent.
     pub fn unify_parameters(&mut self, ignore_ce_equations: bool, reset: bool) -> Result<(), MercError> {
         mcrl2_srf_pbes_unify_parameters(self.srf_pbes.pin_mut(), ignore_ce_equations, reset);
+
+        // Refresh the equations snapshot from the now-unified C++ object.
+        let mut ffi_equations = CxxVector::new();
+        mcrl2_srf_pbes_equations(
+            ffi_equations.pin_mut(),
+            self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null"),
+        );
+        self.equations = ffi_equations.iter().map(|eq| SrfEquation::new(eq)).collect();
+        self._ffi_equations = ffi_equations;
+
         Ok(())
     }
 
