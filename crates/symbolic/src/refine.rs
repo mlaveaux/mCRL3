@@ -89,6 +89,7 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
     let p_prime_bdd = compute_vars_bdd(manager_ref, lts.next_state_variables())?.1;
     let q_bdd = compute_vars_bdd(manager_ref, &q_variables)?.1;
     let q_prime_bdd = compute_vars_bdd(manager_ref, &q_prime_variables)?.1;
+    let action_vars_bdd = compute_vars_bdd(manager_ref, lts.action_variables())?.1;
 
     // Create renamings from (p -> q), (q -> p'), (p' -> q').
     let p_to_q: Vec<(VarNo, VarNo)> = lts
@@ -130,12 +131,15 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
 
     let mut iteration = 0;
     loop {
-        // Check if B_i is stable w.r.t. all the transition relations.
-        let mut is_stable = true;
+        // Check if B_i is stable w.r.t. all the transition relations. When an unstable group is
+        // found, save it along with the precomputed B_i(p', b2) for use in the splitting step.
+        let mut unstable_group: Option<&SummandGroupBdd> = None;
+        let mut unstable_blocks_p_prime_b_prime: Option<BDDFunction> = None;
+
         for group in &split_groups {
             // Forall b, p, p', q: B_i(p, b) and B_i(q, b) and Ta(p, p') implies exists b', q': Ta(q, q') and B_i(p', b') and B_i(q', b')
 
-            // Rename B_i(p, b') to B_i(q', b')
+            // Rename B_i(p, b) to B_i(p', b2) via the chain p -> q -> p' then b -> b'
             let blocks_q = variable_rename(manager_ref, &blocks, &p_to_q)?;
             let blocks_p_prime = variable_rename(manager_ref, &blocks_q, &q_to_p_prime)?;
             let blocks_p_prime_b_prime = variable_rename(manager_ref, &blocks_p_prime, &b_to_b_prime)?;
@@ -155,20 +159,22 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
                 .and(&blocks_q_prime_b_prime)?
                 .exists(&q_prime_bdd.and(&b_prime_vars_bdd)?)?;
 
-            is_stable = is_stable
-                && condition
-                    .imp(&antecant)?
-                    .forall(&b_vars_bdd.and(&p_bdd)?.and(&p_prime_bdd)?.and(&q_bdd)?)?
-                    .satisfiable();
-            if !is_stable {
-                // We are not yet stable, so need to perform additional splitting.
+            let group_stable = condition
+                .imp(&antecant)?
+                .forall(&b_vars_bdd.and(&p_bdd)?.and(&p_prime_bdd)?.and(&q_bdd)?)?
+                .satisfiable();
+
+            if !group_stable {
+                unstable_group = Some(group);
+                unstable_blocks_p_prime_b_prime = Some(blocks_p_prime_b_prime);
                 break;
             }
         }
 
-        if is_stable {
+        let Some(group) = unstable_group else {
             return Ok(blocks);
-        }
+        };
+        let blocks_p_prime_b_prime = unstable_blocks_p_prime_b_prime.unwrap();
 
         // Introduce new b and b' variables.
         let mut b_vars = manager_ref
@@ -190,16 +196,94 @@ pub fn refine_bisimulation(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) ->
 
         b_to_b_prime.push((b_var, b_prime_var));
 
-        // TODO: implement actual state splitting using the new b variable.
-        // B_{i+1}(p, b·b1) = B_i(p, b1) ∧ (b ⟺ ∃p': T_a(p, p') ∧ B_i(p', b1))
-        blocks = manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
-            blocks.and(&BDDFunction::var(
-                manager,
-                *b_variables.last().expect("At least one b variable is added"),
-            )?)
-        })?;
+        // Implement state splitting: B_{i+1}(p, b, b1, b2) = B_i(p, b1) ∧ (b ⟺ ∃p', a: T_a(p, p') ∧ B_i(p', b2))
+        //
+        // blocks_p_prime_b_prime already holds B_i(p', b2). Quantify out p' and the fixed action
+        // label variables to obtain a predicate over (p, b2) that says "p can do a to reach
+        // the block encoded by b2".
+        let to_quantify = p_prime_bdd.and(&action_vars_bdd)?;
+        let reachable = group.relation().and(&blocks_p_prime_b_prime)?.exists(&to_quantify)?;
+
+        let b_new_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::var(manager, b_var))?;
+        blocks = blocks.and(&b_new_bdd.equiv(&reachable)?)?;
 
         iteration += 1;
         progress.print(iteration);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_ldd::Storage;
+    use merc_lts::LTS;
+    use merc_lts::LtsBuilderMem;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
+    use merc_reduction::reduce_lts;
+    use merc_utilities::Timing;
+
+    use merc_utilities::random_test;
+
+    use crate::SymbolicLtsBdd;
+    use crate::convert_symbolic_lts;
+    use crate::convert_symbolic_lts_bdd;
+    use crate::quotient_symbolic;
+    use crate::random_symbolic_lts;
+    use crate::sigref_symbolic;
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_refine() {
+        random_test(100, |rng| {
+            let mut storage = Storage::new();
+
+            let lts = random_symbolic_lts(rng, &mut storage, 10, 5).unwrap();
+
+            let manager_ref = oxidd::bdd::new_manager(2028, 2028, 1);
+            let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
+
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
+            let explicit_lts_reduced = reduce_lts(
+                explicit_lts.clone(),
+                Equivalence::StrongBisim,
+                false,
+                &mut Timing::new(),
+            );
+
+            let (partition, block_vars, _num_of_blocks) =
+                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+
+            let quotient_lts = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
+
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let symbolic_lts_reduced = convert_symbolic_lts_bdd(&manager_ref, &mut builder, &quotient_lts).unwrap();
+
+            println!(
+                "Explicit LTS has {} states and {} transitions",
+                explicit_lts.num_of_states(),
+                explicit_lts.num_of_transitions()
+            );
+
+            assert_eq!(
+                explicit_lts_reduced.num_of_states(),
+                symbolic_lts_reduced.num_of_states()
+            );
+            assert_eq!(
+                explicit_lts_reduced.num_of_transitions(),
+                symbolic_lts_reduced.num_of_transitions()
+            );
+
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_lts_reduced,
+                    symbolic_lts_reduced,
+                    false,
+                    &mut Timing::new()
+                ),
+                "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
+            );
+        });
     }
 }
