@@ -187,6 +187,12 @@ impl<T> ProtectionSet<T> {
     ///
     /// This operation is O(n) in the size of the freelist.
     pub fn contains_root(&self, index: ProtectionIndex) -> bool {
+        // A stale index (whose slot was reused) is not a live root; report it as
+        // absent rather than panicking in `get_index`.
+        if !self.generation_counter.is_valid(index.0) {
+            return false;
+        }
+
         let idx = self.generation_counter.get_index(index.0);
         !self.freelist_iter().any(|free_idx| free_idx == idx)
     }

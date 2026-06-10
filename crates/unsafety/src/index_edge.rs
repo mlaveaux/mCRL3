@@ -15,10 +15,10 @@ pub fn index_edge<T, I: PartialEq + PartialOrd<usize> + SliceIndex<[T], Output =
     b: I,
 ) -> Edge<&mut T> {
     if a == b {
-        assert!(a <= slice.len());
+        assert!(a < slice.len());
         Edge::Selfloop(slice.get_mut(a).unwrap())
     } else {
-        assert!(a <= slice.len() && b < slice.len());
+        assert!(a < slice.len() && b < slice.len());
 
         // safe because a, b are in bounds and distinct
         unsafe {
@@ -43,7 +43,7 @@ mod verification {
 
         match index_edge(&mut data, i, i) {
             Edge::Selfloop(_) => {}
-            Edge::Regular(_, _) => kani::cover!(false, "self-loop produced Regular"),
+            Edge::Regular(_, _) => panic!("self-loop produced Regular"),
         }
     }
 
@@ -58,7 +58,7 @@ mod verification {
 
         match index_edge(&mut data, a, b) {
             Edge::Regular(_, _) => {}
-            Edge::Selfloop(_) => kani::cover!(false, "distinct indices produced Selfloop"),
+            Edge::Selfloop(_) => panic!("distinct indices produced Selfloop"),
         }
     }
 
