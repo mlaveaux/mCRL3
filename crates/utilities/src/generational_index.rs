@@ -122,9 +122,6 @@ impl GenerationCounter {
 
     /// Returns whether the given generational index is still valid, i.e. its
     /// generation matches the current generation of the underlying slot.
-    ///
-    /// In release builds generations are not tracked, so this always returns
-    /// `true` (matching the zero-overhead contract of [`get_index`]).
     pub fn is_valid<I>(&self, index: GenerationalIndex<I>) -> bool
     where
         I: Copy + Into<usize>,

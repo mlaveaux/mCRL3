@@ -51,8 +51,17 @@ jobs:
     - name: Build mCRL2 toolset
       run: cmake -S mCRL2 -B mCRL2/build -DMCRL2_ENABLE_EXPERIMENTAL=ON -DMCRL2_ENABLE_GUI_TOOLS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache && cmake --build mCRL2/build --config Release
 
-    - name: Run mcrl2 specific tests
+    - name: Run mCRL2 specific tests
       run: cargo nextest run --no-fail-fast -- --include-ignored mcrl2
+      env:
+        RUST_BACKTRACE: full
+        RUST_LOG: debug
+        RUSTC_WRAPPER: sccache
+        MCRL2_PATH: ${{ github.workspace }}/mCRL2/build/stage/bin
+        
+    - name: Run mCRL2 specific tests in tools/mcrl2
+      run: cargo nextest run --no-fail-fast -- --include-ignored mcrl2
+      working-directory: tools/mcrl2
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug
