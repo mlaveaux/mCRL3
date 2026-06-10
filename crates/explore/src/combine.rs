@@ -124,15 +124,16 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     // Pre-sort the allow set for efficient matching.
     let sorted_allow: Vec<SortedMultiActionLabel> = allow.iter().map(SortedMultiActionLabel::new).collect();
 
-    // Working refers to the state vectors in discovered.
+    // Thhe working set of states that must still be explored.
     let mut working: Vec<StateRef> = vec![initial_ref];
-    // Reusable scratch buffers for the parallel transition iterator.
     let mut iter_context = ParallelTransitionContext::new();
+
     // Reusable buffers for reconstructing the current state vector from the
     // discovered set and for building target vectors prior to insertion.
     let mut current_state_raw: Vec<usize> = Vec::new();
     let mut current_state_vector: Vec<StateIndex> = Vec::new();
     let mut target_raw: Vec<usize> = Vec::new();
+
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
             // Reconstruct the current state vector from the discovered set.
@@ -306,75 +307,46 @@ fn hide_action<L: CombineLabel>(hide: &[String], mut action: LtsMultiAction<L>) 
     action
 }
 
-/// A streaming iterator over the Cartesian product of sequences with given
-/// lengths.
+/// Reusable scratch buffers for [`CartesianProduct`].
 ///
-/// Each call to `advance` updates an internal index buffer (odometer) that
-/// represents one element of the Cartesian product. The buffer is reused
-/// across calls to avoid allocation. The yielded `&[usize]` contains the
-/// current index into each factor.
-pub struct CartesianProduct {
+/// Holding these buffers in a long-lived context avoids re-allocating per
+/// iteration.
+struct CartesianProductContext {
     /// The length of each factor.
     lengths: Vec<usize>,
-    /// Current index into each factor (odometer).
+    /// Current index into each factor.
     indices: Vec<usize>,
-
-    done: bool,
-    started: bool,
 }
 
-impl CartesianProduct {
-    /// Creates a new Cartesian product iterator for factors with the given
-    /// lengths.
-    ///
-    /// If any length is zero the iterator will yield no elements.
-    pub fn new(lengths: Vec<usize>) -> Self {
-        let done = lengths.contains(&0);
-        let n = lengths.len();
-        CartesianProduct {
-            lengths,
-            indices: vec![0; n],
-            done,
-            started: false,
+impl CartesianProductContext {
+    /// Creates a fresh context with empty buffers.
+    pub fn new() -> Self {
+        Self {
+            lengths: Vec::new(),
+            indices: Vec::new(),
         }
     }
 
-    /// Returns `true` if a next combination exists, `false` if exhausted.
-    fn advance_impl(&mut self) -> bool {
+    /// Advances the element by one step.
+    ///
+    /// Returns `Some(i)` where `i` is the leftmost position that was
+    /// incremented (all positions to its right were reset to 0). Returns
+    /// `None` when the product is exhausted.
+    fn advance_element(&mut self) -> Option<usize> {
         for i in (0..self.indices.len()).rev() {
             self.indices[i] += 1;
             if self.indices[i] < self.lengths[i] {
-                return true;
+                return Some(i);
             }
             self.indices[i] = 0;
         }
-        false
+        None
     }
 }
 
-impl StreamingIterator for CartesianProduct {
-    type Item = [usize];
-
-    fn advance(&mut self) {
-        if self.done {
-            return;
-        }
-
-        if self.started {
-            if !self.advance_impl() {
-                self.done = true;
-            }
-        } else {
-            self.started = true;
-        }
-    }
-
-    fn get(&self) -> Option<&Self::Item> {
-        if self.done || !self.started {
-            None
-        } else {
-            Some(&self.indices)
-        }
+impl Default for CartesianProductContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -421,7 +393,7 @@ impl<'a, L: TransitionLabel> SortedLtsMultiAction<'a, L> {
 
 /// The output of a parallel transition step: label indices from participating
 /// LTSs and the combined target state vector.
-pub struct ParallelTransition {
+struct ParallelTransition {
     /// Indices of LTSs participating in this transition's subset.
     pub subset_indices: Vec<usize>,
     /// Label indices from each participating LTS in the current subset.
@@ -435,19 +407,16 @@ pub struct ParallelTransition {
 ///
 /// Holding these buffers in a long-lived context avoids re-allocating per
 /// source state during a single `combine_lts` invocation.
-pub struct ParallelTransitionContext {
+struct ParallelTransitionContext {
     /// Indices of LTSs participating in the current subset.
     subset_indices: Vec<usize>,
     /// Snapshot of the current source state vector (one state per LTS).
     base_target: Vec<StateIndex>,
     /// Current transition for each LTS in `subset_indices`, in the same order.
     current: Vec<Transition>,
-    /// Current offset into the outgoing-transition iterator of each LTS in
-    /// `subset_indices`, in the same order.
-    offsets: Vec<usize>,
-    /// Length of the outgoing-transition iterator of each LTS in
-    /// `subset_indices`, in the same order.
-    lengths: Vec<usize>,
+    /// Cartesian product context tracking the current offset and length for
+    /// each LTS in `subset_indices`, in the same order.
+    cartesian_product_context: CartesianProductContext,
     /// Output buffer surfaced via `StreamingIterator::get`.
     result: ParallelTransition,
 }
@@ -459,8 +428,7 @@ impl ParallelTransitionContext {
             subset_indices: Vec::new(),
             base_target: Vec::new(),
             current: Vec::new(),
-            offsets: Vec::new(),
-            lengths: Vec::new(),
+            cartesian_product_context: CartesianProductContext::new(),
             result: ParallelTransition {
                 subset_indices: Vec::new(),
                 labels: Vec::new(),
@@ -484,7 +452,7 @@ impl Default for ParallelTransitionContext {
 /// $J$ without materialising all outgoing transitions ahead of time. Internal
 /// buffers live in a [`ParallelTransitionContext`] that can be reused across
 /// many source states.
-pub struct ParallelTransitionIter<'ctx, 'a, L: LTS> {
+struct ParallelTransitionIter<'ctx, 'a, L: LTS> {
     ctx: &'ctx mut ParallelTransitionContext,
     lts_list: &'a [L],
     /// Current subset bitmask (1 to 2^n - 1).
@@ -512,8 +480,8 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
         // Reset all reusable buffers while keeping their allocated capacity.
         ctx.subset_indices.clear();
         ctx.current.clear();
-        ctx.offsets.clear();
-        ctx.lengths.clear();
+        ctx.cartesian_product_context.indices.clear();
+        ctx.cartesian_product_context.lengths.clear();
 
         ctx.base_target.clear();
         ctx.base_target.extend_from_slice(current_states);
@@ -533,7 +501,8 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
         }
     }
 
-    /// Sets up offsets, lengths and initial transitions for the current subset bitmask.
+    /// Sets up the Cartesian product context and initial transitions for the
+    /// current subset bitmask.
     ///
     /// Returns `true` if the subset has a non-empty Cartesian product (every
     /// participating LTS has at least one outgoing transition from its
@@ -542,8 +511,8 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
         let ctx = &mut *self.ctx;
         ctx.subset_indices.clear();
         ctx.current.clear();
-        ctx.offsets.clear();
-        ctx.lengths.clear();
+        ctx.cartesian_product_context.indices.clear();
+        ctx.cartesian_product_context.lengths.clear();
 
         for i in 0..self.lts_list.len() {
             if self.current_subset & (1 << i) != 0 {
@@ -555,8 +524,8 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
                 let len = 1 + iter.count();
                 ctx.subset_indices.push(i);
                 ctx.current.push(first);
-                ctx.offsets.push(0);
-                ctx.lengths.push(len);
+                ctx.cartesian_product_context.indices.push(0);
+                ctx.cartesian_product_context.lengths.push(len);
             }
         }
         true
@@ -568,30 +537,22 @@ impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
     /// subset is exhausted.
     fn advance_product(&mut self) -> bool {
         let ctx = &mut *self.ctx;
-        for k in (0..ctx.subset_indices.len()).rev() {
-            let next_offset = ctx.offsets[k] + 1;
-            if next_offset < ctx.lengths[k] {
-                let lts_idx = ctx.subset_indices[k];
-                let state = ctx.base_target[lts_idx];
-                let t = self.lts_list[lts_idx]
-                    .outgoing_transitions(state)
-                    .nth(next_offset)
-                    .expect("Offset is within the iterator's exact length");
-                ctx.offsets[k] = next_offset;
-                ctx.current[k] = t;
-                return true;
-            }
-            // Inner factor exhausted: restart it and carry to the next outer factor.
+        // Advance the shared odometer; get the leftmost position that changed.
+        // All positions to its right were reset to 0.
+        let Some(changed_from) = ctx.cartesian_product_context.advance_element() else {
+            return false;
+        };
+        // Re-fetch transitions only for the positions whose offset changed.
+        for k in changed_from..ctx.subset_indices.len() {
             let lts_idx = ctx.subset_indices[k];
             let state = ctx.base_target[lts_idx];
-            let first = self.lts_list[lts_idx]
+            let offset = ctx.cartesian_product_context.indices[k];
+            ctx.current[k] = self.lts_list[lts_idx]
                 .outgoing_transitions(state)
-                .next()
-                .expect("Outgoing transitions cannot become empty after a successful setup");
-            ctx.offsets[k] = 0;
-            ctx.current[k] = first;
+                .nth(offset)
+                .expect("Offset is within the iterator's exact length");
         }
-        false
+        true
     }
 
     /// Materialises the next result into the context's output buffer.

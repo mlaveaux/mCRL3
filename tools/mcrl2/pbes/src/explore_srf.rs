@@ -298,7 +298,6 @@ impl LPS for PbesSrfLps {
     type Value = usize;
     type Label = ();
     type StateInfo = (Player, Priority);
-    type Context<'a> = ();
     type Summand = PbesSrfSummand;
 
     fn initial_state(&self) -> Vec<usize> {
@@ -309,7 +308,7 @@ impl LPS for PbesSrfLps {
         &self.summands
     }
 
-    fn prepare(&self, state: &[Self::Value]) -> Self::Context<'_> {
+    fn prepare(&self, state: &[Self::Value]) {
         debug_assert_eq!(
             state.len(),
             1 + self.num_params,
@@ -338,22 +337,12 @@ impl LPS for PbesSrfLps {
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
         self.state_info[state[0]]
     }
-
-    fn enumerate<'a, F>(
-        &self,
-        summand: &Self::Summand,
-        state: &[usize],
-        _context: &mut Self::Context<'a>,
-        mut report: F,
-    ) -> Result<(), MercError>
-    where
-        F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
-    {
-        summand.enumerate_impl(state, &mut report)
-    }
 }
 
 impl Summand for PbesSrfSummand {
+    type Value = usize;
+    type Label = ();
+
     fn read_positions(&self) -> &[usize] {
         &self.read_positions
     }
@@ -361,12 +350,10 @@ impl Summand for PbesSrfSummand {
     fn write_positions(&self) -> &[usize] {
         &self.write_positions
     }
-}
 
-impl PbesSrfSummand {
-    fn enumerate_impl<F>(&self, state: &[usize], report: &mut F) -> Result<(), MercError>
+    fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
     where
-        F: FnMut(&(), &[usize]) -> Result<(), MercError>,
+        F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
         // PBES summands only fire from their owning equation.
         if state[0] != self.equation_index {
