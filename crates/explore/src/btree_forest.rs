@@ -288,7 +288,7 @@ pub const fn max_depth(n: usize) -> usize {
     // floor(log2(n))
     let log2_n = (usize::BITS - n.leading_zeros() - 1) as usize;
     // ceil(usize::BITS / log2_n)
-    (usize::BITS as usize + log2_n - 1) / log2_n
+    (usize::BITS as usize).div_ceil(log2_n)
 }
 
 /// Upper bound on the height of any tree.

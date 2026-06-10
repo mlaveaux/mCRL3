@@ -439,7 +439,7 @@ fn compute_priorities(srf: &SrfPbes) -> Vec<usize> {
         priorities
             .iter()
             .zip(equations.iter())
-            .all(|(p, eq)| p.is_multiple_of(2) == !eq.is_mu()),
+            .all(|(p, eq)| p.is_multiple_of(2) != eq.is_mu()),
         "Max parity game invariant violated: ν must have even priority and μ must have odd priority"
     );
 
