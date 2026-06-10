@@ -176,8 +176,11 @@ impl PbesSrfLps {
         // Build the initial state vector from the initial PVI.
         // After `unify_parameters`, the SRF's initial PVI has `num_params`
         // arguments; the original `pbes.initial_state()` may have fewer.
-        let srf_as_pbes = srf.to_pbes();
-        let initial_pvi = srf_as_pbes.initial_state();
+        // We use `srf.initial_state()` directly to avoid `srf.to_pbes()`,
+        // which constructs a PBES object with an empty global-variable set and
+        // triggers a well-typedness assertion when `unify_parameters` has
+        // introduced dc* don't-care variables that aren't declared globally.
+        let initial_pvi = srf.initial_state();
         let initial_eq_name = initial_pvi.name().to_string();
         let initial_eq_idx = *name_to_eq
             .get(&initial_eq_name)
