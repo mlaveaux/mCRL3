@@ -36,6 +36,37 @@ use merc_vpg::Player;
 use merc_vpg::Priority;
 use merc_vpg::VertexIndex;
 
+/// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
+///
+/// The exploration drives a generic [`merc_explore::explore`] loop over a
+/// [`PbesSrfLps`] and uses two closures — both receiving the builder as their
+/// caller context — to feed each discovered state and transition into the
+/// [`ParityGameBuilder`]. The builder is then finalised with deduplication
+/// and the make-total fixup enabled.
+pub fn parity_game_from_pbes(pbes: &Pbes, strategy: ExplorationStrategy) -> Result<ParityGame, MercError> {
+    let lps = PbesSrfLps::new(pbes)?;
+    let timing = Timing::new();
+
+    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
+
+    explore(
+        &lps,
+        strategy,
+        &timing,
+        &mut builder,
+        |b: &mut ParityGameBuilder, state: StateIndex, info: &(Player, Priority)| {
+            b.add_vertex(VertexIndex::new(state.value()), info.0, info.1);
+            Ok(())
+        },
+        |b: &mut ParityGameBuilder, from: StateIndex, _label: &(), to: StateIndex| {
+            b.add_edge(VertexIndex::new(from.value()), VertexIndex::new(to.value()));
+            Ok(())
+        },
+    )?;
+
+    Ok(builder.finish(true, true))
+}
+
 /// State data shared by every [`PbesSrfSummand`] of a [`PbesSrfLps`].
 struct PbesSrfShared {
     /// Backend used to evaluate summand conditions and enumerate solutions.
@@ -267,6 +298,7 @@ impl LPS for PbesSrfLps {
     type Value = usize;
     type Label = ();
     type StateInfo = (Player, Priority);
+    type Context<'a> = ();
     type Summand = PbesSrfSummand;
 
     fn initial_state(&self) -> Vec<usize> {
@@ -277,7 +309,7 @@ impl LPS for PbesSrfLps {
         &self.summands
     }
 
-    fn prepare(&self, state: &[Self::Value]) {
+    fn prepare(&self, state: &[Self::Value]) -> Self::Context<'_> {
         debug_assert_eq!(
             state.len(),
             1 + self.num_params,
@@ -306,12 +338,22 @@ impl LPS for PbesSrfLps {
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
         self.state_info[state[0]]
     }
+
+    fn enumerate<'a, F>(
+        &self,
+        summand: &Self::Summand,
+        state: &[usize],
+        _context: &mut Self::Context<'a>,
+        mut report: F,
+    ) -> Result<(), MercError>
+    where
+        F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
+    {
+        summand.enumerate_impl(state, &mut report)
+    }
 }
 
 impl Summand for PbesSrfSummand {
-    type Value = usize;
-    type Label = ();
-
     fn read_positions(&self) -> &[usize] {
         &self.read_positions
     }
@@ -319,10 +361,12 @@ impl Summand for PbesSrfSummand {
     fn write_positions(&self) -> &[usize] {
         &self.write_positions
     }
+}
 
-    fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
+impl PbesSrfSummand {
+    fn enumerate_impl<F>(&self, state: &[usize], report: &mut F) -> Result<(), MercError>
     where
-        F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
+        F: FnMut(&(), &[usize]) -> Result<(), MercError>,
     {
         // PBES summands only fire from their owning equation.
         if state[0] != self.equation_index {
@@ -361,71 +405,56 @@ impl Summand for PbesSrfSummand {
     }
 }
 
-/// Computes a priority for each equation using alternation-depth.
+/// Computes a priority for each equation for a **max** parity game.
 ///
-/// Scans equations from outermost (index 0) to innermost (index n-1). Each
-/// alternation of the fixpoint symbol (μ ↔ ν) bumps the priority. After the
-/// scan the parities are shifted so μ-equations receive **odd** and
-/// ν-equations receive **even** priorities, as required by the standard
-/// PBES-to-parity-game translation.
+/// Algorithm:
+/// 1. Assign each equation an *alternation depth* (incremented on every
+///    μ ↔ ν switch), so the outermost block has depth 0 and the innermost
+///    has depth `max_depth`.
+/// 2. Reverse: `priority = max_depth − depth`, making the outermost block
+///    the highest-priority block.
+/// 3. Shift all priorities by 1 when the outermost equation's current parity
+///    does not match its fixpoint type (ν → even, μ → odd).
 fn compute_priorities(srf: &SrfPbes) -> Vec<usize> {
     let equations = srf.equations();
     if equations.is_empty() {
         return Vec::new();
     }
 
-    let mut priorities = vec![0usize; equations.len()];
-    let mut current_priority = 0usize;
+    // Step 1: compute alternation depth per equation.
+    let mut depths = vec![0usize; equations.len()];
+    let mut current_depth = 0usize;
     let mut prev_is_mu = equations[0].is_mu();
 
     for (i, eq) in equations.iter().enumerate() {
         let is_mu = eq.is_mu();
         if i > 0 && is_mu != prev_is_mu {
-            current_priority += 1;
+            current_depth += 1;
         }
-        priorities[i] = current_priority;
+        depths[i] = current_depth;
         prev_is_mu = is_mu;
     }
 
-    // Ensure parity invariant: μ → odd, ν → even.
+    // Step 2: reverse so outermost (depth 0) → highest priority (max_depth).
+    let max_depth = *depths.last().unwrap();
+    let mut priorities: Vec<usize> = depths.iter().map(|&d| max_depth - d).collect();
+
+    // Step 3: shift all priorities by 1 iff the outermost equation's priority
+    // parity does not match its fixpoint type (ν needs even, μ needs odd).
     let first_is_mu = equations[0].is_mu();
-    let first_priority_is_even = priorities[0].is_multiple_of(2);
-    if first_is_mu && first_priority_is_even {
+    if first_is_mu == priorities[0].is_multiple_of(2) {
         for p in &mut priorities {
             *p += 1;
         }
     }
 
+    debug_assert!(
+        priorities
+            .iter()
+            .zip(equations.iter())
+            .all(|(p, eq)| p.is_multiple_of(2) == !eq.is_mu()),
+        "Max parity game invariant violated: ν must have even priority and μ must have odd priority"
+    );
+
     priorities
-}
-
-/// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
-///
-/// The exploration drives a generic [`merc_explore::explore`] loop over a
-/// [`PbesSrfLps`] and uses two closures — both receiving the builder as their
-/// caller context — to feed each discovered state and transition into the
-/// [`ParityGameBuilder`]. The builder is then finalised with deduplication
-/// and the make-total fixup enabled.
-pub fn parity_game_from_pbes(pbes: &Pbes, strategy: ExplorationStrategy) -> Result<ParityGame, MercError> {
-    let lps = PbesSrfLps::new(pbes)?;
-    let timing = Timing::new();
-
-    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
-
-    explore(
-        &lps,
-        strategy,
-        &timing,
-        &mut builder,
-        |b: &mut ParityGameBuilder, state: StateIndex, info: &(Player, Priority)| {
-            b.add_vertex(VertexIndex::new(state.value()), info.0, info.1);
-            Ok(())
-        },
-        |b: &mut ParityGameBuilder, from: StateIndex, _label: &(), to: StateIndex| {
-            b.add_edge(VertexIndex::new(from.value()), VertexIndex::new(to.value()));
-            Ok(())
-        },
-    )?;
-
-    Ok(builder.finish(true, true))
 }
