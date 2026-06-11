@@ -9,8 +9,7 @@
 //! shard tables, ...). Sharing a `#[repr(Rust)]` structure such as the term
 //! pool across that boundary by raw pointer is unsound: Rust gives no layout
 //! guarantee for `repr(Rust)` types across independent compilations, so the two
-//! sides can disagree on where a field lives. That is exactly what produced the
-//! `dashmap` "invalid shard index" panic.
+//! sides can disagree on where a field lives.
 //!
 //! Instead, *all* term-pool access happens on the host side. The host fills in
 //! a [`SabreRewriteVTable`] of `extern "C-unwind"` function pointers and passes
@@ -143,7 +142,12 @@ impl<'a> DataExpressionRefFFI<'a> {
     ///
     /// Generated code uses this to refer to symbols and terms whose addresses
     /// were baked in at code-generation time.
-    pub fn from_ptr(node: usize) -> Self {
+    ///
+    /// # Safety
+    ///
+    /// `node` must be the address of a live shared term node that stays
+    /// protected from garbage collection for the lifetime `'a`.
+    pub unsafe fn from_ptr(node: usize) -> Self {
         Self::from_raw(node as *const c_void)
     }
 

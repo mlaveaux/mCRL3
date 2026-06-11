@@ -34,6 +34,9 @@ impl ATermPtr {
 
 unsafe impl Send for ATermPtr {}
 
+// SAFETY: Terms are immutable, so reading the pointed-to term from multiple threads is fine.
+unsafe impl Sync for ATermPtr {}
+
 /// The protection set for terms.
 pub(crate) type SharedProtectionSet = Arc<BfTermPool<ProtectionSet<ATermPtr>>>;
 

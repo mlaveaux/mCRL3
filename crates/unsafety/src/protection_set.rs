@@ -218,7 +218,9 @@ impl<T> Index<ProtectionIndex> for ProtectionSet<T> {
     type Output = T;
 
     fn index(&self, index: ProtectionIndex) -> &Self::Output {
-        let idx = *index;
+        // Panics in debug builds when the generation is stale, i.e., the slot was freed
+        // (and possibly reused) after the index was issued.
+        let idx = self.generation_counter.get_index(index.0);
         debug_assert!(
             !self.freelist_iter().any(|free_idx| free_idx == idx),
             "Attempting to index free spot {}",

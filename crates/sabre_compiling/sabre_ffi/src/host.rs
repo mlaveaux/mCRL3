@@ -36,12 +36,9 @@ use crate::SabreRewriteVTable;
 unsafe fn node_to_index(node: *const c_void) -> ATermIndex {
     unsafe {
         // `SharedTerm` is a slice DST, so its pointer is wide. Recover the
-        // slice length from the symbol header stored inline at offset 0.
-        //
-        // We deliberately do not use `Erasable::unerase`: in debug builds it
-        // reads the `SymbolRef` header *by value*, and dropping that temporary
-        // decrements the symbol's debug reference counter that it never
-        // incremented, corrupting the heap. Reading it by reference avoids that.
+        // slice length from the symbol header stored inline at offset 0,
+        // reading it by reference so the symbol's debug reference counter is
+        // untouched (equivalent to what `Erasable::unerase` does).
         let symbol: &SymbolRef<'static> = &*(node as *const SymbolRef<'static>);
         let len = symbol.arity();
 

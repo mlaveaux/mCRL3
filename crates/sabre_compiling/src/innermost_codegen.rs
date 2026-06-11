@@ -371,7 +371,7 @@ fn generate_rewrite_term_stack_impl(
                 if *arity > 0 {
                     writeln!(
                         formatter,
-                        "let {prefix}var_{stack_index} = match_term(&DataExpressionFFI::create(DataExpressionRefFFI::from_ptr({:?}), &[{}]).copy());",
+                        "let {prefix}var_{stack_index} = match_term(&DataExpressionFFI::create(unsafe {{ DataExpressionRefFFI::from_ptr({:?}) }}, &[{}]).copy());",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                         arg_indices
                             .iter()
@@ -381,7 +381,7 @@ fn generate_rewrite_term_stack_impl(
                 } else {
                     writeln!(
                         formatter,
-                        "let {prefix}var_{stack_index} = match_term(&DataExpressionFFI::constant(DataExpressionRefFFI::from_ptr({:?})).copy());",
+                        "let {prefix}var_{stack_index} = match_term(&DataExpressionFFI::constant(unsafe {{ DataExpressionRefFFI::from_ptr({:?}) }}).copy());",
                         symbol.shared().ptr().as_ptr() as *mut () as usize,
                     )?;
                 }
@@ -389,7 +389,7 @@ fn generate_rewrite_term_stack_impl(
             Config::Term(data_expression_ref, index) => {
                 writeln!(
                     formatter,
-                    "let {prefix}var_{index} = match_term(&DataExpressionRefFFI::from_ptr({:?}));",
+                    "let {prefix}var_{index} = match_term(&unsafe {{ DataExpressionRefFFI::from_ptr({:?}) }});",
                     data_expression_ref.shared().ptr().as_ptr() as *mut () as usize,
                 )?;
             }
