@@ -104,8 +104,8 @@ impl ThreadTermPool {
         }
     }
 
-    /// Creates a constant [ATerm] (arity 0) for the given [SymbolRef].
-    pub fn create_constant(&self, symbol: &SymbolRef<'_>) -> ATerm {
+    /// Creates a constant [ATerm] (arity 0) for the given symbol.
+    pub fn create_constant<'a, 'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> ATerm {
         assert!(symbol.arity() == 0, "A constant should not have arity > 0");
 
         let empty_args: [ATermRef<'_>; 0] = [];
@@ -347,14 +347,9 @@ impl ThreadTermPool {
 
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
-        let result = unsafe {
-            Symbol::from_index(
-                symbol.shared(),
-                self.lock_protection_set()
-                    .symbol_protection_set
-                    .protect(symbol.shared().copy()),
-            )
-        };
+        let mut lock = self.lock_protection_set();
+        let root = lock.symbol_protection_set.protect(symbol.shared().copy());
+        let result = unsafe { Symbol::from_index(symbol.shared(), root) };
 
         debug_trace!(
             "Protected symbol {}, root {}, protection set {}",
@@ -419,14 +414,16 @@ impl ThreadTermPool {
     ///
     /// This function drops the passed guard.
     pub(crate) unsafe fn trigger_delayed_garbage_collection(&self, guard: &mut ManuallyDrop<GlobalTermPoolGuard<'_>>) {
+        // Read the depth before dropping the guard; using `guard` after `ManuallyDrop::drop`
+        // would violate its contract. The guard itself accounts for one level.
+        debug_assert!(
+            guard.read_depth() == 1,
+            "Cannot trigger garbage collection while holding another read lock"
+        );
+
         unsafe {
             ManuallyDrop::drop(guard);
         }
-
-        debug_assert!(
-            guard.read_depth() == 0,
-            "Cannot trigger garbage collection while holding a read lock"
-        );
         if self.garbage_collection_counter.get() == 0 {
             self.trigger_garbage_collection();
         }
