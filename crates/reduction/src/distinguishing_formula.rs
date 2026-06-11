@@ -4,12 +4,8 @@ use std::fmt;
 
 /// A distinguishing strong-bisimulation Hennessy–Milner formula.
 ///
-/// The formula is generic over the transition label type `L`, storing the actual
-/// labels (rather than label indices) so that consumers can render it without the
-/// LTS.
-///
-/// A [`DistinguishingFormula::Diamond`] with an empty `conjuncts` represents
-/// `<label>true`. With conjuncts it represents `<label>(c_0 && c_1 && ...)`.
+/// The formula is generic over the transition label type `L`, storing the
+/// actual labels so that consumers can render it without the LTS.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DistinguishingFormula<L> {
     /// `<label>( /\ conjuncts )`.
@@ -22,8 +18,7 @@ pub enum DistinguishingFormula<L> {
 }
 
 impl<L> DistinguishingFormula<L> {
-    /// Returns the modal depth (nesting depth of diamond modalities) of the
-    /// formula.
+    /// Returns the nesting depth of diamond modalities of the formula.
     pub fn depth(&self) -> usize {
         match self {
             DistinguishingFormula::Diamond { conjuncts, .. } => {
