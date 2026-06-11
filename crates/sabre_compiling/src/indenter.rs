@@ -1,6 +1,9 @@
 use std::cell::RefCell;
+use std::io::Error;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::rc::Rc;
+use std::str::from_utf8;
 
 /// An indentation manager that maintains the current indentation level and provides
 /// methods for formatting text with proper indentation.
@@ -56,15 +59,14 @@ impl<'a, W: Write> IndentFormatter<'a, W> {
 impl<W: Write> Write for IndentFormatter<'_, W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         // Convert the byte slice to a string slice
-        let s = std::str::from_utf8(buf)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"))?;
+        let s = from_utf8(buf).map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid UTF-8"))?;
 
         let parts = s.split('\n');
         let mut first = true;
 
-        // Handle the remaining parts
+        // Handle each split line
         for part in parts {
-            // Write the newline that split() removed, except for the first part
+            // Write the newline at the end of the previous line.
             if !first {
                 self.writer.write_all(b"\n")?;
                 self.at_line_start = true;
@@ -118,7 +120,8 @@ impl Drop for Indent {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::IndentFormatter;
+    use super::Write;
 
     /// Tests that the indenter correctly handles multi-line strings
     #[test]
