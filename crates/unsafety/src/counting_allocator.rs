@@ -166,6 +166,14 @@ unsafe impl GlobalAlloc for AllocCounter {
 
 unsafe impl Allocator for AllocCounter {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        if layout.size() == 0 {
+            // `Allocator` must support zero-sized layouts, but passing them to
+            // `GlobalAlloc::alloc` is undefined behaviour. Return a dangling,
+            // well-aligned pointer instead, like the standard allocators do.
+            let ptr = unsafe { NonNull::new_unchecked(std::ptr::without_provenance_mut::<u8>(layout.align())) };
+            return Ok(NonNull::slice_from_raw_parts(ptr, 0));
+        }
+
         let ptr = self.alloc(layout);
 
         if ptr.is_null() {
@@ -177,6 +185,11 @@ unsafe impl Allocator for AllocCounter {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        if layout.size() == 0 {
+            // Zero-sized allocations hand out a dangling pointer that was never allocated.
+            return;
+        }
+
         self.dealloc(ptr.as_ptr(), layout)
     }
 }
