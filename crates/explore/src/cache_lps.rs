@@ -22,8 +22,6 @@ pub enum CachingStrategy {
     None,
     /// Each summand maintains its own independent cache.
     Local,
-    /// All summands share a single global cache.
-    Global,
 }
 
 /// A wrapper around an [`LPS`] that caches summand enumeration results.
@@ -41,9 +39,6 @@ struct CacheShared<V: Slot, L: Clone> {
 
     /// An array of summand local caches.
     local_caches: RefCell<Vec<FxHashMap<Tree, Vec<(L, Tree)>>>>,
-
-    /// A single global cache mapping (summand_index, key) to cached results.
-    global_cache: RefCell<FxHashMap<(usize, Tree), Vec<(L, Tree)>>>,
 
     key_buf: RefCell<Vec<V>>,
     replay_buf: RefCell<Vec<V>>,
@@ -81,7 +76,6 @@ impl<P: LPS> CacheLPS<P> {
         let shared = Rc::new(CacheShared {
             forest: RefCell::new(BTreeForest::new()),
             local_caches: RefCell::new(vec![FxHashMap::default(); num_summands]),
-            global_cache: RefCell::new(FxHashMap::default()),
             key_buf: RefCell::new(Vec::new()),
             replay_buf: RefCell::new(Vec::new()),
         });
@@ -109,10 +103,6 @@ impl<P: LPS> CacheLPS<P> {
     ///
     /// The returned [`CacheMetrics`] implements [`fmt::Display`] for a
     /// human-readable summary of cache hits, misses and occupancy.
-    ///
-    /// # Cost
-    ///
-    /// For [`CachingStrategy::Global`] this scans the cache once per summand.
     pub fn metrics(&self) -> CacheMetrics {
         let summands = self
             .summands
@@ -121,13 +111,6 @@ impl<P: LPS> CacheLPS<P> {
                 let entries = match s.strategy {
                     CachingStrategy::None => 0,
                     CachingStrategy::Local => s.shared.local_caches.borrow()[s.index].len(),
-                    CachingStrategy::Global => s
-                        .shared
-                        .global_cache
-                        .borrow()
-                        .keys()
-                        .filter(|(index, _)| *index == s.index)
-                        .count(),
                 };
 
                 SummandCacheMetrics {
@@ -225,7 +208,6 @@ impl fmt::Display for CacheMetrics {
             let strategy = match s.strategy {
                 CachingStrategy::None => "none",
                 CachingStrategy::Local => "local",
-                CachingStrategy::Global => "global",
             };
             writeln!(
                 f,
@@ -326,28 +308,15 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
             self.shared.forest.borrow_mut().insert(&key_buf)
         };
 
-        let hit = match self.strategy {
-            CachingStrategy::Local => {
-                let caches = self.shared.local_caches.borrow();
-                if let Some(results) = caches[self.index].get(&key_tree) {
-                    self.hits.set(self.hits.get() + 1);
-                    self.replay_cached(state, results, &mut report)?;
-                    true
-                } else {
-                    false
-                }
+        let hit = {
+            let caches = self.shared.local_caches.borrow();
+            if let Some(results) = caches[self.index].get(&key_tree) {
+                self.hits.set(self.hits.get() + 1);
+                self.replay_cached(state, results, &mut report)?;
+                true
+            } else {
+                false
             }
-            CachingStrategy::Global => {
-                let cache = self.shared.global_cache.borrow();
-                if let Some(results) = cache.get(&(self.index, key_tree)) {
-                    self.hits.set(self.hits.get() + 1);
-                    self.replay_cached(state, results, &mut report)?;
-                    true
-                } else {
-                    false
-                }
-            }
-            CachingStrategy::None => unreachable!(),
         };
 
         if !hit {
@@ -370,18 +339,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
             })?;
 
             // Store results in cache.
-            match self.strategy {
-                CachingStrategy::Local => {
-                    self.shared.local_caches.borrow_mut()[self.index].insert(key_tree, captured);
-                }
-                CachingStrategy::Global => {
-                    self.shared
-                        .global_cache
-                        .borrow_mut()
-                        .insert((self.index, key_tree), captured);
-                }
-                CachingStrategy::None => unreachable!(),
-            }
+            self.shared.local_caches.borrow_mut()[self.index].insert(key_tree, captured);
         }
 
         Ok(())

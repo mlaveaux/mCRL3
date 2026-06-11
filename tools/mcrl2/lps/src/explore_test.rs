@@ -136,15 +136,6 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_mcrl2_explore_abp_global_cache() {
-        compare_with_lps2lts_caching(
-            "../../../examples/mCRL2/academic/abp/abp.mcrl2",
-            CachingStrategy::Global,
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
     fn test_mcrl2_explore_cabp_local_cache() {
         compare_with_lps2lts_caching(
             "../../../examples/mCRL2/academic/cabp/cabp.mcrl2",
@@ -154,28 +145,10 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_mcrl2_explore_cabp_global_cache() {
-        compare_with_lps2lts_caching(
-            "../../../examples/mCRL2/academic/cabp/cabp.mcrl2",
-            CachingStrategy::Global,
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
     fn test_mcrl2_explore_dining3_local_cache() {
         compare_with_lps2lts_caching(
             "../../../examples/mCRL2/academic/dining/dining3.mcrl2",
             CachingStrategy::Local,
-        );
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn test_mcrl2_explore_dining3_global_cache() {
-        compare_with_lps2lts_caching(
-            "../../../examples/mCRL2/academic/dining/dining3.mcrl2",
-            CachingStrategy::Global,
         );
     }
 
@@ -251,11 +224,5 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_mcrl2_random_lps_local_cache() {
         compare_random_lps_with_lps2lts(CachingStrategy::Local);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn test_mcrl2_random_lps_global_cache() {
-        compare_random_lps_with_lps2lts(CachingStrategy::Global);
     }
 }
