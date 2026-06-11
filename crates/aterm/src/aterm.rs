@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fmt;
@@ -266,8 +265,8 @@ impl ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter_head(symbol, head, iter))
     }
 
-    /// Creates a new constant term (arity 0) for the given [SymbolRef].
-    pub fn constant(symbol: &SymbolRef<'_>) -> ATerm {
+    /// Creates a new constant term (arity 0) for the given symbol.
+    pub fn constant<'a, 'b, S: Symb<'a, 'b>>(symbol: &'b S) -> ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.create_constant(symbol))
     }
 
@@ -361,11 +360,6 @@ impl Clone for ATerm {
     }
 }
 
-impl<'a> Borrow<ATermRef<'a>> for ATerm {
-    fn borrow(&self) -> &ATermRef<'a> {
-        &self.term
-    }
-}
 
 impl fmt::Display for ATerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -502,7 +496,8 @@ impl<T> Return<T> {
 impl<T: Transmutable> Return<T> {
     /// Maps the inner term to another type, while keeping the same guard.
     pub fn inner(&self) -> &T::Target<'_> {
-        self.term.transmute_lifetime()
+        // SAFETY: The returned lifetime is bound to the borrow of `self` by the signature.
+        unsafe { self.term.transmute_lifetime() }
     }
 }
 

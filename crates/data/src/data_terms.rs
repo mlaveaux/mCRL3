@@ -88,13 +88,13 @@ impl DataSymbols {
 
     /// Returns true iff the given term is a data variable.
     pub fn is_data_variable<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
-        term.get_head_symbol() == **self.data_variable
+        term.get_head_symbol() == self.data_variable.copy()
     }
 
     /// Returns true iff the given term is a data function symbol.
     pub fn is_data_function_symbol<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
-        term.get_head_symbol() == **self.data_function_symbol
-            || term.get_head_symbol() == **self.data_function_symbol_no_index
+        term.get_head_symbol() == self.data_function_symbol.copy()
+            || term.get_head_symbol() == self.data_function_symbol_no_index.copy()
     }
 
     /// Returns true iff the given term is a data machine number.
@@ -104,12 +104,12 @@ impl DataSymbols {
 
     /// Returns true iff the given term is a data where clause.
     pub fn is_data_where_clause<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
-        term.get_head_symbol() == **self.data_where_clause
+        term.get_head_symbol() == self.data_where_clause.copy()
     }
 
     /// Returns true iff the given term is a data abstraction (binder).
     pub fn is_data_binder<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
-        term.get_head_symbol() == **self.data_binder_symbol
+        term.get_head_symbol() == self.data_binder_symbol.copy()
     }
 
     /// Returns true iff the given term is a data application.
@@ -129,24 +129,24 @@ impl DataSymbols {
             }
         }
 
-        &self.data_appl[arity]
+        self.data_appl[arity].get()
     }
 
     /// Returns true iff the given term is any sort expression (basic, arrow, container, structured,
     /// or untyped).
     pub fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         let sym = term.get_head_symbol();
-        sym == **self.basic_sort_symbol
-            || sym == **self.function_sort_symbol
-            || sym == **self.container_sort_symbol
-            || sym == **self.structured_sort_symbol
-            || sym == **self.untyped_sort_symbol
-            || sym == **self.untyped_possible_sorts_symbol
+        sym == self.basic_sort_symbol.copy()
+            || sym == self.function_sort_symbol.copy()
+            || sym == self.container_sort_symbol.copy()
+            || sym == self.structured_sort_symbol.copy()
+            || sym == self.untyped_sort_symbol.copy()
+            || sym == self.untyped_possible_sorts_symbol.copy()
     }
 
     /// Returns true iff the given term is a basic sort.
     pub fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
-        term.get_head_symbol() == **self.basic_sort_symbol
+        term.get_head_symbol() == self.basic_sort_symbol.copy()
     }
 }
 

@@ -1,10 +1,8 @@
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
-use std::ops::Deref;
 
 use delegate::delegate;
 
@@ -172,6 +170,12 @@ impl Symbol {
     pub fn copy(&self) -> SymbolRef<'_> {
         self.symbol.copy()
     }
+
+    /// Returns the symbol as a borrowed [SymbolRef] whose lifetime is bounded
+    /// by this protected symbol.
+    pub fn get(&self) -> &SymbolRef<'_> {
+        &self.symbol
+    }
 }
 
 impl<'a> Symb<'a, '_> for &'a Symbol {
@@ -221,13 +225,6 @@ impl Clone for Symbol {
     }
 }
 
-impl Deref for Symbol {
-    type Target = SymbolRef<'static>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.symbol
-    }
-}
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -268,12 +265,6 @@ impl PartialOrd for Symbol {
 impl Ord for Symbol {
     fn cmp(&self, other: &Self) -> Ordering {
         self.copy().cmp(&other.copy())
-    }
-}
-
-impl Borrow<SymbolRef<'static>> for Symbol {
-    fn borrow(&self) -> &SymbolRef<'static> {
-        &self.symbol
     }
 }
 
