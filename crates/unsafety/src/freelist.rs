@@ -55,10 +55,13 @@ impl<T: FreeListEntry> FreeList<T> {
     }
 
     /// Pops one entry from the freelist.
+    ///
+    /// Relies on the freelist invariant that every node on the list is valid, which is
+    /// guaranteed by the contracts of [`FreeList::push`] and [`FreeList::set_head`].
     pub fn try_pop(&self) -> Option<NonNull<T>> {
         let node = NonNull::new(self.head.get())?;
 
-        // Safety: `head` is non-null.
+        // Safety: `head` is non-null, and nodes on the list are valid per the push/set_head contracts.
         let next = unsafe { T::get_next(node.as_ptr()) };
         self.head.set(next);
 
@@ -66,7 +69,12 @@ impl<T: FreeListEntry> FreeList<T> {
     }
 
     /// Pushes an entry onto the freelist.
-    pub fn push(&self, entry: NonNull<T>) {
+    ///
+    /// # Safety
+    ///
+    /// `entry` must point to a valid node whose link field may be written, and the node must
+    /// remain valid until it is popped from the list (the list takes ownership of it).
+    pub unsafe fn push(&self, entry: NonNull<T>) {
         let ptr = entry.as_ptr();
         let head = self.head.get();
 
@@ -206,7 +214,10 @@ mod verification {
         let mut node = Node::new();
         let ptr = NonNull::from(&mut node);
 
-        fl.push(ptr);
+        // SAFETY: `node` is a valid local node that outlives the freelist operations.
+        unsafe {
+            fl.push(ptr);
+        }
         assert!(!fl.is_empty());
 
         let popped = fl.try_pop().expect("freelist contains exactly one entry");
@@ -223,8 +234,11 @@ mod verification {
         let pa = NonNull::from(&mut a);
         let pb = NonNull::from(&mut b);
 
-        fl.push(pa);
-        fl.push(pb);
+        // SAFETY: `a` and `b` are valid local nodes that outlive the freelist operations.
+        unsafe {
+            fl.push(pa);
+            fl.push(pb);
+        }
 
         let first = fl.try_pop().expect("non-empty");
         let second = fl.try_pop().expect("non-empty");
@@ -237,7 +251,10 @@ mod verification {
     fn freelist_clear_makes_empty() {
         let mut fl: FreeList<Node> = FreeList::new();
         let mut node = Node::new();
-        fl.push(NonNull::from(&mut node));
+        // SAFETY: `node` is a valid local node that outlives the freelist operations.
+        unsafe {
+            fl.push(NonNull::from(&mut node));
+        }
         fl.clear();
         assert!(fl.is_empty());
         assert!(fl.try_pop().is_none());

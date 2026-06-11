@@ -171,7 +171,11 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
     /// Deallocates a previously-allocated pointer.
     pub fn deallocate_object(&self, ptr: NonNull<T>) {
         let state = self.alloc_state.get_or(ThreadLocalAllocState::new);
-        state.free.push(ptr.cast());
+        // SAFETY: `ptr` was returned by `allocate_object`, so it points to a block entry that
+        // stays valid until `remove_free_blocks` reclaims it.
+        unsafe {
+            state.free.push(ptr.cast());
+        }
     }
 
     /// Removes empty blocks from the block list.
@@ -397,10 +401,18 @@ unsafe impl<T: Send, const N: usize> Send for ThreadLocalAllocState<T, N> {}
 ///
 /// # Safety
 ///
-/// Marker trait asserting that the sentinel value used by [`BlockAllocator`]—
-/// specifically, a pointer value where all bytes are set to `0xFF` (i.e.,
-/// `usize::MAX` cast to `*mut Entry<T>`)—can never appear as the first
-/// `size_of::<*mut _>()` bytes of any valid value of `T`.
+/// Marker trait asserting two properties of `T`, both required because
+/// [`BlockAllocator::remove_free_blocks`] reads the first
+/// `size_of::<*mut _>()` bytes of every *live* entry through the freelist
+/// union:
+///
+/// - The sentinel value—a pointer value where all bytes are set to `0xFF`
+///   (i.e., `usize::MAX` cast to `*mut Entry<T>`)—can never appear as the
+///   first `size_of::<*mut _>()` bytes of any valid value of `T`.
+/// - The first `size_of::<*mut _>()` bytes of any valid value of `T` are
+///   always fully initialized (no padding or uninitialized bytes in the first
+///   pointer-sized word), since reading uninitialized bytes is undefined
+///   behaviour.
 pub unsafe trait BlockAllocatorSafe {}
 
 /// Sentinel value used to identify entries that are not on the freelist.
@@ -440,11 +452,11 @@ impl<T: Send, const N: usize> AllocBlock<T, N> {
 
 unsafe impl<T: Send, const N: usize> Allocator for AllocBlock<T, N> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        debug_assert_eq!(
-            layout,
-            Layout::new::<T>(),
-            "The requested layout should match the type T"
-        );
+        // The blocks only fit objects with exactly T's layout; returning one for a larger
+        // request would hand the caller a too-small allocation.
+        if layout != Layout::new::<T>() {
+            return Err(AllocError);
+        }
 
         let ptr = self.block_allocator.allocate_object()?;
 

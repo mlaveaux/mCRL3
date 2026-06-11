@@ -2,6 +2,7 @@ use std::alloc::Layout;
 use std::alloc::LayoutError;
 use std::fmt;
 use std::hash::Hash;
+use std::mem::ManuallyDrop;
 use std::mem::offset_of;
 use std::ptr;
 use std::ptr::NonNull;
@@ -66,7 +67,9 @@ unsafe impl Erasable for SharedTerm {
 
     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
         unsafe {
-            let symbol: SymbolRef = ptr::read(this.as_ptr().cast());
+            // Wrap the by-value read in ManuallyDrop: dropping the temporary would decrement the
+            // symbol's debug reference counter (an Arc) that the read never incremented.
+            let symbol: ManuallyDrop<SymbolRef> = ptr::read(this.as_ptr().cast());
             let len = symbol.arity();
 
             let raw = NonNull::new_unchecked(slice_from_raw_parts_mut(this.as_ptr().cast(), len));
@@ -94,7 +97,8 @@ impl SharedTerm {
 
     /// Returns the arguments of the term.
     pub fn arguments(&self) -> &[ATermRef<'_>] {
-        self.arguments.transmute_lifetime()
+        // SAFETY: The returned lifetime is bound to the borrow of `self` by the signature.
+        unsafe { self.arguments.transmute_lifetime() }
     }
 
     /// Returns a unique index for this shared term.

@@ -24,7 +24,7 @@ pub struct BfTermPool<T: ?Sized> {
 }
 
 unsafe impl<T: Send> Send for BfTermPool<T> {}
-unsafe impl<T: Send> Sync for BfTermPool<T> {}
+unsafe impl<T: Send + Sync> Sync for BfTermPool<T> {}
 
 impl<T> BfTermPool<T> {
     pub fn new(object: T) -> BfTermPool<T> {
