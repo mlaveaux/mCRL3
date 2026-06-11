@@ -57,10 +57,16 @@ impl<T> RecursiveLock<T> {
     }
 
     /// Acquires a write lock on the mutex.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called inside a read or write section. In that case the underlying mutex
+    /// would not wait for this thread's own lock, handing out `&mut T` while a `&T` or another
+    /// `&mut T` is live.
     pub fn write(&self) -> Result<RecursiveLockWriteGuard<'_, T>, Box<dyn Error + '_>> {
-        debug_assert!(
+        assert!(
             self.recursive_depth.get() == 0,
-            "Cannot call write() inside a read section"
+            "Cannot call write() inside an existing read or write section"
         );
         self.write_calls.set(self.write_calls.get() + 1);
         self.recursive_depth.set(1);
@@ -73,15 +79,24 @@ impl<T> RecursiveLock<T> {
     }
 
     /// Acquires a read lock on the mutex.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called inside a read or write section; the raw read lock is not reentrant.
+    /// Use [`RecursiveLock::read_recursive`] instead.
     pub fn read(&self) -> Result<BfSharedMutexReadGuard<'_, T>, Box<dyn Error + '_>> {
-        debug_assert!(
+        assert!(
             self.recursive_depth.get() == 0,
-            "Cannot call read() inside a read section"
+            "Cannot call read() inside an existing read or write section"
         );
         self.inner.read()
     }
 
     /// Acquires a read lock on the mutex, allowing for recursive read locking.
+    ///
+    /// May also be called inside a write section: the returned guard then borrows the write
+    /// lock instead of acquiring the underlying mutex. While such a guard is alive, mutating
+    /// through the [`RecursiveLockWriteGuard`] panics.
     pub fn read_recursive<'a>(&'a self) -> Result<RecursiveLockReadGuard<'a, T>, Box<dyn Error + 'a>> {
         self.read_recursive_calls.set(self.read_recursive_calls.get() + 1);
         if self.recursive_depth.get() == 0 {
@@ -191,15 +206,32 @@ impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
 
 /// Allow dereferences the underlying object.
 impl<T> DerefMut for RecursiveLockWriteGuard<'_, T> {
+    /// # Panics
+    ///
+    /// Panics while a recursive read guard taken inside this write section is alive. Such a
+    /// guard hands out `&T` derived from the data pointer, invisible to the borrow checker,
+    /// so a `&mut T` would alias it.
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // We hold the write guard exclusively, so mutable access is safe.
+        assert!(
+            self.mutex.recursive_depth.get() == 1,
+            "Cannot mutate through RecursiveLockWriteGuard while recursive read guards from its write section are alive"
+        );
+        // We hold the write guard exclusively and no recursive read guards exist, so mutable
+        // access is safe.
         self.guard.deref_mut()
     }
 }
 
 impl<T> Drop for RecursiveLockWriteGuard<'_, T> {
     fn drop(&mut self) {
-        self.mutex.recursive_depth.set(self.mutex.recursive_depth.get() - 1);
+        // Read guards taken with `read_recursive()` inside this write section borrow the write
+        // lock: once this guard drops, the underlying mutex is released and their `&T` would be
+        // unprotected. Panic instead of silently allowing that use-after-unlock.
+        assert!(
+            self.mutex.recursive_depth.get() == 1,
+            "RecursiveLockWriteGuard dropped while recursive read guards from its write section are still alive"
+        );
+        self.mutex.recursive_depth.set(0);
     }
 }
 
@@ -247,6 +279,26 @@ mod tests {
 
         drop(guard1);
         assert_eq!(lock.recursive_depth.get(), 0);
+    }
+
+    #[test]
+    fn test_read_recursive_inside_write() {
+        let lock = RecursiveLock::new(42);
+        let mut write = lock.write().unwrap();
+        *write += 1;
+
+        // Piggybacks on the write lock instead of acquiring the underlying mutex.
+        let read = lock.read_recursive().unwrap();
+        assert_eq!(*read, 43);
+        assert_eq!(read.read_depth(), 2);
+        drop(read);
+
+        // Mutation is allowed again once the read guard is gone.
+        *write += 1;
+        assert_eq!(*write, 44);
+        drop(write);
+
+        assert_eq!(*lock.read().unwrap(), 44);
     }
 
     #[test]

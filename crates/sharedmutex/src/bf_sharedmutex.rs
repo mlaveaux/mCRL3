@@ -123,7 +123,13 @@ impl<T> Clone for BfSharedMutex<T> {
 
 impl<T> Drop for BfSharedMutex<T> {
     fn drop(&mut self) {
-        let mut other = self.shared.other.lock().expect("Failed to lock mutex");
+        // A panic inside a write section poisons this mutex, since the write guard holds it.
+        // Deregistering is still safe then, and panicking in Drop during unwinding would abort.
+        let mut other = self
+            .shared
+            .other
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Remove ourselves from the table.
         other[self.index] = None;
