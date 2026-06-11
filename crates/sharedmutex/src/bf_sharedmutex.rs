@@ -251,8 +251,13 @@ impl<T> Drop for BfSharedMutexReadGuard<'_, T> {
 
 impl<T> BfSharedMutex<T> {
     /// Provides read access to the underlying object, allowing multiple immutable references to it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called while this instance already holds a read guard. Reentrant reads would
+    /// corrupt the `busy` flag.
     pub fn read<'a>(&'a self) -> Result<BfSharedMutexReadGuard<'a, T>, Box<dyn Error + 'a>> {
-        debug_assert!(
+        assert!(
             !self.control.busy.load(Ordering::Relaxed),
             "Cannot acquire read access again inside a reader section"
         );
@@ -275,6 +280,10 @@ impl<T> BfSharedMutex<T> {
             loom::thread::yield_now();
 
             self.control.busy.store(true, Ordering::Relaxed);
+
+            // The busy store must become visible before the forbidden load is performed, exactly
+            // as on the initial acquisition above.
+            fence(Ordering::SeqCst);
         }
 
         // We now have immutable access to the object due to the protocol.
@@ -384,15 +393,28 @@ impl<T> BfSharedMutex<T> {
         self.control.forbidden.load(Ordering::Relaxed)
     }
 
-    /// Obtain mutable access to the object without locking, is safe because we have mutable access.
-    pub fn get_mut(&mut self) -> &mut T {
+    /// Obtain mutable access to the object without locking.
+    ///
+    /// Returns `None` when other clones of this shared mutex exist, since those clones can
+    /// concurrently hold read or write guards on the shared object.
+    pub fn get_mut(&mut self) -> Option<&mut T> {
+        {
+            let other = self.shared.other.lock().expect("Failed to lock mutex");
+            if other.iter().flatten().count() != 1 {
+                return None;
+            }
+        }
+
+        // SAFETY: The registration table contains only this instance, so no other handle exists
+        // (guards borrow their handle, and new clones can only be created from a handle). Holding
+        // `&mut self` therefore guarantees no guard is alive and none can be created.
         #[cfg(not(loom))]
         unsafe {
-            &mut *self.shared.object.get()
+            Some(&mut *self.shared.object.get())
         }
         #[cfg(loom)]
         unsafe {
-            self.shared.object.get_mut().with(|ptr| &mut *ptr)
+            Some(self.shared.object.get_mut().with(|ptr| &mut *ptr))
         }
     }
 }
@@ -431,7 +453,7 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
 /// access.
 pub struct GlobalBfSharedMutex<T> {
     /// The shared mutex that is used to protect the global data.
-    pub shared_mutex: BfSharedMutex<T>,
+    shared_mutex: BfSharedMutex<T>,
 }
 
 impl<T> GlobalBfSharedMutex<T> {
@@ -502,9 +524,9 @@ mod tests {
                 if rng.random_bool(0.95) {
                     // Read a random index.
                     let read = shared_vector.read().unwrap();
-                    if read.len() > 0 {
+                    if !read.is_empty() {
                         let index = rng.random_range(0..read.len());
-                        black_box(assert_eq!(read[index], 5));
+                        assert_eq!(*black_box(&read[index]), 5);
                     }
                 } else {
                     // Add a new vector element.
@@ -518,7 +540,8 @@ mod tests {
     #[cfg(loom)]
     fn test_loom_bf_shared_mutex() {
         let mut builder = loom::model::Builder::new();
-        builder.preemption_bound = Some(1);
+        // A bound of at least 2 is needed to find the missing fence.
+        builder.preemption_bound = Some(2);
 
         builder.check(|| {
             let shared_mutex = BfSharedMutex::new(false);
