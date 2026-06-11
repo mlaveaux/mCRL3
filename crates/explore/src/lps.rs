@@ -44,6 +44,29 @@ pub trait LPS {
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo;
 }
 
+impl<P: LPS> LPS for &P {
+    type Value = P::Value;
+    type Label = P::Label;
+    type StateInfo = P::StateInfo;
+    type Summand = P::Summand;
+
+    fn initial_state(&self) -> Vec<Self::Value> {
+        (**self).initial_state()
+    }
+
+    fn summands(&self) -> &[Self::Summand] {
+        (**self).summands()
+    }
+
+    fn prepare(&self, state: &[Self::Value]) {
+        (**self).prepare(state);
+    }
+
+    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
+        (**self).state_info(state)
+    }
+}
+
 /// A condition action effect summand of an [`LPS`].
 ///
 /// A summand represents a guarded transition: given a current state, it

@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use log::debug;
 use log::info;
 
 use merc_io::TimeProgress;
@@ -9,6 +10,8 @@ use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use crate::CacheLPS;
+use crate::CachingStrategy;
 use crate::DiscoveredSet;
 use crate::LPS;
 use crate::StateRef;
@@ -123,8 +126,9 @@ where
 /// the [`LtsBuilder`] `builder`.
 pub fn explore_to_lts<P, B>(
     builder: &mut B,
-    lps: &P,
+    lps: P,
     strategy: ExplorationStrategy,
+    caching: CachingStrategy,
     timing: &Timing,
 ) -> Result<(), MercError>
 where
@@ -132,8 +136,9 @@ where
     P::Label: TransitionLabel,
     B: LtsBuilder<P::Label>,
 {
+    let cached = CacheLPS::new(lps, caching);
     let initial = explore(
-        lps,
+        &cached,
         strategy,
         timing,
         builder,
@@ -141,5 +146,6 @@ where
         |b, from, label, to| b.add_transition(from, label, to),
     )?;
     builder.finish(initial)?;
+    debug!("{}", cached.metrics());
     Ok(())
 }

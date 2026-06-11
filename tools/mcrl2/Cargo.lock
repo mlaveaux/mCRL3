@@ -1286,6 +1286,7 @@ name = "merc_vpg"
 version = "2.0.0"
 dependencies = [
  "bitvec",
+ "clap",
  "delegate",
  "itertools 0.14.0",
  "log",

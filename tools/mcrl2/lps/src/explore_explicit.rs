@@ -19,7 +19,6 @@ use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
 use mcrl2::tau_multi_action;
 use merc_collections::IndexedSet;
-use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
@@ -45,9 +44,7 @@ where
     let lps = ExplicitLinearProcessSpecification::new(lps)?;
     debug!("{lps:?}");
 
-    let cached = CacheLPS::new(lps, caching);
-    explore_to_lts(builder, &cached, strategy, timing)?;
-    debug!("{}", cached.metrics());
+    explore_to_lts(builder, &lps, strategy, caching, timing)?;
     Ok(())
 }
 

@@ -1,13 +1,8 @@
-//! Explicit-state exploration of a PBES in SRF (Simple Recursive Form) format.
-//!
-//! The PBES exploration is exposed as an [`merc_explore::LPS`] implementation
-//! ([`PbesSrfLps`]), so the same generic exploration loop used for LPSs drives
-//! it. The [`parity_game_from_pbes`] wrapper installs two closures that feed
-//! the discovered states and transitions into a [`merc_vpg::ParityGameBuilder`].
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+use log::debug;
 
 use mcrl2::_aterm;
 use mcrl2::ATerm;
@@ -23,6 +18,8 @@ use mcrl2::free_variables_data_expression;
 use mcrl2::make_data_assignment_list;
 use mcrl2::tau_multi_action;
 use merc_collections::IndexedSet;
+use merc_explore::CacheLPS;
+use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
@@ -37,20 +34,19 @@ use merc_vpg::Priority;
 use merc_vpg::VertexIndex;
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
-///
-/// The exploration drives a generic [`merc_explore::explore`] loop over a
-/// [`PbesSrfLps`] and uses two closures — both receiving the builder as their
-/// caller context — to feed each discovered state and transition into the
-/// [`ParityGameBuilder`]. The builder is then finalised with deduplication
-/// and the make-total fixup enabled.
-pub fn parity_game_from_pbes(pbes: &Pbes, strategy: ExplorationStrategy) -> Result<ParityGame, MercError> {
+pub fn parity_game_from_pbes(
+    pbes: &Pbes,
+    strategy: ExplorationStrategy,
+    caching: CachingStrategy,
+) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
     let timing = Timing::new();
 
     let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
 
+    let cached = CacheLPS::new(lps, caching);
     explore(
-        &lps,
+        &cached,
         strategy,
         &timing,
         &mut builder,
@@ -64,6 +60,7 @@ pub fn parity_game_from_pbes(pbes: &Pbes, strategy: ExplorationStrategy) -> Resu
         },
     )?;
 
+    debug!("{}", cached.metrics());
     Ok(builder.finish(true, true))
 }
 
