@@ -211,13 +211,15 @@ impl<'a, C: Markable + Transmutable + 'a> Deref for ProtectedWriteGuard<'a, C> {
     type Target = C::Target<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.reference.transmute_lifetime()
+        // SAFETY: 'a is the lifetime of the underlying lock guard, which `self` borrows.
+        unsafe { self.reference.transmute_lifetime() }
     }
 }
 
 impl<C: Markable + Transmutable> DerefMut for ProtectedWriteGuard<'_, C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.reference.deref_mut().transmute_lifetime_mut()
+        // SAFETY: 'a is the lifetime of the underlying lock guard, which `self` borrows.
+        unsafe { self.reference.deref_mut().transmute_lifetime_mut() }
     }
 }
 
@@ -235,7 +237,8 @@ impl<'a, C: Transmutable> Deref for ProtectedReadGuard<'a, C> {
     type Target = C::Target<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.reference.transmute_lifetime()
+        // SAFETY: 'a is the lifetime of the underlying lock guard, which `self` borrows.
+        unsafe { self.reference.transmute_lifetime() }
     }
 }
 

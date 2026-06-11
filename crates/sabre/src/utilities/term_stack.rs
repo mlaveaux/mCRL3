@@ -86,11 +86,11 @@ impl Markable for Config<'_> {
 unsafe impl Transmutable for Config<'static> {
     type Target<'a> = Config<'a>;
 
-    fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a> {
+    unsafe fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a> {
         unsafe { std::mem::transmute::<&Self, &'a Config>(self) }
     }
 
-    fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a> {
+    unsafe fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a> {
         unsafe { std::mem::transmute::<&mut Self, &'a mut Config>(self) }
     }
 }
