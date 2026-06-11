@@ -379,7 +379,13 @@ where
     /// Removes an element from the set using its stable pointer.
     ///
     /// Returns true if the element was found and removed.
-    pub fn remove(&self, pointer: StablePointer<T>) -> bool {
+    ///
+    /// # Safety
+    ///
+    /// `pointer` must be the last [`StablePointer`] to the element; removal invalidates every
+    /// remaining pointer to it, and dereferencing such a pointer afterwards is undefined
+    /// behaviour. This is only checked in debug builds.
+    pub unsafe fn remove(&self, pointer: StablePointer<T>) -> bool {
         debug_assert!(
             pointer.is_last_reference(),
             "Pointer must be the last reference to the element"
@@ -407,8 +413,9 @@ where
     ///
     /// # Safety
     ///
-    /// It invalidates any StablePointers to removed elements
-    pub fn retain<F>(&self, mut predicate: F)
+    /// It invalidates any StablePointers to removed elements; the caller must guarantee that no
+    /// such pointer is dereferenced afterwards.
+    pub unsafe fn retain<F>(&self, mut predicate: F)
     where
         F: FnMut(&StablePointer<T>) -> bool,
     {
@@ -463,8 +470,10 @@ where
     /// Clears the set, removing all values and invalidating all pointers.
     ///
     /// # Safety
-    /// This is unsafe because it invalidates all pointers to the elements in the set.
-    pub fn clear(&self) {
+    ///
+    /// This is unsafe because it invalidates all pointers to the elements in the set; the caller
+    /// must guarantee that none of them is dereferenced afterwards.
+    pub unsafe fn clear(&self) {
         #[cfg(debug_assertions)]
         debug_assert!(
             self.index.iter().all(|x| Arc::strong_count(&x.reference_counter) == 1),
@@ -834,13 +843,16 @@ mod tests {
         let (ptr2, _) = set.insert(100);
         assert_eq!(set.len(), 2);
 
-        // Remove one value
-        assert!(set.remove(ptr1));
-        assert_eq!(set.len(), 1);
+        // SAFETY: `ptr1` and `ptr2` are the last pointers to their elements.
+        unsafe {
+            // Remove one value
+            assert!(set.remove(ptr1));
+            assert_eq!(set.len(), 1);
 
-        // Remove other value
-        assert!(set.remove(ptr2));
-        assert_eq!(set.len(), 0);
+            // Remove other value
+            assert!(set.remove(ptr2));
+            assert_eq!(set.len(), 0);
+        }
     }
 
     #[test]
@@ -854,8 +866,11 @@ mod tests {
         let (ptr4, _) = set.insert(4);
         assert_eq!(set.len(), 4);
 
-        // Retain only even numbers
-        set.retain(|x| **x % 2 == 0);
+        // SAFETY: No pointers to the removed (odd) elements are used afterwards.
+        unsafe {
+            // Retain only even numbers
+            set.retain(|x| **x % 2 == 0);
+        }
 
         // Verify results
         assert_eq!(set.len(), 2);
@@ -864,9 +879,12 @@ mod tests {
         assert!(!set.contains(&3));
         assert!(set.contains(&4));
 
-        // Verify that removed pointers are invalid and remaining are valid
-        assert!(set.remove(ptr2));
-        assert!(set.remove(ptr4));
+        // SAFETY: `ptr2` and `ptr4` are the last pointers to their elements.
+        unsafe {
+            // Verify that removed pointers are invalid and remaining are valid
+            assert!(set.remove(ptr2));
+            assert!(set.remove(ptr4));
+        }
     }
 
     #[test]

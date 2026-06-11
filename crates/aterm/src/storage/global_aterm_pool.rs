@@ -196,6 +196,11 @@ impl GlobalTermPool {
     }
 
     /// Register a deletion hook that is called whenever a term is deleted with the given symbol.
+    ///
+    /// The hook runs in the middle of garbage collection, when the dying term's arguments may
+    /// already have been deallocated by an earlier pass over a different arity table. Hooks must
+    /// therefore not dereference the term's arguments; they may only use the term's address and
+    /// its head symbol.
     pub fn register_deletion_hook<F>(&mut self, symbol: SymbolRef<'static>, hook: F)
     where
         F: Fn(&ATermIndex) + Sync + Send + 'static,
@@ -262,34 +267,41 @@ impl GlobalTermPool {
         let num_of_terms = self.len();
         let num_of_symbols = self.symbol_pool.len();
 
-        // Delete all terms that are not marked
-        self.terms.retain(|term| {
-            if !self.marked_terms.contains(term) {
-                debug_trace!("Dropping term: {:?}", term);
+        // Delete all terms that are not marked.
+        // SAFETY: Marking visited every root in every protection set while holding the exclusive
+        // lock, so unmarked terms have no live references that could be dereferenced afterwards.
+        unsafe {
+            self.terms.retain(|term| {
+                if !self.marked_terms.contains(term) {
+                    debug_trace!("Dropping term: {:?}", term);
 
-                // Call the deletion hooks for the term
-                for (symbol, hook) in &self.deletion_hooks {
-                    if symbol == term.symbol() {
-                        debug_trace!("Calling deletion hook for term: {:?}", term);
-                        hook(term);
+                    // Call the deletion hooks for the term
+                    for (symbol, hook) in &self.deletion_hooks {
+                        if symbol == term.symbol() {
+                            debug_trace!("Calling deletion hook for term: {:?}", term);
+                            hook(term);
+                        }
                     }
+
+                    return false;
                 }
 
-                return false;
-            }
-
-            true
-        });
+                true
+            });
+        }
 
         // We ensure that every removed symbol is not used anymore.
-        self.symbol_pool.retain(|symbol| {
-            if !self.marked_symbols.contains(symbol) {
-                debug_trace!("Dropping symbol: {:?}", symbol);
-                return false;
-            }
+        // SAFETY: Unmarked symbols are not referenced by any marked term or protection set root.
+        unsafe {
+            self.symbol_pool.retain(|symbol| {
+                if !self.marked_symbols.contains(symbol) {
+                    debug_trace!("Dropping symbol: {:?}", symbol);
+                    return false;
+                }
 
-            true
-        });
+                true
+            });
+        }
 
         debug!(
             "Garbage collection: marking took {}ms, collection took {}ms, {} terms and {} symbols removed",

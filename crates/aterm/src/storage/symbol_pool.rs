@@ -82,11 +82,19 @@ impl SymbolPool {
     }
 
     /// Retain only symbols satisfying the given predicate.
-    pub fn retain<F>(&mut self, mut f: F)
+    ///
+    /// # Safety
+    ///
+    /// Removal invalidates every [`SymbolIndex`] to a removed symbol; the caller must guarantee
+    /// that no index to a removed symbol is dereferenced afterwards.
+    pub unsafe fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&SymbolIndex) -> bool,
     {
-        self.symbols.retain(|element| f(element));
+        // SAFETY: The caller guarantees that indices of removed symbols are not used again.
+        unsafe {
+            self.symbols.retain(|element| f(element));
+        }
 
         let removed_blocks = self.symbols.allocator_mut().remove_free_blocks();
         debug!("Removed {} blocks from the symbol pool", removed_blocks);

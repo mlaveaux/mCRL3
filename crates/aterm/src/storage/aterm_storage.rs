@@ -199,30 +199,29 @@ impl ATermStorage {
     }
 
     /// Retains only the terms for which the given predicate returns `true`.
-    pub fn retain<F>(&mut self, mut f: F)
+    ///
+    /// # Safety
+    ///
+    /// Removal invalidates every [`StablePointer`] to a removed term; the caller must guarantee
+    /// that no pointer to a removed term is dereferenced afterwards.
+    pub unsafe fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&StablePointer<SharedTerm>) -> bool,
     {
-        self.terms.retain(|term| f(term));
+        // SAFETY: The caller guarantees that pointers to removed terms are not used again.
+        unsafe {
+            self.terms.retain(|term| f(term));
 
-        self.int_terms
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 0) }));
-        self.terms_0
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 0) }));
-        self.terms_1
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 1) }));
-        self.terms_2
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 2) }));
-        self.terms_3
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 3) }));
-        self.terms_4
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 4) }));
-        self.terms_5
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 5) }));
-        self.terms_6
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 6) }));
-        self.terms_7
-            .retain(|term| f(&unsafe { cast_to_shared_term_ptr(term, 7) }));
+            self.int_terms.retain(|term| f(&cast_to_shared_term_ptr(term, 0)));
+            self.terms_0.retain(|term| f(&cast_to_shared_term_ptr(term, 0)));
+            self.terms_1.retain(|term| f(&cast_to_shared_term_ptr(term, 1)));
+            self.terms_2.retain(|term| f(&cast_to_shared_term_ptr(term, 2)));
+            self.terms_3.retain(|term| f(&cast_to_shared_term_ptr(term, 3)));
+            self.terms_4.retain(|term| f(&cast_to_shared_term_ptr(term, 4)));
+            self.terms_5.retain(|term| f(&cast_to_shared_term_ptr(term, 5)));
+            self.terms_6.retain(|term| f(&cast_to_shared_term_ptr(term, 6)));
+            self.terms_7.retain(|term| f(&cast_to_shared_term_ptr(term, 7)));
+        }
 
         // Removes empty blocks after removing entries.
         let mut blocks_removed = 0;
