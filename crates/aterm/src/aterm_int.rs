@@ -53,12 +53,15 @@ mod inner {
 
         /// Returns the value of the integer term.
         ///
-        /// # Safety
+        /// # Trusted invariant
         ///
         /// This method assumes that the term is indeed an integer term, which
-        /// should be guaranteed by the constructor and the `is_int_term`
-        /// function. Otherwise, it leads to undefined behaviour.
+        /// is enforced by the constructor and checked by `is_int_term` in the
+        /// conversions in debug builds (see [merc_macros::merc_derive_terms]).
+        /// A release-mode conversion from a non-integer term would make this
+        /// read past the end of the term's allocation.
         pub fn value(&self) -> usize {
+            // SAFETY: ATermInt always wraps an integer term, see above.
             unsafe { self.shared().ptr().cast::<SharedTermInt>().as_ref().value() }
         }
     }
