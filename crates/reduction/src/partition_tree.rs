@@ -23,7 +23,7 @@ struct TreeNode {
     /// root is its own parent.
     parent: NodeIndex,
 }
-          
+
 /// A block-history tree recorded while an existing refinement algorithm refines
 /// a partition.
 ///
@@ -65,8 +65,7 @@ pub struct PartitionTree {
 pub trait RefinementForest {
     /// Records one refinement wave that turned the `previous` partition into the
     /// finer `next` partition. The two partitions must be consecutive: the
-    /// `previous` of each call equals the `next` of the prior call (the very
-    /// first `previous` is the initial single-block partition).
+    /// `previous` of each call equals the `next` of the prior call.
     fn record_level<P: Partition, Q: Partition>(&mut self, previous: &P, next: &Q);
 
     /// Records the final (stable) partition: its quotient edges and the block
@@ -168,7 +167,12 @@ impl PartitionTree {
     /// Returns [`None`] when the two states are in the same final block (i.e.
     /// they are bisimilar). Otherwise returns a formula that holds in `s` but not
     /// in `t`, with label indices resolved through `labels`.
-    pub fn distinguish<L: Clone>(&self, s: StateIndex, t: StateIndex, labels: &[L]) -> Option<DistinguishingFormula<L>> {
+    pub fn distinguish<L: Clone>(
+        &self,
+        s: StateIndex,
+        t: StateIndex,
+        labels: &[L],
+    ) -> Option<DistinguishingFormula<L>> {
         if self.state_to_node[s.value()] == self.state_to_node[t.value()] {
             None
         } else {
