@@ -76,6 +76,8 @@ impl GlobalTermPool {
     fn new() -> GlobalTermPool {
         // Insert the default symbols, mirrors the symbols defined in mCRL2.
         let symbol_pool = SymbolPool::new();
+        // SAFETY: the default symbols are marked on every collection (see `collect_garbage`),
+        // so these indices stay valid for the lifetime of the pool.
         let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<aterm_int>", 0)) };
         let list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<list_constructor>", 2)) };
         let empty_list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<empty_list>", 0)) };
@@ -107,7 +109,12 @@ impl GlobalTermPool {
     }
 
     /// Creates a term storing a single integer value.
-    pub fn create_int(&self, value: usize) -> (StablePointer<SharedTerm>, bool) {
+    ///
+    /// Crate-private: the returned pointer is unprotected, so the caller must protect it
+    /// (or hand it to a [crate::Return]) before the read guard it was created under drops.
+    pub(crate) fn create_int(&self, value: usize) -> (StablePointer<SharedTerm>, bool) {
+        // SAFETY: `int_symbol` is one of the default symbols, which are marked on every
+        // collection, so the index stays valid for the pool's lifetime.
         let (index, inserted) = unsafe {
             self.terms
                 .insert_int_term(SymbolRef::from_index(self.int_symbol.shared()), value)
@@ -117,7 +124,9 @@ impl GlobalTermPool {
     }
 
     /// Create a term from a head symbol and an iterator over its arguments
-    pub fn create_term_array<'a, 'b, 'c, S: Symb<'a, 'b>>(
+    ///
+    /// Crate-private: the returned pointer is unprotected, see [Self::create_int].
+    pub(crate) fn create_term_array<'a, 'b, 'c, S: Symb<'a, 'b>>(
         &'c self,
         symbol: &'b S,
         args: &'c [ATermRef<'c>],
@@ -126,7 +135,9 @@ impl GlobalTermPool {
     }
 
     /// Create a function symbol
-    pub fn create_symbol<P, N>(&self, name: N, arity: usize, protect: P) -> Symbol
+    ///
+    /// Crate-private: `protect` receives an unprotected index, see [Self::create_int].
+    pub(crate) fn create_symbol<P, N>(&self, name: N, arity: usize, protect: P) -> Symbol
     where
         P: FnOnce(SymbolIndex) -> Symbol,
         N: Into<String> + AsRef<str>,
@@ -216,9 +227,14 @@ impl GlobalTermPool {
     /// Collects garbage terms.
     pub fn collect_garbage(&mut self) {
         // Mark the default symbols
-        self.marked_symbols.insert(self.int_symbol.shared().copy());
-        self.marked_symbols.insert(self.list_symbol.shared().copy());
-        self.marked_symbols.insert(self.empty_list_symbol.shared().copy());
+        // SAFETY: mark-set entries only live for the duration of this collection pass
+        // (the sets are drained by the sweep below), and a marked symbol is by
+        // definition retained by the sweep.
+        unsafe {
+            self.marked_symbols.insert(self.int_symbol.shared().copy());
+            self.marked_symbols.insert(self.list_symbol.shared().copy());
+            self.marked_symbols.insert(self.empty_list_symbol.shared().copy());
+        }
 
         let mut marker = Marker {
             marked_terms: &mut self.marked_terms,
@@ -236,7 +252,9 @@ impl GlobalTermPool {
             for (_root, symbol) in pool.symbol_protection_set.iter() {
                 debug_trace!("Marking root {_root} symbol {symbol:?}");
                 // Remove all symbols that are not protected
-                marker.marked_symbols.insert(symbol.copy());
+                // SAFETY: the protection set keeps the symbol alive, and the mark-set
+                // entry is dropped when the sweep below finishes.
+                marker.marked_symbols.insert(unsafe { symbol.copy() });
             }
 
             for (_root, term) in pool.term_protection_set.iter() {
@@ -464,23 +482,28 @@ pub struct Marker<'a> {
 impl Marker<'_> {
     // Marks the given term as being reachable.
     pub fn mark(&mut self, term: &ATermRef<'_>) {
-        if !self.marked_terms.contains(term.shared()) {
-            self.stack.push(term.shared().copy());
+        // SAFETY: all copies below go into the mark sets and the work stack, which are
+        // drained before the collection pass ends, and a marked term or symbol is by
+        // definition retained by the sweep; `term` itself is alive for the borrow.
+        unsafe {
+            if !self.marked_terms.contains(term.shared()) {
+                self.stack.push(term.shared().copy());
 
-            while let Some(term) = self.stack.pop() {
-                // Each term should be marked.
-                self.marked_terms.insert(term.copy());
+                while let Some(term) = self.stack.pop() {
+                    // Each term should be marked.
+                    self.marked_terms.insert(term.copy());
 
-                // Mark the function symbol.
-                self.marked_symbols.insert(term.symbol().shared().copy());
+                    // Mark the function symbol.
+                    self.marked_symbols.insert(term.symbol().shared().copy());
 
-                // For some terms, such as ATermInt, we must ONLY consider the valid arguments (indicated by the arity)
-                for arg in term.arguments()[0..term.symbol().arity()].iter() {
-                    // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
-                    if !self.marked_terms.contains(arg.shared()) {
-                        self.marked_terms.insert(arg.shared().copy());
-                        self.marked_symbols.insert(arg.get_head_symbol().shared().copy());
-                        self.stack.push(arg.shared().copy());
+                    // For some terms, such as ATermInt, we must ONLY consider the valid arguments (indicated by the arity)
+                    for arg in term.arguments()[0..term.symbol().arity()].iter() {
+                        // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
+                        if !self.marked_terms.contains(arg.shared()) {
+                            self.marked_terms.insert(arg.shared().copy());
+                            self.marked_symbols.insert(arg.get_head_symbol().shared().copy());
+                            self.stack.push(arg.shared().copy());
+                        }
                     }
                 }
             }
@@ -489,7 +512,9 @@ impl Marker<'_> {
 
     /// Marks the given symbol as being reachable.
     pub fn mark_symbol(&mut self, symbol: &SymbolRef<'_>) {
-        self.marked_symbols.insert(symbol.shared().copy());
+        // SAFETY: see `mark`; the entry is dropped when the sweep finishes and a marked
+        // symbol is retained by it.
+        self.marked_symbols.insert(unsafe { symbol.shared().copy() });
     }
 }
 
