@@ -53,15 +53,29 @@ mod inner {
 
         /// Returns the value of the integer term.
         ///
-        /// # Trusted invariant
+        /// # Panics
         ///
-        /// This method assumes that the term is indeed an integer term, which
-        /// is enforced by the constructor and checked by `is_int_term` in the
-        /// conversions in debug builds (see [merc_macros::merc_derive_terms]).
-        /// A release-mode conversion from a non-integer term would make this
-        /// read past the end of the term's allocation.
+        /// Panics if the term is not an integer term. Use
+        /// [`ATermInt::value_unchecked`] to skip this check when the term is
+        /// already known to be an integer term.
         pub fn value(&self) -> usize {
-            // SAFETY: ATermInt always wraps an integer term, see above.
+            assert!(is_int_term(self), "value() called on non-integer term {self:?}");
+
+            // SAFETY: We just checked that this is an integer term.
+            unsafe { self.value_unchecked() }
+        }
+
+        /// Returns the value of the integer term without checking that the
+        /// term is actually an integer term.
+        ///
+        /// # Safety
+        ///
+        /// The caller must ensure that the term is an integer term, i.e. that
+        /// [`is_int_term`] returns true for it. Calling this on a non-integer
+        /// term reads past the end of the term's allocation, which is
+        /// undefined behaviour.
+        pub unsafe fn value_unchecked(&self) -> usize {
+            // SAFETY: The caller guarantees that this term wraps an integer term.
             unsafe { self.shared().ptr().cast::<SharedTermInt>().as_ref().value() }
         }
     }
