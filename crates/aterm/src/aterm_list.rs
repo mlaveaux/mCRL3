@@ -21,12 +21,12 @@ use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true iff the term is a [ATermList] list term.
 pub fn is_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
-    THREAD_TERM_POOL.with_borrow(|tp| *tp.list_symbol() == t.get_head_symbol())
+    THREAD_TERM_POOL.with(|tp| *tp.list_symbol() == t.get_head_symbol())
 }
 
 /// Returns true iff the term is an empty [ATermList].
 pub fn is_empty_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
-    THREAD_TERM_POOL.with_borrow(|tp| *tp.empty_list_symbol() == t.get_head_symbol())
+    THREAD_TERM_POOL.with(|tp| *tp.empty_list_symbol() == t.get_head_symbol())
 }
 
 /// Represents a list of ATerms of type T.
@@ -88,9 +88,8 @@ impl<T> ATermList<T> {
         T: Into<ATerm>,
     {
         ATermList {
-            term: THREAD_TERM_POOL.with_borrow(|tp| {
-                ATerm::with_args(tp.list_symbol(), &[item.into().copy(), self.term.copy()]).protect()
-            }),
+            term: THREAD_TERM_POOL
+                .with(|tp| ATerm::with_args(tp.list_symbol(), &[item.into().copy(), self.term.copy()]).protect()),
             _marker: PhantomData,
         }
     }
@@ -98,7 +97,7 @@ impl<T> ATermList<T> {
     /// Constructs the empty list.
     pub fn empty() -> Self {
         ATermList {
-            term: THREAD_TERM_POOL.with_borrow(|tp| ATerm::constant(tp.empty_list_symbol())),
+            term: THREAD_TERM_POOL.with(|tp| ATerm::constant(tp.empty_list_symbol())),
             _marker: PhantomData,
         }
     }

@@ -37,7 +37,7 @@ impl<T> GcMutex<T> {
     pub fn lock(&self) -> GcMutexReadGuard<'_, T> {
         GcMutexReadGuard {
             mutex: self,
-            guard: ManuallyDrop::new(THREAD_TERM_POOL.with_borrow(|tp| unsafe {
+            guard: ManuallyDrop::new(THREAD_TERM_POOL.with(|tp| unsafe {
                 std::mem::transmute::<_, GlobalTermPoolGuard<'_>>(
                     tp.term_pool().read_recursive().expect("Lock poisoned!"),
                 )
@@ -52,7 +52,7 @@ impl<T> GcMutex<T> {
     pub fn lock_mut(&mut self) -> GcMutexGuard<'_, T> {
         GcMutexGuard {
             mutex: self,
-            guard: ManuallyDrop::new(THREAD_TERM_POOL.with_borrow(|tp| unsafe {
+            guard: ManuallyDrop::new(THREAD_TERM_POOL.with(|tp| unsafe {
                 std::mem::transmute::<_, GlobalTermPoolGuard<'_>>(
                     tp.term_pool().read_recursive().expect("Lock poisoned!"),
                 )
@@ -81,7 +81,7 @@ impl<T> Deref for GcMutexReadGuard<'_, T> {
 impl<T> Drop for GcMutexReadGuard<'_, T> {
     fn drop(&mut self) {
         if self.guard.read_depth() == 1 {
-            THREAD_TERM_POOL.with_borrow(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
+            THREAD_TERM_POOL.with(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
         } else {
             unsafe { ManuallyDrop::drop(&mut self.guard) };
         }
@@ -116,7 +116,7 @@ impl<T> Drop for GcMutexGuard<'_, T> {
     fn drop(&mut self) {
         if self.guard.read_depth() == 1 {
             // If this is the last guard, we can trigger garbage collection when it was delayed earlier.
-            THREAD_TERM_POOL.with_borrow(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
+            THREAD_TERM_POOL.with(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
         } else {
             // Just drop the guard
             unsafe { ManuallyDrop::drop(&mut self.guard) };

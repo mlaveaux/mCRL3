@@ -8,12 +8,12 @@ use crate::storage::THREAD_TERM_POOL;
 
 /// Returns true if the term is an [ATermInt] term.
 pub fn is_int_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
-    THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == t.get_head_symbol())
+    THREAD_TERM_POOL.with(|tp| *tp.int_symbol() == t.get_head_symbol())
 }
 
 /// Returns true if the given symbol is the special integer symbol used by [ATermInt].
 pub fn is_int_symbol<'a, 'b, S: Symb<'a, 'b>>(f: &'b S) -> bool {
-    THREAD_TERM_POOL.with_borrow(|tp| *tp.int_symbol() == f.copy())
+    THREAD_TERM_POOL.with(|tp| *tp.int_symbol() == f.copy())
 }
 
 #[merc_derive_terms]
@@ -46,7 +46,7 @@ mod inner {
     impl ATermInt {
         #[merc_ignore]
         pub fn new(value: usize) -> ATermInt {
-            THREAD_TERM_POOL.with_borrow(|tp| ATermInt {
+            THREAD_TERM_POOL.with(|tp| ATermInt {
                 term: tp.create_int(value),
             })
         }

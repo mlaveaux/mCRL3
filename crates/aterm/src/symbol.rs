@@ -58,7 +58,7 @@ const _: () = assert!(std::mem::size_of::<Option<SymbolRef>>() == std::mem::size
 impl<'a> SymbolRef<'a> {
     /// Protects the symbol from garbage collection, yielding a `Symbol`.
     pub fn protect(&self) -> Symbol {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.protect_symbol(self))
+        THREAD_TERM_POOL.with(|tp| tp.protect_symbol(self))
     }
 
     /// Internal constructor to create a [SymbolRef] from a [SymbolIndex].
@@ -148,7 +148,7 @@ impl Symbol {
     where
         N: Into<String> + AsRef<str>,
     {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.create_symbol(name, arity))
+        THREAD_TERM_POOL.with(|tp| tp.create_symbol(name, arity))
     }
 }
 
@@ -207,7 +207,7 @@ where
 
 impl Drop for Symbol {
     fn drop(&mut self) {
-        THREAD_TERM_POOL.with_borrow(|tp| {
+        THREAD_TERM_POOL.with(|tp| {
             tp.drop_symbol(self);
         })
     }
@@ -224,7 +224,6 @@ impl Clone for Symbol {
         self.copy().protect()
     }
 }
-
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

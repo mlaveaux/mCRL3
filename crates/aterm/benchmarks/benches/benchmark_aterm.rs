@@ -84,7 +84,7 @@ fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &s
 fn benchmark_shared_creation(c: &mut Criterion) {
     const SIZE: usize = 400000;
 
-    THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
+    THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
         c.bench_with_input(
@@ -103,7 +103,7 @@ fn benchmark_shared_creation(c: &mut Criterion) {
                         result += start.elapsed();
 
                         // For a garbage collection (not part of the measurement) to clean up the created terms.
-                        THREAD_TERM_POOL.with_borrow(|tp| tp.force_collect_garbage());
+                        THREAD_TERM_POOL.with(|tp| tp.force_collect_garbage());
                     }
                     result
                 });
@@ -138,7 +138,7 @@ fn benchmark_shared_inspect(c: &mut Criterion) {
     const SIZE: usize = 20;
     const ITERATIONS: usize = 1000;
 
-    THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
+    THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
         c.bench_with_input(
@@ -166,7 +166,7 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
     const SIZE: usize = 400000;
     const ITERATIONS: usize = 1000;
 
-    THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
+    THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
         c.bench_with_input(
@@ -194,7 +194,7 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
 fn benchmark_unique_creation(c: &mut Criterion) {
     const SIZE: usize = 400000;
 
-    THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
+    THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
         c.bench_with_input(
@@ -217,7 +217,7 @@ fn benchmark_unique_creation(c: &mut Criterion) {
                         result += start.elapsed();
 
                         // For a garbage collection (not part of the measurement) to clean up the created terms.
-                        THREAD_TERM_POOL.with_borrow(|tp| tp.force_collect_garbage());
+                        THREAD_TERM_POOL.with(|tp| tp.force_collect_garbage());
                     }
 
                     result
@@ -231,7 +231,7 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
     const SIZE: usize = 20;
     const ITERATIONS: usize = 1000;
 
-    THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
+    THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
     for num_threads in THREADS {
         c.bench_with_input(
@@ -262,7 +262,7 @@ fn benchmark_unique_lookup(c: &mut Criterion) {
     const SIZE: usize = 400000;
     const ITERATIONS: usize = 1000;
 
-    THREAD_TERM_POOL.with_borrow(|tp| tp.automatic_garbage_collection(false));
+    THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
     // Keep one protected instance
     let f = create_nested_function::<2>("f", "c", SIZE);

@@ -30,7 +30,7 @@ impl RewriteEngine for InnermostRewriter {
 
         debug_trace!("input: {}", t);
 
-        let result = THREAD_TERM_POOL.with_borrow(|tp| {
+        let result = THREAD_TERM_POOL.with(|tp| {
             InnermostRewriter::rewrite_aux(tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t)
         });
 

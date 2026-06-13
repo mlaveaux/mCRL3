@@ -38,7 +38,7 @@ impl<C: Markable + Send + Sync + Transmutable + 'static> Protected<C> {
     pub fn new(container: C) -> Protected<C> {
         let shared = Arc::new(GcMutex::new(container));
 
-        let root = THREAD_TERM_POOL.with_borrow(|tp| tp.protect_container(shared.clone()));
+        let root = THREAD_TERM_POOL.with(|tp| tp.protect_container(shared.clone()));
 
         Protected {
             container: shared,
@@ -113,7 +113,7 @@ impl<C: Ord + PartialEq + PartialOrd + Markable> Ord for Protected<C> {
 
 impl<C> Drop for Protected<C> {
     fn drop(&mut self) {
-        THREAD_TERM_POOL.with_borrow(|tp| {
+        THREAD_TERM_POOL.with(|tp| {
             tp.drop_container(self.root);
         });
     }
@@ -151,8 +151,7 @@ impl<'a, C: Markable> ProtectedWriteGuard<'a, C> {
     /// The invariant to uphold is that the resulting term MUST be inserted into
     /// the container. This is checked in debug mode, but not in release mode.
     /// If this invariant is violated, undefined behaviour may occur during
-    /// garbage collection. We do not mark this function unsafe since that would
-    /// make its use cumbersome.
+    /// garbage collection.
     pub unsafe fn protect<'b, T: Term<'a, 'b>>(&self, term: &'b T) -> ATermRef<'static> {
         unsafe {
             // Store terms that are marked as protected to check if they are

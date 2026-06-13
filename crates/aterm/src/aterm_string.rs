@@ -49,7 +49,7 @@ mod inner {
         where
             S: Into<String> + AsRef<str>,
         {
-            THREAD_TERM_POOL.with_borrow(|tp| ATermString {
+            THREAD_TERM_POOL.with(|tp| ATermString {
                 term: tp.create_constant(&Symbol::new(string, 0)),
             })
         }

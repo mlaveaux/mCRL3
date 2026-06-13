@@ -314,7 +314,7 @@ impl<W: Write> Drop for BinaryATermWriter<W> {
         self.terms.write().clear();
 
         // Perform garbage collection after clearing the terms, since they might become unreachable.
-        THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
+        THREAD_TERM_POOL.with(|tp| tp.collect_garbage());
     }
 }
 
@@ -519,7 +519,7 @@ impl<R: Read> Drop for BinaryATermReader<R> {
         self.terms.write().clear();
 
         // Perform garbage collection after clearing the terms, since they might become unreachable.
-        THREAD_TERM_POOL.with_borrow(|tp| tp.collect_garbage());
+        THREAD_TERM_POOL.with(|tp| tp.collect_garbage());
     }
 }
 

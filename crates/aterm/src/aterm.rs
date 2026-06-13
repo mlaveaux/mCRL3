@@ -106,7 +106,7 @@ impl ATermRef<'_> {
 
 impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
     fn protect(&self) -> ATerm {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.protect(&self.copy()))
+        THREAD_TERM_POOL.with(|tp| tp.protect(&self.copy()))
     }
 
     fn arg(&self, index: usize) -> ATermRef<'a> {
@@ -211,7 +211,7 @@ impl fmt::Debug for ATermRef<'_> {
 ///
 /// We do not mark term access as unsafe, since that would make their use
 /// cumbersome. An alternative would be to require
-/// THREAD_TERM_POOL.with_borrow(|tp| ...) around every access, but that would
+/// THREAD_TERM_POOL.with(|tp| ...) around every access, but that would
 /// be very verbose.
 pub struct ATerm {
     term: ATermRef<'static>,
@@ -231,7 +231,7 @@ impl ATerm {
         symbol: &'b S,
         args: &'b [T],
     ) -> Return<ATermRef<'static>> {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.create_term(symbol, args))
+        THREAD_TERM_POOL.with(|tp| tp.create_term(symbol, args))
     }
 
     /// Creates a new term with the given symbol and an iterator over the arguments.
@@ -241,7 +241,7 @@ impl ATerm {
         I: IntoIterator<Item = T>,
         T: Term<'c, 'd>,
     {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter(symbol, iter))
+        THREAD_TERM_POOL.with(|tp| tp.create_term_iter(symbol, iter))
     }
 
     /// Creates a new term with the given symbol and an iterator over the arguments.
@@ -251,7 +251,7 @@ impl ATerm {
         I: IntoIterator<Item = Result<T, MercError>>,
         T: Term<'c, 'd>,
     {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.try_create_term_iter(symbol, iter))
+        THREAD_TERM_POOL.with(|tp| tp.try_create_term_iter(symbol, iter))
     }
 
     /// Creates a new term with the given symbol and a head term, along with a list of arguments.
@@ -262,17 +262,17 @@ impl ATerm {
         I: IntoIterator<Item = T>,
         T: Term<'e, 'f>,
     {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.create_term_iter_head(symbol, head, iter))
+        THREAD_TERM_POOL.with(|tp| tp.create_term_iter_head(symbol, head, iter))
     }
 
     /// Creates a new constant term (arity 0) for the given symbol.
     pub fn constant<'a, 'b, S: Symb<'a, 'b>>(symbol: &'b S) -> ATerm {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.create_constant(symbol))
+        THREAD_TERM_POOL.with(|tp| tp.create_constant(symbol))
     }
 
     /// Constructs a term from the given string.
     pub fn from_string(text: &str) -> Result<ATerm, MercError> {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(text))
+        THREAD_TERM_POOL.with(|tp| tp.from_string(text))
     }
 
     /// Returns the term as a borrowed [ATermRef].
@@ -292,8 +292,12 @@ impl ATerm {
         'b: 'a,
     {
         // Replace the current term in the protection set by the value.
-        let index = value.shared().copy();
-        THREAD_TERM_POOL.with_borrow(|tp| tp.replace(value.guard, self.root, index.copy()));
+        // SAFETY: `value` still holds the recursive read guard, so no garbage
+        // collection can run before `tp.replace` registers this index under
+        // `self.root`; from then on the protection set keeps the term alive
+        // until this `ATerm` unprotects it.
+        let index = unsafe { value.shared().copy() };
+        THREAD_TERM_POOL.with(|tp| tp.replace(value.guard, self.root, unsafe { index.copy() }));
 
         // Set the term itself.
         self.term = unsafe { ATermRef::from_index(&index) };
@@ -350,7 +354,7 @@ impl Markable for ATerm {
 
 impl Drop for ATerm {
     fn drop(&mut self) {
-        THREAD_TERM_POOL.with_borrow(|tp| tp.drop(self))
+        THREAD_TERM_POOL.with(|tp| tp.drop(self))
     }
 }
 
@@ -359,7 +363,6 @@ impl Clone for ATerm {
         self.copy().protect()
     }
 }
-
 
 impl fmt::Display for ATerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

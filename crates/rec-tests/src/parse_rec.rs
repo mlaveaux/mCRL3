@@ -266,13 +266,13 @@ impl RecParser {
     fn term(term: ParseNode) -> ParseResult<ATerm> {
         match_nodes!(term.into_children();
             [identifier(head_symbol), args(arguments)] => {
-                THREAD_TERM_POOL.with_borrow(|tp| {
+                THREAD_TERM_POOL.with(|tp| {
                     let symbol = tp.create_symbol(&head_symbol, arguments.len());
                     Ok(tp.create_term_iter(&symbol, arguments))
                 })
             },
             [identifier(head_symbol)] => {
-                THREAD_TERM_POOL.with_borrow(|tp| {
+                THREAD_TERM_POOL.with(|tp| {
                     let symbol = tp.create_symbol(&head_symbol, 0);
                     Ok(tp.create_constant(&symbol))
                 })

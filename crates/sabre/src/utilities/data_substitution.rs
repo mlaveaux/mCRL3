@@ -94,7 +94,7 @@ mod tests {
 
         // substitute the a for 0 in the term s(s(a))
         let result =
-            THREAD_TERM_POOL.with_borrow(|tp| data_substitute(tp, &t.copy(), t0.clone(), &DataPosition::new(&[1, 1])));
+            THREAD_TERM_POOL.with(|tp| data_substitute(tp, &t.copy(), t0.clone(), &DataPosition::new(&[1, 1])));
 
         // Check that indeed the new term as a 0 at position 1.1.
         assert_eq!(t0, result.get_data_position(&DataPosition::new(&vec![1, 1])).protect());

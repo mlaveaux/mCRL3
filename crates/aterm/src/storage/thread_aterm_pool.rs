@@ -39,7 +39,13 @@ use crate::storage::global_aterm_pool::GLOBAL_TERM_POOL;
 
 thread_local! {
     /// Thread-specific [ThreadTermPool] that manages protection sets for the current thread.
-    pub static THREAD_TERM_POOL: RefCell<ThreadTermPool> = RefCell::new(ThreadTermPool::new());
+    ///
+    /// Deliberately not wrapped in a `RefCell`: term construction hands out `Return` values
+    /// whose recursive read guard points into this pool, invisibly to a `RefCell` borrow
+    /// counter. Obtaining `&mut ThreadTermPool` (e.g. via `with_borrow_mut`) while such a
+    /// guard is alive would invalidate the guard's reference, so no `&mut` access may exist
+    /// at all; all methods take `&self` and use interior mutability where needed.
+    pub static THREAD_TERM_POOL: ThreadTermPool = ThreadTermPool::new();
 }
 
 /// Per-thread term pool managing local protection sets for interaction with the [GlobalTermPool].
@@ -89,18 +95,6 @@ impl ThreadTermPool {
             empty_list_symbol,
             list_symbol,
             term_pool,
-        }
-    }
-
-    /// Sets the global term pool for this thread.
-    ///
-    /// # Safety
-    ///
-    /// This should probably be used immediately after thread creation before
-    /// any terms are created. Also the pointer must be valid.
-    pub unsafe fn set_global_term_pool(&mut self, global_term_pool: *mut GlobalBfSharedMutex<GlobalTermPool>) {
-        unsafe {
-            self.term_pool = RecursiveLock::from_mutex((*global_term_pool).share());
         }
     }
 

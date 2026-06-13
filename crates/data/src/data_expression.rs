@@ -442,7 +442,7 @@ impl<'a> DataExpressionRef<'a> {
 /// Converts an [ATerm] to an untyped data expression.
 pub fn to_untyped_data_expression(t: ATerm, variables: Option<&AHashSet<String>>) -> DataExpression {
     let mut builder = TermBuilder::<ATerm, ATerm>::new();
-    THREAD_TERM_POOL.with_borrow(|tp| {
+    THREAD_TERM_POOL.with(|tp| {
         builder
             .evaluate(
                 tp,
