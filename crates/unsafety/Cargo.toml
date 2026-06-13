@@ -2,12 +2,12 @@
 name = "merc_unsafety"
 description = "Internal MERC crate containing various utility functions that use unsafe code blocks."
 readme = "README.md"
+version = "3.0.0"
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
 
 [features]
 # Enables an allocator that counts additional metrics, this disables features `jemalloc` and `mimalloc`. The allocator has
