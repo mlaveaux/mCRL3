@@ -40,7 +40,10 @@ impl SymbolPool {
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
-    pub fn create<N>(&self, name: N, arity: usize) -> StablePointer<SharedSymbol>
+    ///
+    /// Crate-private: the returned pointer is unprotected, so the caller must protect it
+    /// before the lock it was created under is released.
+    pub(crate) fn create<N>(&self, name: N, arity: usize) -> StablePointer<SharedSymbol>
     where
         N: Into<String> + AsRef<str>,
     {
@@ -265,8 +268,7 @@ mod tests {
         let _symbol = Symbol::new("x69", 0);
         let _symbol2 = Symbol::new("x_y", 0);
 
-        let value =
-            THREAD_TERM_POOL.with_borrow(|tp| tp.term_pool().write().expect("Lock poisoned!").register_prefix("x"));
+        let value = THREAD_TERM_POOL.with(|tp| tp.term_pool().write().expect("Lock poisoned!").register_prefix("x"));
 
         assert_eq!(value.load(Ordering::Relaxed), 70);
 

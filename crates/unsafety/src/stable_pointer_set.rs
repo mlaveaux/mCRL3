@@ -23,8 +23,10 @@ use crate::SliceDst;
 /// valid, which is not managed by the borrow checker.
 ///
 /// Comparisons are based on the pointer's address, not the value it points to.
+///
+/// Deliberately not `Clone`: duplicating a pointer extends its lifetime beyond whatever
+/// protocol protects the original, so duplication goes through the unsafe [`StablePointer::copy`].
 #[repr(C)]
-#[derive(Clone)]
 pub struct StablePointer<T: ?Sized> {
     /// The raw pointer to the element.
     /// This is a NonNull pointer, which means it is guaranteed to be non-null.
@@ -126,7 +128,9 @@ impl<T: ?Sized> StablePointer<T> {
     ///
     /// # Safety
     /// The caller must ensure the pointer points to a valid T that outlives the returned StablePointer.
-    pub fn copy(&self) -> Self {
+    /// In particular the element must not be removed from the owning [`StablePointerSet`] (nor the set
+    /// dropped) while the copy is alive, since [`Deref`] dereferences the pointer without any check.
+    pub unsafe fn copy(&self) -> Self {
         Self {
             ptr: self.ptr,
             #[cfg(debug_assertions)]

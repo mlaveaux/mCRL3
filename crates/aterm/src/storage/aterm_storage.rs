@@ -82,6 +82,12 @@ impl ATermStorage {
             "The number of arguments does not match the arity of the symbol"
         );
 
+        // SAFETY: the copied argument indices are stored inside the inserted term, and the
+        // GC marks the arguments of every live term, so each argument stays in the pool at
+        // least as long as the term referencing it; the copies are dropped when the term
+        // itself is reclaimed.
+        let arg = |i: usize| unsafe { args[i].shared().copy() };
+
         match symbol.arity() {
             0 => {
                 let (result, inserted) = self.terms_0.insert(SharedTermFixed {
@@ -93,79 +99,49 @@ impl ATermStorage {
             1 => {
                 let (result, inserted) = self.terms_1.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [args[0].shared().copy()],
+                    args: [arg(0)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 1), inserted) }
             }
             2 => {
                 let (result, inserted) = self.terms_2.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [args[0].shared().copy(), args[1].shared().copy()],
+                    args: [arg(0), arg(1)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 2), inserted) }
             }
             3 => {
                 let (result, inserted) = self.terms_3.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [
-                        args[0].shared().copy(),
-                        args[1].shared().copy(),
-                        args[2].shared().copy(),
-                    ],
+                    args: [arg(0), arg(1), arg(2)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 3), inserted) }
             }
             4 => {
                 let (result, inserted) = self.terms_4.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [
-                        args[0].shared().copy(),
-                        args[1].shared().copy(),
-                        args[2].shared().copy(),
-                        args[3].shared().copy(),
-                    ],
+                    args: [arg(0), arg(1), arg(2), arg(3)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 4), inserted) }
             }
             5 => {
                 let (result, inserted) = self.terms_5.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [
-                        args[0].shared().copy(),
-                        args[1].shared().copy(),
-                        args[2].shared().copy(),
-                        args[3].shared().copy(),
-                        args[4].shared().copy(),
-                    ],
+                    args: [arg(0), arg(1), arg(2), arg(3), arg(4)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 5), inserted) }
             }
             6 => {
                 let (result, inserted) = self.terms_6.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [
-                        args[0].shared().copy(),
-                        args[1].shared().copy(),
-                        args[2].shared().copy(),
-                        args[3].shared().copy(),
-                        args[4].shared().copy(),
-                        args[5].shared().copy(),
-                    ],
+                    args: [arg(0), arg(1), arg(2), arg(3), arg(4), arg(5)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 6), inserted) }
             }
             7 => {
                 let (result, inserted) = self.terms_7.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [
-                        args[0].shared().copy(),
-                        args[1].shared().copy(),
-                        args[2].shared().copy(),
-                        args[3].shared().copy(),
-                        args[4].shared().copy(),
-                        args[5].shared().copy(),
-                        args[6].shared().copy(),
-                    ],
+                    args: [arg(0), arg(1), arg(2), arg(3), arg(4), arg(5), arg(6)],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 7), inserted) }
             }

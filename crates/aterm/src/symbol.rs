@@ -68,7 +68,8 @@ impl<'a> SymbolRef<'a> {
     /// We must ensure that the lifetime `'a` is valid for the returned `SymbolRef`.
     pub unsafe fn from_index(index: &SymbolIndex) -> SymbolRef<'a> {
         SymbolRef {
-            shared: index.copy(),
+            // SAFETY: the caller guarantees the index remains valid for `'a`.
+            shared: unsafe { index.copy() },
             marker: PhantomData,
         }
     }
@@ -78,7 +79,8 @@ impl SymbolRef<'_> {
     /// Internal constructor to convert any `Symb` to a `SymbolRef`.
     pub(crate) fn from_symbol<'a, 'b, S: Symb<'a, 'b>>(symbol: &'b S) -> Self {
         SymbolRef {
-            shared: symbol.shared().copy(),
+            // SAFETY: `symbol` keeps the index alive during this call.
+            shared: unsafe { symbol.shared().copy() },
             marker: PhantomData,
         }
     }

@@ -10,7 +10,6 @@ use std::sync::Mutex;
 use log::debug;
 
 use merc_pest_consume::Parser;
-use merc_sharedmutex::GlobalBfSharedMutex;
 use merc_sharedmutex::RecursiveLock;
 use merc_sharedmutex::RecursiveLockReadGuard;
 use merc_unsafety::ProtectionIndex;
@@ -160,6 +159,12 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
+    ///
+    /// # Panics
+    ///
+    /// The iterator is driven while an internal argument buffer is borrowed, so an
+    /// iterator that itself constructs terms (e.g. through [ATerm::with_args] or
+    /// [crate::ATerm::with_iter]) panics with a `RefCell` double borrow.
     pub fn create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> ATerm
     where
         S: Symb<'a, 'b>,
@@ -188,6 +193,12 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator that is fallible.
+    ///
+    /// # Panics
+    ///
+    /// The iterator is driven while an internal argument buffer is borrowed, so an
+    /// iterator that itself constructs terms panics with a `RefCell` double borrow;
+    /// see [Self::create_term_iter].
     pub fn try_create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> Result<ATerm, MercError>
     where
         S: Symb<'a, 'b>,
@@ -215,6 +226,12 @@ impl ThreadTermPool {
     }
 
     /// Create a term with the given arguments given by the iterator.
+    ///
+    /// # Panics
+    ///
+    /// The iterator is driven while an internal argument buffer is borrowed, so an
+    /// iterator that itself constructs terms panics with a `RefCell` double borrow;
+    /// see [Self::create_term_iter].
     pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, S, H, I, T>(
         &self,
         symbol: &'b S,
@@ -267,7 +284,7 @@ impl ThreadTermPool {
         let root = self
             .lock_protection_set()
             .term_protection_set
-            .protect(term.shared().copy());
+            .protect(unsafe { term.shared().copy() });
 
         // Return the protected term
         let result = ATerm::from_index(term.shared(), root);
@@ -286,9 +303,13 @@ impl ThreadTermPool {
     pub fn protect_guard(&self, _guard: RecursiveLockReadGuard<'_, GlobalTermPool>, term: &ATermRef<'_>) -> ATerm {
         // Protect the term by adding its index to the protection set
         // SAFETY: If the global term pool is locked, so we can safely access the protection set.
-        let root = unsafe { &mut *self.protection_sets.get() }
-            .term_protection_set
-            .protect(term.shared().copy());
+        // Copying the index is justified as in `protect`: `term` is alive for this call and
+        // the protection set keeps it a GC root afterwards.
+        let root = unsafe {
+            (*self.protection_sets.get())
+                .term_protection_set
+                .protect(term.shared().copy())
+        };
 
         // Return the protected term
         let result = ATerm::from_index(term.shared(), root);
@@ -342,7 +363,9 @@ impl ThreadTermPool {
     /// Protects a symbol from garbage collection.
     pub fn protect_symbol(&self, symbol: &SymbolRef<'_>) -> Symbol {
         let mut lock = self.lock_protection_set();
-        let root = lock.symbol_protection_set.protect(symbol.shared().copy());
+        // Once inserted the protection set makes it a GC root until the
+        // returned `Symbol` unprotects it.
+        let root = lock.symbol_protection_set.protect(unsafe { symbol.shared().copy() });
         let result = unsafe { Symbol::from_index(symbol.shared(), root) };
 
         debug_trace!(
@@ -559,7 +582,7 @@ mod tests {
                     let protected = term.protect();
 
                     // Verify protection
-                    THREAD_TERM_POOL.with_borrow(|tp| {
+                    THREAD_TERM_POOL.with(|tp| {
                         assert!(
                             tp.lock_protection_set()
                                 .term_protection_set
@@ -571,7 +594,7 @@ mod tests {
                     let root = protected.root();
                     drop(protected);
 
-                    THREAD_TERM_POOL.with_borrow(|tp| {
+                    THREAD_TERM_POOL.with(|tp| {
                         assert!(!tp.lock_protection_set().term_protection_set.contains_root(root));
                     });
                 });
@@ -597,7 +620,7 @@ mod tests {
         let f = Symbol::new("f", 2);
         let g = Symbol::new("g", 1);
 
-        let t = THREAD_TERM_POOL.with_borrow(|tp| {
+        let t = THREAD_TERM_POOL.with(|tp| {
             tp.create_term(
                 &f,
                 &[

@@ -60,8 +60,7 @@ pub struct BfSharedMutex<T> {
 }
 
 // SAFETY: Sending a BfSharedMutex to another thread transfers ownership of the
-// protected T.
-unsafe impl<T: Send> Send for BfSharedMutex<T> {}
+unsafe impl<T: Send + Sync> Send for BfSharedMutex<T> {}
 
 /// The busy and forbidden flags used to implement the protocol.
 #[derive(Default)]
@@ -476,8 +475,7 @@ impl<T> GlobalBfSharedMutex<T> {
     }
 }
 
-// SAFETY: Sending a GlobalBfSharedMutex<T> to another thread requires T: Send, same as RwLock<T>.
-unsafe impl<T: Send> Send for GlobalBfSharedMutex<T> {}
+unsafe impl<T: Send + Sync> Send for GlobalBfSharedMutex<T> {}
 
 // SAFETY: Multiple threads holding &GlobalBfSharedMutex<T> can call share() concurrently
 unsafe impl<T: Send + Sync> Sync for GlobalBfSharedMutex<T> {}

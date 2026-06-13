@@ -98,7 +98,9 @@ impl ATermRef<'_> {
     /// This function is unsafe because it does not check if the index is valid for the given lifetime.
     pub unsafe fn from_index(shared: &ATermIndex) -> Self {
         ATermRef {
-            shared: shared.copy(),
+            // SAFETY: the caller guarantees the index remains valid for the
+            // lifetime of the returned reference.
+            shared: unsafe { shared.copy() },
             marker: PhantomData,
         }
     }
@@ -426,12 +428,15 @@ impl ATermSend {
         // We need to insert the term into the protection set of the current
         // thread, and keep track of the root index to properly unprotect it on
         // drop.
-        let protection_set = THREAD_TERM_POOL.with_borrow(|tp| tp.send_term_protection_set().clone());
+        let protection_set = THREAD_TERM_POOL.with(|tp| tp.send_term_protection_set().clone());
         let term_ref: ATermRef<'static> = unsafe { ATermRef::from_index(&term.term.shared) };
+        // SAFETY: `term` keeps the index alive during this call, and inserting
+        // the copy into the send-term protection set makes it a GC root until
+        // the `ATermSend` is dropped.
         let root = protection_set
             .lock()
             .expect("Lock poisoned!")
-            .protect(term.shared().copy());
+            .protect(unsafe { term.shared().copy() });
 
         Self {
             term: term_ref,
