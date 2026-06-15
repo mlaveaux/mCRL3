@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -13,10 +12,6 @@ use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_lts::AutFormat;
 use merc_lts::AutStream;
-use merc_lts::LtsBuilderFast;
-use merc_lts::StateIndex;
-use merc_lts::write_aut;
-use merc_lts::write_mcrl2_aut;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -165,14 +160,9 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format);
         explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
     } else {
-        let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        // No output requested, discard the explored transitions.
+        let mut builder: () = ();
         explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
-        let lts = builder.finish(StateIndex::new(0), false);
-
-        match args.out_format {
-            AutFormat::Aut => write_aut(&mut stdout(), &lts)?,
-            AutFormat::AutMcrl2 => write_mcrl2_aut(&mut stdout(), &lts)?,
-        }
     }
 
     Ok(())

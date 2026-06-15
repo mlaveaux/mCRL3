@@ -198,6 +198,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxcar"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36f64beae40a84da1b4b26ff2761a5b895c12adc41dc25aaee1c4f2bbfe97a6e"
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1040,6 +1046,7 @@ dependencies = [
 name = "merc_explore"
 version = "2.0.0"
 dependencies = [
+ "boxcar",
  "clap",
  "dashmap",
  "itertools 0.14.0",
@@ -1257,11 +1264,13 @@ dependencies = [
  "crossbeam-utils",
  "dashmap",
  "equivalent",
+ "hashbrown 0.17.1",
  "itertools 0.14.0",
  "log",
  "merc_collections",
  "merc_io",
  "merc_utilities",
+ "parking_lot",
  "rand",
  "rustc-hash 2.1.2",
  "thread_local",

@@ -45,6 +45,32 @@ pub trait LtsBuilder<L: TransitionLabel> {
     fn num_of_states(&self) -> usize;
 }
 
+/// A builder that discards all transitions, producing no output. This is useful
+/// when an LTS only needs to be explored but the result is not required.
+impl<L: TransitionLabel> LtsBuilder<L> for () {
+    type LTS = ();
+
+    fn add_transition<Q>(&mut self, _from: StateIndex, _label: &Q, _to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash,
+    {
+        Ok(())
+    }
+
+    fn finish(&mut self, _initial_state: StateIndex) -> Result<Self::LTS, MercError> {
+        Ok(())
+    }
+
+    fn num_of_transitions(&self) -> usize {
+        0
+    }
+
+    fn num_of_states(&self) -> usize {
+        0
+    }
+}
+
 /// This struct helps in building a labelled transition system by accumulating
 /// transitions in a memory efficient way.
 ///
