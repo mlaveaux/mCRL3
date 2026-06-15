@@ -83,20 +83,25 @@ impl<'a> ATermRef<'a> {
     ///
     /// # Safety
     ///
-    /// This function might only be used if witness is a parent term of the
-    /// current term.
-    pub fn upgrade<'b: 'a>(&'a self, parent: &ATermRef<'b>) -> ATermRef<'b> {
+    /// `parent` must be a parent term of the current term, i.e. the current
+    /// term must be reachable as a subterm of `parent`. The returned reference
+    /// borrows for `'b` on that basis, so if the current term were not actually
+    /// kept live by `parent` the lifetime would be unsound.
+    pub unsafe fn upgrade<'b: 'a>(&'a self, parent: &ATermRef<'b>) -> ATermRef<'b> {
         debug_assert!(
             parent.iter().any(|t| t.copy() == *self),
             "Upgrade has been used on a witness that is not a parent term"
         );
 
-        ATermRef::new(self.term)
+        // SAFETY: the caller guarantees the current term is a subterm of
+        // `parent`, which is live for `'b`, so the term is live for `'b` too.
+        unsafe { ATermRef::new(self.term) }
     }
 
     /// A private unchecked version of [`ATermRef::upgrade`] to use in iterators.
     unsafe fn upgrade_unchecked<'b: 'a>(&'a self, _parent: &ATermRef<'b>) -> ATermRef<'b> {
-        ATermRef::new(self.term)
+        // SAFETY: callers guarantee `_parent` is a parent term, see `upgrade`.
+        unsafe { ATermRef::new(self.term) }
     }
 
     /// Obtains the underlying pointer
@@ -111,7 +116,18 @@ impl<'a> ATermRef<'a> {
 }
 
 impl<'a> ATermRef<'a> {
-    pub(crate) fn new(term: *const ffi::_aterm) -> ATermRef<'a> {
+    /// Creates a reference to the maximally shared term at `term` with an
+    /// arbitrary, caller-chosen lifetime `'a`.
+    ///
+    /// # Safety
+    ///
+    /// The chosen lifetime `'a` must not outlive the term: the term at `term`
+    /// must stay live (protected in an [`ATerm`] or a garbage-collection
+    /// container) for the whole of `'a`. Choosing an unbounded lifetime such as
+    /// `'static` for a term that is not permanently protected is undefined
+    /// behaviour, because garbage collection may free the term while the
+    /// reference is still reachable.
+    pub(crate) unsafe fn new(term: *const ffi::_aterm) -> ATermRef<'a> {
         ATermRef {
             term,
             marker: PhantomData,
@@ -149,7 +165,10 @@ impl ATermRef<'_> {
 
     /// Makes a copy of the term with the same lifetime as itself.
     pub fn copy(&self) -> ATermRef<'_> {
-        ATermRef::new(self.term)
+        // SAFETY: the returned reference is bounded by the borrow of `self`,
+        // which already witnesses that the term is live, so the lifetime cannot
+        // outlive the term.
+        unsafe { ATermRef::new(self.term) }
     }
 
     /// Returns whether the term is the default term (not initialised)

@@ -129,7 +129,7 @@ struct Segment<P: LPS, Local> {
 ///
 /// The interface is similar to [`explore`], but an extra closure is supplied to
 /// produce a fresh per-thread accumulator for each worker.
-/// 
+///
 /// - `make_local()` produces a fresh accumulator for each worker segment.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,

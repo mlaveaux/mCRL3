@@ -275,7 +275,10 @@ impl ThreadTermPool {
         let aterm = ATermPtr::new(term);
         let root = guard.protect(aterm.clone());
 
-        let term = ATermRef::new(term);
+        // SAFETY: the term was just protected on the protection set above
+        // (`root`), so it stays live as long as the resulting `ATerm` holds that
+        // root, which justifies the `'static` lifetime.
+        let term = unsafe { ATermRef::new(term) };
         trace!(
             "Protected term {:?}, index {}, protection set {}",
             term, root, self.index
