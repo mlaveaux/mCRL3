@@ -1048,7 +1048,6 @@ version = "2.0.0"
 dependencies = [
  "boxcar",
  "clap",
- "dashmap",
  "itertools 0.14.0",
  "log",
  "merc_collections",
@@ -1260,6 +1259,7 @@ name = "merc_unsafety"
 version = "3.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
+ "boxcar",
  "crossbeam-utils",
  "dashmap",
  "equivalent",

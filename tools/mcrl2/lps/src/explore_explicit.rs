@@ -343,6 +343,7 @@ impl LPS for ExplicitLinearProcessSpecification {
 impl Summand for ExplicitSummand {
     type Value = usize;
     type Label = Mcrl2MultiActionLabel;
+    type Context = ();
 
     fn read_positions(&self) -> &[usize] {
         &self.read_indices
@@ -352,7 +353,7 @@ impl Summand for ExplicitSummand {
         &self.write_indices
     }
 
-    fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, _context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
