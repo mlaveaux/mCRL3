@@ -286,7 +286,9 @@ impl<'a, T: From<ATerm>> Iterator for ATermListIterRef<'a, T> {
         } else {
             // TODO: This is a bit ugly because ATermListRef does not implement all term functions.
             let head = self.current.head();
-            self.current = self.current.tail().term.upgrade(&self.current.term).into();
+            // SAFETY: `tail()` is a subterm of `self.current`, so `self.current`
+            // is a parent term of it.
+            self.current = unsafe { self.current.tail().term.upgrade(&self.current.term) }.into();
             Some(head)
         }
     }

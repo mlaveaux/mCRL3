@@ -82,7 +82,6 @@ pub struct CacheContext<P: LPS> {
     inner: <P::Summand as Summand>::Context,
 }
 
-
 /// Thin metadata wrapper for a single summand in a [`CacheLPS`].
 pub struct CacheSummandWrapper<P: LPS> {
     /// Index of the summand in the LPS, used for cache lookups.

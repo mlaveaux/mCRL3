@@ -174,7 +174,9 @@ mod inner {
         ///     - application       f(t_0, ..., t_n) -> f
         pub fn data_function_symbol(&self) -> DataFunctionSymbolRef<'_> {
             if is_application(&self.term) {
-                self.term.arg(0).upgrade(&self.term).into()
+                // SAFETY: `arg(0)` is a direct subterm of `self.term`, so it is
+                // a parent term.
+                unsafe { self.term.arg(0).upgrade(&self.term) }.into()
             } else if is_function_symbol(&self.term) {
                 self.term.copy().into()
             } else {
@@ -265,7 +267,9 @@ mod inner {
     impl DataApplication {
         /// Returns the head symbol a data application
         pub fn data_function_symbol(&self) -> DataFunctionSymbolRef<'_> {
-            self.term.arg(0).upgrade(&self.term).into()
+            // SAFETY: `arg(0)` is a direct subterm of `self.term`, so it is a
+            // parent term.
+            unsafe { self.term.arg(0).upgrade(&self.term) }.into()
         }
 
         /// Returns the arguments of a data application
@@ -316,7 +320,9 @@ mod inner {
     impl DataAbstraction {
         /// Returns the binding operator of the abstraction, i.e., lambda, forall, or exists.
         pub fn binding_operator(&self) -> DataFunctionSymbolRef<'_> {
-            self.term.arg(0).upgrade(&self.term).into()
+            // SAFETY: `arg(0)` is a direct subterm of `self.term`, so it is a
+            // parent term.
+            unsafe { self.term.arg(0).upgrade(&self.term) }.into()
         }
 
         /// Returns the list of variables
@@ -447,11 +453,16 @@ impl DataExpressionRef<'static> {
     /// Creates a `'static` reference to a data expression from its raw maximally
     /// shared term address.
     ///
-    /// The caller must ensure the term stays alive for as long as the reference
-    /// is used; in particular it should be held by a garbage-collection
-    /// container such as [`crate::Protected`].
-    pub fn from_address(term: *const crate::_aterm) -> DataExpressionRef<'static> {
-        DataExpressionRef::new(ATermRef::new(term))
+    /// # Safety
+    ///
+    /// The term at `term` must stay live for as long as the returned `'static`
+    /// reference is used; in particular it must be held by a garbage-collection
+    /// container such as [`crate::Protected`]. Otherwise garbage collection may
+    /// free the term while the reference is still reachable, which is undefined
+    /// behaviour.
+    pub unsafe fn from_address(term: *const crate::_aterm) -> DataExpressionRef<'static> {
+        // SAFETY: the caller upholds that the term stays live for `'static`.
+        DataExpressionRef::new(unsafe { ATermRef::new(term) })
     }
 }
 

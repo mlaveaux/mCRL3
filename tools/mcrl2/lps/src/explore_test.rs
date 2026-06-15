@@ -246,8 +246,7 @@ mod tests {
         let mut buffer = Cursor::new(Vec::new());
         {
             let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer));
-            explore_lps_explicit_parallel(&mut builder, &lps, 4, &Timing::new())
-                .expect("Parallel exploration failed");
+            explore_lps_explicit_parallel(&mut builder, &lps, 4, &Timing::new()).expect("Parallel exploration failed");
         }
         buffer.set_position(0);
         let parallel = read_mcrl2_aut(&mut buffer).expect("Failed to read parallel AUT output");
@@ -265,7 +264,13 @@ mod tests {
             lps_path.display()
         );
         assert!(
-            compare_lts(Equivalence::StrongBisim, parallel, sequential, false, &mut Timing::new()),
+            compare_lts(
+                Equivalence::StrongBisim,
+                parallel,
+                sequential,
+                false,
+                &mut Timing::new()
+            ),
             "Parallel and sequential LTSs are not strongly bisimilar for {}",
             lps_path.display()
         );

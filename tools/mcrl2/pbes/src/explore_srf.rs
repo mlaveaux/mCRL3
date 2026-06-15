@@ -127,7 +127,9 @@ pub fn parity_game_from_pbes_parallel(pbes: &Pbes, threads: usize) -> Result<Par
             &timing,
             PbesPartition::default,
             |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
-                partition.vertices.push((VertexIndex::new(state.value()), info.0, info.1));
+                partition
+                    .vertices
+                    .push((VertexIndex::new(state.value()), info.0, info.1));
                 Ok(())
             },
             |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
@@ -345,7 +347,10 @@ impl PbesSrfLps {
         let mut initial_state = Vec::with_capacity(1 + num_params);
         initial_state.push(initial_eq_idx);
         for arg in initial_pvi.arguments().iter() {
-            let (idx, _) = value_mapping.insert(DataExpressionRef::from_address(arg.address()));
+            // SAFETY: the term is interned into `value_mapping`, a `Protected`
+            // container that keeps every interned term live through GC marking
+            // for as long as the mapping exists.
+            let (idx, _) = value_mapping.insert(unsafe { DataExpressionRef::from_address(arg.address()) });
             initial_state.push(idx);
         }
 
@@ -512,7 +517,10 @@ impl Summand for PbesSrfSummand {
 
                 next_state_buf[0] = self.target_equation_index;
                 for (i, &ptr) in next_values.iter().enumerate() {
-                    let (idx, _) = self.mapping.insert(DataExpressionRef::from_address(ptr));
+                    // SAFETY: the term is interned into `self.mapping`, a
+                    // `Protected` container that keeps every interned term live
+                    // through GC marking for as long as the mapping exists.
+                    let (idx, _) = self.mapping.insert(unsafe { DataExpressionRef::from_address(ptr) });
                     next_state_buf[1 + i] = idx;
                 }
 

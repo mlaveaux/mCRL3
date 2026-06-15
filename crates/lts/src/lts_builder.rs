@@ -158,11 +158,17 @@ impl<L: TransitionLabel, B: LtsBuilder<L>> LtsBuilder<L> for MutexLtsBuilder<B> 
     }
 
     fn num_of_transitions(&self) -> usize {
-        self.inner.lock().expect("MutexLtsBuilder mutex poisoned").num_of_transitions()
+        self.inner
+            .lock()
+            .expect("MutexLtsBuilder mutex poisoned")
+            .num_of_transitions()
     }
 
     fn num_of_states(&self) -> usize {
-        self.inner.lock().expect("MutexLtsBuilder mutex poisoned").num_of_states()
+        self.inner
+            .lock()
+            .expect("MutexLtsBuilder mutex poisoned")
+            .num_of_states()
     }
 
     fn require_num_of_states(&mut self, num_states: usize) {

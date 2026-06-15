@@ -175,7 +175,8 @@ mod tests {
         let (sequential_solution, _) = solve_zielonka(&sequential, false);
         let (parallel_solution, _) = solve_zielonka(&parallel, false);
         assert_eq!(
-            parallel_solution[0][0], sequential_solution[0][0],
+            parallel_solution[0][0],
+            sequential_solution[0][0],
             "Parallel and sequential solutions differ for {}",
             pbes_path.display()
         );

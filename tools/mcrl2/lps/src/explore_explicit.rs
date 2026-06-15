@@ -275,7 +275,14 @@ impl ExplicitLinearProcessSpecification {
             .initial_process()
             .expressions()
             .iter()
-            .map(|param| value_mapping.insert(DataExpressionRef::from_address(param.address())).0)
+            // SAFETY: the term is interned into `value_mapping`, a `Protected`
+            // container that keeps every interned term live through GC marking
+            // for as long as the mapping exists.
+            .map(|param| {
+                value_mapping
+                    .insert(unsafe { DataExpressionRef::from_address(param.address()) })
+                    .0
+            })
             .collect::<Vec<usize>>();
 
         debug_assert_eq!(
@@ -517,7 +524,10 @@ impl Summand for ExplicitSummand {
                 next_state_buf.extend_from_slice(state);
                 for (i, &value) in values.iter().enumerate() {
                     let param_index = self.write_indices[i];
-                    let (new_index, _) = self.mapping.insert(DataExpressionRef::from_address(value));
+                    // SAFETY: the term is interned into `self.mapping`, a
+                    // `Protected` container that keeps every interned term live
+                    // through GC marking for as long as the mapping exists.
+                    let (new_index, _) = self.mapping.insert(unsafe { DataExpressionRef::from_address(value) });
                     next_state_buf[param_index] = new_index;
                 }
 
