@@ -432,6 +432,29 @@ mod inner {
 
 pub use inner::*;
 
+// A `DataExpressionRef` is just an address into the maximally shared term pool,
+// so it can be freely copied. Liveness is the responsibility of whoever keeps
+// the underlying term alive (for example a [`crate::Protected`] container).
+impl Clone for DataExpressionRef<'_> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for DataExpressionRef<'_> {}
+
+impl DataExpressionRef<'static> {
+    /// Creates a `'static` reference to a data expression from its raw maximally
+    /// shared term address.
+    ///
+    /// The caller must ensure the term stays alive for as long as the reference
+    /// is used; in particular it should be held by a garbage-collection
+    /// container such as [`crate::Protected`].
+    pub fn from_address(term: *const crate::_aterm) -> DataExpressionRef<'static> {
+        DataExpressionRef::new(ATermRef::new(term))
+    }
+}
+
 /// Substitutes variables in a data expression according to the given substitution sigma.
 pub fn substitute_variables(
     data_expression: &DataExpressionRef,

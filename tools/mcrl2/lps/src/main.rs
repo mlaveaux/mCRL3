@@ -12,6 +12,7 @@ use merc_ldd::Storage;
 use merc_ldd::len;
 use merc_lts::AutFormat;
 use merc_lts::AutStream;
+use merc_lts::MutexLtsBuilder;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -163,14 +164,13 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
     };
 
     if args.threads > 1 {
-        // Parallel exploration streams transitions straight into the AUT writer
-        // as they are discovered; workers pretty-print their own multi-action
-        // labels and add them through the internally synchronised builder, so no
-        // in-memory LTS is built.
+        // Parallel exploration adds transitions concurrently, so the AUT writer
+        // is wrapped in a `MutexLtsBuilder` that serialises the writes; the
+        // expensive enumeration still happens outside the lock.
         if let Some(output) = &args.output {
             let mut file = BufWriter::new(File::create(output)?);
-            let mut stream = AutStream::with_format(&mut file, args.out_format);
-            explore_lps_explicit_parallel(&mut stream, &lps, args.threads, timing)?;
+            let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, args.out_format));
+            explore_lps_explicit_parallel(&mut builder, &lps, args.threads, timing)?;
         } else {
             // No output requested, discard the explored transitions.
             explore_lps_explicit_parallel(&mut (), &lps, args.threads, timing)?;

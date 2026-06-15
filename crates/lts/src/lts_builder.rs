@@ -4,6 +4,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
+use std::sync::Mutex;
 
 use merc_collections::ByteCompressedVec;
 use merc_collections::CompressedEntry;
@@ -43,6 +44,11 @@ pub trait LtsBuilder<L: TransitionLabel> {
 
     /// Returns the number of states added to the builder.
     fn num_of_states(&self) -> usize;
+
+    /// Ensures the builder accounts for at least `num_states` states, so that
+    /// states without incident transitions (such as an isolated initial state)
+    /// are still reflected in the result.
+    fn require_num_of_states(&mut self, num_states: usize);
 }
 
 /// A builder that discards all transitions, producing no output. This is useful
@@ -68,6 +74,115 @@ impl<L: TransitionLabel> LtsBuilder<L> for () {
 
     fn num_of_states(&self) -> usize {
         0
+    }
+
+    fn require_num_of_states(&mut self, _num_states: usize) {}
+}
+
+/// A builder that additionally accepts transitions through a shared `&self`
+/// reference, synchronising internally.
+///
+/// # Details
+///
+/// This is used by the parallel explorer, where several worker threads stream
+/// transitions into a single builder at once. Implementors take care of their
+/// own synchronisation, so callers need no external lock. The builder is
+/// finalised through the [`LtsBuilder`] supertrait once exploration completes.
+pub trait ConcurrentLtsBuilder<L: TransitionLabel>: LtsBuilder<L> + Sync {
+    /// Adds a transition through a shared reference. See
+    /// [`LtsBuilder::add_transition`].
+    fn add_transition_shared<Q>(&self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash;
+}
+
+/// The discarding builder also discards concurrent transitions.
+impl<L: TransitionLabel> ConcurrentLtsBuilder<L> for () {
+    fn add_transition_shared<Q>(&self, _from: StateIndex, _label: &Q, _to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash,
+    {
+        Ok(())
+    }
+}
+
+/// Adapts any [`LtsBuilder`] into a [`ConcurrentLtsBuilder`] by guarding it with
+/// a `Mutex`.
+///
+/// Concurrent (`&self`) transitions simply lock the mutex and delegate to the
+/// inner builder's [`LtsBuilder::add_transition`]; the single-threaded
+/// (`&mut self`) operations access the builder without locking. This serialises
+/// all writes, which is enough for builders that are cheap to write to (such as
+/// [`crate::AutStream`]) while the expensive exploration happens outside the
+/// lock.
+pub struct MutexLtsBuilder<B> {
+    inner: Mutex<B>,
+}
+
+impl<B> MutexLtsBuilder<B> {
+    /// Wraps `builder` so it can be shared across worker threads.
+    pub fn new(builder: B) -> MutexLtsBuilder<B> {
+        MutexLtsBuilder {
+            inner: Mutex::new(builder),
+        }
+    }
+
+    /// Unwraps and returns the inner builder.
+    pub fn into_inner(self) -> B {
+        self.inner.into_inner().expect("MutexLtsBuilder mutex poisoned")
+    }
+}
+
+impl<L: TransitionLabel, B: LtsBuilder<L>> LtsBuilder<L> for MutexLtsBuilder<B> {
+    type LTS = B::LTS;
+
+    fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash,
+    {
+        // We hold `&mut self`, so the builder is exclusively ours and needs no lock.
+        self.inner
+            .get_mut()
+            .expect("MutexLtsBuilder mutex poisoned")
+            .add_transition(from, label, to)
+    }
+
+    fn finish(&mut self, initial_state: StateIndex) -> Result<Self::LTS, MercError> {
+        self.inner
+            .get_mut()
+            .expect("MutexLtsBuilder mutex poisoned")
+            .finish(initial_state)
+    }
+
+    fn num_of_transitions(&self) -> usize {
+        self.inner.lock().expect("MutexLtsBuilder mutex poisoned").num_of_transitions()
+    }
+
+    fn num_of_states(&self) -> usize {
+        self.inner.lock().expect("MutexLtsBuilder mutex poisoned").num_of_states()
+    }
+
+    fn require_num_of_states(&mut self, num_states: usize) {
+        self.inner
+            .get_mut()
+            .expect("MutexLtsBuilder mutex poisoned")
+            .require_num_of_states(num_states)
+    }
+}
+
+impl<L: TransitionLabel, B: LtsBuilder<L> + Send> ConcurrentLtsBuilder<L> for MutexLtsBuilder<B> {
+    fn add_transition_shared<Q>(&self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        L: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = L> + Eq + Hash,
+    {
+        self.inner
+            .lock()
+            .expect("MutexLtsBuilder mutex poisoned")
+            .add_transition(from, label, to)
     }
 }
 
@@ -147,13 +262,6 @@ impl<L: TransitionLabel> LtsBuilderMem<L> {
         }
     }
 
-    /// Ensures that the builder has at least the given number of states.
-    pub fn require_num_of_states(&mut self, num_of_states: usize) {
-        if num_of_states > self.num_of_states {
-            self.num_of_states = num_of_states;
-        }
-    }
-
     /// Returns an iterator over all transitions as (from, label, to) tuples.
     fn iter(&self) -> impl Iterator<Item = (StateIndex, LabelIndex, StateIndex)> {
         self.transition_from
@@ -212,6 +320,12 @@ impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderMem<L> {
 
     fn num_of_states(&self) -> usize {
         self.num_of_states
+    }
+
+    fn require_num_of_states(&mut self, num_of_states: usize) {
+        if num_of_states > self.num_of_states {
+            self.num_of_states = num_of_states;
+        }
     }
 }
 

@@ -31,7 +31,12 @@ pub struct AutStream<W: Write, L> {
     /// Keep track of the number of states added.
     number_of_states: usize,
 
-    _marker: PhantomData<L>,
+    /// Records the label type without affecting the auto traits of the stream:
+    /// the labels themselves are never stored, so an `AutStream` stays `Send`
+    /// and `Sync` (so it can be wrapped in a [`crate::MutexLtsBuilder`] and shared
+    /// across worker threads) even when `L` is neither — for example mCRL2
+    /// multi-action labels backed by a thread-local `ATerm`.
+    _marker: PhantomData<fn() -> L>,
 }
 
 impl<W: Write, L> AutStream<W, L> {
@@ -66,14 +71,6 @@ impl<W: Write, L> AutStream<W, L> {
             number_of_transitions: 0,
             number_of_states: 0,
             _marker: PhantomData,
-        }
-    }
-
-    /// Sets the number of states to at least the given number. All states without transitions
-    /// will simply become deadlock states.
-    pub fn require_num_of_states(&mut self, num_states: usize) {
-        if num_states > self.number_of_states {
-            self.number_of_states = num_states;
         }
     }
 }
@@ -123,6 +120,14 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
     /// Returns the number of states added to the builder.
     fn num_of_states(&self) -> usize {
         self.number_of_states
+    }
+
+    /// Sets the number of states to at least the given number. All states
+    /// without transitions simply become deadlock states.
+    fn require_num_of_states(&mut self, num_states: usize) {
+        if num_states > self.number_of_states {
+            self.number_of_states = num_states;
+        }
     }
 }
 
