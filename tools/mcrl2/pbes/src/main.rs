@@ -15,6 +15,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use crate::explore_srf::parity_game_from_pbes;
+use crate::explore_srf::parity_game_from_pbes_parallel;
 use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
 use merc_explore::CachingStrategy;
@@ -132,6 +133,12 @@ struct ExploreExplicitArgs {
     /// Explicitly choose the format of the input PBES file.
     #[arg(long, short('i'), value_enum)]
     format: Option<PbesFormat>,
+
+    /// Number of worker threads used for exploration. With more than one thread
+    /// a level-synchronised parallel breadth-first search is used (the
+    /// `--strategy` flag is then ignored).
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
 }
 
 #[derive(clap::Args, Debug)]
@@ -158,6 +165,12 @@ struct SolveArgs {
     /// Whether to verify the solution after computing it.
     #[arg(long, default_value_t = false)]
     verify_solution: bool,
+
+    /// Number of worker threads used for exploration. With more than one thread
+    /// a level-synchronised parallel breadth-first search is used (the
+    /// `--strategy` flag is then ignored).
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -205,7 +218,11 @@ fn read_pbes(filename: &str, format: Option<PbesFormat>) -> Result<Pbes, MercErr
 
 fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format)?;
-    let game = parity_game_from_pbes(&pbes, args.strategy, args.caching)?;
+    let game = if args.threads > 1 {
+        parity_game_from_pbes_parallel(&pbes, args.threads)?
+    } else {
+        parity_game_from_pbes(&pbes, args.strategy, args.caching)?
+    };
     println!(
         "Parity game: {} vertices, {} edges",
         game.num_of_vertices(),
@@ -218,7 +235,11 @@ fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
 /// solves the game, printing the solution of the initial vertex.
 fn handle_solve(args: SolveArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format)?;
-    let game = parity_game_from_pbes(&pbes, args.strategy, args.caching)?;
+    let game = if args.threads > 1 {
+        parity_game_from_pbes_parallel(&pbes, args.threads)?
+    } else {
+        parity_game_from_pbes(&pbes, args.strategy, args.caching)?
+    };
     info!(
         "Parity game: {} vertices, {} edges",
         game.num_of_vertices(),

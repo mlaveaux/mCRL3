@@ -1,7 +1,9 @@
+use std::cell::Cell;
 use std::fmt;
 use std::sync::Arc;
 
 use log::debug;
+use log::info;
 
 use mcrl2::_aterm;
 use mcrl2::ATerm;
@@ -12,21 +14,37 @@ use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
+use mcrl2::Protected;
 use mcrl2::free_variables_data_expression;
 use mcrl2::is_variable;
 use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
 use mcrl2::tau_multi_action;
+use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
-use merc_explore::explore_to_lts;
+use merc_explore::explore;
+use merc_explore::explore_parallel;
+use merc_io::TimeProgress;
+use merc_lts::ConcurrentLtsBuilder;
 use merc_lts::LtsBuilder;
 use merc_lts::TransitionLabel;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+
+/// Periodic progress reporter for LPS exploration, printing the number of
+/// discovered states and transitions.
+fn lps_progress() -> TimeProgress<(usize, usize)> {
+    TimeProgress::new(
+        |(states, transitions): (usize, usize)| {
+            info!("Explored {states} states, {transitions} transitions...");
+        },
+        1,
+    )
+}
 
 /// Explore the linear process specification explicitly, forwarding the
 /// discovered transitions to `builder`.
@@ -43,7 +61,99 @@ where
     let lps = ExplicitLinearProcessSpecification::new(lps)?;
     debug!("{lps:?}");
 
-    explore_to_lts(builder, &lps, strategy, caching, timing)?;
+    // Count states and transitions in the exploration closures, driving the
+    // periodic progress reporter from `on_transition`.
+    let progress = lps_progress();
+    let states = Cell::new(0usize);
+    let transitions = Cell::new(0usize);
+
+    let cached = CacheLPS::new(&lps, caching);
+    let initial = explore(
+        &cached,
+        strategy,
+        timing,
+        builder,
+        |_b: &mut B, _state, _info: &()| {
+            states.set(states.get() + 1);
+            Ok(())
+        },
+        |b: &mut B, from, label: &Mcrl2MultiActionLabel, to| {
+            transitions.set(transitions.get() + 1);
+            progress.print((states.get(), transitions.get()));
+            b.add_transition(from, label, to)
+        },
+    )?;
+    info!(
+        "Exploration complete: {} states, {} transitions",
+        states.get(),
+        transitions.get(),
+    );
+    builder.finish(initial)?;
+    debug!("{}", cached.metrics());
+    Ok(())
+}
+
+/// Explores the linear process specification explicitly in parallel across
+/// `threads` worker threads, streaming the discovered transitions into
+/// `builder`.
+///
+/// Each worker pretty-prints its own multi-action labels — the backing
+/// [`ATerm`]s never leave the thread that created them — and adds the resulting
+/// transition straight into the shared `builder` through
+/// [`ConcurrentLtsBuilder`], which synchronises internally, so no intermediate
+/// interning of label terms is required.
+pub fn explore_lps_explicit_parallel<B>(
+    builder: &mut B,
+    lps: &LinearProcessSpecification,
+    threads: usize,
+    timing: &Timing,
+) -> Result<(), MercError>
+where
+    B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
+{
+    let lps = ExplicitLinearProcessSpecification::new(lps)?;
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .map_err(|err| MercError::from(format!("Failed to build thread pool: {err}")))?;
+
+    // Shared (immutable) reference to the builder used by the worker threads;
+    // `ConcurrentLtsBuilder` requires `Sync`, so the workers can add transitions
+    // concurrently while the builder synchronises internally.
+    let builder_ref: &B = builder;
+
+    // Each worker keeps a private `(states, transitions)` count; the per-thread
+    // progress trackers cannot be shared (`TimeProgress` is `!Sync`), so the
+    // parallel path only reports the final summary once the levels are merged.
+    let (initial, counts) = timing.measure("explore", || -> Result<_, MercError> {
+        pool.install(|| {
+            let timing = Timing::new();
+            explore_parallel(
+                &lps,
+                &timing,
+                || (0usize, 0usize),
+                |counts: &mut (usize, usize), _state, _info: &()| {
+                    counts.0 += 1;
+                    Ok(())
+                },
+                |counts: &mut (usize, usize), from, label: &Mcrl2MultiActionLabel, to| {
+                    counts.1 += 1;
+                    builder_ref.add_transition_shared(from, label, to)
+                },
+            )
+        })
+    })?;
+
+    let total_states: usize = counts.iter().map(|(states, _)| *states).sum();
+    let total_transitions: usize = counts.iter().map(|(_, transitions)| *transitions).sum();
+    info!("Exploration complete: {total_states} states, {total_transitions} transitions");
+
+    // Finalise the builder, recording the total number of states so isolated
+    // (deadlock) states are still reflected in the result.
+    builder.require_num_of_states(total_states);
+    builder.finish(initial)?;
+
     Ok(())
 }
 
@@ -99,22 +209,15 @@ fn is_mcrl2_timed_multi_action_term(term: &ATerm) -> bool {
     symbol.name() == "TimedMultAct" && symbol.arity() == 2
 }
 
-/// One [`ConcurrentIndexedSet`] per process parameter, interning the data
-/// expressions observed for that parameter to a dense `usize` index.
-///
-/// Held in a [`boxcar::Vec`] so it can be shared by `&self` between the LPS and
-/// every summand: the outer vector is filled once at construction and only read
-/// by index afterwards, while the inner sets are appended to concurrently from
-/// each worker's enumeration callback. State-vector positions are exactly these
-/// indices, so the mapping must be globally consistent across worker threads.
-type ParameterMapping = boxcar::Vec<ConcurrentIndexedSet<DataExpression>>;
-
 /// Explicit-state view of a [mcrl2::LinearProcessSpecification] that implements
 /// the [merc_explore::LPS] trait.
 ///
-/// State vectors are indexed into a per-parameter [`ConcurrentIndexedSet`] of
-/// the data expressions observed for that parameter (see [`ParameterMapping`]).
-/// Labels are the printed multi-actions of the summands.
+/// State vectors are indices into a shared [`ValueMapping`]: a thread-safe set
+/// interning the data expressions observed for every process parameter. The set
+/// stores bare [`DataExpressionRef`]s kept alive by the garbage collector
+/// through the [`Protected`] wrapper, so the mapping is globally consistent and
+/// safe to populate from several worker threads at once. Labels are the printed
+/// multi-actions of the summands.
 struct ExplicitLinearProcessSpecification {
     /// The (preprocessed) underlying LPS. Retained because each per-thread
     /// [`ExplicitContext`] builds its own [`LearnSuccessorsContext`] from it.
@@ -126,12 +229,25 @@ struct ExplicitLinearProcessSpecification {
     /// The summands extracted from the LPS.
     summands: Vec<ExplicitSummand>,
 
-    /// Concurrent per-parameter value interning shared with every summand.
-    mapping: Arc<ParameterMapping>,
+    /// Concurrent value interning shared with every summand. Owned here through
+    /// [`Protected`] so the garbage-collection protection is released when the
+    /// LPS is dropped.
+    value_mapping: Protected<ValueMapping>,
 
     /// The initial state vector.
     initial_state: Vec<usize>,
 }
+
+/// Shared interning of the data expressions observed as parameter values,
+/// mapping each distinct expression to a dense `usize` used in state vectors.
+type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
+
+// SAFETY: after construction the LPS is immutable except for `value_mapping`,
+// whose backing [`ConcurrentIndexedSet`] is itself thread-safe. The cached
+// `*const _aterm` parameter pointers are stable maximally shared term addresses,
+// and mCRL2 garbage collection is stop-the-world, so no `&self` access can race
+// with collection.
+unsafe impl Sync for ExplicitLinearProcessSpecification {}
 
 impl ExplicitLinearProcessSpecification {
     fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
@@ -142,20 +258,16 @@ impl ExplicitLinearProcessSpecification {
         let process_parameters: Vec<*const _aterm> = parameter_terms.iter().map(|param| param.address()).collect();
         let num_parameters = parameters.len();
 
-        // One concurrent interning set per process parameter. The outer vector
-        // is populated once here and only read by index afterwards.
-        let mapping: ParameterMapping = boxcar::Vec::with_capacity(num_parameters);
-        for _ in 0..num_parameters {
-            mapping.push(ConcurrentIndexedSet::new());
-        }
-        let mapping = Arc::new(mapping);
+        // Shared value interning, kept alive as a garbage-collection container
+        // by `value_mapping`.
+        let value_mapping = Protected::new(ValueMapping::new());
 
         let mut summands = Vec::new();
         for index in 0..lps.num_summands() {
             summands.push(ExplicitSummand::new(
                 &lps.action_summand(index)?,
                 &parameters,
-                Arc::clone(&mapping),
+                value_mapping.handle(),
             ));
         }
 
@@ -163,8 +275,7 @@ impl ExplicitLinearProcessSpecification {
             .initial_process()
             .expressions()
             .iter()
-            .enumerate()
-            .map(|(i, param)| mapping[i].insert(param.clone()).0)
+            .map(|param| value_mapping.insert(DataExpressionRef::from_address(param.address())).0)
             .collect::<Vec<usize>>();
 
         debug_assert_eq!(
@@ -177,7 +288,7 @@ impl ExplicitLinearProcessSpecification {
             lps,
             summands,
             process_parameters,
-            mapping,
+            value_mapping,
             initial_state,
         })
     }
@@ -203,6 +314,15 @@ pub struct ExplicitContext {
     next_state_buf: Vec<usize>,
 }
 
+// SAFETY: an `ExplicitContext` is owned by exactly one worker thread, which both
+// creates and uses it. `parameter_values` is transient scratch holding stable,
+// maximally shared term addresses (not protected `ATerm`s), and the
+// `LearnSuccessorsContext` wraps a per-worker mCRL2 enumerator that no other
+// thread touches. mCRL2 is built with multithreading enabled and its garbage
+// collection is stop-the-world, so moving the context between threads cannot
+// race with collection or with another worker.
+unsafe impl Send for ExplicitContext {}
+
 /// A single summand of the LPS, prepared for explicit enumeration.
 struct ExplicitSummand {
     /// The indices of the parameters that this summand reads.
@@ -224,13 +344,13 @@ struct ExplicitSummand {
     /// The multi-action of this summand.
     multi_action: Mcrl2MultiActionLabel,
 
-    /// Concurrent per-parameter value interning shared with the enclosing LPS
-    /// (see [`ParameterMapping`]).
-    mapping: Arc<ParameterMapping>,
+    /// Handle to the enclosing LPS's value interning, used to intern enumerated
+    /// next-state values from any worker thread.
+    mapping: Arc<ValueMapping>,
 }
 
 impl ExplicitSummand {
-    fn new(summand: &LinearSummand, parameters: &ATermList<DataVariable>, mapping: Arc<ParameterMapping>) -> Self {
+    fn new(summand: &LinearSummand, parameters: &ATermList<DataVariable>, mapping: Arc<ValueMapping>) -> Self {
         // Collect free variables from the condition.
         let mut read_vars = free_variables_data_expression(&summand.condition().copy());
         let parameters = parameters.to_vec();
@@ -336,9 +456,9 @@ impl LPS for ExplicitLinearProcessSpecification {
         );
 
         context.parameter_values.clear();
-        for (i, value_index) in state.iter().enumerate() {
+        for value_index in state.iter() {
             context.parameter_values.push(
-                self.mapping[i]
+                self.value_mapping
                     .get_by_index(*value_index)
                     .expect("Value must be in the mapping")
                     .address(),
@@ -397,7 +517,7 @@ impl Summand for ExplicitSummand {
                 next_state_buf.extend_from_slice(state);
                 for (i, &value) in values.iter().enumerate() {
                     let param_index = self.write_indices[i];
-                    let (new_index, _) = self.mapping[param_index].insert(DataExpression::from(ATerm::from_ptr(value)));
+                    let (new_index, _) = self.mapping.insert(DataExpressionRef::from_address(value));
                     next_state_buf[param_index] = new_index;
                 }
 

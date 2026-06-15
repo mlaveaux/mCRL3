@@ -26,6 +26,7 @@ use mcrl2::verbosity_to_log_level;
 
 use explore_explicit::Mcrl2MultiActionLabel;
 use explore_explicit::explore_lps_explicit;
+use explore_explicit::explore_lps_explicit_parallel;
 use explore_symbolic::explore_lps_symbolic;
 
 mod explore_explicit;
@@ -95,6 +96,12 @@ struct ExploreExplicitArgs {
     /// Order in which discovered states are explored.
     #[arg(long, short('s'), value_enum, default_value_t = ExplorationStrategy::Dfs)]
     strategy: ExplorationStrategy,
+
+    /// Number of worker threads used for exploration. With more than one thread
+    /// a level-synchronised parallel breadth-first search is used (the
+    /// `--strategy` flag is then ignored) and state numbering is nondeterministic.
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -155,7 +162,20 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         LpsFormat::Text => read_lps_text(&args.filename)?,
     };
 
-    if let Some(output) = &args.output {
+    if args.threads > 1 {
+        // Parallel exploration streams transitions straight into the AUT writer
+        // as they are discovered; workers pretty-print their own multi-action
+        // labels and add them through the internally synchronised builder, so no
+        // in-memory LTS is built.
+        if let Some(output) = &args.output {
+            let mut file = BufWriter::new(File::create(output)?);
+            let mut stream = AutStream::with_format(&mut file, args.out_format);
+            explore_lps_explicit_parallel(&mut stream, &lps, args.threads, timing)?;
+        } else {
+            // No output requested, discard the explored transitions.
+            explore_lps_explicit_parallel(&mut (), &lps, args.threads, timing)?;
+        }
+    } else if let Some(output) = &args.output {
         let mut file = BufWriter::new(File::create(output)?);
         let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format);
         explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;

@@ -8,9 +8,11 @@ mod tests {
     use merc_explore::ExplorationStrategy;
     use merc_io::temp_dir;
     use merc_io::traced_command;
+    use merc_vpg::PG;
     use merc_vpg::solve_zielonka;
 
     use crate::explore_srf::parity_game_from_pbes;
+    use crate::explore_srf::parity_game_from_pbes_parallel;
 
     fn pbessolve_result(pbessolve: &Path, pbes_path: &Path) -> bool {
         let output = Command::new(pbessolve)
@@ -144,6 +146,83 @@ mod tests {
             "PBES solution mismatch for {spec_relative_path} with {formula_relative_path}: \
              our solver says {result}, pbessolve says {reference}"
         );
+    }
+
+    /// Builds the parity game from `pbes_path` both sequentially and with the
+    /// parallel BFS on several threads, and asserts they have equal vertex and
+    /// edge counts and the same solution for the initial vertex (vertex 0 is the
+    /// initial state in both, even though the remaining numbering differs).
+    fn assert_parallel_matches_sequential_pbes(pbes_path: &Path) {
+        let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
+
+        let sequential = parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("Sequential exploration failed");
+        let parallel = parity_game_from_pbes_parallel(&pbes, 4).expect("Parallel exploration failed");
+
+        assert_eq!(
+            parallel.num_of_vertices(),
+            sequential.num_of_vertices(),
+            "Parallel and sequential vertex counts differ for {}",
+            pbes_path.display()
+        );
+        assert_eq!(
+            parallel.num_of_edges(),
+            sequential.num_of_edges(),
+            "Parallel and sequential edge counts differ for {}",
+            pbes_path.display()
+        );
+
+        let (sequential_solution, _) = solve_zielonka(&sequential, false);
+        let (parallel_solution, _) = solve_zielonka(&parallel, false);
+        assert_eq!(
+            parallel_solution[0][0], sequential_solution[0][0],
+            "Parallel and sequential solutions differ for {}",
+            pbes_path.display()
+        );
+    }
+
+    /// Converts a text PBES with `txt2pbes` and asserts parallel and sequential
+    /// parity-game construction agree.
+    fn compare_parallel_text_pbes(text_pbes_relative_path: &str) {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let txt2pbes = Path::new(&mcrl2_path).join("txt2pbes");
+        let text_pbes_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(text_pbes_relative_path);
+        assert!(
+            text_pbes_path.exists(),
+            "Text PBES file not found: {}",
+            text_pbes_path.display()
+        );
+
+        let temp = temp_dir("test_explore_srf_parallel").unwrap();
+        let pbes_path = temp.path().join("spec.pbes");
+
+        let status = traced_command(Command::new(&txt2pbes).arg(&text_pbes_path).arg(&pbes_path))
+            .expect("Failed to execute txt2pbes");
+        assert!(status.success(), "txt2pbes failed with status: {status}");
+
+        assert_parallel_matches_sequential_pbes(&pbes_path);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_parallel_a_text_pbes() {
+        compare_parallel_text_pbes("../../../examples/pbes/a.text.pbes");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_parallel_b_text_pbes() {
+        compare_parallel_text_pbes("../../../examples/pbes/b.text.pbes");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_parallel_c_text_pbes() {
+        compare_parallel_text_pbes("../../../examples/pbes/c.text.pbes");
     }
 
     #[test]

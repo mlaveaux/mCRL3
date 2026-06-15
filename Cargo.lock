@@ -1150,7 +1150,6 @@ version = "2.0.0"
 dependencies = [
  "boxcar",
  "clap",
- "dashmap",
  "itertools 0.14.0",
  "log",
  "merc_collections",
@@ -1161,6 +1160,7 @@ dependencies = [
  "merc_unsafety",
  "merc_utilities",
  "rand",
+ "rayon",
  "rustc-hash 2.1.2",
  "streaming-iterator",
  "tempfile",
@@ -1446,6 +1446,7 @@ name = "merc_unsafety"
 version = "3.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
+ "boxcar",
  "crossbeam-utils",
  "dashmap",
  "equivalent",
