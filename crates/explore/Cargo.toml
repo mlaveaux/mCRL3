@@ -24,6 +24,7 @@ boxcar.workspace = true
 clap ={ workspace = true, optional = true }
 itertools.workspace = true
 log.workspace = true
+rayon.workspace = true
 rustc-hash.workspace = true
 streaming-iterator.workspace = true
 
