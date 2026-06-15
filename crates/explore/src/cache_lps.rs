@@ -1,15 +1,16 @@
-use std::cell::Cell;
-use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use rustc_hash::FxHashMap;
+use merc_unsafety::ShardedHashMap;
+use rustc_hash::FxBuildHasher;
 
 use merc_utilities::MercError;
 
 use crate::BTreeForest;
+use crate::BTreeForestContext;
 use crate::LPS;
-use crate::Slot;
 use crate::Summand;
 use crate::Tree;
 
@@ -23,24 +24,73 @@ pub enum CachingStrategy {
     Local,
 }
 
+/// Number of shards in each summand's local cache. Modest because the sharding
+/// is already two-dimensional (one independent cache per summand) and the hot
+/// lookup path only takes a shard read lock.
+const CACHE_SHARDS: usize = 16;
+
 /// A wrapper around an [`LPS`] that caches summand enumeration results.
 ///
 /// The cache key for each summand is formed by projecting the state vector onto
 /// the summand's read positions.
+///
+/// The cache is thread-safe: each summand's local cache, the shared forest and
+/// the hit / miss counters are all updated through `&self`, so a single
+/// `CacheLPS` can be shared (by `&`) across worker threads. Each thread threads
+/// its own [`CacheContext`] through [`Summand::enumerate`] for the reusable
+/// scratch buffers.
 pub struct CacheLPS<P: LPS> {
-    inner: Rc<P>,
+    inner: Arc<P>,
     summands: Vec<CacheSummandWrapper<P>>,
 }
 
-struct CacheShared<V: Slot, L: Clone> {
-    /// Stores the nodes for all the cached keys and values, ensuring that the cache is stored compactly.
-    forest: BTreeForest<V, 2>,
+/// A single cached enumeration result keyed by the read-position projection.
+///
+/// Stored as a bare element in a summand's sharded cache table; the hash and
+/// equality are taken over `key` only. The captured results live behind an
+/// [`Arc`] so cache hits clone the handle rather than the whole vector.
+struct CacheEntry<L> {
+    /// Hash-consed projection of the source state onto the read positions.
+    key: Tree,
+    /// Captured `(label, write-position values tree)` pairs for the key.
+    results: Arc<Vec<(L, Tree)>>,
+}
 
-    /// An array of summand local caches.
-    local_caches: RefCell<Vec<FxHashMap<Tree, Vec<(L, Tree)>>>>,
+impl<L> Clone for CacheEntry<L> {
+    fn clone(&self) -> Self {
+        CacheEntry {
+            key: self.key,
+            results: Arc::clone(&self.results),
+        }
+    }
+}
 
-    key_buf: RefCell<Vec<V>>,
-    replay_buf: RefCell<Vec<V>>,
+/// Per-thread reusable scratch buffers for [`CacheSummandWrapper::enumerate`].
+///
+/// Holding these per thread (rather than in shared `&self` state) is what makes
+/// concurrent enumeration sound: each thread interns into the shared forest and
+/// cache through `&self` but stages its keys and replay values in its own
+/// context.
+pub struct CacheContext<P: LPS> {
+    /// Buffer projecting the state vector onto read (then write) positions.
+    key_buf: Vec<P::Value>,
+    /// Buffer reconstructing a next-state from a cached write-position tree.
+    replay_buf: Vec<P::Value>,
+    /// Scratch buffers reused when interning into the forest.
+    forest_context: BTreeForestContext,
+    /// Enumeration context for the wrapped inner summand (cache misses).
+    inner: <P::Summand as Summand>::Context,
+}
+
+impl<P: LPS> Default for CacheContext<P> {
+    fn default() -> Self {
+        CacheContext {
+            key_buf: Vec::new(),
+            replay_buf: Vec::new(),
+            forest_context: BTreeForestContext::new(),
+            inner: Default::default(),
+        }
+    }
 }
 
 /// Thin metadata wrapper for a single summand in a [`CacheLPS`].
@@ -56,28 +106,28 @@ pub struct CacheSummandWrapper<P: LPS> {
     /// Caching strategy in effect for this summand.
     strategy: CachingStrategy,
 
-    /// Shared cache data structures.
-    shared: Rc<CacheShared<P::Value, P::Label>>,
+    /// This summand's local enumeration cache, keyed by the read-position
+    /// projection tree. One independent cache per summand, as intended by the
+    /// `Local` strategy.
+    cache: ShardedHashMap<CacheEntry<P::Label>, FxBuildHasher>,
+
+    /// Hash-consed forest holding the keys and captured values. Shared across
+    /// all summands so equal sequences are stored once.
+    forest: Arc<BTreeForest<P::Value, 2>>,
 
     /// Shared reference to the inner LPS for delegating cache misses.
-    inner: Rc<P>,
+    inner: Arc<P>,
 
     /// Number of enumerations served from the cache.
-    hits: Cell<u64>,
+    hits: AtomicU64,
     /// Number of enumerations that had to be delegated to the inner summand.
-    misses: Cell<u64>,
+    misses: AtomicU64,
 }
 
 impl<P: LPS> CacheLPS<P> {
     pub fn new(inner: P, strategy: CachingStrategy) -> Self {
-        let inner = Rc::new(inner);
-        let num_summands = inner.summands().len();
-        let shared = Rc::new(CacheShared {
-            forest: BTreeForest::new(),
-            local_caches: RefCell::new(vec![FxHashMap::default(); num_summands]),
-            key_buf: RefCell::new(Vec::new()),
-            replay_buf: RefCell::new(Vec::new()),
-        });
+        let inner = Arc::new(inner);
+        let forest = Arc::new(BTreeForest::new());
 
         let summands: Vec<_> = inner
             .summands()
@@ -88,10 +138,11 @@ impl<P: LPS> CacheLPS<P> {
                 read_positions: s.read_positions().to_vec(),
                 write_positions: s.write_positions().to_vec(),
                 strategy,
-                shared: Rc::clone(&shared),
-                inner: Rc::clone(&inner),
-                hits: Cell::new(0),
-                misses: Cell::new(0),
+                cache: ShardedHashMap::with_shards(CACHE_SHARDS),
+                forest: Arc::clone(&forest),
+                inner: Arc::clone(&inner),
+                hits: AtomicU64::new(0),
+                misses: AtomicU64::new(0),
             })
             .collect();
 
@@ -109,14 +160,14 @@ impl<P: LPS> CacheLPS<P> {
             .map(|s| {
                 let entries = match s.strategy {
                     CachingStrategy::None => 0,
-                    CachingStrategy::Local => s.shared.local_caches.borrow()[s.index].len(),
+                    CachingStrategy::Local => s.cache.len(),
                 };
 
                 SummandCacheMetrics {
                     index: s.index,
                     strategy: s.strategy,
-                    hits: s.hits.get(),
-                    misses: s.misses.get(),
+                    hits: s.hits.load(Ordering::Relaxed),
+                    misses: s.misses.load(Ordering::Relaxed),
                     entries,
                 }
             })
@@ -256,6 +307,7 @@ impl<P: LPS> LPS for CacheLPS<P> {
 impl<P: LPS> CacheSummandWrapper<P> {
     fn replay_cached(
         &self,
+        context: &mut CacheContext<P>,
         state: &[P::Value],
         results: &[(P::Label, Tree)],
         report: &mut impl FnMut(&P::Label, &[P::Value]) -> Result<(), MercError>,
@@ -264,14 +316,14 @@ impl<P: LPS> CacheSummandWrapper<P> {
         // The remaining positions are passed through unchanged, so they
         // must be taken from the *live* source state rather than the state
         // for which the entry was originally computed.
-        let mut replay_buf = self.shared.replay_buf.borrow_mut();
+        let replay_buf = &mut context.replay_buf;
         for (label, write_tree) in results {
             replay_buf.clear();
             replay_buf.extend_from_slice(state);
-            for (&pos, value) in self.write_positions.iter().zip(self.shared.forest.iter(*write_tree)) {
+            for (&pos, value) in self.write_positions.iter().zip(self.forest.iter(*write_tree)) {
                 replay_buf[pos] = value;
             }
-            report(label, &replay_buf)?;
+            report(label, replay_buf)?;
         }
         Ok(())
     }
@@ -280,62 +332,80 @@ impl<P: LPS> CacheSummandWrapper<P> {
 impl<P: LPS> Summand for CacheSummandWrapper<P> {
     type Value = P::Value;
     type Label = P::Label;
+    type Context = CacheContext<P>;
 
-    fn enumerate<F>(&self, state: &[Self::Value], mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, context: &mut Self::Context, state: &[Self::Value], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>,
     {
         if self.strategy == CachingStrategy::None || self.read_positions.is_empty() {
-            return self.inner.summands()[self.index].enumerate(state, report);
+            return self.inner.summands()[self.index].enumerate(&mut context.inner, state, report);
         }
 
-        // Project state vector onto read positions to form the cache key.
-        {
-            let mut key_buf = self.shared.key_buf.borrow_mut();
+        // Project the state vector onto the read positions to form the cache
+        // key, interning it into the shared forest.
+        let key_tree = {
+            let CacheContext {
+                key_buf,
+                forest_context,
+                ..
+            } = &mut *context;
             key_buf.clear();
             for &pos in &self.read_positions {
                 key_buf.push(state[pos]);
             }
+            self.forest.insert_with(key_buf, forest_context)
+        };
+
+        // This summand owns its cache, so the key is the projection tree alone.
+        let hash = self.cache.hash(&key_tree);
+        let eq = |entry: &CacheEntry<P::Label>| entry.key == key_tree;
+
+        // Fast path: a present entry is found under a read lock only.
+        if let Some(entry) = self.cache.find(hash, eq) {
+            self.hits.fetch_add(1, Ordering::Relaxed);
+            self.replay_cached(context, state, &entry.results, &mut report)?;
+            return Ok(());
         }
 
-        let key_tree = {
-            let key_buf = self.shared.key_buf.borrow();
-            self.shared.forest.insert(&key_buf)
-        };
+        self.misses.fetch_add(1, Ordering::Relaxed);
+        // Cache MISS: delegate to inner summand, capture results. Only the
+        // values at the write positions are stored; on replay they are
+        // scattered back onto the live source state (see the hit branch).
+        let mut captured: Vec<(P::Label, Tree)> = Vec::new();
+        {
+            let inner_summand = &self.inner.summands()[self.index];
+            let forest = &self.forest;
+            let write_positions = &self.write_positions;
+            let CacheContext {
+                key_buf,
+                forest_context,
+                inner,
+                ..
+            } = &mut *context;
 
-        let hit = {
-            let caches = self.shared.local_caches.borrow();
-            if let Some(results) = caches[self.index].get(&key_tree) {
-                self.hits.set(self.hits.get() + 1);
-                self.replay_cached(state, results, &mut report)?;
-                true
-            } else {
-                false
-            }
-        };
-
-        if !hit {
-            self.misses.set(self.misses.get() + 1);
-            // Cache MISS: delegate to inner summand, capture results. Only the
-            // values at the write positions are stored; on replay they are
-            // scattered back onto the live source state (see the hit branch).
-            let mut captured: Vec<(P::Label, Tree)> = Vec::new();
-
-            self.inner.summands()[self.index].enumerate(state, |label, next_state| {
-                let mut scratch = self.shared.key_buf.borrow_mut();
-                scratch.clear();
-                for &pos in &self.write_positions {
-                    scratch.push(next_state[pos]);
+            inner_summand.enumerate(inner, state, |label, next_state| {
+                key_buf.clear();
+                for &pos in write_positions {
+                    key_buf.push(next_state[pos]);
                 }
-                let tree = self.shared.forest.insert(&scratch);
-                drop(scratch);
+                let tree = forest.insert_with(key_buf, forest_context);
                 captured.push((label.clone(), tree));
                 report(label, next_state)
             })?;
-
-            // Store results in cache.
-            self.shared.local_caches.borrow_mut()[self.index].insert(key_tree, captured);
         }
+
+        // Publish the captured results. A concurrent thread may have inserted
+        // the same key meanwhile; `find_or_insert_with` keeps the resident
+        // entry and our copy is dropped. Either way the transitions above were
+        // already reported.
+        let results = Arc::new(captured);
+        self.cache.find_or_insert_with(
+            hash,
+            eq,
+            |entry| self.cache.hash(&entry.key),
+            || CacheEntry { key: key_tree, results },
+        );
 
         Ok(())
     }
