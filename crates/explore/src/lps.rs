@@ -33,12 +33,23 @@ pub trait LPS {
     /// Returns the summands that together define the transition relation.
     fn summands(&self) -> &[Self::Summand];
 
-    /// Prepares the implementation for enumerating transitions from `state`.
+    /// Creates a fresh per-thread enumeration context for driving the summands.
+    ///
+    /// Each worker thread owns exactly one context; it holds the enumeration
+    /// backend and the reusable scratch buffers. The LPS definition itself stays
+    /// immutable and shareable by `&self`, so a single LPS can drive several
+    /// contexts concurrently. The returned context is threaded through both
+    /// [`LPS::prepare`] and [`Summand::enumerate`].
+    fn create_context(&self) -> <Self::Summand as Summand>::Context;
+
+    /// Prepares `context` for enumerating transitions from `state`.
     ///
     /// The exploration loop calls this exactly once before iterating over the
-    /// summands of a given source state. Implementations typically use it to
-    /// stage a substitution in their enumeration backend.
-    fn prepare(&self, state: &[Self::Value]);
+    /// summands of a given source state, on the same thread (and thus the same
+    /// `context`) that will then drive [`Summand::enumerate`]. Implementations
+    /// typically use it to stage a substitution in their per-thread enumeration
+    /// backend.
+    fn prepare(&self, context: &mut <Self::Summand as Summand>::Context, state: &[Self::Value]);
 
     /// Returns the state-level metadata for the given source `state`.
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo;
@@ -58,8 +69,12 @@ impl<P: LPS> LPS for &P {
         (**self).summands()
     }
 
-    fn prepare(&self, state: &[Self::Value]) {
-        (**self).prepare(state);
+    fn create_context(&self) -> <Self::Summand as Summand>::Context {
+        (**self).create_context()
+    }
+
+    fn prepare(&self, context: &mut <Self::Summand as Summand>::Context, state: &[Self::Value]) {
+        (**self).prepare(context, state);
     }
 
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
@@ -86,7 +101,11 @@ pub trait Summand {
     /// the same `&Summand` can be driven from several threads at once as long as
     /// each thread owns a distinct context. Summands that need no scratch state
     /// use `()`.
-    type Context: Default;
+    ///
+    /// Contexts are produced by [`LPS::create_context`] rather than constructed
+    /// directly, so a context can own backend state (e.g. an mCRL2 enumerator)
+    /// that depends on the LPS definition.
+    type Context;
 
     /// Enumerate every outgoing transition produced by this summand from the
     /// state vector `state`.

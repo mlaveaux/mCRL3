@@ -7,14 +7,15 @@ rust-version.workspace = true
 
 [dependencies]
 mcrl2.workspace = true
-merc_collections.workspace = true
 merc_explore.workspace = true
 merc_io.workspace = true
 merc_lts.workspace = true
 merc_tools.workspace = true
+merc_unsafety.workspace = true
 merc_utilities.workspace = true
 merc_vpg = { workspace = true, features = ["clap"] }
 
+boxcar.workspace = true
 clap.workspace = true
 env_logger.workspace = true
 itertools.workspace = true

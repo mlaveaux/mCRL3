@@ -1,6 +1,5 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use log::debug;
 
@@ -9,6 +8,7 @@ use mcrl2::ATerm;
 use mcrl2::ATermList;
 use mcrl2::DataExpression;
 use mcrl2::DataExpressionRef;
+use mcrl2::DataSpecification;
 use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::Pbes;
@@ -17,7 +17,6 @@ use mcrl2::SrfPbes;
 use mcrl2::free_variables_data_expression;
 use mcrl2::make_data_assignment_list;
 use mcrl2::tau_multi_action;
-use merc_collections::IndexedSet;
 use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
@@ -25,6 +24,7 @@ use merc_explore::LPS;
 use merc_explore::Summand;
 use merc_explore::explore;
 use merc_lts::StateIndex;
+use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use merc_vpg::ParityGame;
@@ -64,35 +64,47 @@ pub fn parity_game_from_pbes(
     Ok(builder.finish(true, true))
 }
 
-/// State data shared by every [`PbesSrfSummand`] of a [`PbesSrfLps`].
-struct PbesSrfShared {
-    /// Backend used to evaluate summand conditions and enumerate solutions.
+/// One [`ConcurrentIndexedSet`] per data parameter, interning the data
+/// expressions observed for that parameter to a dense `usize` index.
+///
+/// Held in a [`boxcar::Vec`] so it can be shared by `&self` between the LPS and
+/// every summand: the outer vector is filled once at construction and only read
+/// by index afterwards, while the inner sets are appended to concurrently from
+/// each worker's enumeration callback.
+type ParameterMapping = boxcar::Vec<ConcurrentIndexedSet<DataExpression>>;
+
+/// Per-thread enumeration context for a [`PbesSrfLps`].
+///
+/// Owns the mCRL2 enumeration backend and the reusable scratch buffers, so the
+/// LPS and its summands stay immutable and shareable by `&self` while each
+/// worker thread drives its own context.
+pub struct PbesSrfContext {
+    /// Backend used to evaluate summand conditions and enumerate solutions,
+    /// staged per source state by [`LPS::prepare`].
     context: LearnSuccessorsContext,
 
-    /// One [`IndexedSet`] per data parameter, mapping `DataExpression -> usize`.
-    /// Behind a `RefCell` so summand enumeration callbacks can insert while
-    /// the outer loop holds an immutable borrow of the LPS.
-    mapping: RefCell<Vec<IndexedSet<DataExpression>>>,
-
-    /// Reusable scratch buffer holding the resolved parameter pointers for
-    /// the current source state. Filled during [`LPS::prepare`] and consumed
+    /// Reusable scratch buffer holding the resolved parameter pointers for the
+    /// current source state. Filled during [`LPS::prepare`] and consumed
     /// immediately by [`LearnSuccessorsContext::set_assignments`].
-    parameter_values: RefCell<Vec<*const _aterm>>,
+    parameter_values: Vec<*const _aterm>,
 
-    /// Cached tau multi-action term; protected once at construction instead of
-    /// on every summand enumeration.
-    tau: ATerm,
+    /// Reusable next-state buffer, pre-sized to `1 + num_params` and fully
+    /// overwritten for every enumerated solution.
+    next_state_buf: Vec<usize>,
 }
 
 /// Explicit-state view of a PBES in SRF normal form.
 ///
 /// State vectors have layout `[equation_index, param_0, …, param_{n-1}]` where
 /// `equation_index` is a flat index into [`SrfPbes::equations`] and each
-/// `param_i` is an index into the corresponding [`IndexedSet<DataExpression>`]
-/// in [`PbesSrfShared::mapping`].
+/// `param_i` is an index into the corresponding [`ConcurrentIndexedSet`] in
+/// [`ParameterMapping`].
 pub struct PbesSrfLps {
     /// The unified SRF PBES; retained so summand pointers stay alive.
     _srf: SrfPbes,
+
+    /// Data specification used to build each per-thread [`PbesSrfContext`].
+    data_spec: DataSpecification,
 
     /// Flat list of summands, one per `(equation, srf_summand)` pair.
     summands: Vec<PbesSrfSummand>,
@@ -110,8 +122,8 @@ pub struct PbesSrfLps {
     /// Number of data parameters per equation.
     num_params: usize,
 
-    /// Resources shared with every summand.
-    shared: Rc<PbesSrfShared>,
+    /// Concurrent per-parameter value interning shared with every summand.
+    mapping: Arc<ParameterMapping>,
 }
 
 /// A single SRF summand, pre-bound to the equation it belongs to and the
@@ -133,8 +145,13 @@ pub struct PbesSrfSummand {
     /// passed verbatim to the enumerator.
     write_assignments: ATermList<ATerm>,
 
-    /// Shared backend and parameter mapping.
-    shared: Rc<PbesSrfShared>,
+    /// Concurrent per-parameter value interning shared with the enclosing LPS
+    /// (see [`ParameterMapping`]).
+    mapping: Arc<ParameterMapping>,
+
+    /// Cached tau multi-action term; protected once at construction instead of
+    /// on every summand enumeration.
+    tau: ATerm,
 
     /// Number of data parameters, used to size the next-state buffer.
     num_params: usize,
@@ -146,9 +163,6 @@ pub struct PbesSrfSummand {
     /// Positions in the state vector that this summand may change; position 0
     /// (equation index) is always included.
     write_positions: Vec<usize>,
-
-    /// Reusable buffer holding the next-state vector.
-    next_state_buf: RefCell<Vec<usize>>,
 }
 
 impl PbesSrfLps {
@@ -194,12 +208,16 @@ impl PbesSrfLps {
             .map(|v: DataVariable| v.address())
             .collect();
 
-        let shared = Rc::new(PbesSrfShared {
-            context: LearnSuccessorsContext::from_data_spec(&pbes.data_specification()),
-            mapping: RefCell::new((0..num_params).map(|_| IndexedSet::new()).collect()),
-            parameter_values: RefCell::new(Vec::with_capacity(num_params)),
-            tau: tau_multi_action(),
-        });
+        // One concurrent interning set per data parameter. The outer vector is
+        // populated once here and only read by index afterwards.
+        let mapping: ParameterMapping = boxcar::Vec::with_capacity(num_params);
+        for _ in 0..num_params {
+            mapping.push(ConcurrentIndexedSet::new());
+        }
+        let mapping = Arc::new(mapping);
+
+        let data_spec = pbes.data_specification();
+        let tau = tau_multi_action();
 
         // Build the initial state vector from the initial PVI.
         // After `unify_parameters`, the SRF's initial PVI has `num_params`
@@ -216,12 +234,9 @@ impl PbesSrfLps {
 
         let mut initial_state = Vec::with_capacity(1 + num_params);
         initial_state.push(initial_eq_idx);
-        {
-            let mut mapping = shared.mapping.borrow_mut();
-            for (i, arg) in initial_pvi.arguments().iter().enumerate() {
-                let (idx, _) = mapping[i].insert(arg);
-                initial_state.push(*idx);
-            }
+        for (i, arg) in initial_pvi.arguments().iter().enumerate() {
+            let (idx, _) = mapping[i].insert(arg);
+            initial_state.push(idx);
         }
 
         // Flatten (equation, srf_summand) pairs into a single summand list.
@@ -270,23 +285,24 @@ impl PbesSrfLps {
                     condition: srf_summand.condition().into(),
                     summation_variables: srf_summand.parameters(),
                     write_assignments,
-                    shared: Rc::clone(&shared),
+                    mapping: Arc::clone(&mapping),
+                    tau: tau.clone(),
                     num_params,
                     read_positions,
                     write_positions,
-                    next_state_buf: RefCell::new(vec![0; 1 + num_params]),
                 });
             }
         }
 
         Ok(Self {
             _srf: srf,
+            data_spec,
             summands,
             initial_state,
             state_info,
             process_parameters,
             num_params,
-            shared,
+            mapping,
         })
     }
 }
@@ -305,7 +321,15 @@ impl LPS for PbesSrfLps {
         &self.summands
     }
 
-    fn prepare(&self, state: &[Self::Value]) {
+    fn create_context(&self) -> PbesSrfContext {
+        PbesSrfContext {
+            context: LearnSuccessorsContext::from_data_spec(&self.data_spec),
+            parameter_values: Vec::with_capacity(self.num_params),
+            next_state_buf: vec![0; 1 + self.num_params],
+        }
+    }
+
+    fn prepare(&self, context: &mut PbesSrfContext, state: &[Self::Value]) {
         debug_assert_eq!(
             state.len(),
             1 + self.num_params,
@@ -313,22 +337,19 @@ impl LPS for PbesSrfLps {
         );
 
         // Look up the *const _aterm representative for each parameter value.
-        let mut parameter_values = self.shared.parameter_values.borrow_mut();
-        parameter_values.clear();
-        let mapping = self.shared.mapping.borrow();
+        context.parameter_values.clear();
         for (i, &value_index) in state.iter().skip(1).enumerate() {
-            parameter_values.push(
-                mapping[i]
+            context.parameter_values.push(
+                self.mapping[i]
                     .get_by_index(value_index)
                     .expect("Parameter value must be in mapping")
                     .address(),
             );
         }
-        drop(mapping);
 
-        self.shared
+        context
             .context
-            .set_assignments(&self.process_parameters, &parameter_values);
+            .set_assignments(&self.process_parameters, &context.parameter_values);
     }
 
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
@@ -339,7 +360,7 @@ impl LPS for PbesSrfLps {
 impl Summand for PbesSrfSummand {
     type Value = usize;
     type Label = ();
-    type Context = ();
+    type Context = PbesSrfContext;
 
     fn read_positions(&self) -> &[usize] {
         &self.read_positions
@@ -349,7 +370,7 @@ impl Summand for PbesSrfSummand {
         &self.write_positions
     }
 
-    fn enumerate<F>(&self, _context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
@@ -358,11 +379,20 @@ impl Summand for PbesSrfSummand {
             return Ok(());
         }
 
-        self.shared.context.enumerate_raw_with_current_assignments(
+        // Borrow the backend and the next-state scratch buffer as disjoint
+        // fields so the enumeration callback can fill the buffer while the
+        // backend call is in progress.
+        let PbesSrfContext {
+            context: learn,
+            next_state_buf,
+            ..
+        } = context;
+
+        learn.enumerate_raw_with_current_assignments(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
-            &self.shared.tau,
+            &self.tau,
             |next_values: &[*const _aterm], _multi_action| {
                 debug_assert_eq!(
                     next_values.len(),
@@ -370,19 +400,15 @@ impl Summand for PbesSrfSummand {
                     "Enumerated values must match number of parameters"
                 );
 
-                let mut next_state = self.next_state_buf.borrow_mut();
-                next_state[0] = self.target_equation_index;
-                {
-                    let mut mapping = self.shared.mapping.borrow_mut();
-                    for (i, &ptr) in next_values.iter().enumerate() {
-                        let expr = DataExpression::from(ATerm::from_ptr(ptr));
-                        let (idx, _) = mapping[i].insert(expr);
-                        next_state[1 + i] = *idx;
-                    }
+                next_state_buf[0] = self.target_equation_index;
+                for (i, &ptr) in next_values.iter().enumerate() {
+                    let expr = DataExpression::from(ATerm::from_ptr(ptr));
+                    let (idx, _) = self.mapping[i].insert(expr);
+                    next_state_buf[1 + i] = idx;
                 }
 
                 // The PBES has no actions; we pass a placeholder unit label.
-                report(&(), &next_state).expect("Failed to report PBES transition");
+                report(&(), next_state_buf).expect("Failed to report PBES transition");
             },
         );
 

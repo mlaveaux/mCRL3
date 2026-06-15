@@ -21,6 +21,7 @@ members = [
 ]
 
 [workspace.dependencies]
+boxcar = "0.2"
 clap = { version = "4.6", features = ["derive"] }
 env_logger = "0.11"
 itertools = "0.14"

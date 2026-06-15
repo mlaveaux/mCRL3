@@ -18,6 +18,7 @@ merc_tools.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
+boxcar.workspace = true
 clap.workspace = true
 env_logger.workspace = true
 itertools.workspace = true
