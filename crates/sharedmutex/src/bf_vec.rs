@@ -3,7 +3,7 @@
 use std::alloc;
 use std::alloc::Layout;
 use std::cmp::max;
-use std::ops::Index;
+use std::hint::spin_loop;
 use std::ptr;
 use std::ptr::NonNull;
 use std::sync::atomic::AtomicUsize;
@@ -11,9 +11,11 @@ use std::sync::atomic::Ordering;
 
 use crate::BfSharedMutex;
 
-/// An implementation of [Vec<T, A>] based on the [BfSharedMutex] implementation
-/// that can be safely send between threads. Elements in the vector can be written
-/// concurrently iff type T is [Sync].
+/// An implementation of [Vec<T>] based on the [BfSharedMutex] implementation
+/// that can be safely sent between threads. Elements can be appended
+/// concurrently from multiple threads holding a [`BfVec::share`] of the vector.
+///
+/// Zero-sized element types are not supported.
 pub struct BfVec<T> {
     shared: BfSharedMutex<BfVecShared<T>>,
 }
@@ -22,16 +24,28 @@ pub struct BfVec<T> {
 pub struct BfVecShared<T> {
     buffer: Option<NonNull<T>>,
     capacity: usize,
+
+    /// The number of slots reserved by writers; can exceed `len` while pushes
+    /// are in flight.
+    reserved: AtomicUsize,
+
+    /// The number of initialised elements; reads may only access slots below
+    /// this bound.
     len: AtomicUsize,
 }
 
 impl<T> BfVec<T> {
     /// Create a new vector with zero capacity.
     pub fn new() -> BfVec<T> {
+        const {
+            assert!(std::mem::size_of::<T>() > 0, "Zero-sized types are not supported");
+        }
+
         BfVec {
             shared: BfSharedMutex::new(BfVecShared::<T> {
                 buffer: None,
                 capacity: 0,
+                reserved: AtomicUsize::new(0),
                 len: AtomicUsize::new(0),
             }),
         }
@@ -41,28 +55,47 @@ impl<T> BfVec<T> {
     pub fn push(&self, value: T) {
         let mut read = self.shared.read().unwrap();
 
-        // Reserve an index for the new element.
-        let mut last_index = read.len.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Reserve an index for the new element with a compare-and-swap so that a reservation
+        // never has to be rolled back; a rollback could hand the same slot to two threads.
+        let last_index = loop {
+            let current = read.reserved.load(Ordering::Relaxed);
 
-        while last_index + 1 >= read.capacity {
-            // Vector needs to be resized.
-            let new_capacity = max(read.capacity * 2, 8);
+            if current >= read.capacity {
+                // Vector needs to be resized.
+                let new_capacity = max(read.capacity * 2, 8);
 
-            // Make the length consistent and reserve the new size.
-            read.len.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-            drop(read);
-            self.reserve(new_capacity);
+                drop(read);
+                self.reserve(new_capacity);
 
-            // Acquire read access and try a new position.
-            read = self.shared.read().unwrap();
-            last_index = read.len.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
+                // Acquire read access and try a new position.
+                read = self.shared.read().unwrap();
+                continue;
+            }
+
+            if read
+                .reserved
+                .compare_exchange_weak(current, current + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                break current;
+            }
+        };
 
         // Write the element on the specified index.
         unsafe {
             // We know that the buffer has been allocated by this point.
             let end = read.buffer.unwrap().as_ptr().add(last_index);
             ptr::write(end, value);
+        }
+
+        // Publish the element. `len` may only be raised past our slot once all
+        // earlier slots have been initialised, so wait for the slots below us.
+        while read
+            .len
+            .compare_exchange_weak(last_index, last_index + 1, Ordering::Release, Ordering::Relaxed)
+            .is_err()
+        {
+            spin_loop();
         }
     }
 
@@ -83,6 +116,26 @@ impl<T> BfVec<T> {
         self.len() == 0
     }
 
+    /// Returns a clone of the element at the given index.
+    ///
+    /// The value is cloned while holding the read lock; handing out a
+    /// reference instead would let it dangle when another thread's `push`
+    /// reallocates the buffer.
+    pub fn at(&self, index: usize) -> T
+    where
+        T: Clone,
+    {
+        let read = self.shared.read().unwrap();
+
+        // Acquire pairs with the publishing store in `push`, so the slots below `len` are initialised.
+        assert!(
+            index < read.len.load(Ordering::Acquire),
+            "Index {index} is out of bounds"
+        );
+
+        unsafe { (*read.buffer.unwrap().as_ptr().add(index)).clone() }
+    }
+
     /// Drops the elements in the Vec, but keeps the capacity.
     pub fn clear(&self) {
         let mut write = self.shared.write().unwrap();
@@ -97,6 +150,14 @@ impl<T> BfVec<T> {
         if capacity <= write.capacity {
             return;
         }
+
+        // Reservation, write and publish all happen under the read lock, so once the write lock
+        // is held no push is in flight and every reserved slot has been initialised.
+        debug_assert_eq!(
+            write.reserved.load(Ordering::Relaxed),
+            write.len.load(Ordering::Relaxed),
+            "All reserved slots must be published before a resize"
+        );
 
         let old_layout = Layout::array::<T>(write.capacity).unwrap();
         let layout = Layout::array::<T>(capacity).unwrap();
@@ -125,26 +186,11 @@ impl<T> BfVec<T> {
             write.buffer = NonNull::new(new_buffer);
         }
     }
-
-    /// Get access to the underlying data storage.
-    fn data(&self) -> *const T {
-        self.shared.read().unwrap().buffer.unwrap().as_ptr()
-    }
 }
 
 impl<T> Default for BfVec<T> {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<T> Index<usize> for BfVec<T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        debug_assert!(index < self.len());
-
-        unsafe { &*self.data().add(index) }
     }
 }
 
@@ -160,6 +206,10 @@ impl<T> BfVecShared<T> {
                 ptr::drop_in_place(ptr);
             }
         }
+
+        // Reset the length so the dropped elements cannot be observed or dropped a second time.
+        self.len.store(0, Ordering::Relaxed);
+        self.reserved.store(0, Ordering::Relaxed);
     }
 }
 
@@ -176,12 +226,8 @@ impl<T> Drop for BfVecShared<T> {
         }
     }
 }
-
-// It is safe to transfer ownership to another thread when T: Send.
 unsafe impl<T: Send> Send for BfVecShared<T> {}
-
-// SAFETY: The underlying data of can be Send.
-unsafe impl<T: Send> Send for BfVec<T> {}
+unsafe impl<T: Send + Sync> Send for BfVec<T> {}
 
 #[cfg(test)]
 mod tests {
@@ -216,10 +262,25 @@ mod tests {
         // Check the vector for some kind of consistency, correct total
         let mut total = 0;
         for i in 0..shared_vector.len() {
-            total += shared_vector[i];
+            total += shared_vector.at(i);
         }
 
         assert_eq!(total, num_threads * (num_threads - 1) * num_iterations / 2);
         assert_eq!(shared_vector.len(), (num_threads * num_iterations) as usize);
+    }
+
+    #[test]
+    fn test_clear_resets_length() {
+        let vector = BfVec::<String>::new();
+        vector.push("a".to_string());
+        vector.push("b".to_string());
+        assert_eq!(vector.len(), 2);
+
+        // Dropping the vector afterwards must not drop the elements again.
+        vector.clear();
+        assert!(vector.is_empty());
+
+        vector.push("c".to_string());
+        assert_eq!(vector.at(0), "c");
     }
 }
