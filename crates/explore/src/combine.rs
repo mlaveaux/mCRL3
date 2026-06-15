@@ -16,6 +16,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
 
+use crate::BTreeForestContext;
 use crate::DiscoveredSet;
 use crate::StateRef;
 
@@ -107,7 +108,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     // Keep track of the discovered states in the combined LTS. State vectors
     // are stored as maximally shared sequences of raw `usize` indices in the
     // discovered set; we convert to/from `StateIndex` at the boundary.
-    let mut discovered: DiscoveredSet<usize> = DiscoveredSet::new();
+    let discovered: DiscoveredSet<usize> = DiscoveredSet::new();
     let initial_vector: Vec<usize> = parallel_composition
         .iter()
         .map(|lts| lts.initial_state_index().value())
@@ -133,6 +134,9 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     let mut current_state_raw: Vec<usize> = Vec::new();
     let mut current_state_vector: Vec<StateIndex> = Vec::new();
     let mut target_raw: Vec<usize> = Vec::new();
+    // Reused interning scratch buffers, avoiding a reallocation per inserted
+    // state. This loop is single-threaded, so one context suffices.
+    let mut forest_context = BTreeForestContext::new();
 
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
@@ -178,7 +182,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
                 target_raw.clear();
                 target_raw.extend(transition.target.iter().map(|s| s.value()));
 
-                let (target_ref, is_new) = discovered.insert(&target_raw);
+                let (target_ref, is_new) = discovered.insert_with(&target_raw, &mut forest_context);
                 let to = StateIndex::new(target_ref.index());
                 builder.add_transition(StateIndex::new(current.index()), &multi_action, to)?;
 

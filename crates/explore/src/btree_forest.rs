@@ -8,19 +8,20 @@
 //! Each tree is a hash-consed *sequence* of values: positions are implicit in
 //! iteration order, so there are no separator keys. The branching factor `N` is
 //! a const generic parameter (default 8) so it can be tuned for experiments.
+//!
+//! The forest is thread-safe: nodes can be interned concurrently from multiple
+//! threads through `&self`.
 
-use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::mem;
 
-use allocator_api2::alloc::Allocator;
-use allocator_api2::alloc::Global;
-use allocator_api2::vec::Vec;
-use hashbrown::HashTable;
-use rustc_hash::FxBuildHasher;
+use merc_unsafety::ShardedHashMap;
 
 /// The default branching factor, matches a standard cache line of words.
 const DEFAULT_BRANCHING: usize = 8;
+
+/// Shards per per-height interning table.
+const FOREST_SHARDS: usize = 16;
 
 /// A value that can be stored in a [`BTreeForest`] node slot.
 ///
@@ -128,18 +129,11 @@ impl Default for Tree {
     }
 }
 
-/// Hashes a node's full `[V; N]` slot array. Empty padding is canonical (always
-/// [`Slot::EMPTY`]), so the whole array can be hashed without a live length.
-fn hash_node<V: Hash, const N: usize>(hasher: &FxBuildHasher, data: &[V; N]) -> u64 {
-    hasher.hash_one(data)
-}
-
 /// A forest of hash-consed sequences of `V` with branching factor `N`.
 ///
 /// Values are expected to be small `Copy` types, matching the
-/// `cranelift_bforest` design tradeoffs. The auxiliary collections allocate from
-/// `A`. The branching factor `N` defaults to 8 and can be overridden to
-/// experiment with node sizes; it must be at least two.
+/// `cranelift_bforest` design tradeoffs. The branching factor `N` defaults to 8
+/// and can be overridden to experiment with node sizes; it must be at least two.
 ///
 /// Because a value and a child index could share a bit pattern, interning is
 /// partitioned by height: nodes are only ever deduplicated against other nodes
@@ -147,91 +141,99 @@ fn hash_node<V: Hash, const N: usize>(hasher: &FxBuildHasher, data: &[V; N]) -> 
 /// `[5, 7]` interpreted as child references.
 ///
 /// Nodes are never freed individually; the forest is append-only and reclaimed
-/// all at once with [`BTreeForest::clear`].
-pub struct BTreeForest<V, A = Global, const N: usize = DEFAULT_BRANCHING>
+/// all at once with [`BTreeForest::clear`]. Interning happens through `&self`,
+/// so the forest can be shared between threads and populated concurrently.
+pub struct BTreeForest<V, const N: usize = DEFAULT_BRANCHING>
 where
     V: Copy,
-    A: Allocator,
 {
-    /// The shared node pool.
-    nodes: Vec<[V; N], A>,
-    /// Interning index from a node's content hash to its index in `nodes`.
-    tables: Vec<HashTable<usize, A>, A>,
-    /// Scratch buffers reused by [`BTreeForest::build`] to assemble each tree
-    /// level without allocating per call. They hold the child node indices of
-    /// the level currently being built.
-    scratch_lo: Vec<usize, A>,
-    scratch_hi: Vec<usize, A>,
-    hasher: FxBuildHasher,
-    /// Allocator used to create the per-height interning tables on demand.
-    alloc: A,
+    /// The shared node pool. The append-only vector hands out the dense node
+    /// index itself, so a node's slot index is its interned identity.
+    nodes: boxcar::Vec<[V; N]>,
+    /// One interning index per height, mapping a node's content to its index in
+    /// `nodes`. Avoids duplicating the `nodes` information by passing the hash
+    /// and equality functions as closures.
+    tables: Vec<ShardedHashMap<usize>>,
 }
 
-impl<V, const N: usize> BTreeForest<V, Global, N>
-where
-    V: Slot,
-{
-    /// Creates a new empty forest backed by the global allocator.
-    pub fn new() -> BTreeForest<V, Global, N> {
-        BTreeForest::new_in(Global)
+/// Reusable scratch buffers for [`BTreeForest::insert_with`], so repeated
+/// inserts on a hot path do not reallocate.
+///
+/// The buffers only hold node indices, so a single context works for any
+/// [`BTreeForest`] regardless of its value type or branching factor.
+#[derive(Debug, Default, Clone)]
+pub struct BTreeForestContext {
+    /// Child indices of the level just built.
+    src: Vec<usize>,
+    /// Child indices of the level currently being built.
+    dst: Vec<usize>,
+}
+
+impl BTreeForestContext {
+    /// Creates an empty context.
+    pub fn new() -> BTreeForestContext {
+        BTreeForestContext::default()
     }
 }
 
-impl<V, A, const N: usize> BTreeForest<V, A, N>
+impl<V, const N: usize> BTreeForest<V, N>
 where
     V: Slot,
-    A: Allocator + Clone,
 {
-    /// Creates a new empty forest whose collections allocate from `alloc`.
-    pub fn new_in(alloc: A) -> BTreeForest<V, A, N> {
+    /// Creates a new empty forest.
+    pub fn new() -> BTreeForest<V, N> {
         const { assert!(N >= 2, "branching factor must be at least two") };
+        // One interning table per representable height. The height field is
+        // `HEIGHT_BITS` wide, so heights range over `0..(1 << HEIGHT_BITS)`.
+        let tables = (0..(1usize << HEIGHT_BITS))
+            .map(|_| ShardedHashMap::with_shards(FOREST_SHARDS))
+            .collect();
         BTreeForest {
-            nodes: Vec::new_in(alloc.clone()),
-            tables: Vec::new_in(alloc.clone()),
-            hasher: FxBuildHasher,
-            scratch_lo: Vec::new_in(alloc.clone()),
-            scratch_hi: Vec::new_in(alloc.clone()),
-            alloc,
+            nodes: boxcar::Vec::new(),
+            tables,
         }
     }
 
-    /// Interns the sequence `values` and returns a handle to its tree,
-    /// reusing any already-interned nodes. Equal sequences always yield the
-    /// same handle. The tree is assembled bottom-up: contiguous chunks of
-    /// `values` become leaf-level nodes, then those are grouped into interior
-    /// nodes, and so on until a single root remains.
-    pub fn insert(&mut self, values: &[V]) -> Tree {
+    /// Interns the sequence `values` and returns a handle to its tree, using a
+    /// throwaway [`BTreeForestContext`]. Prefer [`BTreeForest::insert_with`] on
+    /// hot paths to reuse the scratch buffers.
+    pub fn insert(&self, values: &[V]) -> Tree {
+        self.insert_with(values, &mut BTreeForestContext::new())
+    }
+
+    /// Interns the sequence `values` and returns a handle to its tree, reusing
+    /// any already-interned nodes. Equal sequences always yield the same
+    /// handle. 
+    /// 
+    /// # Details
+    /// 
+    /// The tree is assembled bottom-up: contiguous chunks of `values` become
+    /// leaf-level nodes, then those are grouped into interior nodes, and so on
+    /// until a single root remains.
+    pub fn insert_with(&self, values: &[V], context: &mut BTreeForestContext) -> Tree {
         if values.is_empty() {
             return Tree::EMPTY;
         }
 
-        // Destructure so the scratch buffers can be borrowed independently of
-        // the node pool and interning tables that `intern` mutates.
-        let BTreeForest {
-            nodes,
-            tables,
-            hasher,
-            scratch_lo,
-            scratch_hi,
-            alloc,
-        } = self;
+        // `src` is the level just built, `dst` the one being built. The buffers
+        // live in `context` so repeated inserts do not reallocate, but they are
+        // not shared between threads.
+        let BTreeForestContext { src, dst } = context;
 
-        //  Each chunk of `values` is copied straight into a node, padded with
+        // Each chunk of `values` is copied straight into a node, padded with
         // `EMPTY`.
-        scratch_lo.clear();
+        src.clear();
         for chunk in values.chunks(N) {
             let mut slots = [V::EMPTY; N];
             for (offset, &value) in chunk.iter().enumerate() {
                 debug_assert!(value != V::EMPTY, "value collides with the empty-slot sentinel");
                 slots[offset] = value;
             }
-            let node = Self::intern(nodes, tables, hasher, alloc, 0, slots);
-            scratch_lo.push(node);
+            src.push(self.intern(0, slots));
         }
 
         // Group the previous level into nodes of child indices until one node
-        // remains. `src` is the level just built, `dst` the one being built.
-        let (mut src, mut dst) = (scratch_lo, scratch_hi);
+        // remains.
         let mut height = 0u8;
         while src.len() > 1 {
             height += 1;
@@ -241,10 +243,9 @@ where
                 for (offset, &child) in chunk.iter().enumerate() {
                     slots[offset] = V::from_child(child);
                 }
-                let node = Self::intern(nodes, tables, hasher, alloc, height as usize, slots);
-                dst.push(node);
+                dst.push(self.intern(height, slots));
             }
-            mem::swap(&mut src, &mut dst);
+            mem::swap(src, dst);
         }
 
         Tree::new(src[0], height)
@@ -252,29 +253,39 @@ where
 
     /// Interns `data` at `height`, returning the index of the existing identical
     /// node if one is present, or of a freshly allocated node otherwise.
-    fn intern(
-        nodes: &mut Vec<[V; N], A>,
-        tables: &mut Vec<HashTable<usize, A>, A>,
-        hasher: &FxBuildHasher,
-        alloc: &A,
-        height: usize,
-        data: [V; N],
-    ) -> usize {
-        while tables.len() <= height {
-            tables.push(HashTable::new_in(alloc.clone()));
-        }
-        let table = &mut tables[height];
+    fn intern(&self, height: u8, data: [V; N]) -> usize {
+        // The table is specific to this height, so entries are compared and
+        // hashed purely by their node content.
+        let table = &self.tables[height as usize];
+        let hash = table.hash(&data);
+        let eq = |&index: &usize| self.node(index) == data;
 
-        let hash = hash_node(hasher, &data);
-        if let Some(&index) = table.find(hash, |&index| nodes[index] == data) {
+        // Fast path: an existing node is found while only read-locking the shard.
+        if let Some(index) = table.find(hash, eq) {
             return index;
         }
 
-        let index = nodes.len();
-        debug_assert!((index as u64) < ROOT_EMPTY, "node pool exhausted");
-        nodes.push(data);
-        table.insert_unique(hash, index, |&index| hash_node(hasher, &nodes[index]));
-        index
+        // `push` appends the node and returns its dense index. The slot is
+        // published before `push` returns, so any thread that later reads the
+        // index from `tables` can resolve it in `nodes`. `make` runs only on a
+        // miss and while the shard is write-locked, so the index is unique.
+        table
+            .find_or_insert_with(
+                hash,
+                eq,
+                |&index| table.hash(&self.node(index)),
+                || {
+                    let index = self.nodes.push(data);
+                    debug_assert!((index as u64) < ROOT_EMPTY, "node pool exhausted");
+                    index
+                },
+            )
+            .0
+    }
+
+    /// Returns a copy of the interned node at `index`, which must exist.
+    fn node(&self, index: usize) -> [V; N] {
+        *self.nodes.get(index).expect("interned node must exist")
     }
 }
 
@@ -294,17 +305,17 @@ pub const fn max_depth(n: usize) -> usize {
 /// Upper bound on the height of any tree.
 const MAX_DEPTH: usize = max_depth(2);
 
-impl<V, A, const N: usize> BTreeForest<V, A, N>
+impl<V, const N: usize> BTreeForest<V, N>
 where
     V: Slot,
-    A: Allocator,
 {
     /// Returns an iterator over the values of `tree` in sequence order.
-    pub fn iter(&self, tree: Tree) -> Iter<'_, V, A, N> {
-        let mut stack = [(0usize, 0u32, 0u8); MAX_DEPTH];
+    pub fn iter(&self, tree: Tree) -> Iter<'_, V, N> {
+        let mut stack = [([V::EMPTY; N], 0u32, 0u8); MAX_DEPTH];
         let mut depth = 0;
         if !tree.is_empty() {
-            stack[0] = (tree.root(), 0, tree.height());
+            let root = *self.nodes.get(tree.root()).expect("root node must exist");
+            stack[0] = (root, 0, tree.height());
             depth = 1;
         }
         Iter {
@@ -315,33 +326,32 @@ where
     }
 }
 
-impl<V, A, const N: usize> BTreeForest<V, A, N>
+impl<V, const N: usize> BTreeForest<V, N>
 where
-    V: Copy,
-    A: Allocator,
+    V: Slot,
 {
     /// Returns the number of distinct nodes currently held by the forest. This
     /// is the deduplicated node count, not the total number of entries across
     /// all trees.
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.nodes.count()
     }
 
     /// Removes every tree from the forest, invalidating all outstanding
     /// [`Tree`] handles.
     pub fn clear(&mut self) {
         self.nodes.clear();
-        self.tables.clear();
-        self.scratch_lo.clear();
-        self.scratch_hi.clear();
+        for table in &self.tables {
+            table.clear();
+        }
     }
 }
 
-impl<V, const N: usize> Default for BTreeForest<V, Global, N>
+impl<V, const N: usize> Default for BTreeForest<V, N>
 where
     V: Slot,
 {
-    fn default() -> BTreeForest<V, Global, N> {
+    fn default() -> BTreeForest<V, N> {
         BTreeForest::new()
     }
 }
@@ -349,41 +359,40 @@ where
 /// In-order iterator over the values of a single tree.
 ///
 /// The descent stack is a fixed-size array, so no heap allocation is performed,
-/// which keeps reconstruction cheap on hot paths.
-pub struct Iter<'a, V, A, const N: usize>
+/// which keeps reconstruction cheap on hot paths. Each frame caches a copy of
+/// its node's slot array, so a node is fetched from the shared pool at most once
+/// per descent rather than on every value.
+pub struct Iter<'a, V, const N: usize>
 where
     V: Copy,
-    A: Allocator,
 {
-    nodes: &'a Vec<[V; N], A>,
-    /// Frames on the path from the root, each holding the node, the index of the
-    /// next slot to visit in it, and the node's height.
-    stack: [(usize, u32, u8); MAX_DEPTH],
+    nodes: &'a boxcar::Vec<[V; N]>,
+    /// Frames on the path from the root, each holding the node's slot array, the
+    /// index of the next slot to visit in it, and the node's height.
+    stack: [([V; N], u32, u8); MAX_DEPTH],
     depth: usize,
 }
 
-impl<V, A, const N: usize> Iterator for Iter<'_, V, A, N>
+impl<V, const N: usize> Iterator for Iter<'_, V, N>
 where
     V: Slot,
-    A: Allocator,
 {
     type Item = V;
 
     fn next(&mut self) -> Option<V> {
         while self.depth > 0 {
             let top = self.depth - 1;
-            let (node, slot, height) = self.stack[top];
-            let slot = slot as usize;
-            let slots = &self.nodes[node];
+            let slot = self.stack[top].1 as usize;
+            let height = self.stack[top].2;
 
             // A slot past the end or holding the empty sentinel exhausts this
             // node; pop back to its parent.
-            if slot >= N || slots[slot] == V::EMPTY {
+            if slot >= N || self.stack[top].0[slot] == V::EMPTY {
                 self.depth -= 1;
                 continue;
             }
 
-            let value = slots[slot];
+            let value = self.stack[top].0[slot];
             self.stack[top].1 += 1;
 
             if height == 0 {
@@ -393,9 +402,95 @@ where
 
             // Otherwise it is a child reference; descend into it.
             assert!(self.depth < max_depth(N), "tree deeper than max_depth({N})");
-            self.stack[self.depth] = (value.as_child(), 0, height - 1);
+            let child = *self.nodes.get(value.as_child()).expect("child node must exist");
+            self.stack[self.depth] = (child, 0, height - 1);
             self.depth += 1;
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::thread;
+
+    use super::BTreeForest;
+    use super::BTreeForestContext;
+    use super::Tree;
+
+    #[test]
+    fn test_insert_with_reuses_context() {
+        let forest: BTreeForest<usize, 2> = BTreeForest::new();
+        let mut context = BTreeForestContext::new();
+
+        // Reusing one context across sequences of varying length (so the scratch
+        // buffers are cleared and regrown) must yield the same handles as the
+        // allocating path and reconstruct correctly.
+        let sequences: [&[usize]; 4] = [&[1, 2, 3, 4, 5], &[9], &[], &[7, 7, 7, 7, 7, 7, 7]];
+        for seq in sequences {
+            let tree = forest.insert_with(seq, &mut context);
+            assert_eq!(forest.insert(seq), tree, "context path matches the allocating path");
+            let got: Vec<usize> = forest.iter(tree).collect();
+            assert_eq!(got, seq.to_vec());
+        }
+    }
+
+    #[test]
+    fn test_insert_and_iter() {
+        let forest: BTreeForest<usize, 2> = BTreeForest::new();
+
+        let seq = [1usize, 2, 3, 4, 5];
+        let tree = forest.insert(&seq);
+        let got: Vec<usize> = forest.iter(tree).collect();
+        assert_eq!(got, seq.to_vec());
+
+        // The empty sequence maps to the empty tree.
+        assert!(forest.insert(&[]).is_empty());
+
+        // Equal sequences are interned to the same handle and share nodes.
+        let nodes = forest.node_count();
+        assert_eq!(forest.insert(&seq), tree);
+        assert_eq!(forest.node_count(), nodes, "re-interning must not allocate nodes");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_concurrent_intern() {
+        let forest: Arc<BTreeForest<usize, 4>> = Arc::new(BTreeForest::new());
+        let num_threads = 8;
+
+        let mut handles = Vec::new();
+        for _ in 0..num_threads {
+            let forest = Arc::clone(&forest);
+            handles.push(thread::spawn(move || {
+                let mut interned = Vec::new();
+                for i in 0..200usize {
+                    let seq: Vec<usize> = (0..(i % 17 + 1)).map(|j| j + i).collect();
+                    let tree = forest.insert(&seq);
+                    // The tree reconstructs to exactly what was inserted, even
+                    // while other threads intern concurrently.
+                    let got: Vec<usize> = forest.iter(tree).collect();
+                    assert_eq!(got, seq);
+                    interned.push((seq, tree));
+                }
+                interned
+            }));
+        }
+
+        // Equal sequences must intern to equal handles regardless of which
+        // thread interned them.
+        let mut seen: HashMap<Vec<usize>, Tree> = HashMap::new();
+        for handle in handles {
+            for (seq, tree) in handle.join().unwrap() {
+                match seen.get(&seq) {
+                    Some(&prev) => assert_eq!(prev, tree, "equal sequences interned to different trees"),
+                    None => {
+                        seen.insert(seq, tree);
+                    }
+                }
+            }
+        }
     }
 }

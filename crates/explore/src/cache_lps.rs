@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use allocator_api2::alloc::Global;
 use rustc_hash::FxHashMap;
 
 use merc_utilities::MercError;
@@ -35,7 +34,7 @@ pub struct CacheLPS<P: LPS> {
 
 struct CacheShared<V: Slot, L: Clone> {
     /// Stores the nodes for all the cached keys and values, ensuring that the cache is stored compactly.
-    forest: RefCell<BTreeForest<V, Global, 2>>,
+    forest: BTreeForest<V, 2>,
 
     /// An array of summand local caches.
     local_caches: RefCell<Vec<FxHashMap<Tree, Vec<(L, Tree)>>>>,
@@ -74,7 +73,7 @@ impl<P: LPS> CacheLPS<P> {
         let inner = Rc::new(inner);
         let num_summands = inner.summands().len();
         let shared = Rc::new(CacheShared {
-            forest: RefCell::new(BTreeForest::new()),
+            forest: BTreeForest::new(),
             local_caches: RefCell::new(vec![FxHashMap::default(); num_summands]),
             key_buf: RefCell::new(Vec::new()),
             replay_buf: RefCell::new(Vec::new()),
@@ -269,11 +268,7 @@ impl<P: LPS> CacheSummandWrapper<P> {
         for (label, write_tree) in results {
             replay_buf.clear();
             replay_buf.extend_from_slice(state);
-            for (&pos, value) in self
-                .write_positions
-                .iter()
-                .zip(self.shared.forest.borrow().iter(*write_tree))
-            {
+            for (&pos, value) in self.write_positions.iter().zip(self.shared.forest.iter(*write_tree)) {
                 replay_buf[pos] = value;
             }
             report(label, &replay_buf)?;
@@ -305,7 +300,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         let key_tree = {
             let key_buf = self.shared.key_buf.borrow();
-            self.shared.forest.borrow_mut().insert(&key_buf)
+            self.shared.forest.insert(&key_buf)
         };
 
         let hit = {
@@ -332,7 +327,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
                 for &pos in &self.write_positions {
                     scratch.push(next_state[pos]);
                 }
-                let tree = self.shared.forest.borrow_mut().insert(&scratch);
+                let tree = self.shared.forest.insert(&scratch);
                 drop(scratch);
                 captured.push((label.clone(), tree));
                 report(label, next_state)

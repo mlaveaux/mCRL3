@@ -13,8 +13,6 @@ rust-version.workspace = true
 clap = ["dep:clap"]
 
 [dependencies]
-# Pinned to 0.2 to match the allocator-api2 version that `hashbrown` uses
-allocator-api2 = "0.2"
 merc_collections.workspace = true
 merc_io.workspace = true
 merc_lts.workspace = true
@@ -22,8 +20,9 @@ merc_syntax.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
+boxcar.workspace = true
 clap ={ workspace = true, optional = true }
-hashbrown.workspace = true
+dashmap.workspace = true
 itertools.workspace = true
 log.workspace = true
 rustc-hash.workspace = true
