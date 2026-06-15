@@ -12,10 +12,12 @@
 //! The forest is thread-safe: nodes can be interned concurrently from multiple
 //! threads through `&self`.
 
+use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::mem;
 
 use merc_unsafety::ShardedHashMap;
+use rustc_hash::FxBuildHasher;
 
 /// The default branching factor, matches a standard cache line of words.
 const DEFAULT_BRANCHING: usize = 8;
@@ -143,7 +145,7 @@ impl Default for Tree {
 /// Nodes are never freed individually; the forest is append-only and reclaimed
 /// all at once with [`BTreeForest::clear`]. Interning happens through `&self`,
 /// so the forest can be shared between threads and populated concurrently.
-pub struct BTreeForest<V, const N: usize = DEFAULT_BRANCHING>
+pub struct BTreeForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHasher>
 where
     V: Copy,
 {
@@ -153,7 +155,7 @@ where
     /// One interning index per height, mapping a node's content to its index in
     /// `nodes`. Avoids duplicating the `nodes` information by passing the hash
     /// and equality functions as closures.
-    tables: Vec<ShardedHashMap<usize>>,
+    tables: Vec<ShardedHashMap<usize, S>>,
 }
 
 /// Reusable scratch buffers for [`BTreeForest::insert_with`], so repeated
@@ -176,24 +178,31 @@ impl BTreeForestContext {
     }
 }
 
-impl<V, const N: usize> BTreeForest<V, N>
+impl<V, const N: usize, S> BTreeForest<V, N, S>
 where
     V: Slot,
+    S: Default,
 {
     /// Creates a new empty forest.
-    pub fn new() -> BTreeForest<V, N> {
+    pub fn new() -> BTreeForest<V, N, S> {
         const { assert!(N >= 2, "branching factor must be at least two") };
         // One interning table per representable height. The height field is
         // `HEIGHT_BITS` wide, so heights range over `0..(1 << HEIGHT_BITS)`.
         let tables = (0..(1usize << HEIGHT_BITS))
-            .map(|_| ShardedHashMap::with_shards(FOREST_SHARDS))
+            .map(|_| ShardedHashMap::with_shards_and_hasher(FOREST_SHARDS, S::default()))
             .collect();
         BTreeForest {
             nodes: boxcar::Vec::new(),
             tables,
         }
     }
+}
 
+impl<V, const N: usize, S> BTreeForest<V, N, S>
+where
+    V: Slot,
+    S: BuildHasher,
+{
     /// Interns the sequence `values` and returns a handle to its tree, using a
     /// throwaway [`BTreeForestContext`]. Prefer [`BTreeForest::insert_with`] on
     /// hot paths to reuse the scratch buffers.
@@ -305,7 +314,7 @@ pub const fn max_depth(n: usize) -> usize {
 /// Upper bound on the height of any tree.
 const MAX_DEPTH: usize = max_depth(2);
 
-impl<V, const N: usize> BTreeForest<V, N>
+impl<V, const N: usize, S> BTreeForest<V, N, S>
 where
     V: Slot,
 {
@@ -326,7 +335,7 @@ where
     }
 }
 
-impl<V, const N: usize> BTreeForest<V, N>
+impl<V, const N: usize, S> BTreeForest<V, N, S>
 where
     V: Slot,
 {
@@ -347,11 +356,12 @@ where
     }
 }
 
-impl<V, const N: usize> Default for BTreeForest<V, N>
+impl<V, const N: usize, S> Default for BTreeForest<V, N, S>
 where
     V: Slot,
+    S: Default,
 {
-    fn default() -> BTreeForest<V, N> {
+    fn default() -> BTreeForest<V, N, S> {
         BTreeForest::new()
     }
 }
@@ -414,83 +424,88 @@ where
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
-    use std::thread;
+    use std::sync::Mutex;
+
+    use rand::RngExt;
+
+    use merc_utilities::random_test;
+    use merc_utilities::random_test_threads;
 
     use super::BTreeForest;
     use super::BTreeForestContext;
     use super::Tree;
 
+    /// Interns random sequences (of varying length, so the reused scratch
+    /// buffers are cleared and regrown) and checks every forest invariant
+    /// against a `HashMap` oracle: the context path matches the allocating path,
+    /// each tree round-trips to its sequence, the empty sequence maps to the
+    /// empty tree, and equal sequences share a handle without allocating nodes.
     #[test]
-    fn test_insert_with_reuses_context() {
-        let forest: BTreeForest<usize, 2> = BTreeForest::new();
-        let mut context = BTreeForestContext::new();
+    fn random_insert_iter_dedup() {
+        random_test(100, |rng| {
+            let forest: BTreeForest<usize, 2> = BTreeForest::new();
+            let mut context = BTreeForestContext::new();
+            let mut seen: HashMap<Vec<usize>, Tree> = HashMap::new();
 
-        // Reusing one context across sequences of varying length (so the scratch
-        // buffers are cleared and regrown) must yield the same handles as the
-        // allocating path and reconstruct correctly.
-        let sequences: [&[usize]; 4] = [&[1, 2, 3, 4, 5], &[9], &[], &[7, 7, 7, 7, 7, 7, 7]];
-        for seq in sequences {
-            let tree = forest.insert_with(seq, &mut context);
-            assert_eq!(forest.insert(seq), tree, "context path matches the allocating path");
-            let got: Vec<usize> = forest.iter(tree).collect();
-            assert_eq!(got, seq.to_vec());
-        }
+            for _ in 0..200 {
+                let len = rng.random_range(0..20);
+                let seq: Vec<usize> = (0..len).map(|_| rng.random_range(0..10)).collect();
+
+                let tree = forest.insert_with(&seq, &mut context);
+                assert_eq!(forest.insert(&seq), tree, "context path matches the allocating path");
+
+                let got: Vec<usize> = forest.iter(tree).collect();
+                assert_eq!(got, seq);
+                assert_eq!(
+                    seq.is_empty(),
+                    tree.is_empty(),
+                    "only the empty sequence is the empty tree"
+                );
+
+                match seen.get(&seq) {
+                    Some(&prev) => {
+                        let before = forest.node_count();
+                        assert_eq!(forest.insert(&seq), prev, "equal sequences share a handle");
+                        assert_eq!(forest.node_count(), before, "re-interning must not allocate nodes");
+                    }
+                    None => {
+                        seen.insert(seq, tree);
+                    }
+                }
+            }
+        });
     }
 
-    #[test]
-    fn test_insert_and_iter() {
-        let forest: BTreeForest<usize, 2> = BTreeForest::new();
-
-        let seq = [1usize, 2, 3, 4, 5];
-        let tree = forest.insert(&seq);
-        let got: Vec<usize> = forest.iter(tree).collect();
-        assert_eq!(got, seq.to_vec());
-
-        // The empty sequence maps to the empty tree.
-        assert!(forest.insert(&[]).is_empty());
-
-        // Equal sequences are interned to the same handle and share nodes.
-        let nodes = forest.node_count();
-        assert_eq!(forest.insert(&seq), tree);
-        assert_eq!(forest.node_count(), nodes, "re-interning must not allocate nodes");
-    }
-
+    /// Interns random sequences concurrently. Each tree must round-trip to what
+    /// was inserted even while other threads intern, and equal sequences must
+    /// resolve to equal handles regardless of the interning thread; a shared
+    /// oracle checks the latter live across threads.
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_concurrent_intern() {
+    fn random_concurrent_intern() {
         let forest: Arc<BTreeForest<usize, 4>> = Arc::new(BTreeForest::new());
-        let num_threads = 8;
+        let seen: Arc<Mutex<HashMap<Vec<usize>, Tree>>> = Arc::new(Mutex::new(HashMap::new()));
 
-        let mut handles = Vec::new();
-        for _ in 0..num_threads {
-            let forest = Arc::clone(&forest);
-            handles.push(thread::spawn(move || {
-                let mut interned = Vec::new();
-                for i in 0..200usize {
-                    let seq: Vec<usize> = (0..(i % 17 + 1)).map(|j| j + i).collect();
-                    let tree = forest.insert(&seq);
-                    // The tree reconstructs to exactly what was inserted, even
-                    // while other threads intern concurrently.
-                    let got: Vec<usize> = forest.iter(tree).collect();
-                    assert_eq!(got, seq);
-                    interned.push((seq, tree));
-                }
-                interned
-            }));
-        }
+        random_test_threads(
+            200,
+            8,
+            || (Arc::clone(&forest), Arc::clone(&seen)),
+            move |rng, (forest, seen)| {
+                let len = rng.random_range(0..20);
+                let seq: Vec<usize> = (0..len).map(|_| rng.random_range(0..30)).collect();
 
-        // Equal sequences must intern to equal handles regardless of which
-        // thread interned them.
-        let mut seen: HashMap<Vec<usize>, Tree> = HashMap::new();
-        for handle in handles {
-            for (seq, tree) in handle.join().unwrap() {
+                let tree = forest.insert(&seq);
+                let got: Vec<usize> = forest.iter(tree).collect();
+                assert_eq!(got, seq);
+
+                let mut seen = seen.lock().unwrap();
                 match seen.get(&seq) {
                     Some(&prev) => assert_eq!(prev, tree, "equal sequences interned to different trees"),
                     None => {
                         seen.insert(seq, tree);
                     }
                 }
-            }
-        }
+            },
+        );
     }
 }

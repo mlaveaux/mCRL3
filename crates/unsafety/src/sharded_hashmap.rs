@@ -25,6 +25,7 @@
 
 use std::hash::BuildHasher;
 use std::hash::Hash;
+use std::hash::RandomState;
 use std::thread::available_parallelism;
 
 use crossbeam_utils::CachePadded;
@@ -32,7 +33,6 @@ use equivalent::Equivalent;
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
 use parking_lot::RwLock;
-use rustc_hash::FxBuildHasher;
 
 /// Caps the default shard count so machines with many cores do not allocate an
 /// unreasonable number of locks.
@@ -44,7 +44,7 @@ const CONTROL_BITS: u32 = 7;
 
 /// A concurrent hash table that stores bare elements of type `T`, looked up by a
 /// caller-supplied hash and equality closure. See the module documentation.
-pub struct ShardedHashMap<T, S = FxBuildHasher> {
+pub struct ShardedHashMap<T, S = RandomState> {
     /// Element shards, selected by a slice of the hash. Always a power of two in
     /// length so the shard index is a cheap bit extraction.
     shards: Box<[CachePadded<RwLock<HashTable<T>>>]>,
@@ -62,16 +62,16 @@ fn default_shard_count() -> usize {
     (parallelism * 4).clamp(1, MAX_DEFAULT_SHARDS).next_power_of_two()
 }
 
-impl<T> ShardedHashMap<T, FxBuildHasher> {
+impl<T, S: Default> ShardedHashMap<T, S> {
     /// Creates a table with a machine-dependent number of shards.
-    pub fn new() -> ShardedHashMap<T, FxBuildHasher> {
-        ShardedHashMap::with_hasher(FxBuildHasher)
+    pub fn new() -> ShardedHashMap<T, S> {
+        ShardedHashMap::with_hasher(S::default())
     }
 
     /// Creates a table with at least `shards` shards (rounded up to a power of
     /// two). Fewer shards reduce memory; more reduce write contention.
-    pub fn with_shards(shards: usize) -> ShardedHashMap<T, FxBuildHasher> {
-        ShardedHashMap::with_shards_and_hasher(shards, FxBuildHasher)
+    pub fn with_shards(shards: usize) -> ShardedHashMap<T, S> {
+        ShardedHashMap::with_shards_and_hasher(shards, S::default())
     }
 }
 
@@ -285,90 +285,121 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::collections::HashSet;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::thread;
+
+    use rand::RngExt;
+
+    use merc_utilities::random_test;
+    use merc_utilities::random_test_threads;
 
     use super::ShardedHashMap;
 
+    /// Drives the convenience API with random operations against a `HashSet`
+    /// oracle, checking that the table agrees with the model after each step.
     #[test]
-    fn insert_dedup_get_remove() {
-        let map: ShardedHashMap<u64> = ShardedHashMap::with_shards(4);
+    fn random_insert_get_remove() {
+        random_test(100, |rng| {
+            let map: ShardedHashMap<u64> = ShardedHashMap::with_shards(rng.random_range(1..=16));
+            let mut model: HashSet<u64> = HashSet::new();
 
-        assert_eq!(map.insert(7), (7, true));
-        assert_eq!(map.insert(7), (7, false), "duplicate is not reinserted");
-        assert_eq!(map.len(), 1);
-        assert!(map.contains(&7));
-        assert_eq!(map.get(&7), Some(7));
-        assert_eq!(map.get(&8), None);
-
-        assert_eq!(map.remove_equiv(&7), Some(7));
-        assert!(map.is_empty());
-        assert_eq!(map.remove_equiv(&7), None);
+            for _ in 0..1000 {
+                let value = rng.random_range(0..64u64);
+                match rng.random_range(0..4) {
+                    0 => assert_eq!(map.insert(value).1, model.insert(value), "fresh-insert flags agree"),
+                    1 => assert_eq!(map.contains(&value), model.contains(&value)),
+                    2 => {
+                        let expected = model.contains(&value).then_some(value);
+                        assert_eq!(map.get(&value), expected);
+                    }
+                    _ => assert_eq!(map.remove_equiv(&value).is_some(), model.remove(&value)),
+                }
+                assert_eq!(map.len(), model.len());
+            }
+        });
     }
 
     /// Exercises the raw API the way the forest does: the table stores indices
-    /// into a side vector and the equality/hash closures dereference it.
+    /// into a side vector and the equality/hash closures dereference it. Random
+    /// payloads are interned and checked against a `HashMap` oracle mapping each
+    /// payload to the index it should resolve to.
     #[test]
-    fn raw_interning_dedup() {
-        let map: ShardedHashMap<usize> = ShardedHashMap::with_shards(4);
-        let store: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+    fn random_raw_interning_dedup() {
+        random_test(50, |rng| {
+            let map: ShardedHashMap<usize> = ShardedHashMap::with_shards(rng.random_range(1..=8));
+            let store: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 
-        let intern = |value: &'static str| -> usize {
-            let hash = map.hash(value);
-            let eq = |&index: &usize| store.lock().unwrap()[index] == value;
-            if let Some(index) = map.find(hash, eq) {
-                return index;
+            let intern = |value: u64| -> usize {
+                let hash = map.hash(&value);
+                let eq = |&index: &usize| store.lock().unwrap()[index] == value;
+                if let Some(index) = map.find(hash, eq) {
+                    return index;
+                }
+                map.find_or_insert_with(
+                    hash,
+                    eq,
+                    |&index: &usize| map.hash(&store.lock().unwrap()[index]),
+                    || {
+                        let mut store = store.lock().unwrap();
+                        store.push(value);
+                        store.len() - 1
+                    },
+                )
+                .0
+            };
+
+            let mut model: HashMap<u64, usize> = HashMap::new();
+            for _ in 0..500 {
+                let value = rng.random_range(0..32u64);
+                let index = intern(value);
+                let next = model.len();
+                assert_eq!(
+                    index,
+                    *model.entry(value).or_insert(next),
+                    "equal payloads share an index"
+                );
             }
-            map.find_or_insert_with(
-                hash,
-                eq,
-                |&index: &usize| map.hash(store.lock().unwrap()[index]),
-                || {
-                    let mut store = store.lock().unwrap();
-                    store.push(value);
-                    store.len() - 1
-                },
-            )
-            .0
-        };
 
-        let a = intern("alpha");
-        let b = intern("beta");
-        assert_eq!(intern("alpha"), a, "equal payloads share an index");
-        assert_ne!(a, b);
-        assert_eq!(map.len(), 2);
-        assert_eq!(store.lock().unwrap().len(), 2, "no payload pushed for a duplicate");
+            assert_eq!(map.len(), model.len());
+            assert_eq!(
+                store.lock().unwrap().len(),
+                model.len(),
+                "no payload pushed for a duplicate"
+            );
+        });
     }
 
+    /// Concurrently inserts random values from a fixed value space. Across all
+    /// threads each value yields exactly one fresh insertion, so the count of
+    /// fresh insertions must equal the table size.
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn concurrent_insert_counts_each_once() {
-        let map: Arc<ShardedHashMap<usize>> = Arc::new(ShardedHashMap::with_shards(8));
+    fn random_concurrent_insert_counts_each_once() {
+        let map: Arc<ShardedHashMap<u64>> = Arc::new(ShardedHashMap::with_shards(8));
         let inserted = Arc::new(AtomicUsize::new(0));
-        let threads = 8;
-        let values = 1000usize;
+        let values = 256u64;
 
-        let handles: Vec<_> = (0..threads)
-            .map(|_| {
-                let map = Arc::clone(&map);
-                let inserted = Arc::clone(&inserted);
-                thread::spawn(move || {
-                    for value in 0..values {
-                        if map.insert(value).1 {
-                            inserted.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                })
-            })
-            .collect();
-        for handle in handles {
-            handle.join().unwrap();
-        }
+        random_test_threads(
+            2000,
+            8,
+            || (Arc::clone(&map), Arc::clone(&inserted)),
+            move |rng, (map, inserted)| {
+                let value = rng.random_range(0..values);
+                if map.insert(value).1 {
+                    inserted.fetch_add(1, Ordering::Relaxed);
+                }
+            },
+        );
 
-        assert_eq!(inserted.load(Ordering::Relaxed), values, "each value inserted once");
-        assert_eq!(map.len(), values);
+        assert_eq!(
+            inserted.load(Ordering::Relaxed),
+            map.len(),
+            "every fresh insertion is a distinct resident value"
+        );
+        map.for_each(|&value| assert!(value < values, "only inserted values are resident"));
     }
 }
