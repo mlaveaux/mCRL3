@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::fs::File;
+    use std::io::Cursor;
     use std::path::Path;
     use std::process::Command;
 
@@ -9,6 +10,7 @@ mod tests {
     use merc_explore::ExplorationStrategy;
     use merc_io::temp_dir;
     use merc_io::traced_command;
+    use merc_lts::AutStream;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
     use merc_lts::StateIndex;
@@ -21,6 +23,7 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::explore_explicit::Mcrl2MultiActionLabel;
+    use crate::explore_explicit::explore_lps_explicit_parallel;
     use crate::explore_lps_explicit;
 
     /// Runs `mcrl22lps` and `lps2lts` on a `.mcrl2` specification, explores the
@@ -211,6 +214,126 @@ mod tests {
                 ),
                 "LTSs are not strongly bisimilar with {strategy:?}"
             );
+        });
+    }
+
+    /// Explores `lps_path` both sequentially and with the parallel level-
+    /// synchronised BFS on several threads, and asserts the two LTSs have equal
+    /// state/transition counts and are strongly bisimilar. State numbering is
+    /// nondeterministic under parallelism, so the comparison is up to bisimulation.
+    fn assert_parallel_matches_sequential(lps_path: &Path) {
+        let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
+
+        // Sequential reference, relabelled to strings for comparison.
+        let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        explore_lps_explicit(
+            &mut builder,
+            &lps,
+            CachingStrategy::None,
+            ExplorationStrategy::Bfs,
+            &Timing::new(),
+        )
+        .expect("Sequential exploration failed");
+        let sequential = builder
+            .finish(StateIndex::new(0), false)
+            .relabel(|label| Ok(label.to_string()))
+            .unwrap();
+
+        // Parallel exploration across several threads, streamed into an
+        // in-memory AUT buffer and read back as a string-labelled LTS.
+        let mut buffer = Cursor::new(Vec::new());
+        {
+            let mut stream = AutStream::new_mcrl2(&mut buffer);
+            explore_lps_explicit_parallel(&mut stream, &lps, 4, &Timing::new())
+                .expect("Parallel exploration failed");
+        }
+        buffer.set_position(0);
+        let parallel = read_mcrl2_aut(&mut buffer).expect("Failed to read parallel AUT output");
+
+        assert_eq!(
+            parallel.num_of_states(),
+            sequential.num_of_states(),
+            "Parallel and sequential state counts differ for {}",
+            lps_path.display()
+        );
+        assert_eq!(
+            parallel.num_of_transitions(),
+            sequential.num_of_transitions(),
+            "Parallel and sequential transition counts differ for {}",
+            lps_path.display()
+        );
+        assert!(
+            compare_lts(Equivalence::StrongBisim, parallel, sequential, false, &mut Timing::new()),
+            "Parallel and sequential LTSs are not strongly bisimilar for {}",
+            lps_path.display()
+        );
+    }
+
+    /// Runs `mcrl22lps` on a `.mcrl2` specification and asserts that parallel and
+    /// sequential explicit exploration agree.
+    fn compare_parallel_with_sequential(spec_relative_path: &str) {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let mcrl22lps = Path::new(&mcrl2_path).join("mcrl22lps");
+        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(spec_relative_path);
+        assert!(spec_path.exists(), "Spec file not found: {}", spec_path.display());
+
+        let temp_dir = temp_dir("test_explore_lps_parallel").unwrap();
+        let lps_path = temp_dir.path().join("spec.lps");
+
+        let status = traced_command(Command::new(&mcrl22lps).arg(&spec_path).arg(&lps_path))
+            .expect("Failed to execute mcrl22lps");
+        assert!(status.success(), "mcrl22lps failed with status: {status}");
+
+        assert_parallel_matches_sequential(&lps_path);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_explore_parallel_abp() {
+        compare_parallel_with_sequential("../../../examples/mCRL2/academic/abp/abp.mcrl2");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_explore_parallel_cabp() {
+        compare_parallel_with_sequential("../../../examples/mCRL2/academic/cabp/cabp.mcrl2");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_explore_parallel_dining3() {
+        compare_parallel_with_sequential("../../../examples/mCRL2/academic/dining/dining3.mcrl2");
+    }
+
+    /// Generates random LPS specs with [`random_lps`] and asserts that parallel
+    /// and sequential exploration agree on each.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_mcrl2_explore_parallel_random_lps() {
+        let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+            println!("Skipping test: MCRL2_PATH not set");
+            return;
+        };
+
+        let txt2lps = Path::new(&mcrl2_path).join("txt2lps");
+
+        let temp_dir = temp_dir("test_explore_random_lps_parallel").unwrap();
+        let spec_path = temp_dir.path().join("spec.mcrl2");
+        let lps_path = temp_dir.path().join("spec.lps");
+
+        random_test(20, |rng| {
+            let spec = random_lps(rng, 5, 3, 0.4);
+            std::fs::write(&spec_path, spec.to_string()).expect("Failed to write random LPS spec");
+
+            let status = traced_command(Command::new(&txt2lps).arg(&spec_path).arg(&lps_path))
+                .expect("Failed to execute txt2lps");
+            assert!(status.success(), "txt2lps failed with status: {status}");
+
+            assert_parallel_matches_sequential(&lps_path);
         });
     }
 

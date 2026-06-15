@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 
 use log::debug;
 use log::info;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 
 use merc_io::TimeProgress;
 use merc_lts::LtsBuilder;
@@ -51,6 +53,7 @@ pub fn explore<P, Ctx, OnState, OnTransition>(
     lps: &P,
     strategy: ExplorationStrategy,
     timing: &Timing,
+    progress: &TimeProgress<(usize, usize)>,
     ctx: &mut Ctx,
     mut on_state: OnState,
     mut on_transition: OnTransition,
@@ -64,12 +67,6 @@ where
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
     let mut num_transitions = 0usize;
-    let progress = TimeProgress::new(
-        |(states, transitions): (usize, usize)| {
-            info!("Explored {states} states, {transitions} transitions...");
-        },
-        1,
-    );
 
     let mut working: VecDeque<StateRef> = VecDeque::from([initial_ref]);
     // Reusable buffer holding the current state vector reconstructed from the
@@ -129,6 +126,145 @@ where
     Ok(StateIndex::new(initial_ref.index()))
 }
 
+/// Per-worker scratch state and output accumulator for [`explore_parallel`].
+struct Segment<P: LPS, Local> {
+    /// Per-thread enumeration backend and scratch buffers.
+    context: <P::Summand as Summand>::Context,
+    /// Per-thread interning scratch reused across inserts.
+    forest_context: BTreeForestContext,
+    /// Reusable buffer holding the reconstructed source state vector.
+    state_buf: Vec<P::Value>,
+    /// The caller's per-thread output accumulator (e.g. a transition partition).
+    local: Local,
+    /// States first discovered by this segment, forming part of the next level.
+    new_refs: Vec<StateRef>,
+    /// Number of transitions enumerated by this segment.
+    num_transitions: usize,
+    /// First error raised by a caller closure, if any; processing stops after it.
+    error: Option<MercError>,
+}
+
+/// Explores the state space of `lps` in parallel using a level-synchronized
+/// breadth-first search driven by `rayon`.
+///
+/// The interface is similar to [`explore`], but an extra closure is supplied to
+/// produce a fresh per-thread accumulator for each worker.
+/// 
+/// - `make_local()` produces a fresh accumulator for each worker segment.
+pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
+    lps: &P,
+    timing: &Timing,
+    progress: &TimeProgress<(usize, usize)>,
+    make_local: MakeLocal,
+    on_state: OnState,
+    on_transition: OnTransition,
+) -> Result<(StateIndex, Vec<Local>), MercError>
+where
+    P: LPS + Sync,
+    P::Value: Send + Sync,
+    <P::Summand as Summand>::Context: Send,
+    Local: Send,
+    MakeLocal: Fn() -> Local + Sync,
+    OnState: Fn(&mut Local, StateIndex, &P::StateInfo) -> Result<(), MercError> + Sync,
+    OnTransition: Fn(&mut Local, StateIndex, &P::Label, StateIndex) -> Result<(), MercError> + Sync,
+{
+    let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
+    let (initial_ref, _) = discovered.insert(&lps.initial_state());
+
+    let mut num_transitions = 0usize;
+    let mut locals: Vec<Local> = Vec::new();
+    let mut frontier: Vec<StateRef> = vec![initial_ref];
+
+    timing.measure("explore", || -> Result<(), MercError> {
+        while !frontier.is_empty() {
+            let segments: Vec<Segment<P, Local>> = frontier
+                .par_iter()
+                .fold(
+                    || Segment {
+                        context: lps.create_context(),
+                        forest_context: BTreeForestContext::new(),
+                        state_buf: Vec::new(),
+                        local: make_local(),
+                        new_refs: Vec::new(),
+                        num_transitions: 0,
+                        error: None,
+                    },
+                    |mut seg, &state_ref| {
+                        if seg.error.is_some() {
+                            return seg;
+                        }
+
+                        // Borrow the fields disjointly so the enumeration
+                        // callback can mutate the accumulator and discovery
+                        // buffers while the backend reads the source state.
+                        let Segment {
+                            context,
+                            forest_context,
+                            state_buf,
+                            local,
+                            new_refs,
+                            num_transitions,
+                            ..
+                        } = &mut seg;
+
+                        let result = (|| -> Result<(), MercError> {
+                            let found = discovered.get_into(state_ref, state_buf);
+                            debug_assert!(found, "StateRef from frontier must be valid");
+                            let from = StateIndex::new(state_ref.index());
+                            lps.prepare(context, state_buf);
+
+                            let info = lps.state_info(state_buf);
+                            on_state(local, from, &info)?;
+
+                            for summand in lps.summands() {
+                                summand.enumerate(context, state_buf, |label, next_state| {
+                                    let (target_ref, is_new) = discovered.insert_with(next_state, forest_context);
+                                    let to = StateIndex::new(target_ref.index());
+                                    on_transition(local, from, label, to)?;
+                                    *num_transitions += 1;
+                                    if is_new {
+                                        new_refs.push(target_ref);
+                                    }
+                                    Ok(())
+                                })?;
+                            }
+                            Ok(())
+                        })();
+
+                        if let Err(error) = result {
+                            seg.error = Some(error);
+                        }
+                        seg
+                    },
+                )
+                .collect();
+
+            // Barrier: merge the per-segment results into the next level.
+            frontier.clear();
+            for mut segment in segments {
+                if let Some(error) = segment.error.take() {
+                    return Err(error);
+                }
+                num_transitions += segment.num_transitions;
+                frontier.append(&mut segment.new_refs);
+                locals.push(segment.local);
+            }
+
+            progress.print((discovered.len(), num_transitions));
+        }
+
+        Ok(())
+    })?;
+
+    info!(
+        "Exploration complete: {} states, {} transitions",
+        discovered.len(),
+        num_transitions,
+    );
+
+    Ok((StateIndex::new(initial_ref.index()), locals))
+}
+
 /// Explores the state space of `lps` and feeds the discovered transitions to
 /// the [`LtsBuilder`] `builder`.
 pub fn explore_to_lts<P, B>(
@@ -137,6 +273,7 @@ pub fn explore_to_lts<P, B>(
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
     timing: &Timing,
+    progress: &TimeProgress<(usize, usize)>,
 ) -> Result<(), MercError>
 where
     P: LPS,
@@ -148,6 +285,7 @@ where
         &cached,
         strategy,
         timing,
+        progress,
         builder,
         |_, _, _| Ok(()),
         |b, from, label, to| b.add_transition(from, label, to),
