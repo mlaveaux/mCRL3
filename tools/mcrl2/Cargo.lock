@@ -941,6 +941,7 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 name = "merc-lps"
 version = "1.0.0"
 dependencies = [
+ "boxcar",
  "clap",
  "env_logger",
  "itertools 0.14.0",
@@ -970,16 +971,17 @@ dependencies = [
 name = "merc-pbes"
 version = "1.0.0"
 dependencies = [
+ "boxcar",
  "clap",
  "env_logger",
  "itertools 0.14.0",
  "log",
  "mcrl2",
- "merc_collections",
  "merc_explore",
  "merc_io",
  "merc_lts",
  "merc_tools",
+ "merc_unsafety",
  "merc_utilities",
  "merc_vpg",
  "rand",

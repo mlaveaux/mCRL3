@@ -1,6 +1,5 @@
-use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use log::debug;
 
@@ -18,7 +17,6 @@ use mcrl2::is_variable;
 use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
 use mcrl2::tau_multi_action;
-use merc_collections::IndexedSet;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
@@ -26,6 +24,7 @@ use merc_explore::Summand;
 use merc_explore::explore_to_lts;
 use merc_lts::LtsBuilder;
 use merc_lts::TransitionLabel;
+use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -100,15 +99,26 @@ fn is_mcrl2_timed_multi_action_term(term: &ATerm) -> bool {
     symbol.name() == "TimedMultAct" && symbol.arity() == 2
 }
 
+/// One [`ConcurrentIndexedSet`] per process parameter, interning the data
+/// expressions observed for that parameter to a dense `usize` index.
+///
+/// Held in a [`boxcar::Vec`] so it can be shared by `&self` between the LPS and
+/// every summand: the outer vector is filled once at construction and only read
+/// by index afterwards, while the inner sets are appended to concurrently from
+/// each worker's enumeration callback. State-vector positions are exactly these
+/// indices, so the mapping must be globally consistent across worker threads.
+type ParameterMapping = boxcar::Vec<ConcurrentIndexedSet<DataExpression>>;
+
 /// Explicit-state view of a [mcrl2::LinearProcessSpecification] that implements
 /// the [merc_explore::LPS] trait.
 ///
-/// State vectors are indexed into a per-parameter [IndexedSet] of the data
-/// expressions observed for that parameter (see [Shared::mapping]). Labels are
-/// the printed multi-actions of the summands.
+/// State vectors are indexed into a per-parameter [`ConcurrentIndexedSet`] of
+/// the data expressions observed for that parameter (see [`ParameterMapping`]).
+/// Labels are the printed multi-actions of the summands.
 struct ExplicitLinearProcessSpecification {
-    /// The (preprocessed) underlying LPS.
-    _lps: LinearProcessSpecification,
+    /// The (preprocessed) underlying LPS. Retained because each per-thread
+    /// [`ExplicitContext`] builds its own [`LearnSuccessorsContext`] from it.
+    lps: LinearProcessSpecification,
 
     /// Cached process parameter variables in declaration order.
     process_parameters: Vec<*const _aterm>,
@@ -116,8 +126,8 @@ struct ExplicitLinearProcessSpecification {
     /// The summands extracted from the LPS.
     summands: Vec<ExplicitSummand>,
 
-    /// Information shared between all summands.
-    _shared: Rc<Shared>,
+    /// Concurrent per-parameter value interning shared with every summand.
+    mapping: Arc<ParameterMapping>,
 
     /// The initial state vector.
     initial_state: Vec<usize>,
@@ -132,18 +142,20 @@ impl ExplicitLinearProcessSpecification {
         let process_parameters: Vec<*const _aterm> = parameter_terms.iter().map(|param| param.address()).collect();
         let num_parameters = parameters.len();
 
-        let shared = Rc::new(Shared {
-            context: LearnSuccessorsContext::new(&lps),
-            mapping: RefCell::new((0..num_parameters).map(|_| IndexedSet::new()).collect()),
-            parameter_values: RefCell::new(Vec::with_capacity(num_parameters)),
-        });
+        // One concurrent interning set per process parameter. The outer vector
+        // is populated once here and only read by index afterwards.
+        let mapping: ParameterMapping = boxcar::Vec::with_capacity(num_parameters);
+        for _ in 0..num_parameters {
+            mapping.push(ConcurrentIndexedSet::new());
+        }
+        let mapping = Arc::new(mapping);
 
         let mut summands = Vec::new();
         for index in 0..lps.num_summands() {
             summands.push(ExplicitSummand::new(
                 &lps.action_summand(index)?,
                 &parameters,
-                Rc::clone(&shared),
+                Arc::clone(&mapping),
             ));
         }
 
@@ -152,10 +164,7 @@ impl ExplicitLinearProcessSpecification {
             .expressions()
             .iter()
             .enumerate()
-            .map(|(i, param)| {
-                let (index, _) = shared.mapping.borrow_mut()[i].insert(param.clone());
-                *index
-            })
+            .map(|(i, param)| mapping[i].insert(param.clone()).0)
             .collect::<Vec<usize>>();
 
         debug_assert_eq!(
@@ -165,30 +174,33 @@ impl ExplicitLinearProcessSpecification {
         );
 
         Ok(ExplicitLinearProcessSpecification {
-            _lps: lps,
+            lps,
             summands,
             process_parameters,
-            _shared: shared,
+            mapping,
             initial_state,
         })
     }
 }
 
-/// State shared between [ExplicitSummand]s and the enclosing LPS.
-struct Shared {
-    /// Context used by mCRL2 to perform the enumeration. Behind a `RefCell` so
-    /// the enumeration callback can re-enter Rust code that touches
-    /// [Shared::mapping] while a call into the context is in progress.
+/// Per-thread enumeration context for an [`ExplicitLinearProcessSpecification`].
+///
+/// Owns the mCRL2 enumeration backend and the reusable scratch buffers, so the
+/// LPS and its summands stay immutable and shareable by `&self` while each
+/// worker thread drives its own context.
+pub struct ExplicitContext {
+    /// Backend used by mCRL2 to perform the enumeration, staged per source
+    /// state by [`LPS::prepare`] and consumed by [`Summand::enumerate`].
     context: LearnSuccessorsContext,
 
-    /// Bidirectional mapping between data expressions and indices, one
-    /// [IndexedSet] per process parameter.
-    mapping: RefCell<Vec<IndexedSet<DataExpression>>>,
+    /// Reusable scratch buffer holding the `*const _aterm` parameter values
+    /// resolved from the current source state. Filled during [`LPS::prepare`]
+    /// and consumed immediately by [`LearnSuccessorsContext::set_assignments`].
+    parameter_values: Vec<*const _aterm>,
 
-    /// Reusable scratch buffer holding the parameter values resolved from the
-    /// current source state. Filled during [`LPS::prepare`] and consumed
-    /// immediately by [`LearnSuccessorsContext::set_assignments`].
-    parameter_values: RefCell<Vec<*const _aterm>>,
+    /// Reusable scratch buffer for the next-state vector produced for each
+    /// enumerated solution. Reset and refilled for every solution.
+    next_state_buf: Vec<usize>,
 }
 
 /// A single summand of the LPS, prepared for explicit enumeration.
@@ -212,16 +224,13 @@ struct ExplicitSummand {
     /// The multi-action of this summand.
     multi_action: Mcrl2MultiActionLabel,
 
-    /// Shared context owning the rewriter/enumerator and parameter mappings.
-    shared: Rc<Shared>,
-
-    /// Reusable scratch buffer for the next-state vector produced for each
-    /// enumerated solution. Reset and refilled for every solution.
-    next_state_buf: RefCell<Vec<usize>>,
+    /// Concurrent per-parameter value interning shared with the enclosing LPS
+    /// (see [`ParameterMapping`]).
+    mapping: Arc<ParameterMapping>,
 }
 
 impl ExplicitSummand {
-    fn new(summand: &LinearSummand, parameters: &ATermList<DataVariable>, shared: Rc<Shared>) -> Self {
+    fn new(summand: &LinearSummand, parameters: &ATermList<DataVariable>, mapping: Arc<ParameterMapping>) -> Self {
         // Collect free variables from the condition.
         let mut read_vars = free_variables_data_expression(&summand.condition().copy());
         let parameters = parameters.to_vec();
@@ -292,8 +301,7 @@ impl ExplicitSummand {
             summation_variables,
             write_assignments,
             multi_action,
-            shared,
-            next_state_buf: RefCell::new(Vec::new()),
+            mapping,
         }
     }
 }
@@ -312,29 +320,34 @@ impl LPS for ExplicitLinearProcessSpecification {
         &self.summands
     }
 
-    fn prepare(&self, state: &[Self::Value]) {
+    fn create_context(&self) -> ExplicitContext {
+        ExplicitContext {
+            context: LearnSuccessorsContext::new(&self.lps),
+            parameter_values: Vec::with_capacity(self.process_parameters.len()),
+            next_state_buf: Vec::new(),
+        }
+    }
+
+    fn prepare(&self, context: &mut ExplicitContext, state: &[Self::Value]) {
         debug_assert_eq!(
             state.len(),
             self.process_parameters.len(),
             "State vector length must match number of process parameters"
         );
 
-        let mut parameter_values = self._shared.parameter_values.borrow_mut();
-        parameter_values.clear();
-        let mapping = self._shared.mapping.borrow();
+        context.parameter_values.clear();
         for (i, value_index) in state.iter().enumerate() {
-            parameter_values.push(
-                mapping[i]
+            context.parameter_values.push(
+                self.mapping[i]
                     .get_by_index(*value_index)
                     .expect("Value must be in the mapping")
                     .address(),
             );
         }
-        drop(mapping);
 
-        self._shared
+        context
             .context
-            .set_assignments(&self.process_parameters, &parameter_values);
+            .set_assignments(&self.process_parameters, &context.parameter_values);
     }
 
     fn state_info(&self, _state: &[Self::Value]) -> Self::StateInfo {}
@@ -343,7 +356,7 @@ impl LPS for ExplicitLinearProcessSpecification {
 impl Summand for ExplicitSummand {
     type Value = usize;
     type Label = Mcrl2MultiActionLabel;
-    type Context = ();
+    type Context = ExplicitContext;
 
     fn read_positions(&self) -> &[usize] {
         &self.read_indices
@@ -353,11 +366,20 @@ impl Summand for ExplicitSummand {
         &self.write_indices
     }
 
-    fn enumerate<F>(&self, _context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
-        self.shared.context.enumerate_raw_with_current_assignments(
+        // Borrow the backend and the next-state scratch buffer as disjoint
+        // fields so the enumeration callback can fill the buffer while the
+        // backend call is in progress.
+        let ExplicitContext {
+            context: learn,
+            next_state_buf,
+            ..
+        } = context;
+
+        learn.enumerate_raw_with_current_assignments(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
@@ -371,18 +393,12 @@ impl Summand for ExplicitSummand {
 
                 // Build the next-state vector in the cached buffer instead of
                 // allocating a fresh `Vec` per enumerated transition.
-                let mut next_state = self.next_state_buf.borrow_mut();
-                next_state.clear();
-                next_state.extend_from_slice(state);
-                {
-                    let mut mapping = self.shared.mapping.borrow_mut();
-                    for (i, &value) in values.iter().enumerate() {
-                        let param_index = self.write_indices[i];
-                        let new_index = mapping[param_index]
-                            .insert(DataExpression::from(ATerm::from_ptr(value)))
-                            .0;
-                        next_state[param_index] = *new_index;
-                    }
+                next_state_buf.clear();
+                next_state_buf.extend_from_slice(state);
+                for (i, &value) in values.iter().enumerate() {
+                    let param_index = self.write_indices[i];
+                    let (new_index, _) = self.mapping[param_index].insert(DataExpression::from(ATerm::from_ptr(value)));
+                    next_state_buf[param_index] = new_index;
                 }
 
                 // Wrap the rewritten multi-action term as a typed label. The
@@ -392,7 +408,7 @@ impl Summand for ExplicitSummand {
                 let label = Mcrl2MultiActionLabel::from_multi_action_term(ATerm::from_ptr(multi_action));
 
                 // We cannot propagate errors from the C callback, so we panic on error and catch it in the caller.
-                report(&label, &next_state).expect("Failed to report successor state");
+                report(&label, next_state_buf).expect("Failed to report successor state");
             },
         );
 
@@ -405,7 +421,7 @@ impl fmt::Debug for ExplicitLinearProcessSpecification {
         writeln!(f, "ExplicitLinearProcessSpecification:")?;
 
         writeln!(f, "  Parameters:")?;
-        for (i, param) in self._lps.parameters().iter().enumerate() {
+        for (i, param) in self.lps.parameters().iter().enumerate() {
             writeln!(f, "    {:?}: {:?}", i, param)?;
         }
 

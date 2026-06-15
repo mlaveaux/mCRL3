@@ -82,16 +82,6 @@ pub struct CacheContext<P: LPS> {
     inner: <P::Summand as Summand>::Context,
 }
 
-impl<P: LPS> Default for CacheContext<P> {
-    fn default() -> Self {
-        CacheContext {
-            key_buf: Vec::new(),
-            replay_buf: Vec::new(),
-            forest_context: BTreeForestContext::new(),
-            inner: Default::default(),
-        }
-    }
-}
 
 /// Thin metadata wrapper for a single summand in a [`CacheLPS`].
 pub struct CacheSummandWrapper<P: LPS> {
@@ -295,8 +285,17 @@ impl<P: LPS> LPS for CacheLPS<P> {
         &self.summands
     }
 
-    fn prepare(&self, state: &[Self::Value]) {
-        self.inner.prepare(state);
+    fn create_context(&self) -> <Self::Summand as Summand>::Context {
+        CacheContext {
+            key_buf: Vec::new(),
+            replay_buf: Vec::new(),
+            forest_context: BTreeForestContext::new(),
+            inner: self.inner.create_context(),
+        }
+    }
+
+    fn prepare(&self, context: &mut <Self::Summand as Summand>::Context, state: &[Self::Value]) {
+        self.inner.prepare(&mut context.inner, state);
     }
 
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
