@@ -1,8 +1,6 @@
 //! A discovered set that stores state vectors as maximally shared sequences.
 
-use dashmap::DashMap;
-use dashmap::mapref::entry::Entry;
-use rustc_hash::FxBuildHasher;
+use merc_unsafety::ConcurrentIndexedSet;
 
 use crate::BTreeForest;
 use crate::BTreeForestContext;
@@ -34,13 +32,10 @@ where
 {
     /// Hash-consed forest backing every stored state sequence.
     forest: BTreeForest<T, 2>,
-    /// Maps a state's dense index back to its canonical root, used to
-    /// reconstruct the state vector for a [`StateRef`]. The append-only vector
-    /// hands out the dense indices itself, so its slot index *is* the
-    /// [`StateRef`].
-    states: boxcar::Vec<Tree>,
-    /// Hash index from a state's canonical root to its dense index.
-    table: DashMap<Tree, usize, FxBuildHasher>,
+    /// Deduplicates canonical roots and assigns each a dense index, which *is*
+    /// the [`StateRef`]. Reconstructing a state vector for a [`StateRef`] looks
+    /// the root up by index and iterates it back through the forest.
+    states: ConcurrentIndexedSet<Tree>,
 }
 
 impl<T> DiscoveredSet<T>
@@ -51,8 +46,7 @@ where
     pub fn new() -> DiscoveredSet<T> {
         DiscoveredSet {
             forest: BTreeForest::new(),
-            states: boxcar::Vec::new(),
-            table: DashMap::with_hasher(FxBuildHasher),
+            states: ConcurrentIndexedSet::new(),
         }
     }
 
@@ -61,8 +55,7 @@ where
     pub fn with_capacity(capacity: usize) -> DiscoveredSet<T> {
         DiscoveredSet {
             forest: BTreeForest::new(),
-            states: boxcar::Vec::with_capacity(capacity),
-            table: DashMap::with_capacity_and_hasher(capacity, FxBuildHasher),
+            states: ConcurrentIndexedSet::with_capacity(capacity),
         }
     }
 
@@ -78,27 +71,8 @@ where
     /// Each thread must use its own context.
     pub fn insert_with(&self, state: &[T], context: &mut BTreeForestContext) -> (StateRef, bool) {
         let root = self.forest.insert_with(state, context);
-
-        // Fast path: the state is already present, so no write lock is needed.
-        if let Some(index) = self.table.get(&root) {
-            return (StateRef(*index), false);
-        }
-
-        // The entry holds the shard write lock for `root`, so two threads
-        // inserting the same new state cannot both take the vacant branch and
-        // hand out duplicate indices.
-        match self.table.entry(root) {
-            Entry::Occupied(entry) => (StateRef(*entry.get()), false),
-            Entry::Vacant(entry) => {
-                // `push` appends the root and returns its dense slot index. The
-                // slot is published before `push` returns, so recording the
-                // index in the table afterwards guarantees a returned
-                // `StateRef` always resolves in `get`.
-                let index = self.states.push(root);
-                entry.insert(index);
-                (StateRef(index), true)
-            }
-        }
+        let (index, is_new) = self.states.insert(root);
+        (StateRef(index), is_new)
     }
 
     /// Returns the handle of `state` if it is present, or `None` otherwise.
@@ -111,7 +85,7 @@ where
     /// Each thread must use its own context.
     pub fn index_with(&self, state: &[T], context: &mut BTreeForestContext) -> Option<StateRef> {
         let root = self.forest.insert_with(state, context);
-        self.table.get(&root).map(|index| StateRef(*index))
+        self.states.index(&root).map(StateRef)
     }
 
     /// Returns true if `state` is present in the set.
@@ -125,7 +99,7 @@ where
     /// out of range.
     pub fn get_into(&self, reference: StateRef, out: &mut Vec<T>) -> bool {
         out.clear();
-        let Some(&tree) = self.states.get(reference.index()) else {
+        let Some(&tree) = self.states.get_by_index(reference.index()) else {
             return false;
         };
         out.extend(self.forest.iter(tree));
@@ -136,7 +110,7 @@ where
     ///
     /// Prefer [`DiscoveredSet::get_into`] on hot paths to reuse a buffer.
     pub fn get(&self, reference: StateRef) -> Option<Vec<T>> {
-        let &tree = self.states.get(reference.index())?;
+        let &tree = self.states.get_by_index(reference.index())?;
         Some(self.forest.iter(tree).collect())
     }
 
@@ -145,7 +119,6 @@ where
     pub fn clear(&mut self) {
         self.forest.clear();
         self.states.clear();
-        self.table.clear();
     }
 }
 
@@ -155,12 +128,12 @@ where
 {
     /// Returns the number of distinct states in the set.
     pub fn len(&self) -> usize {
-        self.table.len()
+        self.states.len()
     }
 
     /// Returns true if the set is empty.
     pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
+        self.states.is_empty()
     }
 }
 

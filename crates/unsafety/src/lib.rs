@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod block_allocator;
+mod concurrent_indexed_set;
 mod counting_allocator;
 mod erasable;
 mod freelist;
@@ -12,6 +13,7 @@ mod slice_dst;
 mod stable_pointer_set;
 
 pub use block_allocator::*;
+pub use concurrent_indexed_set::*;
 pub use counting_allocator::*;
 pub use erasable::*;
 pub use freelist::*;

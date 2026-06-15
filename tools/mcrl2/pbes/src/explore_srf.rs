@@ -339,6 +339,7 @@ impl LPS for PbesSrfLps {
 impl Summand for PbesSrfSummand {
     type Value = usize;
     type Label = ();
+    type Context = ();
 
     fn read_positions(&self) -> &[usize] {
         &self.read_positions
@@ -348,7 +349,7 @@ impl Summand for PbesSrfSummand {
         &self.write_positions
     }
 
-    fn enumerate<F>(&self, state: &[usize], mut report: F) -> Result<(), MercError>
+    fn enumerate<F>(&self, _context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
