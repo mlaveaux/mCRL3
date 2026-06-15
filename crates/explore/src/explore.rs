@@ -1,20 +1,13 @@
 use std::collections::VecDeque;
 
-use log::debug;
-use log::info;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 
-use merc_io::TimeProgress;
-use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
-use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use crate::BTreeForestContext;
-use crate::CacheLPS;
-use crate::CachingStrategy;
 use crate::DiscoveredSet;
 use crate::LPS;
 use crate::StateRef;
@@ -48,12 +41,12 @@ pub enum ExplorationStrategy {
 ///   produced by the summands.
 ///
 /// Returns the [`StateIndex`] assigned to the initial state of `lps`. The
-/// caller is responsible for finalising any builder it owns.
+/// caller is responsible for finalising any builder it owns; counting states
+/// and transitions (and any progress reporting) is left to the closures.
 pub fn explore<P, Ctx, OnState, OnTransition>(
     lps: &P,
     strategy: ExplorationStrategy,
     timing: &Timing,
-    progress: &TimeProgress<(usize, usize)>,
     ctx: &mut Ctx,
     mut on_state: OnState,
     mut on_transition: OnTransition,
@@ -65,8 +58,6 @@ where
 {
     let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
-
-    let mut num_transitions = 0usize;
 
     let mut working: VecDeque<StateRef> = VecDeque::from([initial_ref]);
     // Reusable buffer holding the current state vector reconstructed from the
@@ -103,25 +94,16 @@ where
                     let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
                     let to = StateIndex::new(target_ref.index());
                     on_transition(ctx, from, label, to)?;
-                    num_transitions += 1;
                     if is_new {
                         working.push_back(target_ref);
                     }
                     Ok(())
                 })?;
             }
-
-            progress.print((discovered.len(), num_transitions));
         }
 
         Ok(())
     })?;
-
-    info!(
-        "Exploration complete: {} states, {} transitions",
-        discovered.len(),
-        num_transitions,
-    );
 
     Ok(StateIndex::new(initial_ref.index()))
 }
@@ -138,8 +120,6 @@ struct Segment<P: LPS, Local> {
     local: Local,
     /// States first discovered by this segment, forming part of the next level.
     new_refs: Vec<StateRef>,
-    /// Number of transitions enumerated by this segment.
-    num_transitions: usize,
     /// First error raised by a caller closure, if any; processing stops after it.
     error: Option<MercError>,
 }
@@ -154,7 +134,6 @@ struct Segment<P: LPS, Local> {
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,
     timing: &Timing,
-    progress: &TimeProgress<(usize, usize)>,
     make_local: MakeLocal,
     on_state: OnState,
     on_transition: OnTransition,
@@ -171,7 +150,6 @@ where
     let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
-    let mut num_transitions = 0usize;
     let mut locals: Vec<Local> = Vec::new();
     let mut frontier: Vec<StateRef> = vec![initial_ref];
 
@@ -186,7 +164,6 @@ where
                         state_buf: Vec::new(),
                         local: make_local(),
                         new_refs: Vec::new(),
-                        num_transitions: 0,
                         error: None,
                     },
                     |mut seg, &state_ref| {
@@ -203,7 +180,6 @@ where
                             state_buf,
                             local,
                             new_refs,
-                            num_transitions,
                             ..
                         } = &mut seg;
 
@@ -221,7 +197,6 @@ where
                                     let (target_ref, is_new) = discovered.insert_with(next_state, forest_context);
                                     let to = StateIndex::new(target_ref.index());
                                     on_transition(local, from, label, to)?;
-                                    *num_transitions += 1;
                                     if is_new {
                                         new_refs.push(target_ref);
                                     }
@@ -245,52 +220,13 @@ where
                 if let Some(error) = segment.error.take() {
                     return Err(error);
                 }
-                num_transitions += segment.num_transitions;
                 frontier.append(&mut segment.new_refs);
                 locals.push(segment.local);
             }
-
-            progress.print((discovered.len(), num_transitions));
         }
 
         Ok(())
     })?;
 
-    info!(
-        "Exploration complete: {} states, {} transitions",
-        discovered.len(),
-        num_transitions,
-    );
-
     Ok((StateIndex::new(initial_ref.index()), locals))
-}
-
-/// Explores the state space of `lps` and feeds the discovered transitions to
-/// the [`LtsBuilder`] `builder`.
-pub fn explore_to_lts<P, B>(
-    builder: &mut B,
-    lps: P,
-    strategy: ExplorationStrategy,
-    caching: CachingStrategy,
-    timing: &Timing,
-    progress: &TimeProgress<(usize, usize)>,
-) -> Result<(), MercError>
-where
-    P: LPS,
-    P::Label: TransitionLabel,
-    B: LtsBuilder<P::Label>,
-{
-    let cached = CacheLPS::new(lps, caching);
-    let initial = explore(
-        &cached,
-        strategy,
-        timing,
-        progress,
-        builder,
-        |_, _, _| Ok(()),
-        |b, from, label, to| b.add_transition(from, label, to),
-    )?;
-    builder.finish(initial)?;
-    debug!("{}", cached.metrics());
-    Ok(())
 }

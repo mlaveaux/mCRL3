@@ -1,7 +1,9 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use log::debug;
+use log::info;
 
 use mcrl2::_aterm;
 use mcrl2::ATerm;
@@ -13,6 +15,7 @@ use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::Pbes;
 use mcrl2::PbesPropositionalVariableInstantiation;
+use mcrl2::Protected;
 use mcrl2::SrfPbes;
 use mcrl2::free_variables_data_expression;
 use mcrl2::make_data_assignment_list;
@@ -23,6 +26,8 @@ use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
 use merc_explore::explore;
+use merc_explore::explore_parallel;
+use merc_io::TimeProgress;
 use merc_lts::StateIndex;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
@@ -32,6 +37,17 @@ use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 use merc_vpg::VertexIndex;
+
+/// Periodic progress reporter for PBES exploration. A PBES state is a BES
+/// equation (parity-game vertex), so the count is reported as BES equations.
+fn bes_progress() -> TimeProgress<(usize, usize)> {
+    TimeProgress::new(
+        |(equations, edges): (usize, usize)| {
+            info!("Explored {equations} BES equations, {edges} edges...");
+        },
+        1,
+    )
+}
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
 pub fn parity_game_from_pbes(
@@ -44,34 +60,108 @@ pub fn parity_game_from_pbes(
 
     let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
 
+    // Count BES equations (vertices) and edges in the exploration closures,
+    // driving the periodic progress reporter from `on_transition`.
+    let progress = bes_progress();
+    let equations = Cell::new(0usize);
+    let edges = Cell::new(0usize);
+
     let cached = CacheLPS::new(lps, caching);
-    explore(
+    let _initial = explore(
         &cached,
         strategy,
         &timing,
         &mut builder,
         |b: &mut ParityGameBuilder, state: StateIndex, info: &(Player, Priority)| {
+            equations.set(equations.get() + 1);
             b.add_vertex(VertexIndex::new(state.value()), info.0, info.1);
             Ok(())
         },
         |b: &mut ParityGameBuilder, from: StateIndex, _label: &(), to: StateIndex| {
+            edges.set(edges.get() + 1);
+            progress.print((equations.get(), edges.get()));
             b.add_edge(VertexIndex::new(from.value()), VertexIndex::new(to.value()));
             Ok(())
         },
     )?;
+    info!(
+        "Exploration complete: {} BES equations, {} edges",
+        equations.get(),
+        edges.get(),
+    );
 
     debug!("{}", cached.metrics());
     Ok(builder.finish(true, true))
 }
 
-/// One [`ConcurrentIndexedSet`] per data parameter, interning the data
-/// expressions observed for that parameter to a dense `usize` index.
+/// Per-worker output partition for [`parity_game_from_pbes_parallel`].
 ///
-/// Held in a [`boxcar::Vec`] so it can be shared by `&self` between the LPS and
-/// every summand: the outer vector is filled once at construction and only read
-/// by index afterwards, while the inner sets are appended to concurrently from
-/// each worker's enumeration callback.
-type ParameterMapping = boxcar::Vec<ConcurrentIndexedSet<DataExpression>>;
+/// Holds the vertices and edges discovered by one worker. All values are dense
+/// `usize`-backed indices (and plain `Player`/`Priority`), so the partition is
+/// `Send` and the partitions merge by concatenation without any remapping.
+#[derive(Default)]
+struct PbesPartition {
+    vertices: Vec<(VertexIndex, Player, Priority)>,
+    edges: Vec<(VertexIndex, VertexIndex)>,
+}
+
+/// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel
+/// across `threads` worker threads.
+///
+/// Uses the level-synchronised parallel BFS of [`explore_parallel`]. The PBES has
+/// no action labels, so each worker only records `usize`-backed vertices and
+/// edges; the shared discovered set assigns globally consistent vertex indices,
+/// so the per-worker partitions merge by concatenation.
+pub fn parity_game_from_pbes_parallel(pbes: &Pbes, threads: usize) -> Result<ParityGame, MercError> {
+    let lps = PbesSrfLps::new(pbes)?;
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .map_err(|err| MercError::from(format!("Failed to build thread pool: {err}")))?;
+
+    let (_initial, partitions) = pool.install(|| {
+        let timing = Timing::new();
+        explore_parallel(
+            &lps,
+            &timing,
+            PbesPartition::default,
+            |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
+                partition.vertices.push((VertexIndex::new(state.value()), info.0, info.1));
+                Ok(())
+            },
+            |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
+                partition
+                    .edges
+                    .push((VertexIndex::new(from.value()), VertexIndex::new(to.value())));
+                Ok(())
+            },
+        )
+    })?;
+
+    // The per-thread progress trackers cannot be shared (`TimeProgress` is
+    // `!Sync`), so the parallel path reports only the final summary, counted
+    // from the merged partitions.
+    let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
+    let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
+    info!("Exploration complete: {total_equations} BES equations, {total_edges} edges");
+
+    // Merge the per-worker partitions: every state is reported to `on_state`
+    // exactly once, so each vertex is added once. Add all vertices before edges
+    // since an edge may target a vertex discovered by another worker.
+    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
+    for partition in &partitions {
+        for &(vertex, player, priority) in &partition.vertices {
+            builder.add_vertex(vertex, player, priority);
+        }
+    }
+    for partition in &partitions {
+        for &(from, to) in &partition.edges {
+            builder.add_edge(from, to);
+        }
+    }
+    Ok(builder.finish(true, true))
+}
 
 /// Per-thread enumeration context for a [`PbesSrfLps`].
 ///
@@ -93,12 +183,20 @@ pub struct PbesSrfContext {
     next_state_buf: Vec<usize>,
 }
 
+// SAFETY: a `PbesSrfContext` is owned by exactly one worker thread, which both
+// creates and uses it. `parameter_values` is transient scratch holding stable,
+// maximally shared term addresses (not protected `ATerm`s), and the
+// `LearnSuccessorsContext` wraps a per-worker mCRL2 enumerator that no other
+// thread touches. mCRL2 is built with multithreading enabled and its garbage
+// collection is stop-the-world, so moving the context between threads cannot
+// race with collection or with another worker.
+unsafe impl Send for PbesSrfContext {}
+
 /// Explicit-state view of a PBES in SRF normal form.
 ///
 /// State vectors have layout `[equation_index, param_0, …, param_{n-1}]` where
 /// `equation_index` is a flat index into [`SrfPbes::equations`] and each
-/// `param_i` is an index into the corresponding [`ConcurrentIndexedSet`] in
-/// [`ParameterMapping`].
+/// `param_i` is an index into the shared [`ValueMapping`].
 pub struct PbesSrfLps {
     /// The unified SRF PBES; retained so summand pointers stay alive.
     _srf: SrfPbes,
@@ -122,9 +220,25 @@ pub struct PbesSrfLps {
     /// Number of data parameters per equation.
     num_params: usize,
 
-    /// Concurrent per-parameter value interning shared with every summand.
-    mapping: Arc<ParameterMapping>,
+    /// Concurrent value interning shared with every summand. Owned here through
+    /// [`Protected`] so the garbage-collection protection is released when the
+    /// LPS is dropped.
+    value_mapping: Protected<ValueMapping>,
 }
+
+/// Shared interning of the data expressions observed as parameter values,
+/// mapping each distinct expression to a dense `usize` used in state vectors.
+type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
+
+// SAFETY: after construction the LPS is immutable. Every `&self` method only
+// reads the cached terms (mCRL2 terms are immutable and `ATermRef`s are
+// `Send`/`Sync`) or interns into `value_mapping`, whose backing
+// `ConcurrentIndexedSet` is itself thread-safe. The raw `*const _aterm`
+// parameter pointers are stable maximally shared term addresses, and mCRL2
+// garbage collection is stop-the-world, so no `&self` access can race with
+// collection. The container's protection root stays on the constructing thread
+// (`Protected` is `!Send`), which is why only `Sync` is asserted, not `Send`.
+unsafe impl Sync for PbesSrfLps {}
 
 /// A single SRF summand, pre-bound to the equation it belongs to and the
 /// target equation it transitions into.
@@ -145,9 +259,9 @@ pub struct PbesSrfSummand {
     /// passed verbatim to the enumerator.
     write_assignments: ATermList<ATerm>,
 
-    /// Concurrent per-parameter value interning shared with the enclosing LPS
-    /// (see [`ParameterMapping`]).
-    mapping: Arc<ParameterMapping>,
+    /// Handle to the enclosing LPS's value interning, used to intern enumerated
+    /// next-state values from any worker thread.
+    mapping: Arc<ValueMapping>,
 
     /// Cached tau multi-action term; protected once at construction instead of
     /// on every summand enumeration.
@@ -208,13 +322,9 @@ impl PbesSrfLps {
             .map(|v: DataVariable| v.address())
             .collect();
 
-        // One concurrent interning set per data parameter. The outer vector is
-        // populated once here and only read by index afterwards.
-        let mapping: ParameterMapping = boxcar::Vec::with_capacity(num_params);
-        for _ in 0..num_params {
-            mapping.push(ConcurrentIndexedSet::new());
-        }
-        let mapping = Arc::new(mapping);
+        // Shared value interning, kept alive as a garbage-collection container
+        // by `value_mapping`.
+        let value_mapping = Protected::new(ValueMapping::new());
 
         let data_spec = pbes.data_specification();
         let tau = tau_multi_action();
@@ -234,8 +344,8 @@ impl PbesSrfLps {
 
         let mut initial_state = Vec::with_capacity(1 + num_params);
         initial_state.push(initial_eq_idx);
-        for (i, arg) in initial_pvi.arguments().iter().enumerate() {
-            let (idx, _) = mapping[i].insert(arg);
+        for arg in initial_pvi.arguments().iter() {
+            let (idx, _) = value_mapping.insert(DataExpressionRef::from_address(arg.address()));
             initial_state.push(idx);
         }
 
@@ -285,7 +395,7 @@ impl PbesSrfLps {
                     condition: srf_summand.condition().into(),
                     summation_variables: srf_summand.parameters(),
                     write_assignments,
-                    mapping: Arc::clone(&mapping),
+                    mapping: value_mapping.handle(),
                     tau: tau.clone(),
                     num_params,
                     read_positions,
@@ -302,7 +412,7 @@ impl PbesSrfLps {
             state_info,
             process_parameters,
             num_params,
-            mapping,
+            value_mapping,
         })
     }
 }
@@ -338,9 +448,9 @@ impl LPS for PbesSrfLps {
 
         // Look up the *const _aterm representative for each parameter value.
         context.parameter_values.clear();
-        for (i, &value_index) in state.iter().skip(1).enumerate() {
+        for &value_index in state.iter().skip(1) {
             context.parameter_values.push(
-                self.mapping[i]
+                self.value_mapping
                     .get_by_index(value_index)
                     .expect("Parameter value must be in mapping")
                     .address(),
@@ -402,8 +512,7 @@ impl Summand for PbesSrfSummand {
 
                 next_state_buf[0] = self.target_equation_index;
                 for (i, &ptr) in next_values.iter().enumerate() {
-                    let expr = DataExpression::from(ATerm::from_ptr(ptr));
-                    let (idx, _) = self.mapping[i].insert(expr);
+                    let (idx, _) = self.mapping.insert(DataExpressionRef::from_address(ptr));
                     next_state_buf[1 + i] = idx;
                 }
 
