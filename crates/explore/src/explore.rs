@@ -78,6 +78,8 @@ where
     // Reused interning scratch buffers, avoiding a reallocation per inserted
     // state. This loop is single-threaded, so one context suffices.
     let mut forest_context = BTreeForestContext::new();
+    // Per-thread enumeration scratch state. Single-threaded loop, one context.
+    let mut enumerate_context = <P::Summand as Summand>::Context::default();
 
     timing.measure("explore", || -> Result<(), MercError> {
         loop {
@@ -99,7 +101,7 @@ where
             on_state(ctx, from, &info)?;
 
             for summand in lps.summands() {
-                summand.enumerate(&current_state, |label, next_state| {
+                summand.enumerate(&mut enumerate_context, &current_state, |label, next_state| {
                     let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
                     let to = StateIndex::new(target_ref.index());
                     on_transition(ctx, from, label, to)?;

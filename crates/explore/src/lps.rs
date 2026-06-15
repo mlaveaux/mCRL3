@@ -80,12 +80,21 @@ pub trait Summand {
     /// The action label type, matching [`LPS::Label`].
     type Label;
 
+    /// Per-thread reusable scratch state threaded through [`Summand::enumerate`].
+    ///
+    /// Enumeration mutates this context instead of any shared `&self` state, so
+    /// the same `&Summand` can be driven from several threads at once as long as
+    /// each thread owns a distinct context. Summands that need no scratch state
+    /// use `()`.
+    type Context: Default;
+
     /// Enumerate every outgoing transition produced by this summand from the
     /// state vector `state`.
     ///
     /// For each transition, `report(label, next_state)` is invoked exactly once
-    /// with borrowed values.
-    fn enumerate<F>(&self, state: &[Self::Value], report: F) -> Result<(), MercError>
+    /// with borrowed values. `context` supplies the per-thread scratch buffers;
+    /// callers reuse a single context across summands and states on one thread.
+    fn enumerate<F>(&self, context: &mut Self::Context, state: &[Self::Value], report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>;
 
