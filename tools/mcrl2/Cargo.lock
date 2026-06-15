@@ -960,6 +960,7 @@ dependencies = [
  "merc_unsafety",
  "merc_utilities",
  "rand",
+ "rayon",
  "serde",
  "serde_json",
  "streaming-iterator",
@@ -985,6 +986,7 @@ dependencies = [
  "merc_utilities",
  "merc_vpg",
  "rand",
+ "rayon",
  "serde",
  "serde_json",
  "thiserror",
@@ -1058,6 +1060,7 @@ dependencies = [
  "merc_syntax",
  "merc_unsafety",
  "merc_utilities",
+ "rayon",
  "rustc-hash 2.1.2",
  "streaming-iterator",
 ]

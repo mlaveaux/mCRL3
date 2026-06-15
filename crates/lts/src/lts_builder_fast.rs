@@ -86,14 +86,6 @@ impl<L: TransitionLabel> LtsBuilderFast<L> {
         )
     }
 
-    /// Sets the number of states to at least the given number. All states without transitions
-    /// will simply become deadlock states.
-    pub fn require_num_of_states(&mut self, num_states: usize) {
-        if num_states > self.num_of_states {
-            self.num_of_states = num_states;
-        }
-    }
-
     /// Removes duplicated transitions from the added transitions.
     fn remove_duplicates(&mut self) {
         self.transitions.sort();
@@ -147,6 +139,12 @@ impl<L: TransitionLabel> LtsBuilder<L> for LtsBuilderFast<L> {
 
     fn num_of_states(&self) -> usize {
         self.num_of_states
+    }
+
+    fn require_num_of_states(&mut self, num_states: usize) {
+        if num_states > self.num_of_states {
+            self.num_of_states = num_states;
+        }
     }
 }
 

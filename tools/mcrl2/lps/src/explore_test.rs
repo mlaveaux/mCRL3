@@ -13,6 +13,7 @@ mod tests {
     use merc_lts::AutStream;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
+    use merc_lts::MutexLtsBuilder;
     use merc_lts::StateIndex;
     use merc_lts::read_mcrl2_aut;
     use merc_lts::write_mcrl2_aut;
@@ -240,11 +241,12 @@ mod tests {
             .unwrap();
 
         // Parallel exploration across several threads, streamed into an
-        // in-memory AUT buffer and read back as a string-labelled LTS.
+        // in-memory AUT buffer (guarded by a `MutexLtsBuilder`) and read back as
+        // a string-labelled LTS.
         let mut buffer = Cursor::new(Vec::new());
         {
-            let mut stream = AutStream::new_mcrl2(&mut buffer);
-            explore_lps_explicit_parallel(&mut stream, &lps, 4, &Timing::new())
+            let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer));
+            explore_lps_explicit_parallel(&mut builder, &lps, 4, &Timing::new())
                 .expect("Parallel exploration failed");
         }
         buffer.set_position(0);

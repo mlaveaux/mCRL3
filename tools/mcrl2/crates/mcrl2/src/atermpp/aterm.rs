@@ -41,7 +41,7 @@ use crate::atermpp::THREAD_TERM_POOL;
 /// lead to unsoundness. The destruction order of thread local storage is not
 /// defined, so we might drop a term pool before dropping the terms stored in
 /// it.
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ATermRef<'a> {
     term: *const ffi::_aterm,
     marker: PhantomData<&'a ()>,
@@ -116,6 +116,11 @@ impl<'a> ATermRef<'a> {
             term,
             marker: PhantomData,
         }
+    }
+
+    /// Returns the raw maximally shared term address underlying this reference.
+    pub fn address(&self) -> *const ffi::_aterm {
+        self.term
     }
 }
 
