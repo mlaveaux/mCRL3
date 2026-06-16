@@ -282,23 +282,13 @@ impl ExplicitLinearProcessSpecification {
             .expressions()
             .iter()
             .map(|param| {
-                // Rewrite the initial expression under a context whose sigma is
-                // seeded with the constant assignments produced by
-                // `replace_constants_by_variables`. This resolves any `@rewr_var`
-                // variables back to their constant values, mirroring the mCRL2
-                // explorer's `compute_state`. Without this the initial state would
-                // store the fresh variable terms while successors store the
-                // resolved constants, splitting one logical state into several.
-                //
-                // SAFETY: `param` is a live term from the protected initial
-                // process list.
+                // Rewrite the initial expression under a context with the
+                // constant assignments produced by
+                // `replace_constants_by_variables`.
                 let expr = unsafe { DataExpressionRef::from_address(param.address()) };
                 let rewritten = context.rewrite_under_sigma(&expr);
 
-                // SAFETY: the rewritten term is interned into `value_mapping`, a
-                // `Protected` container that keeps every interned term live
-                // through GC marking for as long as the mapping exists. The
-                // `rewritten` `ATerm` protects it until the insertion completes.
+                // SAFETY: the rewritten term is interned into `value_mapping`.
                 value_mapping
                     .insert(unsafe { DataExpressionRef::from_address(rewritten.address()) })
                     .0
@@ -341,17 +331,11 @@ pub struct ExplicitContext {
     next_state_buf: Vec<usize>,
 }
 
-// SAFETY: an `ExplicitContext` is owned by exactly one worker thread, which both
-// creates and uses it. `parameter_values` is transient scratch holding stable,
-// maximally shared term addresses (not protected `ATerm`s), and the
-// `LearnSuccessorsContext` wraps a per-worker mCRL2 enumerator that no other
-// thread touches. mCRL2 is built with multithreading enabled and its garbage
-// collection is stop-the-world, so moving the context between threads cannot
-// race with collection or with another worker.
+// SAFETY: an `ExplicitContext` is owned by exactly one worker thread.
 unsafe impl Send for ExplicitContext {}
 
 /// A single summand of the LPS, prepared for explicit enumeration.
-struct ExplicitSummand {
+pub(crate) struct ExplicitSummand {
     /// The indices of the parameters that this summand reads.
     read_indices: Vec<usize>,
 
