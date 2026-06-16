@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::Mutex;
 
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelRefMutIterator;
@@ -112,9 +113,13 @@ where
 }
 
 /// Per-worker scratch state and output accumulator for [`explore_parallel`].
+///
+/// Note that the mCRL2 enumeration backend is deliberately *not* stored here:
+/// its terms are thread-affine (each `aterm` must be created and destroyed on
+/// the same thread), while a [`Segment`] is migrated between physical worker
+/// threads by rayon's work-stealing scheduler. The backend therefore lives in a
+/// separate per-thread slot, see [`explore_parallel`].
 struct Segment<P: LPS, Local> {
-    /// Per-thread enumeration backend and scratch buffers.
-    context: <P::Summand as Summand>::Context,
     /// Per-thread interning scratch reused across inserts.
     forest_context: BTreeForestContext,
     /// Reusable buffer holding the reconstructed source state vector.
@@ -164,12 +169,13 @@ where
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
     // One segment per worker in the active rayon pool, allocated once and reused
-    // across all levels so the LPS context and scratch buffers are created a
-    // single time per worker.
+    // across all levels so the scratch buffers are created a single time per
+    // worker. The segments carry only thread-agnostic scratch (their values are
+    // interned indices, not terms) and may freely migrate between physical
+    // worker threads.
     let num_workers = rayon::current_num_threads().max(1);
     let mut segments: Vec<Segment<P, Local>> = (0..num_workers)
         .map(|_| Segment {
-            context: lps.create_context(),
             forest_context: BTreeForestContext::new(),
             state_buf: Vec::new(),
             local: make_local(),
@@ -178,13 +184,22 @@ where
         })
         .collect();
 
+    // Enumeration backends pinned to physical worker threads. mCRL2 terms are
+    // thread-affine (each term must be created and destroyed on the same
+    // thread), so the backend cannot live in a `Segment` that rayon migrates
+    // between threads. Each slot is keyed by `rayon::current_thread_index()`,
+    // lazily created on first use on its owning thread, reused across all levels,
+    // and finally dropped on that same thread (see the `broadcast` below).
+    let contexts: Vec<Mutex<Option<<P::Summand as Summand>::Context>>> =
+        (0..num_workers).map(|_| Mutex::new(None)).collect();
+
     let mut frontier: Vec<StateRef> = vec![initial_ref];
 
-    timing.measure("explore", || -> Result<(), MercError> {
+    let result = timing.measure("explore", || -> Result<(), MercError> {
         while !frontier.is_empty() {
             // Split the current level across the persistent segments. Each
-            // chunk is processed by one segment, reusing that segment's context
-            // and scratch buffers.
+            // chunk is processed by one segment, reusing that segment's scratch
+            // buffers and its physical worker thread's enumeration backend.
             let chunk_size = frontier.len().div_ceil(num_workers);
             segments
                 .par_iter_mut()
@@ -194,13 +209,20 @@ where
                     // can mutate the accumulator and discovery buffers while the
                     // backend reads the source state.
                     let Segment {
-                        context,
                         forest_context,
                         state_buf,
                         local,
                         new_refs,
                         error,
                     } = seg;
+
+                    // Acquire the enumeration backend pinned to this physical
+                    // worker thread, creating it on first use. The slot is only
+                    // ever touched by its owning thread, so the lock is never
+                    // contended; it exists solely to share the `Vec` safely.
+                    let thread_index = rayon::current_thread_index().unwrap_or(0);
+                    let mut context_guard = contexts[thread_index].lock().expect("context slot poisoned");
+                    let context = context_guard.get_or_insert_with(|| lps.create_context());
 
                     for &state_ref in chunk {
                         let result = (|| -> Result<(), MercError> {
@@ -246,7 +268,21 @@ where
         }
 
         Ok(())
-    })?;
+    });
+
+    // Drop each pinned enumeration backend on its owning worker thread. mCRL2
+    // terms are thread-affine, so a backend created on one worker must also be
+    // destroyed there; dropping it on the calling thread (as part of dropping
+    // `contexts`) would corrupt that worker's protection set and abort. This
+    // runs on both the success and error paths, before `contexts` itself is
+    // dropped on the calling thread (by then all slots are empty).
+    rayon::broadcast(|ctx| {
+        if let Some(slot) = contexts.get(ctx.index()) {
+            let _ = slot.lock().expect("context slot poisoned").take();
+        }
+    });
+
+    result?;
 
     let locals = segments.into_iter().map(|segment| segment.local).collect();
     Ok((StateIndex::new(initial_ref.index()), locals))
