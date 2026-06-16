@@ -34,11 +34,12 @@ use merc_lts::LtsBuilder;
 use merc_lts::TransitionLabel;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
+use merc_utilities::ShardedCounter;
 use merc_utilities::Timing;
 
 /// Periodic progress reporter for LPS exploration, printing the number of
 /// discovered states and transitions.
-fn lps_progress() -> TimeProgress<(usize, usize)> {
+pub(crate) fn lps_progress() -> TimeProgress<(usize, usize)> {
     TimeProgress::new(
         |(states, transitions): (usize, usize)| {
             info!("Explored {states} states, {transitions} transitions...");
@@ -97,12 +98,6 @@ where
 /// Explores the linear process specification explicitly in parallel across
 /// `threads` worker threads, streaming the discovered transitions into
 /// `builder`.
-///
-/// Each worker pretty-prints its own multi-action labels — the backing
-/// [`ATerm`]s never leave the thread that created them — and adds the resulting
-/// transition straight into the shared `builder` through
-/// [`ConcurrentLtsBuilder`], which synchronises internally, so no intermediate
-/// interning of label terms is required.
 pub fn explore_lps_explicit_parallel<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
@@ -124,30 +119,36 @@ where
     // concurrently while the builder synchronises internally.
     let builder_ref: &B = builder;
 
-    // Each worker keeps a private `(states, transitions)` count; the per-thread
-    // progress trackers cannot be shared (`TimeProgress` is `!Sync`), so the
-    // parallel path only reports the final summary once the levels are merged.
-    let (initial, counts) = timing.measure("explore", || -> Result<_, MercError> {
+    // Shared state/transition counts.
+    let states = ShardedCounter::new();
+    let transitions = ShardedCounter::new();
+    let progress = lps_progress();
+
+    let initial = timing.measure("explore", || -> Result<_, MercError> {
         pool.install(|| {
             let timing = Timing::new();
-            explore_parallel(
+            let (initial, _locals) = explore_parallel(
                 &lps,
                 &timing,
-                || (0usize, 0usize),
-                |counts: &mut (usize, usize), _state, _info: &()| {
-                    counts.0 += 1;
+                || (),
+                |_local: &mut (), _state, _info: &()| {
+                    states.increment();
                     Ok(())
                 },
-                |counts: &mut (usize, usize), from, label: &Mcrl2MultiActionLabel, to| {
-                    counts.1 += 1;
+                |_local: &mut (), from, label: &Mcrl2MultiActionLabel, to| {
+                    transitions.increment();
+                    if progress.is_due() {
+                        progress.print((states.get() as usize, transitions.get() as usize));
+                    }
                     builder_ref.add_transition_shared(from, label, to)
                 },
-            )
+            )?;
+            Ok(initial)
         })
     })?;
 
-    let total_states: usize = counts.iter().map(|(states, _)| *states).sum();
-    let total_transitions: usize = counts.iter().map(|(_, transitions)| *transitions).sum();
+    let total_states = states.get() as usize;
+    let total_transitions = transitions.get() as usize;
     info!("Exploration complete: {total_states} states, {total_transitions} transitions");
 
     // Finalise the builder, recording the total number of states so isolated
