@@ -16,6 +16,7 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_test_garbage_collection;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_create;
 use mcrl2_sys::cxx::Exception;
@@ -286,12 +287,21 @@ impl ThreadTermPool {
 
         let result = ATerm::from_ref(term, root);
 
-        // Test for garbage collection intermediately.
+        // Test for garbage collection and hash table resizing intermediately.
         let counter = self.gc_counter.get().saturating_sub(1);
         self.gc_counter.set(counter);
 
+        // `guard.unlock()` returns true only when this leaves the outermost
+        // shared section, i.e. the thread is no longer busy. Automatic garbage
+        // collection and resizing are disabled (see `global_aterm_pool`) because
+        // they acquire the exclusive busy-forbidden lock, which is not reentrant
+        // and would deadlock if triggered from inside a shared section. Doing it
+        // here, outside the shared section and only every `TEST_GC_INTERVAL`
+        // creations, is both safe and cheap: each call is a no-op until enough
+        // new terms have been created to cross the pool's internal interval.
         if guard.unlock() && counter == 0 {
             mcrl2_aterm_pool_test_garbage_collection();
+            mcrl2_aterm_pool_resize();
             self.gc_counter.set(TEST_GC_INTERVAL);
         }
 

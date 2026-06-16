@@ -11,6 +11,7 @@ use mcrl2_sys::atermpp::ffi;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_mark_address;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_garbage_collection;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_resize;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use merc_unsafety::ProtectionSet;
 
@@ -54,6 +55,13 @@ impl GlobalTermPool {
     fn new() -> GlobalTermPool {
         // For the protection sets we disable automatic garbage collection, and call it when it is allowed.
         mcrl2_aterm_pool_enable_automatic_garbage_collection(false);
+
+        // Likewise disable automatic hash table resizing: it acquires the
+        // exclusive busy-forbidden lock from inside term creation, which is not
+        // reentrant and deadlocks under parallel exploration. Resizing is
+        // instead triggered from `ThreadTermPool::protect_with`, on the same
+        // interval as garbage collection and only outside the shared section.
+        mcrl2_aterm_pool_enable_automatic_resize(false);
 
         GlobalTermPool {
             thread_protection_sets: vec![],
