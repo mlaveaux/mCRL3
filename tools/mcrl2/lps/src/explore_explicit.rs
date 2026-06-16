@@ -14,6 +14,7 @@ use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
+use mcrl2::PreprocessOptions;
 use mcrl2::Protected;
 use mcrl2::free_variables_data_expression;
 use mcrl2::is_variable;
@@ -251,7 +252,7 @@ unsafe impl Sync for ExplicitLinearProcessSpecification {}
 
 impl ExplicitLinearProcessSpecification {
     fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
-        let lps = preprocess(lps)?;
+        let lps = preprocess(lps, &PreprocessOptions::default())?;
 
         let parameters = lps.parameters();
         let parameter_terms: Vec<DataVariable> = parameters.to_vec();

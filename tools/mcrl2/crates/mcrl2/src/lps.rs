@@ -21,6 +21,8 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer_expressions;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_parameters;
 use mcrl2_sys::lps::ffi::mcrl2_lps_set_assignments;
 use mcrl2_sys::lps::ffi::mcrl2_lps_tau_multi_action;
+use mcrl2_sys::lps::ffi::mcrl2_preprocessed_specification_constant_assignments;
+use mcrl2_sys::lps::ffi::mcrl2_preprocessed_specification_spec;
 use mcrl2_sys::lps::ffi::stochastic_action_summand;
 use mcrl2_sys::lps::ffi::stochastic_process_initializer;
 use mcrl2_sys::lps::ffi::stochastic_specification;
@@ -41,6 +43,14 @@ use crate::DataVariable;
 /// has an initial state.
 pub struct LinearProcessSpecification {
     lps: UniquePtr<stochastic_specification>,
+
+    /// Constant substitution (`@rewr_var := value`) recorded when the
+    /// `replace_constants_by_variables` preprocessing step is applied. It is an
+    /// `assignment_list` term that is seeded into the substitution of every
+    /// [`LearnSuccessorsContext`] created from this LPS, mirroring how the mCRL2
+    /// explorer keeps these assignments in its global substitution. `None` when
+    /// the LPS was not produced by [`preprocess`] (e.g. loaded from a file).
+    constant_assignments: Option<ATerm>,
 }
 
 impl LinearProcessSpecification {
@@ -136,6 +146,7 @@ pub fn tau_multi_action() -> ATerm {
 pub fn read_lps(filename: &str) -> Result<LinearProcessSpecification, MercError> {
     Ok(LinearProcessSpecification {
         lps: mcrl2_lps_load_from_lps_file(filename)?,
+        constant_assignments: None,
     })
 }
 
@@ -143,13 +154,69 @@ pub fn read_lps(filename: &str) -> Result<LinearProcessSpecification, MercError>
 pub fn read_lps_text(filename: &str) -> Result<LinearProcessSpecification, MercError> {
     Ok(LinearProcessSpecification {
         lps: mcrl2_lps_load_from_text_file(filename)?,
+        constant_assignments: None,
     })
 }
 
-/// Preprocess the LPS to make it suitable for symbolic exploration
-pub fn preprocess(lps: &LinearProcessSpecification) -> Result<LinearProcessSpecification, MercError> {
+/// Toggles for the individual preprocessing steps applied by [`preprocess`].
+#[derive(Debug, Clone, Copy)]
+pub struct PreprocessOptions {
+    /// Replace global variables by concrete values (`instantiate_global_variables`).
+    pub instantiate_global_variables: bool,
+
+    /// Order the summation variables of every summand (`order_summand_variables`).
+    pub order_summand_variables: bool,
+
+    /// Resolve name clashes between summation variables
+    /// (`resolve_summand_variable_name_clashes`). Required by the enumerator.
+    pub resolve_name_clashes: bool,
+
+    /// Apply the one-point rule rewriter (`one_point_rule_rewrite`).
+    pub one_point_rule_rewrite: bool,
+
+    /// Replace constant subexpressions by fresh variables and record them in the
+    /// enumeration substitution (`replace_constants_by_variables`).
+    pub replace_constants_by_variables: bool,
+}
+
+impl Default for PreprocessOptions {
+    fn default() -> Self {
+        Self {
+            instantiate_global_variables: true,
+            order_summand_variables: true,
+            resolve_name_clashes: true,
+            one_point_rule_rewrite: true,
+            replace_constants_by_variables: true,
+        }
+    }
+}
+
+/// Preprocess the LPS to make it suitable for symbolic exploration.
+///
+/// The individual preprocessing steps are enabled according to `options`; see
+/// [`PreprocessOptions`]. This mirrors the preprocessing performed by the mCRL2
+/// explorer used by `lps2lts`.
+pub fn preprocess(
+    lps: &LinearProcessSpecification,
+    options: &PreprocessOptions,
+) -> Result<LinearProcessSpecification, MercError> {
+    let preprocessed = mcrl2_lps_preprocess_symbolic_exploration(
+        lps.lps.as_ref().expect("The lps is always defined"),
+        options.instantiate_global_variables,
+        options.order_summand_variables,
+        options.resolve_name_clashes,
+        options.one_point_rule_rewrite,
+        options.replace_constants_by_variables,
+    )?;
+    let preprocessed = preprocessed
+        .as_ref()
+        .expect("The preprocessed specification is always defined");
+
+    let constant_assignments = ATerm::from_ptr(mcrl2_preprocessed_specification_constant_assignments(preprocessed));
+
     Ok(LinearProcessSpecification {
-        lps: mcrl2_lps_preprocess_symbolic_exploration(lps.lps.as_ref().expect("The lps is always defined"))?,
+        lps: mcrl2_preprocessed_specification_spec(preprocessed),
+        constant_assignments: Some(constant_assignments),
     })
 }
 
@@ -166,11 +233,41 @@ pub struct LearnSuccessorsContext {
 
 impl LearnSuccessorsContext {
     /// Creates a new context from the given LPS specification.
+    ///
+    /// When the LPS carries a constant substitution recorded by the
+    /// `replace_constants_by_variables` preprocessing step, it is seeded into
+    /// the context's substitution so the fresh `@rewr_var` variables resolve to
+    /// their values during enumeration, matching the mCRL2 explorer.
     pub fn new(lps: &LinearProcessSpecification) -> Self {
-        LearnSuccessorsContext {
+        let context = LearnSuccessorsContext {
             context: RefCell::new(mcrl2_lps_create_learn_successors_context(
                 lps.lps.as_ref().expect("The lps is always defined"),
             )),
+        };
+
+        if let Some(assignments) = &lps.constant_assignments {
+            context.seed_constant_assignments(assignments);
+        }
+
+        context
+    }
+
+    /// Seeds the persistent substitution with the constant assignments
+    /// (`@rewr_var := value`) recorded during preprocessing. These assignments
+    /// are never removed during enumeration, so they remain in effect for every
+    /// source state explored with this context.
+    fn seed_constant_assignments(&self, assignments: &ATerm) {
+        let list: ATermList<ATerm> = ATermList::from(assignments.protect());
+
+        let mut variables = Vec::new();
+        let mut values = Vec::new();
+        for assignment in list.iter() {
+            variables.push(assignment.arg(0).address());
+            values.push(assignment.arg(1).address());
+        }
+
+        if !variables.is_empty() {
+            self.set_assignments(&variables, &values);
         }
     }
 
