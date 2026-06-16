@@ -15,6 +15,7 @@ use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
+use mcrl2::PreprocessOptions;
 use mcrl2::free_variables_data_expression;
 use mcrl2::preprocess;
 use merc_collections::IndexedSet;
@@ -68,7 +69,7 @@ struct SymbolicLinearProcessSpecification {
 
 impl SymbolicLinearProcessSpecification {
     pub fn new(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<Self, MercError> {
-        let lps = preprocess(lps)?;
+        let lps = preprocess(lps, &PreprocessOptions::default())?;
 
         let parameters = lps.parameters();
         let num_parameters = parameters.len();
