@@ -69,8 +69,3 @@ impl<T> TimeProgress<T> {
         self.interval.as_nanos().min(u64::MAX as u128) as u64
     }
 }
-        let now = Instant::now();
-        let last = *self.last_update.borrow();
-        now.duration_since(last) >= self.interval
-    }
-}

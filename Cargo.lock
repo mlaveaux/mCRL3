@@ -198,6 +198,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "benchmarks_unsafety"
+version = "2.0.0"
+dependencies = [
+ "criterion",
+ "dashmap",
+ "merc_unsafety",
+ "rand",
+]
+
+[[package]]
+name = "benchmarks_utilities"
+version = "2.0.0"
+dependencies = [
+ "criterion",
+ "merc_utilities",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
