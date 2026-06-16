@@ -16,11 +16,13 @@ merc_debug-trace = []
 [dependencies]
 ahash.workspace = true
 backtrace.workspace = true
+crossbeam-utils.workspace = true
 delegate.workspace = true
 env_logger.workspace = true
 log.workspace = true
 pest.workspace = true
 rand.workspace = true
+thread_local.workspace = true
 
 [build-dependencies]
 toml.workspace = true       

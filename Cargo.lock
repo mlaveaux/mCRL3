@@ -1470,11 +1470,13 @@ version = "3.0.0"
 dependencies = [
  "ahash",
  "backtrace",
+ "crossbeam-utils",
  "delegate",
  "env_logger",
  "log",
  "pest",
  "rand",
+ "thread_local",
  "toml",
 ]
 

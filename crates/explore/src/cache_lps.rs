@@ -1,12 +1,11 @@
 use std::fmt;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 
 use merc_unsafety::ShardedHashMap;
 use rustc_hash::FxBuildHasher;
 
 use merc_utilities::MercError;
+use merc_utilities::ShardedCounter;
 
 use crate::BTreeForest;
 use crate::BTreeForestContext;
@@ -107,10 +106,12 @@ pub struct CacheSummandWrapper<P: LPS> {
     /// Shared reference to the inner LPS for delegating cache misses.
     inner: Arc<P>,
 
-    /// Number of enumerations served from the cache.
-    hits: AtomicU64,
-    /// Number of enumerations that had to be delegated to the inner summand.
-    misses: AtomicU64,
+    /// Number of enumerations served from the cache. Only updated when the
+    /// `metrics` feature is enabled; otherwise it stays at zero.
+    hits: ShardedCounter,
+    /// Number of enumerations delegated to the inner summand. Only updated when
+    /// the `metrics` feature is enabled; otherwise it stays at zero.
+    misses: ShardedCounter,
 }
 
 impl<P: LPS> CacheLPS<P> {
@@ -130,8 +131,8 @@ impl<P: LPS> CacheLPS<P> {
                 cache: ShardedHashMap::with_shards(CACHE_SHARDS),
                 forest: Arc::clone(&forest),
                 inner: Arc::clone(&inner),
-                hits: AtomicU64::new(0),
-                misses: AtomicU64::new(0),
+                hits: ShardedCounter::new(),
+                misses: ShardedCounter::new(),
             })
             .collect();
 
@@ -155,8 +156,8 @@ impl<P: LPS> CacheLPS<P> {
                 SummandCacheMetrics {
                     index: s.index,
                     strategy: s.strategy,
-                    hits: s.hits.load(Ordering::Relaxed),
-                    misses: s.misses.load(Ordering::Relaxed),
+                    hits: s.hits.get(),
+                    misses: s.misses.get(),
                     entries,
                 }
             })
@@ -361,12 +362,14 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         // Fast path: a present entry is found under a read lock only.
         if let Some(entry) = self.cache.find(hash, eq) {
-            self.hits.fetch_add(1, Ordering::Relaxed);
+            #[cfg(feature = "metrics")]
+            self.hits.increment();
             self.replay_cached(context, state, &entry.results, &mut report)?;
             return Ok(());
         }
 
-        self.misses.fetch_add(1, Ordering::Relaxed);
+        #[cfg(feature = "metrics")]
+        self.misses.increment();
         // Cache MISS: delegate to inner summand, capture results. Only the
         // values at the write positions are stored; on replay they are
         // scattered back onto the live source state (see the hit branch).
