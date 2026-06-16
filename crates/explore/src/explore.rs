@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 
-use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::IndexedParallelIterator;
+use rayon::iter::IntoParallelRefMutIterator;
 use rayon::iter::ParallelIterator;
+use rayon::slice::ParallelSlice;
 
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
@@ -130,7 +132,17 @@ struct Segment<P: LPS, Local> {
 /// The interface is similar to [`explore`], but an extra closure is supplied to
 /// produce a fresh per-thread accumulator for each worker.
 ///
+/// One [`Segment`] is allocated per worker before exploration begins and reused
+/// across every BFS level, so each worker's LPS enumeration context, interning
+/// scratch, and accumulator are created exactly once. Rayon passes each segment
+/// into its job by mutable reference; no per-job or thread-local allocation is
+/// performed inside the loop.
+///
 /// - `make_local()` produces a fresh accumulator for each worker segment.
+///
+/// The returned `Vec<Local>` holds one accumulator per worker (at most
+/// `rayon::current_num_threads()` entries), each carrying the merged result of
+/// every level that worker processed.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,
     timing: &Timing,
@@ -150,39 +162,46 @@ where
     let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
-    let mut locals: Vec<Local> = Vec::new();
+    // One segment per worker in the active rayon pool, allocated once and reused
+    // across all levels so the LPS context and scratch buffers are created a
+    // single time per worker.
+    let num_workers = rayon::current_num_threads().max(1);
+    let mut segments: Vec<Segment<P, Local>> = (0..num_workers)
+        .map(|_| Segment {
+            context: lps.create_context(),
+            forest_context: BTreeForestContext::new(),
+            state_buf: Vec::new(),
+            local: make_local(),
+            new_refs: Vec::new(),
+            error: None,
+        })
+        .collect();
+
     let mut frontier: Vec<StateRef> = vec![initial_ref];
 
     timing.measure("explore", || -> Result<(), MercError> {
         while !frontier.is_empty() {
-            let segments: Vec<Segment<P, Local>> = frontier
-                .par_iter()
-                .fold(
-                    || Segment {
-                        context: lps.create_context(),
-                        forest_context: BTreeForestContext::new(),
-                        state_buf: Vec::new(),
-                        local: make_local(),
-                        new_refs: Vec::new(),
-                        error: None,
-                    },
-                    |mut seg, &state_ref| {
-                        if seg.error.is_some() {
-                            return seg;
-                        }
+            // Split the current level across the persistent segments. Each
+            // chunk is processed by one segment, reusing that segment's context
+            // and scratch buffers.
+            let chunk_size = frontier.len().div_ceil(num_workers);
+            segments
+                .par_iter_mut()
+                .zip(frontier.par_chunks(chunk_size))
+                .for_each(|(seg, chunk)| {
+                    // Borrow the fields disjointly so the enumeration callback
+                    // can mutate the accumulator and discovery buffers while the
+                    // backend reads the source state.
+                    let Segment {
+                        context,
+                        forest_context,
+                        state_buf,
+                        local,
+                        new_refs,
+                        error,
+                    } = seg;
 
-                        // Borrow the fields disjointly so the enumeration
-                        // callback can mutate the accumulator and discovery
-                        // buffers while the backend reads the source state.
-                        let Segment {
-                            context,
-                            forest_context,
-                            state_buf,
-                            local,
-                            new_refs,
-                            ..
-                        } = &mut seg;
-
+                    for &state_ref in chunk {
                         let result = (|| -> Result<(), MercError> {
                             let found = discovered.get_into(state_ref, state_buf);
                             debug_assert!(found, "StateRef from frontier must be valid");
@@ -206,27 +225,27 @@ where
                             Ok(())
                         })();
 
-                        if let Err(error) = result {
-                            seg.error = Some(error);
+                        if let Err(err) = result {
+                            *error = Some(err);
+                            break;
                         }
-                        seg
-                    },
-                )
-                .collect();
+                    }
+                });
 
-            // Barrier: merge the per-segment results into the next level.
+            // Barrier: surface the first error and gather the next level from
+            // the per-segment discoveries.
             frontier.clear();
-            for mut segment in segments {
+            for segment in &mut segments {
                 if let Some(error) = segment.error.take() {
                     return Err(error);
                 }
                 frontier.append(&mut segment.new_refs);
-                locals.push(segment.local);
             }
         }
 
         Ok(())
     })?;
 
+    let locals = segments.into_iter().map(|segment| segment.local).collect();
     Ok((StateIndex::new(initial_ref.index()), locals))
 }
