@@ -42,14 +42,24 @@ pub trait LPS {
     /// [`LPS::prepare`] and [`Summand::enumerate`].
     fn create_context(&self) -> <Self::Summand as Summand>::Context;
 
-    /// Prepares `context` for enumerating transitions from `state`.
+    /// Prepares `context` for enumerating transitions from `state` and returns
+    /// the indices of the summands that must be explored from `state`.
     ///
     /// The exploration loop calls this exactly once before iterating over the
     /// summands of a given source state, on the same thread (and thus the same
     /// `context`) that will then drive [`Summand::enumerate`]. Implementations
     /// typically use it to stage a substitution in their per-thread enumeration
     /// backend.
-    fn prepare(&self, context: &mut <Self::Summand as Summand>::Context, state: &[Self::Value]);
+    ///
+    /// The returned iterator lets implementations restrict enumeration to the
+    /// relevant summands (e.g. a PBES in SRF form only enumerates the summands
+    /// belonging to the current equation); implementations with no such
+    /// restriction return all summand indices.
+    fn prepare(
+        &self,
+        context: &mut <Self::Summand as Summand>::Context,
+        state: &[Self::Value],
+    ) -> impl Iterator<Item = usize> + '_;
 
     /// Returns the state-level metadata for the given source `state`.
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo;
@@ -73,8 +83,12 @@ impl<P: LPS> LPS for &P {
         (**self).create_context()
     }
 
-    fn prepare(&self, context: &mut <Self::Summand as Summand>::Context, state: &[Self::Value]) {
-        (**self).prepare(context, state);
+    fn prepare(
+        &self,
+        context: &mut <Self::Summand as Summand>::Context,
+        state: &[Self::Value],
+    ) -> impl Iterator<Item = usize> + '_ {
+        (**self).prepare(context, state)
     }
 
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {

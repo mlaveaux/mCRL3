@@ -86,13 +86,14 @@ where
             let found = discovered.get_into(current, &mut current_state);
             debug_assert!(found, "StateRef from working queue must be valid");
             let from = StateIndex::new(current.index());
-            lps.prepare(&mut enumerate_context, &current_state);
+            let summands_to_explore = lps.prepare(&mut enumerate_context, &current_state);
 
             let info = lps.state_info(&current_state);
             on_state(ctx, from, &info)?;
 
-            for summand in lps.summands() {
-                summand.enumerate(&mut enumerate_context, &current_state, |label, next_state| {
+            let summands = lps.summands();
+            for index in summands_to_explore {
+                summands[index].enumerate(&mut enumerate_context, &current_state, |label, next_state| {
                     let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
                     let to = StateIndex::new(target_ref.index());
                     on_transition(ctx, from, label, to)?;

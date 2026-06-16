@@ -294,8 +294,14 @@ impl<P: LPS> LPS for CacheLPS<P> {
         }
     }
 
-    fn prepare(&self, context: &mut <Self::Summand as Summand>::Context, state: &[Self::Value]) {
-        self.inner.prepare(&mut context.inner, state);
+    fn prepare(
+        &self,
+        context: &mut <Self::Summand as Summand>::Context,
+        state: &[Self::Value],
+    ) -> impl Iterator<Item = usize> + '_ {
+        // The cache wraps each inner summand one-for-one in order, so the inner
+        // summand indices map directly onto `self.summands`.
+        self.inner.prepare(&mut context.inner, state)
     }
 
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
