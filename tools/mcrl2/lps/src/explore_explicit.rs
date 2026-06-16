@@ -272,16 +272,35 @@ impl ExplicitLinearProcessSpecification {
             ));
         }
 
+        // Temporary enumeration context used to rewrite the initial state
+        // expressions to normal form. Its substitution is seeded with the
+        // constant assignments recorded during preprocessing.
+        let context = LearnSuccessorsContext::new(&lps);
+
         let initial_state = lps
             .initial_process()
             .expressions()
             .iter()
-            // SAFETY: the term is interned into `value_mapping`, a `Protected`
-            // container that keeps every interned term live through GC marking
-            // for as long as the mapping exists.
             .map(|param| {
+                // Rewrite the initial expression under a context whose sigma is
+                // seeded with the constant assignments produced by
+                // `replace_constants_by_variables`. This resolves any `@rewr_var`
+                // variables back to their constant values, mirroring the mCRL2
+                // explorer's `compute_state`. Without this the initial state would
+                // store the fresh variable terms while successors store the
+                // resolved constants, splitting one logical state into several.
+                //
+                // SAFETY: `param` is a live term from the protected initial
+                // process list.
+                let expr = unsafe { DataExpressionRef::from_address(param.address()) };
+                let rewritten = context.rewrite_under_sigma(&expr);
+
+                // SAFETY: the rewritten term is interned into `value_mapping`, a
+                // `Protected` container that keeps every interned term live
+                // through GC marking for as long as the mapping exists. The
+                // `rewritten` `ATerm` protects it until the insertion completes.
                 value_mapping
-                    .insert(unsafe { DataExpressionRef::from_address(param.address()) })
+                    .insert(unsafe { DataExpressionRef::from_address(rewritten.address()) })
                     .0
             })
             .collect::<Vec<usize>>();
