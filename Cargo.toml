@@ -44,6 +44,7 @@ members = [
     "crates/tools",
     "crates/unsafety",
     "crates/utilities",
+    "crates/utilities/benchmarks",
     "crates/vpg",
     "crates/xtask",
     "tools/lts",
