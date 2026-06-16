@@ -11,6 +11,8 @@ rust-version.workspace = true
 
 [features]
 clap = ["dep:clap"]
+# Tracks per-summand cache hit/miss counters for `CacheLPS`.
+metrics = []
 
 [dependencies]
 merc_collections.workspace = true
