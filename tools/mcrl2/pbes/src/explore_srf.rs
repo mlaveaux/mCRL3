@@ -176,8 +176,7 @@ pub struct PbesSrfContext {
     context: LearnSuccessorsContext,
 
     /// Reusable scratch buffer holding the resolved parameter pointers for the
-    /// current source state. Filled during [`LPS::prepare`] and consumed
-    /// immediately by [`LearnSuccessorsContext::set_assignments`].
+    /// current source state.
     parameter_values: Vec<*const _aterm>,
 
     /// Reusable next-state buffer, pre-sized to `1 + num_params` and fully
@@ -209,6 +208,11 @@ pub struct PbesSrfLps {
     /// Flat list of summands, one per `(equation, srf_summand)` pair.
     summands: Vec<PbesSrfSummand>,
 
+    /// For each equation index, the indices into [`PbesSrfLps::summands`] of the
+    /// summands belonging to that equation. A source state only explores the
+    /// summands of its current equation (`state[0]`).
+    equation_summands: Vec<Vec<usize>>,
+
     /// The initial state vector.
     initial_state: Vec<usize>,
 
@@ -232,14 +236,7 @@ pub struct PbesSrfLps {
 /// mapping each distinct expression to a dense `usize` used in state vectors.
 type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 
-// SAFETY: after construction the LPS is immutable. Every `&self` method only
-// reads the cached terms (mCRL2 terms are immutable and `ATermRef`s are
-// `Send`/`Sync`) or interns into `value_mapping`, whose backing
-// `ConcurrentIndexedSet` is itself thread-safe. The raw `*const _aterm`
-// parameter pointers are stable maximally shared term addresses, and mCRL2
-// garbage collection is stop-the-world, so no `&self` access can race with
-// collection. The container's protection root stays on the constructing thread
-// (`Protected` is `!Send`), which is why only `Sync` is asserted, not `Send`.
+// SAFETY: after construction the LPS is immutable.
 unsafe impl Sync for PbesSrfLps {}
 
 /// A single SRF summand, pre-bound to the equation it belongs to and the
@@ -334,10 +331,6 @@ impl PbesSrfLps {
         // Build the initial state vector from the initial PVI.
         // After `unify_parameters`, the SRF's initial PVI has `num_params`
         // arguments; the original `pbes.initial_state()` may have fewer.
-        // We use `srf.initial_state()` directly to avoid `srf.to_pbes()`,
-        // which constructs a PBES object with an empty global-variable set and
-        // triggers a well-typedness assertion when `unify_parameters` has
-        // introduced dc* don't-care variables that aren't declared globally.
         let initial_pvi = srf.initial_state();
         let initial_eq_name = initial_pvi.name().to_string();
         let initial_eq_idx = *name_to_eq
