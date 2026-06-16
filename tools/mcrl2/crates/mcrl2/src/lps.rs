@@ -263,8 +263,11 @@ impl LearnSuccessorsContext {
         let mut variables = Vec::new();
         let mut values = Vec::new();
         for assignment in list.iter() {
-            variables.push(assignment.arg(0).address());
-            values.push(assignment.arg(1).address());
+            let variable = assignment.arg(0);
+            let value = assignment.arg(1);
+            log::debug!("Seeding sigma with constant assignment {variable} := {value}");
+            variables.push(variable.address());
+            values.push(value.address());
         }
 
         if !variables.is_empty() {
