@@ -46,22 +46,13 @@ pub struct CacheLPS<P: LPS> {
 /// A single cached enumeration result keyed by the read-position projection.
 ///
 /// Stored as a bare element in a summand's sharded cache table; the hash and
-/// equality are taken over `key` only. The captured results live behind an
-/// [`Arc`] so cache hits clone the handle rather than the whole vector.
+/// equality are taken over `key` only. Cache hits replay the captured results
+/// in place under the shard read lock, so the entry is never cloned.
 struct CacheEntry<L> {
     /// Hash-consed projection of the source state onto the read positions.
     key: Tree,
     /// Captured `(label, write-position values tree)` pairs for the key.
-    results: Arc<Vec<(L, Tree)>>,
-}
-
-impl<L> Clone for CacheEntry<L> {
-    fn clone(&self) -> Self {
-        CacheEntry {
-            key: self.key,
-            results: Arc::clone(&self.results),
-        }
-    }
+    results: Vec<(L, Tree)>,
 }
 
 /// Per-thread reusable scratch buffers for [`CacheSummandWrapper::enumerate`].
@@ -366,11 +357,15 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
         let hash = self.cache.hash(&key_tree);
         let eq = |entry: &CacheEntry<P::Label>| entry.key == key_tree;
 
-        // Fast path: a present entry is found under a read lock only.
-        if let Some(entry) = self.cache.find(hash, eq) {
+        // Fast path: a present entry is replayed in place under the shard read
+        // lock, without cloning the entry's captured results.
+        let hit = self
+            .cache
+            .find_with(hash, eq, |entry| self.replay_cached(context, state, &entry.results, &mut report));
+        if let Some(result) = hit {
             #[cfg(feature = "metrics")]
             self.hits.increment();
-            self.replay_cached(context, state, &entry.results, &mut report)?;
+            result?;
             return Ok(());
         }
 
@@ -403,15 +398,17 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
         }
 
         // Publish the captured results. A concurrent thread may have inserted
-        // the same key meanwhile; `find_or_insert_with` keeps the resident
-        // entry and our copy is dropped. Either way the transitions above were
-        // already reported.
-        let results = Arc::new(captured);
-        self.cache.find_or_insert_with(
+        // the same key meanwhile; `insert_with` keeps the resident entry and our
+        // copy is dropped. Either way the transitions above were already
+        // reported.
+        self.cache.insert_with(
             hash,
             eq,
             |entry| self.cache.hash(&entry.key),
-            || CacheEntry { key: key_tree, results },
+            || CacheEntry {
+                key: key_tree,
+                results: captured,
+            },
         );
 
         Ok(())
