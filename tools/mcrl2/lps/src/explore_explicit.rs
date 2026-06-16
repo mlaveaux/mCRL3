@@ -475,7 +475,7 @@ impl LPS for ExplicitLinearProcessSpecification {
         }
     }
 
-    fn prepare(&self, context: &mut ExplicitContext, state: &[Self::Value]) {
+    fn prepare(&self, context: &mut ExplicitContext, state: &[Self::Value]) -> impl Iterator<Item = usize> + '_ {
         debug_assert_eq!(
             state.len(),
             self.process_parameters.len(),
@@ -495,6 +495,9 @@ impl LPS for ExplicitLinearProcessSpecification {
         context
             .context
             .set_assignments(&self.process_parameters, &context.parameter_values);
+
+        // Every summand is a candidate for every source state.
+        self.all_summand_indices.iter().copied()
     }
 
     fn state_info(&self, _state: &[Self::Value]) -> Self::StateInfo {}

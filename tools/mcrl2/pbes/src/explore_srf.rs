@@ -354,8 +354,10 @@ impl PbesSrfLps {
             initial_state.push(idx);
         }
 
-        // Flatten (equation, srf_summand) pairs into a single summand list.
+        // Flatten (equation, srf_summand) pairs into a single summand list,
+        // recording which flat indices belong to each equation.
         let mut summands = Vec::new();
+        let mut equation_summands: Vec<Vec<usize>> = vec![Vec::new(); srf.equations().len()];
         for (eq_idx, eq) in srf.equations().iter().enumerate() {
             // The parameters list of this equation (LHS of the assignment list).
             let eq_param_term: ATerm = eq.variable().parameters().into();
@@ -394,6 +396,7 @@ impl PbesSrfLps {
                     }
                 }
 
+                equation_summands[eq_idx].push(summands.len());
                 summands.push(PbesSrfSummand {
                     equation_index: eq_idx,
                     target_equation_index: target_eq_idx,
@@ -413,6 +416,7 @@ impl PbesSrfLps {
             _srf: srf,
             data_spec,
             summands,
+            equation_summands,
             initial_state,
             state_info,
             process_parameters,
@@ -444,7 +448,7 @@ impl LPS for PbesSrfLps {
         }
     }
 
-    fn prepare(&self, context: &mut PbesSrfContext, state: &[Self::Value]) {
+    fn prepare(&self, context: &mut PbesSrfContext, state: &[Self::Value]) -> impl Iterator<Item = usize> + '_ {
         debug_assert_eq!(
             state.len(),
             1 + self.num_params,
@@ -465,6 +469,9 @@ impl LPS for PbesSrfLps {
         context
             .context
             .set_assignments(&self.process_parameters, &context.parameter_values);
+
+        // Only the summands of the current equation (`state[0]`) can fire.
+        self.equation_summands[state[0]].iter().copied()
     }
 
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
@@ -489,10 +496,13 @@ impl Summand for PbesSrfSummand {
     where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
-        // PBES summands only fire from their owning equation.
-        if state[0] != self.equation_index {
-            return Ok(());
-        }
+        // PBES summands only fire from their owning equation. `LPS::prepare`
+        // already restricts enumeration to the current equation's summands, so
+        // this only ever runs for a matching state.
+        debug_assert_eq!(
+            state[0], self.equation_index,
+            "summand enumerated for a state of a different equation"
+        );
 
         // Borrow the backend and the next-state scratch buffer as disjoint
         // fields so the enumeration callback can fill the buffer while the
