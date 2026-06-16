@@ -20,6 +20,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_initializer_expressions;
 use mcrl2_sys::lps::ffi::mcrl2_lps_process_parameters;
 use mcrl2_sys::lps::ffi::mcrl2_lps_set_assignments;
+use mcrl2_sys::lps::ffi::mcrl2_lps_rewrite_under_sigma;
 use mcrl2_sys::lps::ffi::mcrl2_lps_tau_multi_action;
 use mcrl2_sys::lps::ffi::mcrl2_preprocessed_specification_constant_assignments;
 use mcrl2_sys::lps::ffi::mcrl2_preprocessed_specification_spec;
@@ -32,6 +33,7 @@ use merc_utilities::MercError;
 use crate::ATerm;
 use crate::ATermList;
 use crate::DataExpression;
+use crate::DataExpressionRef;
 use crate::DataSpecification;
 use crate::DataVariable;
 
@@ -161,21 +163,20 @@ pub fn read_lps_text(filename: &str) -> Result<LinearProcessSpecification, MercE
 /// Toggles for the individual preprocessing steps applied by [`preprocess`].
 #[derive(Debug, Clone, Copy)]
 pub struct PreprocessOptions {
-    /// Replace global variables by concrete values (`instantiate_global_variables`).
+    /// Replace global variables by concrete values.
     pub instantiate_global_variables: bool,
 
-    /// Order the summation variables of every summand (`order_summand_variables`).
+    /// Order the summation variables of every summand.
     pub order_summand_variables: bool,
 
-    /// Resolve name clashes between summation variables
-    /// (`resolve_summand_variable_name_clashes`). Required by the enumerator.
+    /// Resolve name clashes between summation variables. Required by the enumerator.
     pub resolve_name_clashes: bool,
 
-    /// Apply the one-point rule rewriter (`one_point_rule_rewrite`).
+    /// Apply the one-point rule rewriter.
     pub one_point_rule_rewrite: bool,
 
     /// Replace constant subexpressions by fresh variables and record them in the
-    /// enumeration substitution (`replace_constants_by_variables`).
+    /// enumeration substitution.
     pub replace_constants_by_variables: bool,
 }
 
@@ -323,6 +324,26 @@ impl LearnSuccessorsContext {
             variables,
             values,
         );
+    }
+
+    /// Rewrites `expr` under the context's current substitution (sigma) and
+    /// returns the resulting term as a protected [`ATerm`].
+    ///
+    /// This is used to normalise the initial state expressions, resolving any
+    /// `@rewr_var` variables introduced by the `replace_constants_by_variables`
+    /// preprocessing step (whose assignments are seeded into sigma). It mirrors
+    /// the mCRL2 explorer's `compute_state`, which rewrites every state
+    /// expression under the global substitution.
+    pub fn rewrite_under_sigma(&self, expr: &DataExpressionRef<'_>) -> ATerm {
+        let mut context = self.context.borrow_mut();
+        // SAFETY: `expr` is a live term reference, and the returned pointer is
+        // immediately protected by `ATerm::from_ptr` before any further aterm
+        // operation can collect it. The rewritten term is additionally kept
+        // alive inside the context until the next call.
+        let result = unsafe {
+            mcrl2_lps_rewrite_under_sigma(context.as_mut().expect("The context is always defined"), expr.get())
+        };
+        ATerm::from_ptr(result)
     }
 
     /// Enumerate using stored ATerm values directly.
