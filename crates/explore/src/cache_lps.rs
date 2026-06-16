@@ -359,9 +359,9 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         // Fast path: a present entry is replayed in place under the shard read
         // lock, without cloning the entry's captured results.
-        let hit = self
-            .cache
-            .find_with(hash, eq, |entry| self.replay_cached(context, state, &entry.results, &mut report));
+        let hit = self.cache.find_with(hash, eq, |entry| {
+            self.replay_cached(context, state, &entry.results, &mut report)
+        });
         if let Some(result) = hit {
             #[cfg(feature = "metrics")]
             self.hits.increment();
