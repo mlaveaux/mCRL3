@@ -29,6 +29,7 @@ use mcrl2_sys::lps::ffi::stochastic_process_initializer;
 use mcrl2_sys::lps::ffi::stochastic_specification;
 
 use merc_utilities::MercError;
+use merc_utilities::PhantomUnsend;
 
 use crate::ATerm;
 use crate::ATermList;
@@ -53,6 +54,12 @@ pub struct LinearProcessSpecification {
     /// explorer keeps these assignments in its global substitution. `None` when
     /// the LPS was not produced by [`preprocess`] (e.g. loaded from a file).
     constant_assignments: Option<ATerm>,
+
+    /// The underlying `stochastic_specification` stores thread-affine `aterm`s
+    /// (its terms must be created and destroyed on the same thread), so the
+    /// wrapper must not cross threads. This mirrors [`ATerm`], which is `!Send`
+    /// for the same reason.
+    _marker: PhantomUnsend,
 }
 
 impl LinearProcessSpecification {
@@ -61,6 +68,7 @@ impl LinearProcessSpecification {
         LinearProcessInitializer {
             init: mcrl2_lps_process_initializer(self.lps.as_ref().expect("The lps is always defined"))
                 .expect("The initial process is always defined"),
+            _marker: PhantomUnsend::default(),
         }
     }
 
@@ -80,6 +88,7 @@ impl LinearProcessSpecification {
     pub fn action_summand(&self, index: usize) -> Result<LinearSummand, MercError> {
         Ok(LinearSummand {
             summand: mcrl2_lps_action_summand(self.lps.as_ref().expect("The lps is always defined"), index)?,
+            _marker: PhantomUnsend::default(),
         })
     }
 }
@@ -87,6 +96,10 @@ impl LinearProcessSpecification {
 /// Represents a `condition-action-effect` summand of an LPS.
 pub struct LinearSummand {
     summand: UniquePtr<stochastic_action_summand>,
+
+    /// The underlying summand holds thread-affine `aterm`s, so the wrapper must
+    /// not cross threads. See [`LinearProcessSpecification`].
+    _marker: PhantomUnsend,
 }
 
 impl LinearSummand {
@@ -123,6 +136,10 @@ impl LinearSummand {
 /// Represents the initial process of an LPS.
 pub struct LinearProcessInitializer {
     init: UniquePtr<stochastic_process_initializer>,
+
+    /// The underlying initializer holds thread-affine `aterm`s, so the wrapper
+    /// must not cross threads. See [`LinearProcessSpecification`].
+    _marker: PhantomUnsend,
 }
 
 impl LinearProcessInitializer {
@@ -149,6 +166,7 @@ pub fn read_lps(filename: &str) -> Result<LinearProcessSpecification, MercError>
     Ok(LinearProcessSpecification {
         lps: mcrl2_lps_load_from_lps_file(filename)?,
         constant_assignments: None,
+        _marker: PhantomUnsend::default(),
     })
 }
 
@@ -157,6 +175,7 @@ pub fn read_lps_text(filename: &str) -> Result<LinearProcessSpecification, MercE
     Ok(LinearProcessSpecification {
         lps: mcrl2_lps_load_from_text_file(filename)?,
         constant_assignments: None,
+        _marker: PhantomUnsend::default(),
     })
 }
 
@@ -218,6 +237,7 @@ pub fn preprocess(
     Ok(LinearProcessSpecification {
         lps: mcrl2_preprocessed_specification_spec(preprocessed),
         constant_assignments: Some(constant_assignments),
+        _marker: PhantomUnsend::default(),
     })
 }
 
@@ -230,6 +250,13 @@ pub fn preprocess(
 /// alongside the context).
 pub struct LearnSuccessorsContext {
     context: RefCell<UniquePtr<learn_successors_context>>,
+
+    /// The context owns a per-thread mCRL2 enumerator backed by thread-affine
+    /// `aterm`s (kept in `std::vector<data_expression>` members), so it must be
+    /// created and destroyed on the same thread. Dropping it on a different
+    /// thread corrupts that thread's protection set and aborts the process, so
+    /// the type is explicitly `!Send`. See [`LinearProcessSpecification`].
+    _marker: PhantomUnsend,
 }
 
 impl LearnSuccessorsContext {
@@ -244,6 +271,7 @@ impl LearnSuccessorsContext {
             context: RefCell::new(mcrl2_lps_create_learn_successors_context(
                 lps.lps.as_ref().expect("The lps is always defined"),
             )),
+            _marker: PhantomUnsend::default(),
         };
 
         if let Some(assignments) = &lps.constant_assignments {
@@ -281,6 +309,7 @@ impl LearnSuccessorsContext {
             context: RefCell::new(mcrl2_lps_create_learn_successors_context_from_data_spec(
                 data_spec.get(),
             )),
+            _marker: PhantomUnsend::default(),
         }
     }
 
