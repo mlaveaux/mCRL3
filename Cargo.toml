@@ -43,6 +43,7 @@ members = [
     "crates/syntax",
     "crates/tools",
     "crates/unsafety",
+    "crates/unsafety/benchmarks",
     "crates/utilities",
     "crates/utilities/benchmarks",
     "crates/vpg",

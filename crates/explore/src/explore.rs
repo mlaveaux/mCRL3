@@ -207,13 +207,14 @@ where
                             let found = discovered.get_into(state_ref, state_buf);
                             debug_assert!(found, "StateRef from frontier must be valid");
                             let from = StateIndex::new(state_ref.index());
-                            lps.prepare(context, state_buf);
+                            let summands_to_explore = lps.prepare(context, state_buf);
 
                             let info = lps.state_info(state_buf);
                             on_state(local, from, &info)?;
 
-                            for summand in lps.summands() {
-                                summand.enumerate(context, state_buf, |label, next_state| {
+                            let summands = lps.summands();
+                            for index in summands_to_explore {
+                                summands[index].enumerate(context, state_buf, |label, next_state| {
                                     let (target_ref, is_new) = discovered.insert_with(next_state, forest_context);
                                     let to = StateIndex::new(target_ref.index());
                                     on_transition(local, from, label, to)?;
