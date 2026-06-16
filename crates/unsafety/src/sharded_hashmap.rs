@@ -178,6 +178,17 @@ impl<T, S> ShardedHashMap<T, S> {
         self.shard(hash).read().find(hash, |element| eq(element)).cloned()
     }
 
+    /// Looks up the element matching `hash`/`eq` and, if present, calls `f` on a
+    /// shared reference to it, returning its result; returns `None` otherwise.
+    ///
+    /// Unlike [`ShardedHashMap::find`], the stored element is not required to be
+    /// [`Clone`] and is never copied: `f` runs while the shard read lock is
+    /// held. Consequently `f` must not call back into the same table (it would
+    /// deadlock) and should be kept short to limit the lock hold time.
+    pub fn find_with<R>(&self, hash: u64, mut eq: impl FnMut(&T) -> bool, f: impl FnOnce(&T) -> R) -> Option<R> {
+        self.shard(hash).read().find(hash, |element| eq(element)).map(f)
+    }
+
     /// Returns a clone of the element matching `hash`/`eq`, inserting the value
     /// produced by `make` if none is present. `make` runs only on insertion and
     /// while the shard is write-locked; `hash_of` recomputes an element's hash
@@ -197,6 +208,32 @@ impl<T, S> ShardedHashMap<T, S> {
         match table.entry(hash, |element| eq(element), &hash_of) {
             Entry::Occupied(entry) => (entry.get().clone(), false),
             Entry::Vacant(entry) => (entry.insert(make()).get().clone(), true),
+        }
+    }
+
+    /// Inserts the element produced by `make` unless an element matching
+    /// `hash`/`eq` is already present, returning whether a new element was
+    /// inserted. `make` runs only on insertion and while the shard is
+    /// write-locked; `hash_of` recomputes an element's hash when the shard
+    /// grows.
+    ///
+    /// Unlike [`ShardedHashMap::find_or_insert_with`], the resident element is
+    /// neither returned nor cloned, so `T` need not be [`Clone`]. Use this when
+    /// only publication matters and the stored element is expensive to clone.
+    pub fn insert_with(
+        &self,
+        hash: u64,
+        mut eq: impl FnMut(&T) -> bool,
+        hash_of: impl Fn(&T) -> u64,
+        make: impl FnOnce() -> T,
+    ) -> bool {
+        let mut table = self.shard(hash).write();
+        match table.entry(hash, |element| eq(element), &hash_of) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(make());
+                true
+            }
         }
     }
 
