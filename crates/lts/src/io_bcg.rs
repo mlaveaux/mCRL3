@@ -123,7 +123,7 @@ mod inner {
         let initial_state = unsafe { BCG_OT_INITIAL_STATE(bcg_object) };
 
         let num_of_transitions = unsafe { BCG_OT_NB_EDGES(bcg_object) };
-        let mut progress = TimeProgress::new(
+        let progress = TimeProgress::new(
             move |transitions: usize| {
                 info!(
                     "Read {} transitions ({}%)...",
@@ -198,7 +198,7 @@ mod inner {
         }
 
         let num_of_transitions = lts.num_of_transitions();
-        let mut progress = TimeProgress::new(
+        let progress = TimeProgress::new(
             move |transitions: usize| {
                 info!(
                     "Wrote {} transitions ({}%)...",
