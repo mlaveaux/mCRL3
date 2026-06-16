@@ -1,10 +1,6 @@
 //! To keep with the theory, we use capitalized variable names for sets of vertices.
 //! Authors: Maurice Laveaux, Sjef van Loo, Erik de Vink and Tim A.C. Willemse
 #![allow(nonstandard_style)]
-#![allow(unused)]
-
-use std::fmt;
-use std::ops::Index;
 
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
@@ -14,13 +10,10 @@ use log::info;
 use log::trace;
 use merc_symbolic::FormatConfig;
 use oxidd::BooleanFunction;
-use oxidd::Edge;
 use oxidd::Function;
-use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
-use oxidd::util::AllocResult;
 use oxidd::util::OptBool;
 use oxidd_core::util::EdgeDropGuard;
 
@@ -253,15 +246,17 @@ impl<'a> VariabilityZielonkaSolver<'a> {
 
         // For debugging mostly
         let indent = Repeat::new(" ", depth);
+
+        #[cfg(debug_assertions)]
         let gamma_copy = gamma.clone();
 
         // 1. if \gamma == \epsilon then
-        if gamma.is_empty() {
+        if gamma.is_all_empty_set() {
             return Ok((gamma.clone(), gamma));
         }
 
         // 5. m := max { p(v) | v in V && \gamma(v) \neq \emptyset }
-        let (highest_prio, lowest_prio) = self.get_highest_lowest_prio(&gamma);
+        let highest_prio = self.get_highest_prio(&gamma);
 
         // 6. x := m mod 2
         let x = Player::from_priority(&highest_prio);
@@ -283,7 +278,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
             "|gamma| = {}, m = {}, l = {}, x = {}, |mu| = {}",
             gamma.number_of_non_empty(),
             highest_prio,
-            lowest_prio,
+            self.get_lowest_prio(&gamma),
             x,
             mu.number_of_non_empty()
         );
@@ -300,8 +295,8 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         );
         let (omega1_0, omega1_1) = self.solve_recursive(gamma.clone().minus(self.manager_ref, &alpha)?, depth + 1)?;
 
-        let (mut omega1_x, mut omega1_not_x) = x_and_not_x(omega1_0, omega1_1, x);
-        if omega1_not_x.is_empty() {
+        let (mut omega1_x, omega1_not_x) = x_and_not_x(omega1_0, omega1_1, x);
+        if omega1_not_x.is_all_empty_set() {
             // 11. omega_x := omega'_x \cup alpha
             omega1_x = omega1_x.or(self.manager_ref, &alpha)?;
             // 20. return (omega_0, omega_1)
@@ -316,8 +311,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
             );
             trace!("{indent}Vertices in beta: {:?}", beta);
 
-            let (mut omega2_0, mut omega2_1) =
-                self.solve_recursive(gamma.minus(self.manager_ref, &beta)?, depth + 1)?;
+            let (omega2_0, omega2_1) = self.solve_recursive(gamma.minus(self.manager_ref, &beta)?, depth + 1)?;
 
             // 17. omega''_notx := omega''_notx \cup \beta
             let (omega2_x, mut omega2_not_x) = x_and_not_x(omega2_0, omega2_1, x);
@@ -335,16 +329,17 @@ impl<'a> VariabilityZielonkaSolver<'a> {
     fn zielonka_family_optimised(&mut self, gamma: Submap, depth: usize) -> Result<(Submap, Submap), MercError> {
         self.recursive_calls += 1;
         let indent = Repeat::new(" ", depth);
+        #[cfg(debug_assertions)]
         let gamma_copy = gamma.clone();
 
         // 1. if \gamma == \epsilon then
-        if gamma.is_empty() {
+        if gamma.is_all_empty_set() {
             // 2. return (\epsilon, \epsilon)
             return Ok((gamma.clone(), gamma));
         }
 
         // 5. m := max { p(v) | v in V && \gamma(v) \neq \emptyset }
-        let (highest_prio, lowest_prio) = self.get_highest_lowest_prio(&gamma);
+        let highest_prio = self.get_highest_prio(&gamma);
 
         // 6. x := m mod 2
         let x = Player::from_priority(&highest_prio);
@@ -370,7 +365,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
             "{indent}|gamma| = {}, m = {}, l = {}, x = {}, |mu| = {}",
             gamma.number_of_non_empty(),
             highest_prio,
-            lowest_prio,
+            self.get_lowest_prio(&gamma),
             x,
             mu.number_of_non_empty()
         );
@@ -403,7 +398,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         let omega1_not_x_restricted = omega1_not_x.clone().minus_function(self.manager_ref, &C_restricted)?;
 
         // 10.
-        if omega1_not_x_restricted.is_empty() {
+        if omega1_not_x_restricted.is_all_empty_set() {
             // 11. omega'_x := omega'_x \cup A
             omega1_x = omega1_x.or(self.manager_ref, &alpha)?;
             if cfg!(debug_assertions) {
@@ -583,10 +578,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
                             if *EdgeDropGuard::new(manager, minus_edge(manager, &a, A[v].as_edge(manager))?) != *f_edge
                             {
                                 // 16. A(v) := A(v) \cup a
-                                let was_empty = *A[v].as_edge(manager) == *f_edge;
                                 let update = BDDFunction::or_edge(manager, A[v].as_edge(manager), &a)?;
-                                let is_empty = update == *f_edge;
-
                                 A.set(manager, v, BDDFunction::from_edge(manager, update));
 
                                 // 17. if v not in Q then Q.push(v)
@@ -610,20 +602,28 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         Ok(A)
     }
 
-    /// Returns the highest and lowest priority in the given set of vertices V.
-    fn get_highest_lowest_prio(&self, V: &Submap) -> (Priority, Priority) {
+    /// Returns the highest priority occurring in the given set of vertices V.
+    fn get_highest_prio(&self, V: &Submap) -> Priority {
         let mut highest = usize::MIN;
-        let mut lowest = usize::MAX;
-
         self.manager_ref.with_manager_shared(|manager| {
             for v in V.iter_vertices(manager) {
-                let prio = self.game.priority(v);
-                highest = highest.max(*prio);
-                lowest = lowest.min(*prio);
+                highest = highest.max(*self.game.priority(v));
             }
         });
+        Priority::new(highest)
+    }
 
-        (Priority::new(highest), Priority::new(lowest))
+    /// Returns the lowest priority occurring in the given set of vertices V.
+    ///
+    /// Only used for debug logging, so it is kept out of the hot path.
+    fn get_lowest_prio(&self, V: &Submap) -> Priority {
+        let mut lowest = usize::MAX;
+        self.manager_ref.with_manager_shared(|manager| {
+            for v in V.iter_vertices(manager) {
+                lowest = lowest.min(*self.game.priority(v));
+            }
+        });
+        Priority::new(lowest)
     }
 
     /// Checks that the sets W0 and W1 form a  partition w.r.t the submap V, i.e., their union is V and their intersection is empty.
@@ -657,23 +657,15 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_macros::merc_test;
     use merc_utilities::Timing;
-    use oxidd::BooleanFunction;
-    use oxidd::Manager;
-    use oxidd::ManagerRef;
-    use oxidd::bdd::BDDFunction;
-    use oxidd::util::AllocResult;
 
     use merc_utilities::random_test;
 
-    use crate::PG;
-    use crate::Submap;
-    use crate::VertexIndex;
     use crate::VpgSolver;
-    use crate::project_variability_parity_games_iter;
+
     use crate::random_variability_parity_game;
-    use crate::solve_variability_product_zielonka;
+
     use crate::solve_variability_zielonka;
-    use crate::solve_zielonka;
+
     use crate::verify_variability_product_zielonka_solution;
     use crate::write_vpg;
 

@@ -91,14 +91,19 @@ impl Submap {
         }
     }
 
-    /// Returns true iff the submap is empty.
-    pub fn is_empty(&self) -> bool {
+    /// Returns true iff every vertex maps to the empty configuration.
+    pub fn is_all_empty_set(&self) -> bool {
         self.non_empty_count == 0
     }
 
-    /// Returns the number of entries in the submap.
+    /// Returns the number of entries in the submap, i.e. the number of vertices.
     pub fn len(&self) -> usize {
         self.mapping.len()
+    }
+
+    /// Returns true iff the submap has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.mapping.is_empty()
     }
 
     /// Clears the submap, setting all entries to the empty function.

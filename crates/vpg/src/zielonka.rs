@@ -71,6 +71,11 @@ struct ZielonkaSolver<'a, G: PG, S: Strat> {
     /// Reused temporary queue for attractor computation.
     temp_queue: Vec<VertexIndex>,
 
+    /// Reused per-vertex counter, used during attractor computation to count the
+    /// number of successors of an opponent vertex that are still within the
+    /// subgame but not yet in the attractor set.
+    attractor_counters: Vec<usize>,
+
     /// Stores the predecessors of the game.
     predecessors: Predecessors<'a>,
 
@@ -105,6 +110,7 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
             predecessors: Predecessors::new(game),
             priority_vertices,
             temp_queue: Vec::new(),
+            attractor_counters: vec![0; game.num_of_vertices()],
             recursive_calls: 0,
             _strategy: std::marker::PhantomData,
         }
@@ -119,6 +125,7 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
     /// >  Oliver Friedmann. Recursive algorithm for parity games requires exponential time. RAIRO Theor. Informatics Appl. 45(4): 449-457 (2011) [DOI](https://doi.org/10.1051/ita/2011124).
     fn zielonka_rec(&mut self, V: Set, depth: usize) -> (Set, S, Set, S) {
         self.recursive_calls += 1;
+        #[cfg(debug_assertions)]
         let full_V = V.clone(); // Used for debugging
         let indent = Repeat::new(" ", depth);
 
@@ -126,7 +133,7 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
             return (V.clone(), S::new(), V.clone(), S::new());
         }
 
-        let (highest_prio, lowest_prio) = self.get_highest_lowest_prio(&V);
+        let highest_prio = self.get_highest_prio(&V);
         let alpha = Player::from_priority(&highest_prio);
         let not_alpha = alpha.opponent();
 
@@ -143,7 +150,7 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
             indent,
             V.count_ones(),
             highest_prio,
-            lowest_prio,
+            self.get_lowest_prio(&V),
             alpha,
             U.count_ones()
         );
@@ -181,15 +188,32 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
             // Combine the strategy from the attractor with the recursive strategy
             S2_not_alpha = S2_not_alpha.union(B_strategy).union(S1_not_alpha);
 
-            check_partition(&W2_alpha, &W2_not_alpha, &full_V);
+            if cfg!(debug_assertions) {
+                check_partition(&W2_alpha, &W2_not_alpha, &full_V);
+            }
             combine_with_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
         }
     }
 
     /// Computes the attractor for `alpha` to the set `U` within the vertices `V`.
+    ///
+    /// # Details
+    ///
+    /// Instead of rescanning the outgoing edges of an opponent vertex every time
+    /// one of its successors is added to the attractor, a per-vertex counter of
+    /// the successors still outside the attractor is maintained. The opponent
+    /// vertex is attracted once that counter reaches zero, giving an overall
+    /// linear-time attractor.
     fn attractor(&mut self, alpha: Player, V: &Set, mut A: Set) -> (Set, S) {
         // 1. strategy := empty
         let mut strategy = S::new();
+
+        // Initialise the counter of every opponent vertex in V.
+        for v in V.iter_ones().map(VertexIndex::new) {
+            if self.game.owner(v) != alpha {
+                self.attractor_counters[*v] = self.game.outgoing_edges(v).filter(|edge| V[*edge.to()]).count();
+            }
+        }
 
         // 2. Q = {v \in A}
         self.temp_queue.clear();
@@ -202,23 +226,27 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
         while let Some(w) = self.temp_queue.pop() {
             // For every u \in Ew do
             for v in self.predecessors.predecessors(w) {
-                if V[*v] {
-                    let attracted = if self.game.owner(v) == alpha {
-                        // v \in V and v in V_\alpha
-                        true
-                    } else {
-                        // Check if all successors of v are in the attractor
-                        self.game.outgoing_edges(v).all(|edge| !V[*edge.to()] || A[*edge.to()])
-                    };
+                if !V[*v] || A[*v] {
+                    continue;
+                }
 
-                    if attracted && !A[*v] {
-                        if self.game.owner(v) == alpha {
-                            strategy.set(v, w);
-                        }
+                let attracted = if self.game.owner(v) == alpha {
+                    // v \in V_\alpha can move to w \in A, so it is attracted.
+                    true
+                } else {
+                    // One more successor of v (namely w) entered the attractor;
+                    // v is attracted once all of its successors within V did.
+                    self.attractor_counters[*v] -= 1;
+                    self.attractor_counters[*v] == 0
+                };
 
-                        A.set(*v, true);
-                        self.temp_queue.push(v);
+                if attracted {
+                    if self.game.owner(v) == alpha {
+                        strategy.set(v, w);
                     }
+
+                    A.set(*v, true);
+                    self.temp_queue.push(v);
                 }
             }
         }
@@ -226,18 +254,24 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
         (A, strategy)
     }
 
-    /// Returns the highest and lowest priority in the given set of vertices V.
-    fn get_highest_lowest_prio(&self, V: &Set) -> (Priority, Priority) {
+    /// Returns the highest priority occurring in the given set of vertices V.
+    fn get_highest_prio(&self, V: &Set) -> Priority {
         let mut highest = usize::MIN;
-        let mut lowest = usize::MAX;
-
         for v in V.iter_ones() {
-            let prio = self.game.priority(VertexIndex::new(v));
-            highest = highest.max(*prio);
-            lowest = lowest.min(*prio);
+            highest = highest.max(*self.game.priority(VertexIndex::new(v)));
         }
+        Priority::new(highest)
+    }
 
-        (Priority::new(highest), Priority::new(lowest))
+    /// Returns the lowest priority occurring in the given set of vertices V.
+    ///
+    /// Only used for debug logging, so it is kept out of the hot path.
+    fn get_lowest_prio(&self, V: &Set) -> Priority {
+        let mut lowest = usize::MAX;
+        for v in V.iter_ones() {
+            lowest = lowest.min(*self.game.priority(VertexIndex::new(v)));
+        }
+        Priority::new(lowest)
     }
 }
 

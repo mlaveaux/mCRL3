@@ -125,6 +125,11 @@ struct PriorityPromotionSolver<'a, G: PG> {
     /// This is a reused queue with vertices to compute the attractor set from.
     todo: VecDeque<VertexIndex>,
 
+    /// Reused per-vertex counter, used during attractor computation to count the
+    /// number of successors of an opponent vertex that can still enter the
+    /// region being computed.
+    attractor_counters: Vec<usize>,
+
     /// The number of promotions required.
     promotions: usize,
 
@@ -169,6 +174,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
             unsolved,
             regions,
             todo: VecDeque::new(),
+            attractor_counters: vec![0; num_vertices],
             promotions: 0,
             dominions: 0,
             final_winner: vec![Player::Even; num_vertices],
@@ -299,7 +305,27 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     fn compute_attractor<S: Strat>(&mut self, strategy: &mut S, prio: Priority, in_subgraph: bool) {
         let alpha = Player::from_priority(&prio);
 
-        // O(V): Compute the attractor set to the alpha-region.
+        // Initialise, for every opponent vertex still under consideration, the
+        // number of its outgoing edges that lead to a vertex which can still
+        // enter the region with priority `prio` (a "poppable" target: not yet
+        // solved, and inside the subgame when `in_subgraph`). The opponent
+        // vertex is attracted once all of those targets have been attracted.
+        for i in 0..self.unsolved.len() {
+            let v = self.unsolved[i];
+            if self.game.owner(v) != alpha {
+                self.attractor_counters[*v] = self
+                    .game
+                    .outgoing_edges(v)
+                    .filter(|edge| {
+                        let x = edge.to();
+                        self.region_function[*x].is_some()
+                            && !(in_subgraph && self.region_function[*x].is_some_and(|region| region > prio))
+                    })
+                    .count();
+            }
+        }
+
+        // O(V + E): Compute the attractor set to the alpha-region.
         while let Some(w) = self.todo.pop_front() {
             // Check all predecessors v of w.
             for v in self.predecessors.predecessors(w) {
@@ -316,25 +342,11 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
                     // sigma(v) = w, a valid strategy for alpha is to pick a successor in A.
                     strategy.set(v, w);
                 } else {
-                    // Check if all successors (v, x) subset A, thus if they end up in a vertex with prio.
-                    let is_subset = self.game.outgoing_edges(v).all(|edge| {
-                        let x = edge.to();
-
-                        // Skip vertices that are not considered in the subgraph G <= prio
-                        // or that already belong to COMPUTED_REGION.
-                        if self.region_function[*x] == Some(prio) || self.region_function[*x].is_none() {
-                            return true;
-                        }
-
-                        // Either only take vertices in G <= prio or all when in_subgraph is false.
-                        if self.region_function[*x].is_some_and(|region| region < prio) || !in_subgraph {
-                            return false;
-                        }
-
-                        true
-                    });
-
-                    if !is_subset {
+                    // One more successor of v (namely w) entered the region. The
+                    // opponent vertex v is only attracted once every successor
+                    // that could enter the region has actually done so.
+                    self.attractor_counters[*v] -= 1;
+                    if self.attractor_counters[*v] != 0 {
                         continue; // not in the attractor set yet!
                     }
 
