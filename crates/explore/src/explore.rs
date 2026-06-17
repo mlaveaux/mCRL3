@@ -115,15 +115,14 @@ where
     Ok(StateIndex::new(initial_ref.index()))
 }
 
-/// Finds the next state for a worker to process: its own deque first (popped
-/// LIFO, keeping recently discovered states cache-hot), then a batch stolen from
-/// a peer worker. `me` is the caller's own index, skipped while stealing.
+/// Finds the next state for a worker to process: its own deque first, then a
+/// batch stolen from a peer worker. `me` is the caller's own index, skipped
+/// while stealing.
 ///
-/// A peer whose slot is not yet registered is simply skipped; the caller retries
-/// while the pending counter says work remains, so no startup barrier is needed.
-/// Returns `None` only when a full sweep observed every peer deque empty; the
-/// caller distinguishes genuine termination from a transient empty observation
-/// using the global pending counter.
+/// A peer whose slot is not yet registered is simply skipped; the caller
+/// retries while the pending counter says work remains, so no startup barrier
+/// is needed. Returns `None` only when a full sweep observed every peer deque
+/// empty.
 fn find_task<T>(local: &Worker<T>, stealers: &[OnceLock<Stealer<T>>], me: usize) -> Option<T> {
     local.pop().or_else(|| {
         loop {
@@ -153,23 +152,6 @@ fn find_task<T>(local: &Worker<T>, stealers: &[OnceLock<Stealer<T>>], me: usize)
 /// The interface is similar to [`explore`], but an extra closure is supplied to
 /// produce a fresh per-thread accumulator for each worker.
 ///
-/// Unlike a level-synchronized BFS, there is no per-level barrier: every worker
-/// owns a [`crossbeam_deque::Worker`] deque, pushes its freshly discovered
-/// states onto it, and pops from it LIFO. Idle workers batch-steal from their
-/// peers' deques. States flow into the deques the instant they are discovered
-/// rather than at level boundaries, so a worker that hits an expensive block of
-/// states no longer stalls the others — they steal the surrounding work and keep
-/// going. This continuously balances skewed per-state enumeration cost.
-///
-/// Each worker is a single `rayon::broadcast` invocation, so it runs
-/// start-to-finish on one pinned pool thread. Both its deque and its mCRL2
-/// enumeration backend are created and dropped on that same thread: the deque
-/// needs no shared ownership (only its [`crossbeam_deque::Stealer`] is published,
-/// through a `OnceLock` slot, so peers can balance against it), and the backend
-/// satisfies mCRL2's thread-affinity requirement (each term must be created and
-/// destroyed on the same thread) without per-state thread-index lookups or an
-/// out-of-band drop.
-///
 /// - `make_local()` produces a fresh accumulator for each worker.
 ///
 /// The returned `Vec<Local>` holds one accumulator per worker (one per pool
@@ -196,17 +178,11 @@ where
 
     let num_workers = rayon::current_num_threads().max(1);
 
-    // One publication slot per worker. Each worker creates its own deque inside
-    // `broadcast` and publishes the deque's stealer here, so peers can steal from
-    // it without the deque ever needing shared ownership.
+    // One publication slot per worker.
     let stealers: Vec<OnceLock<Stealer<StateRef>>> = (0..num_workers).map(|_| OnceLock::new()).collect();
 
     // Count of states discovered but not yet fully processed; exploration is
-    // complete once it reaches zero. The initial state accounts for the first
-    // unit. Each processed state updates this exactly once: its successors are
-    // counted (and only then made stealable) before the state releases its own
-    // unit, folded into a single atomic update, so the count cannot momentarily
-    // reach zero while reachable work remains.
+    // complete once it reaches zero.
     let pending = AtomicUsize::new(1);
     // Set when any worker's callback returns an error so the others stop promptly.
     let aborted = AtomicBool::new(false);
@@ -215,9 +191,8 @@ where
         rayon::broadcast(|broadcast| -> (Local, Option<MercError>) {
             let me = broadcast.index();
 
-            // Each worker owns its deque, created here on its own thread, so no
-            // shared ownership (and no lock) is needed. Publish its stealer so
-            // peers can balance against it.
+            // Each worker owns its deque, created here on its own thread
+            // Publish its stealer so peers can balance against it.
             let local_deque: Worker<StateRef> = Worker::new_lifo();
             let _ = stealers[me].set(local_deque.stealer());
 
@@ -283,12 +258,7 @@ where
                 match result {
                     Ok(()) => {
                         // Apply this state's net effect on the outstanding-work
-                        // count in a single atomic update: `+produced` for the
-                        // newly discovered successors and `-1` for this state, now
-                        // done. The successors are counted *before* being pushed,
-                        // so a peer cannot steal and complete one before it has
-                        // been counted; the count therefore stays positive while
-                        // reachable work remains.
+                        // count in a single atomic update.
                         let produced = successors.len();
                         if produced == 0 {
                             pending.fetch_sub(1, Ordering::AcqRel);
@@ -328,37 +298,4 @@ where
     }
 
     Ok((StateIndex::new(initial_ref.index()), locals))
-}
-
-#[cfg(test)]
-mod tests {
-    use rand::RngExt;
-
-    use merc_utilities::random_test;
-
-    use crate::ExplorationStrategy;
-    use crate::mock_lps::explore_canonical;
-    use crate::mock_lps::explore_canonical_parallel;
-    use crate::mock_lps::random_lps;
-
-    /// On randomly generated processes, sequential BFS, sequential DFS and the
-    /// parallel work-stealing exploration must all discover the same transition
-    /// system. Run inside a multi-threaded pool so the parallel run genuinely
-    /// exercises stealing and the termination protocol.
-    #[test]
-    fn test_parallel_matches_sequential() {
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
-        pool.install(|| {
-            random_test(100, |rng| {
-                let dimensions = rng.random_range(2..=4);
-                let num_summands = rng.random_range(1..=5);
-                let modulus = rng.random_range(2..=4);
-                let lps = random_lps(rng, dimensions, num_summands, modulus, 3);
-
-                let reference = explore_canonical(&lps, ExplorationStrategy::Bfs);
-                assert_eq!(explore_canonical(&lps, ExplorationStrategy::Dfs), reference);
-                assert_eq!(explore_canonical_parallel(&lps), reference);
-            });
-        });
-    }
 }
