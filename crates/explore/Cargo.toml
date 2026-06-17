@@ -24,6 +24,7 @@ merc_utilities.workspace = true
 
 boxcar.workspace = true
 clap ={ workspace = true, optional = true }
+core_affinity2.workspace = true
 itertools.workspace = true
 log.workspace = true
 rayon.workspace = true

@@ -16,6 +16,7 @@ merc_debug-trace = []
 [dependencies]
 ahash.workspace = true
 backtrace.workspace = true
+core_affinity2.workspace = true
 crossbeam-utils.workspace = true
 delegate.workspace = true
 env_logger.workspace = true

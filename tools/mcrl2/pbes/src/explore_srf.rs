@@ -25,6 +25,7 @@ use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
+use merc_explore::configure_rayon_thread_pool;
 use merc_explore::explore;
 use merc_explore::explore_parallel;
 use merc_io::TimeProgress;
@@ -142,10 +143,7 @@ pub fn parity_game_from_pbes_parallel(
 ) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build()
-        .map_err(|err| MercError::from(format!("Failed to build thread pool: {err}")))?;
+    let pool = configure_rayon_thread_pool(threads)?;
 
     // Only layer the enumeration cache on top of the LPS when a caching strategy
     // is actually requested; otherwise explore the bare LPS directly.
