@@ -137,8 +137,6 @@ pub trait Summand {
     /// Returns the indices into the state vector whose values fully determine
     /// this summand's enumeration result (the "gamma" set). Used as the cache
     /// key by [`crate::CacheLPS`].
-    ///
-    /// An empty slice signals that caching is not applicable for this summand.
     fn read_positions(&self) -> &[usize] {
         &[]
     }
