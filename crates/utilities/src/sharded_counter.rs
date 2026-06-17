@@ -56,7 +56,7 @@ impl ShardedCounter {
     /// increments are in flight.
     pub fn reset(&mut self) {
         for shard in self.shards.iter_mut() {
-            *shard.get_mut() = 0;
+            shard.store(0, Ordering::Relaxed);
         }
     }
 

@@ -109,7 +109,11 @@ impl ControlFlowAnalysis {
                     .collect();
                 values.sort();
                 values.dedup();
-                debug!("Control flow graph for {}: locations {:?}", parameters[j].name(), values);
+                debug!(
+                    "Control flow graph for {}: locations {:?}",
+                    parameters[j].name(),
+                    values
+                );
             }
 
             for (index, analysis) in analyses.iter().enumerate() {

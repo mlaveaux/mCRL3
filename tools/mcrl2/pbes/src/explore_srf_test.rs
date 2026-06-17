@@ -9,6 +9,8 @@ mod tests {
     use merc_io::temp_dir;
     use merc_io::traced_command;
     use merc_vpg::PG;
+    use merc_vpg::ParityGame;
+    use merc_vpg::Set;
     use merc_vpg::solve_zielonka;
 
     use crate::explore_srf::parity_game_from_pbes;
@@ -157,22 +159,40 @@ mod tests {
 
         let sequential = parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
             .expect("Sequential exploration failed");
-        let parallel = parity_game_from_pbes_parallel(&pbes, 4).expect("Parallel exploration failed");
+        let (sequential_solution, _) = solve_zielonka(&sequential, false);
+
+        // The parallel explorer must agree with the sequential one regardless of
+        // the caching strategy in effect, so check both.
+        for caching in [CachingStrategy::None, CachingStrategy::Local] {
+            assert_parallel_caching_matches_sequential(pbes_path, &pbes, &sequential, &sequential_solution, caching);
+        }
+    }
+
+    /// Helper for [`assert_parallel_matches_sequential_pbes`]: builds the parity
+    /// game with the parallel BFS under the given `caching` strategy and asserts
+    /// it matches the precomputed sequential game and solution.
+    fn assert_parallel_caching_matches_sequential(
+        pbes_path: &Path,
+        pbes: &Pbes,
+        sequential: &ParityGame,
+        sequential_solution: &[Set; 2],
+        caching: CachingStrategy,
+    ) {
+        let parallel = parity_game_from_pbes_parallel(pbes, 4, caching).expect("Parallel exploration failed");
 
         assert_eq!(
             parallel.num_of_vertices(),
             sequential.num_of_vertices(),
-            "Parallel and sequential vertex counts differ for {}",
+            "Parallel and sequential vertex counts differ for {} (caching {caching:?})",
             pbes_path.display()
         );
         assert_eq!(
             parallel.num_of_edges(),
             sequential.num_of_edges(),
-            "Parallel and sequential edge counts differ for {}",
+            "Parallel and sequential edge counts differ for {} (caching {caching:?})",
             pbes_path.display()
         );
 
-        let (sequential_solution, _) = solve_zielonka(&sequential, false);
         let (parallel_solution, _) = solve_zielonka(&parallel, false);
         assert_eq!(
             parallel_solution[0][0],
