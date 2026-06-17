@@ -151,6 +151,10 @@ impl CfgMetrics {
 
 impl fmt::Display for CfgMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if cfg!(not(feature = "metrics")) {
+            return writeln!(f, "enable the 'metrics' feature to see control flow metrics");
+        }
+
         writeln!(f, "summand control flow metrics:")?;
         writeln!(
             f,

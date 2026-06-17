@@ -217,10 +217,8 @@ where
                     } = seg;
 
                     // Acquire the enumeration backend pinned to this physical
-                    // worker thread, creating it on first use. The slot is only
-                    // ever touched by its owning thread, so the lock is never
-                    // contended; it exists solely to share the `Vec` safely.
-                    let thread_index = rayon::current_thread_index().unwrap_or(0);
+                    // worker thread, creating it on first use.
+                    let thread_index = rayon::current_thread_index().expect("This must only be called from a worker thread");
                     let mut context_guard = contexts[thread_index].lock().expect("context slot poisoned");
                     let context = context_guard.get_or_insert_with(|| lps.create_context());
 

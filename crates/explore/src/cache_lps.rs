@@ -229,6 +229,10 @@ impl CacheMetrics {
 
 impl fmt::Display for CacheMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if cfg!(not(feature = "metrics")) {
+            return writeln!(f, "enable the 'metrics' feature to see cachemetrics");
+        }
+
         writeln!(f, "summand cache metrics:")?;
         writeln!(
             f,
@@ -334,7 +338,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>,
     {
-        if self.strategy == CachingStrategy::None || self.read_positions.is_empty() {
+        if self.strategy == CachingStrategy::None {
             return self.inner.summands()[self.index].enumerate(&mut context.inner, state, report);
         }
 
