@@ -218,7 +218,8 @@ where
 
                     // Acquire the enumeration backend pinned to this physical
                     // worker thread, creating it on first use.
-                    let thread_index = rayon::current_thread_index().expect("This must only be called from a worker thread");
+                    let thread_index =
+                        rayon::current_thread_index().expect("This must only be called from a worker thread");
                     let mut context_guard = contexts[thread_index].lock().expect("context slot poisoned");
                     let context = context_guard.get_or_insert_with(|| lps.create_context());
 

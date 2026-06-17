@@ -261,7 +261,7 @@ mod tests {
         let mut buffer = Cursor::new(Vec::new());
         {
             let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer));
-            explore_lps_explicit_parallel(&mut builder, &lps, CachingStrategy::None, 4, false, &Timing::new())
+            explore_lps_explicit_parallel(&mut builder, &lps, CachingStrategy::None, 4, false, false, &Timing::new())
                 .expect("Parallel exploration failed");
         }
         buffer.set_position(0);

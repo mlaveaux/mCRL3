@@ -178,7 +178,7 @@ mod tests {
         sequential_solution: &[Set; 2],
         caching: CachingStrategy,
     ) {
-        let parallel = parity_game_from_pbes_parallel(pbes, 4, caching).expect("Parallel exploration failed");
+        let parallel = parity_game_from_pbes_parallel(pbes, 4, caching, false).expect("Parallel exploration failed");
 
         assert_eq!(
             parallel.num_of_vertices(),
