@@ -55,11 +55,14 @@ pub trait LPS {
     /// relevant summands (e.g. a PBES in SRF form only enumerates the summands
     /// belonging to the current equation); implementations with no such
     /// restriction return all summand indices.
-    fn prepare(
-        &self,
+    ///
+    /// The returned iterator may borrow both `self` and `state`, so it must be
+    /// fully consumed before `state` is mutated again.
+    fn prepare<'a>(
+        &'a self,
         context: &mut <Self::Summand as Summand>::Context,
-        state: &[Self::Value],
-    ) -> impl Iterator<Item = usize> + '_;
+        state: &'a [Self::Value],
+    ) -> impl Iterator<Item = usize> + 'a;
 
     /// Returns the state-level metadata for the given source `state`.
     fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo;
@@ -83,11 +86,11 @@ impl<P: LPS> LPS for &P {
         (**self).create_context()
     }
 
-    fn prepare(
-        &self,
+    fn prepare<'a>(
+        &'a self,
         context: &mut <Self::Summand as Summand>::Context,
-        state: &[Self::Value],
-    ) -> impl Iterator<Item = usize> + '_ {
+        state: &'a [Self::Value],
+    ) -> impl Iterator<Item = usize> + 'a {
         (**self).prepare(context, state)
     }
 
