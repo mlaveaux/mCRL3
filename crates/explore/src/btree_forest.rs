@@ -203,10 +203,10 @@ where
 
     /// Interns the sequence `values` and returns a handle to its tree, reusing
     /// any already-interned nodes. Equal sequences always yield the same
-    /// handle. 
-    /// 
+    /// handle.
+    ///
     /// # Details
-    /// 
+    ///
     /// The tree is assembled bottom-up: contiguous chunks of `values` become
     /// leaf-level nodes, then those are grouped into interior nodes, and so on
     /// until a single root remains.

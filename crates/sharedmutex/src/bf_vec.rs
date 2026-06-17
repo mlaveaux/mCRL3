@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 
 use crate::BfSharedMutex;
 
-/// An implementation of [Vec<T>] based on the [BfSharedMutex] implementation
+/// An implementation of [`Vec<T>`] based on the [BfSharedMutex] implementation
 /// that can be safely sent between threads. Elements can be appended
 /// concurrently from multiple threads holding a [`BfVec::share`] of the vector.
 ///

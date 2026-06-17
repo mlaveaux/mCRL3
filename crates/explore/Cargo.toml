@@ -32,3 +32,6 @@ streaming-iterator.workspace = true
 merc_reduction.workspace = true
 tempfile.workspace = true
 rand.workspace = true
+
+[target.'cfg(loom)'.dependencies]
+boxcar = { workspace = true, features = ["loom"] }
