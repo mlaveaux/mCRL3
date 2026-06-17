@@ -238,45 +238,56 @@ fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> 
     // For each action name in the communication expression's left-hand side,
     // find a matching action with the same label. All matched actions must
     // have the same arguments.
+    //
+    // We iterate over every candidate for the *first* required name so that we
+    // do not greedily commit to a particular argument set.  Once the first
+    // action is chosen its arguments fix the constraint for all remaining
+    // names, so a single greedy pass over the rest is correct.
     let mut matched = vec![false; actions.len()];
-    let mut first_match: Option<usize> = None;
+    let first_name = expr.from.actions.first()?;
 
-    for required_name in &expr.from.actions {
-        let mut found = false;
-        for (i, action) in actions.iter().enumerate() {
-            if matched[i] {
-                continue;
-            }
-            if action.matches_label(required_name) {
-                // All matched actions must share the same arguments.
-                if let Some(first) = first_match {
-                    if !action.comm_args_compatible(&actions[first]) {
-                        continue;
-                    }
-                } else {
-                    first_match = Some(i);
+    'outer: for first_idx in 0..actions.len() {
+        if !actions[first_idx].matches_label(first_name) {
+            continue;
+        }
+
+        // Attempt to complete the match using actions[first_idx] as the
+        // argument reference.
+        matched.fill(false);
+        matched[first_idx] = true;
+
+        for required_name in expr.from.actions.iter().skip(1) {
+            let mut found = false;
+            for (i, action) in actions.iter().enumerate() {
+                if matched[i] {
+                    continue;
                 }
-                matched[i] = true;
-                found = true;
-                break;
+                if action.matches_label(required_name)
+                    && action.comm_args_compatible(&actions[first_idx])
+                {
+                    matched[i] = true;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                continue 'outer;
             }
         }
-        if !found {
-            return None;
-        }
+
+        // Build the result: remove matched actions and add the communicated action.
+        let mut result: Vec<L> = actions
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !matched[*i])
+            .map(|(_, a)| a.clone())
+            .collect();
+
+        result.push(L::from_comm(expr.to.clone(), &actions[first_idx]));
+        return Some(result);
     }
 
-    // Build the result: remove matched actions and add the communicated action.
-    let mut result: Vec<L> = actions
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !matched[*i])
-        .map(|(_, a)| a.clone())
-        .collect();
-
-    let representative = &actions[first_match.expect("first_match is always Some when all actions are matched")];
-    result.push(L::from_comm(expr.to.clone(), representative));
-    Some(result)
+    None
 }
 
 /// Returns true iff the given multi-action is allowed by the allow operator.
@@ -617,5 +628,69 @@ impl<'a, L: LTS> StreamingIterator for ParallelTransitionIter<'_, 'a, L> {
         } else {
             Some(&self.ctx.result)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_lts::SimpleAction;
+    use merc_syntax::CommExpr;
+    use merc_syntax::MultiActionLabel;
+
+    use super::find_communication_match;
+
+    fn simple(label: &str, args: &[&str]) -> SimpleAction {
+        SimpleAction::new(label.to_owned(), args.iter().map(|s| s.to_string()).collect())
+    }
+
+    fn comm(from: &[&str], to: &str) -> CommExpr {
+        CommExpr::new(
+            MultiActionLabel::new(from.iter().map(|s| s.to_string()).collect()),
+            to.to_owned(),
+        )
+    }
+
+    /// Regression: when the first candidate for the first required name has
+    /// incompatible args, the function must try subsequent candidates.
+    ///
+    /// Multi-action: a(1) | a(2) | b(2)
+    /// Comm: a | b -> c
+    ///
+    /// Greedy first-pick would choose a(1), then fail to match b because
+    /// b(2) has different args.  The correct match is a(2) | b(2) -> c(2).
+    #[test]
+    fn first_candidate_incompatible_retries() {
+        let actions = vec![simple("a", &["1"]), simple("a", &["2"]), simple("b", &["2"])];
+        let expr = comm(&["a", "b"], "c");
+
+        let result = find_communication_match(&actions, &expr);
+        assert!(result.is_some(), "should find a(2)|b(2) -> c(2)");
+
+        let result = result.unwrap();
+        // Remaining multi-action: a(1) and c(2)  (a(2) and b(2) consumed)
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().any(|a| a == &simple("a", &["1"])));
+        assert!(result.iter().any(|a| a == &simple("c", &["2"])));
+    }
+
+    /// When all candidates are genuinely incompatible, the function should
+    /// still return `None`.
+    #[test]
+    fn no_compatible_pair_returns_none() {
+        let actions = vec![simple("a", &["1"]), simple("b", &["2"])];
+        let expr = comm(&["a", "b"], "c");
+
+        assert!(find_communication_match(&actions, &expr).is_none());
+    }
+
+    /// Basic case with no data args still works.
+    #[test]
+    fn no_args_basic_comm() {
+        let actions = vec![simple("a", &[]), simple("b", &[])];
+        let expr = comm(&["a", "b"], "c");
+
+        let result = find_communication_match(&actions, &expr).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], simple("c", &[]));
     }
 }
