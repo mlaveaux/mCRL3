@@ -21,7 +21,7 @@ pub const THREADS: [usize; 6] = [1, 2, 4, 8, 16, 20];
 pub const READ_RATIOS: [u32; 4] = [1, 10, 100, 1000];
 /// The percentage of the value space that is pre-populated, controlling how
 /// many lookups hit and how many insertions find an existing value.
-pub const EXISTING_PERCENTAGES: [u64; 5] = [0, 25, 50, 75, 100];
+pub const EXISTING_PERCENTAGES: [u64; 5] = [0, 50, 95, 99, 100];
 /// The range `[0, VALUE_SPACE)` of `usize` values operations sample from. Kept
 /// bounded so the table size stays bounded across criterion's repeated runs.
 pub const VALUE_SPACE: u64 = 1 << 16;
