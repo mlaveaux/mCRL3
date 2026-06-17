@@ -31,6 +31,11 @@ pub struct AutStream<W: Write, L> {
     /// Keep track of the number of states added.
     number_of_states: usize,
 
+    /// Number of bytes reserved for the header line (including its trailing
+    /// newline). The real header is padded to exactly this width in
+    /// [`AutStream::finish`] so the placeholder is fully overwritten.
+    header_len: usize,
+
     /// Records the label type without affecting the auto traits of the stream:
     /// the labels themselves are never stored, so an `AutStream` stays `Send`
     /// and `Sync` (so it can be wrapped in a [`crate::MutexLtsBuilder`] and shared
@@ -70,6 +75,7 @@ impl<W: Write, L> AutStream<W, L> {
             format,
             number_of_transitions: 0,
             number_of_states: 0,
+            header_len,
             _marker: PhantomData,
         }
     }
@@ -99,13 +105,17 @@ impl<W: Write + Seek, L: TransitionLabel> LtsBuilder<L> for AutStream<W, L> {
         // Flush to ensure all buffered transitions are written
         self.writer.flush()?;
 
-        // Seek to the start and overwrite the header
+        // Seek to the start and overwrite the header. The real header is padded
+        // with trailing spaces to fill the entire reserved region (its trailing
+        // newline lands as the last reserved byte), so no leftover placeholder
+        // spaces remain to form a spurious, invalid transition line on read —
+        // which matters in particular when there are no transitions at all.
         self.writer.seek(SeekFrom::Start(0))?;
-        writeln!(
-            self.writer,
+        let header = format!(
             "des ({}, {}, {})",
             initial_state, self.number_of_transitions, self.number_of_states
-        )?;
+        );
+        writeln!(self.writer, "{:<1$}", header, self.header_len - 1)?;
 
         // Flush the updated header
         self.writer.flush()?;
@@ -193,5 +203,24 @@ mod tests {
 
             crate::check_equivalent(&lts, &result_lts);
         })
+    }
+
+    /// An LTS with no transitions (a single deadlock state) must round-trip:
+    /// the header placeholder must be fully overwritten so no line of leftover
+    /// padding spaces is left behind for the reader to choke on.
+    #[test]
+    fn test_aut_stream_no_transitions() {
+        let mut buffer = Cursor::new(Vec::new());
+        {
+            let mut stream: AutStream<_, String> = AutStream::new(&mut buffer);
+            stream.require_num_of_states(1);
+            stream.finish(crate::StateIndex::new(0)).unwrap();
+        }
+
+        buffer.set_position(0);
+        let result_lts = read_aut(&mut buffer).unwrap();
+
+        assert_eq!(result_lts.num_of_states(), 1);
+        assert_eq!(result_lts.num_of_transitions(), 0);
     }
 }
