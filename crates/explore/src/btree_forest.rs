@@ -435,14 +435,12 @@ mod tests {
     use super::BTreeForestContext;
     use super::Tree;
 
-    /// Interns random sequences (of varying length, so the reused scratch
-    /// buffers are cleared and regrown) and checks every forest invariant
-    /// against a `HashMap` oracle: the context path matches the allocating path,
-    /// each tree round-trips to its sequence, the empty sequence maps to the
-    /// empty tree, and equal sequences share a handle without allocating nodes.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn random_insert_iter_dedup() {
         random_test(100, |rng| {
+            // Interns random sequences and checks every forest invariant against a
+            // HashMap implementation.
             let forest: BTreeForest<usize, 2> = BTreeForest::new();
             let mut context = BTreeForestContext::new();
             let mut seen: HashMap<Vec<usize>, Tree> = HashMap::new();
@@ -476,13 +474,10 @@ mod tests {
         });
     }
 
-    /// Interns random sequences concurrently. Each tree must round-trip to what
-    /// was inserted even while other threads intern, and equal sequences must
-    /// resolve to equal handles regardless of the interning thread; a shared
-    /// oracle checks the latter live across threads.
     #[test]
     #[cfg_attr(miri, ignore)]
     fn random_concurrent_intern() {
+        // Interns random sequences concurrently.
         let forest: Arc<BTreeForest<usize, 4>> = Arc::new(BTreeForest::new());
         let seen: Arc<Mutex<HashMap<Vec<usize>, Tree>>> = Arc::new(Mutex::new(HashMap::new()));
 
