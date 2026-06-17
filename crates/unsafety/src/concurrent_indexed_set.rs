@@ -147,6 +147,7 @@ mod tests {
     /// the dense index assigned in insertion order, and that every read path
     /// (`index`, `contains`, `get_by_index`) round-trips against the model.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn random_insert_dedup_and_roundtrip() {
         random_test(50, |rng| {
             let set: ConcurrentIndexedSet<u64> = ConcurrentIndexedSet::new();
