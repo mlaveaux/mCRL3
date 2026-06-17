@@ -58,6 +58,26 @@ pub fn parity_game_from_pbes(
     let lps = PbesSrfLps::new(pbes)?;
     let timing = Timing::new();
 
+    // Only layer the enumeration cache on top of the LPS when a caching strategy
+    // is actually requested; otherwise explore the bare LPS directly.
+    match caching {
+        CachingStrategy::None => run_explore_srf(&lps, strategy, &timing),
+        _ => {
+            let cached = CacheLPS::new(&lps, caching);
+            let game = run_explore_srf(&cached, strategy, &timing)?;
+            debug!("{}", cached.metrics());
+            Ok(game)
+        }
+    }
+}
+
+/// Runs the sequential SRF PBES exploration loop over any [`LPS`] view producing
+/// unit labels and `(Player, Priority)` state info, building the parity game. The
+/// view is either the bare LPS or one wrapped in [`CacheLPS`].
+fn run_explore_srf<M>(lps: &M, strategy: ExplorationStrategy, timing: &Timing) -> Result<ParityGame, MercError>
+where
+    M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)>,
+{
     let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
 
     // Count BES equations (vertices) and edges in the exploration closures,
@@ -66,11 +86,10 @@ pub fn parity_game_from_pbes(
     let equations = Cell::new(0usize);
     let edges = Cell::new(0usize);
 
-    let cached = CacheLPS::new(lps, caching);
     let _initial = explore(
-        &cached,
+        lps,
         strategy,
-        &timing,
+        timing,
         &mut builder,
         |b: &mut ParityGameBuilder, state: StateIndex, info: &(Player, Priority)| {
             equations.set(equations.get() + 1);
@@ -90,7 +109,6 @@ pub fn parity_game_from_pbes(
         edges.get(),
     );
 
-    debug!("{}", cached.metrics());
     Ok(builder.finish(true, true))
 }
 
@@ -123,17 +141,37 @@ pub fn parity_game_from_pbes_parallel(
     caching: CachingStrategy,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
-    let cached = CacheLPS::new(&lps, caching);
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
         .map_err(|err| MercError::from(format!("Failed to build thread pool: {err}")))?;
 
+    // Only layer the enumeration cache on top of the LPS when a caching strategy
+    // is actually requested; otherwise explore the bare LPS directly.
+    match caching {
+        CachingStrategy::None => run_explore_srf_parallel(&lps, &pool),
+        _ => {
+            let cached = CacheLPS::new(&lps, caching);
+            let game = run_explore_srf_parallel(&cached, &pool)?;
+            debug!("{}", cached.metrics());
+            Ok(game)
+        }
+    }
+}
+
+/// Runs the parallel SRF PBES exploration over any [`LPS`] view, merging the
+/// per-worker partitions into a parity game. The view is either the bare LPS or
+/// one wrapped in [`CacheLPS`].
+fn run_explore_srf_parallel<M>(lps: &M, pool: &rayon::ThreadPool) -> Result<ParityGame, MercError>
+where
+    M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)> + Sync,
+    <M::Summand as Summand>::Context: Send,
+{
     let (_initial, partitions) = pool.install(|| {
         let timing = Timing::new();
         explore_parallel(
-            &cached,
+            lps,
             &timing,
             PbesPartition::default,
             |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
@@ -157,8 +195,6 @@ pub fn parity_game_from_pbes_parallel(
     let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
     let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
     info!("Exploration complete: {total_equations} BES equations, {total_edges} edges");
-
-    debug!("{}", cached.metrics());
 
     // Merge the per-worker partitions: every state is reported to `on_state`
     // exactly once, so each vertex is added once. Add all vertices before edges

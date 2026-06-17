@@ -77,7 +77,9 @@ where
             "Control flow analysis identified {} control flow parameter(s)",
             lps.control_flow_parameters().len()
         );
-        explore_lps_explicit_impl(builder, &lps, caching, strategy, timing)
+        let result = explore_lps_explicit_impl(builder, &lps, caching, strategy, timing);
+        debug!("{}", lps.metrics());
+        result
     } else {
         let lps = ExplicitLinearProcessSpecification::new(lps)?;
         debug!("{lps:?}");
@@ -99,15 +101,40 @@ where
     B: LtsBuilder<Mcrl2MultiActionLabel>,
     L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand>,
 {
+    // Only layer the enumeration cache on top of the LPS when a caching strategy
+    // is actually requested; otherwise explore the bare LPS directly.
+    match caching {
+        CachingStrategy::None => run_explore_explicit(builder, lps, strategy, timing),
+        _ => {
+            let cached = CacheLPS::new(lps, caching);
+            let result = run_explore_explicit(builder, &cached, strategy, timing)?;
+            debug!("{}", cached.metrics());
+            Ok(result)
+        }
+    }
+}
+
+/// Runs the sequential explicit exploration loop over any [`LPS`] view producing
+/// mCRL2 multi-action labels, counting states and transitions and finalising the
+/// builder. The view is either the bare LPS or one wrapped in [`CacheLPS`].
+fn run_explore_explicit<B, M>(
+    builder: &mut B,
+    lps: &M,
+    strategy: ExplorationStrategy,
+    timing: &Timing,
+) -> Result<B::LTS, MercError>
+where
+    B: LtsBuilder<Mcrl2MultiActionLabel>,
+    M: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = ()>,
+{
     // Count states and transitions in the exploration closures, driving the
     // periodic progress reporter from `on_transition`.
     let progress = lps_progress();
     let states = Cell::new(0usize);
     let transitions = Cell::new(0usize);
 
-    let cached = CacheLPS::new(lps, caching);
     let initial = explore(
-        &cached,
+        lps,
         strategy,
         timing,
         builder,
@@ -128,9 +155,7 @@ where
     );
     builder.require_num_of_states(states.get());
 
-    let result = builder.finish(initial)?;
-    debug!("{}", cached.metrics());
-    Ok(result)
+    builder.finish(initial)
 }
 
 /// Explores the linear process specification explicitly in parallel across
@@ -153,7 +178,9 @@ where
             "Control flow analysis identified {} control flow parameter(s)",
             lps.control_flow_parameters().len()
         );
-        explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing)
+        let result = explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing);
+        debug!("{}", lps.metrics());
+        result
     } else {
         let lps = ExplicitLinearProcessSpecification::new(lps)?;
         explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing)
@@ -174,13 +201,39 @@ where
     B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
     L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand> + Sync,
 {
-    let cached = CacheLPS::new(lps, caching);
-
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
         .map_err(|err| MercError::from(format!("Failed to build thread pool: {err}")))?;
 
+    // Only layer the enumeration cache on top of the LPS when a caching strategy
+    // is actually requested; otherwise explore the bare LPS directly.
+    match caching {
+        CachingStrategy::None => run_explore_explicit_parallel(builder, lps, &pool, timing),
+        _ => {
+            let cached = CacheLPS::new(lps, caching);
+            let result = run_explore_explicit_parallel(builder, &cached, &pool, timing)?;
+            debug!("{}", cached.metrics());
+            Ok(result)
+        }
+    }
+}
+
+/// Runs the parallel explicit exploration loop over any [`LPS`] view producing
+/// mCRL2 multi-action labels, streaming the discovered transitions into the
+/// concurrent builder. The view is either the bare LPS or one wrapped in
+/// [`CacheLPS`].
+fn run_explore_explicit_parallel<B, M>(
+    builder: &mut B,
+    lps: &M,
+    pool: &rayon::ThreadPool,
+    timing: &Timing,
+) -> Result<B::LTS, MercError>
+where
+    B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
+    M: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = ()> + Sync,
+    <M::Summand as Summand>::Context: Send,
+{
     // Shared (immutable) reference to the builder used by the worker threads;
     // `ConcurrentLtsBuilder` requires `Sync`, so the workers can add transitions
     // concurrently while the builder synchronises internally.
@@ -195,7 +248,7 @@ where
         pool.install(|| {
             let timing = Timing::new();
             let (initial, _locals) = explore_parallel(
-                &cached,
+                lps,
                 &timing,
                 || (),
                 |_local: &mut (), _state, _info: &()| {
@@ -222,9 +275,7 @@ where
     // (deadlock) states are still reflected in the result.
     builder.require_num_of_states(total_states);
 
-    let result = builder.finish(initial)?;
-    debug!("{}", cached.metrics());
-    Ok(result)
+    builder.finish(initial)
 }
 
 /// A typed mCRL2 multi-action label backed by an [`ATermSend`].
