@@ -113,6 +113,18 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
+    fn test_cfg_allow() {
+        compare_cfg_with_explicit("../../../examples/mCRL2/academic/allow/allow.mcrl2");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_cfg_block() {
+        compare_cfg_with_explicit("../../../examples/mCRL2/academic/block/block.mcrl2");
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_cfg_dining3() {
         compare_cfg_with_explicit("../../../examples/mCRL2/academic/dining/dining3.mcrl2");
     }

@@ -8,6 +8,7 @@ use log::info;
 use mcrl2::_aterm;
 use mcrl2::ATerm;
 use mcrl2::ATermList;
+use mcrl2::ATermSend;
 use mcrl2::DataExpression;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataVariable;
@@ -37,6 +38,8 @@ use merc_utilities::MercError;
 use merc_utilities::ShardedCounter;
 use merc_utilities::Timing;
 
+use crate::cfg_lps::CfgLinearProcessSpecification;
+
 /// Periodic progress reporter for LPS exploration, printing the number of
 /// discovered states and transitions.
 pub(crate) fn lps_progress() -> TimeProgress<(usize, usize)> {
@@ -50,26 +53,59 @@ pub(crate) fn lps_progress() -> TimeProgress<(usize, usize)> {
 
 /// Explore the linear process specification explicitly, forwarding the
 /// discovered transitions to `builder`.
+///
+/// When `control_flow` is set, a [`ControlFlowAnalysis`] is layered on top of
+/// the explicit LPS to prune summands whose control flow guard cannot hold in
+/// the current state (see [`CfgLinearProcessSpecification`]). The pruning never
+/// changes the explored transition system.
+///
+/// [`ControlFlowAnalysis`]: crate::control_flow::ControlFlowAnalysis
 pub fn explore_lps_explicit<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
+    caching: CachingStrategy,
+    strategy: ExplorationStrategy,
+    control_flow: bool,
+    timing: &Timing,
+) -> Result<(), MercError>
+where
+    B: LtsBuilder<Mcrl2MultiActionLabel>,
+{
+    if control_flow {
+        let lps = CfgLinearProcessSpecification::new(lps)?;
+        info!(
+            "Control flow analysis identified {} control flow parameter(s)",
+            lps.control_flow_parameters().len()
+        );
+        explore_lps_explicit_impl(builder, &lps, caching, strategy, timing)
+    } else {
+        let lps = ExplicitLinearProcessSpecification::new(lps)?;
+        debug!("{lps:?}");
+        explore_lps_explicit_impl(builder, &lps, caching, strategy, timing)
+    }
+}
+
+/// Shared exploration driver over any explicit-state [`LPS`] view producing
+/// mCRL2 multi-action labels, used by both the plain explicit explorer and the
+/// control-flow-pruning variant.
+fn explore_lps_explicit_impl<B, L>(
+    builder: &mut B,
+    lps: &L,
     caching: CachingStrategy,
     strategy: ExplorationStrategy,
     timing: &Timing,
 ) -> Result<(), MercError>
 where
     B: LtsBuilder<Mcrl2MultiActionLabel>,
+    L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand>,
 {
-    let lps = ExplicitLinearProcessSpecification::new(lps)?;
-    debug!("{lps:?}");
-
     // Count states and transitions in the exploration closures, driving the
     // periodic progress reporter from `on_transition`.
     let progress = lps_progress();
     let states = Cell::new(0usize);
     let transitions = Cell::new(0usize);
 
-    let cached = CacheLPS::new(&lps, caching);
+    let cached = CacheLPS::new(lps, caching);
     let initial = explore(
         &cached,
         strategy,
@@ -101,13 +137,42 @@ where
 pub fn explore_lps_explicit_parallel<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
+    caching: CachingStrategy,
     threads: usize,
+    control_flow: bool,
     timing: &Timing,
 ) -> Result<(), MercError>
 where
     B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
 {
-    let lps = ExplicitLinearProcessSpecification::new(lps)?;
+    if control_flow {
+        let lps = CfgLinearProcessSpecification::new(lps)?;
+        info!(
+            "Control flow analysis identified {} control flow parameter(s)",
+            lps.control_flow_parameters().len()
+        );
+        explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing)
+    } else {
+        let lps = ExplicitLinearProcessSpecification::new(lps)?;
+        explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing)
+    }
+}
+
+/// Shared parallel exploration driver over any explicit-state [`LPS`] view,
+/// used by both the plain explicit explorer and the control-flow-pruning
+/// variant.
+fn explore_lps_explicit_parallel_impl<B, L>(
+    builder: &mut B,
+    lps: &L,
+    caching: CachingStrategy,
+    threads: usize,
+    timing: &Timing,
+) -> Result<(), MercError>
+where
+    B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
+    L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand> + Sync,
+{
+    let cached = CacheLPS::new(lps, caching);
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
@@ -128,7 +193,7 @@ where
         pool.install(|| {
             let timing = Timing::new();
             let (initial, _locals) = explore_parallel(
-                &lps,
+                &cached,
                 &timing,
                 || (),
                 |_local: &mut (), _state, _info: &()| {
@@ -159,17 +224,21 @@ where
     Ok(())
 }
 
-/// A typed mCRL2 multi-action label backed by an [`ATerm`].
+/// A typed mCRL2 multi-action label backed by an [`ATermSend`].
 ///
-/// We keep the term itself so labels remain maximally shared and can be used
-/// as hash/ordering keys. Display uses mCRL2's pretty-printer.
+/// We keep the term itself so labels remain maximally shared and can be used as
+/// hash/ordering keys. Backing it with [`ATermSend`] (rather than [`ATerm`])
+/// makes the label `Send + Sync`, so it can be created on one worker thread and
+/// stored in (or dropped from) structures shared across threads — the
+/// enumeration cache and the concurrent LTS builder. Display uses mCRL2's
+/// pretty-printer.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Mcrl2MultiActionLabel {
-    term: ATerm,
+    term: ATermSend,
 }
 
 impl Mcrl2MultiActionLabel {
-    fn from_multi_action_term(term: ATerm) -> Self {
+    fn from_multi_action_term(term: ATermSend) -> Self {
         debug_assert!(
             is_mcrl2_timed_multi_action_term(&term),
             "Expected TimedMultAct term as transition label"
@@ -177,20 +246,22 @@ impl Mcrl2MultiActionLabel {
         Self { term }
     }
 
-    fn as_aterm(&self) -> &ATerm {
-        &self.term
+    /// Protects the multi-action term on the current thread for use with the
+    /// mCRL2 FFI, which expects a thread-local [`ATerm`].
+    fn as_aterm(&self) -> ATerm {
+        self.term.protect_local()
     }
 }
 
 impl fmt::Display for Mcrl2MultiActionLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", pretty_print_multi_action(&self.term))
+        write!(f, "{}", pretty_print_multi_action(&self.as_aterm()))
     }
 }
 
 impl TransitionLabel for Mcrl2MultiActionLabel {
     fn tau_label() -> Self {
-        Self::from_multi_action_term(tau_multi_action())
+        Self::from_multi_action_term(ATermSend::from(&tau_multi_action()))
     }
 
     fn is_tau_label(&self) -> bool {
@@ -198,7 +269,7 @@ impl TransitionLabel for Mcrl2MultiActionLabel {
     }
 
     fn matches_label(&self, label: &str) -> bool {
-        pretty_print_multi_action(&self.term) == label
+        pretty_print_multi_action(&self.as_aterm()) == label
     }
 
     fn from_index(_i: usize) -> Self {
@@ -206,7 +277,8 @@ impl TransitionLabel for Mcrl2MultiActionLabel {
     }
 }
 
-fn is_mcrl2_timed_multi_action_term(term: &ATerm) -> bool {
+fn is_mcrl2_timed_multi_action_term(term: &ATermSend) -> bool {
+    let term = term.copy();
     let symbol = term.get_head_symbol();
     symbol.name() == "TimedMultAct" && symbol.arity() == 2
 }
@@ -220,7 +292,7 @@ fn is_mcrl2_timed_multi_action_term(term: &ATerm) -> bool {
 /// through the [`Protected`] wrapper, so the mapping is globally consistent and
 /// safe to populate from several worker threads at once. Labels are the printed
 /// multi-actions of the summands.
-struct ExplicitLinearProcessSpecification {
+pub(crate) struct ExplicitLinearProcessSpecification {
     /// The (preprocessed) underlying LPS. Retained because each per-thread
     /// [`ExplicitContext`] builds its own [`LearnSuccessorsContext`] from it.
     lps: LinearProcessSpecification,
@@ -252,7 +324,7 @@ type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 unsafe impl Sync for ExplicitLinearProcessSpecification {}
 
 impl ExplicitLinearProcessSpecification {
-    fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
+    pub(crate) fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
         let lps = preprocess(lps, &PreprocessOptions::default())?;
 
         let parameters = lps.parameters();
@@ -309,6 +381,33 @@ impl ExplicitLinearProcessSpecification {
             value_mapping,
             initial_state,
         })
+    }
+
+    /// The process parameter variables in declaration order.
+    pub(crate) fn parameters(&self) -> Vec<DataVariable> {
+        self.lps.parameters().to_vec()
+    }
+
+    /// The (preprocessed) underlying linear process specification.
+    pub(crate) fn lps(&self) -> &LinearProcessSpecification {
+        &self.lps
+    }
+
+    /// Rewrites `value` to normal form under `context` and interns it into the
+    /// shared value mapping, returning its dense index.
+    ///
+    /// The rewriting and interning mirror the construction of the initial state
+    /// vector, so the returned index can be compared directly against the
+    /// entries of explored state vectors.
+    pub(crate) fn intern_normal_form(&self, context: &LearnSuccessorsContext, value: &DataExpressionRef) -> usize {
+        let rewritten = context.rewrite_under_sigma(value);
+
+        // SAFETY: the rewritten term is interned into `self.value_mapping`, a
+        // `Protected` container that keeps every interned term live through GC
+        // marking for as long as the mapping exists.
+        self.value_mapping
+            .insert(unsafe { DataExpressionRef::from_address(rewritten.address()) })
+            .0
     }
 }
 
@@ -424,7 +523,7 @@ impl ExplicitSummand {
             "Write indices must be strictly sorted"
         );
 
-        let multi_action = Mcrl2MultiActionLabel::from_multi_action_term(summand.multi_action());
+        let multi_action = Mcrl2MultiActionLabel::from_multi_action_term(ATermSend::from(&summand.multi_action()));
 
         Self {
             read_indices,
@@ -435,6 +534,16 @@ impl ExplicitSummand {
             multi_action,
             mapping,
         }
+    }
+
+    /// The condition (guard) of this summand.
+    pub(crate) fn condition(&self) -> &DataExpression {
+        &self.condition
+    }
+
+    /// The non-identity assignments (write parameters) of this summand.
+    pub(crate) fn write_assignments(&self) -> &ATermList<ATerm> {
+        &self.write_assignments
     }
 }
 
@@ -486,7 +595,7 @@ impl LPS for ExplicitLinearProcessSpecification {
             .set_assignments(&self.process_parameters, &context.parameter_values);
 
         // Every summand is a candidate for every source state.
-        self.all_summand_indices.iter().copied()
+        0..self.summands.len()
     }
 
     fn state_info(&self, _state: &[Self::Value]) -> Self::StateInfo {}
@@ -518,11 +627,15 @@ impl Summand for ExplicitSummand {
             ..
         } = context;
 
+        // The mCRL2 backend wants a thread-local `ATerm` template; protect the
+        // shared label term on this thread for the duration of the call.
+        let multi_action_template = self.multi_action.as_aterm();
+
         learn.enumerate_raw_with_current_assignments(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
-            self.multi_action.as_aterm(),
+            &multi_action_template,
             |values: &[*const _aterm], multi_action: *const _aterm| {
                 debug_assert_eq!(
                     values.len(),
@@ -544,10 +657,11 @@ impl Summand for ExplicitSummand {
                 }
 
                 // Wrap the rewritten multi-action term as a typed label. The
-                // ATerm protects the term beyond the temporary handed to the
-                // callback, and aterms are maximally shared so equal
-                // multi-actions still share storage.
-                let label = Mcrl2MultiActionLabel::from_multi_action_term(ATerm::from_ptr(multi_action));
+                // `ATermSend` protects the term beyond the temporary handed to
+                // the callback (via the global send protection set) and aterms
+                // are maximally shared, so equal multi-actions share storage and
+                // the label is safe to store across threads.
+                let label = Mcrl2MultiActionLabel::from_multi_action_term(ATermSend::from_ptr(multi_action));
 
                 // We cannot propagate errors from the C callback, so we panic on error and catch it in the caller.
                 report(&label, next_state_buf).expect("Failed to report successor state");

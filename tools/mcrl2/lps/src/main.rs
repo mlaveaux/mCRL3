@@ -30,6 +30,9 @@ use explore_explicit::explore_lps_explicit;
 use explore_explicit::explore_lps_explicit_parallel;
 use explore_symbolic::explore_lps_symbolic;
 
+mod cfg_lps;
+mod cfg_lps_test;
+mod control_flow;
 mod explore_explicit;
 mod explore_symbolic;
 mod explore_test;
@@ -97,6 +100,12 @@ struct ExploreExplicitArgs {
     /// Order in which discovered states are explored.
     #[arg(long, short('s'), value_enum, default_value_t = ExplorationStrategy::Dfs)]
     strategy: ExplorationStrategy,
+
+    /// Use a control flow graph analysis to prune summands whose control flow
+    /// guard cannot hold in the current state. The explored transition system is
+    /// unchanged.
+    #[arg(long)]
+    control_flow: bool,
 
     /// Number of worker threads used for exploration. With more than one thread
     /// a level-synchronised parallel breadth-first search is used (the
@@ -170,19 +179,40 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         if let Some(output) = &args.output {
             let mut file = BufWriter::new(File::create(output)?);
             let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, args.out_format));
-            explore_lps_explicit_parallel(&mut builder, &lps, args.threads, timing)?;
+            explore_lps_explicit_parallel(
+                &mut builder,
+                &lps,
+                args.caching,
+                args.threads,
+                args.control_flow,
+                timing,
+            )?;
         } else {
             // No output requested, discard the explored transitions.
-            explore_lps_explicit_parallel(&mut (), &lps, args.threads, timing)?;
+            explore_lps_explicit_parallel(&mut (), &lps, args.caching, args.threads, args.control_flow, timing)?;
         }
     } else if let Some(output) = &args.output {
         let mut file = BufWriter::new(File::create(output)?);
         let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format);
-        explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
+        explore_lps_explicit(
+            &mut builder,
+            &lps,
+            args.caching,
+            args.strategy,
+            args.control_flow,
+            timing,
+        )?;
     } else {
         // No output requested, discard the explored transitions.
         let mut builder: () = ();
-        explore_lps_explicit(&mut builder, &lps, args.caching, args.strategy, timing)?;
+        explore_lps_explicit(
+            &mut builder,
+            &lps,
+            args.caching,
+            args.strategy,
+            args.control_flow,
+            timing,
+        )?;
     }
 
     Ok(())
