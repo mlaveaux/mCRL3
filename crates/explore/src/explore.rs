@@ -1,10 +1,13 @@
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use rayon::iter::IndexedParallelIterator;
-use rayon::iter::IntoParallelRefMutIterator;
-use rayon::iter::ParallelIterator;
-use rayon::slice::ParallelSlice;
+use crossbeam_deque::Steal;
+use crossbeam_deque::Stealer;
+use crossbeam_deque::Worker;
+use crossbeam_utils::Backoff;
 
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
@@ -112,43 +115,66 @@ where
     Ok(StateIndex::new(initial_ref.index()))
 }
 
-/// Per-worker scratch state and output accumulator for [`explore_parallel`].
+/// Finds the next state for a worker to process: its own deque first (popped
+/// LIFO, keeping recently discovered states cache-hot), then a batch stolen from
+/// a peer worker. `me` is the caller's own index, skipped while stealing.
 ///
-/// Note that the mCRL2 enumeration backend is deliberately *not* stored here:
-/// its terms are thread-affine (each `aterm` must be created and destroyed on
-/// the same thread), while a [`Segment`] is migrated between physical worker
-/// threads by rayon's work-stealing scheduler. The backend therefore lives in a
-/// separate per-thread slot, see [`explore_parallel`].
-struct Segment<P: LPS, Local> {
-    /// Per-thread interning scratch reused across inserts.
-    forest_context: BTreeForestContext,
-    /// Reusable buffer holding the reconstructed source state vector.
-    state_buf: Vec<P::Value>,
-    /// The caller's per-thread output accumulator (e.g. a transition partition).
-    local: Local,
-    /// States first discovered by this segment, forming part of the next level.
-    new_refs: Vec<StateRef>,
-    /// First error raised by a caller closure, if any; processing stops after it.
-    error: Option<MercError>,
+/// A peer whose slot is not yet registered is simply skipped; the caller retries
+/// while the pending counter says work remains, so no startup barrier is needed.
+/// Returns `None` only when a full sweep observed every peer deque empty; the
+/// caller distinguishes genuine termination from a transient empty observation
+/// using the global pending counter.
+fn find_task<T>(local: &Worker<T>, stealers: &[OnceLock<Stealer<T>>], me: usize) -> Option<T> {
+    local.pop().or_else(|| {
+        loop {
+            let mut retry = false;
+            for (_, slot) in stealers.iter().enumerate().filter(|(index, _)| *index != me) {
+                let Some(stealer) = slot.get() else { continue };
+                if let Steal::Retry = stealer.steal_batch(local) {
+                    retry = true;
+                }
+            }
+
+            // A full sweep extended the local deque with whatever it could steal;
+            // pop from it. Only give up once no peer asked us to retry.
+            if let Some(task) = local.pop() {
+                return Some(task);
+            }
+            if !retry {
+                return None;
+            }
+        }
+    })
 }
 
-/// Explores the state space of `lps` in parallel using a level-synchronized
-/// breadth-first search driven by `rayon`.
+/// Explores the state space of `lps` in parallel using continuous, work-stealing
+/// breadth-/depth-first search driven by `rayon`.
 ///
 /// The interface is similar to [`explore`], but an extra closure is supplied to
 /// produce a fresh per-thread accumulator for each worker.
 ///
-/// One [`Segment`] is allocated per worker before exploration begins and reused
-/// across every BFS level, so each worker's LPS enumeration context, interning
-/// scratch, and accumulator are created exactly once. Rayon passes each segment
-/// into its job by mutable reference; no per-job or thread-local allocation is
-/// performed inside the loop.
+/// Unlike a level-synchronized BFS, there is no per-level barrier: every worker
+/// owns a [`crossbeam_deque::Worker`] deque, pushes its freshly discovered
+/// states onto it, and pops from it LIFO. Idle workers batch-steal from their
+/// peers' deques. States flow into the deques the instant they are discovered
+/// rather than at level boundaries, so a worker that hits an expensive block of
+/// states no longer stalls the others — they steal the surrounding work and keep
+/// going. This continuously balances skewed per-state enumeration cost.
 ///
-/// - `make_local()` produces a fresh accumulator for each worker segment.
+/// Each worker is a single `rayon::broadcast` invocation, so it runs
+/// start-to-finish on one pinned pool thread. Both its deque and its mCRL2
+/// enumeration backend are created and dropped on that same thread: the deque
+/// needs no shared ownership (only its [`crossbeam_deque::Stealer`] is published,
+/// through a `OnceLock` slot, so peers can balance against it), and the backend
+/// satisfies mCRL2's thread-affinity requirement (each term must be created and
+/// destroyed on the same thread) without per-state thread-index lookups or an
+/// out-of-band drop.
 ///
-/// The returned `Vec<Local>` holds one accumulator per worker (at most
-/// `rayon::current_num_threads()` entries), each carrying the merged result of
-/// every level that worker processed.
+/// - `make_local()` produces a fresh accumulator for each worker.
+///
+/// The returned `Vec<Local>` holds one accumulator per worker (one per pool
+/// thread), each carrying the merged result of every state that worker
+/// processed.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,
     timing: &Timing,
@@ -168,121 +194,171 @@ where
     let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
     let (initial_ref, _) = discovered.insert(&lps.initial_state());
 
-    // One segment per worker in the active rayon pool, allocated once and reused
-    // across all levels so the scratch buffers are created a single time per
-    // worker. The segments carry only thread-agnostic scratch (their values are
-    // interned indices, not terms) and may freely migrate between physical
-    // worker threads.
     let num_workers = rayon::current_num_threads().max(1);
-    let mut segments: Vec<Segment<P, Local>> = (0..num_workers)
-        .map(|_| Segment {
-            forest_context: BTreeForestContext::new(),
-            state_buf: Vec::new(),
-            local: make_local(),
-            new_refs: Vec::new(),
-            error: None,
-        })
-        .collect();
 
-    // Enumeration backends pinned to physical worker threads. mCRL2 terms are
-    // thread-affine (each term must be created and destroyed on the same
-    // thread), so the backend cannot live in a `Segment` that rayon migrates
-    // between threads. Each slot is keyed by `rayon::current_thread_index()`,
-    // lazily created on first use on its owning thread, reused across all levels,
-    // and finally dropped on that same thread (see the `broadcast` below).
-    let contexts: Vec<Mutex<Option<<P::Summand as Summand>::Context>>> =
-        (0..num_workers).map(|_| Mutex::new(None)).collect();
+    // One publication slot per worker. Each worker creates its own deque inside
+    // `broadcast` and publishes the deque's stealer here, so peers can steal from
+    // it without the deque ever needing shared ownership.
+    let stealers: Vec<OnceLock<Stealer<StateRef>>> = (0..num_workers).map(|_| OnceLock::new()).collect();
 
-    let mut frontier: Vec<StateRef> = vec![initial_ref];
+    // Count of states discovered but not yet fully processed; exploration is
+    // complete once it reaches zero. The initial state accounts for the first
+    // unit. Each processed state updates this exactly once: its successors are
+    // counted (and only then made stealable) before the state releases its own
+    // unit, folded into a single atomic update, so the count cannot momentarily
+    // reach zero while reachable work remains.
+    let pending = AtomicUsize::new(1);
+    // Set when any worker's callback returns an error so the others stop promptly.
+    let aborted = AtomicBool::new(false);
 
-    let result = timing.measure("explore", || -> Result<(), MercError> {
-        while !frontier.is_empty() {
-            // Split the current level across the persistent segments. Each
-            // chunk is processed by one segment, reusing that segment's scratch
-            // buffers and its physical worker thread's enumeration backend.
-            let chunk_size = frontier.len().div_ceil(num_workers);
-            segments
-                .par_iter_mut()
-                .zip(frontier.par_chunks(chunk_size))
-                .for_each(|(seg, chunk)| {
-                    // Borrow the fields disjointly so the enumeration callback
-                    // can mutate the accumulator and discovery buffers while the
-                    // backend reads the source state.
-                    let Segment {
-                        forest_context,
-                        state_buf,
-                        local,
-                        new_refs,
-                        error,
-                    } = seg;
+    let results = timing.measure("explore", || {
+        rayon::broadcast(|broadcast| -> (Local, Option<MercError>) {
+            let me = broadcast.index();
 
-                    // Acquire the enumeration backend pinned to this physical
-                    // worker thread, creating it on first use.
-                    let thread_index =
-                        rayon::current_thread_index().expect("This must only be called from a worker thread");
-                    let mut context_guard = contexts[thread_index].lock().expect("context slot poisoned");
-                    let context = context_guard.get_or_insert_with(|| lps.create_context());
+            // Each worker owns its deque, created here on its own thread, so no
+            // shared ownership (and no lock) is needed. Publish its stealer so
+            // peers can balance against it.
+            let local_deque: Worker<StateRef> = Worker::new_lifo();
+            let _ = stealers[me].set(local_deque.stealer());
 
-                    for &state_ref in chunk {
-                        let result = (|| -> Result<(), MercError> {
-                            let found = discovered.get_into(state_ref, state_buf);
-                            debug_assert!(found, "StateRef from frontier must be valid");
-                            let from = StateIndex::new(state_ref.index());
-                            let summands_to_explore = lps.prepare(context, state_buf);
+            // The first worker seeds the initial state onto its own deque; the
+            // others pick it up by stealing.
+            if me == 0 {
+                local_deque.push(initial_ref);
+            }
 
-                            let info = lps.state_info(state_buf);
-                            on_state(local, from, &info)?;
+            // Thread-affine per-worker scratch and enumeration backend, created
+            // and dropped on this same physical worker thread.
+            let mut context = lps.create_context();
+            let mut forest_context = BTreeForestContext::new();
+            let mut state_buf: Vec<P::Value> = Vec::new();
+            // Successors discovered while processing one state, counted in a
+            // single atomic update and pushed onto the deque only afterwards.
+            let mut successors: Vec<StateRef> = Vec::new();
+            let mut local = make_local();
+            let mut first_error: Option<MercError> = None;
 
-                            let summands = lps.summands();
-                            for index in summands_to_explore {
-                                summands[index].enumerate(context, state_buf, |label, next_state| {
-                                    let (target_ref, is_new) = discovered.insert_with(next_state, forest_context);
-                                    let to = StateIndex::new(target_ref.index());
-                                    on_transition(local, from, label, to)?;
-                                    if is_new {
-                                        new_refs.push(target_ref);
-                                    }
-                                    Ok(())
-                                })?;
+            let backoff = Backoff::new();
+            loop {
+                if aborted.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let Some(state_ref) = find_task(&local_deque, &stealers, me) else {
+                    // No work found this sweep. Stop once every state has been
+                    // processed, otherwise keep trying: a busy peer may still
+                    // discover successors that become stealable.
+                    if pending.load(Ordering::Acquire) == 0 {
+                        break;
+                    }
+                    backoff.snooze();
+                    continue;
+                };
+                backoff.reset();
+
+                let result = (|| -> Result<(), MercError> {
+                    let found = discovered.get_into(state_ref, &mut state_buf);
+                    debug_assert!(found, "StateRef from work queue must be valid");
+                    let from = StateIndex::new(state_ref.index());
+                    let summands_to_explore = lps.prepare(&mut context, &state_buf);
+
+                    let info = lps.state_info(&state_buf);
+                    on_state(&mut local, from, &info)?;
+
+                    let summands = lps.summands();
+                    for index in summands_to_explore {
+                        summands[index].enumerate(&mut context, &state_buf, |label, next_state| {
+                            let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
+                            let to = StateIndex::new(target_ref.index());
+                            on_transition(&mut local, from, label, to)?;
+                            if is_new {
+                                successors.push(target_ref);
                             }
                             Ok(())
-                        })();
+                        })?;
+                    }
+                    Ok(())
+                })();
 
-                        if let Err(err) = result {
-                            *error = Some(err);
-                            break;
+                match result {
+                    Ok(()) => {
+                        // Apply this state's net effect on the outstanding-work
+                        // count in a single atomic update: `+produced` for the
+                        // newly discovered successors and `-1` for this state, now
+                        // done. The successors are counted *before* being pushed,
+                        // so a peer cannot steal and complete one before it has
+                        // been counted; the count therefore stays positive while
+                        // reachable work remains.
+                        let produced = successors.len();
+                        if produced == 0 {
+                            pending.fetch_sub(1, Ordering::AcqRel);
+                        } else {
+                            pending.fetch_add(produced - 1, Ordering::AcqRel);
+                            for successor in successors.drain(..) {
+                                local_deque.push(successor);
+                            }
                         }
                     }
-                });
-
-            // Barrier: surface the first error and gather the next level from
-            // the per-segment discoveries.
-            frontier.clear();
-            for segment in &mut segments {
-                if let Some(error) = segment.error.take() {
-                    return Err(error);
+                    Err(err) => {
+                        // Abort: the pending counter is left as-is since `aborted`
+                        // now drives every worker to stop, independent of it.
+                        first_error = Some(err);
+                        aborted.store(true, Ordering::Relaxed);
+                        break;
+                    }
                 }
-                frontier.append(&mut segment.new_refs);
             }
-        }
 
-        Ok(())
+            (local, first_error)
+        })
     });
 
-    // Drop each pinned enumeration backend on its owning worker thread. mCRL2
-    // terms are thread-affine, so a backend created on one worker must also be
-    // destroyed there; dropping it on the calling thread (as part of dropping
-    // `contexts`) would corrupt that worker's protection set and abort. This
-    // runs on both the success and error paths, before `contexts` itself is
-    // dropped on the calling thread (by then all slots are empty).
-    rayon::broadcast(|ctx| {
-        if let Some(slot) = contexts.get(ctx.index()) {
-            let _ = slot.lock().expect("context slot poisoned").take();
+    // Surface the first error in worker-index order, otherwise return one
+    // accumulator per worker.
+    let mut first_error: Option<MercError> = None;
+    let mut locals = Vec::with_capacity(results.len());
+    for (local, error) in results {
+        if first_error.is_none() {
+            first_error = error;
         }
-    });
+        locals.push(local);
+    }
+    if let Some(error) = first_error {
+        return Err(error);
+    }
 
-    result?;
-
-    let locals = segments.into_iter().map(|segment| segment.local).collect();
     Ok((StateIndex::new(initial_ref.index()), locals))
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::RngExt;
+
+    use merc_utilities::random_test;
+
+    use crate::ExplorationStrategy;
+    use crate::mock_lps::explore_canonical;
+    use crate::mock_lps::explore_canonical_parallel;
+    use crate::mock_lps::random_lps;
+
+    /// On randomly generated processes, sequential BFS, sequential DFS and the
+    /// parallel work-stealing exploration must all discover the same transition
+    /// system. Run inside a multi-threaded pool so the parallel run genuinely
+    /// exercises stealing and the termination protocol.
+    #[test]
+    fn test_parallel_matches_sequential() {
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        pool.install(|| {
+            random_test(100, |rng| {
+                let dimensions = rng.random_range(2..=4);
+                let num_summands = rng.random_range(1..=5);
+                let modulus = rng.random_range(2..=4);
+                let lps = random_lps(rng, dimensions, num_summands, modulus, 3);
+
+                let reference = explore_canonical(&lps, ExplorationStrategy::Bfs);
+                assert_eq!(explore_canonical(&lps, ExplorationStrategy::Dfs), reference);
+                assert_eq!(explore_canonical_parallel(&lps), reference);
+            });
+        });
+    }
 }
