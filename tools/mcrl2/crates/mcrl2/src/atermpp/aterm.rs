@@ -25,6 +25,9 @@ use merc_utilities::PhantomUnsend;
 use crate::atermpp::SymbolRef;
 use crate::atermpp::THREAD_TERM_POOL;
 
+use super::global_aterm_pool::ATermPtr;
+use super::global_aterm_pool::SEND_PROTECTION_SET;
+
 /// This represents a lifetime bound reference to an existing ATerm that is
 /// protected somewhere statically.
 ///
@@ -363,6 +366,117 @@ impl Ord for ATerm {
 
 impl Eq for ATerm {}
 
+/// A garbage-collection-protected term that is [`Send`] and [`Sync`].
+///
+/// Unlike [`ATerm`], whose protection root lives in a *thread-local* set, an
+/// `ATermSend` registers its term in the single global protection set.
+pub struct ATermSend {
+    term: ATermPtr,
+    root: ProtectionIndex,
+}
+
+impl ATermSend {
+    /// Protects `term` in the global send protection set.
+    fn protect(term: *const ffi::_aterm) -> ATermSend {
+        debug_assert!(!term.is_null(), "Can only protect valid terms");
+        let root = SEND_PROTECTION_SET.lock().protect(ATermPtr::new(term));
+        ATermSend {
+            term: ATermPtr::new(term),
+            root,
+        }
+    }
+
+    /// Creates an `ATermSend` protecting the maximally shared term at `term`.
+    ///
+    /// The term must be live at the point of the call (as it always is for a
+    /// term obtained from another protected term or returned by the FFI); it is
+    /// kept live afterwards by the global send protection set.
+    pub fn from_ptr(term: *const ffi::_aterm) -> ATermSend {
+        ATermSend::protect(term)
+    }
+
+    /// Returns a borrowed view of the protected term.
+    pub fn copy(&self) -> ATermRef<'_> {
+        // SAFETY: the term stays protected in the global send set for as long as
+        // `self` lives, so the borrow cannot outlive the term's liveness.
+        unsafe { ATermRef::new(self.term.ptr) }
+    }
+
+    /// Protects the term on the *current* thread, returning an owning [`ATerm`].
+    pub fn protect_local(&self) -> ATerm {
+        self.copy().protect()
+    }
+
+    /// Returns the raw maximally shared term address underlying this term.
+    pub fn address(&self) -> *const ffi::_aterm {
+        self.term.ptr
+    }
+}
+
+impl From<&ATerm> for ATermSend {
+    fn from(term: &ATerm) -> Self {
+        ATermSend::protect(term.address())
+    }
+}
+
+impl From<&ATermSend> for ATerm {
+    fn from(term: &ATermSend) -> Self {
+        term.protect_local()
+    }
+}
+
+impl Clone for ATermSend {
+    fn clone(&self) -> Self {
+        ATermSend::protect(self.term.ptr)
+    }
+}
+
+impl Drop for ATermSend {
+    fn drop(&mut self) {
+        if !self.term.ptr.is_null() {
+            SEND_PROTECTION_SET.lock().unprotect(self.root);
+        }
+    }
+}
+
+impl fmt::Display for ATermSend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.copy())
+    }
+}
+
+impl fmt::Debug for ATermSend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.copy())
+    }
+}
+
+impl Hash for ATermSend {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.copy().hash(state)
+    }
+}
+
+impl PartialEq for ATermSend {
+    fn eq(&self, other: &Self) -> bool {
+        self.term.ptr == other.term.ptr
+    }
+}
+
+impl Eq for ATermSend {}
+
+impl PartialOrd for ATermSend {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ATermSend {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.copy().cmp(&other.copy())
+    }
+}
+
 /// An iterator over the arguments of a term.
 #[derive(Default)]
 pub struct ATermArgs<'a> {
@@ -452,7 +566,11 @@ impl<'a> Iterator for TermIterator<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
     use crate::ATerm;
+    use crate::ATermSend;
+    use crate::atermpp::THREAD_TERM_POOL;
 
     #[test]
     fn test_term_iterator() {
@@ -463,5 +581,41 @@ mod tests {
         assert_eq!(result.next().unwrap(), ATerm::from_string("g(a)").unwrap().copy());
         assert_eq!(result.next().unwrap(), ATerm::from_string("a").unwrap().copy());
         assert_eq!(result.next().unwrap(), ATerm::from_string("b").unwrap().copy());
+    }
+
+    /// Creates `ATermSend`s on one thread, moves them to another thread where
+    /// they survive a garbage collection and are finally dropped.
+    #[test]
+    fn test_aterm_send_cross_thread() {
+        let terms: Vec<ATermSend> = (0..50)
+            .map(|i| ATermSend::from(&ATerm::from_string(&format!("f(a{i}, b)")).unwrap()))
+            .collect();
+
+        let joined = thread::spawn(move || {
+            // Allocate unrelated terms and force a collection; the moved-in
+            // `ATermSend`s must remain valid because the global send set keeps
+            // them marked.
+            for i in 0..50 {
+                let _ = ATerm::from_string(&format!("g(c{i})")).unwrap();
+            }
+            THREAD_TERM_POOL.with_borrow(|tp| tp.collect());
+
+            for (i, term) in terms.iter().enumerate() {
+                assert_eq!(term.copy(), ATerm::from_string(&format!("f(a{i}, b)")).unwrap().copy());
+            }
+
+            // Cloning on this thread and dropping the clones here, then returning
+            // the originals to be dropped on the main thread, covers both
+            // same-thread and cross-thread unprotect.
+            let _clones: Vec<ATermSend> = terms.clone();
+            terms
+        })
+        .join()
+        .expect("worker thread panicked");
+
+        // Drop the originals here, on the main thread (different from where the
+        // clones above were dropped), and collect once more for good measure.
+        drop(joined);
+        THREAD_TERM_POOL.with_borrow(|tp| tp.collect());
     }
 }

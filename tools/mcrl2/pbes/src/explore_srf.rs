@@ -441,7 +441,11 @@ impl LPS for PbesSrfLps {
         }
     }
 
-    fn prepare(&self, context: &mut PbesSrfContext, state: &[Self::Value]) -> impl Iterator<Item = usize> + '_ {
+    fn prepare<'a>(
+        &'a self,
+        context: &mut PbesSrfContext,
+        state: &'a [Self::Value],
+    ) -> impl Iterator<Item = usize> + 'a {
         debug_assert_eq!(
             state.len(),
             1 + self.num_params,

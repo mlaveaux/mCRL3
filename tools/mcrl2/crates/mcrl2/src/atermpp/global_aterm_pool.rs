@@ -41,6 +41,11 @@ unsafe impl Sync for ATermPtr {}
 /// The protection set for terms.
 pub(crate) type SharedProtectionSet = Arc<BfTermPool<ProtectionSet<ATermPtr>>>;
 
+/// A single, process-wide protection set holding every term kept alive by an
+/// [`ATermSend`](crate::ATermSend).
+pub(crate) static SEND_PROTECTION_SET: LazyLock<Mutex<ProtectionSet<ATermPtr>>> =
+    LazyLock::new(|| Mutex::new(ProtectionSet::new()));
+
 /// The protection set for containers.
 pub(crate) type SharedContainerProtectionSet = Arc<BfTermPool<ProtectionSet<Arc<dyn Markable + Sync + Send>>>>;
 
@@ -126,6 +131,17 @@ impl GlobalTermPool {
             }
         }
 
+        // Mark the global send protection set.
+        for (root, term) in SEND_PROTECTION_SET.lock().iter() {
+            // SAFETY: every term in the send set is protected and therefore live,
+            // so its pointer is non-null and dereferenceable for marking.
+            unsafe {
+                mcrl2_aterm_mark_address(term.ptr.as_ref().expect("Must be a valid pointer"), todo.as_mut());
+            }
+
+            trace!("Marked send term {:?}, index {root}", term.ptr);
+        }
+
         info!("Collecting garbage \n{:?}", self);
     }
 
@@ -142,6 +158,8 @@ impl GlobalTermPool {
                 result += container.len();
             }
         }
+
+        result += SEND_PROTECTION_SET.lock().len();
         result
     }
 

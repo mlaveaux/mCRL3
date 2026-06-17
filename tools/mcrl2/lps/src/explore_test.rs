@@ -64,8 +64,15 @@ mod tests {
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
-        explore_lps_explicit(&mut builder, &lps, strategy, ExplorationStrategy::Dfs, &Timing::new())
-            .expect("Failed to explore LPS");
+        explore_lps_explicit(
+            &mut builder,
+            &lps,
+            strategy,
+            ExplorationStrategy::Dfs,
+            false,
+            &Timing::new(),
+        )
+        .expect("Failed to explore LPS");
         let result_lts = builder.finish(StateIndex::new(0), false);
 
         write_mcrl2_aut(
@@ -191,8 +198,15 @@ mod tests {
 
             let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
             let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
-            explore_lps_explicit(&mut builder, &lps, strategy, ExplorationStrategy::Dfs, &Timing::new())
-                .expect("Failed to explore LPS");
+            explore_lps_explicit(
+                &mut builder,
+                &lps,
+                strategy,
+                ExplorationStrategy::Dfs,
+                false,
+                &Timing::new(),
+            )
+            .expect("Failed to explore LPS");
             let result_lts = builder.finish(StateIndex::new(0), false);
 
             assert_eq!(
@@ -232,6 +246,7 @@ mod tests {
             &lps,
             CachingStrategy::None,
             ExplorationStrategy::Bfs,
+            false,
             &Timing::new(),
         )
         .expect("Sequential exploration failed");
@@ -246,7 +261,8 @@ mod tests {
         let mut buffer = Cursor::new(Vec::new());
         {
             let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer));
-            explore_lps_explicit_parallel(&mut builder, &lps, 4, &Timing::new()).expect("Parallel exploration failed");
+            explore_lps_explicit_parallel(&mut builder, &lps, CachingStrategy::None, 4, false, &Timing::new())
+                .expect("Parallel exploration failed");
         }
         buffer.set_position(0);
         let parallel = read_mcrl2_aut(&mut buffer).expect("Failed to read parallel AUT output");

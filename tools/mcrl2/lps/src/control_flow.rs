@@ -53,12 +53,17 @@ impl ControlFlowAnalysis {
     pub(crate) fn new(lps: &ExplicitLinearProcessSpecification) -> Self {
         let parameters = lps.parameters();
 
+        // Certain preprocessing steps (notably
+        // `replace_constants_by_variables`) introduce expressions that must be
+        // rewritten.
+        let context = LearnSuccessorsContext::new(lps.lps());
+
         // Analyse every summand once: which parameters it constrains to a source
         // value and which parameters it changes (and whether to a constant).
         let analyses: Vec<SummandAnalysis> = lps
             .summands()
             .iter()
-            .map(|summand| analyse_summand(summand, &parameters))
+            .map(|summand| analyse_summand(summand, &parameters, &context))
             .collect();
 
         // A parameter is a control flow parameter iff every summand treats it as
@@ -69,7 +74,6 @@ impl ControlFlowAnalysis {
 
         // Intern the source values into the LPS's value mapping so they can be
         // compared directly against the entries of explored state vectors.
-        let context = LearnSuccessorsContext::new(lps.lps());
         let source_constraints: Vec<Vec<(usize, usize)>> = analyses
             .iter()
             .map(|analysis| {
@@ -93,6 +97,37 @@ impl ControlFlowAnalysis {
                 .collect::<Vec<_>>()
         );
 
+        // Describe the identified control flow graph: per parameter the distinct
+        // source values (the locations it can be in), and per summand the source
+        // values it requires (the edges between those locations).
+        if log::log_enabled!(log::Level::Debug) {
+            for &j in &control_flow_parameters {
+                let mut values: Vec<String> = analyses
+                    .iter()
+                    .filter_map(|analysis| analysis.source.get(&j))
+                    .map(|value| value.to_string())
+                    .collect();
+                values.sort();
+                values.dedup();
+                debug!("Control flow graph for {}: locations {:?}", parameters[j].name(), values);
+            }
+
+            for (index, analysis) in analyses.iter().enumerate() {
+                let constraints: Vec<String> = control_flow_parameters
+                    .iter()
+                    .filter_map(|&j| {
+                        analysis
+                            .source
+                            .get(&j)
+                            .map(|value| format!("{} == {}", parameters[j].name(), value))
+                    })
+                    .collect();
+                if !constraints.is_empty() {
+                    debug!("Summand {index} requires {constraints:?}");
+                }
+            }
+        }
+
         Self {
             control_flow_parameters,
             source_constraints,
@@ -102,19 +137,27 @@ impl ControlFlowAnalysis {
 
 /// The result of analysing a single summand for the control flow graph.
 struct SummandAnalysis {
-    /// Maps a parameter index to its required source value (a closed data
-    /// expression) when the summand's guard contains a conjunct `d == c`.
+    /// Maps a parameter index to its required source value (closed under sigma)
+    /// when the summand's guard contains a conjunct `d == c`.
     source: HashMap<usize, ATerm>,
 
     /// Maps each parameter index changed by the summand to whether it is
-    /// assigned a closed (constant) value. Parameters absent from the map are
-    /// left unchanged by the summand.
+    /// assigned a constant value (closed under sigma). Parameters absent from the
+    /// map are left unchanged by the summand.
     changed: HashMap<usize, bool>,
 }
 
 /// Analyses a single summand, extracting its source values and changed
 /// parameters with respect to the process `parameters`.
-fn analyse_summand(summand: &ExplicitSummand, parameters: &[DataVariable]) -> SummandAnalysis {
+///
+/// Closed-value tests are performed *under sigma* (see [`is_closed_under_sigma`])
+/// so the `@rewr_var` placeholders introduced by `replace_constants_by_variables`
+/// are treated as the constants they stand for.
+fn analyse_summand(
+    summand: &ExplicitSummand,
+    parameters: &[DataVariable],
+    context: &LearnSuccessorsContext,
+) -> SummandAnalysis {
     // Collect the top-level conjuncts of the guard and look for `d == c`
     // constraints on the process parameters.
     let mut conjuncts = Vec::new();
@@ -122,7 +165,7 @@ fn analyse_summand(summand: &ExplicitSummand, parameters: &[DataVariable]) -> Su
 
     let mut source = HashMap::new();
     for conjunct in &conjuncts {
-        if let Some((index, value)) = as_parameter_equality(conjunct, parameters) {
+        if let Some((index, value)) = as_parameter_equality(conjunct, parameters, context) {
             // A parameter cannot consistently be constrained to two different
             // closed values in the same (satisfiable) guard, so the first wins.
             source.entry(index).or_insert(value);
@@ -135,8 +178,8 @@ fn analyse_summand(summand: &ExplicitSummand, parameters: &[DataVariable]) -> Su
     for assignment in summand.write_assignments().iter() {
         let lhs = DataVariable::from(assignment.arg(0).protect());
         if let Some(index) = parameters.iter().position(|param| *param == lhs) {
-            let rhs: DataExpressionRef<'_> = assignment.arg(1).into();
-            changed.insert(index, free_variables_data_expression(&rhs).is_empty());
+            let rhs = assignment.arg(1).protect();
+            changed.insert(index, is_closed_under_sigma(context, &rhs));
         }
     }
 
@@ -180,8 +223,13 @@ fn collect_conjuncts(expr: &DataExpression, out: &mut Vec<DataExpression>) {
 
 /// If `expr` is an equality `d == c` (in either order) between a process
 /// parameter `d` and a closed data expression `c`, returns the parameter index
-/// and the constant term `c`.
-fn as_parameter_equality(expr: &DataExpression, parameters: &[DataVariable]) -> Option<(usize, ATerm)> {
+/// and the term `c`. Closedness of `c` is tested under sigma, so a `@rewr_var`
+/// standing for a constant qualifies.
+fn as_parameter_equality(
+    expr: &DataExpression,
+    parameters: &[DataVariable],
+    context: &LearnSuccessorsContext,
+) -> Option<(usize, ATerm)> {
     if !is_application(expr) || expr.data_function_symbol().name() != "==" {
         return None;
     }
@@ -191,13 +239,19 @@ fn as_parameter_equality(expr: &DataExpression, parameters: &[DataVariable]) -> 
         return None;
     }
 
-    match_parameter_constant(&arguments[0], &arguments[1], parameters)
-        .or_else(|| match_parameter_constant(&arguments[1], &arguments[0], parameters))
+    match_parameter_constant(&arguments[0], &arguments[1], parameters, context)
+        .or_else(|| match_parameter_constant(&arguments[1], &arguments[0], parameters, context))
 }
 
 /// Returns the parameter index and constant term when `variable` is a process
-/// parameter and `constant` is closed (contains no free variables).
-fn match_parameter_constant(variable: &ATerm, constant: &ATerm, parameters: &[DataVariable]) -> Option<(usize, ATerm)> {
+/// parameter and `constant` is closed under sigma (resolves to a variable-free
+/// value).
+fn match_parameter_constant(
+    variable: &ATerm,
+    constant: &ATerm,
+    parameters: &[DataVariable],
+    context: &LearnSuccessorsContext,
+) -> Option<(usize, ATerm)> {
     if !is_variable(variable) {
         return None;
     }
@@ -205,10 +259,23 @@ fn match_parameter_constant(variable: &ATerm, constant: &ATerm, parameters: &[Da
     let variable = DataVariable::from(variable.clone());
     let index = parameters.iter().position(|param| *param == variable)?;
 
-    let constant_ref: DataExpressionRef<'_> = constant.copy().into();
-    if free_variables_data_expression(&constant_ref).is_empty() {
+    if is_closed_under_sigma(context, constant) {
         Some((index, constant.clone()))
     } else {
         None
     }
+}
+
+/// Returns whether `term`, rewritten under the context's substitution (sigma),
+/// is a closed (variable-free) data expression.
+///
+/// This resolves the `@rewr_var` variables introduced by
+/// `replace_constants_by_variables`, whose constant assignments are seeded into
+/// sigma, while genuine process parameters and summation variables (which sigma
+/// does not bind here) keep their free variables and are correctly rejected.
+fn is_closed_under_sigma(context: &LearnSuccessorsContext, term: &ATerm) -> bool {
+    let expr: DataExpressionRef<'_> = term.copy().into();
+    let rewritten = context.rewrite_under_sigma(&expr);
+    let rewritten_ref: DataExpressionRef<'_> = rewritten.copy().into();
+    free_variables_data_expression(&rewritten_ref).is_empty()
 }
