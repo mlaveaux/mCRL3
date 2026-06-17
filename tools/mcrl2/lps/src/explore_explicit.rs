@@ -460,7 +460,11 @@ impl LPS for ExplicitLinearProcessSpecification {
         }
     }
 
-    fn prepare(&self, context: &mut ExplicitContext, state: &[Self::Value]) -> impl Iterator<Item = usize> + '_ {
+    fn prepare<'a>(
+        &'a self,
+        context: &mut ExplicitContext,
+        state: &'a [Self::Value],
+    ) -> impl Iterator<Item = usize> + 'a {
         debug_assert_eq!(
             state.len(),
             self.process_parameters.len(),

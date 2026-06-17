@@ -59,26 +59,25 @@ impl LPS for CfgLinearProcessSpecification {
         self.inner.create_context()
     }
 
-    fn prepare(&self, context: &mut ExplicitContext, state: &[Self::Value]) -> impl Iterator<Item = usize> + '_ {
+    fn prepare<'a>(
+        &'a self,
+        context: &mut ExplicitContext,
+        state: &'a [Self::Value],
+    ) -> impl Iterator<Item = usize> + 'a {
         // Stage the per-state substitution in the enumeration backend; the
         // unfiltered summand list returned by the explicit LPS is discarded in
         // favour of the control-flow-filtered one below.
         let _staged = self.inner.prepare(context, state);
 
-        // Snapshot the control flow values of this state so the returned
-        // iterator owns them and need not borrow `state`.
-        let control_flow_values: Vec<usize> = self
-            .analysis
-            .control_flow_parameters
-            .iter()
-            .map(|&j| state[j])
-            .collect();
+        // The returned iterator borrows `state` directly and reads the control
+        // flow values on demand, avoiding a per-state allocation.
+        let control_flow_parameters = &self.analysis.control_flow_parameters;
         let source_constraints = &self.analysis.source_constraints;
 
         (0..source_constraints.len()).filter(move |&index| {
             source_constraints[index]
                 .iter()
-                .all(|&(position, value)| control_flow_values[position] == value)
+                .all(|&(position, value)| state[control_flow_parameters[position]] == value)
         })
     }
 
