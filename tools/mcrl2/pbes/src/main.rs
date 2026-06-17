@@ -219,7 +219,7 @@ fn read_pbes(filename: &str, format: Option<PbesFormat>) -> Result<Pbes, MercErr
 fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format)?;
     let game = if args.threads > 1 {
-        parity_game_from_pbes_parallel(&pbes, args.threads)?
+        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching)?
     } else {
         parity_game_from_pbes(&pbes, args.strategy, args.caching)?
     };
@@ -236,7 +236,7 @@ fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
 fn handle_solve(args: SolveArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format)?;
     let game = if args.threads > 1 {
-        parity_game_from_pbes_parallel(&pbes, args.threads)?
+        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching)?
     } else {
         parity_game_from_pbes(&pbes, args.strategy, args.caching)?
     };

@@ -112,8 +112,18 @@ struct PbesPartition {
 /// no action labels, so each worker only records `usize`-backed vertices and
 /// edges; the shared discovered set assigns globally consistent vertex indices,
 /// so the per-worker partitions merge by concatenation.
-pub fn parity_game_from_pbes_parallel(pbes: &Pbes, threads: usize) -> Result<ParityGame, MercError> {
+///
+/// Summand enumeration is cached through a [`CacheLPS`] according to `caching`.
+/// The cache is shared by `&` across all workers, so it is wrapped around a
+/// reference to the LPS (which is `Sync`); each worker threads its own
+/// [`CacheLPS`] context for the per-thread scratch buffers.
+pub fn parity_game_from_pbes_parallel(
+    pbes: &Pbes,
+    threads: usize,
+    caching: CachingStrategy,
+) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
+    let cached = CacheLPS::new(&lps, caching);
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
@@ -123,7 +133,7 @@ pub fn parity_game_from_pbes_parallel(pbes: &Pbes, threads: usize) -> Result<Par
     let (_initial, partitions) = pool.install(|| {
         let timing = Timing::new();
         explore_parallel(
-            &lps,
+            &cached,
             &timing,
             PbesPartition::default,
             |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
@@ -147,6 +157,8 @@ pub fn parity_game_from_pbes_parallel(pbes: &Pbes, threads: usize) -> Result<Par
     let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
     let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
     info!("Exploration complete: {total_equations} BES equations, {total_edges} edges");
+
+    debug!("{}", cached.metrics());
 
     // Merge the per-worker partitions: every state is reported to `on_state`
     // exactly once, so each vertex is added once. Add all vertices before edges
