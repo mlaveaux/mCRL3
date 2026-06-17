@@ -67,7 +67,7 @@ pub fn explore_lps_explicit<B>(
     strategy: ExplorationStrategy,
     control_flow: bool,
     timing: &Timing,
-) -> Result<(), MercError>
+) -> Result<B::LTS, MercError>
 where
     B: LtsBuilder<Mcrl2MultiActionLabel>,
 {
@@ -94,7 +94,7 @@ fn explore_lps_explicit_impl<B, L>(
     caching: CachingStrategy,
     strategy: ExplorationStrategy,
     timing: &Timing,
-) -> Result<(), MercError>
+) -> Result<B::LTS, MercError>
 where
     B: LtsBuilder<Mcrl2MultiActionLabel>,
     L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand>,
@@ -126,9 +126,11 @@ where
         states.get(),
         transitions.get(),
     );
-    builder.finish(initial)?;
+    builder.require_num_of_states(states.get());
+
+    let result = builder.finish(initial)?;
     debug!("{}", cached.metrics());
-    Ok(())
+    Ok(result)
 }
 
 /// Explores the linear process specification explicitly in parallel across
@@ -141,7 +143,7 @@ pub fn explore_lps_explicit_parallel<B>(
     threads: usize,
     control_flow: bool,
     timing: &Timing,
-) -> Result<(), MercError>
+) -> Result<B::LTS, MercError>
 where
     B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
 {
@@ -167,7 +169,7 @@ fn explore_lps_explicit_parallel_impl<B, L>(
     caching: CachingStrategy,
     threads: usize,
     timing: &Timing,
-) -> Result<(), MercError>
+) -> Result<B::LTS, MercError>
 where
     B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
     L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand> + Sync,
@@ -219,9 +221,10 @@ where
     // Finalise the builder, recording the total number of states so isolated
     // (deadlock) states are still reflected in the result.
     builder.require_num_of_states(total_states);
-    builder.finish(initial)?;
 
-    Ok(())
+    let result = builder.finish(initial)?;
+    debug!("{}", cached.metrics());
+    Ok(result)
 }
 
 /// A typed mCRL2 multi-action label backed by an [`ATermSend`].
