@@ -112,6 +112,10 @@ struct ExploreExplicitArgs {
     /// `--strategy` flag is then ignored) and state numbering is nondeterministic.
     #[arg(long, default_value_t = 1)]
     threads: usize,
+
+    /// Pin each worker thread round-robin to the available CPU cores.
+    #[arg(long, default_value_t = false)]
+    pinned: bool,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -185,11 +189,20 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
                 args.caching,
                 args.threads,
                 args.control_flow,
+                args.pinned,
                 timing,
             )?;
         } else {
             // No output requested, discard the explored transitions.
-            explore_lps_explicit_parallel(&mut (), &lps, args.caching, args.threads, args.control_flow, timing)?;
+            explore_lps_explicit_parallel(
+                &mut (),
+                &lps,
+                args.caching,
+                args.threads,
+                args.control_flow,
+                args.pinned,
+                timing,
+            )?;
         }
     } else if let Some(output) = &args.output {
         let mut file = BufWriter::new(File::create(output)?);

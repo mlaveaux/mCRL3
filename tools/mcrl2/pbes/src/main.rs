@@ -139,6 +139,10 @@ struct ExploreExplicitArgs {
     /// `--strategy` flag is then ignored).
     #[arg(long, default_value_t = 1)]
     threads: usize,
+
+    /// Pin each worker thread round-robin to the available CPU cores.
+    #[arg(long, default_value_t = false)]
+    pinned: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -171,6 +175,10 @@ struct SolveArgs {
     /// `--strategy` flag is then ignored).
     #[arg(long, default_value_t = 1)]
     threads: usize,
+
+    /// Pin each worker thread round-robin to the available CPU cores.
+    #[arg(long, default_value_t = false)]
+    pinned: bool,
 }
 
 fn main() -> Result<ExitCode, MercError> {
@@ -219,7 +227,7 @@ fn read_pbes(filename: &str, format: Option<PbesFormat>) -> Result<Pbes, MercErr
 fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format)?;
     let game = if args.threads > 1 {
-        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching)?
+        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else {
         parity_game_from_pbes(&pbes, args.strategy, args.caching)?
     };
@@ -236,7 +244,7 @@ fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
 fn handle_solve(args: SolveArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format)?;
     let game = if args.threads > 1 {
-        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching)?
+        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else {
         parity_game_from_pbes(&pbes, args.strategy, args.caching)?
     };

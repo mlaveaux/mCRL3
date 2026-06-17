@@ -140,10 +140,11 @@ pub fn parity_game_from_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
     caching: CachingStrategy,
+    pinned: bool,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
 
-    let pool = configure_rayon_thread_pool(threads)?;
+    let pool = configure_rayon_thread_pool(threads, pinned)?;
 
     // Only layer the enumeration cache on top of the LPS when a caching strategy
     // is actually requested; otherwise explore the bare LPS directly.

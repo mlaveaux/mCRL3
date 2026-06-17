@@ -262,9 +262,7 @@ fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> 
                 if matched[i] {
                     continue;
                 }
-                if action.matches_label(required_name)
-                    && action.comm_args_compatible(&actions[first_idx])
-                {
+                if action.matches_label(required_name) && action.comm_args_compatible(&actions[first_idx]) {
                     matched[i] = true;
                     found = true;
                     break;

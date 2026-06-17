@@ -168,6 +168,7 @@ pub fn explore_lps_explicit_parallel<B>(
     caching: CachingStrategy,
     threads: usize,
     control_flow: bool,
+    pinned: bool,
     timing: &Timing,
 ) -> Result<B::LTS, MercError>
 where
@@ -179,12 +180,12 @@ where
             "Control flow analysis identified {} control flow parameter(s)",
             lps.control_flow_parameters().len()
         );
-        let result = explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing);
+        let result = explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, pinned, timing);
         debug!("{}", lps.metrics());
         result
     } else {
         let lps = ExplicitLinearProcessSpecification::new(lps)?;
-        explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, timing)
+        explore_lps_explicit_parallel_impl(builder, &lps, caching, threads, pinned, timing)
     }
 }
 
@@ -196,13 +197,14 @@ fn explore_lps_explicit_parallel_impl<B, L>(
     lps: &L,
     caching: CachingStrategy,
     threads: usize,
+    pinned: bool,
     timing: &Timing,
 ) -> Result<B::LTS, MercError>
 where
     B: ConcurrentLtsBuilder<Mcrl2MultiActionLabel>,
     L: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = (), Summand = ExplicitSummand> + Sync,
 {
-    let pool = configure_rayon_thread_pool(threads)?;
+    let pool = configure_rayon_thread_pool(threads, pinned)?;
 
     // Only layer the enumeration cache on top of the LPS when a caching strategy
     // is actually requested; otherwise explore the bare LPS directly.

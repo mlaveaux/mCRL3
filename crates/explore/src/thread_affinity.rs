@@ -1,17 +1,21 @@
+use log::debug;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
-use log::debug;
 
 use merc_utilities::MercError;
 
-/// Builds a rayon thread pool with `num_threads` workers pinned round-robin to
-/// the available CPU cores.
+/// Builds a rayon thread pool with `num_threads` workers.
 ///
-/// If no core information is available on this platform, the pool is still
-/// created but worker pinning is skipped.
-pub fn configure_rayon_thread_pool(num_threads: usize) -> Result<ThreadPool, MercError> {
+/// When `pinned` is set, workers are pinned round-robin to the available CPU
+/// cores. If no core information is available on this platform, the pool is
+/// still created but worker pinning is skipped.
+pub fn configure_rayon_thread_pool(num_threads: usize, pinned: bool) -> Result<ThreadPool, MercError> {
     let worker_count = num_threads.max(1);
-    let cores = core_affinity2::get_core_ids().unwrap_or_default();
+    let cores = if pinned {
+        core_affinity2::get_core_ids().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     ThreadPoolBuilder::new()
         .num_threads(worker_count)
@@ -36,9 +40,12 @@ pub fn configure_rayon_thread_pool(num_threads: usize) -> Result<ThreadPool, Mer
                     match core.set_affinity() {
                         Ok(()) => {
                             debug!("Pinned rayon worker thread {} to core {}", thread_index, core.0);
-                        },
+                        }
                         Err(error) => {
-                            debug!("Failed to pin rayon worker thread {} to core {}: {error}", thread_index, core.0);
+                            debug!(
+                                "Failed to pin rayon worker thread {} to core {}: {error}",
+                                thread_index, core.0
+                            );
                         }
                     }
                 }
