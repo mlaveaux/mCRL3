@@ -125,17 +125,7 @@ struct PbesPartition {
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel
-/// across `threads` worker threads.
-///
-/// Uses the level-synchronised parallel BFS of [`explore_parallel`]. The PBES has
-/// no action labels, so each worker only records `usize`-backed vertices and
-/// edges; the shared discovered set assigns globally consistent vertex indices,
-/// so the per-worker partitions merge by concatenation.
-///
-/// Summand enumeration is cached through a [`CacheLPS`] according to `caching`.
-/// The cache is shared by `&` across all workers, so it is wrapped around a
-/// reference to the LPS (which is `Sync`); each worker threads its own
-/// [`CacheLPS`] context for the per-thread scratch buffers.
+/// across `threads` worker threads.he
 pub fn parity_game_from_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
@@ -188,9 +178,6 @@ where
         )
     })?;
 
-    // The per-thread progress trackers cannot be shared (`TimeProgress` is
-    // `!Sync`), so the parallel path reports only the final summary, counted
-    // from the merged partitions.
     let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
     let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
     info!("Exploration complete: {total_equations} BES equations, {total_edges} edges");

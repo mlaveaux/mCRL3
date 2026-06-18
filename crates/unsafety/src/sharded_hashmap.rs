@@ -339,6 +339,7 @@ mod tests {
     /// Drives the convenience API with random operations against a `HashSet`
     /// oracle, checking that the table agrees with the model after each step.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn random_insert_get_remove() {
         random_test(100, |rng| {
             let map: ShardedHashMap<u64> = ShardedHashMap::with_shards(rng.random_range(1..=16));
@@ -365,6 +366,7 @@ mod tests {
     /// payloads are interned and checked against a `HashMap` oracle mapping each
     /// payload to the index it should resolve to.
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn random_raw_interning_dedup() {
         random_test(50, |rng| {
             let map: ShardedHashMap<usize> = ShardedHashMap::with_shards(rng.random_range(1..=8));
