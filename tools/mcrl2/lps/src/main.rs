@@ -107,9 +107,7 @@ struct ExploreExplicitArgs {
     #[arg(long)]
     control_flow: bool,
 
-    /// Number of worker threads used for exploration. With more than one thread
-    /// a level-synchronised parallel breadth-first search is used (the
-    /// `--strategy` flag is then ignored) and state numbering is nondeterministic.
+    /// Number of worker threads used for exploration.
     #[arg(long, default_value_t = 1)]
     threads: usize,
 

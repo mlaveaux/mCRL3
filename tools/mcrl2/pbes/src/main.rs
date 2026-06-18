@@ -134,9 +134,7 @@ struct ExploreExplicitArgs {
     #[arg(long, short('i'), value_enum)]
     format: Option<PbesFormat>,
 
-    /// Number of worker threads used for exploration. With more than one thread
-    /// a level-synchronised parallel breadth-first search is used (the
-    /// `--strategy` flag is then ignored).
+    /// Number of worker threads used for exploration.
     #[arg(long, default_value_t = 1)]
     threads: usize,
 
@@ -170,9 +168,7 @@ struct SolveArgs {
     #[arg(long, default_value_t = false)]
     verify_solution: bool,
 
-    /// Number of worker threads used for exploration. With more than one thread
-    /// a level-synchronised parallel breadth-first search is used (the
-    /// `--strategy` flag is then ignored).
+    /// Number of worker threads used for exploration.
     #[arg(long, default_value_t = 1)]
     threads: usize,
 
