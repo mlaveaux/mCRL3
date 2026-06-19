@@ -118,8 +118,8 @@ fn test_mcrl2_ltscombine() {
         let num_of_hidden = rng.random_range(0..=labels.len());
         let hide = labels
             .iter()
-            .cloned()
             .filter(|a| !a.is_tau_label())
+            .cloned()
             .sample(rng, num_of_hidden);
 
         let num_of_comm = rng.random_range(0..=5);
@@ -181,7 +181,7 @@ fn test_mcrl2_ltscombine() {
             &hide,
             &allow,
             &comm,
-            &mut Timing::new(),
+            &Timing::new(),
         )
         .unwrap();
         let result_lts = result.finish(StateIndex::new(0), false);
