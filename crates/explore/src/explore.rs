@@ -13,9 +13,9 @@ use merc_lts::StateIndex;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
-use crate::BTreeForestContext;
 use crate::DiscoveredSet;
 use crate::LPS;
+use crate::SequenceForestContext;
 use crate::StateRef;
 use crate::Summand;
 
@@ -36,7 +36,7 @@ pub enum ExplorationStrategy {
 ///
 /// # Closures
 ///
-/// The mutable caller context `ctx` (typically a builder) is passed into
+/// The mutable caller context `ctx`  is passed into
 /// every closure invocation so the closures themselves can stay
 /// non-capturing of the outer mutable state.
 ///
@@ -70,8 +70,8 @@ where
     // discovered set, avoiding an allocation per explored state.
     let mut current_state: Vec<P::Value> = Vec::new();
     // Reused interning scratch buffers, avoiding a reallocation per inserted
-    // state. This loop is single-threaded, so one context suffices.
-    let mut forest_context = BTreeForestContext::new();
+    // state.
+    let mut forest_context = SequenceForestContext::new();
     // Per-thread enumeration context owning the backend and scratch buffers.
     // Single-threaded loop, so one context suffices.
     let mut enumerate_context = lps.create_context();
@@ -113,37 +113,6 @@ where
     })?;
 
     Ok(StateIndex::new(initial_ref.index()))
-}
-
-/// Finds the next state for a worker to process: its own deque first, then a
-/// batch stolen from a peer worker. `me` is the caller's own index, skipped
-/// while stealing.
-///
-/// A peer whose slot is not yet registered is simply skipped; the caller
-/// retries while the pending counter says work remains, so no startup barrier
-/// is needed. Returns `None` only when a full sweep observed every peer deque
-/// empty.
-fn find_task<T>(local: &Worker<T>, stealers: &[OnceLock<Stealer<T>>], me: usize) -> Option<T> {
-    local.pop().or_else(|| {
-        loop {
-            let mut retry = false;
-            for (_, slot) in stealers.iter().enumerate().filter(|(index, _)| *index != me) {
-                let Some(stealer) = slot.get() else { continue };
-                if let Steal::Retry = stealer.steal_batch(local) {
-                    retry = true;
-                }
-            }
-
-            // A full sweep extended the local deque with whatever it could steal;
-            // pop from it. Only give up once no peer asked us to retry.
-            if let Some(task) = local.pop() {
-                return Some(task);
-            }
-            if !retry {
-                return None;
-            }
-        }
-    })
 }
 
 /// Explores the state space of `lps` in parallel using continuous, work-stealing
@@ -205,7 +174,7 @@ where
             // Thread-affine per-worker scratch and enumeration backend, created
             // and dropped on this same physical worker thread.
             let mut context = lps.create_context();
-            let mut forest_context = BTreeForestContext::new();
+            let mut forest_context = SequenceForestContext::new();
             let mut state_buf: Vec<P::Value> = Vec::new();
             // Successors discovered while processing one state, counted in a
             // single atomic update and pushed onto the deque only afterwards.
@@ -219,7 +188,7 @@ where
                     break;
                 }
 
-                let Some(state_ref) = find_task(&local_deque, &stealers, me) else {
+                let Some(state_ref) = find_task(&local_deque, &stealers, me, &aborted) else {
                     // No work found this sweep. Stop once every state has been
                     // processed, otherwise keep trying: a busy peer may still
                     // discover successors that become stealable.
@@ -298,4 +267,38 @@ where
     }
 
     Ok((StateIndex::new(initial_ref.index()), locals))
+}
+
+/// Finds the next state for a worker to process: its own deque first, then a
+/// batch stolen from a peer worker. `me` is the caller's own index, skipped
+/// while stealing.
+///
+/// A peer whose slot is not yet registered is simply skipped; the caller
+/// retries while the pending counter says work remains, so no startup barrier
+/// is needed. Returns `None` when a full sweep observed every peer deque empty,
+/// or when `aborted` is set so a worker never spins on steal contention while
+/// the run is shutting down.
+fn find_task<T>(local: &Worker<T>, stealers: &[OnceLock<Stealer<T>>], me: usize, aborted: &AtomicBool) -> Option<T> {
+    local.pop().or_else(|| {
+        loop {
+            let mut retry = false;
+            for (_, slot) in stealers.iter().enumerate().filter(|(index, _)| *index != me) {
+                let Some(stealer) = slot.get() else { continue };
+                if let Steal::Retry = stealer.steal_batch(local) {
+                    retry = true;
+                }
+            }
+
+            // A full sweep extended the local deque with whatever it could steal;
+            // pop from it. Only give up once no peer asked us to retry.
+            if let Some(task) = local.pop() {
+                return Some(task);
+            }
+            // Stop retrying once no peer asked us to, or the run is aborting; the
+            // caller's loop then observes `aborted` and breaks.
+            if !retry || aborted.load(Ordering::Relaxed) {
+                return None;
+            }
+        }
+    })
 }

@@ -1,17 +1,3 @@
-//! A forest of immutable, hash-consed B+-trees, inspired by `cranelift_bforest`
-//! crate.
-//!
-//! The crucial difference is that this implementation uses hash conscing to
-//! maximally share (immutable) nodes across trees. This makes it suitable to
-//! compactly represent large sets of similar sequences.
-//!
-//! Each tree is a hash-consed *sequence* of values: positions are implicit in
-//! iteration order, so there are no separator keys. The branching factor `N` is
-//! a const generic parameter (default 8) so it can be tuned for experiments.
-//!
-//! The forest is thread-safe: nodes can be interned concurrently from multiple
-//! threads through `&self`.
-
 use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::mem;
@@ -22,7 +8,7 @@ use rustc_hash::FxBuildHasher;
 /// The default branching factor, matches a standard cache line of words.
 const DEFAULT_BRANCHING: usize = 8;
 
-/// Shards per per-height interning table.
+/// Shards in the per-height interning tables.
 const FOREST_SHARDS: usize = 16;
 
 /// A value that can be stored in a [`BTreeForest`] node slot.
@@ -64,8 +50,11 @@ impl Slot for u32 {
     const EMPTY: u32 = u32::MAX;
 
     fn from_child(index: usize) -> u32 {
-        // A `u32` slot caps the node pool at `u32::MAX`; the `usize` index is
-        // guaranteed to fit because the pool cannot have grown beyond that.
+        // A `u32` slot caps the node pool at `u32::MAX` exclusive, since that
+        // value is reserved for `EMPTY`. Encode defensively so exhausting that
+        // cap is caught in debug builds instead of silently truncating a child
+        // reference (or colliding with the empty-slot sentinel).
+        debug_assert!(index < u32::MAX as usize, "node pool exceeded u32 slot capacity");
         index as u32
     }
 
@@ -74,20 +63,26 @@ impl Slot for u32 {
     }
 }
 
-/// Number of bits reserved for the height in the packed `Tree` field.
-/// Six bits suffice because `MAX_DEPTH` (48) is less than 64.
-const HEIGHT_BITS: u32 = 6;
-const HEIGHT_MASK: u64 = (1 << HEIGHT_BITS) - 1;
+/// Number of bits reserved for the height in the packed `Tree` field. Six bits
+/// suffice because the tallest possible tree (branching factor two) has height
+/// `max_height(2)`, which is representable in six bits (checked below).
+const MAX_HEIGHT_BITS: u32 = 6;
+const HEIGHT_MASK: u64 = (1 << MAX_HEIGHT_BITS) - 1;
+
+/// The packed height field must be wide enough for the tallest tree any
+/// supported branching factor can produce; two is the worst case.
+const _: () = assert!(
+    max_height(2) < (1 << MAX_HEIGHT_BITS),
+    "MAX_HEIGHT_BITS too small for the tallest representable tree"
+);
 
 /// All-ones in the 58-bit root field; used as the empty-tree sentinel.
-const ROOT_EMPTY: u64 = (1u64 << (64 - HEIGHT_BITS)) - 1;
+const ROOT_EMPTY: u64 = (1u64 << (64 - MAX_HEIGHT_BITS)) - 1;
 
 /// A handle to a single tree stored in a [`BTreeForest`].
 ///
 /// Handles are only meaningful for the forest that produced them and are
-/// invalidated by [`BTreeForest::clear`]. The handle packs the root node
-/// index (58 bits, upper) and the tree's height (6 bits, lower) into a
-/// single `u64`, halving the struct size versus separate fields.
+/// invalidated by [`BTreeForest::clear`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Tree {
     /// Bits [63:6] hold the root node index; bits [5:0] hold the height.
@@ -98,20 +93,20 @@ pub struct Tree {
 impl Tree {
     /// The empty tree, holding no entries.
     pub const EMPTY: Tree = Tree {
-        packed: ROOT_EMPTY << HEIGHT_BITS,
+        packed: ROOT_EMPTY << MAX_HEIGHT_BITS,
     };
 
     /// Creates a new tree with the given root and height.
     fn new(root: usize, height: u8) -> Tree {
         debug_assert!((root as u64) < ROOT_EMPTY, "node pool exhausted");
         Tree {
-            packed: ((root as u64) << HEIGHT_BITS) | (height as u64),
+            packed: ((root as u64) << MAX_HEIGHT_BITS) | (height as u64),
         }
     }
 
     /// Returns the root node index and height of this tree.
     fn root(self) -> usize {
-        (self.packed >> HEIGHT_BITS) as usize
+        (self.packed >> MAX_HEIGHT_BITS) as usize
     }
 
     /// Returns the height of this tree.
@@ -121,7 +116,7 @@ impl Tree {
 
     /// Returns true if this tree has no entries.
     pub fn is_empty(self) -> bool {
-        self.packed >> HEIGHT_BITS == ROOT_EMPTY
+        self.packed >> MAX_HEIGHT_BITS == ROOT_EMPTY
     }
 }
 
@@ -131,11 +126,18 @@ impl Default for Tree {
     }
 }
 
-/// A forest of hash-consed sequences of `V` with branching factor `N`.
+/// A thread-safe forest of hash-consed sequences of `V` with branching factor `N`.
+///
+/// # Details
+///
+/// Inspired by the `cranelift_bforest` crate. The crucial difference is that
+/// this implementation uses hash conscing to maximally share (immutable) nodes
+/// across trees. This makes it suitable to compactly represent large sets of
+/// similar sequences.
 ///
 /// Values are expected to be small `Copy` types, matching the
-/// `cranelift_bforest` design tradeoffs. The branching factor `N` defaults to 8
-/// and can be overridden to experiment with node sizes; it must be at least two.
+/// `cranelift_bforest` design tradeoffs. The branching factor `N` can be
+/// overridden to experiment with node sizes.
 ///
 /// Because a value and a child index could share a bit pattern, interning is
 /// partitioned by height: nodes are only ever deduplicated against other nodes
@@ -143,9 +145,8 @@ impl Default for Tree {
 /// `[5, 7]` interpreted as child references.
 ///
 /// Nodes are never freed individually; the forest is append-only and reclaimed
-/// all at once with [`BTreeForest::clear`]. Interning happens through `&self`,
-/// so the forest can be shared between threads and populated concurrently.
-pub struct BTreeForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHasher>
+/// all at once with [`BTreeForest::clear`].
+pub struct SequenceForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHasher>
 where
     V: Copy,
 {
@@ -158,47 +159,47 @@ where
     tables: Vec<ShardedHashMap<usize, S>>,
 }
 
-/// Reusable scratch buffers for [`BTreeForest::insert_with`], so repeated
-/// inserts on a hot path do not reallocate.
+/// Reusable scratch buffers so repeated inserts on a hot path do not
+/// reallocate.
 ///
 /// The buffers only hold node indices, so a single context works for any
 /// [`BTreeForest`] regardless of its value type or branching factor.
 #[derive(Debug, Default, Clone)]
-pub struct BTreeForestContext {
+pub struct SequenceForestContext {
     /// Child indices of the level just built.
     src: Vec<usize>,
     /// Child indices of the level currently being built.
     dst: Vec<usize>,
 }
 
-impl BTreeForestContext {
+impl SequenceForestContext {
     /// Creates an empty context.
-    pub fn new() -> BTreeForestContext {
-        BTreeForestContext::default()
+    pub fn new() -> SequenceForestContext {
+        SequenceForestContext::default()
     }
 }
 
-impl<V, const N: usize, S> BTreeForest<V, N, S>
+impl<V, const N: usize, S> SequenceForest<V, N, S>
 where
     V: Slot,
     S: Default,
 {
     /// Creates a new empty forest.
-    pub fn new() -> BTreeForest<V, N, S> {
+    pub fn new() -> SequenceForest<V, N, S> {
         const { assert!(N >= 2, "branching factor must be at least two") };
         // One interning table per representable height. The height field is
-        // `HEIGHT_BITS` wide, so heights range over `0..(1 << HEIGHT_BITS)`.
-        let tables = (0..(1usize << HEIGHT_BITS))
+        // `MAX_HEIGHT_BITS` wide, so heights range over `0..(1 << MAX_HEIGHT_BITS)`.
+        let tables = (0..(1usize << MAX_HEIGHT_BITS))
             .map(|_| ShardedHashMap::with_shards_and_hasher(FOREST_SHARDS, S::default()))
             .collect();
-        BTreeForest {
+        SequenceForest {
             nodes: boxcar::Vec::new(),
             tables,
         }
     }
 }
 
-impl<V, const N: usize, S> BTreeForest<V, N, S>
+impl<V, const N: usize, S> SequenceForest<V, N, S>
 where
     V: Slot,
     S: BuildHasher,
@@ -207,7 +208,7 @@ where
     /// throwaway [`BTreeForestContext`]. Prefer [`BTreeForest::insert_with`] on
     /// hot paths to reuse the scratch buffers.
     pub fn insert(&self, values: &[V]) -> Tree {
-        self.insert_with(values, &mut BTreeForestContext::new())
+        self.insert_with(values, &mut SequenceForestContext::new())
     }
 
     /// Interns the sequence `values` and returns a handle to its tree, reusing
@@ -219,7 +220,7 @@ where
     /// The tree is assembled bottom-up: contiguous chunks of `values` become
     /// leaf-level nodes, then those are grouped into interior nodes, and so on
     /// until a single root remains.
-    pub fn insert_with(&self, values: &[V], context: &mut BTreeForestContext) -> Tree {
+    pub fn insert_with(&self, values: &[V], context: &mut SequenceForestContext) -> Tree {
         if values.is_empty() {
             return Tree::EMPTY;
         }
@@ -227,7 +228,7 @@ where
         // `src` is the level just built, `dst` the one being built. The buffers
         // live in `context` so repeated inserts do not reallocate, but they are
         // not shared between threads.
-        let BTreeForestContext { src, dst } = context;
+        let SequenceForestContext { src, dst } = context;
 
         // Each chunk of `values` is copied straight into a node, padded with
         // `EMPTY`.
@@ -263,6 +264,10 @@ where
     /// Interns `data` at `height`, returning the index of the existing identical
     /// node if one is present, or of a freshly allocated node otherwise.
     fn intern(&self, height: u8, data: [V; N]) -> usize {
+        debug_assert!(
+            (height as usize) <= max_height(N),
+            "tree height exceeds max_height for this branching factor"
+        );
         // The table is specific to this height, so entries are compared and
         // hashed purely by their node content.
         let table = &self.tables[height as usize];
@@ -311,10 +316,19 @@ pub const fn max_depth(n: usize) -> usize {
     (usize::BITS as usize).div_ceil(log2_n)
 }
 
+/// Returns the maximum height any tree with branching factor `n` can reach.
+///
+/// Leaves sit at height zero, so a tree spanning `max_depth(n)` levels tops out
+/// at one less than that. This is the largest value the packed height field of
+/// a [`Tree`] ever has to hold.
+pub const fn max_height(n: usize) -> usize {
+    max_depth(n) - 1
+}
+
 /// Upper bound on the height of any tree.
 const MAX_DEPTH: usize = max_depth(2);
 
-impl<V, const N: usize, S> BTreeForest<V, N, S>
+impl<V, const N: usize, S> SequenceForest<V, N, S>
 where
     V: Slot,
 {
@@ -335,7 +349,7 @@ where
     }
 }
 
-impl<V, const N: usize, S> BTreeForest<V, N, S>
+impl<V, const N: usize, S> SequenceForest<V, N, S>
 where
     V: Slot,
 {
@@ -356,13 +370,13 @@ where
     }
 }
 
-impl<V, const N: usize, S> Default for BTreeForest<V, N, S>
+impl<V, const N: usize, S> Default for SequenceForest<V, N, S>
 where
     V: Slot,
     S: Default,
 {
-    fn default() -> BTreeForest<V, N, S> {
-        BTreeForest::new()
+    fn default() -> SequenceForest<V, N, S> {
+        SequenceForest::new()
     }
 }
 
@@ -431,8 +445,8 @@ mod tests {
     use merc_utilities::random_test;
     use merc_utilities::random_test_threads;
 
-    use super::BTreeForest;
-    use super::BTreeForestContext;
+    use super::SequenceForest;
+    use super::SequenceForestContext;
     use super::Tree;
 
     #[test]
@@ -441,8 +455,8 @@ mod tests {
         random_test(100, |rng| {
             // Interns random sequences and checks every forest invariant against a
             // HashMap implementation.
-            let forest: BTreeForest<usize, 2> = BTreeForest::new();
-            let mut context = BTreeForestContext::new();
+            let forest: SequenceForest<usize, 2> = SequenceForest::new();
+            let mut context = SequenceForestContext::new();
             let mut seen: HashMap<Vec<usize>, Tree> = HashMap::new();
 
             for _ in 0..200 {
@@ -478,7 +492,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn random_concurrent_intern() {
         // Interns random sequences concurrently.
-        let forest: Arc<BTreeForest<usize, 4>> = Arc::new(BTreeForest::new());
+        let forest: Arc<SequenceForest<usize, 4>> = Arc::new(SequenceForest::new());
         let seen: Arc<Mutex<HashMap<Vec<usize>, Tree>>> = Arc::new(Mutex::new(HashMap::new()));
 
         random_test_threads(

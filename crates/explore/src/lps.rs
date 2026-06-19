@@ -43,21 +43,13 @@ pub trait LPS {
     fn create_context(&self) -> <Self::Summand as Summand>::Context;
 
     /// Prepares `context` for enumerating transitions from `state` and returns
-    /// the indices of the summands that must be explored from `state`.
-    ///
-    /// The exploration loop calls this exactly once before iterating over the
-    /// summands of a given source state, on the same thread (and thus the same
-    /// `context`) that will then drive [`Summand::enumerate`]. Implementations
-    /// typically use it to stage a substitution in their per-thread enumeration
-    /// backend.
+    /// the indices of the summands that must be explored from `state`. Can be
+    /// reused across all summands.
     ///
     /// The returned iterator lets implementations restrict enumeration to the
-    /// relevant summands (e.g. a PBES in SRF form only enumerates the summands
-    /// belonging to the current equation); implementations with no such
-    /// restriction return all summand indices.
-    ///
-    /// The returned iterator may borrow both `self` and `state`, so it must be
-    /// fully consumed before `state` is mutated again.
+    /// relevant summands; implementations with no such restriction return all
+    /// summand indices. The returned iterator may borrow both `self` and
+    /// `state`, so it must be fully consumed before `state` is mutated again.
     fn prepare<'a>(
         &'a self,
         context: &mut <Self::Summand as Summand>::Context,
@@ -112,24 +104,20 @@ pub trait Summand {
     /// The action label type, matching [`LPS::Label`].
     type Label;
 
-    /// Per-thread reusable scratch state threaded through [`Summand::enumerate`].
-    ///
     /// Enumeration mutates this context instead of any shared `&self` state, so
-    /// the same `&Summand` can be driven from several threads at once as long as
-    /// each thread owns a distinct context. Summands that need no scratch state
-    /// use `()`.
+    /// the same `&Summand` can be driven from several threads at once as long
+    /// as each thread owns a distinct context.
     ///
     /// Contexts are produced by [`LPS::create_context`] rather than constructed
-    /// directly, so a context can own backend state (e.g. an mCRL2 enumerator)
-    /// that depends on the LPS definition.
+    /// directly, so a context can own backend state that depends on the LPS
+    /// definition.
     type Context;
 
     /// Enumerate every outgoing transition produced by this summand from the
     /// state vector `state`.
     ///
     /// For each transition, `report(label, next_state)` is invoked exactly once
-    /// with borrowed values. `context` supplies the per-thread scratch buffers;
-    /// callers reuse a single context across summands and states on one thread.
+    /// with borrowed values.
     fn enumerate<F>(&self, context: &mut Self::Context, state: &[Self::Value], report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>;

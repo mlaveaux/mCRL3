@@ -7,9 +7,9 @@ use rustc_hash::FxBuildHasher;
 use merc_utilities::MercError;
 use merc_utilities::ShardedCounter;
 
-use crate::BTreeForest;
-use crate::BTreeForestContext;
 use crate::LPS;
+use crate::SequenceForest;
+use crate::SequenceForestContext;
 use crate::Summand;
 use crate::Tree;
 
@@ -67,7 +67,7 @@ pub struct CacheContext<P: LPS> {
     /// Buffer reconstructing a next-state from a cached write-position tree.
     replay_buf: Vec<P::Value>,
     /// Scratch buffers reused when interning into the forest.
-    forest_context: BTreeForestContext,
+    forest_context: SequenceForestContext,
     /// Enumeration context for the wrapped inner summand (cache misses).
     inner: <P::Summand as Summand>::Context,
 }
@@ -92,7 +92,7 @@ pub struct CacheSummandWrapper<P: LPS> {
 
     /// Hash-consed forest holding the keys and captured values. Shared across
     /// all summands so equal sequences are stored once.
-    forest: Arc<BTreeForest<P::Value, 2>>,
+    forest: Arc<SequenceForest<P::Value, 2>>,
 
     /// Shared reference to the inner LPS for delegating cache misses.
     inner: Arc<P>,
@@ -108,7 +108,7 @@ pub struct CacheSummandWrapper<P: LPS> {
 impl<P: LPS> CacheLPS<P> {
     pub fn new(inner: P, strategy: CachingStrategy) -> Self {
         let inner = Arc::new(inner);
-        let forest = Arc::new(BTreeForest::new());
+        let forest = Arc::new(SequenceForest::new());
 
         let summands: Vec<_> = inner
             .summands()
@@ -284,7 +284,7 @@ impl<P: LPS> LPS for CacheLPS<P> {
         CacheContext {
             key_buf: Vec::new(),
             replay_buf: Vec::new(),
-            forest_context: BTreeForestContext::new(),
+            forest_context: SequenceForestContext::new(),
             inner: self.inner.create_context(),
         }
     }

@@ -16,8 +16,8 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 use streaming_iterator::StreamingIterator;
 
-use crate::BTreeForestContext;
 use crate::DiscoveredSet;
+use crate::SequenceForestContext;
 use crate::StateRef;
 
 /// The trait for labels used in the composition operator.
@@ -136,7 +136,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     let mut target_raw: Vec<usize> = Vec::new();
     // Reused interning scratch buffers, avoiding a reallocation per inserted
     // state. This loop is single-threaded, so one context suffices.
-    let mut forest_context = BTreeForestContext::new();
+    let mut forest_context = SequenceForestContext::new();
 
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
