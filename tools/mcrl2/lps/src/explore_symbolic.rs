@@ -69,8 +69,11 @@ struct SymbolicLinearProcessSpecification {
 
 impl SymbolicLinearProcessSpecification {
     pub fn new(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<Self, MercError> {
-        let mut options = PreprocessOptions::default();
-        options.replace_constants_by_variables = false; // We need the constants to be present in the symbolic summands for the enumeration.
+        // We need the constants to be present in the symbolic summands for the enumeration.
+        let options = PreprocessOptions {
+            replace_constants_by_variables: false,
+            ..Default::default()
+        };
         let lps = preprocess(lps, &options)?;
 
         let parameters = lps.parameters();

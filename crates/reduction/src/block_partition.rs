@@ -168,7 +168,10 @@ impl BlockPartition {
 
     /// Split the given block into two separate block based on the splitter
     /// predicate.
-    pub fn split_marked(&mut self, block_index: usize, mut splitter: impl FnMut(StateIndex) -> bool) {
+    pub fn split_marked<F>(&mut self, block_index: usize, mut splitter: F)
+    where
+        F: FnMut(StateIndex) -> bool,
+    {
         let mut updated_block = self.blocks[block_index];
         let mut new_block: Option<Block> = None;
 

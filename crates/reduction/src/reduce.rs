@@ -19,14 +19,14 @@ use crate::weak_bisimulation_parallel;
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum Equivalence {
-    /// An O(|Act|mn) algorithmn for weak bisimulation equivalence.
+    /// An O(|Act|mn) algorithm for weak bisimulation equivalence.
     WeakBisim,
-    /// An O(|Act|mn) algorithmn for weak bisimulation equivalence that computes |Act| in parallel.
+    /// An O(|Act|mn) algorithm for weak bisimulation equivalence that computes |Act| in parallel.
     WeakBisimParallel,
-    /// A variant of the O(|Act|mn) algorithmn for weak bisimulation equivalence that preserves divergence.
+    /// A variant of the O(|Act|mn) algorithm for weak bisimulation equivalence that preserves divergence.
     #[cfg_attr(feature = "clap", clap(alias = "dp-weak-bisim"))]
-    /// A variant of the parallel O(|Act|mn) algorithmn for weak bisimulation equivalence that preserves divergence.
     WeakBisimDivergencePreserving,
+    /// A variant of the parallel O(|Act|mn) algorithm for weak bisimulation equivalence that preserves divergence.
     #[cfg_attr(feature = "clap", clap(alias = "dp-weak-bisim-parallel"))]
     WeakBisimParallelDivergencePreserving,
     /// A signature based weak bisimulation algorithm that uses inductive signatures.

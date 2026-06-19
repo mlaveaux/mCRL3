@@ -186,6 +186,11 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
 ) -> LabelledTransitionSystem<L::Label> {
     let mut builder = LtsBuilderFast::new(lts.labels().into(), Vec::new());
 
+    // Reused across blocks to find bottom states when BRANCHING.
+    let mut visited = vec![false; lts.num_of_states()];
+    // Only touched states are reset to avoid clearing the entire visited vector.
+    let mut touched = Vec::new();
+
     for block in (0..partition.num_of_blocks()).map(BlockIndex::new) {
         // Pick any state in the block
         let mut candidate = if let Some(state) = partition.iter_block(block).next() {
@@ -195,8 +200,6 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
         };
 
         if BRANCHING {
-            let mut visited = vec![false; lts.num_of_states()];
-
             // traverse any outgoing transition to find a bottom state.
             'outer: loop {
                 if visited[candidate] {
@@ -208,6 +211,7 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
                     break;
                 }
                 visited[candidate] = true;
+                touched.push(candidate);
 
                 if let Some(trans) = lts.outgoing_transitions(candidate).find(|trans| {
                     lts.is_hidden_label(trans.label)
@@ -220,6 +224,11 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
 
                 // No outgoing tau transition to the same block, so we found a bottom state.
                 break;
+            }
+
+            // Reset only the entries touched by this walk.
+            for state in touched.drain(..) {
+                visited[state] = false;
             }
         }
 

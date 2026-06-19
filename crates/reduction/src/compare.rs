@@ -15,7 +15,7 @@ use crate::weak_bisimulation;
 use crate::weak_bisimulation_parallel;
 
 // Compare two LTSs for equivalence using the given algorithm.
-pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preprocess: bool, timing: &mut Timing) -> bool {
+pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preprocess: bool, timing: &Timing) -> bool {
     let (merged, rhs_initial) = timing.measure("merge lts", || left.merge_disjoint(&right));
     drop(right); // No longer needed.
 

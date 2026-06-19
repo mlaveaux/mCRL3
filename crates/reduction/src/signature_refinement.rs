@@ -486,8 +486,7 @@ where
 ///
 /// The signature function is called for each state and should fill the
 /// signature builder with the pre_signature of the state.
-fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition
-where {
+fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
     // Avoids reallocations when computing the signature.
     let mut arena = Bump::new();
     let mut builder = SignatureBuilder::default();
@@ -1011,6 +1010,29 @@ mod tests {
             let (_, _, branching_partition) =
                 branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false, &mut timing);
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
+        });
+    }
+
+    /// Exercises the `unsafe` arena/lifetime-reuse paths in the signature
+    /// refinement implementations on small inputs.
+    #[test]
+    fn test_miri_sigref_unsafe_paths() {
+        random_test(3, |rng| {
+            let lts = random_lts::<String, _>(rng, 6, 3);
+            let timing = Timing::new();
+
+            // signature_refinement (strong + branching with inductive renumbering).
+            let _ = strong_bisim_sigref(lts.clone(), &timing);
+            let _ = branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &timing);
+            let _ = branching_bisim_sigref(lts.clone(), StateIndex::new(0), true, &timing);
+
+            // signature_refinement_naive (strong, branching and weak signatures).
+            let _ = strong_bisim_sigref_naive(lts.clone(), &timing);
+            let _ = branching_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, &timing);
+            let _ = weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, false, &timing);
+
+            // signature_refinement_weak (inductive weak signatures).
+            let _ = weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, false, &timing);
         });
     }
 }
