@@ -2,8 +2,8 @@
 
 use merc_unsafety::ConcurrentIndexedSet;
 
-use crate::BTreeForest;
-use crate::BTreeForestContext;
+use crate::SequenceForest;
+use crate::SequenceForestContext;
 use crate::Slot;
 use crate::Tree;
 
@@ -31,10 +31,9 @@ where
     T: Copy,
 {
     /// Hash-consed forest backing every stored state sequence.
-    forest: BTreeForest<T, 2>,
-    /// Deduplicates canonical roots and assigns each a dense index, which *is*
-    /// the [`StateRef`]. Reconstructing a state vector for a [`StateRef`] looks
-    /// the root up by index and iterates it back through the forest.
+    forest: SequenceForest<T, 2>,
+    /// Deduplicates canonical roots and assigns each a dense index into the
+    /// forest.
     states: ConcurrentIndexedSet<Tree>,
 }
 
@@ -45,7 +44,7 @@ where
     /// Creates a new empty discovered set.
     pub fn new() -> DiscoveredSet<T> {
         DiscoveredSet {
-            forest: BTreeForest::new(),
+            forest: SequenceForest::new(),
             states: ConcurrentIndexedSet::new(),
         }
     }
@@ -54,7 +53,7 @@ where
     /// states before reallocating.
     pub fn with_capacity(capacity: usize) -> DiscoveredSet<T> {
         DiscoveredSet {
-            forest: BTreeForest::new(),
+            forest: SequenceForest::new(),
             states: ConcurrentIndexedSet::with_capacity(capacity),
         }
     }
@@ -63,13 +62,12 @@ where
     /// true when the state was newly inserted and false when it was already
     /// present.
     pub fn insert(&self, state: &[T]) -> (StateRef, bool) {
-        self.insert_with(state, &mut BTreeForestContext::new())
+        self.insert_with(state, &mut SequenceForestContext::new())
     }
 
     /// Inserts `state` like [`DiscoveredSet::insert`], reusing the scratch
-    /// buffers in `context` to avoid a reallocation per insert on hot paths.
-    /// Each thread must use its own context.
-    pub fn insert_with(&self, state: &[T], context: &mut BTreeForestContext) -> (StateRef, bool) {
+    /// buffers in `context`.
+    pub fn insert_with(&self, state: &[T], context: &mut SequenceForestContext) -> (StateRef, bool) {
         let root = self.forest.insert_with(state, context);
         let (index, is_new) = self.states.insert(root);
         (StateRef(index), is_new)
@@ -77,13 +75,12 @@ where
 
     /// Returns the handle of `state` if it is present, or `None` otherwise.
     pub fn index(&self, state: &[T]) -> Option<StateRef> {
-        self.index_with(state, &mut BTreeForestContext::new())
+        self.index_with(state, &mut SequenceForestContext::new())
     }
 
     /// Looks up `state` like [`DiscoveredSet::index`], reusing the scratch
-    /// buffers in `context` to avoid a reallocation per lookup on hot paths.
-    /// Each thread must use its own context.
-    pub fn index_with(&self, state: &[T], context: &mut BTreeForestContext) -> Option<StateRef> {
+    /// buffers in `context`.
+    pub fn index_with(&self, state: &[T], context: &mut SequenceForestContext) -> Option<StateRef> {
         let root = self.forest.insert_with(state, context);
         self.states.index(&root).map(StateRef)
     }
@@ -94,9 +91,7 @@ where
     }
 
     /// Reconstructs the state vector for `reference` into the freshly cleared
-    /// `out` buffer. Reusing a buffer avoids an allocation per lookup, which
-    /// matters on the hot exploration path. Returns false if the reference is
-    /// out of range.
+    /// `out` buffer.
     pub fn get_into(&self, reference: StateRef, out: &mut Vec<T>) -> bool {
         out.clear();
         let Some(&tree) = self.states.get_by_index(reference.index()) else {
@@ -148,74 +143,75 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
-    use std::thread;
+    use std::sync::Mutex;
+
+    use rand::RngExt;
+
+    use merc_utilities::random_test;
+    use merc_utilities::random_test_threads;
 
     use super::DiscoveredSet;
+    use super::StateRef;
 
     #[test]
-    fn test_insert_dedup() {
-        let set: DiscoveredSet<usize> = DiscoveredSet::new();
+    #[cfg_attr(miri, ignore)]
+    fn random_insert_dedup() {
+        random_test(100, |rng| {
+            // Inserts random states and checks deduplication, handle stability and
+            // reconstruction against a HashMap reference.
+            let set: DiscoveredSet<usize> = DiscoveredSet::new();
+            let mut seen: HashMap<Vec<usize>, StateRef> = HashMap::new();
+            let mut out = Vec::new();
 
-        let (first, is_new) = set.insert(&[1, 2, 3]);
-        assert!(is_new);
-        let (again, is_new) = set.insert(&[1, 2, 3]);
-        assert!(!is_new, "an existing state is not newly inserted");
-        assert_eq!(first, again, "equal states share a handle");
-        assert_eq!(set.len(), 1);
+            for _ in 0..200 {
+                let len = rng.random_range(0..20);
+                let state: Vec<usize> = (0..len).map(|_| rng.random_range(0..10)).collect();
 
-        let mut out = Vec::new();
-        assert!(set.get_into(first, &mut out));
-        assert_eq!(out, vec![1, 2, 3]);
+                let (reference, is_new) = set.insert(&state);
+                assert_eq!(is_new, !seen.contains_key(&state), "states are new exactly once");
+                seen.entry(state.clone()).or_insert(reference);
+
+                assert_eq!(seen[&state], reference, "equal states share a handle");
+                assert!(reference.index() < seen.len(), "indices stay dense");
+                assert_eq!(set.len(), seen.len());
+
+                assert!(set.get_into(reference, &mut out));
+                assert_eq!(out, state);
+            }
+        });
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn test_concurrent_insert() {
+    fn random_concurrent_insert() {
+        // Inserts random states concurrently and checks that equal states share a
+        // handle across threads.
         let set: Arc<DiscoveredSet<usize>> = Arc::new(DiscoveredSet::new());
-        let new_count = Arc::new(AtomicUsize::new(0));
-        let num_threads = 8;
-        let num_states = 1000usize;
+        let seen: Arc<Mutex<HashMap<Vec<usize>, StateRef>>> = Arc::new(Mutex::new(HashMap::new()));
 
-        // Every thread inserts the same set of distinct states, so each state is
-        // contended but must be counted as new exactly once overall.
-        let mut handles = Vec::new();
-        for _ in 0..num_threads {
-            let set = Arc::clone(&set);
-            let new_count = Arc::clone(&new_count);
-            handles.push(thread::spawn(move || {
-                for i in 0..num_states {
-                    let (reference, is_new) = set.insert(&[i, i + 1, i + 2]);
-                    assert!(reference.index() < num_states, "indices stay dense");
-                    if is_new {
-                        new_count.fetch_add(1, Ordering::Relaxed);
+        random_test_threads(
+            200,
+            8,
+            || (Arc::clone(&set), Arc::clone(&seen)),
+            move |rng, (set, seen)| {
+                let len = rng.random_range(0..20);
+                let state: Vec<usize> = (0..len).map(|_| rng.random_range(0..30)).collect();
+
+                let (reference, _) = set.insert(&state);
+                let mut out = Vec::new();
+                assert!(set.get_into(reference, &mut out));
+                assert_eq!(out, state);
+
+                let mut seen = seen.lock().unwrap();
+                match seen.get(&state) {
+                    Some(&prev) => assert_eq!(prev, reference, "equal states interned to different handles"),
+                    None => {
+                        seen.insert(state, reference);
                     }
                 }
-            }));
-        }
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        assert_eq!(
-            new_count.load(Ordering::Relaxed),
-            num_states,
-            "each state inserted once"
+            },
         );
-        assert_eq!(set.len(), num_states);
-
-        // Indices are dense (a permutation of `0..num_states`) and each handle
-        // reconstructs to the right state vector.
-        let mut seen = vec![false; num_states];
-        let mut out = Vec::new();
-        for i in 0..num_states {
-            let reference = set.index(&[i, i + 1, i + 2]).expect("state must be present");
-            assert!(!seen[reference.index()], "indices are unique");
-            seen[reference.index()] = true;
-            assert!(set.get_into(reference, &mut out));
-            assert_eq!(out, vec![i, i + 1, i + 2]);
-        }
     }
 }
