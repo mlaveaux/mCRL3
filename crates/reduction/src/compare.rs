@@ -127,7 +127,7 @@ mod tests {
                 lts,
                 permuted_lts,
                 false,
-                &mut timing
+                &timing
             ));
         })
     }
@@ -146,28 +146,28 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let weak_bisim_parallel = compare_lts(
                 compare::Equivalence::WeakBisimParallel,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let weak_bisim_sigref = compare_lts(
                 compare::Equivalence::WeakBisimSigref,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let weak_bisim_sigref_naive = compare_lts(
                 compare::Equivalence::WeakBisimSigrefNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
 
             assert_eq!(
@@ -199,28 +199,28 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let weak_bisim_dp_parallel = compare_lts(
                 compare::Equivalence::WeakBisimParallelDivergencePreserving,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let weak_bisim_dp_sigref = compare_lts(
                 compare::Equivalence::WeakBisimSigrefDivergencePreserving,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let weak_bisim_dp_sigref_naive = compare_lts(
                 compare::Equivalence::WeakBisimSigrefNaiveDivergencePreserving,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
 
             assert_eq!(
@@ -251,14 +251,14 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let strong_bisim_naive = compare_lts(
                 compare::Equivalence::StrongBisimNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
 
             assert_eq!(
@@ -281,14 +281,14 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let branching_bisim_naive = compare_lts(
                 compare::Equivalence::BranchingBisimNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
 
             assert_eq!(
@@ -311,14 +311,14 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
             let branching_bisim_dp_naive = compare_lts(
                 compare::Equivalence::BranchingBisimDivergencePreservingNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
-                &mut timing,
+                &timing,
             );
 
             assert_eq!(

@@ -897,8 +897,8 @@ mod tests {
 
             let mut timing = Timing::new();
 
-            let (result_lts, result_partition) = strong_bisim_sigref(lts.clone(), &mut timing);
-            let (expected_lts, expected_partition) = strong_bisim_sigref_naive(lts, &mut timing);
+            let (result_lts, result_partition) = strong_bisim_sigref(lts.clone(), &timing);
+            let (expected_lts, expected_partition) = strong_bisim_sigref_naive(lts, &timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -924,9 +924,9 @@ mod tests {
             let mut timing = Timing::new();
 
             let (result_lts, _, result_partition) =
-                branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &mut timing);
+                branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &timing);
             let (expected_lts, _, expected_partition) =
-                branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
+                branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -952,9 +952,9 @@ mod tests {
             let mut timing = Timing::new();
 
             let (result_lts, _, result_partition) =
-                weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, false, &mut timing);
+                weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, false, &timing);
             let (expected_lts, _, expected_partition) =
-                weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, false, &mut timing);
+                weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, false, &timing);
 
             files
                 .dump("result.aut", |writer| write_aut(writer, &result_lts))
@@ -980,12 +980,12 @@ mod tests {
             let mut timing = Timing::new();
 
             let (preprocessed_lts, _, branching_partition) =
-                branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &mut timing);
+                branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &timing);
             files
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
 
-            let strong_partition = strong_bisim_sigref_naive(preprocessed_lts.clone(), &mut timing).1;
+            let strong_partition = strong_bisim_sigref_naive(preprocessed_lts.clone(), &timing).1;
             is_refinement(&preprocessed_lts, &strong_partition, &branching_partition);
         });
     }
@@ -1002,13 +1002,13 @@ mod tests {
             let mut timing = Timing::new();
 
             let (preprocessed_lts, _, weak_partition) =
-                weak_bisim_sigref_naive(lts, StateIndex::new(0), false, false, &mut timing);
+                weak_bisim_sigref_naive(lts, StateIndex::new(0), false, false, &timing);
             files
                 .dump("preprocessed.aut", |writer| write_aut(writer, &preprocessed_lts))
                 .unwrap();
 
             let (_, _, branching_partition) =
-                branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false, &mut timing);
+                branching_bisim_sigref_naive(preprocessed_lts.clone(), StateIndex::new(0), false, &timing);
             is_refinement(&preprocessed_lts, &branching_partition, &weak_partition);
         });
     }

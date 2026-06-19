@@ -82,7 +82,7 @@ fn test_mcrl2_sigref_vs_ltsconvert(name: &str, equivalence: Equivalence, argumen
                 our_reduced,
                 ltsconvert_reduced,
                 false,
-                &mut timing
+                &timing
             ),
             "The reduced LTSs are not strongly bisimilar"
         );

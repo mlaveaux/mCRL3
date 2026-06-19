@@ -286,11 +286,11 @@ mod tests {
 
         files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
 
-        let reduced = reduce_lts(lts.clone(), equivalence, false, &mut timing);
+        let reduced = reduce_lts(lts.clone(), equivalence, false, &timing);
         files.dump("quotient.aut", |w| write_aut(w, &reduced)).unwrap();
 
         assert!(
-            compare_lts(equivalence, lts, reduced, false, &mut timing),
+            compare_lts(equivalence, lts, reduced, false, &timing),
             "Quotient is not equivalent under {equivalence:?}",
         );
     }

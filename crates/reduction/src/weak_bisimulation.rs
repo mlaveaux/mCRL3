@@ -467,8 +467,8 @@ mod tests {
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
-            let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &mut timing);
-            let expected = reduce_lts(lts, Equivalence::WeakBisimSigref, false, &mut timing);
+            let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &timing);
+            let expected = reduce_lts(lts, Equivalence::WeakBisimSigref, false, &timing);
 
             assert_eq!(result.num_of_states(), expected.num_of_states());
             assert_eq!(result.num_of_transitions(), expected.num_of_transitions());
@@ -476,13 +476,7 @@ mod tests {
             files.dump("result.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
-            assert!(compare_lts(
-                Equivalence::StrongBisim,
-                result,
-                expected,
-                false,
-                &mut timing
-            ));
+            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &timing));
         })
     }
 
@@ -496,8 +490,8 @@ mod tests {
             let mut timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
-            let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &mut timing);
-            let expected = reduce_lts(lts, Equivalence::WeakBisimParallel, false, &mut timing);
+            let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &timing);
+            let expected = reduce_lts(lts, Equivalence::WeakBisimParallel, false, &timing);
 
             assert_eq!(result.num_of_states(), expected.num_of_states());
             assert_eq!(result.num_of_transitions(), expected.num_of_transitions());
@@ -505,13 +499,7 @@ mod tests {
             files.dump("result.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
-            assert!(compare_lts(
-                Equivalence::StrongBisim,
-                result,
-                expected,
-                false,
-                &mut timing
-            ));
+            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &timing));
         })
     }
 }
