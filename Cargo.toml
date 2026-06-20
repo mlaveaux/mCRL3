@@ -139,7 +139,7 @@ merc_macros = { version = "2.0", path = "crates/macros" }
 merc_number = { version = "2.0", path = "crates/number" }
 merc_refinement = { version = "2.0", path = "crates/refinement" }
 merc_rec-tests = { path = "crates/rec-tests" }
-merc_reduction = { version = "2.0", path = "crates/reduction" }
+merc_reduction = { version = "3.0", path = "crates/reduction" }
 merc_sabre = { version = "2.0", path = "crates/sabre" }
 merc_sabre-compiling = { path = "crates/sabre_compiling" }
 merc_sabre-ffi = { path = "crates/sabre_compiling/sabre_ffi" }
