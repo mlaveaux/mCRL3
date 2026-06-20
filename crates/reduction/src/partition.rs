@@ -36,16 +36,3 @@ impl Partition for IndexedPartition {
         self.len()
     }
 }
-
-/// Combines two partitions into a new partition.
-pub fn combine_partition<P: Partition>(left: IndexedPartition, right: &P) -> IndexedPartition {
-    let mut combined_partition = left.clone();
-
-    for (element_index, block) in left.iter_elements() {
-        let new_block = right.block_number(StateIndex::new(block.value()));
-
-        combined_partition.set_block(element_index, new_block);
-    }
-
-    combined_partition
-}

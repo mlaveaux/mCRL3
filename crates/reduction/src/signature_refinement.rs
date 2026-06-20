@@ -895,7 +895,7 @@ mod tests {
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
-            let mut timing = Timing::new();
+            let timing = Timing::new();
 
             let (result_lts, result_partition) = strong_bisim_sigref(lts.clone(), &timing);
             let (expected_lts, expected_partition) = strong_bisim_sigref_naive(lts, &timing);
@@ -921,7 +921,7 @@ mod tests {
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
-            let mut timing = Timing::new();
+            let timing = Timing::new();
 
             let (result_lts, _, result_partition) =
                 branching_bisim_sigref(lts.clone(), StateIndex::new(0), false, &timing);
@@ -949,7 +949,7 @@ mod tests {
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
-            let mut timing = Timing::new();
+            let timing = Timing::new();
 
             let (result_lts, _, result_partition) =
                 weak_bisim_sigref_naive(lts.clone(), StateIndex::new(0), false, false, &timing);
@@ -977,7 +977,7 @@ mod tests {
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
-            let mut timing = Timing::new();
+            let timing = Timing::new();
 
             let (preprocessed_lts, _, branching_partition) =
                 branching_bisim_sigref_naive(lts, StateIndex::new(0), false, &timing);
@@ -999,7 +999,7 @@ mod tests {
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
 
-            let mut timing = Timing::new();
+            let timing = Timing::new();
 
             let (preprocessed_lts, _, weak_partition) =
                 weak_bisim_sigref_naive(lts, StateIndex::new(0), false, false, &timing);

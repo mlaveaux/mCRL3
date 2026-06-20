@@ -11,6 +11,10 @@ use merc_lts::Transition;
 /// For divergence-preserving branching bisimulation, we only need to treat
 /// tau-self-loops as non-inert transitions. This can be achieved by temporarily
 /// renaming the tau-self-loops to self-loops with a special label.
+///
+/// This relies on the fact that the original tau label is a specific label. The
+/// special label is added to the end of the label list, and is not used in the
+/// original LTS.
 pub struct DivergencePreservingLts<'a, L: LTS> {
     /// The special label used to mark tau-self-loops, this should not be used in the original LTS.
     tau_self_loops_label: LabelIndex,

@@ -464,7 +464,7 @@ mod tests {
             let files = DumpFiles::new("test_weak_bisimulation");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
             let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &timing);
@@ -487,7 +487,7 @@ mod tests {
             let files = DumpFiles::new("test_weak_bisimulation_parallel");
 
             let lts = random_lts::<String, _>(rng, 100, 3);
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();
 
             let result = reduce_lts(lts.clone(), Equivalence::WeakBisim, false, &timing);

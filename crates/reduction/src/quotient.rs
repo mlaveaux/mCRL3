@@ -30,12 +30,9 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
     eliminate_inert_taus: bool,
     eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
-    // Introduce the transitions based on the block numbers, the number of blocks is a decent approximation for the number of transitions.
-    let mut builder = LtsBuilderFast::with_capacity(
-        lts.labels().into(),
-        Vec::new(),
-        partition.num_of_blocks(), // We expect one transition per state.
-    );
+    // Introduce the transitions based on the block numbers. Seed the capacity
+    // with at least one transition per block; the builder grows as needed.
+    let mut builder = LtsBuilderFast::with_capacity(lts.labels().into(), Vec::new(), partition.num_of_blocks());
 
     for state_index in lts.iter_states() {
         for transition in lts.outgoing_transitions(state_index) {
@@ -279,7 +276,7 @@ mod tests {
     /// Generates a random LTS, reduces it under `equivalence`, and asserts
     /// that the original and reduced LTS are equivalent.
     fn check_quotient_equivalence(rng: &mut StdRng, equivalence: Equivalence, test_name: &str) {
-        let mut timing = Timing::new();
+        let timing = Timing::new();
         let files = DumpFiles::new(test_name);
 
         let lts = random_lts::<String, _>(rng, 100, 3);

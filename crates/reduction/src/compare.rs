@@ -103,7 +103,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_lts_permutation() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             let files = DumpFiles::new("test_random_lts_permutation");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
@@ -136,7 +136,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_compare_weak_bisim_variants() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             let lts1 = random_lts::<String, _>(rng, 100, 3);
             let lts2 = random_lts::<String, _>(rng, 100, 3);
 
@@ -189,7 +189,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_compare_weak_bisim_divergence_preserving_variants() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             let lts1 = random_lts::<String, _>(rng, 100, 3);
             let lts2 = random_lts::<String, _>(rng, 100, 3);
 
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_random_compare_random_compare_strong_bisim_variants() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             let lts1 = random_lts::<String, _>(rng, 100, 3);
             let lts2 = random_lts::<String, _>(rng, 100, 3);
 
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_random_compare_branching_bisim_variants() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             let lts1 = random_lts::<String, _>(rng, 100, 3);
             let lts2 = random_lts::<String, _>(rng, 100, 3);
 
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn test_random_compare_branching_bisim_divergence_preserving_variants() {
         random_test(100, |rng| {
-            let mut timing = Timing::new();
+            let timing = Timing::new();
             let lts1 = random_lts::<String, _>(rng, 100, 3);
             let lts2 = random_lts::<String, _>(rng, 100, 3);
 

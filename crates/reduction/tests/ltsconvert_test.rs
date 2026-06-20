@@ -53,7 +53,7 @@ fn test_mcrl2_sigref_vs_ltsconvert(name: &str, equivalence: Equivalence, argumen
 
         let ltsconvert_reduced = read_mcrl2_aut(File::open(&output_path).unwrap()).unwrap();
 
-        let mut timing = Timing::new();
+        let timing = Timing::new();
         let our_reduced = reduce_lts(lts, equivalence, false, &timing);
 
         files
@@ -124,7 +124,7 @@ fn test_mcrl2_strong_bisim_sigref_vs_ltsconvert() {
 fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
     test_mcrl2_sigref_vs_ltsconvert(
         "test_mcrl2_weak_bisim_sigref_vs_ltsconvert",
-        Equivalence::WeakBisim,
+        Equivalence::WeakBisimSigref,
         "weak-bisim",
     );
 }
@@ -134,7 +134,7 @@ fn test_mcrl2_weak_bisim_sigref_vs_ltsconvert() {
 fn test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert() {
     test_mcrl2_sigref_vs_ltsconvert(
         "test_mcrl2_divergence_preserving_weak_bisim_sigref_vs_ltsconvert",
-        Equivalence::WeakBisimDivergencePreserving,
+        Equivalence::WeakBisimSigrefDivergencePreserving,
         "dpweak-bisim",
     );
 }
