@@ -11,7 +11,7 @@ const DEFAULT_BRANCHING: usize = 8;
 /// Shards in the per-height interning tables.
 const FOREST_SHARDS: usize = 16;
 
-/// A value that can be stored in a [`BTreeForest`] node slot.
+/// A value that can be stored in a [`SequenceForest`] node slot.
 ///
 /// Nodes are untyped `[V; N]` arrays with neither a length nor a leaf/inner
 /// discriminant, so the slot type itself must represent three things: a real
@@ -79,10 +79,10 @@ const _: () = assert!(
 /// All-ones in the 58-bit root field; used as the empty-tree sentinel.
 const ROOT_EMPTY: u64 = (1u64 << (64 - MAX_HEIGHT_BITS)) - 1;
 
-/// A handle to a single tree stored in a [`BTreeForest`].
+/// A handle to a single tree stored in a [`SequenceForest`].
 ///
 /// Handles are only meaningful for the forest that produced them and are
-/// invalidated by [`BTreeForest::clear`].
+/// invalidated by [`SequenceForest::clear`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Tree {
     /// Bits [63:6] hold the root node index; bits [5:0] hold the height.
@@ -131,7 +131,7 @@ impl Default for Tree {
 /// # Details
 ///
 /// Inspired by the `cranelift_bforest` crate. The crucial difference is that
-/// this implementation uses hash conscing to maximally share (immutable) nodes
+/// this implementation uses hash consing to maximally share (immutable) nodes
 /// across trees. This makes it suitable to compactly represent large sets of
 /// similar sequences.
 ///
@@ -145,7 +145,7 @@ impl Default for Tree {
 /// `[5, 7]` interpreted as child references.
 ///
 /// Nodes are never freed individually; the forest is append-only and reclaimed
-/// all at once with [`BTreeForest::clear`].
+/// all at once with [`SequenceForest::clear`].
 pub struct SequenceForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHasher>
 where
     V: Copy,
@@ -163,7 +163,7 @@ where
 /// reallocate.
 ///
 /// The buffers only hold node indices, so a single context works for any
-/// [`BTreeForest`] regardless of its value type or branching factor.
+/// [`SequenceForest`] regardless of its value type or branching factor.
 #[derive(Debug, Default, Clone)]
 pub struct SequenceForestContext {
     /// Child indices of the level just built.
@@ -205,7 +205,7 @@ where
     S: BuildHasher,
 {
     /// Interns the sequence `values` and returns a handle to its tree, using a
-    /// throwaway [`BTreeForestContext`]. Prefer [`BTreeForest::insert_with`] on
+    /// throwaway [`SequenceForestContext`]. Prefer [`SequenceForest::insert_with`] on
     /// hot paths to reuse the scratch buffers.
     pub fn insert(&self, values: &[V]) -> Tree {
         self.insert_with(values, &mut SequenceForestContext::new())

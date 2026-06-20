@@ -23,21 +23,15 @@ pub enum CachingStrategy {
     Local,
 }
 
-/// Number of shards in each summand's local cache. Modest because the sharding
-/// is already two-dimensional (one independent cache per summand) and the hot
-/// lookup path only takes a shard read lock.
+/// Number of shards in each summand's local cache.
 const CACHE_SHARDS: usize = 16;
 
 /// A wrapper around an [`LPS`] that caches summand enumeration results.
 ///
 /// The cache key for each summand is formed by projecting the state vector onto
-/// the summand's read positions.
-///
-/// The cache is thread-safe: each summand's local cache, the shared forest and
-/// the hit / miss counters are all updated through `&self`, so a single
-/// `CacheLPS` can be shared (by `&`) across worker threads. Each thread threads
-/// its own [`CacheContext`] through [`Summand::enumerate`] for the reusable
-/// scratch buffers.
+/// the summand's read positions. The cache is thread-safe, and local context is
+/// used for the scratch buffers required to project the state vector and
+/// reconstruct next states from cached values.
 pub struct CacheLPS<P: LPS> {
     inner: Arc<P>,
     summands: Vec<CacheSummandWrapper<P>>,
@@ -45,9 +39,8 @@ pub struct CacheLPS<P: LPS> {
 
 /// A single cached enumeration result keyed by the read-position projection.
 ///
-/// Stored as a bare element in a summand's sharded cache table; the hash and
-/// equality are taken over `key` only. Cache hits replay the captured results
-/// in place under the shard read lock, so the entry is never cloned.
+/// Stored as a bare element in a summand's cache tabl. The results indicate the
+/// transition label and the captured write-position values for each next state.
 struct CacheEntry<L> {
     /// Hash-consed projection of the source state onto the read positions.
     key: Tree,
@@ -55,24 +48,19 @@ struct CacheEntry<L> {
     results: Vec<(L, Tree)>,
 }
 
-/// Per-thread reusable scratch buffers for [`CacheSummandWrapper::enumerate`].
-///
-/// Holding these per thread (rather than in shared `&self` state) is what makes
-/// concurrent enumeration sound: each thread interns into the shared forest and
-/// cache through `&self` but stages its keys and replay values in its own
-/// context.
+/// Per-thread reusable scratch buffers for enumeration.
 pub struct CacheContext<P: LPS> {
     /// Buffer projecting the state vector onto read (then write) positions.
     key_buf: Vec<P::Value>,
     /// Buffer reconstructing a next-state from a cached write-position tree.
     replay_buf: Vec<P::Value>,
-    /// Scratch buffers reused when interning into the forest.
+    /// Context reused when interning into the forest.
     forest_context: SequenceForestContext,
     /// Enumeration context for the wrapped inner summand (cache misses).
     inner: <P::Summand as Summand>::Context,
 }
 
-/// Thin metadata wrapper for a single summand in a [`CacheLPS`].
+/// Thin metadata wrapper for a single cached summand.
 pub struct CacheSummandWrapper<P: LPS> {
     /// Index of the summand in the LPS, used for cache lookups.
     index: usize,
@@ -334,6 +322,12 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
     type Label = P::Label;
     type Context = CacheContext<P>;
 
+    /// # Concurrency
+    ///
+    /// On a cache hit the captured results are replayed in place while this
+    /// summand's cache shard is **read-locked**, so `report` runs under that
+    /// lock. As a consequence `report` must not re-enter this same summand's
+    /// `enumerate`, because that will deadlock.
     fn enumerate<F>(&self, context: &mut Self::Context, state: &[Self::Value], mut report: F) -> Result<(), MercError>
     where
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>,

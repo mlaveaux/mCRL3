@@ -1,5 +1,3 @@
-//! A discovered set that stores state vectors as maximally shared sequences.
-
 use merc_unsafety::ConcurrentIndexedSet;
 
 use crate::SequenceForest;
@@ -74,18 +72,22 @@ where
     }
 
     /// Returns the handle of `state` if it is present, or `None` otherwise.
+    ///
+    /// Note this is *not* a read-only operation. To obtain the canonical handle
+    /// to compare against, `state` is interned into the backing forest, which
+    /// is append-only. As a result, failures also grow the forest.
     pub fn index(&self, state: &[T]) -> Option<StateRef> {
         self.index_with(state, &mut SequenceForestContext::new())
     }
 
-    /// Looks up `state` like [`DiscoveredSet::index`], reusing the scratch
-    /// buffers in `context`.
+    /// Looks up `state` like [`DiscoveredSet::index`], reusing the scratch buffers in `context`.
     pub fn index_with(&self, state: &[T], context: &mut SequenceForestContext) -> Option<StateRef> {
         let root = self.forest.insert_with(state, context);
         self.states.index(&root).map(StateRef)
     }
 
-    /// Returns true if `state` is present in the set.
+    /// Returns true if `state` is present in the set. Like
+    /// [`DiscoveredSet::index`], this interns `state` into the forest.
     pub fn contains(&self, state: &[T]) -> bool {
         self.index(state).is_some()
     }

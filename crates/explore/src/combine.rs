@@ -1,4 +1,7 @@
+use itertools::Itertools;
 use log::info;
+use streaming_iterator::StreamingIterator;
+
 use merc_collections::VecBag;
 use merc_io::TimeProgress;
 use merc_lts::LTS;
@@ -14,7 +17,6 @@ use merc_syntax::CommExpr;
 use merc_syntax::MultiActionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use streaming_iterator::StreamingIterator;
 
 use crate::DiscoveredSet;
 use crate::SequenceForestContext;
@@ -125,7 +127,7 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     // Pre-sort the allow set for efficient matching.
     let sorted_allow: Vec<SortedMultiActionLabel> = allow.iter().map(SortedMultiActionLabel::new).collect();
 
-    // Thhe working set of states that must still be explored.
+    // The working set of states that must still be explored.
     let mut working: Vec<StateRef> = vec![initial_ref];
     let mut iter_context = ParallelTransitionContext::new();
 
@@ -378,16 +380,24 @@ impl SortedMultiActionLabel {
     }
 }
 
-/// A view of an [`LtsMultiAction`] for multiset comparison with [`SortedMultiActionLabel`].
+/// A view of an [`LtsMultiAction`] for multiset comparison with
+/// [`SortedMultiActionLabel`].
 ///
-/// Since `VecBag<L>` iterates in sorted order, the actions are already in
-/// non-decreasing order, so no additional sorting is needed here.
+/// `VecBag<L>` iterates in `L`'s sorted order, this only works if `L`'s `Ord`
+/// implementation is consistent with the label-matching logic in `is_allowed`
+/// and the communication matching in `find_communication_match`.
 struct SortedLtsMultiAction<'a, L: Ord> {
     action: &'a LtsMultiAction<L>,
 }
 
 impl<'a, L: TransitionLabel> SortedLtsMultiAction<'a, L> {
     fn new(action: &'a LtsMultiAction<L>) -> Self {
+        // Check if the L Ord is consistent.
+        debug_assert!(
+            action.actions().iter().zip(action.actions().iter().sorted()).all(|(a, b)| a == b),
+            "LtsMultiAction's internal order must be consistent with the label-matching logic"
+        );
+        
         SortedLtsMultiAction { action }
     }
 
@@ -631,11 +641,16 @@ impl<'a, L: LTS> StreamingIterator for ParallelTransitionIter<'_, 'a, L> {
 
 #[cfg(test)]
 mod tests {
+    use merc_collections::VecBag;
+    use merc_lts::LtsMultiAction;
     use merc_lts::SimpleAction;
     use merc_syntax::CommExpr;
     use merc_syntax::MultiActionLabel;
 
+    use super::SortedLtsMultiAction;
+    use super::SortedMultiActionLabel;
     use super::find_communication_match;
+    use super::is_allowed;
 
     fn simple(label: &str, args: &[&str]) -> SimpleAction {
         SimpleAction::new(label.to_owned(), args.iter().map(|s| s.to_string()).collect())
@@ -646,6 +661,57 @@ mod tests {
             MultiActionLabel::new(from.iter().map(|s| s.to_string()).collect()),
             to.to_owned(),
         )
+    }
+
+    /// Builds the allow set from label-name multisets.
+    fn allow(entries: &[&[&str]]) -> Vec<SortedMultiActionLabel> {
+        entries
+            .iter()
+            .map(|names| {
+                SortedMultiActionLabel::new(&MultiActionLabel::new(names.iter().map(|s| s.to_string()).collect()))
+            })
+            .collect()
+    }
+
+    /// Builds a multi-action from actions; `VecBag` orders them internally.
+    fn multi_action(actions: Vec<SimpleAction>) -> LtsMultiAction<SimpleAction> {
+        LtsMultiAction::new(VecBag::from_vec(actions))
+    }
+
+    fn is_allowed_by(entries: &[&[&str]], actions: Vec<SimpleAction>) -> bool {
+        let action = multi_action(actions);
+        is_allowed(&allow(entries), &SortedLtsMultiAction::new(&action))
+    }
+
+    /// The allow operator matches on label-name multisets only, independent of
+    /// arguments. This locks in the name-primary ordering that [`is_allowed`]
+    /// relies on: here `a`'s argument sorts *after* `b`'s, so an argument-first
+    /// ordering of the bag would misalign the zip and wrongly reject `{a, b}`.
+    #[test]
+    fn allow_matches_multiset_ignoring_arguments() {
+        // Arguments chosen so an argument-first sort would reorder the names.
+        assert!(is_allowed_by(
+            &[&["a", "b"]],
+            vec![simple("a", &["9"]), simple("b", &["1"])]
+        ));
+
+        // Repeated names compare as a multiset, not a set.
+        assert!(is_allowed_by(
+            &[&["a", "a", "b"]],
+            vec![simple("a", &["1"]), simple("a", &["2"]), simple("b", &[])]
+        ));
+        assert!(!is_allowed_by(
+            &[&["a", "b", "b"]],
+            vec![simple("a", &["1"]), simple("a", &["2"]), simple("b", &[])]
+        ));
+
+        // A differing length or name is rejected; tau is always allowed.
+        assert!(!is_allowed_by(
+            &[&["a", "b"]],
+            vec![simple("a", &[]), simple("b", &[]), simple("b", &[])]
+        ));
+        assert!(!is_allowed_by(&[&["a", "c"]], vec![simple("a", &[]), simple("b", &[])]));
+        assert!(is_allowed_by(&[&["a", "b"]], vec![]));
     }
 
     /// Regression: when the first candidate for the first required name has

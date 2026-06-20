@@ -123,16 +123,19 @@ pub trait Summand {
         F: FnMut(&Self::Label, &[Self::Value]) -> Result<(), MercError>;
 
     /// Returns the indices into the state vector whose values fully determine
-    /// this summand's enumeration result (the "gamma" set). Used as the cache
+    /// this summand's enumeration result. Used as the cache
     /// key by [`crate::CacheLPS`].
-    fn read_positions(&self) -> &[usize] {
-        &[]
-    }
+    ///
+    /// This is a *correctness* contract under caching, not a hint: when the
+    /// summand is cached, two source states that agree on these positions are
+    /// assumed to enumerate identical results, so any position that influences
+    /// the guard or the written values must be listed.
+    fn read_positions(&self) -> &[usize];
 
     /// Returns the indices into the state vector that this summand may change.
     /// Every position *not* in this set is passed through unchanged from the
     /// source state to each enumerated next state.
-    fn write_positions(&self) -> &[usize] {
-        &[]
-    }
+    ///
+    /// This is also a *correctness* contract under caching.
+    fn write_positions(&self) -> &[usize];
 }

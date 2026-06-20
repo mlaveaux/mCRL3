@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::fmt;
 
 use itertools::Itertools;
@@ -227,7 +225,7 @@ impl<A: Clone + fmt::Debug> Block<A> {
 
     /// Returns true iff the block is consistent.
     fn assert_consistent(&self) {
-        debug_assert!(self.begin < self.end, "The range of block {self:?} is incorrect");
+        debug_assert!(self.begin <= self.end, "The range of block {self:?} is incorrect");
     }
 }
 
@@ -300,7 +298,7 @@ mod tests {
 
             // Every element in the indexed partition must appear in the block
             // partition exactly once.
-            let mut seen = vec![false; 100];
+            let mut seen = [false; 100];
             for block in 0..block_partition.num_of_blocks() {
                 for element in block_partition.iter_block(BlockIndex::new(block)) {
                     assert!(
