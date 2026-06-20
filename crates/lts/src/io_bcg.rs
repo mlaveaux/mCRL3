@@ -33,7 +33,6 @@ mod inner {
 
     use super::*;
 
-    use core::num;
     use std::cell::Cell;
     use std::collections::HashMap;
     use std::env;
@@ -70,7 +69,7 @@ mod inner {
     ///
     /// Note that the C library can only read files from disk; reading from
     /// in-memory buffers is not supported.
-    pub fn read_bcg(path: &Path, hidden_labels: Vec<String>) -> Result<LabelledTransitionSystem<String>, MercError> {
+    pub fn read_bcg(path: &Path) -> Result<LabelledTransitionSystem<String>, MercError> {
         initialize_bcg()?;
         info!("Reading LTS in BCG format...");
 
@@ -128,7 +127,7 @@ mod inner {
                 info!(
                     "Read {} transitions ({}%)...",
                     LargeFormatter(transitions),
-                    transitions * 100 / num_of_transitions as usize
+                    transitions * 100 / (num_of_transitions as usize).max(1)
                 );
             },
             1,
@@ -136,7 +135,7 @@ mod inner {
 
         // Read the successors for every state.
         let num_of_states = unsafe { BCG_OT_NB_STATES(bcg_object) };
-        let mut num_of_transitions = Cell::new(0usize);
+        let num_of_transitions = Cell::new(0usize);
         let lts = LabelledTransitionSystem::with_successors(
             StateIndex::new(initial_state as usize),
             num_of_states as usize,
@@ -438,34 +437,41 @@ mod inner {
         use merc_utilities::random_test;
 
         use crate::LTS;
-        use crate::random_lts_monolithic;
+        use crate::random_lts;
         use crate::read_bcg;
         use crate::write_bcg;
 
         #[test]
         fn test_read_bcg() {
             // Test reading a BCG file.
-            let lts = read_bcg(Path::new("../../examples/lts/abp.bcg"), Vec::new()).unwrap();
+            let lts = read_bcg(Path::new("../../examples/lts/abp.bcg")).unwrap();
 
             assert_eq!(lts.num_of_states(), 74);
             assert_eq!(lts.num_of_transitions(), 92);
             assert_eq!(lts.num_of_labels(), 19);
         }
 
+        /// Round-trips a random LTS through the BCG format: a generated LTS is
+        /// written to a temporary `.bcg` file and read back. The BCG C library
+        /// only operates on files, so an in-memory buffer cannot be used.
         #[test]
-        #[cfg_attr(miri, ignore)] // Too slow with miri
+        #[cfg_attr(miri, ignore)] // Too slow with miri, and exercises the C BCG library.
         fn test_random_bcg_io() {
             random_test(100, |rng| {
-                let lts = random_lts_monolithic::<String>(rng, 100, 3, 20);
+                let lts = random_lts::<String, _>(rng, 100, 3);
 
-                // Use a temporary file in the target directory.
-                let tmp = temp_dir();
-
-                let file = tmp.join("test_random_bcg_io.bcg");
+                // Use a temporary file since the BCG library cannot read buffers.
+                let file = temp_dir().join("test_random_bcg_io.bcg");
                 write_bcg(&lts, &file).unwrap();
 
-                let result_lts = read_bcg(&file, Vec::new()).unwrap();
+                let result_lts = read_bcg(&file).unwrap();
 
+                // The number of transitions must be identical after the round-trip.
+                assert_eq!(
+                    result_lts.num_of_transitions(),
+                    lts.num_of_transitions(),
+                    "BCG round-trip must preserve the number of transitions"
+                );
                 crate::check_equivalent(&lts, &result_lts);
             });
         }
