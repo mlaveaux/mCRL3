@@ -83,14 +83,22 @@ impl Markable for Config<'_> {
     }
 }
 
+// SAFETY: `Config` only borrows the term pool through its `DataFunctionSymbolRef`
+// / `DataExpressionRef` fields, which are themselves lifetime-erasable handles
+// into the global term pool. Transmuting only changes the lifetime parameter, so
+// the layout is identical.
 unsafe impl Transmutable for Config<'static> {
     type Target<'a> = Config<'a>;
 
     unsafe fn transmute_lifetime<'a>(&'_ self) -> &'a Self::Target<'a> {
+        // SAFETY: see the trait impl comment above; the caller upholds that 'a does not
+        // outlive the borrow of `self`.
         unsafe { std::mem::transmute::<&Self, &'a Config>(self) }
     }
 
     unsafe fn transmute_lifetime_mut<'a>(&'_ mut self) -> &'a mut Self::Target<'a> {
+        // SAFETY: see the trait impl comment above; the caller upholds that 'a does not
+        // outlive the borrow of `self`.
         unsafe { std::mem::transmute::<&mut Self, &'a mut Config>(self) }
     }
 }
@@ -312,13 +320,20 @@ pub fn create_var_map(t: &DataExpression) -> HashMap<DataVariable, DataPosition>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use ahash::AHashSet;
+    use ahash::HashMap;
+    use ahash::HashMapExt;
+    use merc_aterm::Protected;
+    use merc_data::DataExpression;
     use merc_data::DataFunctionSymbol;
+    use merc_data::DataVariable;
     use merc_utilities::test_logger;
 
     use crate::test_utility::create_rewrite_rule;
+    use crate::utilities::Config;
+    use crate::utilities::DataPosition;
+    use crate::utilities::TermStack;
+    use crate::utilities::create_var_map;
 
     use test_log::test;
 
