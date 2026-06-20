@@ -668,6 +668,29 @@ mod tests {
     use crate::ATerm;
     use crate::ATermSend;
     use crate::Symbol;
+    use crate::Term;
+    use crate::storage::THREAD_TERM_POOL;
+
+    #[test]
+    fn test_send_term_outlives_creating_thread() {
+        // An ATermSend created on a thread must keep its term alive after that thread exits,
+        // even across garbage collection. This pins the invariant relied upon when GC reclaims
+        // the send-term protection set slots of exited threads: a slot must not be released while
+        // a live ATermSend still references it.
+        let symbol = Symbol::new("send_outlives", 0);
+        let term = std::thread::spawn(|| ATermSend::from(ATerm::constant(&Symbol::new("send_outlives", 0))))
+            .join()
+            .unwrap();
+
+        // The creating thread has exited; force collections from this thread.
+        THREAD_TERM_POOL.with(|tp| {
+            tp.force_collect_garbage();
+            tp.force_collect_garbage();
+        });
+
+        // The term must still be alive and structurally intact.
+        assert_eq!(term.get_head_symbol(), symbol.copy());
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)] // This test runs too slow under miri.

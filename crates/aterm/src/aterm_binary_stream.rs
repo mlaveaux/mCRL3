@@ -67,6 +67,8 @@ impl From<u8> for PacketType {
             1 => PacketType::ATerm,
             2 => PacketType::ATermOutput,
             3 => PacketType::ATermIntOutput,
+            // Unreachable in practice: every caller derives `value` from `read_bits(PACKET_BITS)`
+            // with `PACKET_BITS == 2`, so it is always in `0..=3`. Kept as a defensive guard.
             _ => panic!("Invalid packet type: {value}"),
         }
     }
@@ -256,7 +258,9 @@ impl<W: Write> ATermWrite for BinaryATermWriter<W> {
                     // Add current term back to stack for writing after processing arguments
                     self.stack.push_back((current_term.clone(), true));
 
-                    // Add arguments to stack for processing first
+                    // Add arguments to stack for processing first. Two equal
+                    // arguments are both pushed here, but that does not write
+                    // the term twice.
                     for arg in current_term.arguments() {
                         if !self.terms.read().contains(&arg) {
                             self.stack.push_back((arg.protect(), false));

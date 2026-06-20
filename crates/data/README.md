@@ -12,15 +12,14 @@ is rather arbitrary. In the future one could consider adding traits for data
 expressions to make the representation independent of the actual representation,
 but this has not been done yet.
 
- Data expressions are typically sorted (or typed), and these are represented by
-`SortExpression`s. However, as opposed to the mCRL2 toolset we do not represent
-the sort AST as a term, but rather as a dedicated Rust data type in the
-`merc_syntax` crate. Furthermore, for rewriting purposes the types are not
-important so we can also represent untyped data expressions, which can (easily)
-be constructed from terms as shown below.
+Data expressions are typically sorted (or typed), and these sorts are represented
+by `SortExpression`s. Like the data expressions themselves, a `SortExpression` is a
+thin wrapper around a `merc_aterm` term. For rewriting purposes the types are not
+important, so we can also represent untyped data expressions, which can (easily) be
+constructed from terms as shown below.
 
-This crate also demonstrates the use of `merc_syntax` for defining higher-level
-structure on top of first-order terms.
+This crate also demonstrates how to define higher-level structure on top of the
+first-order terms provided by `merc_aterm`.
 
 ```rust
 use ahash::AHashSet;

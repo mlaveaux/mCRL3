@@ -18,5 +18,7 @@ delegate.workspace = true
 hashbrown.workspace = true
 itertools.workspace = true
 log.workspace = true
-rand.workspace = true
 rustc-hash.workspace = true
+
+[dev-dependencies]
+rand.workspace = true

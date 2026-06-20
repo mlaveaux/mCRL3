@@ -175,6 +175,10 @@ impl GlobalTermPool {
     }
 
     /// Deregisters a thread pool.
+    ///
+    /// The `send_term_protection_sets` slot is deliberately left in place: a
+    /// still-live ATermSend created on this thread may outlive it and
+    /// must keep being marked.
     pub(crate) fn deregister_thread_pool(&mut self, index: usize) {
         debug!("Removed thread_local protection set(s) {index}");
         if let Some(entry) = self.thread_pools.get_mut(index) {
@@ -211,7 +215,8 @@ impl GlobalTermPool {
     /// The hook runs in the middle of garbage collection, when the dying term's arguments may
     /// already have been deallocated by an earlier pass over a different arity table. Hooks must
     /// therefore not dereference the term's arguments; they may only use the term's address and
-    /// its head symbol.
+    /// its head symbol. For the same reason a hook must not create terms or otherwise re-enter the
+    /// pool mutably (e.g. trigger another collection): the sweep holds `&mut self` throughout.
     pub fn register_deletion_hook<F>(&mut self, symbol: SymbolRef<'static>, hook: F)
     where
         F: Fn(&ATermIndex) + Sync + Send + 'static,
@@ -264,6 +269,8 @@ impl GlobalTermPool {
                 }
             }
 
+            // Marking a `Protected` container goes through `GcMutex::lock`, which takes a
+            // `read_recursive` on the same lock we already hold for writing here.
             for (_, container) in pool.container_protection_set.iter() {
                 container.mark(&mut marker);
             }
@@ -276,6 +283,14 @@ impl GlobalTermPool {
                 unsafe {
                     ATermRef::from_index(term).mark(&mut marker);
                 }
+            }
+        }
+
+        // Reclaim send-term protection sets whose owning thread has exited and that hold no
+        // outstanding ATermSend.
+        for slot in self.send_term_protection_sets.iter_mut() {
+            if slot.as_ref().is_some_and(|set| Arc::strong_count(set) == 1) {
+                *slot = None;
             }
         }
 

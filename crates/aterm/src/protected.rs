@@ -49,12 +49,11 @@ impl<C: Markable + Send + Sync + Transmutable + 'static> Protected<C> {
 
     /// Provides mutable access to the underlying container, returning a [ProtectedWriteGuard].
     pub fn write(&mut self) -> ProtectedWriteGuard<'_, C> {
-        // SAFETY: `Protected<C>` is `!Send` (`PhantomUnsend`), so it is only ever
-        // used from one thread.  `write` takes `&mut self`, which guarantees no
-        // other borrow of `Protected` — and therefore no other guard — exists at
-        // the same time.  `container` is a private field, so `Arc` is the sole
-        // path to the `GcMutex<C>`.  Together these invariants make the cast to
-        // `&mut GcMutex<C>` sound.
+        // SAFETY: Protected is `!Send` so it is only ever used from one thread,
+        // and `write` takes `&mut self`, so no other guard from this handle
+        // overlaps. The only other access is the global garbage collector,
+        // which only accesses the container when this handle is dropped, so it
+        // cannot overlap either.
         let mutex = unsafe { &mut *(Arc::as_ptr(&self.container) as *mut GcMutex<C>) };
         ProtectedWriteGuard::new(mutex.lock_mut())
     }

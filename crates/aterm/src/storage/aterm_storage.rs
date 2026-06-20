@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::hash::Hash;
 use std::ptr::NonNull;
 use std::ptr::slice_from_raw_parts_mut;

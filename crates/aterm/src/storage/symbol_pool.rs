@@ -105,19 +105,16 @@ impl SymbolPool {
 
     /// Creates a new prefix counter for the given prefix.
     pub fn create_prefix(&self, prefix: &str) -> Arc<AtomicUsize> {
-        // Create a new counter for the prefix if it does not exist
-        let result = match self.prefix_to_register_function_map.get(prefix) {
-            Some(result) => result.clone(),
-            None => {
-                let result = Arc::new(AtomicUsize::new(0));
-                assert!(
-                    self.prefix_to_register_function_map
-                        .insert(prefix.to_string(), result.clone())
-                        .is_none(),
-                    "This key should not yet exist"
-                );
-                result
-            }
+        // Create a new counter for the prefix if it does not exist. The fast path avoids
+        // allocating the key string on a hit; the miss path uses `entry`/`or_insert_with` so
+        // the get-then-insert is atomic even when called concurrently through the `&self` API.
+        let result = if let Some(result) = self.prefix_to_register_function_map.get(prefix) {
+            result.clone()
+        } else {
+            self.prefix_to_register_function_map
+                .entry(prefix.to_string())
+                .or_insert_with(|| Arc::new(AtomicUsize::new(0)))
+                .clone()
         };
 
         // Ensure the counter starts at a sufficiently large index

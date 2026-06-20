@@ -108,9 +108,11 @@ impl<T, S> IndexedSet<T, S> {
         }
     }
 
-    /// Returns a reference to the element at the given index, if it exists.
+    /// Returns a reference to the element at the given raw table index, if a
+    /// filled entry exists there.
     ///
-    /// Does not check if the index is valid, so it is the caller's responsibility to ensure this.
+    /// Unlike [Self::get] this takes a plain `usize` and performs no generation
+    /// check; it only verifies that the slot is in bounds and filled.
     pub fn get_by_index(&self, index: usize) -> Option<&T> {
         if let Some(entry) = self.table.get(index) {
             match entry {
@@ -317,13 +319,19 @@ impl<T, S> Index<SetIndex> for IndexedSet<T, S> {
     type Output = T;
 
     fn index(&self, index: SetIndex) -> &Self::Output {
-        cast!(&self.table[*index], IndexSetEntry::Filled)
+        // Go through the generation counter so a stale index is detected in
+        // debug builds, consistent with [Self::get].
+        let raw = self.generation_counter.get_index(index.0);
+        cast!(&self.table[raw], IndexSetEntry::Filled)
     }
 }
 
 impl<T, S: BuildHasher> IndexMut<SetIndex> for IndexedSet<T, S> {
     fn index_mut(&mut self, index: SetIndex) -> &mut Self::Output {
-        cast!(&mut self.table[*index], IndexSetEntry::Filled)
+        // Go through the generation counter so a stale index is detected in
+        // debug builds, consistent with [Self::get].
+        let raw = self.generation_counter.get_index(index.0);
+        cast!(&mut self.table[raw], IndexSetEntry::Filled)
     }
 }
 

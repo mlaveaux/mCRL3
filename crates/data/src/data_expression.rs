@@ -90,20 +90,9 @@ mod inner {
         /// map cleanly to a flat argument list.
         #[merc_ignore]
         pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'_>> + use<'_> {
-            let mut result = self.term.arguments();
-            if is_data_application(&self.term) {
-                result.next(); // skip head function symbol
-            } else if is_data_function_symbol(&self.term) || is_data_variable(&self.term) {
-                result.next(); // skip name
-                result.next(); // skip sort
-            } else if is_data_machine_number(&self.term) {
-                // Int terms carry no ATerm children; exhausting the iterator is a no-op.
-                while result.next().is_some() {}
-            } else {
-                panic!("data_arguments is not defined for binders and where clauses: {self}");
-            }
-
-            result.map(|t| t.into())
+            let skip = data_argument_skip_count(&self.term)
+                .unwrap_or_else(|| panic!("data_arguments is not defined for binders and where clauses: {self}"));
+            self.term.arguments().skip(skip).map(|t| t.into())
         }
 
         /// Creates a closed [DataExpression] from a string, i.e., has no free variables.
@@ -193,6 +182,9 @@ mod inner {
         }
 
         /// Returns the internal operation id (a unique number) for the data::function_symbol.
+        ///
+        /// This is the term's pool index, which is only a stable identifier for indexed `OpId`
+        /// symbols; it is not meaningful for the `OpIdNoIndex` variant.
         pub fn operation_id(&self) -> usize {
             self.term.index()
         }
@@ -348,11 +340,9 @@ mod inner {
     impl MachineNumber {
         /// Obtain the underlying value of a machine number.
         ///
-        /// # Safety
-        ///
-        /// This method assumes that the term is indeed an integer term, which
-        /// should be guaranteed by the constructor and the
-        /// `is_data_machine_number` function.
+        /// Assumes the term is an integer term, which is guaranteed by the constructor
+        /// and [`is_data_machine_number`]. The cast reinterprets the stored `i64` bit
+        /// pattern as `u64`, recovering values in `[0, 2^64-1]`.
         pub fn value(&self) -> u64 {
             Into::<ATermIntRef<'_>>::into(self.term.copy()).value() as u64
         }
@@ -410,21 +400,30 @@ mod inner {
 
 pub use inner::*;
 
+/// Returns the number of leading `ATerm` arguments that are *not* data sub-expressions and
+/// must therefore be skipped by `data_arguments`, or `None` for binders/where clauses which
+/// have no flat argument list.
+///
+///   - application `f(t_0, ..., t_n)` -> skip 1 (the head function symbol)
+///   - function symbol / variable     -> skip 2 (name and sort)
+///   - machine number                 -> skip 0 (int terms carry no `ATerm` children)
+fn data_argument_skip_count<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> Option<usize> {
+    if is_data_application(term) {
+        Some(1)
+    } else if is_data_function_symbol(term) || is_data_variable(term) {
+        Some(2)
+    } else if is_data_machine_number(term) {
+        Some(0)
+    } else {
+        None
+    }
+}
+
 impl<'a> DataExpressionRef<'a> {
     pub fn data_arguments(&self) -> impl ExactSizeIterator<Item = DataExpressionRef<'a>> + use<'a> {
-        let mut result = self.term.arguments();
-        if is_data_application(&self.term) {
-            result.next(); // skip head function symbol
-        } else if is_data_function_symbol(&self.term) || is_data_variable(&self.term) {
-            result.next(); // skip name
-            result.next(); // skip sort
-        } else if is_data_machine_number(&self.term) {
-            while result.next().is_some() {}
-        } else {
-            panic!("data_arguments is not defined for binders and where clauses: {self}");
-        }
-
-        result.map(|t| t.into())
+        let skip = data_argument_skip_count(&self.term)
+            .unwrap_or_else(|| panic!("data_arguments is not defined for binders and where clauses: {self}"));
+        self.term.arguments().skip(skip).map(|t| t.into())
     }
 
     /// Returns the ith argument of a data application.
@@ -448,14 +447,19 @@ pub fn to_untyped_data_expression(t: ATerm, variables: Option<&AHashSet<String>>
                 tp,
                 t,
                 |_tp, args, t| {
-                    if variables.is_some_and(|v| v.contains(t.get_head_symbol().name())) {
-                        // Convert a constant variable, for example 'x', into an untyped variable.
-                        Ok(Yield::Term(DataVariable::new(t.get_head_symbol().name()).into()))
-                    } else if t.get_head_symbol().arity() == 0 {
-                        Ok(Yield::Term(DataFunctionSymbol::new(t.get_head_symbol().name()).into()))
+                    let name = t.get_head_symbol().name();
+                    if t.get_head_symbol().arity() == 0 {
+                        if variables.is_some_and(|v| v.contains(name)) {
+                            // Convert a constant identifier, for example 'x', into an untyped variable.
+                            Ok(Yield::Term(DataVariable::new(name).into()))
+                        } else {
+                            Ok(Yield::Term(DataFunctionSymbol::new(name).into()))
+                        }
                     } else {
-                        // This is a function symbol applied to a number of arguments
-                        let head = DataFunctionSymbol::new(t.get_head_symbol().name());
+                        // This is a function symbol applied to a number of arguments. Variables are
+                        // only recognised in nullary position, so an applied identifier keeps its
+                        // arguments instead of being silently collapsed to a variable.
+                        let head = DataFunctionSymbol::new(name);
 
                         for arg in t.arguments() {
                             args.push(arg.protect());
@@ -479,10 +483,11 @@ mod tests {
     use super::*;
 
     use merc_aterm::ATerm;
+    use merc_aterm::ATermInt;
 
     #[test]
     fn test_print() {
-        let _ = merc_utilities::test_logger();
+        merc_utilities::test_logger();
 
         let a = DataFunctionSymbol::new("a");
         assert_eq!("a", format!("{}", a));
@@ -522,5 +527,49 @@ mod tests {
 
         assert_eq!(expression.data_arg(0).data_function_symbol().name(), "s");
         assert_eq!(expression.data_arg(0).data_arg(0).data_function_symbol().name(), "a");
+    }
+
+    #[test]
+    fn test_machine_number() {
+        let term: ATerm = ATermInt::new(42).into();
+        assert!(is_data_machine_number(&term));
+
+        let expr: DataExpression = term.into();
+        assert_eq!(format!("{expr}"), "42");
+        // Machine numbers have no data sub-expressions.
+        assert_eq!(expr.data_arguments().count(), 0);
+    }
+
+    #[test]
+    fn test_variable_sort() {
+        let var = DataVariable::new("x");
+        assert_eq!(var.name(), "x");
+
+        let expr: DataExpression = var.into();
+        assert!(is_data_variable(&expr));
+        assert_eq!(expr.data_sort().name(), "@no_value@");
+        assert_eq!(expr.data_arguments().count(), 0);
+    }
+
+    #[test]
+    fn test_from_string_untyped_variable() {
+        let vars = AHashSet::from_iter(["x".to_string()]);
+        let expr = DataExpression::from_string_untyped("f(x, a)", &vars).unwrap();
+
+        // 'x' is recognised as a variable, 'a' stays a function symbol.
+        assert!(is_data_variable(&expr.data_arg(0)));
+        assert_eq!(expr.data_arg(1).data_function_symbol().name(), "a");
+    }
+
+    #[test]
+    fn test_from_string_untyped_applied_identifier_keeps_args() {
+        // 'x' is in the variable set but appears applied; it must stay an application rather than
+        // collapsing to a variable and silently dropping its argument.
+        let vars = AHashSet::from_iter(["x".to_string()]);
+        let expr = DataExpression::from_string_untyped("x(a)", &vars).unwrap();
+
+        assert!(is_data_application(&expr));
+        assert_eq!(expr.data_function_symbol().name(), "x");
+        assert_eq!(expr.data_arguments().count(), 1);
     }
 }

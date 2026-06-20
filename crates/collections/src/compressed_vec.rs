@@ -291,7 +291,8 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     where
         P: Fn(usize) -> usize,
     {
-        let mut result = ByteCompressedVec::with_capacity(self.data.capacity(), self.bytes_per_entry);
+        // `with_capacity` is in entries, not bytes, so pass the element count.
+        let mut result = ByteCompressedVec::with_capacity(self.len(), self.bytes_per_entry);
         for index in 0..self.len() {
             result.push(self.index(indices(index)));
         }
@@ -322,8 +323,8 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     {
         let current_len = self.len();
         if new_len > current_len {
-            // Preallocate the required space.
-            self.data.reserve(new_len * self.bytes_per_entry);
+            // Preallocate space for the additional entries.
+            self.data.reserve((new_len - current_len) * self.bytes_per_entry);
             for _ in current_len..new_len {
                 self.push(f());
             }
@@ -458,7 +459,10 @@ impl CompressedEntry for usize {
     }
 
     fn bytes_required(&self) -> usize {
-        ((self + 1).ilog2() / u8::BITS) as usize + 1
+        // Compute the bit width of the value directly. Using `self + 1` would
+        // overflow at usize::MAX and overestimate by one byte at exact byte
+        // boundaries (e.g. 255 would report 2 bytes instead of 1).
+        ((*self).max(1).ilog2() / u8::BITS) as usize + 1
     }
 }
 
@@ -537,6 +541,22 @@ mod tests {
         for (expected, element) in expected_vector.iter().zip(vector.iter()) {
             assert_eq!(*expected, element);
         }
+    }
+
+    #[test]
+    fn test_bytes_required_boundaries() {
+        // Exact byte boundaries must not be overestimated, and usize::MAX must not overflow.
+        assert_eq!(0usize.bytes_required(), 1);
+        assert_eq!(255usize.bytes_required(), 1);
+        assert_eq!(256usize.bytes_required(), 2);
+        assert_eq!(65535usize.bytes_required(), 2);
+        assert_eq!(65536usize.bytes_required(), 3);
+        assert_eq!(usize::MAX.bytes_required(), (usize::BITS / u8::BITS) as usize);
+
+        // A round-trip through a vector with the maximum value must work.
+        let mut vec = ByteCompressedVec::new();
+        vec.push(usize::MAX);
+        assert_eq!(vec.index(0), usize::MAX);
     }
 
     #[test]

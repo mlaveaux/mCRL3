@@ -72,3 +72,17 @@ mod inner {
 }
 
 pub use inner::*;
+
+#[cfg(test)]
+mod tests {
+    use super::SortExpression;
+    use super::is_sort_expression;
+
+    #[test]
+    fn test_unknown_sort() {
+        let sort = SortExpression::unknown_sort();
+        assert_eq!(sort.name(), "@no_value@");
+        assert_eq!(format!("{sort}"), "@no_value@");
+        assert!(is_sort_expression(&sort));
+    }
+}
