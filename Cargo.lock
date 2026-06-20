@@ -1274,7 +1274,6 @@ dependencies = [
 name = "merc_macros"
 version = "2.0.0"
 dependencies = [
- "delegate",
  "proc-macro2",
  "quote",
  "syn",

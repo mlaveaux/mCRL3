@@ -136,6 +136,39 @@ impl<R: Read> BitStreamRead for BitStreamReader<R> {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::BitStreamRead;
+    use super::BitStreamReader;
+    use super::BitStreamWrite;
+    use super::BitStreamWriter;
+
+    /// Writing `number_of_bits` of a value and reading them back yields the same
+    /// value (its least-significant bits). Bounded to a small width to keep the
+    /// symbolic execution through `bitstream-io` tractable.
+    #[kani::proof]
+    #[kani::unwind(20)]
+    fn write_read_bits_roundtrips() {
+        let number_of_bits: u8 = kani::any();
+        kani::assume(number_of_bits >= 1 && number_of_bits <= 16);
+
+        // Only the least-significant `number_of_bits` bits survive the round-trip.
+        let mask: u64 = (1u64 << number_of_bits) - 1;
+        let value: u64 = kani::any();
+        kani::assume(value <= mask);
+
+        let mut buffer = Vec::new();
+        {
+            let mut writer = BitStreamWriter::new(&mut buffer);
+            writer.write_bits(value, number_of_bits).unwrap();
+            writer.flush().unwrap();
+        }
+
+        let mut reader = BitStreamReader::new(&buffer[..]);
+        assert_eq!(reader.read_bits(number_of_bits).unwrap(), value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::BitStreamRead;
