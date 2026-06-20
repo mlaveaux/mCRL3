@@ -39,7 +39,16 @@ where
     }
 
     let bits = std::mem::size_of::<T>() * 8;
-    T::one() << (bits - value.leading_zeros() as usize)
+    let shift = bits - value.leading_zeros() as usize;
+
+    // When `shift == bits` the ceiling is `2^bits`, which is not representable
+    // in `T`.
+    assert!(
+        shift < bits,
+        "round_up_to_power_of_two: value has no representable power-of-two ceiling",
+    );
+
+    T::one() << shift
 }
 
 #[cfg(test)]
@@ -92,5 +101,54 @@ mod tests {
         assert_eq!(round_up_to_power_of_two(9u32), 16);
         assert_eq!(round_up_to_power_of_two(17u64), 32);
         assert_eq!(round_up_to_power_of_two(33usize), 64);
+    }
+
+    #[test]
+    fn test_round_up_to_largest_representable() {
+        // The largest power of two that fits is returned unchanged.
+        assert_eq!(round_up_to_power_of_two(128u8), 128);
+        // Values just below it still round up correctly without overflowing.
+        assert_eq!(round_up_to_power_of_two(65u8), 128);
+    }
+
+    #[test]
+    #[should_panic(expected = "no representable power-of-two ceiling")]
+    fn test_round_up_unrepresentable_panics() {
+        // 200 rounds up to 256, which does not fit in a u8. This must panic in
+        // every build profile, not silently return a wrong value.
+        let _ = round_up_to_power_of_two(200u8);
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::is_power_of_two;
+    use super::round_up_to_power_of_two;
+
+    /// `is_power_of_two` holds exactly when a single bit is set, for every
+    /// `u16`. Kani also checks the implementation is free of overflow.
+    #[kani::proof]
+    fn is_power_of_two_matches_count_ones() {
+        let value: u16 = kani::any();
+        assert_eq!(is_power_of_two(value), value.count_ones() == 1);
+    }
+
+    /// For every representable input, `round_up_to_power_of_two` returns the
+    /// smallest power of two that is `>=` the input (and never overflows).
+    #[kani::proof]
+    fn round_up_is_smallest_power_of_two() {
+        let value: u16 = kani::any();
+        // Restrict to inputs whose ceiling is representable in u16.
+        kani::assume(value <= 1u16 << 15);
+
+        let result = round_up_to_power_of_two(value);
+
+        assert!(is_power_of_two(result));
+        assert!(result >= value.max(1));
+
+        // Halving drops strictly below the input, so no smaller power qualifies.
+        if result > 1 {
+            assert!(result / 2 < value.max(1));
+        }
     }
 }

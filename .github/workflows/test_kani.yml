@@ -28,3 +28,8 @@ jobs:
       uses: model-checking/kani-github-action@v1
       with:
         working-directory: crates/unsafety
+
+    - name: Run Kani on merc_number
+      uses: model-checking/kani-github-action@v1
+      with:
+        working-directory: crates/number

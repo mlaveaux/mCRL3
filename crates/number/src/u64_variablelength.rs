@@ -9,7 +9,12 @@ use bitstream_io::Endianness;
 
 use merc_utilities::MercError;
 
-/// The number of bits needed to represent a value of type T in most significant bit encoding.
+/// The maximum number of bytes needed to encode a value of type T in most
+/// significant bit encoding.
+///
+/// The encoding stores 7 payload bits per byte, so a `T` of `n` bits needs
+/// `ceil(n / 7)` bytes. `((size_of::<T>() + 1) * 8) / 7` computes that ceiling
+/// (e.g. 10 bytes for `u64`).
 pub const fn encoding_size<T>() -> usize {
     ((std::mem::size_of::<T>() + 1) * 8) / 7
 }
@@ -42,7 +47,7 @@ pub fn read_u64_variablelength<R: Read, E: Endianness>(stream: &mut BitReader<R,
     for i in 0..encoding_size::<u64>() {
         let byte = stream.read::<8, u8>()?;
 
-        // Take 7 bits (mask 0x01111111) from byte and shift it before the bits already written to value.
+        // Take 7 bits (mask 0b01111111) from byte and shift it before the bits already written to value.
         value |= ((byte & 0b01111111) as u64) << (7 * i);
 
         if byte & 0b10000000 == 0 {
@@ -56,26 +61,51 @@ pub fn read_u64_variablelength<R: Read, E: Endianness>(stream: &mut BitReader<R,
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::BitReader;
+    use super::BitWriter;
+    use super::encoding_size;
+    use super::read_u64_variablelength;
+    use super::write_u64_variablelength;
 
     use bitstream_io::BigEndian;
     use rand::RngExt;
 
     use merc_utilities::random_test;
 
+    /// Round-trips `value` through the encoder and decoder and asserts equality.
+    fn roundtrip(value: u64) {
+        let mut stream: [u8; encoding_size::<u64>()] = [0; encoding_size::<u64>()];
+        let mut writer = BitWriter::<_, BigEndian>::new(&mut stream[0..]);
+        write_u64_variablelength(&mut writer, value).unwrap();
+
+        let mut reader = BitReader::<_, BigEndian>::new(&stream[0..]);
+        assert_eq!(read_u64_variablelength(&mut reader).unwrap(), value);
+    }
+
+    #[test]
+    fn test_encoding_size() {
+        assert_eq!(encoding_size::<u8>(), 2);
+        assert_eq!(encoding_size::<u16>(), 3);
+        assert_eq!(encoding_size::<u32>(), 5);
+        assert_eq!(encoding_size::<u64>(), 10);
+    }
+
+    #[test]
+    fn test_boundary_encoding() {
+        // Edge values and the per-byte continuation boundaries where the
+        // encoded length grows by one byte (7 payload bits per byte).
+        roundtrip(0);
+        roundtrip(u64::MAX);
+        for shift in [7, 14, 21, 28, 35, 42, 49, 56, 63] {
+            roundtrip((1u64 << shift) - 1);
+            roundtrip(1u64 << shift);
+        }
+    }
+
     #[test]
     fn test_random_integer_encoding() {
         random_test(1000, |rng| {
-            let value = rng.random();
-
-            let mut stream: [u8; encoding_size::<u64>()] = [0; encoding_size::<u64>()];
-            let mut writer = BitWriter::<_, BigEndian>::new(&mut stream[0..]);
-            write_u64_variablelength(&mut writer, value).unwrap();
-
-            let mut reader = BitReader::<_, BigEndian>::new(&stream[0..]);
-            let result = read_u64_variablelength(&mut reader).unwrap();
-
-            assert_eq!(result, value);
+            roundtrip(rng.random());
         });
     }
 }

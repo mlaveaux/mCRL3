@@ -15,3 +15,6 @@ merc_utilities.workspace = true
 rand.workspace = true
 bitstream-io.workspace = true
 num.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }

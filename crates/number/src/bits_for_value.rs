@@ -6,3 +6,47 @@ pub fn bits_for_value(value: usize) -> u8 {
 
     value.ilog2() as u8 + 1
 }
+
+#[cfg(test)]
+mod tests {
+    use super::bits_for_value;
+
+    #[test]
+    fn test_bits_for_value() {
+        // Zero is a special case that still needs a single bit.
+        assert_eq!(bits_for_value(0), 1);
+
+        assert_eq!(bits_for_value(1), 1);
+        assert_eq!(bits_for_value(2), 2);
+        assert_eq!(bits_for_value(3), 2);
+        assert_eq!(bits_for_value(4), 3);
+        assert_eq!(bits_for_value(255), 8);
+        assert_eq!(bits_for_value(256), 9);
+        assert_eq!(bits_for_value(usize::MAX), (usize::BITS) as u8);
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::bits_for_value;
+
+    /// `bits_for_value` returns the minimal bit width: `2^(bits-1) <= value`
+    /// and `value < 2^bits` (the upper bound where it fits), with zero mapping
+    /// to a single bit. Verified for every `usize`.
+    #[kani::proof]
+    fn bits_for_value_is_minimal_width() {
+        let value: usize = kani::any();
+        let bits = bits_for_value(value);
+
+        assert!(bits >= 1);
+
+        if value == 0 {
+            assert_eq!(bits, 1);
+        } else {
+            assert!((1usize << (bits - 1)) <= value);
+            if (bits as u32) < usize::BITS {
+                assert!(value < (1usize << bits));
+            }
+        }
+    }
+}
