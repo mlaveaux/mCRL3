@@ -9,11 +9,9 @@ use merc_collections::CompressedVecMetrics;
 use merc_collections::bytevec;
 use merc_io::LargeFormatter;
 use merc_utilities::MercError;
-use merc_utilities::TagIndex;
 
 use crate::LTS;
 use crate::LabelIndex;
-use crate::LabelTag;
 use crate::StateIndex;
 use crate::Transition;
 use crate::TransitionLabel;
@@ -165,20 +163,21 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     /// in the current LTS, and combining the action labels. The offset is returned such that
     /// can find the states of the other LTS in the merged LTS as the initial state of the other LTS.
     fn merge_disjoint_impl<L: LTS<Label = Label>>(mut self, other: &L) -> (Self, StateIndex) {
-        // Determine the combination of action labels
+        // Determine the combination of action labels, keeping a map from label to
+        // its index so membership checks stay O(1) instead of scanning the vector.
         let mut all_labels = self.labels().to_vec();
+        let mut label_indices: HashMap<Label, LabelIndex> = all_labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| (label.clone(), LabelIndex::new(i)))
+            .collect();
+
         for label in other.labels() {
-            if !all_labels.contains(label) {
+            if !label_indices.contains_key(label) {
+                label_indices.insert(label.clone(), LabelIndex::new(all_labels.len()));
                 all_labels.push(label.clone());
             }
         }
-
-        let label_indices: HashMap<Label, TagIndex<usize, LabelTag>> = HashMap::from_iter(
-            all_labels
-                .iter()
-                .enumerate()
-                .map(|(i, label)| (label.clone(), LabelIndex::new(i))),
-        );
 
         let total_number_of_states = self.num_of_states() + other.num_of_states();
 
@@ -462,7 +461,7 @@ impl<L: TransitionLabel> LTS for LabelledTransitionSystem<L> {
     }
 
     fn labels(&self) -> &[Self::Label] {
-        &self.labels[0..]
+        &self.labels
     }
 
     fn is_hidden_label(&self, label_index: LabelIndex) -> bool {
@@ -515,8 +514,7 @@ pub fn check_equivalent<L: LTS>(lts: &L, lts_read: &L) {
     let mapping = lts
         .labels()
         .iter()
-        .enumerate()
-        .map(|(_i, label)| lts_read.labels().iter().position(|l| l == label))
+        .map(|label| lts_read.labels().iter().position(|l| l == label))
         .collect::<Vec<_>>();
 
     // Print the mapping
@@ -538,7 +536,7 @@ pub fn check_equivalent<L: LTS>(lts: &L, lts_read: &L) {
 
         // Check that transitions are the same, modulo label remapping.
         transitions.iter().for_each(|t| {
-            let mapped_label = mapping[t.label.value()].expect(&format!("Label {} should be found", t.label));
+            let mapped_label = mapping[t.label.value()].unwrap_or_else(|| panic!("Label {} should be found", t.label));
             assert!(
                 transitions_read
                     .iter()

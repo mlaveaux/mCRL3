@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use std::collections::HashSet;
+
 use log::trace;
 
 use merc_collections::IndexedSet;
@@ -47,6 +49,9 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
         }
     };
 
+    // Membership is queried once per transition, so use a set for O(1) lookups.
+    let synchronised_set: HashSet<&L::Label> = synchronised_labels.iter().collect();
+
     // For the product we do not know the number of states and transitions in advance.
     let mut lts_builder = LtsBuilderFast::new(all_labels.to_vec(), Vec::new());
 
@@ -63,7 +68,7 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
 
         // Add transitions for the left LTS
         for left_transition in left.outgoing_transitions(left_state) {
-            if synchronised_labels.contains(&left.labels()[*left_transition.label]) {
+            if synchronised_set.contains(&left.labels()[*left_transition.label]) {
                 // Find the corresponding right state after this transition
                 for right_transition in right.outgoing_transitions(right_state) {
                     if left.labels()[*left_transition.label] == right.labels()[*right_transition.label] {
@@ -105,7 +110,7 @@ pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
         }
 
         for right_transition in right.outgoing_transitions(right_state) {
-            if synchronised_labels.contains(&right.labels()[*right_transition.label]) {
+            if synchronised_set.contains(&right.labels()[*right_transition.label]) {
                 // Already handled in the left transitions loop.
                 continue;
             }
@@ -151,7 +156,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_random_lts_product() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_lts_product");
+            let files = DumpFiles::new("test_random_lts_product");
 
             // This test only checks the assertions of an LTS internally.
             let left = random_lts::<String, _>(rng, 1000, 3);

@@ -69,7 +69,7 @@ fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransiti
         .get()
         .ok_or(IOError::InvalidHeader("The first line should be the header"))?;
 
-    // Regex for des (<initial>: Nat, <num_of_states>: Nat, <num_of_transitions>: Nat)
+    // Regex for des (<initial>: Nat, <num_of_transitions>: Nat, <num_of_states>: Nat)
     let header_regex = Regex::new(r#"des\s*\(\s*([0-9]*)\s*,\s*([0-9]*)\s*,\s*([0-9]*)\s*\)\s*"#)
         .expect("Regex compilation should not fail");
 
@@ -98,7 +98,7 @@ fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransiti
             info!(
                 "Read {} transitions {}%...",
                 LargeFormatter(read),
-                read * 100 / num_of_transitions
+                read * 100 / num_of_transitions.max(1)
             )
         },
         1,

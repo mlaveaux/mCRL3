@@ -1055,7 +1055,6 @@ dependencies = [
  "log",
  "merc_io",
  "merc_utilities",
- "rand",
  "rustc-hash 2.1.2",
 ]
 

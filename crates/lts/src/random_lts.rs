@@ -18,16 +18,26 @@ use crate::TransitionLabel;
 ///
 /// # Details
 ///
-/// The number of labels is limited to 26, since only singular alphabetic labels
-/// are used, because those are easier to read and understand.
+/// The number of labels is limited to the range `1..26`, since only singular
+/// alphabetic labels are used, because those are easier to read and understand.
+/// The hidden label occupies index 0, so at least one label is always required.
+///
+/// # Panics
+///
+/// Panics if `num_of_states == 0` (an LTS needs an initial state) or if
+/// `num_of_labels` is not in `1..26`.
 pub fn random_lts<L: TransitionLabel, R: Rng>(
     rng: &mut R,
     num_of_states: usize,
     num_of_labels: u32,
 ) -> LabelledTransitionSystem<L> {
     assert!(
-        num_of_labels < 26,
-        "Too many labels requested, we only support alphabetic labels."
+        (1..26).contains(&num_of_labels),
+        "Number of labels must be in the range 1..26, since we only support alphabetic labels."
+    );
+    assert!(
+        num_of_states > 0,
+        "An LTS requires at least one state for the initial state."
     );
 
     // Introduce lower case letters for the labels.
@@ -56,8 +66,8 @@ pub fn random_lts<L: TransitionLabel, R: Rng>(
         }
     }
 
-    // Ensure there is at least one state (otherwise it would be an LTS without initial state).
-    builder.require_num_of_states(num_of_states.max(1));
+    // Ensure deadlock states without outgoing transitions are still counted.
+    builder.require_num_of_states(num_of_states);
 
     builder.finish(StateIndex::new(rng.random_range(0..num_of_states)), true)
 }
