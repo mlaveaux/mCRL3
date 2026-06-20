@@ -49,7 +49,7 @@ preprocessing step.
 
 Added divergence-preserving variants of the branching and weak bisimulation
 algorithms. Iterative SCC decomposition implemented to avoid stack overflows on
-large examples .
+large examples.
 
 Added the `clap` feature to conditionally enable the `clap` dependency to derive
 some convenience traits.

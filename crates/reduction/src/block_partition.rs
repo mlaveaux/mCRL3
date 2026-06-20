@@ -499,17 +499,14 @@ impl Block {
     }
 
     /// Returns the number of elements in the block.
+    ///
+    /// A block always satisfies `begin < end` (see [`Block::assert_consistent`]),
+    /// so it is never empty; there is deliberately no `is_empty`.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.assert_consistent();
 
         self.end - self.begin
-    }
-
-    /// Returns true iff the block is empty.
-    pub fn is_empty(&self) -> bool {
-        self.assert_consistent();
-
-        self.begin == self.end
     }
 
     /// Returns the number of marked elements in the block.

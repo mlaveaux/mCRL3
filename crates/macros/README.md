@@ -15,7 +15,11 @@ sorts etc.
 The `merc_derive_terms` macro automatically generates the necessary boilerplate
 code to convert between the custom data types and the underlying `ATerm`
 representation, as well as implementing common traits such as `Clone`, `Debug`,
-`PartialEq` and `Eq`. Furthermore, the (arguably) most important feature is that
+`PartialEq` and `Eq`. Because the macro emits these implementations, the
+annotated struct must **not** derive them itself (`Clone`, `Hash`, `PartialEq`,
+`Eq`, `PartialOrd`, `Ord` are added automatically and `Debug` is implemented
+manually); doing so results in conflicting-implementation errors. Furthermore,
+the (arguably) most important feature is that
 it implements the `Ref<'_>` variant, similarly to `ATermRef`, which allows for
 references without taking ownership (and as such incurring a protection) of the
 underlying data. This avoids the need for `UB` casts as done in the original ATerm
@@ -35,7 +39,14 @@ with the macros expanded for debugging purposes.
 
 ## Safety
 
-This crate does not use unsafe code.
+The proc-macro crate itself contains no unsafe code (`#![forbid(unsafe_code)]`).
+However, the `merc_derive_terms` macro *generates* an `unsafe impl Transmutable`
+for each `Ref` type, which reinterprets the borrow lifetime of the wrapped
+`ATermRef`. This is sound because the `Ref` wrapper has the same layout as its
+single `ATermRef` field and the borrow lifetime does not affect layout; the
+safety contract (not outliving the underlying term) is upheld by the caller of
+`Transmutable`. The reasoning is documented at the generation site in
+`src/merc_derive_terms.rs`.
 
 ## Minimum Supported Rust Version
 

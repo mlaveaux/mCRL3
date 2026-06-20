@@ -12,11 +12,11 @@ use merc_derive_terms::merc_derive_terms_impl;
 /// for structs to behave as a term.
 #[proc_macro_attribute]
 pub fn merc_derive_terms(
-    _attributes: proc_macro::TokenStream,
+    attributes: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     merc_derive_terms_impl(
-        proc_macro2::TokenStream::from(_attributes),
+        proc_macro2::TokenStream::from(attributes),
         proc_macro2::TokenStream::from(input),
     )
     .into()
@@ -47,7 +47,8 @@ pub fn merc_test(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) 
         #[test]
         #(#attrs)*
         #sig {
-            let __logger = merc_utilities::test_logger();
+            // Initializes the shared test logger; returns `()`, so no guard is bound.
+            merc_utilities::test_logger();
             #block
         }
     };
