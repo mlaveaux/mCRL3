@@ -236,6 +236,62 @@ impl<T: fmt::Debug> fmt::Debug for VecSet<T> {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use crate::VecSet;
+
+    /// The size of the value universe the harnesses range over.
+    const UNIVERSE: u8 = 4;
+
+    /// Builds a `VecSet<u8>` from a bitmask: bit `v` set means `v` is a member.
+    /// Iterating the universe in order yields an already sorted, duplicate-free
+    /// vector, so we bypass `from_vec`'s `sort_unstable` (whose symbolic
+    /// execution is far too expensive for Kani) while still covering every
+    /// subset of the universe, including the empty set.
+    fn set_from_mask(mask: u8) -> VecSet<u8> {
+        let mut vec = Vec::new();
+        for value in 0..UNIVERSE {
+            if mask & (1 << value) != 0 {
+                vec.push(value);
+            }
+        }
+
+        // The field is sorted and unique by construction (loop runs in order).
+        VecSet { sorted_array: vec }
+    }
+
+    /// Draws an arbitrary subset of the universe.
+    fn arbitrary_small_set() -> VecSet<u8> {
+        let mask: u8 = kani::any();
+        kani::assume(mask < (1 << UNIVERSE));
+        set_from_mask(mask)
+    }
+
+    /// `is_subset` agrees with the naive "every element of self is in other"
+    /// definition for every pair of small sets.
+    #[kani::proof]
+    fn is_subset_matches_naive() {
+        let left = arbitrary_small_set();
+        let right = arbitrary_small_set();
+
+        let naive = left.iter().all(|x| right.contains(x));
+        assert_eq!(left.is_subset(&right), naive);
+    }
+
+    /// `difference` yields exactly the elements of self not in other, in sorted
+    /// order, for every pair of small sets.
+    #[kani::proof]
+    fn difference_matches_naive() {
+        let left = arbitrary_small_set();
+        let right = arbitrary_small_set();
+
+        let difference: Vec<u8> = left.difference(&right).copied().collect();
+        let naive: Vec<u8> = left.iter().filter(|x| !right.contains(x)).copied().collect();
+
+        assert_eq!(difference, naive);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
