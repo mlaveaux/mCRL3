@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::borrow::Borrow;
 use std::f64::consts::LOG10_2;
 use std::hash::Hash;
@@ -48,19 +50,20 @@ impl<W: Write, L> AutStream<W, L> {
     /// Creates a new AUT stream writer in the standard Aldebaran format
     /// (`i` is used as the tau label).
     ///
-    /// Note that the writer is buffered internally using a `BufWriter`.
-    pub fn new(writer: W) -> Self {
+    /// Note that the writer is buffered internally using a `BufWriter`. Writing
+    /// the placeholder header can fail, so this returns a [`Result`].
+    pub fn new(writer: W) -> Result<Self, MercError> {
         Self::with_format(writer, AutFormat::Aut)
     }
 
     /// Creates a new AUT stream writer in the mCRL2 dialect
     /// (`tau` is used as the tau label).
-    pub fn new_mcrl2(writer: W) -> Self {
+    pub fn new_mcrl2(writer: W) -> Result<Self, MercError> {
         Self::with_format(writer, AutFormat::AutMcrl2)
     }
 
     /// Creates a new AUT stream writer using the given format.
-    pub fn with_format(writer: W, format: AutFormat) -> Self {
+    pub fn with_format(writer: W, format: AutFormat) -> Result<Self, MercError> {
         let mut writer = BufWriter::new(writer);
         // Write a placeholder for the header, which will be filled in later.
         // Reserve enough space for the header using the number of bits of
@@ -68,16 +71,16 @@ impl<W: Write, L> AutStream<W, L> {
         // is longer.
         let max_usize_digits = (usize::BITS as f64 * LOG10_2).ceil() as usize;
         let header_len = format!("des ({0:<1$}, {0:<1$}, {0:<1$})\n", " ", max_usize_digits).len();
-        writer.write_all(" ".repeat(header_len).as_bytes()).unwrap();
+        writer.write_all(" ".repeat(header_len).as_bytes())?;
 
-        Self {
+        Ok(Self {
             writer,
             format,
             number_of_transitions: 0,
             number_of_states: 0,
             header_len,
             _marker: PhantomData,
-        }
+        })
     }
 }
 

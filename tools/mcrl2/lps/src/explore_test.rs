@@ -260,7 +260,7 @@ mod tests {
         // a string-labelled LTS.
         let mut buffer = Cursor::new(Vec::new());
         {
-            let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer));
+            let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer).unwrap());
             explore_lps_explicit_parallel(
                 &mut builder,
                 &lps,

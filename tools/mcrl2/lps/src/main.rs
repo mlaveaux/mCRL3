@@ -180,7 +180,7 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         // expensive enumeration still happens outside the lock.
         if let Some(output) = &args.output {
             let mut file = BufWriter::new(File::create(output)?);
-            let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, args.out_format));
+            let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, args.out_format)?);
             explore_lps_explicit_parallel(
                 &mut builder,
                 &lps,
@@ -204,7 +204,7 @@ fn handle_explore_explicit(args: ExploreExplicitArgs, timing: &Timing) -> Result
         }
     } else if let Some(output) = &args.output {
         let mut file = BufWriter::new(File::create(output)?);
-        let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format);
+        let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format)?;
         explore_lps_explicit(
             &mut builder,
             &lps,

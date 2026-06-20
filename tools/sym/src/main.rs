@@ -424,12 +424,12 @@ fn handle_convert(args: &ConvertArgs, _timing: &Timing) -> Result<(), MercError>
             }
             LtsFormat::Aut => {
                 let mut output = File::create(output)?;
-                let mut stream = AutStream::new(&mut output);
+                let mut stream = AutStream::new(&mut output)?;
                 convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
             }
             LtsFormat::AutMcrl2 => {
                 let mut output = File::create(output)?;
-                let mut stream = AutStream::new_mcrl2(&mut output);
+                let mut stream = AutStream::new_mcrl2(&mut output)?;
                 convert_symbolic_lts(&mut storage, &mut stream, &lts)?;
             }
             LtsFormat::Bcg => {
@@ -499,12 +499,12 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
             }
             LtsFormat::Aut => {
                 let mut output = File::create(output)?;
-                let mut stream = AutStream::new(&mut output);
+                let mut stream = AutStream::new(&mut output)?;
                 convert_symbolic_lts_bdd(&manager_ref, &mut stream, &quotient_lts)?;
             }
             LtsFormat::AutMcrl2 => {
                 let mut output = File::create(output)?;
-                let mut stream = AutStream::new_mcrl2(&mut output);
+                let mut stream = AutStream::new_mcrl2(&mut output)?;
                 convert_symbolic_lts_bdd(&manager_ref, &mut stream, &quotient_lts)?;
             }
             LtsFormat::Bcg => {
