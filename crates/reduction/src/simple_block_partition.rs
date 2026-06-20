@@ -112,7 +112,10 @@ impl Partition for MarkedBlockPartition {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use merc_collections::BlockIndex;
+    use merc_lts::StateIndex;
+
+    use super::MarkedBlockPartition;
 
     #[test]
     fn test_simple_block_partition() {

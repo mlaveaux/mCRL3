@@ -9,7 +9,7 @@ use syn::parse_quote;
 
 pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
-    let mut ast: ItemMod = syn::parse2(input.clone()).expect("merc_term can only be applied to a module");
+    let mut ast: ItemMod = syn::parse2(input.clone()).expect("merc_derive_terms can only be applied to a module");
 
     if let Some((_, content)) = &mut ast.content {
         // Generated code blocks are added to this list.
@@ -20,17 +20,27 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                 Item::Struct(object) => {
                     // If the struct is annotated with term we process it as a term.
                     if let Some(attr) = object.attrs.iter().find(|attr| attr.meta.path().is_ident("merc_term")) {
-                        // The #term(assertion) annotation must contain an assertion
-                        let assertion = match attr.parse_args::<syn::Ident>() {
-                            Ok(assertion) => {
-                                let assertion_msg = format!("{assertion}");
-                                quote!(
-                                    debug_assert!(#assertion(&term), "Term {:?} does not satisfy {}", term, #assertion_msg)
-                                )
+                        // The #[merc_term(assertion)] annotation may name an
+                        // assertion function. When present it must be a bare
+                        // identifier; anything else is reported as a compile
+                        // error rather than silently dropping the check.
+                        let assertion = if attr.meta.require_list().is_ok() {
+                            match attr.parse_args::<syn::Ident>() {
+                                Ok(assertion) => {
+                                    let assertion_msg = format!("{assertion}");
+                                    quote!(
+                                        debug_assert!(#assertion(&term), "Term {:?} does not satisfy {}", term, #assertion_msg)
+                                    )
+                                }
+                                Err(error) => {
+                                    let message =
+                                        format!("merc_term expects a single assertion function identifier: {error}");
+                                    quote!(compile_error!(#message))
+                                }
                             }
-                            Err(_x) => {
-                                quote!()
-                            }
+                        } else {
+                            // Bare `#[merc_term]` without arguments: no assertion.
+                            quote!()
                         };
 
                         // Add the expected derive macros to the input struct.
@@ -113,9 +123,9 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
-                            impl #generics ::std::convert::Into<ATerm> for #name #generics{
-                                fn into(self) -> ATerm {
-                                    self.term
+                            impl #generics ::std::convert::From<#name #generics> for ATerm {
+                                fn from(value: #name #generics) -> ATerm {
+                                    value.term
                                 }
                             }
 
@@ -198,9 +208,9 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
-                            impl #generics_ref ::std::convert::Into<ATermRef<'a>> for #name_ref #generics_ref  {
-                                fn into(self) -> ATermRef<'a> {
-                                    self.term
+                            impl #generics_ref ::std::convert::From<#name_ref #generics_ref> for ATermRef<'a> {
+                                fn from(value: #name_ref #generics_ref) -> ATermRef<'a> {
+                                    value.term
                                 }
                             }
 
@@ -249,14 +259,19 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                                 }
                             }
 
+                            // SAFETY: `#name_ref` is a `#[repr(Rust)]` wrapper whose only
+                            // non-zero-sized field is `ATermRef<'a>`, which is itself a
+                            // lifetime-erasable handle into the global term pool.
                             unsafe impl Transmutable for #name_ref #generics_static {
                                 type Target #generics_ref = #name_ref #generics_ref;
 
                                 unsafe fn transmute_lifetime<'a>(&self) -> &'a Self::Target #generics_ref {
+                                    // SAFETY: see the trait impl comment above.
                                     unsafe { ::std::mem::transmute::<&Self, &'a #name_ref #generics_ref>(self) }
                                 }
 
                                 unsafe fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target #generics_ref {
+                                    // SAFETY: see the trait impl comment above.
                                     unsafe { ::std::mem::transmute::<&mut Self, &'a mut #name_ref #generics_ref>(self) }
                                 }
                             }
@@ -282,29 +297,29 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
                         _ => true,
                     });
 
-                    if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
-                        let path = if let Some(identifier) = path.path.get_ident() {
+                    // Only `impl Name { .. }` blocks with a bare-identifier self
+                    // type are duplicated; generic or path-qualified self types
+                    // (e.g. `impl<T> Name<T>` or `impl module::Name`) are not yet
+                    // supported and are reported as a clear compile error rather
+                    // than panicking the macro or silently dropping the block.
+                    match ref_implementation.self_ty.as_ref() {
+                        syn::Type::Path(path) if path.path.get_ident().is_some() => {
+                            let identifier = path.path.get_ident().expect("checked by the match guard");
+
                             // Build an identifier with the postfix Ref<'_>
                             let name_ref = format_ident!("{}Ref", identifier);
-                            parse_quote!(#name_ref <'_>)
-                        } else {
-                            let path_segments = &path.path.segments;
+                            let path: syn::Path = parse_quote!(#name_ref <'_>);
 
-                            let _name_ref = format_ident!(
-                                "{}Ref",
-                                path_segments
-                                    .first()
-                                    .expect("Path should at least have an identifier")
-                                    .ident
-                            );
-                            // let segments: Vec<syn::PathSegment> = path_segments.iter().skip(1).collect();
-                            // parse_quote!(#name_ref #segments)
-                            unimplemented!()
-                        };
+                            ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
 
-                        ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
-
-                        added.push(Item::Verbatim(ref_implementation.into_token_stream()));
+                            added.push(Item::Verbatim(ref_implementation.into_token_stream()));
+                        }
+                        _ => {
+                            let message = "merc_derive_terms can only duplicate impl blocks whose self type is a \
+                                 bare identifier; generic or path-qualified self types are not yet supported. \
+                                 Annotate the impl with #[merc_ignore] to skip it.";
+                            added.push(Item::Verbatim(quote!(compile_error!(#message);)));
+                        }
                     }
                 }
                 _ => {
@@ -334,7 +349,6 @@ mod tests {
             mod anything {
 
                 #[merc_term(test)]
-                #[derive(Debug)]
                 struct Test {
                     term: ATerm,
                 }
@@ -350,6 +364,13 @@ mod tests {
         let tokens = TokenStream::from_str(input).unwrap();
         let result = merc_derive_terms_impl(TokenStream::default(), tokens);
 
-        println!("{result}");
+        // The generated module must parse back as valid Rust and mention the
+        // generated `TestRef` type.
+        let rendered = result.to_string();
+        syn::parse2::<syn::File>(result).expect("generated code should be valid Rust");
+        assert!(
+            rendered.contains("TestRef"),
+            "expected a generated TestRef type, got: {rendered}"
+        );
     }
 }
