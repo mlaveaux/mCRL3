@@ -383,8 +383,12 @@ where
         // Removes the existing signatures.
         key_to_signature.clear();
 
-        // Safety: The current signatures have been removed, so it safe to reuse the memory.
+        // SAFETY: `id` was cleared above, so it holds no `Signature` borrowing
+        // from the arena; the transmute only relaxes that borrow's lifetime so the
+        // map can be refilled with slices allocated after the `arena.reset()`
+        // below.
         let id: &mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
+        // SAFETY: see above; `key_to_signature` was cleared.
         let key_to_signature: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut key_to_signature) };
 
         arena.reset();
@@ -523,20 +527,28 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
         progress.print((iteration, old_count));
         swap(&mut partition, &mut next_partition);
 
-        // Clear the current partition to start the next blocks.
+        // Clear every collection that borrows from the arena *before* resetting
+        // it, so that no `Signature` borrow can outlive the storage it points
+        // into.
         id.clear();
-
-        // Remove the current signatures.
-        arena.reset();
-
         state_to_signature.clear();
         key_to_signature.clear();
+        state_to_taus.clear();
+
+        // Remove the current signatures; safe now that every borrowing collection
+        // has been cleared above.
+        arena.reset();
 
         state_to_signature.resize_with(lts.num_of_states(), || None);
-        // Safety: The current signatures have been removed, so it safe to reuse the memory.
-        let state_to_signature: &'_ mut Vec<Option<usize>> = unsafe { std::mem::transmute(&mut state_to_signature) };
+
+        // SAFETY: `id` was cleared above, so it holds no `Signature` borrowing
+        // from the arena; the transmute only relaxes that borrow's lifetime so the
+        // map can be refilled with slices allocated from the freshly reset arena
+        // during this iteration.
         let id: &'_ mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
+        // SAFETY: see above; `key_to_signature` was cleared.
         let key_to_signature: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut key_to_signature) };
+        // SAFETY: see above; `state_to_taus` was cleared.
         let state_to_taus: &'_ mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_taus) };
 
         // Compute for each state its tau signature. This seems inefficient, but for now it works.
@@ -559,7 +571,7 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
                 lts,
                 &partition,
                 state_to_taus,
-                state_to_signature,
+                &state_to_signature,
                 &mut builder,
             );
 
@@ -591,7 +603,7 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
                     lts,
                     &partition,
                     state_to_taus,
-                    state_to_signature,
+                    &state_to_signature,
                     key_to_signature,
                     &mut builder,
                 );
@@ -600,7 +612,6 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
                 // Keep track of the index for every state
                 let mut new_id = BlockIndex::new(key_to_signature.len());
                 if let Some((_signature, index)) = id.get_key_value(&Signature::new(&builder)) {
-                    // SAFETY: We know that the signature lives as long as the arena
                     state_to_signature[state_index] = Some(index.value());
                     new_id = *index;
                 } else {
@@ -680,8 +691,12 @@ where
         state_to_signature.clear();
         state_to_signature.resize_with(lts.num_of_states(), Signature::default);
 
-        // Safety: The current signatures have been removed, so it safe to reuse the memory.
+        // SAFETY: `id` was cleared above, so it holds no `Signature` borrowing
+        // from the arena; the transmute only relaxes that borrow's lifetime so it
+        // can be refilled with slices allocated after the `arena.reset()` below.
         let id: &'_ mut FxHashMap<Signature<'_>, BlockIndex> = unsafe { std::mem::transmute(&mut id) };
+        // SAFETY: see above; `state_to_signature` was cleared (it now holds only
+        // the empty default signatures, which borrow no arena storage).
         let state_to_signature: &mut Vec<Signature<'_>> = unsafe { std::mem::transmute(&mut state_to_signature) };
 
         // Remove the current signatures.
@@ -712,7 +727,9 @@ where
             // Keep track of the index for every state, either use the arena to allocate space or simply borrow the value.
             let mut new_id = BlockIndex::new(id.len());
             if let Some((signature, index)) = id.get_key_value(&Signature::new(&builder)) {
-                // SAFETY: We know that the signature lives as long as the arena
+                // SAFETY: `signature` borrows from the arena, which outlives this
+                // iteration; the transmute only re-labels that borrow with the
+                // lifetime expected by `state_to_signature`.
                 state_to_signature[state_index] = unsafe {
                     std::mem::transmute::<Signature<'_>, Signature<'_>>(Signature::new(signature.as_slice()))
                 };
@@ -826,6 +843,66 @@ mod tests {
     use super::strong_bisim_sigref_naive;
     use super::weak_bisim_sigref_inductive_naive;
     use super::weak_bisim_sigref_naive;
+
+    use merc_lts::LabelIndex;
+    use merc_lts::LabelledTransitionSystem;
+    use merc_lts::TransitionLabel;
+
+    /// A tiny deterministic instance that exercises the `unsafe` arena-reuse path
+    /// in [`signature_refinement`] under miri; the randomized tests below build
+    /// 1000-state systems and are skipped under miri because they are too slow.
+    #[test]
+    fn test_strong_bisim_sigref_small() {
+        // 0 -a-> 1, 0 -a-> 2, 1 -a-> 3, 2 -a-> 3 (label index 1 is "a", 0 is tau).
+        let transitions = [(0, 1, 1), (0, 1, 2), (1, 1, 3), (2, 1, 3)]
+            .map(|(from, label, to)| (StateIndex::new(from), LabelIndex::new(label), StateIndex::new(to)));
+
+        let lts = LabelledTransitionSystem::new(
+            StateIndex::new(0),
+            None,
+            || transitions.iter().cloned(),
+            vec![String::tau_label(), "a".to_string()],
+        );
+
+        let timing = Timing::new();
+        let (_, partition) = strong_bisim_sigref(lts, &timing);
+
+        // States 1 and 2 are strongly bisimilar (both only do a -> 3), so the four
+        // states collapse into the three blocks {0}, {1, 2}, {3}.
+        assert_eq!(partition.num_of_blocks(), 3);
+        assert_eq!(
+            partition.block_number(StateIndex::new(1)),
+            partition.block_number(StateIndex::new(2))
+        );
+    }
+
+    /// Exercises the weak signature-refinement arena path
+    /// ([`signature_refinement_weak`], where `arena.reset()` is interleaved with
+    /// clearing the borrowing collections) under miri, for the same reason as
+    /// [`test_strong_bisim_sigref_small`].
+    #[test]
+    fn test_weak_bisim_sigref_small() {
+        // 0 -tau-> 1, 1 -a-> 2, 0 -a-> 2 (label index 1 is "a", 0 is tau).
+        let transitions = [(0, 0, 1), (1, 1, 2), (0, 1, 2)]
+            .map(|(from, label, to)| (StateIndex::new(from), LabelIndex::new(label), StateIndex::new(to)));
+
+        let lts = LabelledTransitionSystem::new(
+            StateIndex::new(0),
+            None,
+            || transitions.iter().cloned(),
+            vec![String::tau_label(), "a".to_string()],
+        );
+
+        let timing = Timing::new();
+        let (_, _, partition) = weak_bisim_sigref_inductive_naive(lts, StateIndex::new(0), false, false, &timing);
+
+        // State 2 is a deadlock while state 0 can still perform a, so they must end
+        // up in different blocks.
+        assert_ne!(
+            partition.block_number(StateIndex::new(0)),
+            partition.block_number(StateIndex::new(2))
+        );
+    }
 
     /// Returns true iff the partitions are equal, runs in O(n^2).
     fn equal_partitions<P: Partition, Q: Partition>(left: &P, right: &Q) -> bool {
