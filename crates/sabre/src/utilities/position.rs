@@ -151,8 +151,11 @@ impl<'a> Iterator for PositionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use merc_aterm::ATerm;
+    use merc_aterm::Term;
 
-    use super::*;
+    use super::ExplicitPosition;
+    use super::PositionIndexed;
+    use super::PositionIterator;
 
     #[test]
     fn test_get_position() {

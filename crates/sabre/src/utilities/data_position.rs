@@ -140,7 +140,11 @@ impl<'a> Iterator for DataPositionIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use merc_data::DataExpression;
+
+    use super::DataPosition;
+    use super::DataPositionIndexed;
+    use super::DataPositionIterator;
 
     #[test]
     fn test_get_data_position() {

@@ -1,6 +1,5 @@
-//! This module contains the code to construct a set automaton.
-//!
-//! This module does not use unsafe code.
+// This module contains the code to construct a set automaton. It does not use
+// unsafe code.
 #![forbid(unsafe_code)]
 
 mod automaton;

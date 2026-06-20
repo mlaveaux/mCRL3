@@ -4,13 +4,13 @@ description = "Reducing and comparing labelled transition systems modulo various
 keywords = ["equivalence", "reduction", "transition-systems"]
 categories = ["algorithms", "science"]
 readme = "README.md"
+version = "3.0.0"
 
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
 
 [features]
 # Enable deriving some convenience traits for clap.

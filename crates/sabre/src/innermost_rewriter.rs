@@ -263,7 +263,7 @@ impl InnermostRewriter {
             let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &rhs);
             let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &lhs);
 
-            if lhs_normal != rhs_normal && c.equality || lhs_normal == rhs_normal && !c.equality {
+            if (lhs_normal != rhs_normal && c.equality) || (lhs_normal == rhs_normal && !c.equality) {
                 return false;
             }
         }

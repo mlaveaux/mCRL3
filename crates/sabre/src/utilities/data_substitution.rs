@@ -80,12 +80,13 @@ fn substitute_rec(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use merc_aterm::storage::THREAD_TERM_POOL;
+    use merc_data::DataExpression;
 
     use crate::utilities::DataPosition;
     use crate::utilities::DataPositionIndexed;
+
+    use super::data_substitute;
 
     #[test]
     fn test_data_substitute() {

@@ -12,7 +12,7 @@ pub struct RewriteSpecification {
 }
 
 impl RewriteSpecification {
-    /// Create a new, empty rewrite specification.
+    /// Create a new rewrite specification from the given rewrite rules.
     pub fn new(rewrite_rules: Vec<Rule>) -> RewriteSpecification {
         RewriteSpecification { rewrite_rules }
     }

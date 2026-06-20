@@ -95,7 +95,10 @@ mod tests {
 
     use crate::test_utility::create_rewrite_rule;
 
-    use super::*;
+    use super::DataPosition;
+    use super::EquivalenceClass;
+    use super::check_equivalence_classes;
+    use super::derive_equivalence_classes;
 
     #[test]
     fn test_derive_equivalence_classes() {
@@ -105,7 +108,7 @@ mod tests {
         assert_eq!(
             eq,
             vec![EquivalenceClass {
-                variable: DataVariable::new("x").into(),
+                variable: DataVariable::new("x"),
                 positions: vec![DataPosition::new(&[1]), DataPosition::new(&[2, 1])]
             },],
             "The resulting config stack is not as expected"

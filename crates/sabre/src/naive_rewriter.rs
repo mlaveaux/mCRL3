@@ -143,8 +143,8 @@ impl NaiveRewriter {
         stats: &mut RewritingStatistics,
     ) -> bool {
         for c in &ema.conditions {
-            let rhs = c.lhs_term_stack.evaluate(t);
-            let lhs = c.rhs_term_stack.evaluate(t);
+            let lhs = c.lhs_term_stack.evaluate(t);
+            let rhs = c.rhs_term_stack.evaluate(t);
 
             let rhs_normal = NaiveRewriter::rewrite_aux(automaton, rhs.copy(), stats);
             let lhs_normal = NaiveRewriter::rewrite_aux(automaton, lhs.copy(), stats);

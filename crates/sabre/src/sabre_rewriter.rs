@@ -266,9 +266,9 @@ impl SabreRewriter {
         subterm: &DataExpressionRef<'_>,
         stats: &mut RewritingStatistics,
     ) -> bool {
-        for c in &annotation.conditions {
-            let subterm = subterm.get_data_position(&announcement.position);
+        let subterm = subterm.get_data_position(&announcement.position);
 
+        for c in &annotation.conditions {
             let rhs: DataExpression = c.rhs_term_stack.evaluate(&subterm);
             let lhs: DataExpression = c.lhs_term_stack.evaluate(&subterm);
 

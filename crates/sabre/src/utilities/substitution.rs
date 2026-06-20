@@ -81,12 +81,14 @@ fn substitute_rec<'a, 'b, T: Term<'a, 'b>>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use merc_aterm::ATerm;
+    use merc_aterm::Term;
     use merc_aterm::storage::THREAD_TERM_POOL;
 
     use crate::utilities::ExplicitPosition;
     use crate::utilities::PositionIndexed;
+
+    use super::substitute;
 
     #[test]
     fn test_substitute() {

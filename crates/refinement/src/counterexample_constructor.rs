@@ -50,7 +50,7 @@ pub struct CounterExampleConstructor {
 }
 
 impl CounterExampleConstructor {
-    /// Creates a new counterexample constructor.    
+    /// Creates a new counterexample constructor.
     pub fn new() -> Self {
         Self {
             // Add the root such that index 0 is the root.

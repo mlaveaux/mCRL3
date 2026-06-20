@@ -37,9 +37,11 @@ pub enum RefinementType {
 ///
 /// Typically `BFS` is more suited for counter examples, but `DFS` can be more efficient
 /// in practice when a counter example is not required.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExplorationStrategy {
+    /// Breadth-first search; better suited for finding short counter examples.
     BFS,
+    /// Depth-first search; often uses less memory when no counter example is required.
     DFS,
 }
 
@@ -132,16 +134,14 @@ pub fn refines<L: LTS>(
             }
             _ => unimplemented!("Preprocessing for refinement type {refinement:?} has not been implemented yet."),
         }
-    } else {
-        if refinement == RefinementType::ImpossibleFutures {
-            // For impossible futures we need to remove tau loops from the implementation.
-            let scc_partition = tau_scc_decomposition(&impl_lts);
-            let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true, true);
+    } else if refinement == RefinementType::ImpossibleFutures {
+        // For impossible futures we need to remove tau loops from the implementation.
+        let scc_partition = tau_scc_decomposition(&impl_lts);
+        let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true, true);
 
-            tau_loop_free_lts.merge_disjoint(&spec_lts)
-        } else {
-            impl_lts.merge_disjoint(&spec_lts)
-        }
+        tau_loop_free_lts.merge_disjoint(&spec_lts)
+    } else {
+        impl_lts.merge_disjoint(&spec_lts)
     };
 
     // Print the labels of the merged LTS for debugging purposes.

@@ -109,7 +109,9 @@ fn parse_rec_impl(
     // REC files can import other REC files. Import all referenced by the header.
     for file in result.include_files {
         if let Some(p) = &path {
-            let include_path = p.parent().ok_or_else(|| format!("REC file {} has no parent directory", p.display()))?;
+            let include_path = p
+                .parent()
+                .ok_or_else(|| format!("REC file {} has no parent directory", p.display()))?;
             let file_name = PathBuf::from(file.to_lowercase() + ".rec");
             let load_file = include_path.join(file_name);
 

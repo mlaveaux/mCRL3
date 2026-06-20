@@ -92,14 +92,14 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     );
 
     debug!("Antichain stats: {:?}", antichain.metrics());
-    // debug!("Positive antichain stats: {:?}", positive_antichain.metrics());
     debug!("Negative antichain stats: {:?}", negative_antichain.borrow().metrics());
     result
 }
 
-/// This is a combined antichain where we check both the positive and the outer
-/// antichain at the same time for inclusion. And in the end we integrate the
-/// positive antichain into the outer antichain when
+/// A combined antichain that checks both the persistent positive antichain and
+/// the current computation's antichain for inclusion at the same time. When a
+/// weak trace check passes, the pairs from the current antichain are integrated
+/// into the positive antichain so later checks can short-circuit on them.
 struct PositiveAntichain {
     /// An antichain that is used for repeated weak trace inclusion checks,
     positive_antichain: Antichain<StateIndex, StateIndex>,

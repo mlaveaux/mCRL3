@@ -105,7 +105,7 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
                     writeln!(f, "  s{} -> final [label=\"{} \\[{}\\]\"]", i, tr.symbol, announcements)?;
                 }
             } else {
-                writeln!(f, "  \"s{}{}\" [shape=point]", i, tr.symbol,).unwrap();
+                writeln!(f, "  \"s{}{}\" [shape=point]", i, tr.symbol,)?;
                 writeln!(
                     f,
                     "  s{} -> \"s{}{}\" [label=\"{} \\[{}\\]\"]",

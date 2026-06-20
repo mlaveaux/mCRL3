@@ -1,15 +1,3 @@
-//! Authors: Jan Friso Groote, Maurice Laveaux, Wieger Wesselink and Tim A.C.
-//! Willemse
-//!
-//! > M. Laveaux, J.F. Groote and T.A.C. Willemse. Correct and Efficient
-//! > Antichain Algorithms for Refinement Checking. Logical Methods in Computer
-//! > Science 17(1) 2021
-//!
-//! There are six algorithms. One for trace inclusion, one for failures
-//! inclusion and one for failures-divergence inclusion. All algorithms come in
-//! a variant with and without internal steps. It is possible to generate a
-//! counter transition system in case the inclusion is answered by no.
-
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
@@ -35,6 +23,13 @@ pub enum InnerCe {
 }
 
 /// Checks for the various stable failures refinement relations.
+///
+/// These antichain-based algorithms cover trace, weak-trace, stable-failures and
+/// failures-divergence inclusion, and are described in:
+///
+/// > M. Laveaux, J.F. Groote and T.A.C. Willemse. Correct and Efficient
+/// > Antichain Algorithms for Refinement Checking. Logical Methods in Computer
+/// > Science 17(1) 2021
 ///
 /// Returns the result, and the state in the counter example tree that witnesses
 /// the failure if the result is false. Finally, the result of the inner

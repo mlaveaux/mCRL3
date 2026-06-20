@@ -26,7 +26,11 @@ fn load_spec(rec_files: &[&str]) -> (RewriteSpecification, Vec<DataExpression>) 
 /// lines matches the number of terms so a drifted snapshot fails clearly.
 fn parse_expected(terms: &[DataExpression], expected_result: &str) -> Vec<DataExpression> {
     // The snapshot files end in a trailing newline; ignore the resulting empty line.
-    let lines: Vec<&str> = expected_result.strip_suffix('\n').unwrap_or(expected_result).split('\n').collect();
+    let lines: Vec<&str> = expected_result
+        .strip_suffix('\n')
+        .unwrap_or(expected_result)
+        .split('\n')
+        .collect();
     assert_eq!(
         lines.len(),
         terms.len(),
@@ -42,7 +46,12 @@ fn parse_expected(terms: &[DataExpression], expected_result: &str) -> Vec<DataEx
 }
 
 /// Rewrites every term with `rewriter` and compares against the expected results.
-fn check_rewriter(rewriter: &mut impl RewriteEngine, terms: &[DataExpression], expected: &[DataExpression], engine: &str) {
+fn check_rewriter(
+    rewriter: &mut impl RewriteEngine,
+    terms: &[DataExpression],
+    expected: &[DataExpression],
+    engine: &str,
+) {
     for (term, expected_result) in terms.iter().zip(expected) {
         let result = rewriter.rewrite(term);
         assert_eq!(
