@@ -29,7 +29,7 @@ fn test_mcrl2_sigref_vs_ltsconvert(name: &str, equivalence: Equivalence, argumen
     let output_path = temp_dir.path().join("output.aut");
 
     random_test(100, |rng| {
-        let mut files = merc_io::DumpFiles::new(name);
+        let files = merc_io::DumpFiles::new(name);
 
         // ltsconvert only works on the reachable part, so restrict our random LTS as well.
         let lts = reachable_lts(&random_lts::<String, _>(rng, 10, 3));

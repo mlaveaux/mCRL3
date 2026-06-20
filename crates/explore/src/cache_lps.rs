@@ -39,7 +39,7 @@ pub struct CacheLPS<P: LPS> {
 
 /// A single cached enumeration result keyed by the read-position projection.
 ///
-/// Stored as a bare element in a summand's cache tabl. The results indicate the
+/// Stored as a bare element in a summand's cache table. The results indicate the
 /// transition label and the captured write-position values for each next state.
 struct CacheEntry<L> {
     /// Hash-consed projection of the source state onto the read positions.

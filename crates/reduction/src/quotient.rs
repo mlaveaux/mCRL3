@@ -280,7 +280,7 @@ mod tests {
     /// that the original and reduced LTS are equivalent.
     fn check_quotient_equivalence(rng: &mut StdRng, equivalence: Equivalence, test_name: &str) {
         let mut timing = Timing::new();
-        let mut files = DumpFiles::new(test_name);
+        let files = DumpFiles::new(test_name);
 
         let lts = random_lts::<String, _>(rng, 100, 3);
 

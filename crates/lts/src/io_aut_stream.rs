@@ -182,7 +182,7 @@ mod tests {
 
             let mut buffer = Cursor::new(Vec::new());
             {
-                let mut stream = AutStream::new(&mut buffer);
+                let mut stream = AutStream::new(&mut buffer).unwrap();
 
                 // Write all the transitions to the stream.
                 for state_index in lts.iter_states() {
@@ -212,7 +212,7 @@ mod tests {
     fn test_aut_stream_no_transitions() {
         let mut buffer = Cursor::new(Vec::new());
         {
-            let mut stream: AutStream<_, String> = AutStream::new(&mut buffer);
+            let mut stream: AutStream<_, String> = AutStream::new(&mut buffer).unwrap();
             stream.require_num_of_states(1);
             stream.finish(crate::StateIndex::new(0)).unwrap();
         }

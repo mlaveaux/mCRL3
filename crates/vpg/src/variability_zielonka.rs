@@ -673,7 +673,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_variability_parity_game_solve() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_variability_parity_game_solve");
+            let files = DumpFiles::new("test_random_variability_parity_game_solve");
 
             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
             let vpg = random_variability_parity_game(&manager_ref, rng, true, 20, 3, 3, 3).unwrap();
@@ -689,7 +689,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_variability_parity_game_solve_optimised_left() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_variability_parity_game_solve_optimised_left");
+            let files = DumpFiles::new("test_random_variability_parity_game_solve_optimised_left");
 
             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
             let vpg = random_variability_parity_game(&manager_ref, rng, true, 20, 3, 3, 3).unwrap();

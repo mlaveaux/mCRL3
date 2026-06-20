@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn test_random_incoming_transitions() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_incoming_transitions");
+            let files = DumpFiles::new("test_random_incoming_transitions");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();

@@ -60,7 +60,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_random_tau_scc_decomposition() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_tau_scc_decomposition");
+            let files = DumpFiles::new("test_random_tau_scc_decomposition");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();

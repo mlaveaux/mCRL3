@@ -361,7 +361,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow for this test.
     fn test_random_zielonka_solver() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_zielonka_solver");
+            let files = DumpFiles::new("test_random_zielonka_solver");
             let game = random_parity_game(rng, true, 100, 5, 3);
 
             files.dump("input.pg", |writer| write_pg(writer, &game)).unwrap();

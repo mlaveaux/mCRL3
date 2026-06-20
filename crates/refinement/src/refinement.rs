@@ -321,7 +321,7 @@ mod tests {
         let spec_path = temp_dir.path().join("spec.aut");
 
         random_test(100, |rng| {
-            let mut files = DumpFiles::new(name);
+            let files = DumpFiles::new(name);
 
             let spec_lts = random_lts::<String, _>(rng, 1000, 3);
             let impl_lts = mutate_lts(&spec_lts, rng, 100).unwrap();

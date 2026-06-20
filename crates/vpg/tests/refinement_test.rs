@@ -175,7 +175,7 @@ fn is_refinement_test(
     strategy: ExplorationStrategy,
     preprocess: bool,
 ) {
-    let mut files = DumpFiles::new(dump_name);
+    let files = DumpFiles::new(dump_name);
 
     let spec_lts = random_lts::<String, _>(rng, 100, 3);
     let impl_lts = mutate_lts(&spec_lts, rng, 100).unwrap();

@@ -346,7 +346,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_solitaire_game() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_solitaire_game");
+            let files = DumpFiles::new("test_random_solitaire_game");
             let pg = random_parity_game(rng, true, 100, 3, 3);
             let solitaire = SolitaireGame::new(&pg, Player::Even);
             files.dump("input.pg", |writer| write_pg(writer, &solitaire)).unwrap();

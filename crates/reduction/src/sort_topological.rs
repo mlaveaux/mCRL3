@@ -181,7 +181,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_reorder_states() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_reorder_states");
+            let files = DumpFiles::new("test_random_reorder_states");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |f| write_aut(f, &lts)).unwrap();

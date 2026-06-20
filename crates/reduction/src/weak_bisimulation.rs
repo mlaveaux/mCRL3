@@ -461,7 +461,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_weak_bisimulation() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_weak_bisimulation");
+            let files = DumpFiles::new("test_weak_bisimulation");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             let mut timing = Timing::new();
@@ -484,7 +484,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_weak_bisimulation_parallel() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_weak_bisimulation_parallel");
+            let files = DumpFiles::new("test_weak_bisimulation_parallel");
 
             let lts = random_lts::<String, _>(rng, 100, 3);
             let mut timing = Timing::new();

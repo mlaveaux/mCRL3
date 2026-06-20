@@ -562,7 +562,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_labelled_transition_system_merge_disjoint() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_merge_disjoint");
+            let files = DumpFiles::new("test_random_merge_disjoint");
 
             let left = random_lts::<String, _>(rng, 1000, 20);
             files.dump("left.aut", |w| write_aut(w, &left)).unwrap();

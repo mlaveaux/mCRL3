@@ -890,7 +890,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_strong_bisim_sigref() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_strong_bisim_sigref");
+            let files = DumpFiles::new("test_random_strong_bisim_sigref");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
@@ -916,7 +916,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_branching_bisim_sigref() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_branching_bisim_sigref");
+            let files = DumpFiles::new("test_random_branching_bisim_sigref");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
@@ -944,7 +944,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_weak_bisim_sigref() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_weak_bisim_sigref");
+            let files = DumpFiles::new("test_random_weak_bisim_sigref");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
@@ -972,7 +972,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_branching_bisim_sigref_naive() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_branching_bisim_sigref_naive");
+            let files = DumpFiles::new("test_random_branching_bisim_sigref_naive");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();
@@ -994,7 +994,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Miri is too slow
     fn test_random_weak_bisim_sigref_naive() {
         random_test(100, |rng| {
-            let mut files = DumpFiles::new("test_random_weak_bisim_sigref_naive");
+            let files = DumpFiles::new("test_random_weak_bisim_sigref_naive");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |writer| write_aut(writer, &lts)).unwrap();

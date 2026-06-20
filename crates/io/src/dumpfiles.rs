@@ -48,7 +48,7 @@ impl DumpFiles {
 
     /// Dumps a file with the given filename suffix by calling the provided function
     /// to write the contents.
-    pub fn dump<F>(&mut self, filename: &str, mut write: F) -> Result<(), MercError>
+    pub fn dump<F>(&self, filename: &str, mut write: F) -> Result<(), MercError>
     where
         F: FnMut(&mut File) -> Result<(), MercError>,
     {
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_disabled_skips_writing() {
         // Without MERC_DUMP the write closure must never be invoked.
-        let mut files = DumpFiles::with_dump_dir(None, "ignored");
+        let files = DumpFiles::with_dump_dir(None, "ignored");
         let mut called = false;
         files
             .dump("file.txt", |_| {
@@ -117,7 +117,7 @@ mod tests {
         let base = tempfile::tempdir().expect("failed to create base temp dir");
         let base_path = base.path().to_str().expect("temp path is valid UTF-8");
 
-        let mut files = DumpFiles::with_dump_dir(Some(base_path), "subdir");
+        let files = DumpFiles::with_dump_dir(Some(base_path), "subdir");
         files
             .dump("hello.txt", |f| f.write_all(b"hello world").map_err(Into::into))
             .expect("dump should succeed when enabled");

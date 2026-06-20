@@ -104,7 +104,7 @@ mod tests {
     fn test_random_lts_permutation() {
         random_test(100, |rng| {
             let mut timing = Timing::new();
-            let mut files = DumpFiles::new("test_random_lts_permutation");
+            let files = DumpFiles::new("test_random_lts_permutation");
 
             let lts = random_lts::<String, _>(rng, 1000, 3);
             files.dump("input.aut", |w| write_aut(w, &lts)).unwrap();
