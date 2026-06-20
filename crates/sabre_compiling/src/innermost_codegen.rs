@@ -32,6 +32,16 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);
     debug_assert!(!apma.states().is_empty(), "Automaton must have at least one state");
 
+    // `transitions()` is a `HashMap`, so its iteration order is not stable
+    // between runs. Emit transitions in a deterministic (state, symbol) order so
+    // the generated source is reproducible and diffable.
+    let sorted_transitions: Vec<(usize, usize, &_)> = apma
+        .transitions()
+        .iter()
+        .map(|((from, symbol), transition)| (*from, *symbol, transition))
+        .sorted_by_key(|(from, symbol, _)| (*from, *symbol))
+        .collect();
+
     // Write imports and the main rewrite function
     writeln!(
         &mut formatter,
@@ -217,7 +227,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
         writeln!(&mut formatter, "match symbol.operation_id() {{")?;
 
         let match_indent = formatter.indent();
-        for ((from, symbol), transition) in apma.transitions() {
+        for (from, symbol, transition) in &sorted_transitions {
             // Consider only transitions that match the current state index
             if *from == index {
                 writeln!(&mut formatter, "{symbol} => {{")?;
@@ -280,7 +290,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
 
     writeln!(formatter, "// term stack rewrite functions")?;
     writeln!(formatter)?;
-    for ((from, symbol), transition) in apma.transitions() {
+    for (from, symbol, transition) in &sorted_transitions {
         for (annotation_index, (_announcement, annotation)) in transition.announcements.iter().enumerate() {
             generate_rewrite_term_stack(
                 &mut formatter,
@@ -295,7 +305,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
 
     writeln!(formatter, "// check condition functions")?;
     writeln!(formatter)?;
-    for ((from, symbol), transition) in apma.transitions() {
+    for (from, symbol, transition) in &sorted_transitions {
         for (annotation_index, (_announcement, annotation)) in transition.announcements.iter().enumerate() {
             generate_check_condition(
                 &mut formatter,
@@ -310,7 +320,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
 
     writeln!(formatter, "// equivalence classes check")?;
     writeln!(formatter)?;
-    for ((from, symbol), transition) in apma.transitions() {
+    for (from, symbol, transition) in &sorted_transitions {
         for (annotation_index, (_announcement, annotation)) in transition.announcements.iter().enumerate() {
             generate_check_equivalence_classes(
                 &mut formatter,
@@ -568,7 +578,8 @@ fn generate_position_getters(
     formatter: &mut IndentFormatter<File>,
     positions: &HashSet<DataPosition>,
 ) -> Result<(), MercError> {
-    for position in positions {
+    // Emit in a deterministic order; `positions` is a `HashSet`.
+    for position in positions.iter().sorted() {
         writeln!(formatter, "/// Get position {:?} from term", position)?;
         writeln!(
             formatter,
