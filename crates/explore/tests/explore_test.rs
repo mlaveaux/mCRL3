@@ -1,0 +1,230 @@
+//! Validates the parallel and caching exploration drivers against the
+//! single-threaded [`merc_explore::explore`], which is simple enough to act as
+//! the naive reference. That baseline is in turn anchored to closed-form state
+//! and transition counts so it cannot drift silently.
+
+mod mock_lps;
+
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+
+use merc_explore::CacheLPS;
+use merc_explore::CachingStrategy;
+use merc_explore::ExplorationStrategy;
+use merc_explore::LPS;
+use merc_explore::Summand;
+use merc_explore::explore;
+use merc_explore::explore_parallel;
+use merc_utilities::Timing;
+
+use mock_lps::Edge;
+use mock_lps::Label;
+use mock_lps::MockLps;
+use mock_lps::State;
+
+/// Per-worker accumulator: the dense index -> state-vector map (from `on_state`)
+/// and the raw `(from_index, label, to_index)` transitions (from `on_transition`).
+#[derive(Default)]
+struct Accumulator {
+    states: HashMap<usize, State>,
+    edges: Vec<(usize, Label, usize)>,
+}
+
+/// Translates the index-keyed accumulator into state-vector form, so runs are
+/// compared by concrete state rather than by the dense index numbering the
+/// drivers assign. Every transition endpoint is a discovered state, so it is
+/// present in the map once exploration finishes.
+fn resolve(states: HashMap<usize, State>, edges: Vec<(usize, Label, usize)>) -> (BTreeSet<State>, BTreeSet<Edge>) {
+    let resolved_edges = edges
+        .into_iter()
+        .map(|(from, label, to)| {
+            let from = states.get(&from).expect("source state was reported").clone();
+            let to = states.get(&to).expect("target state was reported").clone();
+            (from, label, to)
+        })
+        .collect();
+    let states = states.into_values().collect();
+    (states, resolved_edges)
+}
+
+/// Runs the sequential driver and returns its reachable states and transitions.
+fn run_sequential<P>(lps: &P, strategy: ExplorationStrategy) -> (BTreeSet<State>, BTreeSet<Edge>)
+where
+    P: LPS<Value = usize, Label = Label, StateInfo = State>,
+{
+    let mut acc = Accumulator::default();
+    explore(
+        lps,
+        strategy,
+        &Timing::new(),
+        &mut acc,
+        |acc, index, info| {
+            acc.states.insert(index.value(), info.clone());
+            Ok(())
+        },
+        |acc, from, label, to| {
+            acc.edges.push((from.value(), *label, to.value()));
+            Ok(())
+        },
+    )
+    .expect("exploration succeeds");
+    resolve(acc.states, acc.edges)
+}
+
+/// Runs the parallel driver and merges the per-worker accumulators.
+fn run_parallel<P>(lps: &P) -> (BTreeSet<State>, BTreeSet<Edge>)
+where
+    P: LPS<Value = usize, Label = Label, StateInfo = State> + Sync,
+    <P::Summand as Summand>::Context: Send,
+{
+    let (_initial, locals) = explore_parallel(
+        lps,
+        &Timing::new(),
+        Accumulator::default,
+        |acc, index, info| {
+            acc.states.insert(index.value(), info.clone());
+            Ok(())
+        },
+        |acc, from, label, to| {
+            acc.edges.push((from.value(), *label, to.value()));
+            Ok(())
+        },
+    )
+    .expect("parallel exploration succeeds");
+
+    let mut states = HashMap::new();
+    let mut edges = Vec::new();
+    for acc in locals {
+        states.extend(acc.states);
+        edges.extend(acc.edges);
+    }
+    resolve(states, edges)
+}
+
+/// The fixtures every driver is checked against: plain grids of varying shape,
+/// a grid carrying a conjunction-guarded diagonal summand, and a degenerate
+/// grid whose only state is the initial one (all guards false from the start).
+fn fixtures() -> Vec<MockLps> {
+    vec![
+        MockLps::grid(&[0]),
+        MockLps::grid(&[3]),
+        MockLps::grid(&[2, 3]),
+        MockLps::grid(&[2, 2, 2]),
+        MockLps::grid_with_diagonal(&[2, 3]),
+        MockLps::grid_with_diagonal(&[3, 3, 2]),
+        // Grids whose summands fan out to several successors, with a different
+        // step bound per coordinate (a `0` step yields a guarded self-loop).
+        MockLps::grid_with_steps(&[3], &[2]),
+        MockLps::grid_with_steps(&[2, 3], &[1, 2]),
+        MockLps::grid_with_steps(&[2, 2, 2], &[0, 1, 2]),
+    ]
+}
+
+/// The naive baseline: a single-threaded depth-first exploration. Its reachable
+/// states and transitions are what the other drivers are compared against.
+fn baseline(lps: &MockLps) -> (BTreeSet<State>, BTreeSet<Edge>) {
+    run_sequential(lps, ExplorationStrategy::Dfs)
+}
+
+#[test]
+fn breadth_first_matches_depth_first() {
+    // The traversal order must not change the discovered state space.
+    for lps in fixtures() {
+        assert_eq!(
+            run_sequential(&lps, ExplorationStrategy::Bfs),
+            baseline(&lps),
+            "BFS disagreed with DFS"
+        );
+    }
+}
+
+#[test]
+fn parallel_matches_sequential() {
+    for lps in fixtures() {
+        assert_eq!(
+            run_parallel(&lps),
+            baseline(&lps),
+            "parallel driver disagreed with sequential"
+        );
+    }
+}
+
+#[test]
+fn cached_matches_sequential() {
+    for strategy in [CachingStrategy::Local, CachingStrategy::None] {
+        for lps in fixtures() {
+            let expected = baseline(&lps);
+            let cached = CacheLPS::new(lps, strategy);
+
+            assert_eq!(
+                run_sequential(&cached, ExplorationStrategy::Dfs),
+                expected,
+                "cached sequential driver disagreed with sequential (strategy {strategy:?})"
+            );
+            assert_eq!(
+                run_parallel(&cached),
+                expected,
+                "cached parallel driver disagreed with sequential (strategy {strategy:?})"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequential_propagates_callback_error() {
+    // A transition callback that always fails must surface as an error rather
+    // than completing the exploration.
+    let lps = MockLps::grid(&[3, 3]);
+    let result = explore(
+        &lps,
+        ExplorationStrategy::Dfs,
+        &Timing::new(),
+        &mut (),
+        |_ctx, _index, _info| Ok(()),
+        |_ctx, _from, _label, _to| Err("boom".into()),
+    );
+    assert!(result.is_err(), "callback error must surface");
+}
+
+#[test]
+fn parallel_propagates_callback_error() {
+    // Exercises the abort path: one worker's failing callback sets `aborted`,
+    // and every worker stops and reports the error.
+    let lps = MockLps::grid(&[3, 3]);
+    let result = explore_parallel(
+        &lps,
+        &Timing::new(),
+        || (),
+        |_local, _index, _info| Ok(()),
+        |_local, _from, _label, _to| Err("boom".into()),
+    );
+    assert!(result.is_err(), "callback error must surface from the parallel driver");
+}
+
+#[test]
+fn grid_state_and_transition_counts() {
+    // Anchor the naive baseline to closed-form counts, so the driver everything
+    // else is compared against cannot drift undetected.
+    let lps = MockLps::grid(&[2, 3]);
+    let (states, edges) = baseline(&lps);
+    // States: the full product grid (bound + 1 per axis).
+    assert_eq!(states.len(), 3 * 4);
+    // Transitions: along axis i, the source ranges over its bound values while
+    // the others range freely: 2*4 + 3*3 = 17.
+    assert_eq!(edges.len(), 2 * 4 + 3 * 3);
+}
+
+#[test]
+fn stepped_grid_state_and_transition_counts() {
+    // A one-dimensional grid whose only summand fires at the initial state and
+    // adds any value in `0..=2`, producing three successors (`0`, `1`, `2`).
+    let lps = MockLps::grid_with_steps(&[1], &[2]);
+    let (states, edges) = baseline(&lps);
+    // Reachable states: the initial `0` plus the two further targets `1` and `2`.
+    assert_eq!(states, BTreeSet::from([vec![0], vec![1], vec![2]]));
+    // Only state `0` satisfies the guard; it emits one edge per delta value.
+    assert_eq!(
+        edges,
+        BTreeSet::from([(vec![0], 0, vec![0]), (vec![0], 0, vec![1]), (vec![0], 0, vec![2])])
+    );
+}
