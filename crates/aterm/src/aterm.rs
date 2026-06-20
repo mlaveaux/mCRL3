@@ -570,6 +570,13 @@ impl<'a> Iterator for ATermArgs<'a> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Report the exact remaining length so adapters such as `Skip` and `Map` keep
+        // satisfying the `ExactSizeIterator` invariant (upper bound == lower bound).
+        let remaining = self.arity - self.index;
+        (remaining, Some(remaining))
+    }
 }
 
 impl DoubleEndedIterator for ATermArgs<'_> {
