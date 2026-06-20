@@ -43,34 +43,34 @@ pub struct RuntimeLibrary {
 
 impl RuntimeLibrary {
     /// Creates a new library that can be compiled at runtime.
-    /// - depe
+    ///
+    /// `dependencies` are extra lines appended verbatim to the generated
+    /// `[dependencies]` table of the on-the-fly crate.
     pub fn new(temp_dir: &Path, dependencies: Vec<String>) -> Result<RuntimeLibrary, MercError> {
         info!("Creating library in directory {}", temp_dir.to_string_lossy());
         let source_dir = PathBuf::from(temp_dir).join("src");
 
-        // Create the directory structure for a Cargo project
-        if !temp_dir.exists() {
-            fs::create_dir(temp_dir)?;
-        }
-
-        if !source_dir.exists() {
-            fs::create_dir(&source_dir)?;
-        }
+        // Create the directory structure for a Cargo project. `create_dir_all`
+        // tolerates missing parents and an already-existing directory.
+        fs::create_dir_all(&source_dir)?;
 
         // Write the cargo configuration
         {
             let mut file = File::create(PathBuf::from(temp_dir).join("Cargo.toml"))?;
+            // `rust-version` is templated from the host crate (workspace-inherited)
+            // so the generated crate never drifts from the toolchain in use.
             writeln!(
                 &mut file,
                 indoc! {"
                 [package]
                 name = \"sabre-generated\"
                 edition = \"2024\"
-                rust-version = \"1.87.0\"
+                rust-version = \"{}\"
                 version = \"1.0.0\"
                 [workspace]
-                
-                [dependencies]"}
+
+                [dependencies]"},
+                env!("CARGO_PKG_RUST_VERSION")
             )?;
 
             for dependency in &dependencies {
@@ -90,7 +90,7 @@ impl RuntimeLibrary {
         // Ignore the created package.
         {
             let mut file = File::create(PathBuf::from(temp_dir).join(".gitignore"))?;
-            writeln!(&mut file, "*.*")?;
+            writeln!(&mut file, "*")?;
         }
 
         Ok(RuntimeLibrary {
@@ -104,7 +104,7 @@ impl RuntimeLibrary {
         &self.source_dir
     }
 
-    /// Compiles the library into
+    /// Compiles the generated crate into a dynamic library and loads it back in.
     pub fn compile(&mut self) -> Result<Library, MercError> {
         let compilation_toml = include_str!(concat!(env!("OUT_DIR"), "/Compilation.toml")).parse::<Table>()?;
 

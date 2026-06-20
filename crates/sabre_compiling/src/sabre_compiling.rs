@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use libloading::Library;
 use libloading::Symbol;
 use log::info;
+use tempfile::TempDir;
 use tempfile::tempdir;
 use toml::Table;
 
@@ -23,31 +24,28 @@ use crate::generate;
 use crate::library::RuntimeLibrary;
 
 pub struct SabreCompilingRewriter {
-    library: Library,
-    /// Whether the host vtable has already been installed into `library`.
-    initialised: bool,
+    /// Cached `rewrite` entry point of `library`. Resolved once in `new`; valid
+    /// for as long as `library` stays loaded.
+    rewrite_fn: extern "C-unwind" fn(&DataExpressionRefFFI<'_>) -> DataExpressionFFI,
+    /// Keeps every term hose raw address is baked into the generated
+    /// library protected.
+    _spec: RewriteSpecification,
+    /// The loaded library, keeps rewrite_fn alive.
+    _library: Library,
+    /// Keep the temporary directory alive so it is not removed while the
+    /// library is still mapped. `None` when a caller-managed local directory is
+    /// used instead.
+    _temp_dir: Option<TempDir>,
 }
 
 impl RewriteEngine for SabreCompilingRewriter {
     fn rewrite(&mut self, term: &DataExpression) -> DataExpression {
-        unsafe {
-            // Install the host vtable into the loaded library exactly once. All
-            // term-pool access in the library is routed back through it, so the
-            // library never touches its own (duplicated) term pool.
-            if !self.initialised {
-                let initialise: Symbol<extern "C-unwind" fn(*mut c_void)> = self.library.get(b"initialise").unwrap();
+        let result = (self.rewrite_fn)(&data_expression_ref_from_term(term));
 
-                let vtable: SabreRewriteVTable = rewrite_vtable();
-                initialise(std::ptr::addr_of!(vtable) as *mut c_void);
-                self.initialised = true;
-            }
-
-            let func: Symbol<extern "C-unwind" fn(&DataExpressionRefFFI) -> DataExpressionFFI> =
-                self.library.get(b"rewrite").unwrap();
-
-            let result = func(&data_expression_ref_from_term(term));
-            into_data_expression(result)
-        }
+        // SAFETY: `result` is an owned handle produced by the generated
+        // `rewrite` entry point (always via the host `create`/`protect`), so it
+        // wraps a live `Box<DataExpression>`.
+        unsafe { into_data_expression(result) }
     }
 }
 
@@ -63,20 +61,21 @@ impl SabreCompilingRewriter {
         use_local_workspace: bool,
         use_local_tmp: bool,
     ) -> Result<SabreCompilingRewriter, MercError> {
-        let system_tmp_dir = tempdir()?;
-        let temp_dir = if use_local_tmp {
-            Path::new("./tmp")
-        } else {
-            system_tmp_dir.path()
+        // Only allocate a system temporary directory when one is needed; the
+        // local-tmp path uses a fixed `./tmp` directory instead.
+        let system_tmp_dir = if use_local_tmp { None } else { Some(tempdir()?) };
+        let temp_dir = match &system_tmp_dir {
+            Some(dir) => dir.path(),
+            None => Path::new("./tmp"),
         };
+
+        let compilation_toml = include_str!(concat!(env!("OUT_DIR"), "/Compilation.toml")).parse::<Table>()?;
+        let sabrec = compilation_toml.get("sabrec").ok_or("Missing [sabrec] section")?;
 
         let mut dependencies = vec![];
 
         if use_local_workspace {
-            let compilation_toml = include_str!(concat!(env!("OUT_DIR"), "/Compilation.toml")).parse::<Table>()?;
-            let path = compilation_toml
-                .get("sabrec")
-                .ok_or("Missing [sabre] section)")?
+            let path = sabrec
                 .get("path")
                 .ok_or("Missing path entry")?
                 .as_str()
@@ -90,8 +89,18 @@ impl SabreCompilingRewriter {
                     .to_string_lossy()
             ));
         } else {
-            info!("Using git dependency https://github.com/mlaveaux/merc.git");
-            dependencies.push("merc_sabre-ffi = { git = 'https://github.com/mlaveaux/merc.git' }".to_string());
+            // Pin to the host's git commit so the loaded library's `#[repr(C)]`
+            // vtable layout matches the host exactly.
+            let repository = "https://github.com/MERCorg/merc.git";
+            let commit = sabrec.get("commit").and_then(|c| c.as_str()).unwrap_or_default();
+
+            if commit.is_empty() {
+                info!("Using git dependency {repository} (unpinned; no commit recorded at build time)");
+                dependencies.push(format!("merc_sabre-ffi = {{ git = '{repository}' }}"));
+            } else {
+                info!("Using git dependency {repository} pinned to {commit}");
+                dependencies.push(format!("merc_sabre-ffi = {{ git = '{repository}', rev = '{commit}' }}"));
+            }
         }
 
         let mut compilation_crate = RuntimeLibrary::new(temp_dir, dependencies)?;
@@ -100,9 +109,30 @@ impl SabreCompilingRewriter {
         generate(spec, compilation_crate.source_dir())?;
 
         let library = compilation_crate.compile()?;
+
+        // Install the host vtable into the loaded library exactly once and cache
+        // the `rewrite` entry point. All term-pool access in the library is
+        // routed back through the vtable, so the library never touches its own
+        // (duplicated) term pool.
+        //
+        // SAFETY: `initialise` and `rewrite` have the signatures emitted by the
+        // code generator. The vtable's function pointers live in the host binary
+        // for the whole process, satisfying the contract of `set_rewrite_vtable`.
+        let rewrite_fn = unsafe {
+            let initialise: Symbol<extern "C-unwind" fn(*mut c_void)> = library.get(b"initialise")?;
+            let vtable: SabreRewriteVTable = rewrite_vtable();
+            initialise(std::ptr::addr_of!(vtable) as *mut c_void);
+
+            let rewrite: Symbol<extern "C-unwind" fn(&DataExpressionRefFFI<'_>) -> DataExpressionFFI> =
+                library.get(b"rewrite")?;
+            *rewrite
+        };
+
         Ok(SabreCompilingRewriter {
-            library,
-            initialised: false,
+            rewrite_fn,
+            _spec: spec.clone(),
+            _library: library,
+            _temp_dir: system_tmp_dir,
         })
     }
 }
