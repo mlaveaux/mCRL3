@@ -48,10 +48,12 @@ impl ATermStreamable for DataSpecification {
 #[cfg(test)]
 mod tests {
     use merc_aterm::ATerm;
+    use merc_aterm::ATermStreamable;
+    use merc_aterm::ATermWrite;
     use merc_aterm::BinaryATermReader;
     use merc_aterm::BinaryATermWriter;
 
-    use super::*;
+    use super::DataSpecification;
 
     #[test]
     fn test_data_specification_roundtrip() {

@@ -88,9 +88,7 @@ impl<W: Write> BitStreamWrite for BitStreamWriter<W> {
 
     fn write_string(&mut self, s: &str) -> Result<(), MercError> {
         self.write_integer(s.len() as u64)?;
-        for byte in s.as_bytes() {
-            self.writer.write::<8, u64>(*byte as u64)?;
-        }
+        self.writer.write_bytes(s.as_bytes())?;
         Ok(())
     }
 
@@ -115,20 +113,21 @@ impl<R: Read> BitStreamRead for BitStreamReader<R> {
 
     fn read_string(&mut self) -> Result<String, MercError> {
         let length = self.read_integer()?;
-        self.text_buffer.clear();
         let length_usize: usize = length
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "string length exceeds usize"))?;
+
+        self.text_buffer.clear();
         self.text_buffer
             .try_reserve(length_usize)
             .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "string too large to allocate"))?;
+        self.text_buffer.resize(length_usize, 0);
+        self.reader.read_bytes(&mut self.text_buffer)?;
 
-        for _ in 0..length {
-            let byte = self.reader.read::<8, u8>()?;
-            self.text_buffer.push(byte);
-        }
-
-        String::from_utf8(std::mem::take(&mut self.text_buffer))
+        // Validate in place and copy the result out, so `text_buffer` keeps its
+        // allocation for reuse on the next call (taking it would reset it to empty).
+        std::str::from_utf8(&self.text_buffer)
+            .map(str::to_owned)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e).into())
     }
 
@@ -139,7 +138,10 @@ impl<R: Read> BitStreamRead for BitStreamReader<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::BitStreamRead;
+    use super::BitStreamReader;
+    use super::BitStreamWrite;
+    use super::BitStreamWriter;
 
     use log::debug;
     use rand::RngExt;
@@ -235,5 +237,66 @@ mod tests {
                 }
             }
         });
+    }
+
+    /// Writes the given strings and reads them back, asserting they round-trip.
+    fn roundtrip_strings(strings: &[&str]) {
+        let mut buffer = Vec::new();
+        {
+            let mut writer = BitStreamWriter::new(&mut buffer);
+            for s in strings {
+                writer.write_string(s).expect("Failed to write string");
+            }
+            writer.flush().expect("Failed to flush");
+        }
+
+        let mut reader = BitStreamReader::new(&buffer[..]);
+        for s in strings {
+            assert_eq!(&reader.read_string().expect("Failed to read string"), s);
+        }
+    }
+
+    #[test]
+    fn test_string_edge_cases() {
+        // Empty strings, multi-byte UTF-8, and a long string all in one stream so
+        // that the shared `text_buffer` is reused across reads of differing length.
+        roundtrip_strings(&["", "a", "", "héllo wörld", "🦀∑≈ç", &"x".repeat(10_000), ""]);
+    }
+
+    #[test]
+    fn test_string_roundtrip_random_unicode() {
+        random_test(100, |rng| {
+            let strings: Vec<String> = (0..50)
+                .map(|_| {
+                    let len = rng.random_range(0..32);
+                    (0..len).map(|_| rng.random::<char>()).collect()
+                })
+                .collect();
+            let refs: Vec<&str> = strings.iter().map(String::as_str).collect();
+            roundtrip_strings(&refs);
+        });
+    }
+
+    #[test]
+    fn test_read_string_rejects_invalid_utf8() {
+        // Manually craft a stream: length 2 followed by an invalid UTF-8 sequence.
+        let mut buffer = Vec::new();
+        {
+            let mut writer = BitStreamWriter::new(&mut buffer);
+            writer.write_integer(2).expect("Failed to write length");
+            writer.write_bits(0xFF, 8).expect("Failed to write byte");
+            writer.write_bits(0xFE, 8).expect("Failed to write byte");
+            writer.flush().expect("Failed to flush");
+        }
+
+        let mut reader = BitStreamReader::new(&buffer[..]);
+        assert!(reader.read_string().is_err(), "Invalid UTF-8 should produce an error");
+    }
+
+    #[test]
+    fn test_write_bits_rejects_too_many_bits() {
+        let mut buffer = Vec::new();
+        let mut writer = BitStreamWriter::new(&mut buffer);
+        assert!(writer.write_bits(0, 65).is_err(), "More than 64 bits must be rejected");
     }
 }

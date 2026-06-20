@@ -488,13 +488,14 @@ impl<T: CompressedEntry + Copy, Tag> CompressedEntry for TagIndex<T, Tag> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use rand::RngExt;
     use rand::distr::Uniform;
     use rand::seq::SliceRandom;
 
     use merc_utilities::random_test;
+
+    use super::ByteCompressedVec;
+    use super::CompressedEntry;
 
     #[test]
     fn test_index_bytevector() {

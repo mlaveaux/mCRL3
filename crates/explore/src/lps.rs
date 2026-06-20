@@ -1,6 +1,3 @@
-//! Trait abstractions for Linear Process Specifications (LPSs) and similar
-//! state-space generators (e.g. PBES in SRF form).
-
 use merc_utilities::MercError;
 
 use crate::Slot;
@@ -8,7 +5,9 @@ use crate::Slot;
 /// A Linear Process Specification trait.
 ///
 /// An [`LPS`] describes a transition system implicitly by giving an initial
-/// state vector and a collection of condition action effect summands.
+/// state vector and a collection of condition action effect summands. The same
+/// abstraction also covers similar state-space generators, such as PBESs in SRF
+/// form.
 pub trait LPS {
     /// The type of the values stored at each position of a state vector.
     ///

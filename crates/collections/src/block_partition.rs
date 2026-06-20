@@ -251,11 +251,15 @@ impl Iterator for BlockIter<'_> {
 
 #[cfg(test)]
 mod tests {
+    use log::trace;
     use merc_utilities::random_test;
     use rand::RngExt;
     use rand::seq::IteratorRandom;
 
-    use super::*;
+    use crate::BlockIndex;
+    use crate::IndexedPartition;
+
+    use super::BlockPartition;
 
     #[test]
     fn test_simple_block_partition() {

@@ -24,18 +24,25 @@ pub struct DumpFiles {
 impl DumpFiles {
     /// Creates a new `DumpFiles` instance with the given directory as output.
     pub fn new(directory: &str) -> Self {
-        if let Ok(dump_dir) = std::env::var("MERC_DUMP") {
-            // Check if the directory is an absolute path
-            if !Path::new(dump_dir.as_str()).is_absolute() {
-                panic!("MERC_DUMP must be an absolute path, because tests write relative to their source file.");
-            }
+        Self::with_dump_dir(std::env::var("MERC_DUMP").ok().as_deref(), directory)
+    }
 
-            Self {
-                directory: Some(Path::new(&dump_dir).join(directory)),
+    /// Constructs a `DumpFiles` from an explicit `MERC_DUMP` value, so the logic
+    /// can be tested without mutating the process environment.
+    fn with_dump_dir(dump_dir: Option<&str>, directory: &str) -> Self {
+        match dump_dir {
+            Some(dump_dir) => {
+                // Check if the directory is an absolute path
+                if !Path::new(dump_dir).is_absolute() {
+                    panic!("MERC_DUMP must be an absolute path, because tests write relative to their source file.");
+                }
+
+                Self {
+                    directory: Some(Path::new(dump_dir).join(directory)),
+                }
             }
-        } else {
             // Dumping disabled.
-            Self { directory: None }
+            None => Self { directory: None },
         }
     }
 
@@ -63,9 +70,15 @@ impl DumpFiles {
 
 /// Uses `MERC_DUMP` as the temporary directory if set, and otherwise the default temp directory.
 pub fn temp_dir(name: &str) -> Result<TempDir, MercError> {
-    if let Ok(dump_dir) = std::env::var("MERC_DUMP") {
+    temp_dir_in(std::env::var("MERC_DUMP").ok().as_deref(), name)
+}
+
+/// Creates a temporary directory under an explicit `MERC_DUMP` value, so the
+/// logic can be tested without mutating the process environment.
+fn temp_dir_in(dump_dir: Option<&str>, name: &str) -> Result<TempDir, MercError> {
+    if let Some(dump_dir) = dump_dir {
         // Check if the directory is an absolute path
-        if !Path::new(dump_dir.as_str()).is_absolute() {
+        if !Path::new(dump_dir).is_absolute() {
             panic!("MERC_DUMP must be an absolute path, because tests write relative to their source file.");
         }
 
@@ -75,5 +88,75 @@ pub fn temp_dir(name: &str) -> Result<TempDir, MercError> {
         Ok(dir)
     } else {
         tempfile::tempdir().map_err(|e| e.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DumpFiles;
+    use super::temp_dir_in;
+
+    use std::io::Write;
+
+    #[test]
+    fn test_disabled_skips_writing() {
+        // Without MERC_DUMP the write closure must never be invoked.
+        let mut files = DumpFiles::with_dump_dir(None, "ignored");
+        let mut called = false;
+        files
+            .dump("file.txt", |_| {
+                called = true;
+                Ok(())
+            })
+            .expect("dump should succeed when disabled");
+        assert!(!called, "the write closure must not run when dumping is disabled");
+    }
+
+    #[test]
+    fn test_enabled_writes_file() {
+        let base = tempfile::tempdir().expect("failed to create base temp dir");
+        let base_path = base.path().to_str().expect("temp path is valid UTF-8");
+
+        let mut files = DumpFiles::with_dump_dir(Some(base_path), "subdir");
+        files
+            .dump("hello.txt", |f| f.write_all(b"hello world").map_err(Into::into))
+            .expect("dump should succeed when enabled");
+
+        let written = base.path().join("subdir").join("hello.txt");
+        assert_eq!(
+            std::fs::read_to_string(written).expect("file should exist"),
+            "hello world"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "MERC_DUMP must be an absolute path")]
+    fn test_relative_dump_dir_panics() {
+        DumpFiles::with_dump_dir(Some("relative/path"), "subdir");
+    }
+
+    #[test]
+    fn test_temp_dir_disabled_creates_directory() {
+        let dir = temp_dir_in(None, "merc_io_test").expect("temp dir should be created");
+        assert!(dir.path().is_dir(), "temp dir should exist on disk");
+    }
+
+    #[test]
+    fn test_temp_dir_enabled_uses_base() {
+        let base = tempfile::tempdir().expect("failed to create base temp dir");
+        let base_path = base.path().to_str().expect("temp path is valid UTF-8");
+
+        let dir = temp_dir_in(Some(base_path), "merc_io_test").expect("temp dir should be created");
+        assert!(dir.path().is_dir(), "temp dir should exist on disk");
+        assert!(
+            dir.path().starts_with(base.path()),
+            "temp dir should be created under the provided base directory"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "MERC_DUMP must be an absolute path")]
+    fn test_temp_dir_relative_panics() {
+        let _ = temp_dir_in(Some("relative/path"), "merc_io_test");
     }
 }

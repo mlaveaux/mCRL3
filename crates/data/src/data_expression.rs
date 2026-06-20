@@ -480,10 +480,18 @@ pub fn to_untyped_data_expression(t: ATerm, variables: Option<&AHashSet<String>>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use ahash::AHashSet;
     use merc_aterm::ATerm;
     use merc_aterm::ATermInt;
+
+    use crate::is_data_application;
+    use crate::is_data_machine_number;
+    use crate::is_data_variable;
+
+    use super::DataApplication;
+    use super::DataExpression;
+    use super::DataFunctionSymbol;
+    use super::DataVariable;
 
     #[test]
     fn test_print() {

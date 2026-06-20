@@ -57,9 +57,10 @@ impl<T: Read> StreamingIterator for LineIterator<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::LineIterator;
 
     use std::io::Cursor;
+    use streaming_iterator::StreamingIterator;
 
     #[test]
     fn test_line_iterator_basic() {

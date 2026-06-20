@@ -394,10 +394,14 @@ impl<'a, L: TransitionLabel> SortedLtsMultiAction<'a, L> {
     fn new(action: &'a LtsMultiAction<L>) -> Self {
         // Check if the L Ord is consistent.
         debug_assert!(
-            action.actions().iter().zip(action.actions().iter().sorted()).all(|(a, b)| a == b),
+            action
+                .actions()
+                .iter()
+                .zip(action.actions().iter().sorted())
+                .all(|(a, b)| a == b),
             "LtsMultiAction's internal order must be consistent with the label-matching logic"
         );
-        
+
         SortedLtsMultiAction { action }
     }
 

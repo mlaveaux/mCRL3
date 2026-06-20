@@ -1,6 +1,3 @@
-//!
-//! A list of terms, where T is the type of the elements in the list.
-//!
 #![forbid(unsafe_code)]
 
 use std::fmt;
