@@ -15,7 +15,7 @@ use merc_collections::VecSet;
 pub struct Antichain<K, V> {
     storage: HashMap<K, VecSet<VecSet<V>>>,
 
-    /// The largest size of the antichain.
+    /// The largest number of keys stored in the antichain.
     max_antichain: usize,
     /// Number of times a pair was inserted into the antichain.
     antichain_misses: usize,
@@ -34,15 +34,16 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
         }
     }
 
-    /// Checks whether the antichain contains a pair (s, T') such that T > T'.
-    /// This is the inverse of the contains check, which checks for T < T'.
+    /// Checks whether the antichain contains a pair (s, T') such that T ⊆ T',
+    /// i.e., a stored set that is a superset of `value`.
     pub fn contains_superset(&self, key: &K, value: &VecSet<V>) -> bool {
         self.storage
             .get(key)
             .is_some_and(|entry| entry.iter().any(|inner_value| value.is_subset(inner_value)))
     }
 
-    /// Checks whether the antichain contains a pair (s, T') such that T < T'.
+    /// Checks whether the antichain contains a pair (s, T') such that T' ⊆ T,
+    /// i.e., a stored set that is a subset of `value`.
     pub fn contains_subset(&self, key: &K, value: &VecSet<V>) -> bool {
         self.storage
             .get(key)
@@ -54,9 +55,10 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
         self.storage.is_empty()
     }
 
-    /// Returns the size of the antichain.
+    /// Returns the number of pairs in the antichain, i.e., the number of items
+    /// yielded by [`Antichain::iter`].
     pub fn len(&self) -> usize {
-        self.storage.len()
+        self.storage.values().map(|values| values.len()).sum()
     }
 
     /// Returns the metrics of this antichain
@@ -82,7 +84,7 @@ impl<K, V: fmt::Debug + Ord> Antichain<K, V> {
     /// Checks the internal consistency of the antichain invariant.
     #[cfg(test)]
     fn check_consistency(&self) {
-        for (_key, values) in &self.storage {
+        for values in self.storage.values() {
             for i in values.iter() {
                 for j in values.iter() {
                     if i == j {
