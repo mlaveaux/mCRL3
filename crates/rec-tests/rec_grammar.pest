@@ -1,7 +1,10 @@
 
 
-// An identifier.
-identifier = @{  !("CONS") ~ (ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "_" | "'" | "\"")*) }
+// An identifier. The negative lookahead stops the `sorts` rule from consuming
+// the `CONS` section keyword as a sort name, but only rejects the bare keyword
+// (a `CONS` not followed by further identifier characters), so identifiers such
+// as `CONSTANT` are still accepted.
+identifier = @{ !("CONS" ~ !(ASCII_ALPHANUMERIC | "_" | "'" | "\"")) ~ (ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "_" | "'" | "\"")*) }
 
 // The grammar for first order terms identifier(t0, ..., tn)
 term = {identifier ~ args?}

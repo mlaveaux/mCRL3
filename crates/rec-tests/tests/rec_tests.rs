@@ -11,45 +11,56 @@ use merc_sabre::RewriteEngine;
 use merc_sabre::RewriteSpecification;
 use merc_sabre::SabreRewriter;
 
+/// Loads the rewrite specification and the terms to evaluate from the given REC files.
+fn load_spec(rec_files: &[&str]) -> (RewriteSpecification, Vec<DataExpression>) {
+    let (syntax_spec, syntax_terms) = load_rec_from_strings(rec_files).unwrap();
+    let spec = syntax_spec.to_rewrite_spec();
+    let terms = syntax_terms
+        .iter()
+        .map(|t| to_untyped_data_expression(t.clone(), None))
+        .collect();
+    (spec, terms)
+}
+
+/// Parses the expected results, one term per line, asserting that the number of
+/// lines matches the number of terms so a drifted snapshot fails clearly.
+fn parse_expected(terms: &[DataExpression], expected_result: &str) -> Vec<DataExpression> {
+    // The snapshot files end in a trailing newline; ignore the resulting empty line.
+    let lines: Vec<&str> = expected_result.strip_suffix('\n').unwrap_or(expected_result).split('\n').collect();
+    assert_eq!(
+        lines.len(),
+        terms.len(),
+        "the snapshot has {} lines but the specification evaluates {} terms",
+        lines.len(),
+        terms.len()
+    );
+
+    lines
+        .iter()
+        .map(|line| to_untyped_data_expression(ATerm::from_string(line).unwrap(), None))
+        .collect()
+}
+
+/// Rewrites every term with `rewriter` and compares against the expected results.
+fn check_rewriter(rewriter: &mut impl RewriteEngine, terms: &[DataExpression], expected: &[DataExpression], engine: &str) {
+    for (term, expected_result) in terms.iter().zip(expected) {
+        let result = rewriter.rewrite(term);
+        assert_eq!(
+            &result, expected_result,
+            "The {engine} rewrite result doesn't match the expected result"
+        );
+    }
+}
+
 /// A local function to share the rec_test functionality.
 fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
     test_logger();
 
-    let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
-        let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
-        let result = syntax_spec.to_rewrite_spec();
-        (
-            result,
-            syntax_terms
-                .iter()
-                .map(|t| to_untyped_data_expression(t.clone(), None))
-                .collect(),
-        )
-    };
+    let (spec, terms) = load_spec(&rec_files);
+    let expected = parse_expected(&terms, expected_result);
 
-    // Test Sabre rewriter
-    let mut sa = SabreRewriter::new(&spec);
-    let mut inner = InnermostRewriter::new(&spec);
-
-    let mut expected = expected_result.split('\n');
-
-    for term in &terms {
-        let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
-        let expected_result = to_untyped_data_expression(expected_term, None);
-
-        let result = inner.rewrite(term);
-        assert_eq!(
-            result,
-            expected_result.clone(),
-            "The inner rewrite result doesn't match the expected result",
-        );
-
-        let result = sa.rewrite(term);
-        assert_eq!(
-            result, expected_result,
-            "The sabre rewrite result doesn't match the expected result"
-        );
-    }
+    check_rewriter(&mut InnermostRewriter::new(&spec), &terms, &expected, "inner");
+    check_rewriter(&mut SabreRewriter::new(&spec), &terms, &expected, "sabre");
 }
 
 #[cfg_attr(miri, ignore)]
@@ -92,34 +103,10 @@ fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
 fn test_rec_specification_naive(rec_files: Vec<&str>, expected_result: &str) {
     test_logger();
 
-    let (spec, terms): (RewriteSpecification, Vec<DataExpression>) = {
-        let (syntax_spec, syntax_terms) = load_rec_from_strings(&rec_files).unwrap();
-        let result = syntax_spec.to_rewrite_spec();
-        (
-            result,
-            syntax_terms
-                .iter()
-                .map(|t| to_untyped_data_expression(t.clone(), None))
-                .collect(),
-        )
-    };
+    let (spec, terms) = load_spec(&rec_files);
+    let expected = parse_expected(&terms, expected_result);
 
-    // Test Sabre rewriter
-    let mut naive = NaiveRewriter::new(&spec);
-
-    let mut expected = expected_result.split('\n');
-
-    for term in &terms {
-        let expected_term = ATerm::from_string(expected.next().unwrap()).unwrap();
-        let expected_result = to_untyped_data_expression(expected_term, None);
-
-        let result = naive.rewrite(term);
-        assert_eq!(
-            result,
-            expected_result.clone(),
-            "The naive rewrite result doesn't match the expected result",
-        );
-    }
+    check_rewriter(&mut NaiveRewriter::new(&spec), &terms, &expected, "naive");
 }
 
 // These tests are too slow without optimisations.

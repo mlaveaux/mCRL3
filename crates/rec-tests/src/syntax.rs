@@ -12,6 +12,9 @@ use merc_sabre::Rule;
 #[derive(Clone, Default, Debug)]
 pub struct RewriteSpecificationSyntax {
     pub rewrite_rules: Vec<RewriteRuleSyntax>,
+    /// Constructor symbols with their arities, as declared in the `CONS` section.
+    /// Retained because they are part of the specification, but the untyped
+    /// rewriter does not need them, so [Self::to_rewrite_spec] currently ignores them.
     pub constructors: Vec<(String, usize)>,
     pub variables: Vec<String>,
 }
@@ -83,7 +86,13 @@ pub struct RewriteRuleSyntax {
 
 impl fmt::Display for RewriteRuleSyntax {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", self.lhs, self.rhs)
+        write!(f, "{} -> {}", self.lhs, self.rhs)?;
+        for (i, condition) in self.conditions.iter().enumerate() {
+            let keyword = if i == 0 { "if" } else { "and-if" };
+            let comparison = if condition.equality { "=" } else { "<>" };
+            write!(f, " {keyword} {} {comparison} {}", condition.lhs, condition.rhs)?;
+        }
+        Ok(())
     }
 }
 

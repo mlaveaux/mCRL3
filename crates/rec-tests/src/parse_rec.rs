@@ -1,7 +1,7 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -42,12 +42,19 @@ struct RecSpecResult {
 }
 
 /// Load a REC specification from a specified file.
+///
+/// Files referenced by the header (`REC-SPEC name : include ...`) are resolved
+/// relative to the including file's directory and loaded recursively.
 pub fn load_rec_from_file(file: &Path) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
     let contents = fs::read_to_string(file)?;
     parse_rec(&contents, Some(file))
 }
 
-/// Load and join multiple REC specifications
+/// Load and join multiple REC specifications.
+///
+/// Header include directives are *not* resolved here: there is no base
+/// directory to resolve them against, so every required specification must be
+/// passed explicitly in `specs`.
 pub fn load_rec_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
@@ -64,6 +71,21 @@ pub fn load_rec_from_strings(specs: &[&str]) -> Result<(RewriteSpecificationSynt
 /// Parses a REC specification. REC files can import other REC files.
 /// Returns a RewriteSpec containing all the rewrite rules and a list of terms that need to be rewritten.
 fn parse_rec(contents: &str, path: Option<&Path>) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
+    let mut visited = HashSet::new();
+    if let Some(p) = path {
+        visited.insert(p.to_path_buf());
+    }
+    parse_rec_impl(contents, path, &mut visited)
+}
+
+/// Recursive worker for [parse_rec]. `visited` records the canonical paths of
+/// the files already loaded so that cyclic or diamond includes are not loaded
+/// twice (and cannot recurse forever).
+fn parse_rec_impl(
+    contents: &str,
+    path: Option<&Path>,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<(RewriteSpecificationSyntax, Vec<ATerm>), MercError> {
     // Initialize return result
     let mut rewrite_spec = RewriteSpecificationSyntax::default();
     let mut terms = vec![];
@@ -87,23 +109,24 @@ fn parse_rec(contents: &str, path: Option<&Path>) -> Result<(RewriteSpecificatio
     // REC files can import other REC files. Import all referenced by the header.
     for file in result.include_files {
         if let Some(p) = &path {
-            let include_path = p.parent().unwrap();
-            let file_name = PathBuf::from_str(&(file.to_lowercase() + ".rec")).unwrap();
+            let include_path = p.parent().ok_or_else(|| format!("REC file {} has no parent directory", p.display()))?;
+            let file_name = PathBuf::from(file.to_lowercase() + ".rec");
             let load_file = include_path.join(file_name);
-            let contents = fs::read_to_string(load_file)?;
-            let (include_spec, include_terms) = parse_rec(&contents, path)?;
+
+            // Skip files we have already loaded to break include cycles and
+            // avoid duplicating rules on diamond-shaped include graphs.
+            if !visited.insert(load_file.clone()) {
+                continue;
+            }
+
+            let contents = fs::read_to_string(&load_file)
+                .map_err(|e| format!("failed to read included REC file {}: {e}", load_file.display()))?;
+            // Resolve nested includes relative to the included file itself.
+            let (include_spec, include_terms) = parse_rec_impl(&contents, Some(&load_file), visited)?;
 
             // Add rewrite rules and terms to the result.
             terms.extend_from_slice(&include_terms);
-            rewrite_spec
-                .rewrite_rules
-                .extend_from_slice(&include_spec.rewrite_rules);
-            rewrite_spec.constructors.extend_from_slice(&include_spec.constructors);
-            for s in include_spec.variables {
-                if !rewrite_spec.variables.contains(&s) {
-                    rewrite_spec.variables.push(s);
-                }
-            }
+            rewrite_spec.merge(&include_spec);
         }
     }
 
@@ -225,7 +248,8 @@ impl RecParser {
         match comparison.as_str() {
             "=" => Ok(true),
             "<>" => Ok(false),
-            _ => panic!("Unknown comparison operator"),
+            // The `comparison` grammar rule only matches "=" or "<>".
+            other => unreachable!("unexpected comparison operator {other:?}"),
         }
     }
 
