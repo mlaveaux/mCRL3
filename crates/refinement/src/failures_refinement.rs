@@ -161,7 +161,7 @@ where
     let mut working = VecDeque::from([(
         initial_impl,
         if weak_transition {
-            VecSet::from_vec(tau_closure(merged_lts, vec![initial_spec], &mut closure_cache, true))
+            VecSet::from_vec(tau_closure(merged_lts, vec![initial_spec], &mut closure_cache))
         } else {
             VecSet::singleton(initial_spec)
         },
@@ -197,7 +197,7 @@ where
                     // For weak trace refinement we need to consider
                     // tau-closures `s => s1 -[e]-> s2 => s'`, but only include
                     // the states after the `e` transition.
-                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache, true);
+                    let closure = tau_closure(merged_lts, spec.clone().to_vec(), &mut closure_cache);
 
                     for s in &closure {
                         for spec_transition in merged_lts.outgoing_transitions(*s) {
@@ -207,8 +207,7 @@ where
                         }
                     }
 
-                    spec_prime =
-                        VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache, true));
+                    spec_prime = VecSet::from_vec(tau_closure(merged_lts, spec_prime.to_vec(), &mut closure_cache));
                 } else {
                     // Otherwise, simply consider direct transitions.
                     for s in &spec {
@@ -281,6 +280,8 @@ fn refusals_contained_in<L: LTS>(
             continue;
         }
 
+        // This is O(n^2), but it avoids allocating the refusal sets, which are
+        // often small anyway.
         let mut is_witness = true;
         for transition_spec in lts.outgoing_transitions(*s) {
             if !lts
@@ -412,18 +413,9 @@ impl Default for ClosureCache {
 /// # Details
 ///
 /// The `states` parameter indicates the initial set of states for which the
-/// tau-closure is to be computed. The `extend` parameter indicates whether the
-/// closure should include the original states as well. The `cache` parameter is
-/// used to avoid repeated allocations.
-///
-/// If `extend` is true then the original states are included in the closure,
-/// otherwise they are not.
-pub fn tau_closure<L: LTS>(
-    lts: &L,
-    mut states: Vec<StateIndex>,
-    cache: &mut ClosureCache,
-    extend: bool,
-) -> Vec<StateIndex> {
+/// tau-closure is to be computed; the original states are always included in the
+/// returned closure. The `cache` parameter is used to avoid repeated allocations.
+pub fn tau_closure<L: LTS>(lts: &L, mut states: Vec<StateIndex>, cache: &mut ClosureCache) -> Vec<StateIndex> {
     debug_assert!(
         cache.working.is_empty() && cache.visited.is_empty(),
         "Closure cache working not cleared before use."
@@ -431,12 +423,7 @@ pub fn tau_closure<L: LTS>(
 
     // Initialize the working set with the initial states, note that states is
     // kept in tact. As such the original states are also returned.
-    if extend {
-        cache.working.extend(states.iter().cloned());
-    } else {
-        // Clear the original states.
-        cache.working.append(&mut states);
-    }
+    cache.working.extend(states.iter().cloned());
 
     // Keep track of states that are already in the closure.
     for s in &states {
@@ -471,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_example_2_12() {
-        let _ = test_logger();
+        test_logger();
 
         let s0 = r#"des(0, 6, 5)
             (0, "req", 1)

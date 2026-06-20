@@ -27,7 +27,7 @@ impl MatchGoal {
 
     /// Derive the greatest common prefix of the announcement and obligation positions
     /// of a list of match goals.
-    pub fn greatest_common_prefix(goals: &Vec<MatchGoal>) -> DataPosition {
+    pub fn greatest_common_prefix(goals: &[MatchGoal]) -> DataPosition {
         // gcp is empty if there are no match goals
         if goals.is_empty() {
             return DataPosition::empty();
@@ -36,7 +36,7 @@ impl MatchGoal {
         // Initialise the prefix with the first match goal, can only shrink afterwards
         let first_match_pos = &goals.first().unwrap().announcement.position;
         let mut gcp_length = first_match_pos.len();
-        let prefix = &first_match_pos.clone();
+        let prefix = first_match_pos;
 
         for g in goals {
             // Compare up to gcp_length or the length of the announcement position

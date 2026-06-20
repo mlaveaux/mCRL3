@@ -96,9 +96,9 @@ mod tests {
         let t0 = ATerm::from_string("0").unwrap();
 
         // substitute the a for 0 in the term s(s(a))
-        let result = THREAD_TERM_POOL.with(|tp| substitute(tp, &t, t0.clone(), &vec![1, 1]));
+        let result = THREAD_TERM_POOL.with(|tp| substitute(tp, &t, t0.clone(), &[1, 1]));
 
         // Check that indeed the new term as a 0 at position 1.1.
-        assert_eq!(t0, result.get_position(&ExplicitPosition::new(&vec![1, 1])).protect());
+        assert_eq!(t0, result.get_position(&ExplicitPosition::new(&[1, 1])).protect());
     }
 }

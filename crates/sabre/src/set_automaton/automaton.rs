@@ -262,7 +262,7 @@ impl<M> SetAutomaton<M> {
     }
 
     /// Returns the states of the automaton
-    pub fn states(&self) -> &Vec<State> {
+    pub fn states(&self) -> &[State] {
         &self.states
     }
 
@@ -304,7 +304,7 @@ impl State {
         &self,
         symbol: &DataFunctionSymbol,
         arity: usize,
-        rewrite_rules: &Vec<Rule>,
+        rewrite_rules: &[Rule],
         apma: bool,
     ) -> (Vec<MatchAnnouncement>, Vec<(DataPosition, GoalsOrInitial)>) {
         // Computes the derivative containing the goals that are completed, unchanged and reduced
@@ -539,7 +539,7 @@ impl State {
     }
 
     /// Returns the match goals of the state
-    pub fn match_goals(&self) -> &Vec<MatchGoal> {
+    pub fn match_goals(&self) -> &[MatchGoal] {
         &self.match_goals
     }
 }
