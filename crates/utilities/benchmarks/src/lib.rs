@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::Barrier;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::thread::{self};
+use std::thread;
 
 use criterion::Criterion;
 

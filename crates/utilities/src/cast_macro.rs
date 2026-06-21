@@ -1,6 +1,6 @@
-/// A macro to return the pat type of an enum class target, and panics otherwise.
+/// Extracts the value of the given enum variant, panicking on a variant mismatch.
 ///
-/// Usage cast!(instance, type)
+/// Usage: `cast!(instance, Variant)`
 #[macro_export]
 macro_rules! cast {
     ($target: expr, $pat: path) => {{

@@ -5,6 +5,11 @@
 Internal MERC crate for I/O related utilities, including bit-level streams and
 also handling of formatting and output to the console.
 
+The `DumpFiles` struct can be used to manage dumping of intermediate results to
+files, which can be very useful for debugging failing tests. It uses the
+`MERC_DUMP` environment variable to determine the absolute path to dump the
+files.
+
 ## Safety
 
 This crate contains no unsafe code. If unsafe code is needed it should be in the `merc_unsafety` crate.
