@@ -1,14 +1,15 @@
 //! Debug tracing functionality for the Merc toolset
-//! This file provides debug tracing that is only active when the merc_debug feature is enabled
+//! This file provides debug tracing that is only active when the merc_debug-trace feature is enabled
 
-/// Macro that prints debug trace information only when the merc_debug feature is enabled.
+/// Macro that prints debug trace information only when the merc_debug-trace feature is enabled.
 /// When enabled, this macro delegates to the standard trace! macro from the log crate.
 ///
 /// # Examples
 ///
 /// ```
-/// debug_trace!("Processing item {}", item_id);
-/// debug_trace!("Complex calculation result: {:#?}", result);
+/// # use merc_utilities::debug_trace;
+/// debug_trace!("Processing item {}", 42);
+/// debug_trace!("Complex calculation result: {:#?}", [1, 2, 3]);
 /// ```
 #[macro_export]
 #[cfg(feature = "merc_debug-trace")]
@@ -24,7 +25,7 @@ macro_rules! debug_trace {
 #[cfg(not(feature = "merc_debug-trace"))]
 macro_rules! debug_trace {
     ($($arg:tt)*) => {{
-        // No-op when merc_debug is not enabled
+        // No-op when merc_debug-trace is not enabled
     }};
 }
 
@@ -34,8 +35,9 @@ macro_rules! debug_trace {
 /// # Examples
 ///
 /// ```
+/// # use merc_utilities::debug_use;
 /// debug_use!(std::collections::HashMap);
-/// debug_use!(crate::internal::debug_helper);
+/// debug_use!(std::fmt::Debug);
 /// ```
 #[macro_export]
 #[cfg(feature = "merc_debug-trace")]
