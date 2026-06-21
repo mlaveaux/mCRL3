@@ -618,11 +618,11 @@ PbesExprInfix = _{
 /// Parameterised boolean equations systems
 PresSpec = { SOI ~ DataSpec? ~ GlobVarSpec? ~ PresEqnSpec ~ PbesInit ~ EOI }
 
-PresEqnSpec = { "pbes" ~ PresEqnDecl+ }
+PresEqnSpec = { "pres" ~ PresEqnDecl+ }
 
 PresEqnDecl = { FixedPointOperator ~ PropVarDecl ~ "=" ~ PresExpr ~ ";" }
-    
-PresExpr = { PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix* ~ (PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix*)* }
+
+PresExpr = { PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix* ~ (PresExprInfix ~ PresExprPrefix* ~ PresExprPrimary ~ PresExprPostfix*)* }
 
 PresExprPrimary = _{
       DataValExpr
@@ -651,7 +651,7 @@ PresExprPrefix = _{
     PresExprInf = { "inf" ~ VarsDeclList ~ "." }
     PresExprSup = { "sup" ~ VarsDeclList ~ "." }
     PresExprSum = { "sum" ~ VarsDeclList ~ "." }
-    PresExprLeftConstantMultiply = { "*" }
+    PresExprLeftConstantMultiply = { DataValExpr ~ "*" }
 
 PresExprInfix = _{
       PbesExprImplies
@@ -664,4 +664,4 @@ PresExprInfix = _{
 PresExprPostfix = _{
     PresExprRightConstMultiply
 }
-    PresExprRightConstMultiply = { "*" }
+    PresExprRightConstMultiply = { "*" ~ DataValExpr }
