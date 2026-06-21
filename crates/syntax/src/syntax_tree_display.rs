@@ -231,9 +231,13 @@ impl fmt::Display for PbesExprBinaryOp {
 
 impl fmt::Display for EqnSpec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "var")?;
-        for decl in &self.variables {
-            writeln!(f, "   {decl};")?;
+        // The grammar requires at least one declaration after `var`, so only
+        // emit the section when there are variables to declare.
+        if !self.variables.is_empty() {
+            writeln!(f, "var")?;
+            for decl in &self.variables {
+                writeln!(f, "   {decl};")?;
+            }
         }
 
         writeln!(f, "eqn")?;
@@ -258,10 +262,12 @@ impl fmt::Display for SortDecl {
 
 impl fmt::Display for ActDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // An action declaration is `id: sort # sort # ...`, matching the
+        // `IdList ~ ":" ~ SortProduct` grammar rule.
         if self.args.is_empty() {
             write!(f, "{}", self.identifier)
         } else {
-            write!(f, "{}({})", self.identifier, self.args.iter().format(", "))
+            write!(f, "{}: {}", self.identifier, self.args.iter().format(" # "))
         }
     }
 }
@@ -355,7 +361,9 @@ impl fmt::Display for UntypedStateFrmSpec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.data_specification)?;
 
-        writeln!(f, "{}", self.formula)
+        // Wrap the formula in a `form ...;` section: the bare-formula grammar
+        // alternative is only valid when no specification elements precede it.
+        writeln!(f, "form {};", self.formula)
     }
 }
 
@@ -423,10 +431,12 @@ impl fmt::Display for StateFrm {
             } => {
                 write!(f, "({operator} {variable} . {body})")
             }
-            StateFrm::Delay(expr) => write!(f, "delay@({expr})"),
-            StateFrm::Yaled(expr) => write!(f, "yaled@({expr})"),
-            StateFrm::DataValExprLeftMult(value, expr) => write!(f, "({value} * {expr})"),
-            StateFrm::DataValExprRightMult(expr, value) => write!(f, "({expr} * {value})"),
+            StateFrm::Delay(Some(expr)) => write!(f, "delay@({expr})"),
+            StateFrm::Delay(None) => write!(f, "delay"),
+            StateFrm::Yaled(Some(expr)) => write!(f, "yaled@({expr})"),
+            StateFrm::Yaled(None) => write!(f, "yaled"),
+            StateFrm::DataValExprLeftMult(value, expr) => write!(f, "(val({value}) * {expr})"),
+            StateFrm::DataValExprRightMult(expr, value) => write!(f, "({expr} * val({value}))"),
         }
     }
 }
@@ -504,7 +514,9 @@ impl fmt::Display for ActFrm {
             ActFrm::True => write!(f, "true"),
             ActFrm::MultAct(action) => write!(f, "{action}"),
             ActFrm::Binary { op, lhs, rhs } => {
-                write!(f, "({lhs}) {op} ({rhs})")
+                // Wrap the whole expression (not just the operands) so that a
+                // surrounding tighter operator such as `!` cannot re-associate.
+                write!(f, "({lhs} {op} {rhs})")
             }
             ActFrm::DataExprVal(expr) => write!(f, "val({expr})"),
             ActFrm::Quantifier {
@@ -614,8 +626,9 @@ impl fmt::Display for ProcExprBinaryOp {
             ProcExprBinaryOp::Sequence => write!(f, "."),
             ProcExprBinaryOp::Choice => write!(f, "+"),
             ProcExprBinaryOp::Parallel => write!(f, "||"),
-            ProcExprBinaryOp::LeftMerge => write!(f, "_||"),
+            ProcExprBinaryOp::LeftMerge => write!(f, "||_"),
             ProcExprBinaryOp::CommMerge => write!(f, "|"),
+            ProcExprBinaryOp::Until => write!(f, "<<"),
         }
     }
 }
@@ -684,10 +697,12 @@ impl fmt::Display for ProcessExpr {
                 }
             }
             ProcessExpr::Condition { condition, then, else_ } => {
+                // Wrap the whole conditional so it stays a single unit when it is
+                // an operand of a higher-precedence operator such as sequence.
                 if let Some(else_) = else_ {
-                    write!(f, "({condition}) -> ({then}) <> ({else_})")
+                    write!(f, "(({condition}) -> ({then}) <> ({else_}))")
                 } else {
-                    write!(f, "({condition}) -> ({then})")
+                    write!(f, "(({condition}) -> ({then}))")
                 }
             }
             ProcessExpr::At { expr, operand } => write!(f, "({expr})@({operand})"),
