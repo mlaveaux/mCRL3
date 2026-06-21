@@ -40,6 +40,7 @@ use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_tools::format_key_values_json;
+use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -217,7 +218,7 @@ struct CombineArgs {
     output_format: Option<LtsFormat>,
 }
 
-fn main() -> Result<ExitCode, MercError> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     env_logger::Builder::new()
@@ -228,20 +229,18 @@ fn main() -> Result<ExitCode, MercError> {
 
     if cli.version.into() {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return ExitCode::SUCCESS;
     }
 
     let mut timing = Timing::new();
-    if let Err(x) = handle_command(cli.commands, &mut timing) {
-        println!("Error: {x}");
-    }
+    let result = handle_command(cli.commands, &mut timing);
 
     if cli.timings {
         timing.print();
     }
 
     print_allocator_metrics();
-    Ok(ExitCode::SUCCESS)
+    report_error(result)
 }
 
 fn handle_command(commands: Option<Commands>, timing: &mut Timing) -> Result<(), MercError> {

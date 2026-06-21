@@ -31,6 +31,7 @@ use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_tools::format_key_values_json;
+use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -221,7 +222,7 @@ struct DisplayArgs {
     format: Option<ParityGameFormat>,
 }
 
-fn main() -> Result<ExitCode, MercError> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let mut timing = Timing::new();
@@ -234,20 +235,10 @@ fn main() -> Result<ExitCode, MercError> {
 
     if cli.version.into() {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return ExitCode::SUCCESS;
     }
 
-    if let Some(command) = &cli.commands {
-        match command {
-            Commands::Solve(args) => handle_solve(&cli, args, &mut timing)?,
-            Commands::Reachable(args) => handle_reachable(&cli, args, &mut timing)?,
-            Commands::Project(args) => handle_project_fts(&cli, args, &mut timing)?,
-            Commands::ProjectVpg(args) => handle_project_vpg(&cli, args, &mut timing)?,
-            Commands::Translate(args) => handle_translate(args)?,
-            Commands::TranslateVpg(args) => handle_translate_vpg(&cli, args)?,
-            Commands::Display(args) => handle_display(&cli, args, &mut timing)?,
-        }
-    }
+    let result = handle_command(&cli, &mut timing);
 
     if cli.timings {
         timing.print();
@@ -257,7 +248,23 @@ fn main() -> Result<ExitCode, MercError> {
     if cfg!(feature = "merc_metrics") {
         oxidd::bdd::print_stats();
     }
-    Ok(ExitCode::SUCCESS)
+    report_error(result)
+}
+
+fn handle_command(cli: &Cli, timing: &mut Timing) -> Result<(), MercError> {
+    if let Some(command) = &cli.commands {
+        match command {
+            Commands::Solve(args) => handle_solve(cli, args, timing)?,
+            Commands::Reachable(args) => handle_reachable(cli, args, timing)?,
+            Commands::Project(args) => handle_project_fts(cli, args, timing)?,
+            Commands::ProjectVpg(args) => handle_project_vpg(cli, args, timing)?,
+            Commands::Translate(args) => handle_translate(args)?,
+            Commands::TranslateVpg(args) => handle_translate_vpg(cli, args)?,
+            Commands::Display(args) => handle_display(cli, args, timing)?,
+        }
+    }
+
+    Ok(())
 }
 
 /// Handle the `solve` subcommand.

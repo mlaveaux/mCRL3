@@ -33,6 +33,7 @@ use merc_symbolic::sigref_symbolic;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -202,7 +203,7 @@ fn init_bdd_manager(cli: &Cli) -> oxidd::bdd::BDDManagerRef {
     )
 }
 
-fn main() -> Result<ExitCode, MercError> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     env_logger::Builder::new()
@@ -212,27 +213,32 @@ fn main() -> Result<ExitCode, MercError> {
 
     if cli.version.into() {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return ExitCode::SUCCESS;
     }
 
     let timing = Timing::new();
-
-    if let Some(command) = &cli.commands {
-        match command {
-            Commands::Info(args) => handle_info(args, &timing)?,
-            Commands::Explore(args) => handle_explore(&cli, args, &timing)?,
-            Commands::Reorder(args) => handle_reorder(args, &timing)?,
-            Commands::Convert(args) => handle_convert(args, &timing)?,
-            Commands::Reduce(args) => handle_reduce(&cli, args, &timing)?,
-        }
-    }
+    let result = handle_command(&cli, &timing);
 
     if cli.timings {
         timing.print();
     }
 
     print_allocator_metrics();
-    Ok(ExitCode::SUCCESS)
+    report_error(result)
+}
+
+fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
+    if let Some(command) = &cli.commands {
+        match command {
+            Commands::Info(args) => handle_info(args, timing)?,
+            Commands::Explore(args) => handle_explore(cli, args, timing)?,
+            Commands::Reorder(args) => handle_reorder(args, timing)?,
+            Commands::Convert(args) => handle_convert(args, timing)?,
+            Commands::Reduce(args) => handle_reduce(cli, args, timing)?,
+        }
+    }
+
+    Ok(())
 }
 
 /// Reads the given symbolic LTS and prints information about it.

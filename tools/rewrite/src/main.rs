@@ -14,6 +14,7 @@ use merc_rewrite::rewrite_rec;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -72,7 +73,7 @@ struct ConvertArgs {
     output: String,
 }
 
-fn main() -> Result<ExitCode, MercError> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     env_logger::Builder::new()
@@ -82,12 +83,20 @@ fn main() -> Result<ExitCode, MercError> {
 
     if cli.version.into() {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return ExitCode::SUCCESS;
     }
 
     let timing = Timing::new();
+    let result = handle_command(cli.commands, &timing);
 
-    if let Some(command) = cli.commands {
+    timing.print();
+
+    print_allocator_metrics();
+    report_error(result)
+}
+
+fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), MercError> {
+    if let Some(command) = commands {
         match command {
             Commands::Rewrite(args) => {
                 if args.specification.extension() == Some(OsStr::new("rec")) {
@@ -101,7 +110,7 @@ fn main() -> Result<ExitCode, MercError> {
 
                     let spec = syntax_spec.to_rewrite_spec();
 
-                    rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, &timing)?;
+                    rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, timing)?;
                 } else if args.specification.extension() == Some(OsStr::new("mcrl2")) {
                     return Err("Rewriting mCRL2 specifications is not yet supported".into());
                 } else {
@@ -121,8 +130,5 @@ fn main() -> Result<ExitCode, MercError> {
         }
     }
 
-    timing.print();
-
-    print_allocator_metrics();
-    Ok(ExitCode::SUCCESS)
+    Ok(())
 }
