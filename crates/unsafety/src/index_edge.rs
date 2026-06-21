@@ -20,7 +20,8 @@ pub fn index_edge<T, I: PartialEq + PartialOrd<usize> + SliceIndex<[T], Output =
     } else {
         assert!(a < slice.len() && b < slice.len());
 
-        // safe because a, b are in bounds and distinct
+        // SAFETY: `a` and `b` are in bounds (asserted) and distinct, so the two
+        // `&mut` borrow disjoint elements and do not alias.
         unsafe {
             let ar = &mut *(slice.get_unchecked_mut(a) as *mut _);
             let br = &mut *(slice.get_unchecked_mut(b) as *mut _);

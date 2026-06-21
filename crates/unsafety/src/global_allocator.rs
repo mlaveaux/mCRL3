@@ -1,3 +1,7 @@
+// At most one `#[global_allocator]` may exist, so the backends below are
+// mutually exclusive: `metrics` takes precedence and suppresses `jemalloc`
+// and `mimalloc`, and enabling both `jemalloc` and `mimalloc` at once will
+// fail to compile (two `#[global_allocator]` statics).
 #[cfg(feature = "metrics")]
 use log::info;
 

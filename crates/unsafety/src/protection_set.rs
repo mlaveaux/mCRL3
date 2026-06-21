@@ -246,8 +246,8 @@ union Entry<T> {
     next: usize,
 }
 
-/// Check that the Entry is the same size as a usize.
-#[cfg(not(debug_assertions))]
+/// Check that the Entry is the same size as a usize; the union of
+/// `ManuallyDrop<usize>` and `usize` is pointer-sized in every build.
 const _: () = assert!(std::mem::size_of::<Entry<usize>>() == std::mem::size_of::<usize>());
 
 /// An iterator over the filled entries in a protection set.

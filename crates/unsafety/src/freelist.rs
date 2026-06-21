@@ -87,7 +87,8 @@ impl<T: FreeListEntry> FreeList<T> {
     ///
     /// # Safety
     ///
-    /// The freelist uses a non-atomic [`Cell`] head.
+    /// The list must not be mutated while the iterator is live, and every node
+    /// reachable from the head must remain valid for the duration of the walk.
     pub unsafe fn iter(&self) -> FreeListIterator<T> {
         FreeListIterator {
             current: NonNull::new(self.head.get()),
@@ -98,7 +99,8 @@ impl<T: FreeListEntry> FreeList<T> {
     ///
     /// # Safety
     ///
-    /// The freelist uses a non-atomic [`Cell`] head.
+    /// Every node reachable from the head must remain valid for the duration of
+    /// the walk, and no two yielded `&mut T` may alias (the list must be acyclic).
     pub unsafe fn iter_mut(&mut self) -> FreeListIteratorMut<'_, T> {
         FreeListIteratorMut {
             current: NonNull::new(self.head.get()),

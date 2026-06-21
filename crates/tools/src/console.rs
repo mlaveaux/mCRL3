@@ -27,11 +27,20 @@ pub struct Console {
     attached: bool,
 }
 
-/// Initialises the console. On Windows this either attaches to the
+/// Initialises the console and returns a [`Console`] guard.
+///
+/// On Windows this either attaches to the parent process' console, attaches to
+/// an existing console, or allocates a fresh one when none is available, so that
+/// `println!` and panic output are visible from a windows-subsystem binary.
+/// Dropping the returned guard frees a console that this call allocated. On
+/// other platforms it is a no-op and the guard does nothing.
 pub fn init_console() -> Result<Console, MercError> {
     #[cfg(windows)]
     unsafe {
-        // SAFETY: Only unsafe because we use the winapi crate to call Windows API functions.
+        // SAFETY: These console functions take no pointers and are safe to call
+        // in any process state; the only soundness obligation is to balance an
+        // allocated console with a single `FreeConsole`, which the `Drop` impl
+        // does (guarded by `attached` so we never free a pre-existing console).
         // Check if we're attached to an existing Windows console
         if GetConsoleWindow().is_null() {
             // Try to attach to an existing Windows console.
@@ -67,6 +76,9 @@ impl Drop for Console {
         // Free the allocated console, when it was not attached.
         #[cfg(windows)]
         if !self.attached {
+            // SAFETY: `FreeConsole` takes no arguments; `attached == false`
+            // means `init_console` allocated this console, so freeing it here
+            // balances that allocation exactly once.
             unsafe { FreeConsole() };
         }
     }

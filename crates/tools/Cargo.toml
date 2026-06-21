@@ -12,4 +12,7 @@ merc_utilities.workspace = true
 clap.workspace = true
 env_logger.workspace = true
 log.workspace = true
+
+# Only used by the Windows console helpers in `console.rs`.
+[target.'cfg(windows)'.dependencies]
 winapi.workspace = true

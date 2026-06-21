@@ -214,9 +214,10 @@ where
 mod tests {
     use std::vec;
 
+    use crate::StateFrm;
     use crate::UntypedStateFrmSpec;
 
-    use super::*;
+    use super::apply_statefrm;
 
     #[test]
     fn test_visit_state_frm_variables() {

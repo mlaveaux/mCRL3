@@ -26,6 +26,9 @@ pub struct Version;
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{}", VERSION, &BUILD_HASH[..8])
+        // Show a short hash, but fall back to the whole string when it is
+        // shorter than eight bytes. This is currently the UNKNOWN placeholder.
+        let short_hash = BUILD_HASH.get(..8).unwrap_or(BUILD_HASH);
+        write!(f, "{VERSION}-{short_hash}")
     }
 }
