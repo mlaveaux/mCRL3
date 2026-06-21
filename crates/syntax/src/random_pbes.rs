@@ -301,12 +301,12 @@ fn random_quantifier<R: Rng>(
     });
     let bounded_body = match quantifier {
         Quantifier::Forall => PbesExpr::Binary {
-            op: PbesExprBinaryOp::Conjunction,
+            op: PbesExprBinaryOp::Implies,
             lhs: Box::new(bound),
             rhs: Box::new(body),
         },
         Quantifier::Exists => PbesExpr::Binary {
-            op: PbesExprBinaryOp::Disjunction,
+            op: PbesExprBinaryOp::Conjunction,
             lhs: Box::new(bound),
             rhs: Box::new(body),
         },
