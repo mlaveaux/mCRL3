@@ -19,13 +19,18 @@ use equivalent::Equivalent;
 use crate::AllocatorDst;
 use crate::SliceDst;
 
-/// A safe wrapper around a raw pointer that allows immutable dereferencing. This remains valid as long as the `StablePointerSet` remains
-/// valid, which is not managed by the borrow checker.
+/// A handle to an element stored in a [`StablePointerSet`].
+///
+/// The handle itself is inert: holding, comparing, hashing and copying it is
+/// always sound. Reading the pointee, however, is only valid while the element
+/// is still in its owning set, which the borrow checker does not track — so
+/// dereferencing goes through the unsafe [`StablePointer::deref`].
 ///
 /// Comparisons are based on the pointer's address, not the value it points to.
 ///
-/// Deliberately not `Clone`: duplicating a pointer extends its lifetime beyond whatever
-/// protocol protects the original, so duplication goes through the unsafe [`StablePointer::copy`].
+/// Deliberately not `Clone`: duplicating a handle extends the set of pointers
+/// that must be kept valid, so duplication goes through the unsafe
+/// [`StablePointer::copy`].
 #[repr(C)]
 pub struct StablePointer<T: ?Sized> {
     /// The raw pointer to the element.
@@ -92,7 +97,7 @@ impl<T: ?Sized> StablePointer<T> {
 
 impl<T: ?Sized> PartialEq for StablePointer<T> {
     fn eq(&self, other: &Self) -> bool {
-        // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
+        // Identity is the pointer address; the pointee is never read here.
         addr_eq(self.ptr.as_ptr(), other.ptr.as_ptr())
     }
 }
@@ -101,21 +106,18 @@ impl<T: ?Sized> Eq for StablePointer<T> {}
 
 impl<T: ?Sized> Ord for StablePointer<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
         self.ptr.as_ptr().cast::<()>().cmp(&(other.ptr.as_ptr().cast::<()>()))
     }
 }
 
 impl<T: ?Sized> PartialOrd for StablePointer<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // SAFETY: This is safe because we are comparing pointers, which is a valid operation.
         Some(self.cmp(other))
     }
 }
 
 impl<T: ?Sized> Hash for StablePointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // SAFETY: This is safe because we are hashing pointers, which is a valid operation.
         self.ptr.hash(state);
     }
 }
@@ -146,13 +148,16 @@ impl<T: ?Sized> StablePointer<T> {
             reference_counter: entry.reference_counter.clone(),
         }
     }
-}
 
-impl<T: ?Sized> Deref for StablePointer<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        // The caller must ensure the pointer points to a valid T that outlives this StablePointer.
+    /// Borrows the pointee.
+    ///
+    /// # Safety
+    ///
+    /// The element must still be present in its owning [`StablePointerSet`] (the
+    /// set must not have been dropped, nor the element removed) for the duration
+    /// of the returned borrow. This is not tracked by the borrow checker.
+    pub unsafe fn deref(&self) -> &T {
+        // SAFETY: the caller guarantees the pointee outlives the returned borrow.
         unsafe { self.ptr.as_ref() }
     }
 }
@@ -376,7 +381,14 @@ where
     }
 
     /// Returns an iterator over the elements of the set.
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    ///
+    /// # Safety
+    ///
+    /// The yielded references borrow into the stable allocations. The caller
+    /// must ensure no element is removed while a yielded reference is live.
+    pub unsafe fn iter(&self) -> impl Iterator<Item = &T> {
+        // SAFETY: each pointer is valid while its element remains in the set,
+        // which the caller upholds per the contract above.
         self.index.iter().map(|boxed| unsafe { boxed.ptr.as_ref() })
     }
 
@@ -395,8 +407,9 @@ where
             "Pointer must be the last reference to the element"
         );
 
-        // SAFETY: This is the last reference to the element, so it is safe to remove it.
-        let t = pointer.deref();
+        // SAFETY: This is the last reference to the element, so it is still
+        // present in the set and safe to dereference.
+        let t = unsafe { pointer.deref() };
         let result = self.index.remove(&LookUp(t));
 
         if let Some(ptr) = result {
@@ -720,12 +733,13 @@ mod tests {
         // Insert a value and ensure we get it back
         let (ptr1, inserted) = set.insert(42);
         assert!(inserted);
-        assert_eq!(*ptr1, 42);
+        // SAFETY: the elements live in `set` for the duration of the test.
+        assert_eq!(unsafe { *ptr1.deref() }, 42);
 
         // Insert the same value and ensure we get the same pointer
         let (ptr2, inserted) = set.insert(42);
         assert!(!inserted);
-        assert_eq!(*ptr2, 42);
+        assert_eq!(unsafe { *ptr2.deref() }, 42);
 
         // Pointers to the same value should be identical
         assert_eq!(ptr1, ptr2);
@@ -752,10 +766,11 @@ mod tests {
         set.insert(100);
 
         let ptr = set.get(&42).expect("Value should exist");
-        assert_eq!(*ptr, 42);
+        // SAFETY: the elements live in `set` for the duration of the test.
+        assert_eq!(unsafe { *ptr.deref() }, 42);
 
         let ptr = set.get(&100).expect("Value should exist");
-        assert_eq!(*ptr, 100);
+        assert_eq!(unsafe { *ptr.deref() }, 100);
 
         assert!(set.get(&200).is_none(), "Value should not exist");
     }
@@ -767,7 +782,8 @@ mod tests {
         set.insert(2);
         set.insert(3);
 
-        let mut values: Vec<i32> = set.iter().copied().collect();
+        // SAFETY: no element is removed while the iterator references are live.
+        let mut values: Vec<i32> = unsafe { set.iter() }.copied().collect();
         values.sort();
 
         assert_eq!(values, vec![1, 2, 3]);
@@ -807,8 +823,9 @@ mod tests {
         // Insert using equivalent reference (i32 -> TestValue)
         let (ptr1, inserted) = set.insert_equiv(&42);
         assert!(inserted, "Value should be inserted");
-        assert_eq!(ptr1.id, 42);
-        assert_eq!(ptr1.name, "Value-42");
+        // SAFETY: the elements live in `set` for the duration of the test.
+        assert_eq!(unsafe { ptr1.deref() }.id, 42);
+        assert_eq!(unsafe { ptr1.deref() }.name, "Value-42");
 
         // Try inserting the same value again via equivalent
         let (ptr2, inserted) = set.insert_equiv(&42);
@@ -818,8 +835,8 @@ mod tests {
         // Insert a different value
         let (ptr3, inserted) = set.insert_equiv(&100);
         assert!(inserted, "New value should be inserted");
-        assert_eq!(ptr3.id, 100);
-        assert_eq!(ptr3.name, "Value-100");
+        assert_eq!(unsafe { ptr3.deref() }.id, 100);
+        assert_eq!(unsafe { ptr3.deref() }.name, "Value-100");
 
         // Ensure we have exactly two elements
         assert_eq!(set.len(), 2);
@@ -831,11 +848,12 @@ mod tests {
         let (ptr, _) = set.insert(42);
 
         // Test dereferencing
-        let value: &i32 = &ptr;
+        // SAFETY: the element lives in `set` for the duration of the test.
+        let value: &i32 = unsafe { ptr.deref() };
         assert_eq!(*value, 42);
 
         // Test methods on the dereferenced value
-        assert_eq!((*ptr).checked_add(10), Some(52));
+        assert_eq!(unsafe { ptr.deref() }.checked_add(10), Some(52));
     }
 
     #[test]
@@ -870,10 +888,11 @@ mod tests {
         let (ptr4, _) = set.insert(4);
         assert_eq!(set.len(), 4);
 
-        // SAFETY: No pointers to the removed (odd) elements are used afterwards.
+        // SAFETY: No pointers to the removed (odd) elements are used afterwards,
+        // and each predicate borrow is only read while the element is present.
         unsafe {
             // Retain only even numbers
-            set.retain(|x| **x % 2 == 0);
+            set.retain(|x| *x.deref() % 2 == 0);
         }
 
         // Verify results
@@ -904,8 +923,9 @@ mod tests {
 
         // Check that everything works as expected
         assert_eq!(set.len(), 2);
-        assert_eq!(*ptr1, 42);
-        assert_eq!(*ptr2, 100);
+        // SAFETY: the elements live in `set` for the duration of the test.
+        assert_eq!(unsafe { *ptr1.deref() }, 42);
+        assert_eq!(unsafe { *ptr2.deref() }, 100);
 
         // Test contains
         assert!(set.contains(&42));
@@ -927,8 +947,9 @@ mod tests {
 
         // Check that everything works as expected
         assert_eq!(set.len(), 2);
-        assert_eq!(*ptr1, 42);
-        assert_eq!(*ptr2, 100);
+        // SAFETY: the elements live in `set` for the duration of the test.
+        assert_eq!(unsafe { *ptr1.deref() }, 42);
+        assert_eq!(unsafe { *ptr2.deref() }, 100);
 
         // Test contains
         assert!(set.contains(&42));

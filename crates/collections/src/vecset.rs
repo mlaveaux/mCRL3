@@ -272,7 +272,6 @@ mod tests {
     }
 }
 
-
 #[cfg(kani)]
 mod verification {
     use crate::VecSet;

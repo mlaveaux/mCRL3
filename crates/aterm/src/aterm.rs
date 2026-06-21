@@ -120,7 +120,7 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
         // Safety: self is ATermRef<'a>, so the GC keeps all its arguments
         // protected for 'a. We copy the stable pointer rather than borrowing
         // through the short-lived slice reference.
-        unsafe { ATermRef::from_index(self.shared().arguments()[index].shared()) }
+        unsafe { ATermRef::from_index(self.shared().deref().arguments()[index].shared()) }
     }
 
     fn arguments(&self) -> ATermArgs<'a> {
@@ -132,7 +132,7 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
     }
 
     fn get_head_symbol(&'b self) -> SymbolRef<'a> {
-        unsafe { std::mem::transmute::<SymbolRef<'b>, SymbolRef<'a>>(self.shared().symbol().copy()) }
+        unsafe { std::mem::transmute::<SymbolRef<'b>, SymbolRef<'a>>(self.shared().deref().symbol().copy()) }
     }
 
     fn iter(&self) -> TermIterator<'a> {
@@ -140,7 +140,9 @@ impl<'a, 'b> Term<'a, 'b> for ATermRef<'a> {
     }
 
     fn index(&self) -> usize {
-        self.shared.index()
+        // SAFETY: `self` is an `ATermRef<'a>`, so the GC keeps the term alive
+        // for `'a` and the pointee is valid to read.
+        unsafe { self.shared.deref() }.index()
     }
 
     fn shared(&self) -> &ATermIndex {

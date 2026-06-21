@@ -310,7 +310,10 @@ impl GlobalTermPool {
 
                     // Call the deletion hooks for the term
                     for (symbol, hook) in &self.deletion_hooks {
-                        if symbol == term.symbol() {
+                        // `term` is still resident in `self.terms` during the
+                        // retain predicate, so its pointee is valid to read
+                        // (covered by the enclosing `unsafe` block).
+                        if symbol == term.deref().symbol() {
                             debug_trace!("Calling deletion hook for term: {:?}", term);
                             hook(term);
                         }
@@ -509,10 +512,10 @@ impl Marker<'_> {
                     self.marked_terms.insert(term.copy());
 
                     // Mark the function symbol.
-                    self.marked_symbols.insert(term.symbol().shared().copy());
+                    self.marked_symbols.insert(term.deref().symbol().shared().copy());
 
                     // For some terms, such as ATermInt, we must ONLY consider the valid arguments (indicated by the arity)
-                    for arg in term.arguments()[0..term.symbol().arity()].iter() {
+                    for arg in term.deref().arguments()[0..term.deref().symbol().arity()].iter() {
                         // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
                         if !self.marked_terms.contains(arg.shared()) {
                             self.marked_terms.insert(arg.shared().copy());

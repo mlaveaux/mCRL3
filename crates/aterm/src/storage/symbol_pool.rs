@@ -52,7 +52,8 @@ impl SymbolPool {
 
         if inserted {
             // If the symbol was newly created, register its prefix.
-            self.update_prefix(shared_symbol.name());
+            // SAFETY: `shared_symbol` was just inserted and is resident in `self.symbols`.
+            self.update_prefix(unsafe { shared_symbol.deref() }.name());
         }
 
         // Return cloned symbol
@@ -61,12 +62,14 @@ impl SymbolPool {
 
     /// Return the symbol of the SharedTerm for the given ATermRef
     pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
-        symbol.shared().name()
+        // SAFETY: `symbol` is a `SymbolRef<'a>`, so its symbol is alive for `'a`.
+        unsafe { symbol.shared().deref() }.name()
     }
 
     /// Returns the arity of the function symbol
     pub fn symbol_arity<'a, 'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> usize {
-        symbol.shared().arity()
+        // SAFETY: `symbol` borrows a live symbol for the duration of the call.
+        unsafe { symbol.shared().deref() }.arity()
     }
 
     /// Returns the number of symbols in the pool.
@@ -151,7 +154,9 @@ impl SymbolPool {
 
     /// Traverse all symbols to find the maximum numeric suffix for this prefix
     fn get_sufficiently_large_postfix_index(&self, prefix: &str, counter: &Arc<AtomicUsize>) {
-        for symbol in self.symbols.iter() {
+        // SAFETY: this traversal does not remove any symbol, so every yielded
+        // reference stays valid for the duration of the loop.
+        for symbol in unsafe { self.symbols.iter() } {
             let name = symbol.name();
             if name.starts_with(prefix) {
                 // Symbol name starts with the prefix, check for numeric suffix

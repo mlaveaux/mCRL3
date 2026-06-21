@@ -88,11 +88,13 @@ impl SymbolRef<'_> {
 
 impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     fn name(&self) -> &'a str {
-        unsafe { std::mem::transmute(self.shared.name()) }
+        unsafe { std::mem::transmute(self.shared.deref().name()) }
     }
 
     fn arity(&self) -> usize {
-        self.shared.arity()
+        // SAFETY: `self` is a `SymbolRef<'a>`, so the symbol is kept alive for
+        // `'a` and the pointee is valid to read.
+        unsafe { self.shared.deref() }.arity()
     }
 
     fn copy(&self) -> SymbolRef<'a> {
@@ -100,7 +102,8 @@ impl<'a> Symb<'a, '_> for SymbolRef<'a> {
     }
 
     fn index(&self) -> usize {
-        self.shared.index()
+        // SAFETY: see `arity`; the symbol is alive for `'a`.
+        unsafe { self.shared.deref() }.index()
     }
 
     fn shared(&self) -> &SymbolIndex {
