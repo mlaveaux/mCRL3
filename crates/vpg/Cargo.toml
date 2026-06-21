@@ -4,13 +4,13 @@ description = "Crate for solving (variability) parity games, including I/O in th
 keywords = ["parity-games"]
 categories = ["algorithms", "data-structures", "science"]
 readme = "README.md"
+version = "3.0.0"
 
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-version.workspace = true
 
 [features]
 clap = ["dep:clap"]

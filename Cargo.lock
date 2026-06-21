@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "merc_refinement"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "bitvec",
  "bumpalo",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "merc_sabre"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "ahash",
  "env_logger",
@@ -1474,7 +1474,7 @@ dependencies = [
 
 [[package]]
 name = "merc_syntax"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "env_logger",
  "indoc",
@@ -1538,7 +1538,7 @@ dependencies = [
 
 [[package]]
 name = "merc_vpg"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "bitvec",
  "clap",

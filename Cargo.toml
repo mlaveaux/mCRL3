@@ -137,19 +137,19 @@ merc_ldd = { version = "3.0", path = "crates/ldd" }
 merc_lts = { version = "2.0", path = "crates/lts" }
 merc_macros = { version = "2.0", path = "crates/macros" }
 merc_number = { version = "2.0", path = "crates/number" }
-merc_refinement = { version = "2.0", path = "crates/refinement" }
+merc_refinement = { version = "3.0", path = "crates/refinement" }
 merc_rec-tests = { path = "crates/rec-tests" }
 merc_reduction = { version = "3.0", path = "crates/reduction" }
-merc_sabre = { version = "2.0", path = "crates/sabre" }
+merc_sabre = { version = "3.0", path = "crates/sabre" }
 merc_sabre-compiling = { path = "crates/sabre_compiling" }
 merc_sabre-ffi = { path = "crates/sabre_compiling/sabre_ffi" }
 merc_sharedmutex = { version = "3.0", path = "crates/sharedmutex" }
 merc_symbolic = { version = "3.0", path = "crates/symbolic", features = ["clap"] }
-merc_syntax = { version = "2.0", path = "crates/syntax" }
+merc_syntax = { version = "3.0", path = "crates/syntax" }
 merc_tools = { path = "crates/tools" }
 merc_unsafety = { version = "3.0", path = "crates/unsafety" }
 merc_utilities = { version = "3.0", path = "crates/utilities" }
-merc_vpg = { path = "crates/vpg", features = ["clap"] }
+merc_vpg = { version = "3.0", path = "crates/vpg", features = ["clap"] }
 
 # Vendored libraries
 merc_pest_consume = { version = "2.0", git = "https://github.com/MERCorg/pest_consume" }
