@@ -33,3 +33,13 @@ jobs:
       uses: model-checking/kani-github-action@v1
       with:
         working-directory: crates/number
+
+    - name: Run Kani on merc_io
+      uses: model-checking/kani-github-action@v1
+      with:
+        working-directory: crates/io
+
+    - name: Run Kani on merc_collections
+      uses: model-checking/kani-github-action@v1
+      with:
+        working-directory: crates/collections
