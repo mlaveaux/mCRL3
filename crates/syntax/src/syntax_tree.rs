@@ -334,6 +334,7 @@ pub enum ProcExprBinaryOp {
     Parallel,
     LeftMerge,
     CommMerge,
+    Until,
 }
 
 /// Process expression
@@ -450,8 +451,10 @@ pub enum ModalityOperator {
 pub enum StateFrm {
     True,
     False,
-    Delay(DataExpr),
-    Yaled(DataExpr),
+    /// `delay` or `delay@t`; the optional time is `None` for a bare `delay`.
+    Delay(Option<DataExpr>),
+    /// `yaled` or `yaled@t`; the optional time is `None` for a bare `yaled`.
+    Yaled(Option<DataExpr>),
     Id(String, Vec<DataExpr>),
     DataValExprLeftMult(DataExpr, Box<StateFrm>),
     DataValExprRightMult(Box<StateFrm>, DataExpr),
