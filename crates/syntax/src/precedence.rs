@@ -3,8 +3,6 @@ use std::sync::LazyLock;
 use pest::iterators::Pair;
 use pest::iterators::Pairs;
 use pest::pratt_parser::Assoc;
-use pest::pratt_parser::Assoc::Left;
-use pest::pratt_parser::Assoc::Right;
 use pest::pratt_parser::Op;
 use pest::pratt_parser::PrattParser;
 
@@ -39,8 +37,8 @@ pub static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
         // Sort operators
-        .op(Op::infix(Rule::SortExprFunction, Left)) // $right 0
-        .op(Op::infix(Rule::SortExprProduct, Right)) // $left 1
+        .op(Op::infix(Rule::SortExprFunction, Assoc::Left)) // $right 0
+        .op(Op::infix(Rule::SortExprProduct, Assoc::Right)) // $left 1
 });
 
 #[allow(clippy::result_large_err)]
@@ -296,6 +294,11 @@ pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
                 lhs: Box::new(lhs?),
                 rhs: Box::new(rhs?),
             }),
+            Rule::ProcExprUntil => Ok(ProcessExpr::Binary {
+                op: ProcExprBinaryOp::Until,
+                lhs: Box::new(lhs?),
+                rhs: Box::new(rhs?),
+            }),
             _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
         })
         .map_prefix(|prefix, expr| match prefix.as_rule() {
@@ -541,12 +544,12 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 body: Box::new(expr?),
             }),
             Rule::StateFrmSum => Ok(StateFrm::Bound {
-                bound: Bound::Sup,
+                bound: Bound::Sum,
                 variables: Mcrl2Parser::StateFrmSum(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
             Rule::StateFrmInf => Ok(StateFrm::Bound {
-                bound: Bound::Sup,
+                bound: Bound::Inf,
                 variables: Mcrl2Parser::StateFrmInf(Node::new(prefix))?,
                 body: Box::new(expr?),
             }),
@@ -617,6 +620,16 @@ pub fn parse_pbesexpr(pairs: Pairs<Rule>) -> ParseResult<PbesExpr> {
         })
         .map_prefix(|op, expr| match op.as_rule() {
             Rule::PbesExprNegation => Ok(PbesExpr::Negation(Box::new(expr?))),
+            Rule::PbesExprExists => Ok(PbesExpr::Quantifier {
+                quantifier: Quantifier::Exists,
+                variables: Mcrl2Parser::PbesExprExists(Node::new(op))?,
+                body: Box::new(expr?),
+            }),
+            Rule::PbesExprForall => Ok(PbesExpr::Quantifier {
+                quantifier: Quantifier::Forall,
+                variables: Mcrl2Parser::PbesExprForall(Node::new(op))?,
+                body: Box::new(expr?),
+            }),
             _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
@@ -637,19 +650,6 @@ pub fn parse_pbesexpr(pairs: Pairs<Rule>) -> ParseResult<PbesExpr> {
             }),
             _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
         })
-        .map_postfix(|expr, postfix| match postfix.as_rule() {
-            Rule::PbesExprExists => Ok(PbesExpr::Quantifier {
-                quantifier: Quantifier::Exists,
-                variables: Mcrl2Parser::PbesExprExists(Node::new(postfix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::PbesExprForall => Ok(PbesExpr::Quantifier {
-                quantifier: Quantifier::Forall,
-                variables: Mcrl2Parser::PbesExprForall(Node::new(postfix))?,
-                body: Box::new(expr?),
-            }),
-            _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
-        })
         .parse(pairs)
 }
 
@@ -669,6 +669,7 @@ static PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
     PRESEXPR_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
+            Rule::DataValExpr => Ok(PresExpr::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?)),
             Rule::PresExprParens => {
                 // Handle parentheses by recursively parsing the inner expression
                 let inner = primary
