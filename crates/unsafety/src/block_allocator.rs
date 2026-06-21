@@ -238,8 +238,8 @@ impl<T: Send, const N: usize> BlockAllocator<T, N> {
                 &mut freelist_ptrs,
             );
             state.free.clear();
-            state.current_block.set(std::ptr::null_mut());
-            state.bump_offset.set(N);
+            // Keep the thread-local bump pointer state; those entries will be
+            // reclaimed when we walk the blocks next.
         }
 
         let mut guard = self.blocks.lock().expect("Lock poisoned");
