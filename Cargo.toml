@@ -57,7 +57,7 @@ members = [
 [workspace.dependencies]
 ahash = "0.8"
 bitstream-io = "4.10"
-bitvec = "1.0"
+bitvec = "1.1"
 boxcar = "0.2"
 bumpalo = "3.20"
 clap = { version = "4.6", features = ["derive"] }
@@ -68,7 +68,7 @@ env_logger = { version = "0.11", features = ["kv"] }
 equivalent = "1.0"
 hashbrown = "0.17"
 html-escape = "0.2"
-itertools = "0.14"
+itertools = "0.15"
 log = { version = "0.4", features = ["kv"] }
 num = "0.4"
 oxidd = { version = "0.11", features = ["manager-pointer"] }
