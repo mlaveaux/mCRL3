@@ -46,10 +46,14 @@ use crossbeam_utils::CachePadded;
 /// the cloned instances of the same shared mutex guarantee shared access
 /// through the `read` operation and exclusive access for the `write` operation
 /// of the given object.
+///
+/// # Poisoning
+///
+/// A panic inside a `write` section poisons the internal registration mutex.
+/// After that, every [`BfSharedMutex::read`] and [`BfSharedMutex::write`]
+/// returns `Err`; the poison is only cleared once enough clones are dropped.
 pub struct BfSharedMutex<T> {
     /// The local control bits of each instance.
-    ///
-    /// TODO: Maybe use pin to share the control bits among shared mutexes.
     control: Arc<CachePadded<SharedMutexControl>>,
 
     /// Index into the `other` table.
@@ -59,7 +63,10 @@ pub struct BfSharedMutex<T> {
     shared: Arc<CachePadded<SharedData<T>>>,
 }
 
-// SAFETY: Sending a BfSharedMutex to another thread transfers ownership of the
+// SAFETY: Sending a BfSharedMutex to another thread transfers ownership of this
+// clone's control bits along with it; those bits are only ever touched by the
+// thread that owns the clone. `T` is accessed from whichever thread holds a
+// clone, so it must be both `Send` and `Sync`.
 unsafe impl<T: Send + Sync> Send for BfSharedMutex<T> {}
 
 /// The busy and forbidden flags used to implement the protocol.
@@ -158,7 +165,8 @@ impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // We are the only guard after `write()`, so we can provide immutable access to the underlying object. (No mutable references the guard can exist)
+        // SAFETY: We are the only guard after `write()`, so immutable access to the underlying
+        // object is sound.
         #[cfg(not(loom))]
         unsafe {
             &*self.mutex.shared.object.get()
@@ -173,7 +181,8 @@ impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
 
 impl<T> DerefMut for BfSharedMutexWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
+        // SAFETY: We are the only guard after `write()`, so exclusive mutable access to the
+        // underlying object is sound.
         #[cfg(not(loom))]
         unsafe {
             &mut *self.mutex.shared.object.get()
@@ -223,7 +232,8 @@ impl<T> Deref for BfSharedMutexReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // There can only be shared guards, which only provide immutable access to the object.
+        // SAFETY: There can only be shared guards while this guard is alive, so immutable
+        // access to the object is sound.
         #[cfg(not(loom))]
         unsafe {
             &*self.mutex.shared.object.get()
@@ -262,6 +272,24 @@ impl<T> BfSharedMutex<T> {
     /// Panics when called while this instance already holds a read guard. Reentrant reads would
     /// corrupt the `busy` flag.
     pub fn read<'a>(&'a self) -> Result<BfSharedMutexReadGuard<'a, T>, Box<dyn Error + 'a>> {
+        self.acquire_shared()?;
+
+        // We now have immutable access to the object due to the protocol.
+        Ok(BfSharedMutexReadGuard {
+            mutex: self,
+            #[cfg(loom)]
+            ptr: ManuallyDrop::new(self.shared.object.get()),
+        })
+    }
+
+    /// Runs the busy-forbidden protocol to acquire shared (read) access, setting this instance's
+    /// `busy` flag, without materialising a guard.
+    ///
+    /// The caller becomes responsible for eventually clearing the `busy` flag, e.g. by dropping a
+    /// guard reconstructed with [`Self::create_read_guard_unchecked`]. Unlike [`Self::read`], this
+    /// takes no data borrow of the cell, so under loom it can be paired with `mem::forget`-style
+    /// ownership transfer (as `RecursiveLock` does) without leaking a read borrow.
+    pub(crate) fn acquire_shared(&self) -> Result<(), Box<dyn Error + '_>> {
         assert!(
             !self.control.busy.load(Ordering::Relaxed),
             "Cannot acquire read access again inside a reader section"
@@ -291,12 +319,7 @@ impl<T> BfSharedMutex<T> {
             fence(Ordering::SeqCst);
         }
 
-        // We now have immutable access to the object due to the protocol.
-        Ok(BfSharedMutexReadGuard {
-            mutex: self,
-            #[cfg(loom)]
-            ptr: ManuallyDrop::new(self.shared.object.get()),
-        })
+        Ok(())
     }
 
     /// Creates a new `BfSharedMutexReadGuard` without checking if the lock is held.
@@ -426,7 +449,13 @@ impl<T> BfSharedMutex<T> {
 
 impl<T: Debug> Debug for BfSharedMutex<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let other = self.shared.other.lock().unwrap();
+        // Recover from poisoning so that formatting (often invoked from logging or while
+        // already panicking) never panics itself.
+        let other = self
+            .shared
+            .other
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         f.debug_map()
             .entry(&"busy", &self.control.busy.load(Ordering::Relaxed))
@@ -475,9 +504,12 @@ impl<T> GlobalBfSharedMutex<T> {
     }
 }
 
+// SAFETY: Moving the global handle to another thread only moves the inner `BfSharedMutex`,
+// which is itself `Send` for `T: Send + Sync`.
 unsafe impl<T: Send + Sync> Send for GlobalBfSharedMutex<T> {}
 
-// SAFETY: Multiple threads holding &GlobalBfSharedMutex<T> can call share() concurrently
+// SAFETY: Multiple threads holding &GlobalBfSharedMutex<T> can call share() concurrently;
+// share() only clones the inner mutex, which serialises registration under its own lock.
 unsafe impl<T: Send + Sync> Sync for GlobalBfSharedMutex<T> {}
 
 #[cfg(test)]
