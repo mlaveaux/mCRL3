@@ -153,6 +153,7 @@ impl Mcrl2Parser {
         let mut equations = None;
         let mut init = None;
 
+        let span = spec.as_span();
         for child in spec.into_children() {
             match child.as_rule() {
                 Rule::DataSpec => {
@@ -180,8 +181,22 @@ impl Mcrl2Parser {
         Ok(UntypedPbes {
             data_specification: data_specification.unwrap_or_default(),
             global_variables: global_variables.unwrap_or_default(),
-            equations: equations.unwrap(),
-            init: init.unwrap(),
+            equations: equations.ok_or_else(|| {
+                Error::new_from_span(
+                    ErrorVariant::CustomError {
+                        message: "A PBES requires a (possibly empty) pbes equation section".to_string(),
+                    },
+                    span,
+                )
+            })?,
+            init: init.ok_or_else(|| {
+                Error::new_from_span(
+                    ErrorVariant::CustomError {
+                        message: "A PBES requires an init declaration".to_string(),
+                    },
+                    span,
+                )
+            })?,
         })
     }
 
@@ -270,6 +285,7 @@ impl Mcrl2Parser {
         let mut equations = None;
         let mut init = None;
 
+        let span = spec.as_span();
         for child in spec.into_children() {
             match child.as_rule() {
                 Rule::DataSpec => {
@@ -297,8 +313,22 @@ impl Mcrl2Parser {
         Ok(UntypedPres {
             data_specification: data_specification.unwrap_or_default(),
             global_variables: global_variables.unwrap_or_default(),
-            equations: equations.unwrap(),
-            init: init.unwrap(),
+            equations: equations.ok_or_else(|| {
+                Error::new_from_span(
+                    ErrorVariant::CustomError {
+                        message: "A PRES requires a (possibly empty) pres equation section".to_string(),
+                    },
+                    span,
+                )
+            })?,
+            init: init.ok_or_else(|| {
+                Error::new_from_span(
+                    ErrorVariant::CustomError {
+                        message: "A PRES requires an init declaration".to_string(),
+                    },
+                    span,
+                )
+            })?,
         })
     }
 
@@ -1160,19 +1190,19 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn StateFrmDelay(input: ParseNode) -> ParseResult<StateFrm> {
-        match_nodes!(input.into_children();
-            [DataExpr(delay)] => {
-                Ok(StateFrm::Delay(delay))
-            },
-        )
+        // The `@`-time argument is optional, so there may be zero or one child.
+        match input.into_children().next() {
+            Some(child) => Ok(StateFrm::Delay(Some(Mcrl2Parser::DataExpr(child)?))),
+            None => Ok(StateFrm::Delay(None)),
+        }
     }
 
     pub(crate) fn StateFrmYaled(input: ParseNode) -> ParseResult<StateFrm> {
-        match_nodes!(input.into_children();
-            [DataExpr(delay)] => {
-                Ok(StateFrm::Yaled(delay))
-            },
-        )
+        // The `@`-time argument is optional, so there may be zero or one child.
+        match input.into_children().next() {
+            Some(child) => Ok(StateFrm::Yaled(Some(Mcrl2Parser::DataExpr(child)?))),
+            None => Ok(StateFrm::Yaled(None)),
+        }
     }
 
     pub(crate) fn StateFrmNegation(input: ParseNode) -> ParseResult<StateFrm> {
@@ -1554,7 +1584,7 @@ impl Mcrl2Parser {
 
     pub(crate) fn PresExprLeftConstantMultiply(input: ParseNode) -> ParseResult<DataExpr> {
         match_nodes!(input.into_children();
-            [DataExpr(constant)] => {
+            [DataValExpr(constant)] => {
                 Ok(constant)
             },
         )
@@ -1562,7 +1592,7 @@ impl Mcrl2Parser {
 
     pub(crate) fn PresExprRightConstMultiply(input: ParseNode) -> ParseResult<DataExpr> {
         match_nodes!(input.into_children();
-            [DataExpr(constant)] => {
+            [DataValExpr(constant)] => {
                 Ok(constant)
             },
         )
