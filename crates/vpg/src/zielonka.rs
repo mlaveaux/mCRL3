@@ -134,7 +134,7 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
         }
 
         let highest_prio = self.get_highest_prio(&V);
-        let alpha = Player::from_priority(&highest_prio);
+        let alpha = Player::from_priority(highest_prio);
         let not_alpha = alpha.opponent();
 
         // Collect the set U of vertices with the highest priority in V

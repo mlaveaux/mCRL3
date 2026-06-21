@@ -103,14 +103,15 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
             .next()
             .ok_or(IOError::InvalidLine("Expected at least <index> <priority> ...;"))?
             .parse()?;
-        let vertex_owner = Player::from_index(
+        let vertex_owner = Player::try_from_index(
             parts
                 .next()
                 .ok_or(IOError::InvalidLine(
                     "Expected at least <index> <priority> <owner> ...;",
                 ))?
                 .parse()?,
-        );
+        )
+        .ok_or(IOError::InvalidLine("owner must be 0 (even) or 1 (odd)"))?;
 
         let vertex = VertexIndex::new(index);
         builder.add_vertex(vertex, vertex_owner, Priority::new(vertex_priority));
@@ -122,15 +123,17 @@ pub fn read_vpg<R: Read>(manager: &BDDManagerRef, reader: R) -> Result<Variabili
                 .split(',')
                 .filter(|s| !s.trim().is_empty())
             {
-                let parts: Vec<&str> = successor.trim().split('|').collect();
-                let successor_index: usize = parts[0].trim().parse()?;
-                let successor = VertexIndex::new(successor_index);
+                // Each successor is `<to>` or `<to>|<configuration_set>`.
+                let (index_part, configuration_part) = match successor.trim().split_once('|') {
+                    Some((index, configuration)) => (index, Some(configuration)),
+                    None => (successor.trim(), None),
+                };
+                let successor = VertexIndex::new(index_part.trim().parse()?);
 
-                let edge_configuration = if parts.len() > 1 {
-                    parse_configuration_set(manager, &variables, parts[1].trim())?
-                } else {
+                let edge_configuration = match configuration_part {
+                    Some(configuration) => parse_configuration_set(manager, &variables, configuration.trim())?,
                     // No configuration specified, use true (all configurations)
-                    manager.with_manager_shared(|m| BDDFunction::t(m))
+                    None => manager.with_manager_shared(|m| BDDFunction::t(m)),
                 };
 
                 builder.add_edge(vertex, edge_configuration, successor);
@@ -193,7 +196,9 @@ pub fn parse_configuration_set(
             let mut conjunction = BDDFunction::t(manager);
 
             for (i, c) in part.chars().enumerate() {
-                let var = &variables[i];
+                let var = variables.get(i).ok_or(IOError::InvalidLine(
+                    "configuration entry has more characters than there are variables",
+                ))?;
                 match c {
                     '1' => conjunction = conjunction.and(var)?,
                     '0' => conjunction = minus(&conjunction, var)?,
@@ -240,7 +245,7 @@ pub fn write_vpg<W: Write>(writer: &mut W, game: &VariabilityParityGame) -> Resu
         )?;
 
         writeln!(writer, ";")?;
-        progress.print((v.value(), game.num_of_vertices()));
+        progress.print((v.value() + 1, game.num_of_vertices()));
     }
 
     Ok(())

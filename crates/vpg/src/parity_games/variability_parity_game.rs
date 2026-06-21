@@ -142,8 +142,14 @@ impl VariabilityParityGame {
         result
     }
 
-    /// Returns true iff the parity game is total, checks all vertices have at least one outgoing edge.
-    pub fn is_total(&self, manager_ref: &BDDManagerRef) -> Result<bool, MercError> {
+    /// Returns true iff the variability parity game is total.
+    ///
+    /// # Details
+    ///
+    /// Unlike the [`PG::is_total`] check (which only verifies that every vertex
+    /// has at least one outgoing edge), this also verifies that the outgoing
+    /// edge configurations of every vertex cover the overall configuration.
+    pub fn is_vpg_total(&self, manager_ref: &BDDManagerRef) -> Result<bool, MercError> {
         // Check that every vertex has at least one outgoing edge.
         for v in self.iter_vertices() {
             if self.outgoing_edges(v).next().is_none() {

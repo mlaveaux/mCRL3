@@ -82,11 +82,16 @@ impl ParityGameBuilder {
 
         self.ensure_vertex_capacity(self.num_of_vertices);
 
-        // Build the parity game using the from_edges method
-        let edges = self.edges.clone();
-        ParityGame::from_edges(self.initial_vertex, self.owners, self.priorities, make_total, || {
-            edges.iter().cloned()
-        })
+        // Destructure so the edge closure can borrow `edges` while `owners` and
+        // `priorities` are moved into `from_edges`, avoiding a full edge clone.
+        let Self {
+            edges,
+            owners,
+            priorities,
+            initial_vertex,
+            ..
+        } = self;
+        ParityGame::from_edges(initial_vertex, owners, priorities, make_total, || edges.iter().cloned())
     }
 
     /// Ensures that the owners and priorities vectors have enough capacity for the given number of vertices.
@@ -184,13 +189,20 @@ impl VariabilityParityGameBuilder {
 
         self.ensure_vertex_capacity(self.num_of_vertices);
 
-        // Build the variability parity game using the from_edges method
-        let edges = self.edges.clone();
+        // Destructure so the edge closure can borrow `edges` while `owners` and
+        // `priorities` are moved into `from_edges`, avoiding a full edge clone.
+        let Self {
+            edges,
+            owners,
+            priorities,
+            initial_vertex,
+            ..
+        } = self;
         VariabilityParityGame::from_edges(
             manager_ref,
-            self.initial_vertex,
-            self.owners,
-            self.priorities,
+            initial_vertex,
+            owners,
+            priorities,
             configuration,
             variables,
             || edges.iter().cloned(),

@@ -50,7 +50,7 @@ pub fn solve_variability_zielonka(
     alternative_solving: bool,
 ) -> Result<[Submap; 2], MercError> {
     debug_assert!(
-        game.is_total(manager_ref)?,
+        game.is_vpg_total(manager_ref)?,
         "Zielonka solver requires a total parity game"
     );
 
@@ -259,7 +259,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         let highest_prio = self.get_highest_prio(&gamma);
 
         // 6. x := m mod 2
-        let x = Player::from_priority(&highest_prio);
+        let x = Player::from_priority(highest_prio);
         let not_x = x.opponent();
 
         // 7. \mu := lambda v in V. bigcup { \gamma(v) | p(v) = m }
@@ -342,7 +342,7 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         let highest_prio = self.get_highest_prio(&gamma);
 
         // 6. x := m mod 2
-        let x = Player::from_priority(&highest_prio);
+        let x = Player::from_priority(highest_prio);
         let not_x = x.opponent();
 
         // 7. C := { c in \bigC | exists v in V : p(v) = m && c in \gamma(v) }

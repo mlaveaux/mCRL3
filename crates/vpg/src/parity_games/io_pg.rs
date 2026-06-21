@@ -88,7 +88,10 @@ pub fn read_pg<R: Read>(reader: R) -> Result<ParityGame, MercError> {
             .parse()?;
 
         let vertex = VertexIndex::new(index);
-        builder.add_vertex(vertex, Player::from_index(vertex_owner), Priority::new(vertex_priority));
+        let owner = Player::try_from_index(vertex_owner).ok_or(IOError::InvalidLine(
+            "owner must be 0 (even) or 1 (odd)",
+        ))?;
+        builder.add_vertex(vertex, owner, Priority::new(vertex_priority));
 
         for successors in parts {
             // Parse successors (remaining parts, removing trailing semicolon)

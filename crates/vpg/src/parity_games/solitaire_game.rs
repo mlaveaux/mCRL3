@@ -48,7 +48,7 @@ pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
     let predecessors = Predecessors::new(pg);
 
     for priority in 0..=pg.highest_priority().value() {
-        if Player::from_priority(&(Priority::new(priority))) != player {
+        if Player::from_priority(Priority::new(priority)) != player {
             // Skip priorities that do not belong to the current player
             continue;
         }
@@ -96,7 +96,7 @@ fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
         if block_partition
             .iter_block(scc)
             // TODO: This assumes that this is the highest priority, so priorities (0,1) for odd and (1,2) for even.
-            .any(|i| Player::from_priority(&pg.priority(VertexIndex::new(i))) == player)
+            .any(|i| Player::from_priority(pg.priority(VertexIndex::new(i))) == player)
         {
             for vertex in block_partition.iter_block(scc) {
                 winning_vertices.set(vertex, true);
@@ -196,10 +196,10 @@ impl<G: PG, P: Pred> PG for Subgame<'_, G, P> {
         );
 
         self.game.outgoing_edges(vertex_index).filter(move |edge| {
-            self.restricted
+            *self
+                .restricted
                 .get(*edge.to())
                 .expect("Vertex must be in the restricted set")
-                == true
         })
     }
 
@@ -233,10 +233,10 @@ impl<G: PG, P: Pred> Pred for Subgame<'_, G, P> {
         );
 
         self.predecessors.predecessors(vertex_index).filter(move |from| {
-            self.restricted
+            *self
+                .restricted
                 .get(from.value())
                 .expect("Vertex must be in the restricted set")
-                == true
         })
     }
 }
@@ -289,7 +289,7 @@ impl<G: PG, P: Pred> PG for PrioSubgame<'_, G, P> {
         );
 
         if self.subgame.game.priority(vertex) == self.max_priority {
-            // Return the priority for the opponent.
+            // Return the priority for the player (the highest priority belongs to them).
             if self.max_priority.is_multiple_of(2) {
                 Priority::new(2)
             } else {

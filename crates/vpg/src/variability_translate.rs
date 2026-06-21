@@ -93,7 +93,7 @@ pub fn translate_vpg(
     }
 
     // Ensure that the result is a total VPG.
-    let total_result = if !result.is_total(manager_ref)? {
+    let total_result = if !result.is_vpg_total(manager_ref)? {
         make_vpg_total(manager_ref, &result)?
     } else {
         result
@@ -148,7 +148,7 @@ mod tests {
         let vpg = translate_vpg(&manager_ref, &fts, fd.configuration().clone(), &formula.formula).unwrap();
 
         assert!(
-            vpg.is_total(&manager_ref).unwrap(),
+            vpg.is_vpg_total(&manager_ref).unwrap(),
             "The translated VPG should be total"
         );
         assert!(

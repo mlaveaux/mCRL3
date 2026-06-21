@@ -137,7 +137,7 @@ mod tests {
                 "At least 10 vertices, with 2 additional vertices for totality"
             );
             assert!(
-                vpg.is_total(&manager_ref).unwrap(),
+                vpg.is_vpg_total(&manager_ref).unwrap(),
                 "Generated variability parity game should be total"
             );
         })

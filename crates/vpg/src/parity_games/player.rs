@@ -14,15 +14,22 @@ impl Player {
     /// Constructs a player from its index. This can be used in algorithms where
     /// we have a 2-array, and 0 is Even and 1 is Odd.
     pub fn from_index(index: u8) -> Self {
+        Self::try_from_index(index).unwrap_or_else(|| panic!("Invalid player index {}", index))
+    }
+
+    /// Constructs a player from its index, returning `None` for any value other
+    /// than 0 (Even) or 1 (Odd). Use this when the index comes from untrusted
+    /// input that should be reported as a recoverable error.
+    pub fn try_from_index(index: u8) -> Option<Self> {
         match index {
-            0 => Player::Even,
-            1 => Player::Odd,
-            _ => panic!("Invalid player index {}", index),
+            0 => Some(Player::Even),
+            1 => Some(Player::Odd),
+            _ => None,
         }
     }
 
     /// Constructs a player from a priority.
-    pub fn from_priority(priority: &Priority) -> Self {
+    pub fn from_priority(priority: Priority) -> Self {
         if priority.value().is_multiple_of(2) {
             Player::Even
         } else {
