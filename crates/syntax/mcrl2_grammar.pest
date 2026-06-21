@@ -41,8 +41,9 @@ IdList = { IdAt ~ ( "," ~ IdAt )* }
 /// List of identifiers
 IdInfixList = { IdInfix ~ ( "," ~ IdInfix )* }
 
-/// Numbers
-Number = { ASCII_DIGIT+ }
+/// Numbers. Atomic so that no implicit whitespace is captured into the matched
+/// text (a non-atomic repetition would absorb trailing whitespace into `as_str`).
+Number = @{ ASCII_DIGIT+ }
 
 /// Parsing an mCRL2 specification
 MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec)* ~ EOI } 
@@ -209,14 +210,14 @@ DataExprInfix = _{
     DataExprLess    = { "<" ~ !">" }
     DataExprGeq     = { ">=" }
     DataExprGreater = { ">" }
-    DataExprIn      = { "in" }
+    DataExprIn      = @{ "in" ~ !Id }
     DataExprCons    = { "|>" }
     DataExprConcat  = { "++" }
     DataExprAdd     = { "+" }
     DataExprSubtract = { "-" ~ !">" }
     DataExprDiv     = { "/" }
-    DataExprIntDiv  = { "div" }
-    DataExprMod     = { "mod" }
+    DataExprIntDiv  = @{ "div" ~ !Id }
+    DataExprMod     = @{ "mod" ~ !Id }
     DataExprMult    = { "*" }
     DataExprAt      = { "." }
 
