@@ -39,29 +39,47 @@ where
 
     match formula {
         StateFrm::Binary { lhs, rhs, .. } => {
-            visit_statefrm_rec(lhs, function)?;
-            visit_statefrm_rec(rhs, function)?;
+            if let Some(result) = visit_statefrm_rec(lhs, function)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_statefrm_rec(rhs, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::FixedPoint { body, .. } => {
-            visit_statefrm_rec(body, function)?;
+            if let Some(result) = visit_statefrm_rec(body, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::Bound { body, .. } => {
-            visit_statefrm_rec(body, function)?;
+            if let Some(result) = visit_statefrm_rec(body, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::Modality { expr, .. } => {
-            visit_statefrm_rec(expr, function)?;
+            if let Some(result) = visit_statefrm_rec(expr, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::Quantifier { body, .. } => {
-            visit_statefrm_rec(body, function)?;
+            if let Some(result) = visit_statefrm_rec(body, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::DataValExprRightMult(expr, _data_val) => {
-            visit_statefrm_rec(expr, function)?;
+            if let Some(result) = visit_statefrm_rec(expr, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::DataValExprLeftMult(_data_val, expr) => {
-            visit_statefrm_rec(expr, function)?;
+            if let Some(result) = visit_statefrm_rec(expr, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::Unary { expr, .. } => {
-            visit_statefrm_rec(expr, function)?;
+            if let Some(result) = visit_statefrm_rec(expr, function)? {
+                return Ok(Some(result));
+            }
         }
         StateFrm::Id(_, _)
         | StateFrm::True
@@ -86,22 +104,34 @@ where
 
     match sort_expr {
         SortExpression::Product { lhs, rhs } => {
-            visit_sort_expr_rec(lhs, function)?;
-            visit_sort_expr_rec(rhs, function)?;
+            if let Some(result) = visit_sort_expr_rec(lhs, function)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_sort_expr_rec(rhs, function)? {
+                return Ok(Some(result));
+            }
         }
         SortExpression::Function { domain, range } => {
-            visit_sort_expr_rec(domain, function)?;
-            visit_sort_expr_rec(range, function)?;
+            if let Some(result) = visit_sort_expr_rec(domain, function)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_sort_expr_rec(range, function)? {
+                return Ok(Some(result));
+            }
         }
         SortExpression::Struct { inner } => {
             for constructors in inner {
                 for (_name, sort) in &constructors.args {
-                    visit_sort_expr_rec(sort, function)?;
+                    if let Some(result) = visit_sort_expr_rec(sort, function)? {
+                        return Ok(Some(result));
+                    }
                 }
             }
         }
         SortExpression::Complex(_complex_sort, sort_expression) => {
-            visit_sort_expr_rec(sort_expression, function)?;
+            if let Some(result) = visit_sort_expr_rec(sort_expression, function)? {
+                return Ok(Some(result));
+            }
         }
         SortExpression::Reference(_) | SortExpression::Simple(_) => {}
     }
@@ -130,18 +160,30 @@ where
 
     match formula {
         RegFrm::Iteration(reg_frm) => {
-            visit_regular_formula_rec(reg_frm, visit)?;
+            if let Some(result) = visit_regular_formula_rec(reg_frm, visit)? {
+                return Ok(Some(result));
+            }
         }
         RegFrm::Plus(reg_frm) => {
-            visit_regular_formula_rec(reg_frm, visit)?;
+            if let Some(result) = visit_regular_formula_rec(reg_frm, visit)? {
+                return Ok(Some(result));
+            }
         }
         RegFrm::Sequence { lhs, rhs } => {
-            visit_regular_formula_rec(lhs, visit)?;
-            visit_regular_formula_rec(rhs, visit)?;
+            if let Some(result) = visit_regular_formula_rec(lhs, visit)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_regular_formula_rec(rhs, visit)? {
+                return Ok(Some(result));
+            }
         }
         RegFrm::Choice { lhs, rhs } => {
-            visit_regular_formula_rec(lhs, visit)?;
-            visit_regular_formula_rec(rhs, visit)?;
+            if let Some(result) = visit_regular_formula_rec(lhs, visit)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_regular_formula_rec(rhs, visit)? {
+                return Ok(Some(result));
+            }
         }
         _ => {}
     }
@@ -169,18 +211,26 @@ where
 
     match formula {
         ActFrm::Negation(act_frm) => {
-            visit_action_formula_rec(act_frm, visitor)?;
+            if let Some(result) = visit_action_formula_rec(act_frm, visitor)? {
+                return Ok(Some(result));
+            }
         }
         ActFrm::Quantifier {
             quantifier: _,
             variables: _,
             body,
         } => {
-            visit_action_formula_rec(body, visitor)?;
+            if let Some(result) = visit_action_formula_rec(body, visitor)? {
+                return Ok(Some(result));
+            }
         }
         ActFrm::Binary { op: _, lhs, rhs } => {
-            visit_action_formula_rec(lhs, visitor)?;
-            visit_action_formula_rec(rhs, visitor)?;
+            if let Some(result) = visit_action_formula_rec(lhs, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_action_formula_rec(rhs, visitor)? {
+                return Ok(Some(result));
+            }
         }
         ActFrm::True | ActFrm::False | ActFrm::MultAct(_) | ActFrm::DataExprVal(_) => {}
     }
