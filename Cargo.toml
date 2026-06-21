@@ -86,7 +86,7 @@ rustc-hash = "2.1"
 smallvec = "1.15"
 thiserror = "2.0"
 toml = "1.1"
-winapi = { version = "0.3", features = ["consoleapi"] }
+winapi = { version = "0.3", features = ["consoleapi", "wincon"] }
 
 # Used for the compiling rewriter
 libloading = "0.9"

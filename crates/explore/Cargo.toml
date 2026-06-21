@@ -38,5 +38,7 @@ merc_reduction.workspace = true
 tempfile.workspace = true
 rand.workspace = true
 
+# Under `--cfg loom` boxcar must use loom's instrumented atomics instead of
+# std's.
 [target.'cfg(loom)'.dependencies]
 boxcar = { workspace = true, features = ["loom"] }

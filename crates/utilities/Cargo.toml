@@ -14,19 +14,12 @@ version = "3.0.0"
 merc_debug-trace = []
 
 [dependencies]
-ahash.workspace = true
-backtrace.workspace = true
-core_affinity2.workspace = true
 crossbeam-utils.workspace = true
-delegate.workspace = true
 env_logger.workspace = true
 log.workspace = true
 pest.workspace = true
 rand.workspace = true
 thread_local.workspace = true
-
-[build-dependencies]
-toml.workspace = true       
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
