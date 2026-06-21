@@ -209,8 +209,13 @@ fn is_refinement_test(
             let (impl_solution, _) = solve_zielonka(&impl_pg, false);
             let (spec_solution, _) = solve_zielonka(&spec_pg, false);
 
+            // The formula distinguishes the two systems iff their initial
+            // vertices end up in different players' winning sets. Index the Even
+            // winning set (player 0) by the initial vertex of each game.
+            let impl_init = impl_pg.initial_vertex();
+            let spec_init = spec_pg.initial_vertex();
             assert!(
-                impl_solution[impl_pg.initial_vertex()] != spec_solution[spec_pg.initial_vertex()],
+                impl_solution[0][*impl_init] != spec_solution[0][*spec_init],
                 "Refinement returned false, but the counter example is not distinguishing."
             );
         } else {
