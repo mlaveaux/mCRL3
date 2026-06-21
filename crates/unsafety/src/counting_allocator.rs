@@ -99,6 +99,8 @@ impl AllocCounter {
     }
 
     fn alloc(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: callers of this method (the `GlobalAlloc`/`Allocator` impls)
+        // only pass non-zero layouts, which is `System.alloc`'s requirement.
         let ret = unsafe { System.alloc(layout) };
 
         if !ret.is_null() {
@@ -110,7 +112,9 @@ impl AllocCounter {
             self.total_size_of_allocations
                 .fetch_add(layout.size(), Ordering::Relaxed);
 
-            // Update max counters using compare-and-swap loops
+            // Update max counters using compare-and-swap loops. All counters use
+            // `Relaxed`, so under contention a recorded peak may lag the true peak
+            // by a few concurrent allocations; the peaks are best-effort metrics.
             let current_allocs = self.number_of_allocations.load(Ordering::Relaxed);
             let mut max_allocs = self.max_number_of_allocations.load(Ordering::Relaxed);
             while current_allocs > max_allocs {

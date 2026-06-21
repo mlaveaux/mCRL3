@@ -5,13 +5,20 @@ use std::ptr::NonNull;
 
 /// A thin, type-erased pointer. This should mimic the interface of NonNull, but
 /// with the ability to erase the type information.
-#[derive(Clone)]
 pub struct Thin<T: ?Sized + Erasable> {
     ptr: ErasedPtr,
     marker: PhantomData<fn() -> T>,
 }
 
-impl<T: Erasable + Copy> Copy for Thin<T> {}
+// A `Thin` is just a type-erased pointer plus a `PhantomData`, so it is always
+// `Copy`/`Clone` regardless of whether the pointee is.
+impl<T: ?Sized + Erasable> Clone for Thin<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: ?Sized + Erasable> Copy for Thin<T> {}
 
 impl<T: ?Sized + Erasable> Thin<T> {
     pub fn new(ptr: NonNull<T>) -> Self {
@@ -74,9 +81,8 @@ unsafe impl<T: Sized> Erasable for T {
     }
 }
 
-/// This is simply a u8, but with a concrete type to avoid confusion. Must be a
-/// type that has size one and alignment one. Can be converted to an extern type
-/// when `extern type` is stabilized.
+/// A stand-in for an opaque pointee with size one and alignment one (a single
+/// `u8`). Can be replaced by an `extern type` when that is stabilized.
 pub struct Erased(#[allow(unused)] u8);
 
 /// Static assertion to ensure that `ErasedPtr` is the same size as a `usize`.
@@ -87,7 +93,7 @@ const _: () = assert!(std::mem::size_of::<ErasedPtr>() == std::mem::size_of::<us
 /// The `Erased` type is private, and should be treated as an opaque type.
 /// When `extern type` is stabilized, `Erased` will be defined as one.
 ///
-/// The current implementation uses a `struct Erased` with size 0 and align 1.
+/// The current implementation uses a `struct Erased` of size 1 and align 1.
 /// If you want to offset the pointer, make sure to cast to a `u8` or other known type pointer first.
 /// When `Erased` becomes an extern type, it will properly have unknown size and align.
 pub type ErasedPtr = NonNull<Erased>;
