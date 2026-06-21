@@ -3079,6 +3079,9 @@ dependencies = [
  "clap",
  "duct",
  "glob",
+ "regex",
+ "serde",
+ "serde_json",
  "which",
 ]
 

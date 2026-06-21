@@ -24,7 +24,7 @@ members = [
 boxcar = "0.2"
 clap = { version = "4.6", features = ["derive"] }
 env_logger = "0.11"
-itertools = "0.14"
+itertools = "0.15"
 log = "0.4"
 parking_lot = "0.12"
 rand = "0.10"
