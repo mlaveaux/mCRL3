@@ -135,7 +135,8 @@ impl Submap {
                     );
                     let is_satisfiable = *func.as_edge(manager) != *f_edge;
 
-                    if was_satisfiable && !is_satisfiable {
+                    // `was_satisfiable` is already true in this branch.
+                    if !is_satisfiable {
                         self.non_empty_count -= 1;
                     }
                 }

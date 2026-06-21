@@ -7,7 +7,6 @@ use log::info;
 
 use log::warn;
 use merc_collections::IndexedSet;
-use merc_collections::VecBag;
 use merc_io::TimeProgress;
 use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
@@ -596,7 +595,13 @@ fn match_multi_action(expected: &MultiAction, actual: &MultiAction) -> bool {
         return false;
     }
 
-    VecBag::from_vec(expected.actions.clone()) == VecBag::from_vec(actual.actions.clone())
+    // Compare as multisets without cloning the action data (notably the action
+    // identifiers): sort references and compare element-wise.
+    let mut expected_actions: Vec<_> = expected.actions.iter().collect();
+    let mut actual_actions: Vec<_> = actual.actions.iter().collect();
+    expected_actions.sort_unstable();
+    actual_actions.sort_unstable();
+    expected_actions == actual_actions
 }
 
 #[cfg(test)]

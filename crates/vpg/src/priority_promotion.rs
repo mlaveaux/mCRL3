@@ -226,7 +226,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
                 self.print_region(prio);
 
                 // Record the winner for this dominion.
-                let winner = Player::from_priority(&prio);
+                let winner = Player::from_priority(prio);
                 for v in self.game.iter_vertices() {
                     if self.region_function[*v] == Some(prio) {
                         self.final_winner[*v] = winner;
@@ -303,7 +303,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// attraction witness. The remaining vertices of alpha without a strategy can pick
     /// any vertex inside A as witness.
     fn compute_attractor<S: Strat>(&mut self, strategy: &mut S, prio: Priority, in_subgraph: bool) {
-        let alpha = Player::from_priority(&prio);
+        let alpha = Player::from_priority(prio);
 
         // Initialise, for every opponent vertex still under consideration, the
         // number of its outgoing edges that lead to a vertex which can still
@@ -391,7 +391,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// to alpha, determined by prio mod 2, there is some witness successor in R.
     /// For opponent vertices all successors lead to R, no witness to escape basically.
     fn is_open(&self, prio: Priority, in_subgraph: bool) -> bool {
-        let alpha = Player::from_priority(&prio);
+        let alpha = Player::from_priority(prio);
 
         // O(V): Loop over unsolved vertices and find vertices belonging to region with prio.
         for &v in &self.unsolved {
@@ -439,7 +439,7 @@ impl<'a, G: PG> PriorityPromotionSolver<'a, G> {
     /// The region it can reach belongs to alpha,
     /// otherwise it would be attracted in some earlier state.
     fn promote_sub_dominion<S: Strat>(&mut self, strategy: &mut S, prio: Priority) -> Priority {
-        let alpha = Player::from_priority(&prio);
+        let alpha = Player::from_priority(prio);
 
         // O(V): It is only a dominion in the subgraph, determine lowest p > prio
         // that opponent can escape to.

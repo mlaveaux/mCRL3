@@ -69,6 +69,10 @@ impl VariabilityPredecessors {
     }
 
     /// Returns an iterator over the incoming transitions for the given state.
+    ///
+    /// Unlike [`crate::Pred::predecessors`], this also yields the edge
+    /// configuration of every incoming edge, so this type intentionally does
+    /// not implement the `Pred` trait.
     pub fn predecessors(&self, state_index: VertexIndex) -> impl Iterator<Item = (VertexIndex, &BDDFunction)> + '_ {
         let start = self.vertex_to_predecessors.index(state_index.value());
         let end = self.vertex_to_predecessors.index(state_index.value() + 1);

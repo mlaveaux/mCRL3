@@ -110,6 +110,13 @@ impl ModalEquationSystem {
     }
 
     /// Finds an equation by its variable identifier.
+    ///
+    /// # Details
+    ///
+    /// This is a linear scan over the equations, and is also called from within
+    /// [`Self::alternation_depth`]'s recursion. Equation systems correspond to a
+    /// single (modal) formula and are therefore small, so an index map is not
+    /// worth its maintenance cost; revisit if very large formulas become common.
     pub fn find_equation_by_identifier(&self, id: &str) -> Option<(usize, &Equation)> {
         self.equations
             .iter()
