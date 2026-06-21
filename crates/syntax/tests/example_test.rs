@@ -32,6 +32,18 @@ fn check_snapshot<T: fmt::Display>(result: &T, snapshot_path: &Path) -> Result<(
     Ok(())
 }
 
+/// Asserts that the printed form reparses and prints identically. This catches
+/// grammar / printer mismatches on real specifications.
+fn check_roundtrip<T, F>(printed: &str, parse: F)
+where
+    T: fmt::Display,
+    F: Fn(&str) -> Result<T, MercError>,
+{
+    let reparsed =
+        parse(printed).unwrap_or_else(|e| panic!("printed output failed to reparse:\n{printed}\nerror: {e}"));
+    assert_eq!(printed, format!("{reparsed}"), "print/parse is not a fixpoint");
+}
+
 #[cfg_attr(miri, ignore)]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp/abp.mcrl2"), "tests/snapshot/result_abp.mcrl2" ; "abp.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/abp_bw/abp_bw.mcrl2"), "tests/snapshot/result_abp_bw.mcrl2" ; "abp_bw.mcrl2")]
@@ -222,6 +234,7 @@ fn test_parse_mcrl2_spec(input: &str, snapshot_file: &str) {
     match UntypedProcessSpecification::parse(input) {
         Ok(spec) => {
             check_snapshot(&spec, Path::new(snapshot_file)).expect("Could not read or write the tests/snapshot file");
+            check_roundtrip(&format!("{spec}"), UntypedProcessSpecification::parse);
         }
         Err(err) => panic!("{}", err),
     }
@@ -387,6 +400,7 @@ fn test_parse_mcrl2_modal_formula(input: &str, snapshot_file: &str) {
     match UntypedStateFrmSpec::parse(input) {
         Ok(spec) => {
             check_snapshot(&spec, Path::new(snapshot_file)).expect("Could not read or write the tests/snapshot file");
+            check_roundtrip(&format!("{spec}"), UntypedStateFrmSpec::parse);
         }
         Err(err) => panic!("{}", err),
     }
@@ -484,6 +498,7 @@ fn test_parse_mcrl2_dataspec(input: &str, snapshot_file: &str) {
     match UntypedDataSpecification::parse(input) {
         Ok(spec) => {
             check_snapshot(&spec, Path::new(snapshot_file)).expect("Could not read or write the tests/snapshot file");
+            check_roundtrip(&format!("{spec}"), UntypedDataSpecification::parse);
         }
         Err(err) => panic!("{}", err),
     }
@@ -500,6 +515,7 @@ fn test_parse_pbes(input: &str, snapshot_file: &str) {
     match UntypedPbes::parse(input) {
         Ok(spec) => {
             check_snapshot(&spec, Path::new(snapshot_file)).expect("Could not read or write the tests/snapshot file");
+            check_roundtrip(&format!("{spec}"), UntypedPbes::parse);
         }
         Err(err) => panic!("{}", err),
     }
