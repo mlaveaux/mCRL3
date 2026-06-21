@@ -47,14 +47,25 @@ use crate::UntypedPbes;
 use crate::UntypedProcessSpecification;
 use crate::UntypedStateFrmSpec;
 
-/// Prints location information for a span in the source.
-pub fn print_location(input: &str, span: &Span) {
-    input.lines().enumerate().fold(span.start, |current, (number, line)| {
-        if current < line.len() {
-            println!("ln {number}, col {}", span.start - current);
+/// Returns the 1-based `(line, column)` of the byte offset `span.start` within `input`.
+///
+/// Counts the bytes consumed by each preceding line (including its newline) until
+/// the offset falls inside the current line. Offsets past the end of the input
+/// resolve to the position just after the last character.
+pub fn line_column(input: &str, span: &Span) -> (usize, usize) {
+    let mut consumed = 0;
+    for (number, line) in input.lines().enumerate() {
+        // `+ 1` accounts for the newline that `lines()` strips.
+        let line_bytes = line.len() + 1;
+        if span.start < consumed + line_bytes {
+            return (number + 1, span.start - consumed + 1);
         }
-        current - line.len()
-    });
+        consumed += line_bytes;
+    }
+
+    // The offset is at (or past) the end of the input.
+    let last_line = input.lines().count().max(1);
+    (last_line, span.start.saturating_sub(consumed) + 1)
 }
 
 // Display implementations
