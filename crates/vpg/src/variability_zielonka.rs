@@ -318,9 +318,8 @@ impl<'a> VariabilityZielonkaSolver<'a> {
             omega2_not_x = omega2_not_x.or(self.manager_ref, &beta)?;
 
             // 20. return (omega_0, omega_1)
-            if cfg!(debug_assertions) {
-                self.check_partition(&omega2_x, &omega2_not_x, &gamma_copy)?;
-            }
+            #[cfg(debug_assertions)]
+            self.check_partition(&omega2_x, &omega2_not_x, &gamma_copy)?;
             Ok(combine(omega2_x, omega2_not_x, x))
         }
     }
@@ -401,9 +400,8 @@ impl<'a> VariabilityZielonkaSolver<'a> {
         if omega1_not_x_restricted.is_all_empty_set() {
             // 11. omega'_x := omega'_x \cup A
             omega1_x = omega1_x.or(self.manager_ref, &alpha)?;
-            if cfg!(debug_assertions) {
-                self.check_partition(&omega1_x, &omega1_not_x, &gamma_copy)?;
-            }
+            #[cfg(debug_assertions)]
+            self.check_partition(&omega1_x, &omega1_not_x, &gamma_copy)?;
 
             // 22. return (omega_0, omega_1)
             Ok(combine(omega1_x, omega1_not_x, x))

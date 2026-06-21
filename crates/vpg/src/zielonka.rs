@@ -188,9 +188,8 @@ impl<G: PG, S: Strat> ZielonkaSolver<'_, G, S> {
             // Combine the strategy from the attractor with the recursive strategy
             S2_not_alpha = S2_not_alpha.union(B_strategy).union(S1_not_alpha);
 
-            if cfg!(debug_assertions) {
-                check_partition(&W2_alpha, &W2_not_alpha, &full_V);
-            }
+            #[cfg(debug_assertions)]
+            check_partition(&W2_alpha, &W2_not_alpha, &full_V);
             combine_with_strategy(W2_alpha, S2_alpha, W2_not_alpha, S2_not_alpha, alpha)
         }
     }
