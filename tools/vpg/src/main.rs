@@ -306,7 +306,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
             read_vpg(&manager_ref, &mut file)
         })?;
 
-        let game = if !game.is_total(&manager_ref)? {
+        let game = if !game.is_vpg_total(&manager_ref)? {
             info!("Making the VPG total...");
             make_vpg_total(&manager_ref, &game)?
         } else {
