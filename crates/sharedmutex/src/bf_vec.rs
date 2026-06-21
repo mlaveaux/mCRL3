@@ -82,8 +82,11 @@ impl<T> BfVec<T> {
         };
 
         // Write the element on the specified index.
+
+        // SAFETY: The CAS above reserved `last_index < capacity` while holding
+        // the read lock, so the buffer is allocated and the slot is exclusively
+        // ours and uninitialised.
         unsafe {
-            // We know that the buffer has been allocated by this point.
             let end = read.buffer.unwrap().as_ptr().add(last_index);
             ptr::write(end, value);
         }
@@ -133,6 +136,9 @@ impl<T> BfVec<T> {
             "Index {index} is out of bounds"
         );
 
+        // SAFETY: `index < len` (Acquire) guarantees the slot is initialised
+        // and published, and the read lock keeps the buffer alive for the
+        // clone.
         unsafe { (*read.buffer.unwrap().as_ptr().add(index)).clone() }
     }
 
@@ -162,6 +168,9 @@ impl<T> BfVec<T> {
         let old_layout = Layout::array::<T>(write.capacity).unwrap();
         let layout = Layout::array::<T>(capacity).unwrap();
 
+        // SAFETY: Held under the write lock, so no push is in flight and every reserved slot is
+        // initialised. We allocate a larger buffer, move the `len` live elements into it, and
+        // free the old allocation with the layout it was created with.
         unsafe {
             let new_buffer = alloc::alloc(layout) as *mut T;
             if new_buffer.is_null() {
@@ -199,8 +208,9 @@ impl<T> BfVecShared<T> {
     pub fn clear(&mut self) {
         // Only drop items within the 0..len range since the other values are not initialised.
         for i in 0..self.len.load(Ordering::Relaxed) {
+            // SAFETY: `&mut self` gives exclusive access, and slots `0..len` are initialised, so
+            // each element can be dropped exactly once in place.
             unsafe {
-                // We have exclusive access so dropping is safe.
                 let ptr = self.buffer.unwrap().as_ptr().add(i);
 
                 ptr::drop_in_place(ptr);
@@ -217,8 +227,9 @@ impl<T> Drop for BfVecShared<T> {
     fn drop(&mut self) {
         self.clear();
 
+        // SAFETY: `clear` dropped every live element, so the buffer holds no initialised values;
+        // we free it with the same layout it was allocated with.
         unsafe {
-            // Deallocate the underlying storage.
             let layout = Layout::array::<T>(self.capacity).unwrap();
             if let Some(buffer) = self.buffer {
                 alloc::dealloc(buffer.as_ptr() as *mut u8, layout);
@@ -226,7 +237,13 @@ impl<T> Drop for BfVecShared<T> {
         }
     }
 }
-unsafe impl<T: Send> Send for BfVecShared<T> {}
+// SAFETY: The shared state is accessed concurrently by every thread holding a
+// read guard, so the element type must be both `Send` and `Sync` for these
+// accesses to be free of data races.
+unsafe impl<T: Send + Sync> Send for BfVecShared<T> {}
+
+// SAFETY: A `BfVec` is shared across threads by handing each thread a `share()`
+// clone, which requires `T: Send + Sync` (see `BfVecShared` above).
 unsafe impl<T: Send + Sync> Send for BfVec<T> {}
 
 #[cfg(test)]
