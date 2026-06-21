@@ -19,7 +19,7 @@ fn check_snapshot<T: fmt::Display>(result: &T, snapshot_path: &Path) -> Result<(
         // Read the existing tests/snapshot and compare it to the given object.
         let result = format!("{}", result);
         let expected_str = std::fs::read_to_string(snapshot_path)?;
-        debug_assert_eq!(
+        assert_eq!(
             result, expected_str,
             "Result does not match the stored snapshot at {snapshot_path:?}"
         );
