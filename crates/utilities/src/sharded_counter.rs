@@ -72,7 +72,7 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    use super::*;
+    use crate::ShardedCounter;
 
     #[test]
     fn test_single_thread() {

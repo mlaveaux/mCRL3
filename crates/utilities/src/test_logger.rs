@@ -1,4 +1,5 @@
-/// Constructs a logger for tests. This logger will not print anything to the console, but will instead write to a buffer.
+/// Initializes the standard logger for tests. Output is routed through the test
+/// harness so it is captured rather than printed unconditionally.
 pub fn test_logger() {
     if !cfg!(miri) {
         // Ignore double initialisations in tests since tests are ran in parallel.
@@ -23,7 +24,9 @@ where
         }));
     }
 
+    // Propagate a worker panic so a failing assertion fails the test instead of
+    // being silently swallowed.
     for thread in threads {
-        let _ = thread.join();
+        thread.join().unwrap();
     }
 }

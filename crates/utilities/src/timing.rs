@@ -41,11 +41,11 @@ impl Timing {
         let start = Instant::now();
         let result = function();
 
-        let time = start.elapsed().as_secs_f64();
+        let time = start.elapsed().as_secs_f32();
         debug!("Time {}: {:.3}s", name, time);
 
         // Register the result.
-        self.results.borrow_mut().push((name.to_string(), time as f32));
+        self.results.borrow_mut().push((name.to_string(), time));
         result
     }
 
