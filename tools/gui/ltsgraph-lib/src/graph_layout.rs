@@ -50,23 +50,18 @@ impl GraphLayout {
     /// Returns true iff the layout is stable.
     pub fn update(&mut self, handle_length: f32, repulsion_strength: f32, delta: f32) -> bool {
         for state_index in self.lts.iter_states() {
-            // Ignore the last state since it cannot repulse with any other state.
-            if state_index < self.layout_states.len() {
-                // Use split_at_mut to get two mutable slices at every split point.
-                let (left_layout, right_layout) = self.layout_states.split_at_mut(state_index.value() + 1);
-                let state_layout = left_layout.last_mut().unwrap();
+            // Split the layout into the current state and every state after it, so each unordered
+            // pair is visited once. The last state yields an empty right slice (no repulsion partner).
+            let (left_layout, right_layout) = self.layout_states.split_at_mut(state_index.value() + 1);
+            let state_layout = left_layout.last_mut().unwrap();
 
-                // Accumulate repulsion forces between vertices.
-                for other_state_layout in right_layout {
-                    let force = compute_repulsion_force(
-                        &state_layout.position,
-                        &other_state_layout.position,
-                        repulsion_strength,
-                    );
+            // Accumulate repulsion forces between vertices.
+            for other_state_layout in right_layout {
+                let force =
+                    compute_repulsion_force(&state_layout.position, &other_state_layout.position, repulsion_strength);
 
-                    state_layout.force += force;
-                    other_state_layout.force -= force;
-                }
+                state_layout.force += force;
+                other_state_layout.force -= force;
             }
 
             // Accumulate forces over all connected edges.
