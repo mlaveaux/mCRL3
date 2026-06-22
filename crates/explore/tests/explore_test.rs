@@ -139,6 +139,7 @@ fn breadth_first_matches_depth_first() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
 fn parallel_matches_sequential() {
     for lps in fixtures() {
         assert_eq!(
@@ -150,6 +151,7 @@ fn parallel_matches_sequential() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
 fn cached_matches_sequential() {
     for strategy in [CachingStrategy::Local, CachingStrategy::None] {
         for lps in fixtures() {
@@ -187,6 +189,7 @@ fn sequential_propagates_callback_error() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
 fn parallel_propagates_callback_error() {
     // Exercises the abort path: one worker's failing callback sets `aborted`,
     // and every worker stops and reports the error.

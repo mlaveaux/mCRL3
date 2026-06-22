@@ -93,6 +93,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_concurrent_increments() {
         const THREADS: u64 = 8;
         const PER_THREAD: u64 = 100_000;
