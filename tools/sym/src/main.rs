@@ -13,6 +13,8 @@ use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::write_bcg;
+use merc_symbolic::ExplorationStrategy;
+use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLPS;
 use merc_symbolic::SymbolicLTS;
@@ -22,8 +24,8 @@ use merc_symbolic::convert_symbolic_lts_bdd;
 use merc_symbolic::guess_format_from_extension;
 use merc_symbolic::parse_compacted_dependency_graph;
 use merc_symbolic::quotient_symbolic;
-use merc_symbolic::reachability;
 use merc_symbolic::reachability_bdd;
+use merc_symbolic::reachability_with_options;
 use merc_symbolic::read_sylvan;
 use merc_symbolic::read_symbolic_lts;
 use merc_symbolic::refine_bisimulation;
@@ -112,6 +114,14 @@ struct ExploreArgs {
     /// Visualize intermediate BDDs using oxidd-vis.
     #[arg(long)]
     visualize: bool,
+
+    /// Exploration strategy to use (LDD path only; ignored with --use-bdd).
+    #[arg(long, value_enum, default_value = "breadth-first")]
+    strategy: ExplorationStrategy,
+
+    /// Detect deadlock states (states without outgoing transitions).
+    #[arg(long)]
+    detect_deadlocks: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -276,6 +286,11 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
 
     let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
 
+    let options = ReachabilityOptions {
+        strategy: args.strategy,
+        detect_deadlocks: args.detect_deadlocks,
+    };
+
     let mut file = File::open(&args.filename)?;
     match format {
         SymFormat::Sylvan => {
@@ -284,7 +299,7 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
             println!(
                 "LTS has {} states",
                 timing.measure("explore", || -> Result<_, MercError> {
-                    Ok(reachability(&storage, &mut lts, timing)?.len())
+                    Ok(reachability_with_options(&storage, &mut lts, &options, timing)?.len())
                 })?
             );
         }
@@ -324,10 +339,15 @@ fn explore_impl<L: SymbolicLTS>(
             })?
         );
     } else {
+        let options = ReachabilityOptions {
+            strategy: args.strategy,
+            detect_deadlocks: args.detect_deadlocks,
+        };
+
         println!(
             "LTS has {} states",
             timing.measure("explore", || -> Result<_, MercError> {
-                let states = reachability(storage, lts, timing)?;
+                let states = reachability_with_options(storage, lts, &options, timing)?;
 
                 Ok(states.len())
             })?
