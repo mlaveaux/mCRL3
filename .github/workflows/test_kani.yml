@@ -34,12 +34,11 @@ jobs:
       with:
         working-directory: crates/number
 
-    - name: Run Kani on merc_io
-      uses: model-checking/kani-github-action@v1
-      with:
-        working-directory: crates/io
-
     - name: Run Kani on merc_collections
       uses: model-checking/kani-github-action@v1
       with:
         working-directory: crates/collections
+
+    # NOTE: crates/io is intentionally not verified here. Its `write_read_bits_roundtrips`
+    # proof drives the generic `bitstream-io` Read/Write stack over a `Vec`, which makes CBMC
+    # run out of memory even at a single-byte width. See the proof's doc comment.
