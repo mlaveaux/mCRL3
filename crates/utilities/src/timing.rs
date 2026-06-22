@@ -74,11 +74,8 @@ impl Timing {
         let mut out: Vec<Aggregate> = map
             .into_values()
             .map(|mut ag| {
-                ag.avg = if ag.count > 0 {
-                    ag.total / (ag.count as f32)
-                } else {
-                    0.0
-                };
+                // `count` is always at least 1 (set to 1 on insertion).
+                ag.avg = ag.total / (ag.count as f32);
                 ag
             })
             .collect();
@@ -107,7 +104,9 @@ impl Timing {
         writeln!(writer, "  timing:")?;
 
         for ag in self.aggregate_results() {
-            writeln!(writer, "    {}:", ag.name)?;
+            // Quote the timer name so names containing YAML-significant
+            // characters (`:`, `#`, leading spaces, ...) stay valid YAML.
+            writeln!(writer, "    \"{}\":", yaml_escape(&ag.name))?;
             writeln!(writer, "      total: {total:.3}s", total = ag.total)?;
             if ag.count > 1 {
                 writeln!(writer, "      count: {}", ag.count)?;
@@ -118,4 +117,9 @@ impl Timing {
         }
         Ok(())
     }
+}
+
+/// Escapes a string for use inside a YAML double-quoted scalar.
+fn yaml_escape(name: &str) -> String {
+    name.replace('\\', "\\\\").replace('"', "\\\"")
 }

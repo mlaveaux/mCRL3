@@ -20,6 +20,7 @@ impl<R: pest::RuleType> DisplayPair<'_, R> {
         } else {
             true
         };
+        // `size_hint` borrows `inner`, so it can still be consumed below.
 
         write!(
             f,
@@ -32,7 +33,7 @@ impl<R: pest::RuleType> DisplayPair<'_, R> {
         )?;
         if children_possible {
             writeln!(f, ", [")?;
-            for pair in self.0.clone().into_inner() {
+            for pair in inner {
                 DisplayPair(pair).display(f, depth + 1)?;
             }
             write!(f, "{indent}]),")?;

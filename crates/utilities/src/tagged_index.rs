@@ -36,7 +36,7 @@ pub struct TagIndex<T, Tag> {
     marker: PhantomData<fn() -> Tag>,
 }
 
-impl<T: Copy + fmt::Display + PartialEq, Tag> MercIndex for TagIndex<T, Tag> {
+impl<T: Copy + PartialEq, Tag> MercIndex for TagIndex<T, Tag> {
     type Target = T;
 
     fn index(&self) -> Self::Target {
@@ -53,7 +53,7 @@ impl<T: Default, Tag> Default for TagIndex<T, Tag> {
     }
 }
 
-impl<T: PartialEq, Tag> Eq for TagIndex<T, Tag> {}
+impl<T: Eq, Tag> Eq for TagIndex<T, Tag> {}
 
 impl<T: PartialEq, Tag> PartialEq for TagIndex<T, Tag> {
     fn eq(&self, other: &Self) -> bool {
@@ -112,7 +112,7 @@ impl<T, Tag> TagIndex<T, Tag> {
 }
 
 impl<T: Copy, Tag> TagIndex<T, Tag> {
-    /// Returns the underlying value of the safe index, mostly used for indexing.
+    /// Returns the underlying value of the tagged index, mostly used for indexing.
     pub fn value(&self) -> T {
         self.index
     }
@@ -130,7 +130,7 @@ impl<T: fmt::Display, Tag> fmt::Display for TagIndex<T, Tag> {
     }
 }
 
-// Convenient traits for using the `SafeIndex`.
+// Convenient traits for using the `TagIndex`.
 impl<T: Copy + SliceIndex<[U], Output = U>, U, Tag> Index<TagIndex<T, Tag>> for Vec<U> {
     type Output = U;
 

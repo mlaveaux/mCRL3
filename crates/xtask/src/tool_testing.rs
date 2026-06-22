@@ -1,20 +1,31 @@
 use std::env;
 use std::error::Error;
-use std::fs::create_dir;
+use std::fs::create_dir_all;
+use std::fs::remove_dir_all;
 use std::path::Path;
 
 use duct::cmd;
 use which::which_in;
 
-/// Runs various tools for testing purposes. This can be used to test a release
-/// package to ensure that basic functionality works fine.
+/// Runs a smoke test of the packaged tool binaries to ensure that basic functionality works.
+///
+/// `directory` is expected to be a release package directory laid out as produced by
+/// `xtask package`, with an `examples/` directory as a sibling (i.e. `<directory>/../examples`).
 pub fn test_tools(directory: &Path) -> Result<(), Box<dyn Error>> {
-    // Create a temporary directory to perform the tests in.
-    let tmp_path = Path::new("tmp/");
-    if !tmp_path.exists() {
-        create_dir(tmp_path)?;
-    }
+    // Create a unique temporary directory to perform the tests in, scoped to this process so
+    // concurrent or repeated runs do not clash, and clean it up afterwards.
+    let tmp_path = env::temp_dir().join(format!("merc-test-tools-{}", std::process::id()));
+    create_dir_all(&tmp_path)?;
 
+    let result = run_tool_tests(directory, &tmp_path);
+
+    // Best-effort cleanup; do not mask the test result with a cleanup error.
+    let _ = remove_dir_all(&tmp_path);
+
+    result
+}
+
+fn run_tool_tests(directory: &Path, tmp_path: &Path) -> Result<(), Box<dyn Error>> {
     // Find the binaries
     let merc_lts = which_in("merc-lts", Some(directory), env::current_dir()?)?;
 
@@ -28,7 +39,7 @@ pub fn test_tools(directory: &Path) -> Result<(), Box<dyn Error>> {
             algorithm,
             "abp.aut",
             "--output",
-            format!("abp.{}.aut", algorithm)
+            format!("abp.{algorithm}.aut")
         )
         .dir(tmp_path)
         .run()?;
