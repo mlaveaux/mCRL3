@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "merc_refinement"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "bitvec",
  "bumpalo",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "merc_syntax"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "itertools 0.15.0",
  "log",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "merc_vpg"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "bitvec",
  "clap",

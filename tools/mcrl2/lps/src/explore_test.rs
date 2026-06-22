@@ -97,7 +97,7 @@ mod tests {
                 reference_lts,
                 result_lts.relabel(|label| { Ok(label.to_string()) }).unwrap(),
                 false,
-                &mut Timing::new(),
+                &Timing::new(),
             ),
             "LTSs are not strongly bisimilar for {spec_relative_path} with {strategy:?}"
         );
@@ -225,7 +225,7 @@ mod tests {
                     reference_lts,
                     result_lts.relabel(|label| { Ok(label.to_string()) }).unwrap(),
                     false,
-                    &mut Timing::new(),
+                    &Timing::new(),
                 ),
                 "LTSs are not strongly bisimilar with {strategy:?}"
             );
@@ -288,13 +288,7 @@ mod tests {
             lps_path.display()
         );
         assert!(
-            compare_lts(
-                Equivalence::StrongBisim,
-                parallel,
-                sequential,
-                false,
-                &mut Timing::new()
-            ),
+            compare_lts(Equivalence::StrongBisim, parallel, sequential, false, &Timing::new()),
             "Parallel and sequential LTSs are not strongly bisimilar for {}",
             lps_path.display()
         );
