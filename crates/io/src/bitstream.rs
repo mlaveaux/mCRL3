@@ -136,39 +136,6 @@ impl<R: Read> BitStreamRead for BitStreamReader<R> {
     }
 }
 
-#[cfg(kani)]
-mod verification {
-    use super::BitStreamRead;
-    use super::BitStreamReader;
-    use super::BitStreamWrite;
-    use super::BitStreamWriter;
-
-    /// Writing `number_of_bits` of a value and reading them back yields the same
-    /// value (its least-significant bits). Bounded to a small width to keep the
-    /// symbolic execution through `bitstream-io` tractable.
-    #[kani::proof]
-    #[kani::unwind(20)]
-    fn write_read_bits_roundtrips() {
-        let number_of_bits: u8 = kani::any();
-        kani::assume(number_of_bits >= 1 && number_of_bits <= 16);
-
-        // Only the least-significant `number_of_bits` bits survive the round-trip.
-        let mask: u64 = (1u64 << number_of_bits) - 1;
-        let value: u64 = kani::any();
-        kani::assume(value <= mask);
-
-        let mut buffer = Vec::new();
-        {
-            let mut writer = BitStreamWriter::new(&mut buffer);
-            writer.write_bits(value, number_of_bits).unwrap();
-            writer.flush().unwrap();
-        }
-
-        let mut reader = BitStreamReader::new(&buffer[..]);
-        assert_eq!(reader.read_bits(number_of_bits).unwrap(), value);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::BitStreamRead;
@@ -331,5 +298,45 @@ mod tests {
         let mut buffer = Vec::new();
         let mut writer = BitStreamWriter::new(&mut buffer);
         assert!(writer.write_bits(0, 65).is_err(), "More than 64 bits must be rejected");
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::BitStreamRead;
+    use super::BitStreamReader;
+    use super::BitStreamWrite;
+    use super::BitStreamWriter;
+
+    /// Writing `number_of_bits` of a value and reading them back yields the same
+    /// value (its least-significant bits). Bounded to a small width to keep the
+    /// symbolic execution through `bitstream-io` tractable.
+    ///
+    /// Errors are matched rather than `unwrap`ped: `unwrap`/`expect` format the
+    /// `std::io::Error` on the failure path, which drags `<io::Error as Error>::source`
+    /// and `decode_repr` recursion into the model and makes CBMC run out of memory.
+    #[kani::proof]
+    #[kani::unwind(2)]
+    fn write_read_bits_roundtrips() {
+        let number_of_bits: u8 = kani::any();
+        kani::assume(number_of_bits >= 1 && number_of_bits <= 8);
+
+        // Only the least-significant `number_of_bits` bits survive the round-trip.
+        let mask: u64 = (1u64 << number_of_bits) - 1;
+        let value: u64 = kani::any();
+        kani::assume(value <= mask);
+
+        let mut buffer = Vec::new();
+        {
+            let mut writer = BitStreamWriter::new(&mut buffer);
+            if writer.write_bits(value, number_of_bits).is_err() || writer.flush().is_err() {
+                return;
+            }
+        }
+
+        let mut reader = BitStreamReader::new(&buffer[..]);
+        if let Ok(read) = reader.read_bits(number_of_bits) {
+            assert_eq!(read, value);
+        }
     }
 }

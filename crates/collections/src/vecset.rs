@@ -302,7 +302,7 @@ mod verification {
     /// `is_subset` agrees with the naive "every element of self is in other"
     /// definition for every pair of small sets.
     #[kani::proof]
-    #[kani::unwind(2)]
+    #[kani::unwind(3)]
     fn is_subset_matches_naive() {
         let left = arbitrary_small_set();
         let right = arbitrary_small_set();
@@ -314,7 +314,7 @@ mod verification {
     /// `difference` yields exactly the elements of self not in other, in sorted
     /// order, for every pair of small sets.
     #[kani::proof]
-    #[kani::unwind(2)]
+    #[kani::unwind(3)]
     fn difference_matches_naive() {
         let left = arbitrary_small_set();
         let right = arbitrary_small_set();
