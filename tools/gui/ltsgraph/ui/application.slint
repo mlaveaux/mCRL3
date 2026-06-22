@@ -36,6 +36,9 @@ export component Application inherits Window {
     /// Called when some setting has been changed since we mirror it on the Rust side.
     pure callback settings_changed();
 
+    /// Request the layout simulation to restart after a layout parameter changed.
+    pure callback request_relayout();
+
     /// Trigger a file dialog to open to select another LTS.
     pure callback open_filedialog();
 
@@ -171,9 +174,10 @@ export component Application inherits Window {
                 value: 50.0;
                 minimum: 5.0;
                 maximum: 250.0;
-                changed => { 
+                changed => {
                     Settings.handle_length = self.value;
                     settings_changed();
+                    request_relayout();
                 }
             }
 
@@ -185,9 +189,10 @@ export component Application inherits Window {
                 value: 1.0;
                 minimum: 0.1;
                 maximum: 5.0;
-                changed => { 
-                    Settings.repulsion_strength = self.value; 
+                changed => {
+                    Settings.repulsion_strength = self.value;
                     settings_changed();
+                    request_relayout();
                 }
             }
             
@@ -199,9 +204,10 @@ export component Application inherits Window {
                 value: 15.0;
                 minimum: 0.0;
                 maximum: 15.0;
-                changed => { 
-                    Settings.timestep = self.value; 
+                changed => {
+                    Settings.timestep = self.value;
                     settings_changed();
+                    request_relayout();
                 }
             }
 
