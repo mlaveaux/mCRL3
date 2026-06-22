@@ -359,10 +359,12 @@ impl SymmetryAlgorithm {
                 ) as Box<dyn CloneIterator<Item = Permutation>>;
             }
 
-            number_of_permutations *= permutation_group_size(number_of_parameters);
+            number_of_permutations =
+                number_of_permutations.saturating_mul(permutation_group_size(number_of_parameters));
         }
 
-        number_of_permutations *= permutation_group_size(control_flow_parameter_indices.len());
+        number_of_permutations =
+            number_of_permutations.saturating_mul(permutation_group_size(control_flow_parameter_indices.len()));
 
         (
             number_of_permutations,
@@ -663,7 +665,6 @@ impl SymmetryAlgorithm {
             .equations()
             .iter()
             .find(|&equation| equation.variable().name() == *name)
-            .map(|v| v as _)
     }
 }
 
@@ -726,6 +727,11 @@ where
 }
 
 /// Replaces all variables in the expression by omega.
+///
+/// NOTE: the `omega` placeholder is built directly as an `OpId(omega, SortId(@NoValue), 0)`
+/// aterm, which is tightly coupled to the internal mCRL2 data-expression
+/// representation. If that representation changes this construction must be
+/// updated in lockstep.
 fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
     let variables = variable_occurrences_data_expression(&expression.copy());
 

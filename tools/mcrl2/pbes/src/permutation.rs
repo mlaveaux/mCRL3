@@ -171,7 +171,7 @@ impl Permutation {
 }
 
 /// Checks whether the mapping represents a valid permutation
-pub fn is_valid_permutation(mapping: &Vec<(usize, usize)>) -> bool {
+pub fn is_valid_permutation(mapping: &[(usize, usize)]) -> bool {
     let mut domain = HashSet::with_capacity(mapping.len());
     let mut image = HashSet::with_capacity(mapping.len());
 
@@ -273,9 +273,10 @@ pub fn permutation_group(indices: Vec<usize>) -> impl Iterator<Item = Permutatio
     })
 }
 
-/// Returns the number of permutations in a given group.
+/// Returns the number of permutations in a given group (`n!`), saturating at
+/// `usize::MAX` instead of overflowing for large `n`.
 pub fn permutation_group_size(n: usize) -> usize {
-    (1..=n).product()
+    (1..=n).fold(1usize, |acc, factor| acc.saturating_mul(factor))
 }
 
 #[cfg(test)]
