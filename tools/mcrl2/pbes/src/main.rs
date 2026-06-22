@@ -122,7 +122,9 @@ struct ExploreExplicitArgs {
     /// The input PBES file.
     filename: String,
 
-    /// Strategy to explore the state space of the PBES.
+    /// Strategy to explore the state space of the PBES. Only used for sequential
+    /// exploration; ignored when `--threads > 1` (the parallel explorer always
+    /// uses a level-synchronised BFS).
     #[arg(long, value_enum, default_value_t = ExplorationStrategy::Bfs)]
     strategy: ExplorationStrategy,
 
@@ -148,7 +150,9 @@ struct SolveArgs {
     /// The input PBES file.
     filename: String,
 
-    /// Strategy to explore the state space of the PBES.
+    /// Strategy to explore the state space of the PBES. Only used for sequential
+    /// exploration; ignored when `--threads > 1` (the parallel explorer always
+    /// uses a level-synchronised BFS).
     #[arg(long, value_enum, default_value_t = ExplorationStrategy::Bfs)]
     strategy: ExplorationStrategy,
 
