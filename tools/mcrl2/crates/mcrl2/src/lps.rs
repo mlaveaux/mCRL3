@@ -48,17 +48,11 @@ pub struct LinearProcessSpecification {
     lps: UniquePtr<stochastic_specification>,
 
     /// Constant substitution (`@rewr_var := value`) recorded when the
-    /// `replace_constants_by_variables` preprocessing step is applied. It is an
-    /// `assignment_list` term that is seeded into the substitution of every
-    /// [`LearnSuccessorsContext`] created from this LPS, mirroring how the mCRL2
-    /// explorer keeps these assignments in its global substitution. `None` when
-    /// the LPS was not produced by [`preprocess`] (e.g. loaded from a file).
+    /// `replace_constants_by_variables` preprocessing step is applied.
     constant_assignments: Option<ATerm>,
 
-    /// The underlying `stochastic_specification` stores thread-affine `aterm`s
-    /// (its terms must be created and destroyed on the same thread), so the
-    /// wrapper must not cross threads. This mirrors [`ATerm`], which is `!Send`
-    /// for the same reason.
+    /// The underlying `stochastic_specification` stores thread-affine `aterm`s,
+    /// so the wrapper must not cross threads.
     _marker: PhantomUnsend,
 }
 
@@ -263,20 +257,11 @@ pub fn preprocess(
 }
 
 /// Context for learning successors during symbolic exploration.
-///
-/// Contains a rewriter, substitution (sigma), and enumerator instance
-/// that are shared across all summands. Uses interior mutability so that
-/// callers can keep a shared reference to the context while it is being
-/// used (e.g. so the enumeration callback can borrow other state held
-/// alongside the context).
 pub struct LearnSuccessorsContext {
     context: RefCell<UniquePtr<learn_successors_context>>,
 
     /// The context owns a per-thread mCRL2 enumerator backed by thread-affine
-    /// `aterm`s (kept in `std::vector<data_expression>` members), so it must be
-    /// created and destroyed on the same thread. Dropping it on a different
-    /// thread corrupts that thread's protection set and aborts the process, so
-    /// the type is explicitly `!Send`. See [`LinearProcessSpecification`].
+    /// `aterm`s, so it must be created and destroyed on the same thread.
     _marker: PhantomUnsend,
 }
 
@@ -285,8 +270,7 @@ impl LearnSuccessorsContext {
     ///
     /// When the LPS carries a constant substitution recorded by the
     /// `replace_constants_by_variables` preprocessing step, it is seeded into
-    /// the context's substitution so the fresh `@rewr_var` variables resolve to
-    /// their values during enumeration, matching the mCRL2 explorer.
+    /// the context's substitution.
     pub fn new(lps: &LinearProcessSpecification) -> Self {
         let context = LearnSuccessorsContext {
             context: RefCell::new(mcrl2_lps_create_learn_successors_context(
@@ -303,9 +287,7 @@ impl LearnSuccessorsContext {
     }
 
     /// Seeds the persistent substitution with the constant assignments
-    /// (`@rewr_var := value`) recorded during preprocessing. These assignments
-    /// are never removed during enumeration, so they remain in effect for every
-    /// source state explored with this context.
+    /// (`@rewr_var := value`) recorded during preprocessing.
     fn seed_constant_assignments(&self, assignments: &ATerm) {
         let list: ATermList<ATerm> = ATermList::from(assignments.protect());
 
@@ -381,18 +363,11 @@ impl LearnSuccessorsContext {
 
     /// Rewrites `expr` under the context's current substitution (sigma) and
     /// returns the resulting term as a protected [`ATerm`].
-    ///
-    /// This is used to normalise the initial state expressions, resolving any
-    /// `@rewr_var` variables introduced by the `replace_constants_by_variables`
-    /// preprocessing step (whose assignments are seeded into sigma). It mirrors
-    /// the mCRL2 explorer's `compute_state`, which rewrites every state
-    /// expression under the global substitution.
     pub fn rewrite_under_sigma(&self, expr: &DataExpressionRef<'_>) -> ATerm {
         let mut context = self.context.borrow_mut();
         // SAFETY: `expr` is a live term reference, and the returned pointer is
         // immediately protected by `ATerm::from_ptr` before any further aterm
-        // operation can collect it. The rewritten term is additionally kept
-        // alive inside the context until the next call.
+        // operation can collect it.
         let result = unsafe {
             mcrl2_lps_rewrite_under_sigma(context.as_mut().expect("The context is always defined"), expr.get())
         };

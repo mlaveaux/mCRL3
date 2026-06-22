@@ -205,9 +205,8 @@ pub struct ControlFlowGraphVertex {
 
     outgoing_edges: Vec<(*const local_control_flow_graph_vertex, Vec<usize>)>,
 
-    /// Retains ownership of the algorithm that owns the underlying vertex, so the
-    /// raw `vertex`/`outgoing_edges` pointers stay valid for as long as this
-    /// vertex lives (mirrors [`StategraphEquation`]).
+    /// Retains ownership of the algorithm that owns the underlying vertex, and
+    /// outgoin edges.
     _algorithm: Rc<UniquePtr<stategraph_algorithm>>,
 }
 
@@ -322,8 +321,7 @@ impl PredicateVariable {
     /// Creates a new `PredicateVariable` from the given FFI variable pointer.
     pub(crate) fn new(variable: *const predicate_variable) -> Self {
         // SAFETY: The pointer comes from the stategraph algorithm which keeps the
-        // predicate variables alive for the duration of the algorithm. We validate
-        // non-null once and reuse the reference for all FFI calls.
+        // predicate variables alive for the duration of the algorithm.
         let var = unsafe { variable.as_ref() }.expect("Pointer should be valid");
 
         PredicateVariable {
@@ -609,8 +607,7 @@ pub fn substitute_data_expressions(
 }
 
 /// Replaces propositional variables in the given PBES expression according to the given substitution sigma.
-// The `&Vec<usize>` is required by the `mcrl2-sys` FFI binding, which takes a
-// `&Vec<usize>` rather than a slice; hence the `ptr_arg` allow.
+// The `&Vec<usize>` is required by the `mcrl2-sys` FFI binding.
 #[allow(clippy::ptr_arg)]
 pub fn reorder_propositional_variables(expr: &PbesExpression, pi: &Vec<usize>) -> PbesExpression {
     PbesExpression::new(ATerm::from_unique_ptr(
