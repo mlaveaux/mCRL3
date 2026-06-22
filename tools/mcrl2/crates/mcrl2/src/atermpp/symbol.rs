@@ -25,7 +25,9 @@ pub struct SymbolRef<'a> {
 impl<'a> SymbolRef<'a> {
     /// Protects the symbol and returns an owned Symbol
     pub fn protect(&self) -> Symbol {
-        Symbol::from_ptr(self.symbol)
+        // SAFETY: `self.symbol` is the live function symbol this `SymbolRef`
+        // refers to, so it is valid to protect.
+        unsafe { Symbol::from_ptr(self.symbol) }
     }
 
     /// Creates a (cheap) copy of the SymbolRef
@@ -107,7 +109,13 @@ impl Symbol {
     }
 
     /// Protects the given pointer.
-    pub(crate) fn from_ptr(symbol: *const ffi::_function_symbol) -> Symbol {
+    ///
+    /// # Safety
+    ///
+    /// `symbol` must point to a live function symbol (for example one returned by
+    /// the mCRL2 FFI) that is valid at the point of the call; it is protected
+    /// immediately afterwards.
+    pub(crate) unsafe fn from_ptr(symbol: *const ffi::_function_symbol) -> Symbol {
         let result = Symbol {
             symbol: SymbolRef::new(symbol),
         };

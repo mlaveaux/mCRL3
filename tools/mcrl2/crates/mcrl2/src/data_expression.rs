@@ -281,8 +281,9 @@ mod inner {
 
         /// Returns the sort of a data application.
         pub fn sort(&self) -> SortExpressionRef<'_> {
-            // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(SortExpressionRef::from(self.term.arg(0))) }
+            // SAFETY: `arg(0)` is a direct subterm of `self.term`, so `self.term`
+            // is a valid parent witness for widening the borrow to `&self`.
+            unsafe { self.term.arg(0).upgrade(&self.term) }.into()
         }
     }
 
@@ -350,8 +351,9 @@ mod inner {
 
         /// Returns the name of the function symbol
         pub fn name(&self) -> &str {
-            // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
+            // SAFETY: the returned `&str` points into the global function-symbol
+            // pool, which keeps it alive as long as `self.term` is protected.
+            unsafe { std::mem::transmute::<&str, &str>(self.term.arg(0).get_head_symbol().name()) }
         }
     }
 
@@ -374,8 +376,9 @@ mod inner {
     impl SortExpression {
         /// Returns the name of the sort.
         pub fn name(&self) -> &str {
-            // We only change the lifetime, but that is fine since it is derived from the current term.
-            unsafe { std::mem::transmute(self.term.arg(0).get_head_symbol().name()) }
+            // SAFETY: the returned `&str` points into the global function-symbol
+            // pool, which keeps it alive as long as `self.term` is protected.
+            unsafe { std::mem::transmute::<&str, &str>(self.term.arg(0).get_head_symbol().name()) }
         }
 
         /// Pretty prints the sort expression, e.g. `Pos -> Bool` for a function sort.

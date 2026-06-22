@@ -388,8 +388,11 @@ impl TransitionGroup for SymbolicSummand {
                     {
                         let mut mapping = self.shared.mapping.borrow_mut();
                         for (&offset, (i, value)) in self.write_positions.iter().zip(values.iter().enumerate()) {
+                            // SAFETY: `*value` is a live enumerated term handed to
+                            // this callback by the mCRL2 enumerator.
+                            let term = unsafe { ATerm::from_ptr(*value) };
                             interleaved_values[offset as usize] = *mapping[self.write_indices[i] as usize]
-                                .insert(DataExpression::from(ATerm::from_ptr(*value)))
+                                .insert(DataExpression::from(term))
                                 .0 as Value;
                         }
                     }

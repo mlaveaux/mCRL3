@@ -110,10 +110,8 @@ impl<'a> ATermRef<'a> {
     /// Obtains the underlying pointer
     pub(crate) fn get(&self) -> &ffi::_aterm {
         self.require_valid();
-        // # Safety
-        //
-        // If we have a reference to the ATermRef, it must also be safe
-        // to dereference the pointer.
+        // SAFETY: holding an `ATermRef` witnesses that the underlying term is
+        // live (protected somewhere), so the pointer is valid to dereference.
         unsafe { self.term.as_ref().expect("The pointer should be defined") }
     }
 }
@@ -144,10 +142,10 @@ impl<'a> ATermRef<'a> {
 }
 
 impl ATermRef<'_> {
-    /// Returns the indexed argument of the term
+    /// Returns the indexed argument of the term.
     pub fn arg(&self, index: usize) -> ATermRef<'_> {
         self.require_valid();
-        debug_assert!(
+        assert!(
             index < self.get_head_symbol().arity(),
             "arg({index}) is not defined for term {:?}",
             self
@@ -272,7 +270,13 @@ impl ATerm {
     }
 
     /// Creates an ATerm from a raw pointer. It will be protected on creation.
-    pub fn from_ptr(term: *const ffi::_aterm) -> Self {
+    ///
+    /// # Safety
+    ///
+    /// `term` must point to a live maximally shared term that is valid at the
+    /// point of the call. It is protected immediately, so it only needs to stay
+    /// live for the duration of this call.
+    pub unsafe fn from_ptr(term: *const ffi::_aterm) -> Self {
         debug_assert!(!term.is_null(), "Cannot create ATerm from null ptr");
         THREAD_TERM_POOL.with_borrow(|tp| tp.protect(term))
     }
@@ -388,10 +392,11 @@ impl ATermSend {
 
     /// Creates an `ATermSend` protecting the maximally shared term at `term`.
     ///
-    /// The term must be live at the point of the call (as it always is for a
-    /// term obtained from another protected term or returned by the FFI); it is
-    /// kept live afterwards by the global send protection set.
-    pub fn from_ptr(term: *const ffi::_aterm) -> ATermSend {
+    /// # Safety
+    ///
+    /// `term` must point to a live maximally shared term, valid at the point of
+    /// the call; it is kept live afterwards by the global send protection set.
+    pub unsafe fn from_ptr(term: *const ffi::_aterm) -> ATermSend {
         ATermSend::protect(term)
     }
 
@@ -501,6 +506,8 @@ impl<'a> Iterator for ATermArgs<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
+            // SAFETY: `arg(self.index)` is a direct subterm of `self.term`, so
+            // `self.term` is a valid parent witness for the lifetime upgrade.
             let res = unsafe { Some(self.term.arg(self.index).upgrade_unchecked(&self.term)) };
 
             self.index += 1;
@@ -514,6 +521,8 @@ impl<'a> Iterator for ATermArgs<'a> {
 impl DoubleEndedIterator for ATermArgs<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.index < self.arity {
+            // SAFETY: `arg(self.arity - 1)` is a direct subterm of `self.term`,
+            // so `self.term` is a valid parent witness for the lifetime upgrade.
             let res = unsafe { Some(self.term.arg(self.arity - 1).upgrade_unchecked(&self.term)) };
 
             self.arity -= 1;
@@ -552,6 +561,8 @@ impl<'a> Iterator for TermIterator<'a> {
             Some(term) => {
                 // Put subterms in the queue
                 for argument in term.arguments().rev() {
+                    // SAFETY: `argument` is a subterm of `term`, so `term` is a
+                    // valid parent witness for the lifetime upgrade.
                     unsafe {
                         self.queue.push_back(argument.upgrade_unchecked(&term));
                     }

@@ -74,9 +74,12 @@ impl LinearProcessSpecification {
 
     /// Returns the parameters of the LPS as an aterm list of data variables.
     pub fn parameters(&self) -> ATermList<DataVariable> {
-        ATermList::from(ATerm::from_ptr(mcrl2_lps_process_parameters(
-            self.lps.as_ref().expect("The lps is always defined"),
-        )))
+        // SAFETY: the FFI returns the live process-parameters term of this LPS.
+        ATermList::from(unsafe {
+            ATerm::from_ptr(mcrl2_lps_process_parameters(
+                self.lps.as_ref().expect("The lps is always defined"),
+            ))
+        })
     }
 
     /// Returns the number of summands in the LPS.
@@ -105,31 +108,43 @@ pub struct LinearSummand {
 impl LinearSummand {
     /// Returns the condition of this summand.
     pub fn condition(&self) -> DataExpression {
-        DataExpression::new(ATerm::from_ptr(mcrl2_lps_action_summand_condition(
-            self.summand.as_ref().expect("The summand is always defined"),
-        )))
+        // SAFETY: the FFI returns the live condition term of this summand.
+        DataExpression::new(unsafe {
+            ATerm::from_ptr(mcrl2_lps_action_summand_condition(
+                self.summand.as_ref().expect("The summand is always defined"),
+            ))
+        })
     }
 
     /// Returns the summation variables of this summand (the "sum" variables).
     pub fn summation_variables(&self) -> ATermList<DataVariable> {
-        ATermList::from(ATerm::from_ptr(mcrl2_lps_action_summand_summation_variables(
-            self.summand.as_ref().expect("The summand is always defined"),
-        )))
+        // SAFETY: the FFI returns the live summation-variables term of this summand.
+        ATermList::from(unsafe {
+            ATerm::from_ptr(mcrl2_lps_action_summand_summation_variables(
+                self.summand.as_ref().expect("The summand is always defined"),
+            ))
+        })
     }
 
     /// Returns the multi-action of this summand.
     pub fn multi_action(&self) -> ATerm {
-        ATerm::from_ptr(mcrl2_lps_action_summand_multi_action(
-            self.summand.as_ref().expect("The summand is always defined"),
-        ))
+        // SAFETY: the FFI returns the live multi-action term of this summand.
+        unsafe {
+            ATerm::from_ptr(mcrl2_lps_action_summand_multi_action(
+                self.summand.as_ref().expect("The summand is always defined"),
+            ))
+        }
     }
 
     /// Returns the assignments (update) of this summand as an aterm list.
     /// Each assignment represents `variable := expression` for the next state.
     pub fn assignments(&self) -> ATermList<ATerm> {
-        ATermList::from(ATerm::from_ptr(mcrl2_lps_action_summand_assignments(
-            self.summand.as_ref().expect("The summand is always defined"),
-        )))
+        // SAFETY: the FFI returns the live assignment-list term of this summand.
+        ATermList::from(unsafe {
+            ATerm::from_ptr(mcrl2_lps_action_summand_assignments(
+                self.summand.as_ref().expect("The summand is always defined"),
+            ))
+        })
     }
 }
 
@@ -145,9 +160,12 @@ pub struct LinearProcessInitializer {
 impl LinearProcessInitializer {
     /// Returns the initial state expressions as an aterm list of data expressions.
     pub fn expressions(&self) -> ATermList<DataExpression> {
-        ATermList::from(ATerm::from_ptr(mcrl2_lps_process_initializer_expressions(
-            self.init.as_ref().expect("The initializer is always defined"),
-        )))
+        // SAFETY: the FFI returns the live initial-state expressions term.
+        ATermList::from(unsafe {
+            ATerm::from_ptr(mcrl2_lps_process_initializer_expressions(
+                self.init.as_ref().expect("The initializer is always defined"),
+            ))
+        })
     }
 }
 
@@ -158,7 +176,8 @@ pub fn pretty_print_multi_action(multi_action: &ATerm) -> String {
 
 /// Returns the tau (empty) multi-action term as a protected [`ATerm`].
 pub fn tau_multi_action() -> ATerm {
-    ATerm::from_ptr(mcrl2_lps_tau_multi_action())
+    // SAFETY: the FFI returns the live tau multi-action term.
+    unsafe { ATerm::from_ptr(mcrl2_lps_tau_multi_action()) }
 }
 
 /// Read an LPS from a file in the binary mCRL2 format.
@@ -232,7 +251,9 @@ pub fn preprocess(
         .as_ref()
         .expect("The preprocessed specification is always defined");
 
-    let constant_assignments = ATerm::from_ptr(mcrl2_preprocessed_specification_constant_assignments(preprocessed));
+    // SAFETY: the FFI returns the live constant-assignments term of the preprocessed spec.
+    let constant_assignments =
+        unsafe { ATerm::from_ptr(mcrl2_preprocessed_specification_constant_assignments(preprocessed)) };
 
     Ok(LinearProcessSpecification {
         lps: mcrl2_preprocessed_specification_spec(preprocessed),
@@ -375,7 +396,8 @@ impl LearnSuccessorsContext {
         let result = unsafe {
             mcrl2_lps_rewrite_under_sigma(context.as_mut().expect("The context is always defined"), expr.get())
         };
-        ATerm::from_ptr(result)
+        // SAFETY: `result` is the live rewritten term just returned by the FFI.
+        unsafe { ATerm::from_ptr(result) }
     }
 
     /// Enumerate using stored ATerm values directly.
@@ -444,9 +466,17 @@ impl LearnSuccessorsContext {
     {
         /// Trampoline that casts the context pointer back to the closure and calls it.
         fn trampoline(context: *mut u8, values: &[*const _aterm], multi_action: *const _aterm) {
-            // Safety: `context` points to a live `&mut dyn FnMut(...)` set by the caller below.
+            // SAFETY: `context` points to a live `&mut dyn FnMut(...)` set by the caller below.
             let callback = unsafe { &mut *(context as *mut &mut dyn FnMut(&[*const _aterm], *const _aterm)) };
-            callback(values, multi_action);
+
+            // The callback runs across the C++/Rust FFI boundary. A panic
+            // unwinding into the C++ enumerator frame is undefined behaviour, so
+            // contain it here and abort cleanly instead. (Errors are reported
+            // out-of-band by the callers, so a panic here is always a bug.)
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(values, multi_action))).is_err() {
+                eprintln!("panic in enumeration callback; aborting to avoid unwinding into C++");
+                std::process::abort();
+            }
         }
 
         // Unsized coercion: &mut F → &mut dyn FnMut(...) produces a fat pointer (data + vtable).
@@ -455,6 +485,9 @@ impl LearnSuccessorsContext {
         // NLL sees this borrow of the local `callback` as disjoint from the `self.context` borrow below.
         let mut callback_ref: &mut dyn FnMut(&[*const _aterm], *const _aterm) = &mut callback;
         let mut context = self.context.borrow_mut();
+        // SAFETY: `callback_ref` outlives the call (it is a stack local borrowed
+        // for the duration), and `trampoline` reconstructs exactly the
+        // `&mut dyn FnMut` written here from the `*mut u8` we pass.
         unsafe {
             mcrl2_lps_enumerate(
                 context.as_mut().expect("The context is always defined"),

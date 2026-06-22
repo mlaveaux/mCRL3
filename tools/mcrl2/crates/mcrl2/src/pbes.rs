@@ -108,9 +108,12 @@ impl Pbes {
 
     /// Returns the initial state (propositional variable instantiation) of the PBES.
     pub fn initial_state(&self) -> PbesPropositionalVariableInstantiation {
-        PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(mcrl2_pbes_initial_state(
-            self.pbes.as_ref().expect("pbes UniquePtr should not be null"),
-        )))
+        // SAFETY: the FFI returns the live initial-state term of this PBES.
+        PbesPropositionalVariableInstantiation::new(unsafe {
+            ATerm::from_ptr(mcrl2_pbes_initial_state(
+                self.pbes.as_ref().expect("pbes UniquePtr should not be null"),
+            ))
+        })
     }
 }
 
@@ -157,12 +160,12 @@ impl PbesStategraph {
     }
 
     /// Returns the equations computed by the algorithm.
-    pub fn equations(&self) -> &Vec<StategraphEquation> {
+    pub fn equations(&self) -> &[StategraphEquation] {
         &self.equations
     }
 
     /// Returns the control flow graphs identified by the algorithm.
-    pub fn control_flow_graphs(&self) -> &Vec<ControlFlowGraph> {
+    pub fn control_flow_graphs(&self) -> &[ControlFlowGraph] {
         &self.control_flow_graphs
     }
 }
@@ -174,7 +177,7 @@ pub struct ControlFlowGraph {
 
 impl ControlFlowGraph {
     /// Returns the vertices of the control flow graph.
-    pub fn vertices(&self) -> &Vec<ControlFlowGraphVertex> {
+    pub fn vertices(&self) -> &[ControlFlowGraphVertex] {
         &self.vertices
     }
 
@@ -201,6 +204,11 @@ pub struct ControlFlowGraphVertex {
     vertex: *const local_control_flow_graph_vertex,
 
     outgoing_edges: Vec<(*const local_control_flow_graph_vertex, Vec<usize>)>,
+
+    /// Retains ownership of the algorithm that owns the underlying vertex, so the
+    /// raw `vertex`/`outgoing_edges` pointers stay valid for as long as this
+    /// vertex lives (mirrors [`StategraphEquation`]).
+    _algorithm: Rc<UniquePtr<stategraph_algorithm>>,
 }
 
 impl ControlFlowGraphVertex {
@@ -210,15 +218,13 @@ impl ControlFlowGraphVertex {
 
     /// Returns the name of the variable associated with this vertex.
     pub fn name(&self) -> ATermString {
-        ATermString::new(ATerm::from_ptr(mcrl2_local_control_flow_graph_vertex_name(
-            self.as_ref(),
-        )))
+        // SAFETY: the FFI returns the live name term of this vertex.
+        ATermString::new(unsafe { ATerm::from_ptr(mcrl2_local_control_flow_graph_vertex_name(self.as_ref())) })
     }
 
     pub fn value(&self) -> DataExpression {
-        DataExpression::new(ATerm::from_ptr(mcrl2_local_control_flow_graph_vertex_value(
-            self.as_ref(),
-        )))
+        // SAFETY: the FFI returns the live value term of this vertex.
+        DataExpression::new(unsafe { ATerm::from_ptr(mcrl2_local_control_flow_graph_vertex_value(self.as_ref())) })
     }
 
     /// Returns the index of the variable associated with this vertex.
@@ -227,7 +233,7 @@ impl ControlFlowGraphVertex {
     }
 
     /// Returns the outgoing edges of the vertex.
-    pub fn outgoing_edges(&self) -> &Vec<(*const local_control_flow_graph_vertex, Vec<usize>)> {
+    pub fn outgoing_edges(&self) -> &[(*const local_control_flow_graph_vertex, Vec<usize>)] {
         &self.outgoing_edges
     }
 
@@ -243,14 +249,16 @@ impl ControlFlowGraphVertex {
             .map(|pair| (pair.vertex, pair.edges.iter().copied().collect()))
             .collect();
 
-        ControlFlowGraphVertex { vertex, outgoing_edges }
+        ControlFlowGraphVertex {
+            vertex,
+            outgoing_edges,
+            _algorithm: algorithm,
+        }
     }
 
     fn as_ref(&self) -> &local_control_flow_graph_vertex {
-        // Safety
-        //
-        // Vertex is never modified, and there is a unique owner of the underlying
-        // pointer that ensures its validity.
+        // SAFETY: the vertex is never modified and the owning `stategraph_algorithm`
+        // (kept alive through the retained `Rc`) guarantees the pointer stays valid.
         unsafe { self.vertex.as_ref().expect("Pointer should be valid") }
     }
 }
@@ -287,27 +295,27 @@ impl PredicateVariable {
     }
 
     /// Returns the used set of the predicate variable.
-    pub fn used(&self) -> &Vec<usize> {
+    pub fn used(&self) -> &[usize] {
         &self.used
     }
 
     /// Returns the changed set of the predicate variable.
-    pub fn changed(&self) -> &Vec<usize> {
+    pub fn changed(&self) -> &[usize] {
         &self.changed
     }
 
     /// Returns the source function of the predicate variable.
-    pub fn source(&self) -> &Vec<usize> {
+    pub fn source(&self) -> &[usize] {
         &self.source
     }
 
     /// Returns the target function of the predicate variable.
-    pub fn target(&self) -> &Vec<usize> {
+    pub fn target(&self) -> &[usize] {
         &self.target
     }
 
     /// Returns the copy function of the predicate variable.
-    pub fn copy(&self) -> &Vec<usize> {
+    pub fn copy(&self) -> &[usize] {
         &self.copy
     }
 
@@ -320,9 +328,12 @@ impl PredicateVariable {
 
         PredicateVariable {
             _variable: variable,
-            pvi: PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(
-                mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(var),
-            )),
+            // SAFETY: the FFI returns the live PVI term of this predicate variable.
+            pvi: PbesPropositionalVariableInstantiation::new(unsafe {
+                ATerm::from_ptr(
+                    mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_propositional_variable_instantiation(var),
+                )
+            }),
             used: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_used(var),
             changed: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_changed(var),
             source: mcrl2_sys::pbes::ffi::mcrl2_predicate_variable_source(var),
@@ -341,13 +352,14 @@ pub struct StategraphEquation {
 
 impl StategraphEquation {
     /// Returns the predicate variables of the equation.
-    pub fn predicate_variables(&self) -> &Vec<PredicateVariable> {
+    pub fn predicate_variables(&self) -> &[PredicateVariable] {
         &self.predicate_variables
     }
 
     /// Returns the variable of the equation.
     pub fn variable(&self) -> PropositionalVariable {
-        PropositionalVariable::new(ATerm::from_ptr(mcrl2_stategraph_equation_variable(self.as_ref())))
+        // SAFETY: the FFI returns the live variable term of this equation.
+        PropositionalVariable::new(unsafe { ATerm::from_ptr(mcrl2_stategraph_equation_variable(self.as_ref())) })
     }
 
     pub(crate) fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, index: usize) -> Self {
@@ -399,11 +411,12 @@ impl SrfPbes {
 
     /// Returns the initial state (propositional variable instantiation) of the SRF PBES.
     pub fn initial_state(&self) -> PbesPropositionalVariableInstantiation {
-        PbesPropositionalVariableInstantiation::new(ATerm::from_ptr(
-            mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_initial_state(
+        // SAFETY: the FFI returns the live initial-state term of this SRF PBES.
+        PbesPropositionalVariableInstantiation::new(unsafe {
+            ATerm::from_ptr(mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_initial_state(
                 self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null"),
-            ),
-        ))
+            ))
+        })
     }
 
     /// Unify all parameters of the equations.
@@ -426,7 +439,7 @@ impl SrfPbes {
     }
 
     /// Returns the srf equations of the SRF pbes.
-    pub fn equations(&self) -> &Vec<SrfEquation> {
+    pub fn equations(&self) -> &[SrfEquation] {
         &self.equations
     }
 }
@@ -442,13 +455,13 @@ pub struct SrfEquation {
 impl SrfEquation {
     /// Returns the parameters of the equation.
     pub fn variable(&self) -> PropositionalVariable {
-        PropositionalVariable::new(ATerm::from_ptr(unsafe {
-            mcrl2_srf_pbes_equation_variable(self.as_ref())
-        }))
+        // SAFETY: the FFI returns the live variable term of this SRF equation,
+        // wrapped immediately by `from_ptr`.
+        PropositionalVariable::new(unsafe { ATerm::from_ptr(mcrl2_srf_pbes_equation_variable(self.as_ref())) })
     }
 
     /// Returns the summands of the equation.
-    pub fn summands(&self) -> &Vec<SrfSummand> {
+    pub fn summands(&self) -> &[SrfSummand] {
         &self.summands
     }
 
@@ -491,24 +504,36 @@ pub struct SrfSummand {
 impl SrfSummand {
     /// Returns the condition of the summand.
     pub fn condition(&self) -> PbesExpression {
-        PbesExpression::new(ATerm::from_ptr(unsafe {
-            mcrl2_sys::pbes::ffi::mcrl2_srf_summand_condition(self.summand.as_ref().expect("Pointer should be valid"))
-        }))
+        // SAFETY: `self.summand` is a live summand pointer, and the FFI returns
+        // the live condition term wrapped immediately by `from_ptr`.
+        PbesExpression::new(unsafe {
+            ATerm::from_ptr(mcrl2_sys::pbes::ffi::mcrl2_srf_summand_condition(
+                self.summand.as_ref().expect("Pointer should be valid"),
+            ))
+        })
     }
 
     /// Returns the variable of the summand.
     pub fn variable(&self) -> PbesExpression {
-        PbesExpression::new(ATerm::from_ptr(unsafe {
-            mcrl2_sys::pbes::ffi::mcrl2_srf_summand_variable(self.summand.as_ref().expect("Pointer should be valid"))
-        }))
+        // SAFETY: `self.summand` is a live summand pointer, and the FFI returns
+        // the live variable term wrapped immediately by `from_ptr`.
+        PbesExpression::new(unsafe {
+            ATerm::from_ptr(mcrl2_sys::pbes::ffi::mcrl2_srf_summand_variable(
+                self.summand.as_ref().expect("Pointer should be valid"),
+            ))
+        })
     }
 
     /// Returns the summation (existential) parameters of the summand.
     pub fn parameters(&self) -> ATermList<DataVariable> {
+        // SAFETY: `self.summand` is a live summand pointer, and the FFI returns
+        // the live parameters term wrapped immediately by `from_ptr`.
         ATermList::new(
-            ATerm::from_ptr(unsafe {
-                mcrl2_srf_summand_parameters(self.summand.as_ref().expect("Pointer should be valid"))
-            })
+            unsafe {
+                ATerm::from_ptr(mcrl2_srf_summand_parameters(
+                    self.summand.as_ref().expect("Pointer should be valid"),
+                ))
+            }
             .protect(),
         )
     }
@@ -584,6 +609,9 @@ pub fn substitute_data_expressions(
 }
 
 /// Replaces propositional variables in the given PBES expression according to the given substitution sigma.
+// The `&Vec<usize>` is required by the `mcrl2-sys` FFI binding, which takes a
+// `&Vec<usize>` rather than a slice; hence the `ptr_arg` allow.
+#[allow(clippy::ptr_arg)]
 pub fn reorder_propositional_variables(expr: &PbesExpression, pi: &Vec<usize>) -> PbesExpression {
     PbesExpression::new(ATerm::from_unique_ptr(
         mcrl2_pbes_expression_replace_propositional_variables(expr.term.get(), pi),

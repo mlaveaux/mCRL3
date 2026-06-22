@@ -83,8 +83,9 @@ impl ThreadTermPool {
             protection_set,
             container_protection_set,
             index,
-            list_symbol: Symbol::from_ptr(mcrl2_aterm_list_function_symbol()),
-            empty_list_symbol: Symbol::from_ptr(mcrl2_aterm_empty_list_function_symbol()),
+            // SAFETY: the FFI returns the live built-in list / empty-list function symbols.
+            list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_list_function_symbol()) },
+            empty_list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_empty_list_function_symbol()) },
             gc_counter: Cell::new(TEST_GC_INTERVAL),
             data_appl: RefCell::new(vec![]),
             arguments: RefCell::new(vec![]),
@@ -141,12 +142,7 @@ impl ThreadTermPool {
         S: Borrow<ATermRef<'a>>,
         T: Borrow<ATermRef<'b>>,
     {
-        // Make the temp vector of sufficient length.
         let mut tmp_args = self.arguments.borrow_mut();
-        while tmp_args.len() < arguments.len() {
-            tmp_args.push(std::ptr::null());
-        }
-
         tmp_args.clear();
         tmp_args.push(head.borrow().get());
         for arg in arguments {
@@ -258,8 +254,8 @@ impl ThreadTermPool {
         // Data applications can be created without using create_data_application in the mcrl2 FFI.
         let mut data_appl = self.data_appl.borrow_mut();
         while data_appl.len() <= symbol.arity() {
-            let symbol = Symbol::take(mcrl2_function_symbol_create(String::from("DataAppl"), data_appl.len()));
-            data_appl.push(symbol);
+            let new_symbol = self.create_symbol("DataAppl", data_appl.len());
+            data_appl.push(new_symbol);
         }
 
         symbol == data_appl[symbol.arity()].copy()

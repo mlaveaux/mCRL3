@@ -724,7 +724,9 @@ impl Summand for ExplicitSummand {
                 // the callback (via the global send protection set) and aterms
                 // are maximally shared, so equal multi-actions share storage and
                 // the label is safe to store across threads.
-                let label = Mcrl2MultiActionLabel::from_multi_action_term(ATermSend::from_ptr(multi_action));
+                // SAFETY: `multi_action` is the live rewritten multi-action term
+                // handed to this callback by the mCRL2 enumerator.
+                let label = Mcrl2MultiActionLabel::from_multi_action_term(unsafe { ATermSend::from_ptr(multi_action) });
 
                 if let Err(err) = report(&label, next_state_buf) {
                     report_result = Err(err);
