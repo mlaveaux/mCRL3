@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 use duct::cmd;
 use itertools::Itertools;
@@ -14,13 +15,24 @@ use merc_utilities::MercError;
 
 use crate::DependencyGraph;
 
+/// Bipartitions a [Hypergraph] into two blocks.
+trait Partitioner {
+    /// Returns the block id (`0` or `1`) of every real vertex of `hypergraph`.
+    fn partition(&self, hypergraph: &Hypergraph) -> Result<Vec<usize>, MercError>;
+}
+
 /// Computes a variable order for the given dependency graph using the MINCE
 /// algorithm and the KaHyPar partitioning tool.
 pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
+    reorder_with(&KaHyParPartitioner::new(kahypar_path, kahypar_ini_path), graph)
+}   
+
+/// Computes a variable order using the MINCE algorithm with the given [Partitioner].
+fn reorder_with<P: Partitioner>(partitioner: &P, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     debug!("Total span: {}", graph.total_span());
 
     let vertices = (0..graph.num_of_vertices()).collect::<Vec<usize>>();
-    let result = mince(kahypar_path, kahypar_ini_path, &vertices, &[], graph)?;
+    let result = mince(partitioner, &vertices, &[], graph)?;
     debug!("Reordered total span: {}", graph.reorder(&result).total_span());
     Ok(result)
 }
@@ -29,62 +41,75 @@ pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path, graph: &DependencyG
 ///
 /// # Details
 ///
-/// The `vertices` are the indices of the subgraph that we are considering
-fn mince(
-    kahypar_path: &Path,
-    kahypar_ini_path: &Path,
+/// The `vertices` are the indices of the subgraph that we are considering. The returned
+/// order is always a permutation of `vertices`; whenever the subgraph cannot be split
+/// (too few vertices, no connecting hyperedge, or a degenerate one-sided partition) the
+/// vertices are returned in their current order.
+fn mince<P: Partitioner>(
+    partitioner: &P,
     vertices: &[usize],
     left_context: &[usize],
     graph: &DependencyGraph,
 ) -> Result<Vec<usize>, MercError> {
     trace!("MINCE called with vertices: {:?}", vertices);
-    let partition = partition(kahypar_path, kahypar_ini_path, vertices, left_context, graph)?;
 
-    if partition.len() <= 2 {
-        // Base case: a single vertex is already "ordered"
-        trace!("MINCE reached base case with vertices: {:?}", vertices);
-        return Ok(partition);
-    }
-
-    // We kept the indices of vertices in the hypergraph the same as `vertices`, so we can now
-    // separate them according to the partitioning.
-    let left_vertices: Vec<usize> = vertices
-        .iter()
-        .enumerate()
-        .filter_map(|(i, &v)| if partition[i] == 0 { Some(v) } else { None })
-        .collect();
-
-    let right_vertices: Vec<usize> = vertices
-        .iter()
-        .enumerate()
-        .filter_map(|(i, &v)| if partition[i] == 1 { Some(v) } else { None })
-        .collect();
-
-    if left_vertices.is_empty() || right_vertices.is_empty() {
-        // Cannot partition further, return as is
+    // Base case: at most two vertices are already "ordered".
+    if vertices.len() <= 2 {
         trace!("MINCE reached base case with vertices: {:?}", vertices);
         return Ok(vertices.to_vec());
     }
 
-    let mut left = mince(kahypar_path, kahypar_ini_path, &left_vertices, left_context, graph)?;
+    let hypergraph = create_hypergraph(vertices, left_context, graph)?;
+
+    // Without a connecting hyperedge there is nothing to optimize, so keep the order.
+    if hypergraph.edges.len() <= 1 {
+        trace!("MINCE reached base case with vertices: {:?}", vertices);
+        return Ok(vertices.to_vec());
+    }
+
+    // `partition[i]` is the block id (0 or 1) of the i-th vertex of `vertices`; the
+    // hypergraph keeps the vertex indices aligned with `vertices`.
+    let partition = partitioner.partition(&hypergraph)?;
+    debug_assert_eq!(
+        partition.len(),
+        vertices.len(),
+        "Partitioner must assign a block to every vertex"
+    );
+    debug_assert!(partition.iter().all(|&b| b <= 1), "MINCE only supports bipartitioning");
+
+    let left_vertices: Vec<usize> = vertices
+        .iter()
+        .zip(&partition)
+        .filter_map(|(&v, &block)| if block == 0 { Some(v) } else { None })
+        .collect();
+
+    let right_vertices: Vec<usize> = vertices
+        .iter()
+        .zip(&partition)
+        .filter_map(|(&v, &block)| if block == 1 { Some(v) } else { None })
+        .collect();
+
+    if left_vertices.is_empty() || right_vertices.is_empty() {
+        // Degenerate partition with everything on one side; cannot split further.
+        trace!("MINCE reached base case with vertices: {:?}", vertices);
+        return Ok(vertices.to_vec());
+    }
+
+    let mut left = mince(partitioner, &left_vertices, left_context, graph)?;
 
     let mut new_left_context = left_context.to_vec();
     new_left_context.extend(&left_vertices);
-    let mut right = mince(
-        kahypar_path,
-        kahypar_ini_path,
-        &right_vertices,
-        &new_left_context,
-        graph,
-    )?;
+    let mut right = mince(partitioner, &right_vertices, &new_left_context, graph)?;
     left.append(&mut right);
 
-    // Check that the result is a valid permutation
+    // Check that the result is a valid permutation of the input vertices.
     if cfg!(debug_assertions) {
-        let mut copy = left.clone();
-        copy.sort();
+        let mut result = left.clone();
+        result.sort_unstable();
+        let mut expected = vertices.to_vec();
+        expected.sort_unstable();
 
-        debug_assert_eq!(copy, vertices, "Resulting order is not a valid permutation");
+        debug_assert_eq!(result, expected, "Resulting order is not a valid permutation");
     }
 
     Ok(left)
@@ -92,11 +117,13 @@ fn mince(
 
 /// A hypergraph representation with indices, edges, and vertex weights.
 pub struct Hypergraph {
+    /// The number of real vertices, excluding the two pseudo-vertices.
+    pub num_vertices: usize,
     /// Indices into the edges vector marking the start of each hyperedge.
     pub indices: Vec<usize>,
     /// The hyperedges, stored as a flat list of vertex indices.
     pub edges: Vec<usize>,
-    /// Weights for each vertex in the hypergraph.
+    /// Weights for each vertex in the hypergraph (real vertices followed by the two pseudo-vertices).
     pub weights: Vec<usize>,
 }
 
@@ -169,6 +196,7 @@ fn create_hypergraph(
 
     hyperedge_indices.push(offset);
     Ok(Hypergraph {
+        num_vertices: vertices.len(),
         indices: hyperedge_indices,
         edges: hyperedges,
         weights,
@@ -206,26 +234,43 @@ fn add_edge(
     }
 }
 
-/// Partitions the given hypergraph using the `kahypar` tool.
-fn partition(
-    kahypar_path: &Path,
-    kahypar_ini_path: &Path,
-    vertices: &[usize],
-    left_context: &[usize],
-    graph: &DependencyGraph,
-) -> Result<Vec<usize>, MercError> {
-    let hypergraph = create_hypergraph(vertices, left_context, graph)?;
+/// A [Partitioner] that bipartitions hypergraphs by invoking the external KaHyPar tool.
+pub struct KaHyParPartitioner {
+    kahypar_path: PathBuf,
+    kahypar_ini_path: PathBuf,
+}
 
-    if vertices.len() <= 2 || hypergraph.edges.len() <= 1 {
-        return Ok(vertices.to_vec());
+impl KaHyParPartitioner {
+    /// Creates a partitioner that runs the `kahypar` binary at `kahypar_path` with
+    /// the configuration file `kahypar_ini_path`.
+    pub fn new(kahypar_path: &Path, kahypar_ini_path: &Path) -> Self {
+        KaHyParPartitioner {
+            kahypar_path: kahypar_path.to_path_buf(),
+            kahypar_ini_path: kahypar_ini_path.to_path_buf(),
+        }
     }
+}
 
-    run_kahypar(kahypar_path, kahypar_ini_path, &hypergraph)?;
+impl Partitioner for KaHyParPartitioner {
+    fn partition(&self, hypergraph: &Hypergraph) -> Result<Vec<usize>, MercError> {
+        run_kahypar(&self.kahypar_path, &self.kahypar_ini_path, hypergraph)?;
 
-    let partition = read_partition_file()?;
+        let mut partition = read_partition_file()?;
+        debug_assert!(partition.iter().all(|x| *x <= 1), "MINCE only supports bipartitioning");
 
-    debug_assert!(partition.iter().all(|x| *x <= 1), "MINCE only supports bipartitioning");
-    Ok(partition)
+        // KaHyPar also assigns a block to the two pseudo-vertices, which trail the real
+        // vertices in the output; drop them so the result lines up with the real vertices.
+        if partition.len() < hypergraph.num_vertices {
+            return Err(format!(
+                "KaHyPar returned {} blocks for {} vertices",
+                partition.len(),
+                hypergraph.num_vertices
+            )
+            .into());
+        }
+        partition.truncate(hypergraph.num_vertices);
+        Ok(partition)
+    }
 }
 
 /// Writes `reorder.hgr`, runs KaHyPar, and removes the temporary file again.
@@ -309,5 +354,132 @@ fn remove_file_if_exists(path: &str) -> Result<(), MercError> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use rand::RngExt;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    use merc_utilities::MercError;
+    use merc_utilities::random_test;
+
+    use super::Hypergraph;
+    use super::Partitioner;
+    use super::reorder_with;
+    use crate::DependencyGraph;
+    use crate::Relation;
+
+    /// A [Partitioner] for tests that ignores the hypergraph structure and assigns each
+    /// vertex to a random block. This exercises the MINCE recursion (including its
+    /// degenerate-partition branches) without depending on the external KaHyPar tool.
+    struct RandomPartitioner {
+        rng: RefCell<StdRng>,
+    }
+
+    impl RandomPartitioner {
+        fn new(seed: u64) -> Self {
+            RandomPartitioner {
+                rng: RefCell::new(StdRng::seed_from_u64(seed)),
+            }
+        }
+    }
+
+    impl Partitioner for RandomPartitioner {
+        fn partition(&self, hypergraph: &Hypergraph) -> Result<Vec<usize>, MercError> {
+            let mut rng = self.rng.borrow_mut();
+            Ok((0..hypergraph.num_vertices).map(|_| rng.random_range(0..2usize)).collect())
+        }
+    }
+
+    /// Builds a dependency graph with `num_vertices` vertices and the given read/write relations.
+    fn graph_from(num_vertices: usize, relations: &[(Vec<usize>, Vec<usize>)]) -> DependencyGraph {
+        let mut rels: Vec<Relation> = relations
+            .iter()
+            .map(|(read, write)| Relation::new(read.clone(), write.clone()))
+            .collect();
+        // Make sure the highest index is present so num_of_vertices matches num_vertices.
+        if num_vertices > 0 {
+            rels.push(Relation::new(vec![num_vertices - 1], vec![]));
+        }
+        DependencyGraph::new(rels)
+    }
+
+    /// Asserts that `order` is a permutation of `0..num_vertices`.
+    fn assert_permutation(order: &[usize], num_vertices: usize) {
+        let mut sorted = order.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(
+            sorted,
+            (0..num_vertices).collect::<Vec<usize>>(),
+            "MINCE must return a permutation of all vertices"
+        );
+    }
+
+    #[test]
+    fn test_mince_random_partition_is_permutation() {
+        random_test(100, |rng| {
+            // A handful of overlapping relations so the hypergraph has connecting edges.
+            let num_vertices = 8;
+            let graph = graph_from(
+                num_vertices,
+                &[
+                    (vec![0, 1], vec![2]),
+                    (vec![2, 3], vec![4]),
+                    (vec![4, 5], vec![6]),
+                    (vec![1, 6], vec![7]),
+                    (vec![0, 7], vec![3, 5]),
+                ],
+            );
+
+            let partitioner = RandomPartitioner::new(rng.random());
+            let order = reorder_with(&partitioner, &graph).unwrap();
+            assert_permutation(&order, num_vertices);
+        });
+    }
+
+    #[test]
+    fn test_mince_disconnected_subgraph_is_permutation() {
+        // Two clusters {0,1,2} and {3,4,5} with no hyperedge between them. A random
+        // bipartition can therefore split a cluster into a side that, recursively, has
+        // more than two vertices but no connecting hyperedge — the C1 regression case.
+        random_test(100, |rng| {
+            let num_vertices = 6;
+            let graph = graph_from(
+                num_vertices,
+                &[
+                    (vec![0, 1], vec![2]),
+                    (vec![1, 2], vec![0]),
+                    (vec![3, 4], vec![5]),
+                    (vec![4, 5], vec![3]),
+                ],
+            );
+
+            let partitioner = RandomPartitioner::new(rng.random());
+            let order = reorder_with(&partitioner, &graph).unwrap();
+            assert_permutation(&order, num_vertices);
+        });
+    }
+
+    #[test]
+    fn test_create_hypergraph_dedups_and_skips_self_loops() {
+        // Duplicate relations and a single-variable relation (self-loop) must not create edges.
+        let graph = graph_from(
+            4,
+            &[
+                (vec![0, 1], vec![2]),
+                (vec![0, 1], vec![2]), // duplicate of the previous edge
+                (vec![3], vec![3]),    // collapses to a single vertex -> self-loop
+            ],
+        );
+
+        // Round-trip through reorder_with to make sure the disconnected vertex 3 is kept.
+        let partitioner = RandomPartitioner::new(0);
+        let order = reorder_with(&partitioner, &graph).unwrap();
+        assert_permutation(&order, 4);
     }
 }
