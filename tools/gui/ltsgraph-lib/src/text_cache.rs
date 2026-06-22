@@ -17,6 +17,12 @@ pub struct TextCache {
     swash_cache: SwashCache,
 }
 
+impl Default for TextCache {
+    fn default() -> TextCache {
+        TextCache::new()
+    }
+}
+
 impl TextCache {
     pub fn new() -> TextCache {
         let font_system = FontSystem::new();
@@ -62,11 +68,6 @@ impl TextCache {
             for glyph in run.glyphs.iter() {
                 let physical_glyph = glyph.physical((0., 0.), 1.0);
 
-                // let glyph_color = match glyph.color_opt {
-                //     Some(some) => some,
-                //     None => Color,
-                // };
-
                 // Try to get the font outline, which we can draw directly with tiny-skia.
                 if let Some(outline) = self
                     .swash_cache
@@ -106,23 +107,29 @@ impl TextCache {
                         );
                     }
                 } else {
-                    // Otherwise render the image using skia.
+                    // Otherwise render the rasterized image (bitmap/emoji glyphs) using skia.
                     if let Some(image) = self
                         .swash_cache
                         .get_image(&mut self.font_system, physical_glyph.cache_key)
                     {
-                        let mut data = image.data.clone();
-                        let pixmap_image =
-                            PixmapMut::from_bytes(&mut data, image.placement.width, image.placement.height);
+                        // tiny-skia pixmaps are always premultiplied RGBA8, but swash hands back
+                        // different layouts depending on the glyph. Normalize to RGBA8 so that
+                        // mask (single-channel coverage) glyphs do not get misinterpreted as RGBA
+                        // (which previously panicked the `from_bytes` unwrap on a length mismatch).
+                        let mut rgba: Vec<u8> = match image.content {
+                            cosmic_text::SwashContent::Mask => {
+                                image.data.iter().flat_map(|&coverage| [0, 0, 0, coverage]).collect()
+                            }
+                            cosmic_text::SwashContent::SubpixelMask | cosmic_text::SwashContent::Color => {
+                                image.data.clone()
+                            }
+                        };
 
-                        pixmap.draw_pixmap(
-                            0,
-                            0,
-                            pixmap_image.unwrap().as_ref(),
-                            &PixmapPaint::default(),
-                            transform,
-                            None,
-                        );
+                        if let Some(pixmap_image) =
+                            PixmapMut::from_bytes(&mut rgba, image.placement.width, image.placement.height)
+                        {
+                            pixmap.draw_pixmap(0, 0, pixmap_image.as_ref(), &PixmapPaint::default(), transform, None);
+                        }
                     };
                 }
             }
@@ -132,9 +139,12 @@ impl TextCache {
 
 #[cfg(test)]
 mod tests {
+    use cosmic_text::Metrics;
     use tiny_skia::Pixmap;
+    use tiny_skia::PixmapMut;
+    use tiny_skia::Transform;
 
-    use super::*;
+    use crate::text_cache::TextCache;
 
     #[test]
     #[cfg_attr(miri, ignore)]

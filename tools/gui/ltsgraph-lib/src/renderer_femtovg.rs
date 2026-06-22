@@ -65,6 +65,7 @@ impl FemtovgRenderer {
         edge_paint.set_line_width(1.0);
 
         let mut edge_path = Path::new();
+        let mut arrow_path = Path::new();
 
         // Draw the edges and the arrows on them
         for state_index in self.lts.iter_states() {
@@ -83,7 +84,22 @@ impl FemtovgRenderer {
                     edge_path.line_to(to_state_view.position.x, to_state_view.position.y);
 
                     let direction = (state_view.position - to_state_view.position).normalize();
-                    let _angle = -direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
+                    let angle = -direction.xy().angle_to(Vec2::new(0.0, -1.0)).to_degrees();
+
+                    // Draw the arrowhead just outside the target state, pointing along the edge.
+                    // This mirrors the skia backend's arrow so both renderers look identical.
+                    let (sin, cos) = angle.to_radians().sin_cos();
+                    let rotate = |p: Vec2| Vec2::new(p.x * cos - p.y * sin, p.x * sin + p.y * cos);
+                    let tip = to_state_view.position.xy();
+                    let arrow = [
+                        rotate(Vec2::new(0.0, -state_radius - 0.5)),
+                        rotate(Vec2::new(2.0, -state_radius - 5.5)),
+                        rotate(Vec2::new(-2.0, -state_radius - 5.5)),
+                    ];
+                    arrow_path.move_to(tip.x + arrow[0].x, tip.y + arrow[0].y);
+                    arrow_path.line_to(tip.x + arrow[1].x, tip.y + arrow[1].y);
+                    arrow_path.line_to(tip.x + arrow[2].x, tip.y + arrow[2].y);
+                    arrow_path.close();
 
                     // Draw the edge handle
                     let middle = (to_state_view.position + state_view.position) / 2.0;
@@ -124,6 +140,7 @@ impl FemtovgRenderer {
 
         // Draw all edges first, then states on top.
         canvas.stroke_path(&edge_path, &edge_paint);
+        canvas.fill_path(&arrow_path, &edge_paint);
 
         // Draw the states on top
         let mut state_path = Path::new();
