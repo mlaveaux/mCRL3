@@ -35,6 +35,9 @@ struct Cli {
 
     #[command(subcommand)]
     commands: Option<Commands>,
+
+    #[arg(long, global = true)]
+    timings: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -89,7 +92,9 @@ fn main() -> ExitCode {
     let timing = Timing::new();
     let result = handle_command(cli.commands, &timing);
 
-    timing.print();
+    if cli.timings {
+        timing.print();
+    }
 
     print_allocator_metrics();
     report_error(result)

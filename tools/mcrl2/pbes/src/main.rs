@@ -11,6 +11,7 @@ use mcrl2::verbosity_to_log_level;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::report_error;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -181,7 +182,7 @@ struct SolveArgs {
     pinned: bool,
 }
 
-fn main() -> Result<ExitCode, MercError> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     env_logger::Builder::new()
@@ -194,12 +195,21 @@ fn main() -> Result<ExitCode, MercError> {
 
     if cli.version.into() {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return ExitCode::SUCCESS;
     }
 
     let timing = Timing::new();
+    let result = handle_command(cli.commands);
 
-    if let Some(command) = cli.commands {
+    if cli.timings {
+        timing.print();
+    }
+
+    report_error(result)
+}
+
+fn handle_command(commands: Option<Commands>) -> Result<(), MercError> {
+    if let Some(command) = commands {
         match command {
             Commands::Symmetry(args) => handle_symmetry(args)?,
             Commands::Export(args) => handle_export(args)?,
@@ -208,11 +218,7 @@ fn main() -> Result<ExitCode, MercError> {
         }
     }
 
-    if cli.timings {
-        timing.print();
-    }
-
-    Ok(ExitCode::SUCCESS)
+    Ok(())
 }
 
 /// Reads a PBES from the given file in the explicitly chosen format, or the

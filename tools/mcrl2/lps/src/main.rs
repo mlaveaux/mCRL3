@@ -14,6 +14,7 @@ use merc_lts::MutexLtsBuilder;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -138,7 +139,7 @@ struct ExploreExplicitArgs {
     pinned: bool,
 }
 
-fn main() -> Result<ExitCode, MercError> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     env_logger::Builder::new()
@@ -151,25 +152,29 @@ fn main() -> Result<ExitCode, MercError> {
 
     if cli.version.into() {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return ExitCode::SUCCESS;
     }
 
     let timing = Timing::new();
-
-    if let Some(command) = &cli.commands {
-        match command {
-            Commands::Explore(args) => handle_explore(&cli, args, &timing)?,
-            Commands::ExploreExplicit(args) => handle_explore_explicit(args, &timing)?,
-        }
-    }
+    let result = handle_command(&cli, &timing);
 
     if cli.timings {
         timing.print();
     }
 
     print_allocator_metrics();
+    report_error(result)
+}
 
-    Ok(ExitCode::SUCCESS)
+fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
+    if let Some(command) = &cli.commands {
+        match command {
+            Commands::Explore(args) => handle_explore(cli, args, timing)?,
+            Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing)?,
+        }
+    }
+
+    Ok(())
 }
 
 /// Handles symbolic exploration of an LPS.
