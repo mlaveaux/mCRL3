@@ -6,6 +6,7 @@ mod io;
 mod ldd;
 mod mince_variable_order;
 mod symbolic_lps;
+mod symbolic_lps_explore;
 mod util;
 
 #[cfg(test)]
@@ -19,6 +20,7 @@ pub use io::*;
 pub use ldd::*;
 pub use mince_variable_order::*;
 pub use symbolic_lps::*;
+pub use symbolic_lps_explore::*;
 pub use util::*;
 
 #[cfg(test)]

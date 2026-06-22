@@ -14,7 +14,11 @@ use rand::RngExt;
 pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usize) -> Vec<Vec<OptBool>> {
     let mut vectors = Vec::new();
     // random_range panics on an empty range, so a request for zero vectors yields nothing.
-    let count = if num_vectors == 0 { 0 } else { rng.random_range(0..num_vectors) };
+    let count = if num_vectors == 0 {
+        0
+    } else {
+        rng.random_range(0..num_vectors)
+    };
     for _ in 0..count {
         let mut vec = Vec::new();
         for _ in 0..num_vars {
