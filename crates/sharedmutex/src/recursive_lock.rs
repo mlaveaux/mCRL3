@@ -2,7 +2,6 @@
 
 use std::cell::Cell;
 use std::error::Error;
-use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -11,6 +10,12 @@ use crate::BfSharedMutexReadGuard;
 use crate::BfSharedMutexWriteGuard;
 
 /// An extension of the [BfSharedMutex] that allows recursive read locking without deadlocks.
+///
+/// The recursion depth and call counters are stored in [`Cell`]s, so a `RecursiveLock` is
+/// `!Sync` and has no `Clone`. To share the underlying data across threads, give each thread
+/// its own `RecursiveLock` over a clone of the same mutex via
+/// [`RecursiveLock::from_mutex`]`(shared.clone())`; the depth tracking is then per thread, as
+/// the protocol requires. The call counters are likewise per instance, not global.
 pub struct RecursiveLock<T> {
     inner: BfSharedMutex<T>,
 
@@ -68,14 +73,12 @@ impl<T> RecursiveLock<T> {
             self.recursive_depth.get() == 0,
             "Cannot call write() inside an existing read or write section"
         );
+        // Acquire the underlying lock before touching any bookkeeping, so a
+        // failed acquisition leaves the recursive state untouched.
+        let guard = self.inner.write()?;
         self.write_calls.set(self.write_calls.get() + 1);
         self.recursive_depth.set(1);
-        Ok(RecursiveLockWriteGuard {
-            mutex: self,
-            guard: self.inner.write()?,
-            #[cfg(loom)]
-            ptr: self.inner.data_ptr(),
-        })
+        Ok(RecursiveLockWriteGuard { mutex: self, guard })
     }
 
     /// Acquires a read lock on the mutex.
@@ -98,26 +101,24 @@ impl<T> RecursiveLock<T> {
     /// lock instead of acquiring the underlying mutex. While such a guard is alive, mutating
     /// through the [`RecursiveLockWriteGuard`] panics.
     pub fn read_recursive<'a>(&'a self) -> Result<RecursiveLockReadGuard<'a, T>, Box<dyn Error + 'a>> {
-        self.read_recursive_calls.set(self.read_recursive_calls.get() + 1);
         if self.recursive_depth.get() == 0 {
-            // If we are not already holding a read lock, we acquire one.
-            // Acquire the read guard, but forget it to prevent it from being dropped.
+            // Not yet holding a read lock: acquire the shared protocol lock without
+            // materialising a guard, so the busy flag stays set until our own guard
+            // releases it (via `create_read_guard_unchecked` on drop). The acquisition
+            // happens before the bookkeeping is updated, so a failed acquisition leaves
+            // the recursive state untouched.
+            self.inner.acquire_shared()?;
             self.recursive_depth.set(1);
-            mem::forget(self.inner.read()?);
-            Ok(RecursiveLockReadGuard {
-                mutex: self,
-                #[cfg(loom)]
-                ptr: self.inner.data_ptr(),
-            })
         } else {
-            // If we are already holding a read lock, we just increment the depth.
+            // Already holding a read lock, so just record the extra level.
             self.recursive_depth.set(self.recursive_depth.get() + 1);
-            Ok(RecursiveLockReadGuard {
-                mutex: self,
-                #[cfg(loom)]
-                ptr: self.inner.data_ptr(),
-            })
         }
+        self.read_recursive_calls.set(self.read_recursive_calls.get() + 1);
+        Ok(RecursiveLockReadGuard {
+            mutex: self,
+            #[cfg(loom)]
+            ptr: self.inner.data_ptr(),
+        })
     }
 
     /// Returns the number of times `write()` has been called.
@@ -151,7 +152,8 @@ impl<T> Deref for RecursiveLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // There can only be shared guards, which only provide immutable access to the object.
+        // SAFETY: This guard keeps the read lock (or the enclosing write lock) held, so only
+        // shared access is handed out and the data pointer (an `UnsafeCell::get`) is non-null.
         #[cfg(not(loom))]
         unsafe {
             self.mutex.inner.data_ptr().as_ref().unwrap_unchecked()
@@ -168,10 +170,10 @@ impl<T> Drop for RecursiveLockReadGuard<'_, T> {
     fn drop(&mut self) {
         self.mutex.recursive_depth.set(self.mutex.recursive_depth.get() - 1);
         if self.mutex.recursive_depth.get() == 0 {
-            // If we are not holding a read lock anymore, we release the mutex.
-            // This will allow other threads to acquire a read lock.
+            // SAFETY: The depth reached zero, so the outermost `read_recursive` forgot a real read
+            // guard that still holds this thread's `busy` flag. Reconstructing and immediately
+            // dropping a guard releases that flag exactly once, matching the forgotten guard.
             unsafe {
-                // Drop the guard immediately to release busy=false via its Drop impl.
                 let _ = self.mutex.inner.create_read_guard_unchecked();
             }
         }
@@ -183,9 +185,6 @@ pub struct RecursiveLockWriteGuard<'a, T> {
     mutex: &'a RecursiveLock<T>,
 
     guard: BfSharedMutexWriteGuard<'a, T>,
-
-    #[cfg(loom)]
-    ptr: loom::cell::ConstPtr<T>,
 }
 
 /// Allow dereferences the underlying object.
@@ -193,13 +192,8 @@ impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // We hold the write guard, so immutable access is safe.
-        #[cfg(loom)]
-        unsafe {
-            return self.ptr.deref();
-        }
-
-        #[cfg(not(loom))]
+        // We hold the write guard, so immutable access is safe; defer to it rather than taking a
+        // second loom borrow of the cell, which would conflict with the guard's mutable borrow.
         self.guard.deref()
     }
 }
@@ -354,6 +348,46 @@ mod tests {
 
         // Counter should remain 4
         assert_eq!(lock.read_recursive_call_count(), 4);
+    }
+
+    #[test]
+    #[cfg(loom)]
+    fn test_loom_recursive_lock() {
+        let mut builder = loom::model::Builder::new();
+        // Mirrors the bound used for the underlying busy-forbidden mutex.
+        builder.preemption_bound = Some(2);
+
+        builder.check(|| {
+            let mutex = BfSharedMutex::new(0usize);
+
+            let threads: Vec<_> = (0..2)
+                .map(|_| {
+                    let mutex = mutex.clone();
+                    loom::thread::spawn(move || {
+                        // `RecursiveLock` is !Sync, so each thread wraps its own clone of the
+                        // shared mutex; the recursion depth is then tracked per thread.
+                        let lock = RecursiveLock::from_mutex(mutex);
+
+                        // Nested recursive reads must observe a single consistent value and
+                        // release the underlying read lock exactly once when the outermost
+                        // guard drops.
+                        {
+                            let outer = lock.read_recursive().unwrap();
+                            let inner = lock.read_recursive().unwrap();
+                            assert_eq!(*outer, *inner);
+                            assert_eq!(inner.read_depth(), 2);
+                        }
+
+                        // Exclusive access through the recursive write path.
+                        *lock.write().unwrap() += 1;
+                    })
+                })
+                .collect();
+
+            for th in threads {
+                th.join().unwrap();
+            }
+        });
     }
 
     #[test]
