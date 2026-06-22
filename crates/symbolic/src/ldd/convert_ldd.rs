@@ -18,7 +18,7 @@ use crate::TransitionGroup;
 use crate::height;
 use crate::iter;
 
-/// Converts a symbolic BDD LTS to an explicit LTS.
+/// Converts a symbolic LDD LTS to an explicit LTS.
 ///
 /// # Details
 ///
@@ -54,12 +54,14 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
         LargeFormatter(total_number_of_states)
     );
 
+    // Use floating-point division so progress reporting never divides by zero (mirrors the BDD variant).
+    let total_states_f64 = total_number_of_states as f64;
     let state_progress = TimeProgress::new(
         move |number_of_states| {
             info!(
                 "Added {} states to discovered ({}%)",
                 LargeFormatter(number_of_states),
-                number_of_states * 100 / total_number_of_states
+                (number_of_states as f64 * 100.0 / total_states_f64) as usize
             );
         },
         1,
@@ -81,7 +83,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
                 "Explored {} states and {} transitions ({}%)",
                 LargeFormatter(number_of_states),
                 LargeFormatter(number_of_transitions),
-                number_of_states * 100 / total_number_of_states
+                (number_of_states as f64 * 100.0 / total_states_f64) as usize
             );
         },
         1,
@@ -94,7 +96,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
     let mut target = vec![0u32; height(manager, lts.states())];
 
     let mut state_iter = iter(lts.states());
-    let mut index: usize = 0;
+    let mut pos: usize = 0;
 
     while let Some(state) = state_iter.next() {
         // Find the index of this state, it was already added before.
@@ -145,8 +147,8 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
             }
         }
 
-        progress.print((index, output.num_of_transitions()));
-        index += 1;
+        progress.print((pos, output.num_of_transitions()));
+        pos += 1;
 
         // Clear the outgoing set for the next state.
         outgoing.clear();

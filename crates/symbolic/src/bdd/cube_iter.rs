@@ -1,5 +1,3 @@
-//! Iterator over cubes in a BDD.
-
 use std::marker::PhantomData;
 
 use oxidd::BooleanFunction;
@@ -121,9 +119,16 @@ impl<'a> CubeIterAll<'a> {
         }
     }
 
-    /// Initialize the `current` cube by replacing don't cares with false.
+    /// Initialize the `current` cube: project onto the selected variables (if requested)
+    /// and replace the remaining don't cares with false to form the first assignment.
     fn initialize_cube(&mut self) {
         if let Some(cube) = &mut self.cube {
+            // Project to the selected variable indices first, so the concretized assignment
+            // below is over the projected space and never contains a don't care.
+            if let Some(indices) = &self.variable_indices {
+                *cube = project_bits(cube, indices);
+            }
+
             self.current_cube = cube
                 .iter()
                 .map(|element| {
@@ -134,12 +139,6 @@ impl<'a> CubeIterAll<'a> {
                     }
                 })
                 .collect();
-
-            // Project to selected variable indices if requested.
-            if let Some(indices) = &self.variable_indices {
-                *cube = project_bits(cube, indices);
-                self.current_cube = cube.clone();
-            }
         }
     }
 }

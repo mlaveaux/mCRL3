@@ -358,12 +358,12 @@ impl<'a> Iterator for ValuesIter<'a> {
         }
 
         let nb = self.num_of_bits[self.index] as usize;
-        if self.offset + nb > self.bits.len() {
-            // Malformed input; stop iterating.
-            return None;
-        }
-
-        let value = to_value(&self.bits[self.offset..self.offset + nb]);
+        // Clamp the slice to the available bits so the iterator always yields exactly
+        // num_of_bits.len() items, honoring the ExactSizeIterator contract even on
+        // truncated input.
+        let start = self.offset.min(self.bits.len());
+        let end = (self.offset + nb).min(self.bits.len());
+        let value = to_value(&self.bits[start..end]);
         self.offset += nb;
         self.index += 1;
         Some(value)
@@ -383,7 +383,11 @@ pub fn to_value(bits: &[OptBool]) -> u64 {
     let mut value = 0u64;
     for (bit_pos, bit) in bits.iter().rev().enumerate() {
         if *bit == OptBool::True {
-            value |= 1 << bit_pos;
+            // Bits beyond the 64-bit range cannot be represented in a u64; ignore them
+            // rather than overflowing the shift (checked_shl yields None for bit_pos >= 64).
+            if let Some(mask) = 1u64.checked_shl(bit_pos as u32) {
+                value |= mask;
+            }
         }
     }
 
