@@ -17,6 +17,9 @@ impl<T: From<ATerm>> ATermList<T> {
     /// Obtain the head, i.e. the first element, of the list. Will panic if the
     /// list is empty.
     pub fn head(&self) -> T {
+        // Guard explicitly: on an empty list `arg(0)` is out of range, which is
+        // undefined (the FFI does not bounds-check in release), so panic instead.
+        assert!(!self.is_empty(), "head() called on an empty list");
         self.term.arg(0).protect().into()
     }
 
@@ -44,6 +47,9 @@ impl<T> ATermList<T> {
     /// Obtain the tail, i.e. the remainder, of the list. Will panic if the list
     /// is empty.
     pub fn tail(&self) -> ATermList<T> {
+        // Guard explicitly: on an empty list `arg(1)` is out of range, which is
+        // undefined (the FFI does not bounds-check in release), so panic instead.
+        assert!(!self.is_empty(), "tail() called on an empty list");
         self.term.arg(1).protect().into()
     }
 
@@ -189,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_aterm_list() {
-        let _ = test_logger();
+        test_logger();
         let list: ATermList<ATerm> = ATerm::from_string("[f,g,h,i]").unwrap().into();
 
         assert!(!list.is_empty());
