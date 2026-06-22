@@ -500,8 +500,8 @@ impl Block {
 
     /// Returns the number of elements in the block.
     ///
-    /// A block always satisfies `begin < end` (see [`Block::assert_consistent`]),
-    /// so it is never empty; there is deliberately no `is_empty`.
+    /// A block always satisfies `begin < end`, so it is never empty; there is
+    /// deliberately no `is_empty`.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.assert_consistent();
@@ -522,7 +522,7 @@ impl Block {
     }
 
     /// Returns true iff the block is consistent.
-    fn assert_consistent(self) {
+    fn assert_consistent(&self) {
         debug_assert!(self.begin < self.end, "The range of block {self:?} is incorrect",);
 
         debug_assert!(
