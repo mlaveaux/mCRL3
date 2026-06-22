@@ -78,6 +78,8 @@ struct State {
     canvas: Arc<Mutex<SharedPixelBuffer<Rgba8Pixel>>>,
     lts: Mutex<Option<Arc<LabelledTransitionSystem<String>>>>,
     reload_lts: AtomicBool,
+    /// Whether the layout simulation is enabled, so layout-parameter changes only restart it while running.
+    simulation_enabled: AtomicBool,
 }
 
 #[derive(Clone, Default)]
@@ -105,8 +107,6 @@ impl GuiSettings {
             width: 1,
             height: 1,
             zoom_level: 1.0,
-            view_x: 500.0,
-            view_y: 500.0,
             ..Default::default()
         }
     }
@@ -160,6 +160,7 @@ async fn main() -> Result<ExitCode, MercError> {
         canvas: Arc::new(Mutex::new(SharedPixelBuffer::new(1, 1))),
         reload_lts: AtomicBool::new(false),
         lts: Mutex::new(None),
+        simulation_enabled: AtomicBool::new(true),
     });
 
     // Initialize the GUI, but show it later.
@@ -249,6 +250,12 @@ async fn main() -> Result<ExitCode, MercError> {
 
                 Ok(false)
             },
+            |e: &MercError| {
+                let message = e.to_string();
+                let _ = invoke_from_event_loop(move || {
+                    let _ = show_error_dialog("Rendering error", &message);
+                });
+            },
         )?)
     };
 
@@ -288,6 +295,12 @@ async fn main() -> Result<ExitCode, MercError> {
 
                 // If stable pause the thread.
                 Ok(!is_stable)
+            },
+            |e: &MercError| {
+                let message = e.to_string();
+                let _ = invoke_from_event_loop(move || {
+                    let _ = show_error_dialog("Layout error", &message);
+                });
             },
         )?)
     };
@@ -344,11 +357,25 @@ async fn main() -> Result<ExitCode, MercError> {
     // When the simulation is toggled enable the layout thread.
     {
         let layout_handle = layout_handle.clone();
+        let state = state.clone();
         app.on_run_simulation(move |enabled| {
+            state.simulation_enabled.store(enabled, Ordering::Relaxed);
             if enabled {
                 layout_handle.resume();
             } else {
                 layout_handle.pause();
+            }
+        })
+    }
+
+    // When a layout parameter changes, restart the layout simulation so the
+    // change takes effect, but only while the simulation is enabled.
+    {
+        let layout_handle = layout_handle.clone();
+        let state = state.clone();
+        app.on_request_relayout(move || {
+            if state.simulation_enabled.load(Ordering::Relaxed) {
+                layout_handle.resume();
             }
         })
     }
@@ -400,10 +427,9 @@ async fn main() -> Result<ExitCode, MercError> {
                         .add_filter("", &["aut", "lts", "bcg"])
                         .pick_file()
                         .await
+                        && load_lts(handle.path(), cli.lts_format).is_err()
                     {
-                        if load_lts(handle.path(), cli.lts_format).is_err() {
-                            warn!("Failed to load LTS from file dialog.");
-                        }
+                        warn!("Failed to load LTS from file dialog.");
                     }
                 })
                 .unwrap();
@@ -421,22 +447,22 @@ async fn main() -> Result<ExitCode, MercError> {
         let settings = settings.clone();
 
         app.on_focus_view(move || {
-            if let Some(app) = app_weak.upgrade() {
-                if let Some(viewer) = state.viewer.lock().unwrap().as_ref() {
-                    debug!("Centering view on graph.");
+            if let Some(app) = app_weak.upgrade()
+                && let Some(viewer) = state.viewer.lock().unwrap().as_ref()
+            {
+                debug!("Centering view on graph.");
 
-                    let center = viewer.center();
+                let center = viewer.center();
 
-                    // Change the view to show the LTS in full.
-                    app.global::<Settings>().set_view_x(center.x);
-                    app.global::<Settings>().set_view_y(center.y);
+                // Change the view to show the LTS in full.
+                app.global::<Settings>().set_view_x(center.x);
+                app.global::<Settings>().set_view_y(center.y);
 
-                    let mut settings = settings.lock().unwrap();
-                    settings.view_x = center.x;
-                    settings.view_y = center.y;
+                let mut settings = settings.lock().unwrap();
+                settings.view_x = center.x;
+                settings.view_y = center.y;
 
-                    render_handle.resume();
-                }
+                render_handle.resume();
             }
         });
     }
