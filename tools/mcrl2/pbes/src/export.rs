@@ -26,7 +26,7 @@ use crate::symmetry::variable_index;
 /// The output contains the identification of the control flow and data
 /// parameters, and a mapping from clauses of each equation to the parameters
 /// that are used-for, used-in and changed-by them.
-pub fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
+pub(crate) fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercError> {
     let symmetries = SymmetryAlgorithm::new(pbes, false)?;
 
     let parameters = if let Some(equation) = symmetries.srf_pbes().equations().first() {

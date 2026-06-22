@@ -9,7 +9,7 @@ use tiny_skia::PixmapMut;
 use tiny_skia::PixmapPaint;
 use tiny_skia::Transform;
 
-pub struct TextCache {
+pub(crate) struct TextCache {
     /// A FontSystem provides access to detected system fonts, create one per application
     font_system: FontSystem,
 
@@ -24,7 +24,7 @@ impl Default for TextCache {
 }
 
 impl TextCache {
-    pub fn new() -> TextCache {
+    pub(crate) fn new() -> TextCache {
         let font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
 
@@ -35,7 +35,7 @@ impl TextCache {
     }
 
     /// Font metrics indicate the font size and line height of a buffer
-    pub fn create_buffer(&mut self, text: &str, font_metrics: Metrics) -> Buffer {
+    pub(crate) fn create_buffer(&mut self, text: &str, font_metrics: Metrics) -> Buffer {
         // A Buffer provides shaping and layout for a UTF-8 string, create one per text widget
         let mut buffer = Buffer::new(&mut self.font_system, font_metrics);
 
@@ -54,13 +54,13 @@ impl TextCache {
     }
 
     /// Resizes the font metrics of the buffer.
-    pub fn resize(&mut self, buffer: &mut Buffer, font_metrics: Metrics) {
+    pub(crate) fn resize(&mut self, buffer: &mut Buffer, font_metrics: Metrics) {
         buffer.set_metrics(font_metrics);
         buffer.shape_until_scroll(&mut self.font_system, true);
     }
 
     /// Draw the given cached text at the given location.
-    pub fn draw(&mut self, buffer: &Buffer, pixmap: &mut PixmapMut, transform: Transform) {
+    pub(crate) fn draw(&mut self, buffer: &Buffer, pixmap: &mut PixmapMut, transform: Transform) {
         let paint = tiny_skia::Paint::default();
 
         // Draw the buffer

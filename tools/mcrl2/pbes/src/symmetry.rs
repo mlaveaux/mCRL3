@@ -38,7 +38,7 @@ use crate::permutation::permutation_group;
 use crate::permutation::permutation_group_size;
 
 /// Implements symmetry detection for PBESs.
-pub struct SymmetryAlgorithm {
+pub(crate) struct SymmetryAlgorithm {
     /// Needs to be kept alive while the control flow graphs are used.
     state_graph: PbesStategraph,
 
@@ -58,7 +58,7 @@ pub struct SymmetryAlgorithm {
 
 impl SymmetryAlgorithm {
     /// Does the required preprocessing to analyse symmetries in the given PBES.
-    pub fn new(pbes: &Pbes, print_srf: bool) -> Result<Self, MercError> {
+    pub(crate) fn new(pbes: &Pbes, print_srf: bool) -> Result<Self, MercError> {
         let (srf, parameters, state_graph) = preprocess_symmetry(pbes, print_srf)?;
 
         let all_control_flow_parameters = state_graph
@@ -85,19 +85,19 @@ impl SymmetryAlgorithm {
     }
 
     /// Returns the SRF PBES after unifying parameters.
-    pub fn srf_pbes(&self) -> &SrfPbes {
+    pub(crate) fn srf_pbes(&self) -> &SrfPbes {
         &self.srf
     }
 
     /// Returns the state graph of the PBES.
-    pub fn state_graph(&self) -> &PbesStategraph {
+    pub(crate) fn state_graph(&self) -> &PbesStategraph {
         &self.state_graph
     }
 
     /// Returns compliant permutations.
     ///
     /// See [Self::clique_candidates] for the parameters.
-    pub fn candidates(
+    pub(crate) fn candidates(
         &self,
         partition_data_sorts: bool,
         partition_data_updates: bool,
@@ -151,7 +151,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Checks whether the given permutation is valid, meaning that control flow parameters are mapped to control flow parameters.
-    pub fn is_valid_permutation(&self, pi: &Permutation) -> Result<(), MercError> {
+    pub(crate) fn is_valid_permutation(&self, pi: &Permutation) -> Result<(), MercError> {
         // Check that all control flow parameters are mapped to control flow parameters.
         for index in pi.domain() {
             let mapped_index = pi.value(index);
@@ -179,7 +179,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Performs the syntactic check defined as symcheck in the paper.
-    pub fn check_symmetry(&self, pi: &Permutation) -> bool {
+    pub(crate) fn check_symmetry(&self, pi: &Permutation) -> bool {
         for equation in self.srf.equations() {
             for summand in equation.summands() {
                 let mut matched = false;
@@ -214,7 +214,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Determine the cliques in the given control flow graphs.
-    pub fn cliques(&self) -> Vec<Vec<usize>> {
+    pub(crate) fn cliques(&self) -> Vec<Vec<usize>> {
         let mut cal_I = Vec::new();
 
         for (i, cfg) in self.state_graph.control_flow_graphs().iter().enumerate() {
@@ -763,7 +763,7 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
 const UNDEFINED_VERTEX: usize = usize::MAX;
 
 /// Returns the index of the variable that the control flow graph represents.
-pub fn variable_index(cfg: &ControlFlowGraph) -> usize {
+pub(crate) fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Find the first defined index
     let defined_index = cfg
         .vertices()

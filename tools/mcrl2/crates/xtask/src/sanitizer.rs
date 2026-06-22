@@ -1,6 +1,6 @@
 use std::error::Error;
 
-pub use duct::cmd;
+pub(crate) use duct::cmd;
 
 fn add_target_flag(arguments: &mut Vec<String>) {
     // Derive the architecture from the host so the sanitizer build targets the
@@ -33,7 +33,7 @@ fn add_target_flag(arguments: &mut Vec<String>) {
 ///
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
-pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+pub(crate) fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     arguments.push("-Zbuild-std".to_string());
 
     add_target_flag(&mut arguments);
@@ -54,7 +54,7 @@ pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error
 ///
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
-pub fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+pub(crate) fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     arguments.push("-Zbuild-std".to_string());
 
     add_target_flag(&mut arguments);

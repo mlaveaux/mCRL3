@@ -6,7 +6,7 @@ use std::fmt;
 use merc_utilities::MercError;
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct Permutation {
+pub(crate) struct Permutation {
     /// We represent a permutation as an explicit list of (domain -> image) pairs,
     /// sorted by domain.
     mapping: Vec<(usize, usize)>,
@@ -16,7 +16,7 @@ impl Permutation {
     /// Create a permutation from a given mapping of (domain -> image) pairs. Internally
     /// sorts the mapping by domain for a unique representation. The input must be
     /// a valid permutation (so a bijection).
-    pub fn from_mapping(mut mapping: Vec<(usize, usize)>) -> Self {
+    pub(crate) fn from_mapping(mut mapping: Vec<(usize, usize)>) -> Self {
         debug_assert!(
             is_valid_permutation(&mapping),
             "Input mapping is not a valid permutation: {:?}",
@@ -39,7 +39,7 @@ impl Permutation {
     }
 
     /// Parse a permutation from a string input of the form "[0->2, 1->0, 2->1]".
-    pub fn from_mapping_notation(line: &str) -> Result<Self, MercError> {
+    pub(crate) fn from_mapping_notation(line: &str) -> Result<Self, MercError> {
         // Remove the surrounding brackets if present.
         let trimmed_input = line.trim();
         let input_no_brackets =
@@ -89,7 +89,7 @@ impl Permutation {
     }
 
     /// Parse a permutation in cycle notation, e.g., (0 2 1)(3 4).
-    pub fn from_cycle_notation(cycle_notation: &str) -> Result<Self, MercError> {
+    pub(crate) fn from_cycle_notation(cycle_notation: &str) -> Result<Self, MercError> {
         let mut mapping: Vec<(usize, usize)> = Vec::new();
 
         // Split the input into cycles by finding all '(...)' groups
@@ -134,7 +134,7 @@ impl Permutation {
     }
 
     /// Construct a new permutation by concatenating two (disjoint) permutations.
-    pub fn concat(self, other: &Permutation) -> Permutation {
+    pub(crate) fn concat(self, other: &Permutation) -> Permutation {
         debug_assert!(
             self.mapping
                 .iter()
@@ -149,7 +149,7 @@ impl Permutation {
     }
 
     /// Returns the value of the permutation at the given key.
-    pub fn value(&self, key: usize) -> usize {
+    pub(crate) fn value(&self, key: usize) -> usize {
         for (d, v) in &self.mapping {
             if *d == key {
                 return *v;
@@ -160,18 +160,18 @@ impl Permutation {
     }
 
     /// Returns an iterator over the domain of this permutation.
-    pub fn domain(&self) -> impl Iterator<Item = usize> + '_ {
+    pub(crate) fn domain(&self) -> impl Iterator<Item = usize> + '_ {
         self.mapping.iter().map(|(d, _)| *d)
     }
 
     /// Check whether this permutation is the identity permutation.
-    pub fn is_identity(&self) -> bool {
+    pub(crate) fn is_identity(&self) -> bool {
         self.mapping.iter().all(|(d, v)| d == v)
     }
 }
 
 /// Checks whether the mapping represents a valid permutation
-pub fn is_valid_permutation(mapping: &[(usize, usize)]) -> bool {
+pub(crate) fn is_valid_permutation(mapping: &[(usize, usize)]) -> bool {
     let mut domain = HashSet::with_capacity(mapping.len());
     let mut image = HashSet::with_capacity(mapping.len());
 
@@ -261,7 +261,7 @@ impl fmt::Debug for Permutation {
 /// - (3 4)
 /// - (0 3 4)
 /// - (0 4 3)
-pub fn permutation_group(indices: Vec<usize>) -> impl Iterator<Item = Permutation> + Clone {
+pub(crate) fn permutation_group(indices: Vec<usize>) -> impl Iterator<Item = Permutation> + Clone {
     let n = indices.len();
 
     // Clone the indices for use in the closure.
@@ -275,7 +275,7 @@ pub fn permutation_group(indices: Vec<usize>) -> impl Iterator<Item = Permutatio
 
 /// Returns the number of permutations in a given group (`n!`), saturating at
 /// `usize::MAX` instead of overflowing for large `n`.
-pub fn permutation_group_size(n: usize) -> usize {
+pub(crate) fn permutation_group_size(n: usize) -> usize {
     (1..=n).fold(1usize, |acc, factor| acc.saturating_mul(factor))
 }
 

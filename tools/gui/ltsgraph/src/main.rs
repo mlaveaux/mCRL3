@@ -1,5 +1,7 @@
 // This is a GUI application
 #![windows_subsystem = "windows"]
+// Suppress unreachable_pub for Slint-generated code (binary crate has no external API).
+#![allow(unreachable_pub)]
 
 slint::include_modules!();
 

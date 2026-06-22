@@ -37,7 +37,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 /// Explore the linear process specification using symbolic reachability.
-pub fn explore_lps_symbolic(
+pub(crate) fn explore_lps_symbolic(
     storage: &mut Storage,
     lps: &LinearProcessSpecification,
     timing: &Timing,
@@ -68,7 +68,7 @@ struct SymbolicLinearProcessSpecification {
 }
 
 impl SymbolicLinearProcessSpecification {
-    pub fn new(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<Self, MercError> {
+    pub(crate) fn new(storage: &mut Storage, lps: &LinearProcessSpecification) -> Result<Self, MercError> {
         // We need the constants to be present in the symbolic summands for the enumeration.
         let options = PreprocessOptions {
             replace_constants_by_variables: false,
@@ -179,7 +179,7 @@ struct SymbolicSummand {
 
 impl SymbolicSummand {
     /// Extract the required information from the given action summand that is required for symbolic exploration.
-    pub fn new(
+    pub(crate) fn new(
         storage: &mut Storage,
         summand: &LinearSummand,
         parameters: &ATermList<DataVariable>,

@@ -168,12 +168,12 @@ impl GlobalTermPool {
     }
 
     /// Returns the number of terms in the pool.
-    pub fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         mcrl2_aterm_pool_size()
     }
 
     /// Returns the number of terms in the pool.
-    pub fn capacity(&self) -> usize {
+    pub(super) fn capacity(&self) -> usize {
         mcrl2_aterm_pool_capacity()
     }
 }

@@ -61,7 +61,7 @@ pub(crate) fn lps_progress() -> TimeProgress<(usize, usize)> {
 /// changes the explored transition system.
 ///
 /// [`ControlFlowAnalysis`]: crate::control_flow::ControlFlowAnalysis
-pub fn explore_lps_explicit<B>(
+pub(crate) fn explore_lps_explicit<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
     caching: CachingStrategy,
@@ -162,7 +162,7 @@ where
 /// Explores the linear process specification explicitly in parallel across
 /// `threads` worker threads, streaming the discovered transitions into
 /// `builder`.
-pub fn explore_lps_explicit_parallel<B>(
+pub(crate) fn explore_lps_explicit_parallel<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
     caching: CachingStrategy,
@@ -470,7 +470,7 @@ impl ExplicitLinearProcessSpecification {
 /// Owns the mCRL2 enumeration backend and the reusable scratch buffers, so the
 /// LPS and its summands stay immutable and shareable by `&self` while each
 /// worker thread drives its own context.
-pub struct ExplicitContext {
+pub(crate) struct ExplicitContext {
     /// Backend used by mCRL2 to perform the enumeration, staged per source
     /// state by [`LPS::prepare`] and consumed by [`Summand::enumerate`].
     context: LearnSuccessorsContext,

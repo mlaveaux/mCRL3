@@ -36,7 +36,7 @@ fn apply_env(
 
 /// A library that can be used to generate a crate on-the-fly and load it back
 /// in after compiling at runtime.
-pub struct RuntimeLibrary {
+pub(crate) struct RuntimeLibrary {
     source_dir: PathBuf,
     temp_dir: PathBuf,
 }
@@ -46,7 +46,7 @@ impl RuntimeLibrary {
     ///
     /// `dependencies` are extra lines appended verbatim to the generated
     /// `[dependencies]` table of the on-the-fly crate.
-    pub fn new(temp_dir: &Path, dependencies: Vec<String>) -> Result<RuntimeLibrary, MercError> {
+    pub(crate) fn new(temp_dir: &Path, dependencies: Vec<String>) -> Result<RuntimeLibrary, MercError> {
         info!("Creating library in directory {}", temp_dir.to_string_lossy());
         let source_dir = PathBuf::from(temp_dir).join("src");
 
@@ -100,12 +100,12 @@ impl RuntimeLibrary {
     }
 
     /// Returns the directory in which the source files can be placed.
-    pub fn source_dir(&self) -> &PathBuf {
+    pub(crate) fn source_dir(&self) -> &PathBuf {
         &self.source_dir
     }
 
     /// Compiles the generated crate into a dynamic library and loads it back in.
-    pub fn compile(&mut self) -> Result<Library, MercError> {
+    pub(crate) fn compile(&mut self) -> Result<Library, MercError> {
         let compilation_toml = include_str!(concat!(env!("OUT_DIR"), "/Compilation.toml")).parse::<Table>()?;
 
         // Compile the dynamic object.

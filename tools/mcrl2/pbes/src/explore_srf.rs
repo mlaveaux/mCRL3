@@ -51,7 +51,7 @@ fn bes_progress() -> TimeProgress<(usize, usize)> {
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
-pub fn parity_game_from_pbes(
+pub(crate) fn parity_game_from_pbes(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
@@ -126,7 +126,7 @@ struct PbesPartition {
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel
 /// across `threads` worker threads.
-pub fn parity_game_from_pbes_parallel(
+pub(crate) fn parity_game_from_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
     caching: CachingStrategy,
@@ -204,7 +204,7 @@ where
 /// Owns the mCRL2 enumeration backend and the reusable scratch buffers, so the
 /// LPS and its summands stay immutable and shareable by `&self` while each
 /// worker thread drives its own context.
-pub struct PbesSrfContext {
+pub(crate) struct PbesSrfContext {
     /// Backend used to evaluate summand conditions and enumerate solutions,
     /// staged per source state by [`LPS::prepare`].
     context: LearnSuccessorsContext,
@@ -232,7 +232,7 @@ unsafe impl Send for PbesSrfContext {}
 /// State vectors have layout `[equation_index, param_0, …, param_{n-1}]` where
 /// `equation_index` is a flat index into [`SrfPbes::equations`] and each
 /// `param_i` is an index into the shared [`ValueMapping`].
-pub struct PbesSrfLps {
+pub(crate) struct PbesSrfLps {
     /// The unified SRF PBES; retained so summand pointers stay alive.
     _srf: SrfPbes,
 
@@ -277,7 +277,7 @@ unsafe impl Sync for PbesSrfLps {}
 
 /// A single SRF summand, pre-bound to the equation it belongs to and the
 /// target equation it transitions into.
-pub struct PbesSrfSummand {
+pub(crate) struct PbesSrfSummand {
     /// Source equation index; the summand fires only when `state[0]` equals it.
     equation_index: usize,
 
@@ -317,7 +317,7 @@ pub struct PbesSrfSummand {
 impl PbesSrfLps {
     /// Constructs a new [`PbesSrfLps`] from a PBES by normalising it to SRF and
     /// unifying the parameter lists.
-    pub fn new(pbes: &Pbes) -> Result<Self, MercError> {
+    pub(crate) fn new(pbes: &Pbes) -> Result<Self, MercError> {
         let mut srf = SrfPbes::from(pbes)?;
         srf.unify_parameters(false, true)?;
 

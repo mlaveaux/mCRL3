@@ -101,14 +101,14 @@ pub(crate) struct SummandCfgMetrics {
 
 impl SummandCfgMetrics {
     /// Total number of states for which this summand was evaluated.
-    pub fn evaluated(&self) -> u64 {
+    pub(crate) fn evaluated(&self) -> u64 {
         self.selected + self.pruned
     }
 
     /// Fraction of evaluations in which this summand was pruned, in `[0.0, 1.0]`.
     ///
     /// Returns `0.0` when the summand was never evaluated.
-    pub fn prune_rate(&self) -> f64 {
+    pub(crate) fn prune_rate(&self) -> f64 {
         let evaluated = self.evaluated();
         if evaluated == 0 {
             0.0
@@ -128,17 +128,17 @@ pub(crate) struct CfgMetrics {
 
 impl CfgMetrics {
     /// Total number of summand selections across all summands.
-    pub fn total_selected(&self) -> u64 {
+    pub(crate) fn total_selected(&self) -> u64 {
         self.summands.iter().map(|s| s.selected).sum()
     }
 
     /// Total number of summand prunings across all summands.
-    pub fn total_pruned(&self) -> u64 {
+    pub(crate) fn total_pruned(&self) -> u64 {
         self.summands.iter().map(|s| s.pruned).sum()
     }
 
     /// Fraction of evaluations pruned across all summands.
-    pub fn prune_rate(&self) -> f64 {
+    pub(crate) fn prune_rate(&self) -> f64 {
         let pruned = self.total_pruned();
         let evaluated = pruned + self.total_selected();
         if evaluated == 0 {
