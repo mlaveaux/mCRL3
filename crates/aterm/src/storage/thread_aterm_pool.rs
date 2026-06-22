@@ -571,7 +571,7 @@ mod tests {
 
     #[test]
     fn test_thread_local_protection() {
-        let _ = merc_utilities::test_logger();
+        merc_utilities::test_logger();
 
         thread::scope(|scope| {
             for _ in 0..3 {
@@ -604,7 +604,7 @@ mod tests {
 
     #[test]
     fn test_parsing() {
-        let _ = merc_utilities::test_logger();
+        merc_utilities::test_logger();
 
         let t = ATerm::from_string("f(g(a),b)").unwrap();
 
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_create_term() {
-        let _ = merc_utilities::test_logger();
+        merc_utilities::test_logger();
 
         let f = Symbol::new("f", 2);
         let g = Symbol::new("g", 1);

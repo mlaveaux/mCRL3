@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_string() {
-        let _ = merc_utilities::test_logger();
+        merc_utilities::test_logger();
 
         let s = ATermString::new("test");
         assert_eq!(s.value(), "test");

@@ -1132,7 +1132,7 @@ mod tests {
         let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&mut storage, &manager_ref, &lts).unwrap();
 
         let (_, _, num_of_blocks) =
-            sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+            sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
         assert_eq!(num_of_blocks, 68, "The ABP examples has 68 bisimulation blocks");
     }
 
@@ -1158,7 +1158,7 @@ mod tests {
 
             manager.with_manager_shared(|manager| {
                 assert!(
-                    !bdd.satisfiable() || is_bdd_cube_edge(&manager, bdd.as_edge(manager).borrowed()).unwrap(),
+                    !bdd.satisfiable() || is_bdd_cube_edge(manager, bdd.as_edge(manager).borrowed()).unwrap(),
                     "The bdd was created as a cube, so it should be a cube"
                 );
             })
@@ -1182,11 +1182,11 @@ mod tests {
                 explicit_lts.clone(),
                 Equivalence::StrongBisim,
                 false,
-                &mut Timing::new(),
+                &Timing::new(),
             );
 
             let (partition, block_vars, _num_of_blocks) =
-                sigref_symbolic(&manager_ref, &lts_bdd, &mut Timing::new(), false, false, false, false).unwrap();
+                sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
 
             let quotient_lts = quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars).unwrap();
 
@@ -1214,7 +1214,7 @@ mod tests {
                     explicit_lts_reduced,
                     symbolic_lts_reduced,
                     false,
-                    &mut Timing::new()
+                    &Timing::new()
                 ),
                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
             );

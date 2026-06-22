@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_aterm_container() {
-        let _ = merc_utilities::test_logger();
+        merc_utilities::test_logger();
 
         let t = ATerm::from_string("f(g(a),b)").unwrap();
 
