@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use glam::Mat3;
@@ -50,8 +51,9 @@ impl Viewer {
             // Keep track of the current self loop index
             let mut index_selfloop = 0;
 
-            // Keep track of the current transition index
-            let mut index_transition = 0;
+            // Running index of parallel transitions per destination state, used to fan out
+            // multiple edges that share the same source and target so their handles do not overlap.
+            let mut index_per_target: HashMap<StateIndex, usize> = HashMap::new();
 
             for (transition_index, transition) in lts.outgoing_transitions(state_index).enumerate() {
                 let transition_view = &mut state_view.outgoing[transition_index];
@@ -71,25 +73,24 @@ impl Viewer {
                     // Determine whether any of the outgoing edges from the reached state point back
                     let has_backtransition = lts
                         .outgoing_transitions(transition.to)
-                        .filter(|transition| transition.to == state_index)
-                        .count()
-                        > 0;
+                        .any(|back| back.to == state_index);
 
-                    // Compute the number of transitions going to the same state
-                    let num_transitions = lts
+                    // Number of parallel transitions from this state to the same destination.
+                    // This always counts the current transition, so it is at least one.
+                    let num_parallel = lts
                         .outgoing_transitions(state_index)
-                        .filter(|transition| transition.to == state_index)
+                        .filter(|other| other.to == transition.to)
                         .count();
 
+                    let index = index_per_target.entry(transition.to).or_insert(0);
+
                     if has_backtransition {
-                        // Offset the outgoing transitions towards that state to the right
-                        transition_view.handle_offset =
-                            Vec3::new(0.0, index_transition as f32 / num_transitions as f32, 0.0);
-                    } else {
-                        // Balance transitions around the midpoint
+                        // Offset the parallel outgoing transitions towards that state to the right
+                        // so the back- and forward-transitions do not overlap.
+                        transition_view.handle_offset = Vec3::new(0.0, *index as f32 / num_parallel as f32, 0.0);
                     }
 
-                    index_transition += 1;
+                    *index += 1;
                 }
             }
         }
@@ -117,5 +118,34 @@ impl Viewer {
     /// Gets a reference to the LTS that is being displayed
     pub fn lts(&self) -> &LabelledTransitionSystem<String> {
         &self.lts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use merc_lts::read_aut;
+
+    use crate::viewer::Viewer;
+
+    #[test]
+    fn test_handle_offsets_are_finite_with_back_transitions() {
+        // Two states with a transition and a matching back-transition, but no self-loops.
+        // This previously divided by a zero self-loop count and produced NaN handle offsets.
+        let aut = "des (0,2,2)\n(0,\"a\",1)\n(1,\"b\",0)\n";
+        let lts = Arc::new(read_aut(aut.as_bytes()).unwrap());
+
+        let viewer = Viewer::new(lts);
+
+        for state_view in viewer.state_view() {
+            for transition_view in &state_view.outgoing {
+                assert!(
+                    transition_view.handle_offset.is_finite(),
+                    "Non-finite handle offset {} computed",
+                    transition_view.handle_offset
+                );
+            }
+        }
     }
 }
