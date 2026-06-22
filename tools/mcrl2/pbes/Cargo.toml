@@ -7,13 +7,16 @@ rust-version.workspace = true
 
 [dependencies]
 mcrl2.workspace = true
+merc_collections.workspace = true
 merc_explore.workspace = true
 merc_io.workspace = true
 merc_lts.workspace = true
+merc_symbolic.workspace = true
 merc_tools.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 merc_vpg = { workspace = true, features = ["clap"] }
+oxidd.workspace = true
 
 boxcar.workspace = true
 clap.workspace = true
@@ -24,4 +27,5 @@ rand.workspace = true
 rayon.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+streaming-iterator.workspace = true
 thiserror.workspace = true
