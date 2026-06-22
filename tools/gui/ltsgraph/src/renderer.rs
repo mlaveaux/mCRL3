@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -227,10 +226,14 @@ impl Renderer {
             .slice(..)
             .map_async(wgpu::MapMode::Read, move |result| {
                 if result.is_ok() {
-                    let mut canvas = output.lock().unwrap();
+                    // wgpu requires each copied row to be padded to COPY_BYTES_PER_ROW_ALIGNMENT, so the
+                    // mapped buffer has a padded stride. Repack into a tightly packed RGBA8 buffer; copying
+                    // it as-is would skew the image whenever the width is not a multiple of the alignment.
+                    let mapped = buffer.slice(..).get_mapped_range();
+                    let packed = repack_padded_rows(&mapped, width, height);
+                    drop(mapped);
 
-                    *canvas =
-                        SharedPixelBuffer::clone_from_slice(buffer.slice(..).get_mapped_range().deref(), width, height);
+                    *output.lock().unwrap() = SharedPixelBuffer::clone_from_slice(&packed, width, height);
 
                     buffer.unmap();
                 }
@@ -249,6 +252,20 @@ impl Renderer {
 /// Aligns a number up to the next multiple of the given alignment.
 const fn align_up(num: u32, align: u32) -> u32 {
     ((num) + ((align) - 1)) & !((align) - 1)
+}
+
+/// Repacks a GPU readback buffer whose rows are padded to `COPY_BYTES_PER_ROW_ALIGNMENT` into a
+/// tightly packed `width * height * 4` RGBA8 buffer, dropping the per-row padding.
+fn repack_padded_rows(mapped: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let padded_bytes_per_row = (align_up(width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * 4) as usize;
+    let row_bytes = (width * 4) as usize;
+
+    let mut packed = vec![0u8; row_bytes * height as usize];
+    for y in 0..height as usize {
+        let src = y * padded_bytes_per_row;
+        packed[y * row_bytes..(y + 1) * row_bytes].copy_from_slice(&mapped[src..src + row_bytes]);
+    }
+    packed
 }
 
 fn create_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
@@ -275,4 +292,47 @@ fn create_buffer(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Buffer
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::align_up;
+    use crate::renderer::repack_padded_rows;
+
+    #[test]
+    fn test_repack_padded_rows_strips_padding() {
+        // A width of 2 pixels (8 bytes/row) is padded up to COPY_BYTES_PER_ROW_ALIGNMENT, so the
+        // mapped buffer has padding after each row. Repacking must drop that padding row-by-row
+        // rather than reading the buffer as if it were tightly packed (which would skew the image).
+        let width = 2;
+        let height = 3;
+        let padded_bytes_per_row = (align_up(width, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * 4) as usize;
+        let row_bytes = (width * 4) as usize;
+
+        let mut mapped = vec![0u8; padded_bytes_per_row * height as usize];
+        // Mark the real pixel bytes of every row with a per-row tag and leave the padding as 0xFF
+        // so a stride mistake would be visible in the output.
+        mapped.fill(0xFF);
+        for y in 0..height as usize {
+            for (i, byte) in mapped[y * padded_bytes_per_row..y * padded_bytes_per_row + row_bytes]
+                .iter_mut()
+                .enumerate()
+            {
+                *byte = (y * 10 + i) as u8;
+            }
+        }
+
+        let packed = repack_padded_rows(&mapped, width, height);
+
+        assert_eq!(packed.len(), row_bytes * height as usize);
+        for y in 0..height as usize {
+            for i in 0..row_bytes {
+                assert_eq!(
+                    packed[y * row_bytes + i],
+                    (y * 10 + i) as u8,
+                    "row {y} byte {i} mismatch"
+                );
+            }
+        }
+    }
 }
