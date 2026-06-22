@@ -23,7 +23,12 @@ pub struct BfTermPool<T: ?Sized> {
     object: UnsafeCell<T>,
 }
 
+// SAFETY: the `UnsafeCell` is only ever accessed behind the busy/forbidden
+// protocol, so sending the pool to another thread is sound whenever `T` itself
+// is `Send`.
 unsafe impl<T: Send> Send for BfTermPool<T> {}
+// SAFETY: concurrent `&self` access goes through the busy/forbidden lock, which
+// serialises writers against readers, so sharing is sound when `T` is `Send + Sync`.
 unsafe impl<T: Send + Sync> Sync for BfTermPool<T> {}
 
 impl<T> BfTermPool<T> {
@@ -91,7 +96,8 @@ impl<T: ?Sized> Deref for BfTermPoolRead<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // There can only be read guards.
+        // SAFETY: this guard holds the shared (read) lock, so concurrent readers
+        // are allowed but no writer can be active; an immutable borrow is sound.
         unsafe { &*self.mutex.object.get() }
     }
 }
@@ -112,14 +118,16 @@ impl<T: ?Sized> Deref for BfTermPoolWrite<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // There can only be read guards.
+        // SAFETY: this guard holds the exclusive (write) lock, so it is the only
+        // guard accessing the object; an immutable borrow is sound.
         unsafe { &*self.mutex.object.get() }
     }
 }
 
 impl<T: ?Sized> DerefMut for BfTermPoolWrite<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
+        // SAFETY: this guard holds the exclusive (write) lock, so it is the only
+        // guard accessing the object; a mutable borrow is sound.
         unsafe { &mut *self.mutex.object.get() }
     }
 }
@@ -152,14 +160,18 @@ impl<T: ?Sized> Deref for BfTermPoolThreadWrite<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        // There can only be read guards.
+        // SAFETY: this guard is created under the `write_exclusive` contract that
+        // only a single thread uses it, so it is the sole accessor; an immutable
+        // borrow is sound.
         unsafe { &*self.mutex.object.get() }
     }
 }
 
 impl<T: ?Sized> DerefMut for BfTermPoolThreadWrite<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // We are the only guard after `write()`, so we can provide mutable access to the underlying object.
+        // SAFETY: this guard is created under the `write_exclusive` contract that
+        // only a single thread uses it, so it is the sole accessor; a mutable
+        // borrow is sound.
         unsafe { &mut *self.mutex.object.get() }
     }
 }
