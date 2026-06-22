@@ -31,7 +31,7 @@ pub fn benchmark_sharded_hashmap(c: &mut Criterion) {
 
 /// Benchmark the same workloads against [`dashmap::DashSet`] as a baseline to
 /// put the sharded hash map's scalability in context.
-pub(crate) fn benchmark_dashset(c: &mut Criterion) {
+pub fn benchmark_dashset(c: &mut Criterion) {
     for num_threads in THREADS {
         for read_ratio in READ_RATIOS {
             for existing_percent in EXISTING_PERCENTAGES {

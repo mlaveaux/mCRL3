@@ -113,8 +113,8 @@ impl SummandGroup {
             })
             .collect::<Result<Vec<Value>, _>>()?;
 
-        write_parameter_indices.sort();
-        read_parameter_indices.sort();
+        write_parameter_indices.sort_unstable();
+        read_parameter_indices.sort_unstable();
 
         let meta = LDDFunction::relation_product_meta(manager, &read_parameter_indices, &write_parameter_indices)?.0;
         let action_label_index = read_parameters.len() + write_parameters.len();
@@ -128,11 +128,6 @@ impl SummandGroup {
             meta,
             action_label_index,
         })
-    }
-
-    /// Returns the transition relation LDD for this summand group.
-    pub fn relation(&self) -> &LDDFunction {
-        &self.relation
     }
 
     /// Returns the read parameters for this summand group.

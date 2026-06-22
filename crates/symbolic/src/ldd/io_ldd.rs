@@ -1,12 +1,3 @@
-//!
-//! # The streamable ldd format:
-//!
-//! Every LDD is traversed in order and assigned a unique number. Whenever traversal
-//! encounters an LDD for which all children have been visited it is written to the stream
-//! as `0:[value, down_index, right_index]`. Every output LDD is written as `1:index`, and
-//! will be returned by `read_ldd()`.
-//!
-
 use std::cell::RefCell;
 
 use oxidd::ldd::LDDFunction;
@@ -27,7 +18,12 @@ use crate::iter_nodes;
 const BLF_MAGIC: u64 = 0x8baf;
 const BLF_VERSION: u64 = 0x8306;
 
-/// \brief Writes ldds in a streamable binary format to an output stream.
+/// Writes LDDs in a streamable binary format to an output stream.
+///
+/// Every LDD is traversed in order and assigned a unique number. Whenever traversal
+/// encounters an LDD for which all children have been visited it is written to the stream
+/// as `0:[value, down_index, right_index]`. Every output LDD is written as `1:index`, and
+/// will be returned by [BinaryLddReader::read_ldd].
 pub struct BinaryLddWriter<W: BitStreamWrite> {
     writer: W,
     nodes: RefCell<IndexedSet<LDDFunction>>,
@@ -51,7 +47,7 @@ impl<W: BitStreamWrite> BinaryLddWriter<W> {
     }
 
     /// Writes an LDD to the stream.
-    pub fn write_ldd(&mut self, ldd: &LDDFunction, _manager: &LDDManagerRef) -> Result<(), MercError> {
+    pub fn write_ldd(&mut self, ldd: &LDDFunction) -> Result<(), MercError> {
         for (node, Data(value, down, right)) in iter_nodes(ldd, |node| {
             // Skip any LDD that we have already inserted in the stream
             !self.nodes.borrow().contains(node)
@@ -212,7 +208,7 @@ mod tests {
             let mut vector: Vec<u8> = Vec::new();
             let stream = BitStreamWriter::new(&mut vector);
             let mut output_stream = BinaryLddWriter::new(&manager, stream).unwrap();
-            output_stream.write_ldd(&term, &manager).unwrap();
+            output_stream.write_ldd(&term).unwrap();
             drop(output_stream);
 
             let mut input_stream = BinaryLddReader::new(&manager, BitStreamReader::new(&vector[..])).unwrap();
@@ -241,7 +237,7 @@ mod tests {
 
             let mut output_stream = BinaryLddWriter::new(&manager, stream).unwrap();
             for term in &input {
-                output_stream.write_ldd(term, &manager).unwrap();
+                output_stream.write_ldd(term).unwrap();
             }
             drop(output_stream); // Explicitly drop to release the mutable borrow
 
