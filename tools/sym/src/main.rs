@@ -202,6 +202,15 @@ fn init_bdd_manager(cli: &Cli) -> oxidd::bdd::BDDManagerRef {
     )
 }
 
+/// Initializes the Oxidd LDD manager based on CLI arguments.
+fn init_ldd_manager(cli: &Cli) -> oxidd::ldd::LDDManagerRef {
+    oxidd::ldd::new_manager(
+        cli.oxidd_node_capacity,
+        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
+        cli.oxidd_workers,
+    )
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -229,10 +238,10 @@ fn main() -> ExitCode {
 fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
     if let Some(command) = &cli.commands {
         match command {
-            Commands::Info(args) => handle_info(args, timing)?,
+            Commands::Info(args) => handle_info(cli, args, timing)?,
             Commands::Explore(args) => handle_explore(cli, args, timing)?,
             Commands::Reorder(args) => handle_reorder(args, timing)?,
-            Commands::Convert(args) => handle_convert(args, timing)?,
+            Commands::Convert(args) => handle_convert(cli, args, timing)?,
             Commands::Reduce(args) => handle_reduce(cli, args, timing)?,
         }
     }

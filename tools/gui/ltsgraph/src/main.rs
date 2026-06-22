@@ -35,6 +35,7 @@ use merc_ltsgraph_lib::Viewer;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::init_console;
+use merc_tools::report_error;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -71,6 +72,10 @@ pub struct Cli {
     /// Change the viewer to CPU or GPU rendering.
     #[arg(long, default_value_t = ViewerType::Cpu, value_enum)]
     viewer: ViewerType,
+
+    /// Print timing information after loading an LTS.
+    #[arg(long)]
+    timings: bool,
 }
 
 /// Contains all the GUI related state information, both the graph layout and the viewer state.
@@ -131,7 +136,11 @@ impl GuiSettings {
 
 // Initialize a tokio runtime for async calls
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<ExitCode, MercError> {
+async fn main() -> ExitCode {
+    report_error(run().await)
+}
+
+async fn run() -> Result<(), MercError> {
     // Attach the standard output to the command line.
     let _console = init_console()?;
 
@@ -144,7 +153,7 @@ async fn main() -> Result<ExitCode, MercError> {
 
     if cli.version {
         eprintln!("{}", Version);
-        return Ok(ExitCode::SUCCESS);
+        return Ok(());
     }
 
     let wgpu = if cli.viewer == ViewerType::Gpu {
@@ -312,6 +321,7 @@ async fn main() -> Result<ExitCode, MercError> {
         let state = state.clone();
         let layout_handle = layout_handle.clone();
         let render_handle = render_handle.clone();
+        let timings = cli.timings;
 
         move |path: &Path, format: Option<LtsFormat>| -> Result<(), MercError> {
             debug!("Loading LTS {} ...", path.to_string_lossy());
@@ -349,6 +359,10 @@ async fn main() -> Result<ExitCode, MercError> {
                     // Enable the layout and rendering threads.
                     layout_handle.resume();
                     render_handle.resume();
+
+                    if timings {
+                        timing.print();
+                    }
                     Ok(())
                 }
                 Err(x) => show_error_dialog("Failed to load LTS!", &format!("{x}")),
@@ -493,5 +507,5 @@ async fn main() -> Result<ExitCode, MercError> {
     layout_handle.stop();
     render_handle.stop();
 
-    Ok(ExitCode::SUCCESS)
+    Ok(())
 }
