@@ -99,3 +99,35 @@ fn test_miri_term_iterator() {
     let term = build_sample();
     assert_eq!(term.iter().count(), 4);
 }
+
+/// `ATermArgs` previously did not override `size_hint`, so its lower bound was 0
+/// and there was no upper bound. Adapters such as `Skip` and `zip` use `size_hint`
+/// to implement their own `ExactSizeIterator::len`, so without the fix they would
+/// return 0 regardless of the actual remaining count.
+#[test]
+fn test_aterm_args_size_hint_is_exact() {
+    // `h(a, b, c)` has arity 3, giving a three-element `ATermArgs` iterator.
+    let a = ATerm::constant(&Symbol::new("a_sh", 0));
+    let b = ATerm::constant(&Symbol::new("b_sh", 0));
+    let c = ATerm::constant(&Symbol::new("c_sh", 0));
+    let term = ATerm::with_args(&Symbol::new("h_sh", 3), &[a.copy(), b.copy(), c.copy()]).protect();
+
+    // Fresh iterator: all 3 arguments remain.
+    let mut iter = term.arguments();
+    assert_eq!(iter.size_hint(), (3, Some(3)), "size_hint before advancing");
+    assert_eq!(iter.len(), 3, "ExactSizeIterator::len before advancing");
+
+    // Consume one argument; 2 remain.
+    iter.next();
+    assert_eq!(iter.size_hint(), (2, Some(2)), "size_hint after one next()");
+    assert_eq!(iter.len(), 2, "ExactSizeIterator::len after one next()");
+
+    // `skip` is built on top of `size_hint`; with the fix it must still report the
+    // correct remaining length.
+    let after_skip = term.arguments().skip(1);
+    assert_eq!(
+        after_skip.len(),
+        2,
+        "skip(1) on a 3-argument iterator must report len 2"
+    );
+}

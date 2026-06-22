@@ -9,6 +9,44 @@ use merc_syntax::UntypedStateFrmSpec;
 use merc_syntax::parse_sortexpr;
 use merc_utilities::test_logger;
 
+/// `DataExprIn`, `DataExprIntDiv`, and `DataExprMod` used to be plain string
+/// matches without a negative lookahead (`!Id`). This meant that identifiers
+/// whose names *start* with `in`, `div`, or `mod` were incorrectly tokenised
+/// as a keyword followed by the rest of the identifier.
+#[test]
+fn keywords_are_not_prefix_of_identifiers() {
+    // `index` starts with `in` — must parse as a plain identifier.
+    UntypedProcessSpecification::parse("map index: Bool -> Bool;")
+        .expect("`index` must not be split into keyword `in` + `dex`");
+    // `divides` starts with `div`.
+    UntypedProcessSpecification::parse("map divides: Bool -> Bool;")
+        .expect("`divides` must not be split into keyword `div` + `ides`");
+    // `modern` starts with `mod`.
+    UntypedProcessSpecification::parse("map modern: Bool -> Bool;")
+        .expect("`modern` must not be split into keyword `mod` + `ern`");
+}
+
+/// `Number` used to be a non-atomic rule (`{ ASCII_DIGIT+ }`), which in pest
+/// causes implicit whitespace to be absorbed *after* the digits. That meant
+/// tokens like `"3 "` could match `Number`, and boundary tests such as
+/// `"3 div 2"` could mis-parse because the parser consumed the trailing space
+/// as part of the number and left `div` unrecognised as an operator.
+#[test]
+fn number_token_does_not_absorb_whitespace() {
+    // A Number followed immediately by a keyword must still parse correctly.
+    // Parsing fails on the leading `val(...)` wrapper in a data-specification
+    // context, so use a minimal expression that forces a Number-then-keyword
+    // boundary: `3 div 2`.
+    let parsed = Mcrl2Parser::parse(Rule::Number, "3 extra");
+    // The Number rule must match exactly the digit run, not consume the space.
+    assert!(parsed.is_ok());
+    assert_eq!(
+        parsed.unwrap().as_str(),
+        "3",
+        "Number must not consume trailing whitespace"
+    );
+}
+
 #[test]
 fn test_parse_ifthen() {
     let expr = "init a -> b <> b;";

@@ -291,6 +291,25 @@ mod tests {
     use crate::permutation::permutation_group;
     use crate::permutation::permutation_group_size;
 
+    /// `permutation_group_size` previously used `.product()`, which overflows
+    /// `usize` for `n >= 21` (21! > `usize::MAX` on 64-bit). The fix uses
+    /// `saturating_mul` so that large inputs return `usize::MAX` rather than
+    /// panicking in debug builds or wrapping silently in release.
+    #[test]
+    fn permutation_group_size_saturates_instead_of_overflowing() {
+        assert_eq!(permutation_group_size(0), 1, "0! = 1");
+        assert_eq!(permutation_group_size(1), 1, "1! = 1");
+        assert_eq!(permutation_group_size(3), 6, "3! = 6");
+        assert_eq!(permutation_group_size(5), 120, "5! = 120");
+        // 21! = 51_090_942_171_709_440_000 which exceeds u64::MAX, so on any
+        // 64-bit platform this saturates to usize::MAX.
+        assert_eq!(
+            permutation_group_size(21),
+            usize::MAX,
+            "21! must saturate to usize::MAX rather than overflow"
+        );
+    }
+
     #[test]
     fn test_permutation_from_input() {
         let permutation = Permutation::from_mapping_notation("[0->   2, 1   ->0, 2->1]").unwrap();

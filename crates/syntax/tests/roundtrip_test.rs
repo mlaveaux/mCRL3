@@ -9,11 +9,14 @@ use merc_syntax::Bound;
 use merc_syntax::PbesExpr;
 use merc_syntax::ProcExprBinaryOp;
 use merc_syntax::ProcessExpr;
+use merc_syntax::Span;
 use merc_syntax::StateFrm;
+use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedPres;
 use merc_syntax::UntypedProcessSpecification;
 use merc_syntax::UntypedStateFrmSpec;
+use merc_syntax::line_column;
 use merc_syntax::make_process_specification;
 use merc_syntax::random_lps;
 use merc_syntax::random_pbes;
@@ -118,6 +121,81 @@ fn visitor_breaks_from_nested_node() {
     .unwrap();
 
     assert_eq!(found.as_deref(), Some("Y"), "Break value from a nested node was lost");
+}
+
+/// `line_column` used to be `print_location`, which computed the next accumulator
+/// value as `current - line.len()`. When `span.start` fell inside the first line
+/// (e.g. offset 0), `current - line.len()` underflowed for `usize`, causing a
+/// panic in debug builds and silent wrap-around in release.
+#[test]
+fn line_column_no_underflow() {
+    // Single-line: offset 0 is the first character — the old code would attempt
+    // `0usize - "hello".len()` = underflow.
+    assert_eq!(
+        line_column("hello", &Span { start: 0, end: 1 }),
+        (1, 1),
+        "first character of a single-line string"
+    );
+    // Interior character on the first line.
+    assert_eq!(
+        line_column("hello", &Span { start: 4, end: 5 }),
+        (1, 5),
+        "last character of a single-line string"
+    );
+}
+
+#[test]
+fn line_column_multi_line() {
+    // Second line: offset 6 is 'w' (the first character after the '\n' in "hello\n").
+    assert_eq!(
+        line_column("hello\nworld", &Span { start: 6, end: 7 }),
+        (2, 1),
+        "first character of second line"
+    );
+    // Interior character on the second line.
+    assert_eq!(
+        line_column("hello\nworld", &Span { start: 8, end: 9 }),
+        (2, 3),
+        "third character of second line"
+    );
+}
+
+#[test]
+fn line_column_past_end_does_not_panic() {
+    // Offset past the end of input must not panic (saturating_sub guards this).
+    let (line, _col) = line_column("hi", &Span { start: 100, end: 101 });
+    assert_eq!(line, 1, "past-end offset resolves to the last line");
+}
+
+/// An `EqnSpec` without a `var` declaration section must not emit an empty
+/// `var` section when printed. The grammar requires at least one declaration
+/// after `var`, so printing an empty `var\n` block produces output that cannot
+/// be parsed back.
+#[test]
+fn eqn_spec_without_variables_no_empty_var_section() {
+    let spec = UntypedDataSpecification::parse("eqn true = false;")
+        .expect("eqn without var should parse");
+    let printed = format!("{spec}");
+    assert!(
+        !printed.contains("var\n"),
+        "empty var section must not be emitted:\n{printed}"
+    );
+    UntypedDataSpecification::parse(&printed).expect("re-printed form must parse");
+}
+
+/// Action declarations with sort arguments used to be printed as `id(s1, s2)`
+/// instead of the correct `id: s1 # s2` form. The incorrect form would fail to
+/// reparse because the grammar expects a colon-separated sort product.
+#[test]
+fn act_decl_with_args_prints_colon_hash() {
+    let spec = UntypedProcessSpecification::parse("act a: Bool # Nat;")
+        .expect("action declaration with sort args should parse");
+    let printed = format!("{spec}");
+    assert!(
+        printed.contains("a: Bool # Nat"),
+        "ActDecl with args must use ':' and '#':\n{printed}"
+    );
+    UntypedProcessSpecification::parse(&printed).expect("printed form must reparse");
 }
 
 // --- Randomized print/parse round-trip properties ------------------------------------------------

@@ -353,7 +353,7 @@ mod tests {
                     explicit_lts,
                     explicit_lts_bdd,
                     false,
-                    &mut Timing::new()
+                    &Timing::new()
                 ),
                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
             );

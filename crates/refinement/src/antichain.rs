@@ -233,4 +233,29 @@ mod tests {
             antichain.check_consistency();
         })
     }
+
+    /// `Antichain::len` used to return `storage.len()` (the number of distinct keys)
+    /// rather than the total number of (key, value) pairs. When a key maps to multiple
+    /// incomparable sets, the old implementation under-counted.
+    #[test]
+    fn test_antichain_len_counts_pairs_not_keys() {
+        let mut antichain: Antichain<u32, u32> = Antichain::new();
+
+        // Insert two incomparable sets under key 1: {2} and {5, 6}.
+        antichain.insert(1, vecset![2]);
+        antichain.insert(1, vecset![5, 6]);
+        // Insert one set under key 2.
+        antichain.insert(2, vecset![10]);
+
+        // The antichain has 2 pairs for key 1 and 1 pair for key 2 → 3 total.
+        // Before the fix, `len()` returned `storage.len()` = 2 (two keys).
+        assert_eq!(
+            antichain.len(),
+            3,
+            "len() must count pairs, not keys; got {:?}",
+            antichain
+        );
+        // Verify that iter yields exactly as many items as len() reports.
+        assert_eq!(antichain.iter().count(), antichain.len());
+    }
 }
