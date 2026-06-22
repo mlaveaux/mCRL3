@@ -11,7 +11,4 @@ rust-version.workspace = true
 clap.workspace = true
 duct.workspace = true
 glob.workspace = true
-regex.workspace = true
-serde_json.workspace = true
-serde.workspace = true
 which.workspace = true
