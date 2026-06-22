@@ -335,7 +335,7 @@ struct CartesianProductContext {
 
 impl CartesianProductContext {
     /// Creates a fresh context with empty buffers.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             lengths: Vec::new(),
             indices: Vec::new(),
@@ -450,7 +450,7 @@ struct ParallelTransitionContext {
 
 impl ParallelTransitionContext {
     /// Creates a fresh context with empty buffers.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             subset_indices: Vec::new(),
             base_target: Vec::new(),
@@ -493,7 +493,7 @@ struct ParallelTransitionIter<'ctx, 'a, L: LTS> {
 impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
     /// Creates a new iterator over parallel transitions for the given LTSs
     /// and current state vector, reusing the buffers held in `ctx`.
-    pub fn new(ctx: &'ctx mut ParallelTransitionContext, lts_list: &'a [L], current_states: &[StateIndex]) -> Self {
+    pub(crate) fn new(ctx: &'ctx mut ParallelTransitionContext, lts_list: &'a [L], current_states: &[StateIndex]) -> Self {
         assert!(
             lts_list.len() < usize::BITS as usize,
             "Number of LTSs exceeds maximum supported for subset enumeration"

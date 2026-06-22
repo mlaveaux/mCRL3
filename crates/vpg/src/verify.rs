@@ -73,7 +73,7 @@ struct Restricted<'a, G: PG> {
 
 impl<G: PG> Restricted<'_, G> {
     /// Create a new sub-game induced by the given strategy on the given game.
-    pub fn new<'a>(game: &'a G, player: Player, strategy: &'a Strategy) -> Restricted<'a, G> {
+    pub(crate) fn new<'a>(game: &'a G, player: Player, strategy: &'a Strategy) -> Restricted<'a, G> {
         Restricted { game, player, strategy }
     }
 }

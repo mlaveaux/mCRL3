@@ -3,7 +3,7 @@ use std::error::Error;
 use duct::cmd;
 
 /// Runs `cargo publish --dry-run` for all crates to verify they can be published.
-pub fn publish_crates() -> Result<(), Box<dyn Error>> {
+pub(crate) fn publish_crates() -> Result<(), Box<dyn Error>> {
     // The list of crates to publish, they must be published in order of dependencies, i.e., downstream first.
     let crates = [
         "merc_utilities",

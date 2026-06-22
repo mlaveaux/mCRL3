@@ -287,7 +287,7 @@ pub(crate) struct Translation<'a, L, E> {
 
 impl<'a, L: LTS, E> Translation<'a, L, E> {
     /// Creates a new translation instance.
-    pub fn new(lts: &'a L, parsed_labels: &'a Vec<MultiAction>, equation_system: &'a ModalEquationSystem) -> Self {
+    pub(crate) fn new(lts: &'a L, parsed_labels: &'a Vec<MultiAction>, equation_system: &'a ModalEquationSystem) -> Self {
         let progress: TimeProgress<usize> = TimeProgress::new(
             |num_of_vertices: usize| {
                 info!("Translated {} vertices...", num_of_vertices);
@@ -314,7 +314,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     /// outgoing edges of this vertex. The argument is the transition
     /// corresponding to the modality, or None if there is no modality (e.g.,
     /// for conjunctions).
-    pub fn translate<F, C>(
+    pub(crate) fn translate<F, C>(
         &mut self,
         initial_state: StateIndex,
         initial_equation_index: usize,
@@ -353,7 +353,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     }
 
     /// Returns the collected vertices with placeholders removed.
-    pub fn vertices(&self) -> Vec<(Player, Priority)> {
+    pub(crate) fn vertices(&self) -> Vec<(Player, Priority)> {
         debug_assert!(
             self.vertices.iter().all(|v| v.is_some()),
             "All vertices should be assigned before retrieving the vertices"
@@ -366,7 +366,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
     }
 
     /// Returns the collected edges, where the edge label is ignored.
-    pub fn edges(&self) -> &Vec<(VertexIndex, E, VertexIndex)> {
+    pub(crate) fn edges(&self) -> &Vec<(VertexIndex, E, VertexIndex)> {
         &self.edges
     }
 

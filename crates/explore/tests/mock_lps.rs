@@ -5,13 +5,13 @@ use merc_explore::Summand;
 use merc_utilities::MercError;
 
 /// Action label produced by a transition: the label of the firing summand.
-pub type Label = u32;
+pub(crate) type Label = u32;
 
 /// A reachable state, as a vector of coordinate values.
-pub type State = Vec<usize>;
+pub(crate) type State = Vec<usize>;
 
 /// A single transition over state vectors, `(source, label, target)`.
-pub type Edge = (State, Label, State);
+pub(crate) type Edge = (State, Label, State);
 
 /// A mock [`LPS`] over numbered state vectors of fixed dimension.
 ///
@@ -19,20 +19,20 @@ pub type Edge = (State, Label, State);
 /// guards on individual coordinates and an effect that, when every guard holds,
 /// adds a value to a set of coordinates.
 #[derive(Clone)]
-pub struct MockLps {
+pub(crate) struct MockLps {
     initial: State,
     summands: Vec<MockSummand>,
 }
 
 impl MockLps {
     /// Builds an LPS from an initial vector and a set of summands.
-    pub fn new(initial: State, summands: Vec<MockSummand>) -> MockLps {
+    pub(crate) fn new(initial: State, summands: Vec<MockSummand>) -> MockLps {
         MockLps { initial, summands }
     }
 
     /// A `d`-dimensional grid: one increment-summand per coordinate `i`, guarded
     /// by the single inequality `state[i] < bounds[i]`.
-    pub fn grid(bounds: &[usize]) -> MockLps {
+    pub(crate) fn grid(bounds: &[usize]) -> MockLps {
         let summands = (0..bounds.len())
             .map(|i| MockSummand::new(i as Label, vec![(i, bounds[i])], vec![i]))
             .collect();
@@ -43,7 +43,7 @@ impl MockLps {
     /// `+1`, adds any value in `0..=steps[i]`, fanning out into several
     /// successors per state. The `steps` give a different `k` for every state
     /// parameter; a `steps[i]` of `0` makes that summand a guarded self-loop.
-    pub fn grid_with_steps(bounds: &[usize], steps: &[usize]) -> MockLps {
+    pub(crate) fn grid_with_steps(bounds: &[usize], steps: &[usize]) -> MockLps {
         assert_eq!(bounds.len(), steps.len(), "one step bound per coordinate");
         let summands = (0..bounds.len())
             .map(|i| MockSummand::with_step(i as Label, vec![(i, bounds[i])], i, steps[i]))
@@ -54,7 +54,7 @@ impl MockLps {
     /// A grid extended with a "diagonal" summand whose guard is a conjunction of
     /// two inequalities and whose effect increments both coordinates at once.
     /// Requires at least two dimensions.
-    pub fn grid_with_diagonal(bounds: &[usize]) -> MockLps {
+    pub(crate) fn grid_with_diagonal(bounds: &[usize]) -> MockLps {
         assert!(bounds.len() >= 2, "diagonal needs at least two dimensions");
         let mut lps = MockLps::grid(bounds);
         lps.summands.push(MockSummand::new(
@@ -68,7 +68,7 @@ impl MockLps {
 
 /// A guarded-increment summand of [`MockLps`].
 #[derive(Clone)]
-pub struct MockSummand {
+pub(crate) struct MockSummand {
     label: Label,
     /// Conjunction of guards, each requiring `state[pos] < bound`.
     guards: Vec<(usize, usize)>,
@@ -83,21 +83,21 @@ pub struct MockSummand {
 impl MockSummand {
     /// Creates a summand that adds one to each listed coordinate, producing a
     /// single successor per state.
-    pub fn new(label: Label, guards: Vec<(usize, usize)>, increments: Vec<usize>) -> MockSummand {
+    pub(crate) fn new(label: Label, guards: Vec<(usize, usize)>, increments: Vec<usize>) -> MockSummand {
         let increments = increments.into_iter().map(|pos| (pos, 1, 1)).collect();
         MockSummand::with_intervals(label, guards, increments)
     }
 
     /// Creates a summand that adds any value in `0..=step` to `pos`, producing
     /// `step + 1` successors per state.
-    pub fn with_step(label: Label, guards: Vec<(usize, usize)>, pos: usize, step: usize) -> MockSummand {
+    pub(crate) fn with_step(label: Label, guards: Vec<(usize, usize)>, pos: usize, step: usize) -> MockSummand {
         MockSummand::with_intervals(label, guards, vec![(pos, 0, step)])
     }
 
     /// Creates a summand from its guard conjunction and per-coordinate delta
     /// intervals, deriving the read/write position sets the cache contract
     /// requires.
-    pub fn with_intervals(
+    pub(crate) fn with_intervals(
         label: Label,
         guards: Vec<(usize, usize)>,
         increments: Vec<(usize, usize, usize)>,
@@ -132,7 +132,7 @@ impl MockSummand {
 
 /// Per-thread scratch for [`MockSummand::enumerate`]: the next-state buffer.
 #[derive(Default)]
-pub struct MockContext {
+pub(crate) struct MockContext {
     next: State,
 }
 

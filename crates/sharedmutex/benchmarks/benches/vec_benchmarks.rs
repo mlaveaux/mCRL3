@@ -8,7 +8,7 @@ use benchmarks_sharedmutex::READ_RATIOS;
 use benchmarks_sharedmutex::THREADS;
 use benchmarks_sharedmutex::benchmark;
 
-pub fn benchmark_vector(c: &mut Criterion) {
+pub(crate) fn benchmark_vector(c: &mut Criterion) {
     for num_threads in THREADS {
         for read_ratio in READ_RATIOS {
             benchmark(

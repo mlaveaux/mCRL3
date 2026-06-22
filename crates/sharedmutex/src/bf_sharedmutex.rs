@@ -7,14 +7,14 @@ use std::ops::DerefMut;
 
 #[cfg(not(loom))]
 mod inner {
-    pub use std::cell::UnsafeCell;
-    pub use std::hint::spin_loop;
-    pub use std::sync::Arc;
-    pub use std::sync::Mutex;
-    pub use std::sync::MutexGuard;
-    pub use std::sync::atomic::AtomicBool;
-    pub use std::sync::atomic::Ordering;
-    pub use std::sync::atomic::fence;
+    pub(super) use std::cell::UnsafeCell;
+    pub(super) use std::hint::spin_loop;
+    pub(super) use std::sync::Arc;
+    pub(super) use std::sync::Mutex;
+    pub(super) use std::sync::MutexGuard;
+    pub(super) use std::sync::atomic::AtomicBool;
+    pub(super) use std::sync::atomic::Ordering;
+    pub(super) use std::sync::atomic::fence;
 }
 
 // We replace the standard implementation by loom's implementation.

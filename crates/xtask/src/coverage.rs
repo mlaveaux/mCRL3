@@ -25,7 +25,7 @@ fn clean_files(pattern: &str) -> Result<(), Box<dyn Error>> {
 ///
 /// Run coverage, pass the given arguments to cargo.
 ///
-pub fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+pub(crate) fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     // Ignore errors about missing directory.
     let _ = remove_dir_all("target/coverage");
     create_dir_all("target/coverage")?;

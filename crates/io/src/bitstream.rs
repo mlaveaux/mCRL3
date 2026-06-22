@@ -160,7 +160,7 @@ mod tests {
 
     /// Calculate minimum bits needed to represent the value
     /// Use 1 bit if value is 0 to ensure at least 1 bit is written
-    pub fn required_bits(value: u64) -> u8 {
+    pub(super) fn required_bits(value: u64) -> u8 {
         if value == 0 {
             1
         } else {

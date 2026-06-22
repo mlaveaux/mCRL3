@@ -12,7 +12,7 @@ use benchmarks_utilities::benchmark;
 
 /// Benchmark the sharded counter, which keeps a per-thread shard so increments
 /// stay uncontended as the thread count grows.
-pub fn benchmark_sharded_counter(c: &mut Criterion) {
+pub(crate) fn benchmark_sharded_counter(c: &mut Criterion) {
     for num_threads in THREADS {
         benchmark(
             c,
@@ -27,7 +27,7 @@ pub fn benchmark_sharded_counter(c: &mut Criterion) {
 
 /// Benchmark a single shared [`AtomicUsize`], the baseline whose contention the
 /// sharded counter is meant to avoid.
-pub fn benchmark_atomic_usize(c: &mut Criterion) {
+pub(crate) fn benchmark_atomic_usize(c: &mut Criterion) {
     for num_threads in THREADS {
         benchmark(
             c,

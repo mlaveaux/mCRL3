@@ -19,7 +19,7 @@ use crate::syntax::RewriteSpecificationSyntax;
 
 #[derive(Parser)]
 #[grammar = "rec_grammar.pest"]
-pub struct RecParser;
+pub(crate) struct RecParser;
 
 type ParseResult<T> = Result<T, Error<Rule>>;
 type ParseNode<'i> = Node<'i, Rule, ()>;

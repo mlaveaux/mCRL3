@@ -19,7 +19,7 @@ fn exe_name(binary_name: &str) -> String {
 
 /// Builds the project in release mode and packages specified binaries into a
 /// newly created 'package' directory.
-pub fn package() -> Result<(), Box<dyn Error>> {
+pub(crate) fn package() -> Result<(), Box<dyn Error>> {
     // Get the workspace root directory
     let workspace_root = env::current_dir()?;
 

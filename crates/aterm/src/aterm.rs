@@ -710,15 +710,15 @@ mod tests {
 
         let thread_a = {
             let term = term.clone();
-            let thread_a = std::thread::spawn(move || {
+            
+
+            std::thread::spawn(move || {
                 let symbol = Symbol::new("a", 0);
 
                 for _ in 0..100000 {
                     *term.lock() = ATermSend::from(ATerm::constant(&symbol));
                 }
-            });
-
-            thread_a
+            })
         };
 
         for _ in 0..100000 {

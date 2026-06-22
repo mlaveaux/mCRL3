@@ -47,7 +47,7 @@ const BLOCK_SIZE: usize = 1024;
 
 impl ATermStorage {
     /// Creates a new, empty storage.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             terms: StablePointerSet::with_capacity_and_hasher(INITIAL_CAPACITY, FxBuildHasher),
             int_terms: StablePointerSet::with_capacity_and_hasher_in(
@@ -69,7 +69,7 @@ impl ATermStorage {
     /// Inserts a term with the given symbol and arguments into the storage,
     /// returning a pointer to the stored term and whether it was newly
     /// inserted.
-    pub fn insert<'a, 'b, 'c, S: Symb<'a, 'b>>(
+    pub(crate) fn insert<'a, 'b, 'c, S: Symb<'a, 'b>>(
         &'c self,
         symbol: &'b S,
         args: &'c [ATermRef<'c>],
@@ -161,7 +161,7 @@ impl ATermStorage {
 
     /// Inserts an integer term into the storage, returning a pointer to the stored term
     /// and whether it was newly inserted.
-    pub unsafe fn insert_int_term(&self, symbol: SymbolRef<'_>, value: usize) -> (StablePointer<SharedTerm>, bool) {
+    pub(crate) unsafe fn insert_int_term(&self, symbol: SymbolRef<'_>, value: usize) -> (StablePointer<SharedTerm>, bool) {
         unsafe {
             let (result, inserted) = self.int_terms.insert(SharedTermInt {
                 symbol: SymbolRef::from_index(symbol.shared()),
@@ -178,7 +178,7 @@ impl ATermStorage {
     ///
     /// Removal invalidates every [`StablePointer`] to a removed term; the caller must guarantee
     /// that no pointer to a removed term is dereferenced afterwards.
-    pub unsafe fn retain<F>(&mut self, mut f: F)
+    pub(crate) unsafe fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&StablePointer<SharedTerm>) -> bool,
     {
@@ -212,7 +212,7 @@ impl ATermStorage {
     }
 
     /// Returns the number of stored terms.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.int_terms.len()
             + self.terms_0.len()
             + self.terms_1.len()
@@ -269,7 +269,7 @@ unsafe impl BlockAllocatorSafe for SharedTermInt {}
 
 impl SharedTermInt {
     /// Returns the value of the integer term.
-    pub fn value(&self) -> usize {
+    pub(crate) fn value(&self) -> usize {
         self.annotation
     }
 }

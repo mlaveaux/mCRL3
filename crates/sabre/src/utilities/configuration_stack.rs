@@ -147,7 +147,7 @@ pub(crate) struct ConfigurationStack<'a> {
 
 impl<'a> ConfigurationStack<'a> {
     /// Initialise the stack with one Configuration containing 'term' and the initial state of the set automaton
-    pub fn new(state: usize, term: &DataExpression) -> ConfigurationStack<'a> {
+    pub(crate) fn new(state: usize, term: &DataExpression) -> ConfigurationStack<'a> {
         let mut conf_list = ConfigurationStack {
             stack: Vec::with_capacity(8),
             side_branch_stack: vec![],
@@ -176,7 +176,7 @@ impl<'a> ConfigurationStack<'a> {
     }
 
     /// Grow a Configuration with index c. tr_slice contains the hypertransition to possibly multiple states
-    pub fn grow(&mut self, c: usize, tr_slice: &'a [(DataPosition, usize)]) {
+    pub(crate) fn grow(&mut self, c: usize, tr_slice: &'a [(DataPosition, usize)]) {
         // Pick the first transition to grow the stack
         let (pos, des) = tr_slice.first().unwrap();
 
@@ -207,7 +207,7 @@ impl<'a> ConfigurationStack<'a> {
 
     /// When rewriting prune "prunes" the configuration stack to the place where the first symbol
     /// of the matching rewrite rule was observed (at index 'depth').
-    pub fn prune(
+    pub(crate) fn prune(
         &mut self,
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
@@ -243,7 +243,7 @@ impl<'a> ConfigurationStack<'a> {
 
     /// Removes side info for configurations beyond configuration index 'end'.
     /// If 'including' is true the side info for the configuration with index 'end' is also deleted.
-    pub fn roll_back_side_info_stack(&mut self, end: usize, including: bool) {
+    pub(crate) fn roll_back_side_info_stack(&mut self, end: usize, including: bool) {
         loop {
             match self.side_branch_stack.last() {
                 None => {
@@ -262,7 +262,7 @@ impl<'a> ConfigurationStack<'a> {
 
     /// Roll back the configuration stack to level 'depth'.
     /// This function is used exclusively when a subtree has been explored and no matches have been found.
-    pub fn jump_back(&mut self, depth: usize, tp: &ThreadTermPool) {
+    pub(crate) fn jump_back(&mut self, depth: usize, tp: &ThreadTermPool) {
         // Updated subterms may have to be propagated up the configuration tree
         self.integrate_updated_subterms(depth, tp, true);
         self.current_node = Some(depth);
@@ -275,7 +275,7 @@ impl<'a> ConfigurationStack<'a> {
     /// When going back up the configuration tree the subterms stored in the configuration tree must be updated
     /// This function ensures that the Configuration at depth 'end' is made up to date.
     /// If store_intermediate is true, all configurations below 'end' are also up to date.
-    pub fn integrate_updated_subterms(&mut self, end: usize, tp: &ThreadTermPool, store_intermediate: bool) {
+    pub(crate) fn integrate_updated_subterms(&mut self, end: usize, tp: &ThreadTermPool, store_intermediate: bool) {
         // Check if there is anything to do. Start updating from self.oldest_reliable_subterm
         let mut up_to_date = self.oldest_reliable_subterm;
         if up_to_date == 0 || end >= up_to_date {
@@ -320,13 +320,13 @@ impl<'a> ConfigurationStack<'a> {
     }
 
     /// Final term computed by integrating all subterms up to the root configuration
-    pub fn compute_final_term(&mut self, tp: &ThreadTermPool) -> DataExpression {
+    pub(crate) fn compute_final_term(&mut self, tp: &ThreadTermPool) -> DataExpression {
         self.jump_back(0, tp);
         self.terms.read()[0].protect()
     }
 
     /// Returns a SideInfoType object if there is side info for the configuration with index 'leaf_index'
-    pub fn pop_side_branch_leaf(stack: &mut Vec<SideInfo<'a>>, leaf_index: usize) -> Option<SideInfoType<'a>> {
+    pub(crate) fn pop_side_branch_leaf(stack: &mut Vec<SideInfo<'a>>, leaf_index: usize) -> Option<SideInfoType<'a>> {
         let should_pop = match stack.last() {
             None => false,
             Some(si) => si.corresponding_configuration == leaf_index,

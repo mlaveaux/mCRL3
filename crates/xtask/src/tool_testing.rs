@@ -11,7 +11,7 @@ use which::which_in;
 ///
 /// `directory` is expected to be a release package directory laid out as produced by
 /// `xtask package`, with an `examples/` directory as a sibling (i.e. `<directory>/../examples`).
-pub fn test_tools(directory: &Path) -> Result<(), Box<dyn Error>> {
+pub(crate) fn test_tools(directory: &Path) -> Result<(), Box<dyn Error>> {
     // Create a unique temporary directory to perform the tests in, scoped to this process so
     // concurrent or repeated runs do not clash, and clean it up afterwards.
     let tmp_path = env::temp_dir().join(format!("merc-test-tools-{}", std::process::id()));
