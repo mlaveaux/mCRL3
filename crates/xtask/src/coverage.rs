@@ -33,7 +33,7 @@ pub fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     println!("=== running coverage ===");
 
     // The path from which cargo is called.
-    let mut base_directory = env::current_dir().unwrap();
+    let mut base_directory = env::current_dir()?;
     base_directory.push("target");
     base_directory.push("coverage");
 
@@ -48,7 +48,7 @@ pub fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     println!("ok.");
 
     println!("=== generating report ===");
-    let (fmt, file) = ("html", "target/coverage/html");
+    let report_dir = "target/coverage/html";
     cmd!(
         "grcov",
         base_directory,
@@ -57,22 +57,23 @@ pub fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
         "-s",
         ".",
         "-t",
-        fmt,
+        "html",
         "--branch",
         "--ignore-not-existing",
         "--ignore",
         "**/target/*",
         "-o",
-        file,
+        report_dir,
     )
     .run()?;
     println!("ok.");
 
     println!("=== cleaning up ===");
-    clean_files("**/*.profraw")?;
+    // The `.profraw` files are written under target/coverage; only clean those.
+    clean_files("target/coverage/**/*.profraw")?;
     println!("ok.");
 
-    println!("report location: {file}");
+    println!("report location: {report_dir}");
 
     Ok(())
 }

@@ -3,18 +3,28 @@ use std::path::Path;
 
 pub use duct::cmd;
 
-#[allow(clippy::ptr_arg)]
-fn add_target_flag(_arguments: &mut Vec<String>) {
-    #[cfg(target_os = "linux")]
-    {
-        _arguments.push("--target".to_string());
-        _arguments.push("x86_64-unknown-linux-gnu".to_string());
-    }
+/// Adds an explicit `--target <host triple>` so that `-Zbuild-std` has a concrete target.
+///
+/// The triple is derived from the host architecture and OS rather than hardcoded, so the
+/// sanitizers also work on aarch64 hosts (e.g. Apple Silicon).
+fn add_target_flag(arguments: &mut Vec<String>) {
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x86_64"
+    };
 
-    #[cfg(target_os = "macos")]
-    {
-        _arguments.push("--target".to_string());
-        _arguments.push("x86_64-apple-darwin".to_string());
+    let triple = if cfg!(target_os = "linux") {
+        Some(format!("{arch}-unknown-linux-gnu"))
+    } else if cfg!(target_os = "macos") {
+        Some(format!("{arch}-apple-darwin"))
+    } else {
+        None
+    };
+
+    if let Some(triple) = triple {
+        arguments.push("--target".to_string());
+        arguments.push(triple);
     }
 }
 
@@ -24,7 +34,7 @@ fn add_target_flag(_arguments: &mut Vec<String>) {
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec!["-Zbuild-std".to_string()]);
+    arguments.push("-Zbuild-std".to_string());
 
     add_target_flag(&mut arguments);
 
@@ -51,7 +61,7 @@ pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec!["-Zbuild-std".to_string()]);
+    arguments.push("-Zbuild-std".to_string());
 
     add_target_flag(&mut arguments);
 

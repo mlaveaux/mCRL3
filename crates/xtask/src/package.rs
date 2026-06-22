@@ -7,7 +7,15 @@ use std::env;
 use std::error::Error;
 use std::fs::copy;
 use std::fs::create_dir_all;
-use std::path::PathBuf;
+
+/// Returns the platform-specific executable file name for a binary (adds `.exe` on Windows).
+fn exe_name(binary_name: &str) -> String {
+    if cfg!(windows) {
+        format!("{binary_name}.exe")
+    } else {
+        binary_name.to_string()
+    }
+}
 
 /// Builds the project in release mode and packages specified binaries into a
 /// newly created 'package' directory.
@@ -39,27 +47,22 @@ pub fn package() -> Result<(), Box<dyn Error>> {
         (workspace_root.join("tools/mcrl2"), vec!["merc-pbes", "merc-lps"]),
     ];
 
+    // All workspaces share the root `target/` directory: the `tools/gui` and `tools/mcrl2`
+    // workspaces set `target-dir = "../../target"` in their `.cargo/config.toml`, so every
+    // release binary ends up under `<workspace_root>/target/release` regardless of which
+    // workspace built it.
+    let target_release_dir = workspace_root.join("target").join("release");
+
     // Build all workspaces in release mode
     for (workspace_path, binaries) in &workspace_binaries {
         cmd!("cargo", "build", "--release").dir(workspace_path).run()?;
 
-        let target_release_dir = PathBuf::new().join("target").join("release");
-
         for binary_name in binaries {
-            let source_path = if cfg!(windows) {
-                target_release_dir.join(format!("{binary_name}.exe"))
-            } else {
-                target_release_dir.join(binary_name)
-            };
-
-            let dest_path = if cfg!(windows) {
-                package_dir.join(format!("{binary_name}.exe"))
-            } else {
-                package_dir.join(binary_name)
-            };
+            let source_path = target_release_dir.join(exe_name(binary_name));
+            let dest_path = package_dir.join(exe_name(binary_name));
 
             // Precondition: Binary must exist after successful build
-            debug_assert!(
+            assert!(
                 source_path.exists(),
                 "Binary {binary_name} should exist after cargo build --release"
             );
@@ -71,24 +74,6 @@ pub fn package() -> Result<(), Box<dyn Error>> {
 
     println!("=== Package creation completed ===");
     println!("Package directory: {}", package_dir.display());
-
-    // Postcondition: All required binaries should be in package directory
-    let all_binaries: Vec<&str> = workspace_binaries
-        .iter()
-        .flat_map(|(_, bins)| bins.iter().copied())
-        .collect();
-
-    assert!(
-        all_binaries.iter().all(|name| {
-            let expected_path = if cfg!(windows) {
-                package_dir.join(format!("{name}.exe"))
-            } else {
-                package_dir.join(name)
-            };
-            expected_path.exists()
-        }),
-        "All binaries should be copied to package directory"
-    );
 
     // Add the LICENSE to the package
     let license_src = workspace_root.join("LICENSE");
