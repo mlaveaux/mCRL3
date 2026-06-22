@@ -140,19 +140,10 @@ impl SymbolicLtsBdd {
             vars.push(format!("a_{}", k));
         }
 
-        // Check for existing variables.
+        // A BDD manager can only hold the variables for a single symbolic LTS.
         if manager_bdd.with_manager_shared(|manager| manager.num_vars()) != 0 {
             return Err("BDD manager must not contain any variables yet".into());
         }
-
-        // Ensure that the BDD manager is empty.
-        manager_bdd.with_manager_exclusive(|manager| {
-            debug_assert_eq!(
-                manager.num_vars(),
-                0,
-                "A BDD manager can only hold the variables for a single symbolic LTS"
-            )
-        });
 
         // Create variables in the BDD manager
         let number_of_vars = vars.len();
