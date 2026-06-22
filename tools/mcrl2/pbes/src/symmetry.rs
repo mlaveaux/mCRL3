@@ -814,7 +814,7 @@ mod tests {
 
     #[test]
     fn test_symmetry_example_a() {
-        let _ = test_logger();
+        test_logger();
         let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/a.text.pbes")).unwrap();
 
         let cliques = SymmetryAlgorithm::new(&pbes, false).unwrap().cliques();
@@ -824,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_symmetry_examples_b() {
-        let _ = test_logger();
+        test_logger();
         let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/b.text.pbes")).unwrap();
 
         let cliques = SymmetryAlgorithm::new(&pbes, false).unwrap().cliques();
@@ -834,7 +834,7 @@ mod tests {
 
     #[test]
     fn test_symmetry_examples_c() {
-        let _ = test_logger();
+        test_logger();
         let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/c.text.pbes")).unwrap();
 
         let algorithm = SymmetryAlgorithm::new(&pbes, false).unwrap();

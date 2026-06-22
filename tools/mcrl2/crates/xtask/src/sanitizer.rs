@@ -2,19 +2,30 @@ use std::error::Error;
 
 pub use duct::cmd;
 
-#[allow(clippy::ptr_arg)]
-fn add_target_flag(_arguments: &mut Vec<String>) {
+fn add_target_flag(arguments: &mut Vec<String>) {
+    // Derive the architecture from the host so the sanitizer build targets the
+    // machine it runs on (e.g. aarch64 on Apple Silicon, not hardcoded x86_64).
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x86_64"
+    };
+
     #[cfg(target_os = "linux")]
     {
-        _arguments.push("--target".to_string());
-        _arguments.push("x86_64-unknown-linux-gnu".to_string());
+        arguments.push("--target".to_string());
+        arguments.push(format!("{arch}-unknown-linux-gnu"));
     }
 
     #[cfg(target_os = "macos")]
     {
-        _arguments.push("--target".to_string());
-        _arguments.push("x86_64-apple-darwin".to_string());
+        arguments.push("--target".to_string());
+        arguments.push(format!("{arch}-apple-darwin"));
     }
+
+    // On other hosts no explicit target is added; silence the unused warning.
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    let _ = (arch, &arguments);
 }
 
 ///
@@ -23,7 +34,7 @@ fn add_target_flag(_arguments: &mut Vec<String>) {
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec!["-Zbuild-std".to_string()]);
+    arguments.push("-Zbuild-std".to_string());
 
     add_target_flag(&mut arguments);
 
@@ -44,7 +55,7 @@ pub fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error
 /// This only works under Linux and MacOS currently and requires the nightly toolchain.
 ///
 pub fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
-    arguments.extend(vec!["-Zbuild-std".to_string()]);
+    arguments.push("-Zbuild-std".to_string());
 
     add_target_flag(&mut arguments);
 
