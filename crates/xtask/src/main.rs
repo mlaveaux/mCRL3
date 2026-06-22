@@ -48,9 +48,8 @@ enum Commands {
     Package,
     /// Publishes the crates to crates.io.
     Publish,
-    TestTools {
-        directory: PathBuf,
-    },
+    /// Runs a smoke test of the packaged tool binaries found in the given directory.
+    TestTools { directory: PathBuf },
 }
 
 fn main() -> Result<ExitCode, Box<dyn Error>> {
@@ -62,7 +61,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
         Commands::ThreadSanitizer { args } => sanitizer::thread_sanitizer(args)?,
         Commands::DiscoverTests => discover_tests::discover_tests()?,
         Commands::Package => package::package()?,
-        Commands::Publish => publish::publish_crates(),
+        Commands::Publish => publish::publish_crates()?,
         Commands::TestTools { directory } => tool_testing::test_tools(directory.as_path())?,
     }
 

@@ -1,7 +1,9 @@
+use std::error::Error;
+
 use duct::cmd;
 
 /// Runs `cargo publish --dry-run` for all crates to verify they can be published.
-pub fn publish_crates() {
+pub fn publish_crates() -> Result<(), Box<dyn Error>> {
     // The list of crates to publish, they must be published in order of dependencies, i.e., downstream first.
     let crates = [
         "merc_utilities",
@@ -27,6 +29,8 @@ pub fn publish_crates() {
         // First do a dry run of the publish command to check that everything is fine.
         cmd!("cargo", "publish", "--dry-run", "-p", library)
             .run()
-            .unwrap_or_else(|err| panic!("Failed to publish crate {}: {}", library, err));
+            .map_err(|err| format!("Failed to publish crate {library}: {err}"))?;
     }
+
+    Ok(())
 }
