@@ -685,12 +685,21 @@ impl Summand for ExplicitSummand {
         // shared label term on this thread for the duration of the call.
         let multi_action_template = self.multi_action.as_aterm();
 
+        // We cannot return errors through the C callback, so the first error is
+        // captured here, further solutions are skipped, and it is propagated once
+        // the FFI enumeration returns. This avoids unwinding into the C++ frame.
+        let mut report_result: Result<(), MercError> = Ok(());
+
         learn.enumerate_raw_with_current_assignments(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
             &multi_action_template,
             |values: &[*const _aterm], multi_action: *const _aterm| {
+                if report_result.is_err() {
+                    return;
+                }
+
                 debug_assert_eq!(
                     values.len(),
                     self.write_indices.len(),
@@ -717,12 +726,13 @@ impl Summand for ExplicitSummand {
                 // the label is safe to store across threads.
                 let label = Mcrl2MultiActionLabel::from_multi_action_term(ATermSend::from_ptr(multi_action));
 
-                // We cannot propagate errors from the C callback, so we panic on error and catch it in the caller.
-                report(&label, next_state_buf).expect("Failed to report successor state");
+                if let Err(err) = report(&label, next_state_buf) {
+                    report_result = Err(err);
+                }
             },
         );
 
-        Ok(())
+        report_result
     }
 }
 

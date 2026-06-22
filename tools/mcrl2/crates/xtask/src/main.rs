@@ -22,7 +22,12 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
     match task.as_deref() {
         Some("address-sanitizer") => sanitizer::address_sanitizer(args.collect())?,
         Some("thread-sanitizer") => sanitizer::thread_sanitizer(args.collect())?,
-        _ => print_help(),
+        None => print_help(),
+        Some(unknown) => {
+            eprintln!("Unknown task: {unknown}\n");
+            print_help();
+            return Ok(ExitCode::FAILURE);
+        }
     }
 
     Ok(ExitCode::SUCCESS)

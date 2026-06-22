@@ -125,7 +125,7 @@ struct PbesPartition {
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel
-/// across `threads` worker threads.he
+/// across `threads` worker threads.
 pub fn parity_game_from_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
@@ -270,7 +270,9 @@ pub struct PbesSrfLps {
 /// mapping each distinct expression to a dense `usize` used in state vectors.
 type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 
-// SAFETY: after construction the LPS is immutable.
+// SAFETY: after construction the LPS is immutable except for `value_mapping`,
+// whose backing `ConcurrentIndexedSet` is itself thread-safe and is the only
+// field workers mutate. The other terms are all !Send, but only read.
 unsafe impl Sync for PbesSrfLps {}
 
 /// A single SRF summand, pre-bound to the equation it belongs to and the
@@ -544,12 +546,21 @@ impl Summand for PbesSrfSummand {
             ..
         } = context;
 
+        // We cannot return errors through the C callback, so the first error is
+        // captured here, further solutions are skipped, and it is propagated once
+        // the FFI enumeration returns. This avoids unwinding into the C++ frame.
+        let mut report_result: Result<(), MercError> = Ok(());
+
         learn.enumerate_raw_with_current_assignments(
             &self.condition,
             &self.summation_variables,
             &self.write_assignments,
             &self.tau,
             |next_values: &[*const _aterm], _multi_action| {
+                if report_result.is_err() {
+                    return;
+                }
+
                 debug_assert_eq!(
                     next_values.len(),
                     self.num_params,
@@ -566,11 +577,13 @@ impl Summand for PbesSrfSummand {
                 }
 
                 // The PBES has no actions; we pass a placeholder unit label.
-                report(&(), next_state_buf).expect("Failed to report PBES transition");
+                if let Err(err) = report(&(), next_state_buf) {
+                    report_result = Err(err);
+                }
             },
         );
 
-        Ok(())
+        report_result
     }
 }
 

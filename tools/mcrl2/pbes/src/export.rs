@@ -253,8 +253,9 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
 
     let pvi: PbesPropositionalVariableInstantiation = clause.variable().into();
 
-    // If `X != X_j` then we need to check all variables that are used in the update of the clause.
-    let must_be_different = pvi.name() == equation.variable().name().copy();
+    // When the clause targets its own equation (`X == X_j`) the variable's own
+    // update (`var_index == update_index`) must be excluded below.
+    let is_self_recursive = pvi.name() == equation.variable().name().copy();
 
     // We assume that all equations have the same parameters, so we can just use the parameters of the given equation.
     let params = equation.variable().parameters();
@@ -268,7 +269,7 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
     let mut result = Vec::new();
     for (var_index, variable) in params.iter().enumerate() {
         for (update_index, update) in args.iter().enumerate() {
-            if must_be_different && var_index == update_index {
+            if is_self_recursive && var_index == update_index {
                 // Exclude the variable's own update for self-recursive clauses.
                 continue;
             }
@@ -409,9 +410,11 @@ mod tests {
         let expected = match fs::read_to_string(expected_path) {
             Ok(content) => content,
             Err(err) if err.kind() == ErrorKind::NotFound => {
-                // If the snapshot does not exist, create it with the current output.
+                // The snapshot did not exist: write the current output and fail
+                // loudly so a missing snapshot never silently "passes". Re-run the
+                // test (and commit the snapshot) to verify the generated output.
                 fs::write(expected_path, &output).unwrap();
-                output.clone()
+                panic!("Snapshot {expected_path} did not exist; wrote current output. Re-run to verify.");
             }
             Err(err) => panic!("Failed to read snapshot {}: {}", expected_path, err),
         };

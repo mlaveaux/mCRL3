@@ -62,29 +62,28 @@ where
     }
 }
 
-impl Display for MercError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "{}", self.inner.error)?;
-        {
-            let backtrace = &self.inner.backtrace;
-            if let std::backtrace::BacktraceStatus::Captured = backtrace.status() {
-                writeln!(f, "{backtrace}")?;
-            }
+impl MercError {
+    /// Appends the captured backtrace on its own line, if one was captured.
+    /// Shared by the `Display` and `Debug` impls.
+    fn fmt_backtrace(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let backtrace = &self.inner.backtrace;
+        if let std::backtrace::BacktraceStatus::Captured = backtrace.status() {
+            write!(f, "\n{backtrace}")?;
         }
         Ok(())
     }
 }
 
+impl Display for MercError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.inner.error)?;
+        self.fmt_backtrace(f)
+    }
+}
+
 impl Debug for MercError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "{:?}", self.inner.error)?;
-        {
-            let backtrace = &self.inner.backtrace;
-            if let std::backtrace::BacktraceStatus::Captured = backtrace.status() {
-                writeln!(f, "{backtrace}")?;
-            }
-        }
-
-        Ok(())
+        write!(f, "{:?}", self.inner.error)?;
+        self.fmt_backtrace(f)
     }
 }
