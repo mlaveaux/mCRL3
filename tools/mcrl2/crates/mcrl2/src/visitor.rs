@@ -193,6 +193,9 @@ pub fn pbes_expression_pvi(expr: &PbesExpressionRef<'_>) -> Vec<PbesPropositiona
 }
 
 /// Returns all the variables occurring in the given data expression.
+///
+/// This returns occurrences, so a variable that appears multiple times is listed
+/// multiple times; deduplicate at the call site if a set is required.
 pub fn variable_occurrences_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
     let mut result = Vec::new();
 
@@ -214,6 +217,9 @@ pub fn variable_occurrences_data_expression(expr: &DataExpressionRef<'_>) -> Vec
 }
 
 /// Returns all the free variables of the given data expression.
+///
+/// This returns occurrences, so a free variable that appears multiple times is
+/// listed multiple times; deduplicate at the call site if a set is required.
 pub fn free_variables_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataVariable> {
     let mut result = Vec::new();
 

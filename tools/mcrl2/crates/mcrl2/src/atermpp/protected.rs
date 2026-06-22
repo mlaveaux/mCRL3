@@ -1,19 +1,3 @@
-//! A garbage-collection-safe wrapper that keeps the terms stored in a container
-//! alive.
-//!
-//! Explicit state-space exploration interns the data expressions observed for
-//! each state to dense `usize` indices, so state vectors can be passed around as
-//! plain integers. When the exploration runs on several threads this interning
-//! must be shared, which is awkward with the usual [`ATerm`](crate::ATerm): an
-//! `ATerm` carries a *thread-local* protection root and is therefore `!Send`, so
-//! it cannot be created on one worker and dropped on another.
-//!
-//! Instead the interning stores bare [`DataExpressionRef<'static>`] references
-//! (an `ATermRef` has no `Drop` and is `Send`/`Sync`) inside a thread-safe
-//! [`ConcurrentIndexedSet`], and keeps every stored term alive by registering
-//! the set as a [`Markable`] garbage-collection container through
-//! [`Protected`]. Garbage collection is stop-the-world, so marking the container
-//! never races with the workers that insert into it.
 
 use std::ops::Deref;
 use std::sync::Arc;

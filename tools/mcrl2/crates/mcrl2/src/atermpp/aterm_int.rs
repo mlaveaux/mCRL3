@@ -60,7 +60,7 @@ impl fmt::Display for ATermIntRef<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::ATermInt;
 
     #[test]
     fn test_aterm_int_value() {

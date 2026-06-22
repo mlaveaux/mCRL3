@@ -169,7 +169,7 @@ mod inner {
     }
 
     impl PbesForall {
-        /// Returns the body of the not expression.
+        /// Returns the body of the forall expression.
         pub fn body(&self) -> PbesExpressionRef<'_> {
             self.arg(1).into()
         }
@@ -182,7 +182,7 @@ mod inner {
     }
 
     impl PbesExists {
-        /// Returns the body of the not expression.
+        /// Returns the body of the exists expression.
         pub fn body(&self) -> PbesExpressionRef<'_> {
             self.arg(1).into()
         }

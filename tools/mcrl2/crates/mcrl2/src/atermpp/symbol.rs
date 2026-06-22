@@ -43,8 +43,8 @@ impl<'a> SymbolRef<'a> {
 
     /// Obtains the underlying pointer as reference
     pub(crate) fn get(&self) -> &ffi::_function_symbol {
-        // # Safety
-        // If we have a reference to the SymbolRef, it must also be safe to dereference the pointer.
+        // SAFETY: holding a `SymbolRef` witnesses that the underlying function
+        // symbol is live, so the pointer is valid to dereference.
         unsafe { self.symbol.as_ref().expect("Pointer should be valid") }
     }
 }
@@ -116,6 +116,8 @@ impl Symbol {
     }
 
     pub fn get(&self) -> &ffi::_function_symbol {
+        // SAFETY: a `Symbol` owns a protected reference to the function symbol,
+        // so the pointer stays valid for as long as `self` lives.
         unsafe { self.symbol.address().as_ref().expect("Pointer should be valid") }
     }
 }

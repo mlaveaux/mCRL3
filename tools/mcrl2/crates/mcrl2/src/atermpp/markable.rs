@@ -59,6 +59,9 @@ impl<T: Markable> Markable for Vec<T> {
 
 impl<T: Markable + ?Sized> Markable for BfTermPool<T> {
     fn mark(&self, mut todo: Todo) {
+        // SAFETY: marking only runs during stop-the-world garbage collection,
+        // which holds the global exclusive lock, so no other thread can access
+        // the pool; reading it without the busy/forbidden lock is sound.
         unsafe {
             self.get().mark(todo.as_mut());
         }

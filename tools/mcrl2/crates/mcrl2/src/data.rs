@@ -25,6 +25,9 @@ impl DataSpecification {
 }
 
 /// Represents a mcrl2::data::detail::RewriterJitty from the mCRL2 toolset.
+///
+/// TODO: currently only constructs and owns the underlying rewriter; it exposes
+/// no rewrite operation yet, so it is inert beyond holding the C++ object alive.
 pub struct Mcrl2RewriterJitty {
     _rewriter: UniquePtr<RewriterJitty>,
 }
@@ -39,8 +42,11 @@ impl Mcrl2RewriterJitty {
 
 #[cfg(feature = "jittyc")]
 /// Represents a mcrl2::data::detail::RewriterJittyCompiling from the mCRL2 toolset.
+///
+/// TODO: currently only constructs and owns the underlying rewriter; it exposes
+/// no rewrite operation yet, so it is inert beyond holding the C++ object alive.
 pub struct Mcrl2RewriterJittyCompiling {
-    rewriter: UniquePtr<RewriterCompilingJitty>,
+    _rewriter: UniquePtr<RewriterCompilingJitty>,
 }
 
 #[cfg(feature = "jittyc")]
@@ -48,6 +54,6 @@ impl Mcrl2RewriterJittyCompiling {
     /// Creates a new compiling Jitty rewriter from the given data specification.
     pub fn new(data_spec: &DataSpecification) -> Self {
         let rewriter = mcrl2_create_rewriter_jittyc(data_spec.get());
-        Self { rewriter }
+        Self { _rewriter: rewriter }
     }
 }

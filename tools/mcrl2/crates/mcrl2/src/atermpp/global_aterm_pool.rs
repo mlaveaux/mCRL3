@@ -104,7 +104,9 @@ impl GlobalTermPool {
     fn mark_protection_sets(&mut self, mut todo: Pin<&mut ffi::term_mark_stack>) {
         trace!("Marking terms:");
         for set in self.thread_protection_sets.iter().flatten() {
-            // Do not lock since we acquired a global lock.
+            // SAFETY: garbage collection holds the global exclusive lock, so no
+            // other thread can be mutating the protection set; reading it
+            // without taking the busy/forbidden lock is sound here.
             unsafe {
                 let protection_set = set.get();
 
@@ -117,7 +119,9 @@ impl GlobalTermPool {
         }
 
         for set in self.thread_container_sets.iter().flatten() {
-            // Do not lock since we acquired a global lock.
+            // SAFETY: garbage collection holds the global exclusive lock, so no
+            // other thread can be mutating the container set; reading it without
+            // taking the busy/forbidden lock is sound here.
             unsafe {
                 let protection_set = set.get();
 
