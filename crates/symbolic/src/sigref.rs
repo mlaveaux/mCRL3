@@ -1178,12 +1178,8 @@ mod tests {
 
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             let explicit_lts = convert_symbolic_lts(&mut storage, &mut builder, &lts).unwrap();
-            let explicit_lts_reduced = reduce_lts(
-                explicit_lts.clone(),
-                Equivalence::StrongBisim,
-                false,
-                &Timing::new(),
-            );
+            let explicit_lts_reduced =
+                reduce_lts(explicit_lts.clone(), Equivalence::StrongBisim, false, &Timing::new());
 
             let (partition, block_vars, _num_of_blocks) =
                 sigref_symbolic(&manager_ref, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();

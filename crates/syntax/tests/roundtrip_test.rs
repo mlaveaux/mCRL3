@@ -173,8 +173,7 @@ fn line_column_past_end_does_not_panic() {
 /// be parsed back.
 #[test]
 fn eqn_spec_without_variables_no_empty_var_section() {
-    let spec = UntypedDataSpecification::parse("eqn true = false;")
-        .expect("eqn without var should parse");
+    let spec = UntypedDataSpecification::parse("eqn true = false;").expect("eqn without var should parse");
     let printed = format!("{spec}");
     assert!(
         !printed.contains("var\n"),

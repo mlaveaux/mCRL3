@@ -710,7 +710,6 @@ mod tests {
 
         let thread_a = {
             let term = term.clone();
-            
 
             std::thread::spawn(move || {
                 let symbol = Symbol::new("a", 0);

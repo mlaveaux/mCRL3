@@ -209,7 +209,11 @@ struct VariabilityZielonkaSolver<'a> {
 
 impl<'a> VariabilityZielonkaSolver<'a> {
     /// Creates a new VariabilityZielonkaSolver for the given game.
-    pub(crate) fn new(manager_ref: &'a BDDManagerRef, game: &'a VariabilityParityGame, alternative_solving: bool) -> Self {
+    pub(crate) fn new(
+        manager_ref: &'a BDDManagerRef,
+        game: &'a VariabilityParityGame,
+        alternative_solving: bool,
+    ) -> Self {
         // Keep track of the vertices for each priority
         let mut priority_vertices = Vec::new();
 

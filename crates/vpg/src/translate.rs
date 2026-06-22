@@ -287,7 +287,11 @@ pub(crate) struct Translation<'a, L, E> {
 
 impl<'a, L: LTS, E> Translation<'a, L, E> {
     /// Creates a new translation instance.
-    pub(crate) fn new(lts: &'a L, parsed_labels: &'a Vec<MultiAction>, equation_system: &'a ModalEquationSystem) -> Self {
+    pub(crate) fn new(
+        lts: &'a L,
+        parsed_labels: &'a Vec<MultiAction>,
+        equation_system: &'a ModalEquationSystem,
+    ) -> Self {
         let progress: TimeProgress<usize> = TimeProgress::new(
             |num_of_vertices: usize| {
                 info!("Translated {} vertices...", num_of_vertices);
