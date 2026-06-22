@@ -81,9 +81,9 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl ::std::convert::Into<ATerm> for #name {
-                                fn into(self) -> ATerm {
-                                    self.term
+                            impl ::std::convert::From<#name> for ATerm {
+                                fn from(value: #name) -> ATerm {
+                                    value.term
                                 }
                             }
 
@@ -158,9 +158,9 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 }
                             }
 
-                            impl<'a> ::std::convert::Into<ATermRef<'a>> for #name_ref<'a> {
-                                fn into(self) -> ATermRef<'a> {
-                                    self.term
+                            impl<'a> ::std::convert::From<#name_ref<'a>> for ATermRef<'a> {
+                                fn from(value: #name_ref<'a>) -> ATermRef<'a> {
+                                    value.term
                                 }
                             }
 
@@ -222,7 +222,12 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
 
                     if let syn::Type::Path(path) = ref_implementation.self_ty.as_ref() {
                         // Build an identifier TestRef<'_>
-                        let name_ref = format_ident!("{}Ref", path.path.get_ident().unwrap());
+                        let name_ref = format_ident!(
+                            "{}Ref",
+                            path.path
+                                .get_ident()
+                                .expect("impl target type must be a simple identifier")
+                        );
                         let path = parse_quote!(#name_ref <'_>);
 
                         ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
