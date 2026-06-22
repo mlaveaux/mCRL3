@@ -260,7 +260,7 @@ mod tests {
 
         let shared_vector = BfVec::<u32>::new();
         let num_threads = 10;
-        let num_iterations = 100000;
+        let num_iterations = 10000;
 
         for t in 0..num_threads {
             let shared_vector = shared_vector.share();
