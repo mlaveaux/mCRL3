@@ -46,7 +46,7 @@ criterion = "0.8"
 # The workspace libraries.
 merc_io = { path = "../../crates/io" }
 merc_lts = { path = "../../crates/lts" }
-merc_ltsgraph-lib = { path = "ltsgraph-lib" }
+merc_ltsgraph_lib = { path = "ltsgraph-lib" }
 merc_tools = { path = "../../crates/tools" }
 merc_unsafety = { path = "../../crates/unsafety" }
 merc_utilities = { path = "../../crates/utilities" }

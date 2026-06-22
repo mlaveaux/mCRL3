@@ -581,7 +581,7 @@ version = "1.0.0"
 dependencies = [
  "criterion",
  "merc_lts",
- "merc_ltsgraph-lib",
+ "merc_ltsgraph_lib",
  "rand 0.10.1",
  "tiny-skia 0.12.0",
 ]
@@ -3314,14 +3314,12 @@ name = "merc-ltsgraph"
 version = "1.0.0"
 dependencies = [
  "clap",
- "cosmic-text",
  "env_logger",
  "femtovg 0.25.1",
- "glam",
  "log",
  "merc_io",
  "merc_lts",
- "merc_ltsgraph-lib",
+ "merc_ltsgraph_lib",
  "merc_tools",
  "merc_utilities",
  "rfd",
@@ -3425,7 +3423,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "merc_ltsgraph-lib"
+name = "merc_ltsgraph_lib"
 version = "1.0.0"
 dependencies = [
  "cosmic-text",

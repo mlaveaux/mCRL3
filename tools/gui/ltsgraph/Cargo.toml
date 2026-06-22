@@ -8,19 +8,16 @@ rust-version.workspace = true
 [dependencies]
 merc_io.workspace = true
 merc_lts = { workspace = true, features = ["clap"]}
-merc_ltsgraph-lib.workspace = true
+merc_ltsgraph_lib.workspace = true
 merc_tools.workspace = true
 merc_utilities.workspace = true
 
 clap.workspace = true
 env_logger.workspace = true
 log.workspace = true
-cosmic-text.workspace = true
 femtovg.workspace = true
-glam.workspace = true
 rfd.workspace = true
 slint.workspace = true
-slint-build.workspace = true
 tiny-skia.workspace = true
 tokio.workspace = true
 wgpu.workspace = true
