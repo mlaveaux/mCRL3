@@ -112,7 +112,12 @@ impl GenerationCounter {
     {
         #[cfg(debug_assertions)]
         {
-            GenerationalIndex::new(index, self.current_generation[index.into()])
+            let idx = index.into();
+            assert!(
+                idx < self.current_generation.len(),
+                "recall_index called with index {idx} that was never created"
+            );
+            GenerationalIndex::new(index, self.current_generation[idx])
         }
         #[cfg(not(debug_assertions))]
         {
@@ -128,7 +133,12 @@ impl GenerationCounter {
     {
         #[cfg(debug_assertions)]
         {
-            self.current_generation[index.index.into()] == index.generation
+            let idx = index.index.into();
+            assert!(
+                idx < self.current_generation.len(),
+                "is_valid called with index {idx} that was never created"
+            );
+            self.current_generation[idx] == index.generation
         }
         #[cfg(not(debug_assertions))]
         {
@@ -144,7 +154,12 @@ impl GenerationCounter {
     {
         #[cfg(debug_assertions)]
         {
-            if self.current_generation[index.index.into()] != index.generation {
+            let idx = index.index.into();
+            assert!(
+                idx < self.current_generation.len(),
+                "get_index called with index {idx} that was never created"
+            );
+            if self.current_generation[idx] != index.generation {
                 panic!("Attempting to access an invalid index: {index:?}");
             }
         }
@@ -160,11 +175,17 @@ where
     I: Copy + Into<usize> + Eq,
 {
     fn eq(&self, other: &Self) -> bool {
-        // TODO: Should we have a default index?
         #[cfg(debug_assertions)]
         {
-            if self.generation == usize::MAX || other.generation == usize::MAX {
-                return false;
+            // A sentinel (default) index has the `usize::MAX` generation. It is
+            // only equal to another sentinel index with the same raw index, and
+            // never aliases a live generation. Handling it here keeps `eq`
+            // reflexive (`default == default`), which is required for `Eq` and
+            // for use as a hash-map key.
+            let self_sentinel = self.generation == usize::MAX;
+            let other_sentinel = other.generation == usize::MAX;
+            if self_sentinel || other_sentinel {
+                return self_sentinel && other_sentinel && self.index == other.index;
             }
 
             debug_assert_eq!(
@@ -184,11 +205,15 @@ where
     I: Copy + Into<usize> + PartialOrd + Eq,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // Skip the generation check for the sentinel (default) generation, to
+        // stay consistent with `PartialEq`.
         #[cfg(debug_assertions)]
-        debug_assert_eq!(
-            self.generation, other.generation,
-            "Comparing indices of different generations"
-        );
+        if self.generation != usize::MAX && other.generation != usize::MAX {
+            debug_assert_eq!(
+                self.generation, other.generation,
+                "Comparing indices of different generations"
+            );
+        }
 
         self.index.partial_cmp(&other.index)
     }
@@ -199,11 +224,15 @@ where
     I: Copy + Into<usize> + Eq + Ord,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Skip the generation check for the sentinel (default) generation, to
+        // stay consistent with `PartialEq`.
         #[cfg(debug_assertions)]
-        debug_assert_eq!(
-            self.generation, other.generation,
-            "Comparing indices of different generations"
-        );
+        if self.generation != usize::MAX && other.generation != usize::MAX {
+            debug_assert_eq!(
+                self.generation, other.generation,
+                "Comparing indices of different generations"
+            );
+        }
         self.index.cmp(&other.index)
     }
 }
@@ -247,6 +276,19 @@ impl fmt::Display for GenerationalIndex<usize> {
 mod tests {
     #[cfg(debug_assertions)]
     use crate::GenerationCounter;
+    use crate::GenerationalIndex;
+
+    #[test]
+    fn test_default_index_is_reflexive() {
+        // A default (sentinel) index must equal itself, otherwise `Eq` is
+        // violated and it cannot be used as a hash-map key.
+        let default = GenerationalIndex::<usize>::default();
+        assert_eq!(default, default);
+
+        let mut set = std::collections::HashSet::new();
+        set.insert(default);
+        assert!(set.contains(&default));
+    }
 
     #[test]
     #[should_panic]
