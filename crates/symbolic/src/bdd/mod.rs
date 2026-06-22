@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 mod convert_bdd;
 mod cube_iter;
 mod format;

@@ -51,13 +51,22 @@ pub fn random_symbolic_lts<R: Rng>(
 
     let mut summand_groups = Vec::new();
     for _ in 0..5 {
-        let num_of_read_variables = rng.random_range(0..parameters.len());
+        // random_range panics on an empty range, so guard against zero parameters.
+        let num_of_read_variables = if parameters.is_empty() {
+            0
+        } else {
+            rng.random_range(0..parameters.len())
+        };
         let read_parameters = parameters
             .sample(rng, num_of_read_variables)
             .cloned()
             .collect::<Vec<_>>();
 
-        let num_of_write_variables = rng.random_range(0..parameters.len());
+        let num_of_write_variables = if parameters.is_empty() {
+            0
+        } else {
+            rng.random_range(0..parameters.len())
+        };
         let write_parameters = parameters
             .sample(rng, num_of_write_variables)
             .cloned()

@@ -61,7 +61,7 @@ pub fn reachability_bdd(
                         .next_state_variables()
                         .iter()
                         .position(|next_var| next_var == var)
-                        .unwrap();
+                        .expect("write variable not found in next-state variables");
                     lts.state_variables()[index]
                 })
                 .collect::<Vec<VarNo>>();
