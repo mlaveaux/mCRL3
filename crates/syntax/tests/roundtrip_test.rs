@@ -128,6 +128,7 @@ fn visitor_breaks_from_nested_node() {
 /// surviving parenthesization.
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn random_lps_print_parse_fixpoint() {
     random_test(100, |rng| {
         let spec = random_lps(rng, 4, 3, 0.6);
@@ -139,6 +140,7 @@ fn random_lps_print_parse_fixpoint() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn random_process_spec_print_parse_fixpoint() {
     random_test(100, |rng| {
         let use_integers = rng.random_bool(0.5);
@@ -155,6 +157,7 @@ fn random_process_spec_print_parse_fixpoint() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn random_pbes_print_parse_fixpoint() {
     random_test(100, |rng| {
         let use_quantifiers = rng.random_bool(0.5);

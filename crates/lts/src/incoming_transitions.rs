@@ -133,6 +133,7 @@ mod tests {
     use crate::write_aut;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_incoming_transitions() {
         random_test(100, |rng| {
             let files = DumpFiles::new("test_random_incoming_transitions");
