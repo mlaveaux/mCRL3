@@ -17,6 +17,7 @@ use merc_utilities::Timing;
 
 use crate::explore_srf::parity_game_from_pbes;
 use crate::explore_srf::parity_game_from_pbes_parallel;
+use crate::explore_symbolic_srf::explore_pbes_symbolic;
 use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
 use merc_explore::CachingStrategy;
@@ -31,9 +32,14 @@ use merc_vpg::verify_solution;
 mod clone_iterator;
 mod explore_srf;
 mod explore_srf_test;
+mod explore_symbolic_srf;
+mod explore_symbolic_srf_test;
 mod export;
 mod permutation;
 mod symmetry;
+
+/// Default number of nodes for the Oxidd LDD manager.
+const DEFAULT_OXIDD_NODE_CAPACITY: usize = 1 << 24;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum PbesFormat {
@@ -54,8 +60,29 @@ struct Cli {
     #[arg(long, global = true)]
     timings: bool,
 
+    /// The number of worker threads for the Oxidd LDD manager.
+    #[arg(long, global = true, default_value_t = 1)]
+    oxidd_workers: u32,
+
+    /// The number of nodes for the Oxidd LDD manager.
+    #[arg(long, global = true, default_value_t = DEFAULT_OXIDD_NODE_CAPACITY)]
+    oxidd_node_capacity: usize,
+
+    /// The apply cache capacity for the Oxidd LDD manager, defaults to the node capacity.
+    #[arg(long, global = true)]
+    oxidd_cache_capacity: Option<usize>,
+
     #[command(subcommand)]
     commands: Option<Commands>,
+}
+
+/// Initializes the Oxidd LDD manager based on CLI arguments.
+fn init_ldd_manager(cli: &Cli) -> oxidd::ldd::LDDManagerRef {
+    oxidd::ldd::new_manager(
+        cli.oxidd_node_capacity,
+        cli.oxidd_cache_capacity.unwrap_or(cli.oxidd_node_capacity),
+        cli.oxidd_workers,
+    )
 }
 
 #[derive(Debug, Subcommand)]
@@ -66,6 +93,8 @@ enum Commands {
     Export(ExportArgs),
     /// Explore a PBES explicitly into a parity game.
     ExploreExplicit(ExploreExplicitArgs),
+    /// Explore a PBES symbolically using LDD-based reachability.
+    ExploreSymbolic(ExploreSymbolicArgs),
     /// Solve a PBES by exploring it into a parity game and solving the game.
     Solve(SolveArgs),
 }
@@ -147,6 +176,16 @@ struct ExploreExplicitArgs {
 }
 
 #[derive(clap::Args, Debug)]
+struct ExploreSymbolicArgs {
+    /// The input PBES file.
+    filename: String,
+
+    /// Explicitly choose the format of the input PBES file.
+    #[arg(long, short('i'), value_enum)]
+    format: Option<PbesFormat>,
+}
+
+#[derive(clap::Args, Debug)]
 struct SolveArgs {
     /// The input PBES file.
     filename: String,
@@ -199,7 +238,7 @@ fn main() -> ExitCode {
     }
 
     let timing = Timing::new();
-    let result = handle_command(cli.commands);
+    let result = handle_command(&cli, &timing);
 
     if cli.timings {
         timing.print();
@@ -208,12 +247,13 @@ fn main() -> ExitCode {
     report_error(result)
 }
 
-fn handle_command(commands: Option<Commands>) -> Result<(), MercError> {
-    if let Some(command) = commands {
+fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
+    if let Some(command) = &cli.commands {
         match command {
             Commands::Symmetry(args) => handle_symmetry(args)?,
             Commands::Export(args) => handle_export(args)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args)?,
+            Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing)?,
             Commands::Solve(args) => handle_solve(args)?,
         }
     }
@@ -230,8 +270,8 @@ fn read_pbes(filename: &str, format: Option<PbesFormat>) -> Result<Pbes, MercErr
     }
 }
 
-fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format)?;
+fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone())?;
     let game = if args.threads > 1 {
         parity_game_from_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else {
@@ -245,10 +285,20 @@ fn handle_explore_explicit(args: ExploreExplicitArgs) -> Result<(), MercError> {
     Ok(())
 }
 
+/// Handles symbolic exploration of a PBES, reporting the number of reachable
+/// BES equations (states).
+fn handle_explore_symbolic(cli: &Cli, args: &ExploreSymbolicArgs, timing: &Timing) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone())?;
+    let storage = init_ldd_manager(cli);
+    let states = explore_pbes_symbolic(&storage, &pbes, timing)?;
+    println!("Number of states: {}", states.len());
+    Ok(())
+}
+
 /// Handles the solve command, which explores a PBES into a parity game and
 /// solves the game, printing the solution of the initial vertex.
-fn handle_solve(args: SolveArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format)?;
+fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone())?;
     let game = if args.threads > 1 {
         parity_game_from_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else {
@@ -281,8 +331,8 @@ fn handle_solve(args: SolveArgs) -> Result<(), MercError> {
     Ok(())
 }
 
-fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format)?;
+fn handle_symmetry(args: &SymmetryArgs) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone())?;
     let algorithm = SymmetryAlgorithm::new(&pbes, args.print_srf)?;
     if let Some(permutation) = &args.permutation {
         let pi = if permutation.trim_start().starts_with("[") {
@@ -330,10 +380,10 @@ fn handle_symmetry(args: SymmetryArgs) -> Result<(), MercError> {
 }
 
 /// Handles the export command, which exports the control flow graphs of a PBES in JSON format.
-fn handle_export(args: ExportArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format)?;
+fn handle_export(args: &ExportArgs) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone())?;
 
-    if let Some(output_filename) = args.output {
+    if let Some(output_filename) = &args.output {
         let mut file = std::fs::File::create(output_filename)?;
         export::export(&mut file, &pbes)?;
     } else {
