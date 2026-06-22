@@ -587,6 +587,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec violated Stacked Borrows.
     fn test_random_bytevector_permute() {
         random_test(100, |rng| {
             // Generate random vector to permute
