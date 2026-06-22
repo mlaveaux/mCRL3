@@ -8,7 +8,7 @@ use benchmarks_sharedmutex::THREADS;
 use benchmarks_sharedmutex::benchmark;
 
 /// Benchmark the bfsharedmutex implementation
-pub(crate) fn benchmark_bfsharedmutex(c: &mut Criterion) {
+pub fn benchmark_bfsharedmutex(c: &mut Criterion) {
     for num_threads in THREADS {
         for read_ratio in READ_RATIOS {
             // Benchmark various configurations.
