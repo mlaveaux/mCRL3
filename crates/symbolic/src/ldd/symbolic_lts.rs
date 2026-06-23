@@ -7,7 +7,6 @@ use oxidd::ldd::LDDFunction;
 use crate::SummandGroup;
 use crate::SymbolicLPS;
 use crate::SymbolicLTS;
-use crate::TransitionGroup;
 
 /// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
 pub struct SymbolicLts {
@@ -66,17 +65,21 @@ impl SymbolicLts {
 }
 
 impl SymbolicLPS for SymbolicLts {
+    type Group = SummandGroup;
+
     fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
-    fn transition_groups(&self) -> &[impl TransitionGroup] {
+    fn transition_groups(&self) -> &[Self::Group] {
         &self.summand_groups
     }
 
-    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+    fn transition_groups_mut(&mut self) -> &mut [Self::Group] {
         &mut self.summand_groups
     }
+
+    fn create_context(&self) {}
 }
 
 impl SymbolicLTS for SymbolicLts {
