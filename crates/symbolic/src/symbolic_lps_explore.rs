@@ -5,6 +5,7 @@ use merc_collections::IndexedSet;
 use merc_explore::LPS;
 use merc_explore::Summand;
 use merc_utilities::MercError;
+use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
@@ -66,7 +67,7 @@ impl<L: LPS> SymbolicLps<L> {
             let (index, _) = columns[position].insert(*value);
             initial_vector.push(*index as Value);
         }
-        let initial_state = LDDFunction::singleton(manager, &initial_vector)?;
+        let initial_state = manager.with_manager_shared(|m| LDDFunction::singleton(m, &initial_vector))?;
 
         // Build one symbolic group per summand.
         let mut groups = Vec::with_capacity(lps.summands().len());
@@ -77,10 +78,14 @@ impl<L: LPS> SymbolicLps<L> {
             read_indices.sort_unstable();
             write_indices.sort_unstable();
 
-            let project_ldd = LDDFunction::projection_meta(manager, &read_indices)?;
-            let (meta, read_positions, write_positions) =
-                LDDFunction::relation_product_meta(manager, &read_indices, &write_indices)?;
-            let relation = LDDFunction::empty_set(manager)?;
+            let (project_ldd, meta, read_positions, write_positions, relation) = manager
+                .with_manager_shared(|m| -> Result<_, MercError> {
+                    let project_ldd = LDDFunction::projection_meta(m, &read_indices)?;
+                    let (meta, read_positions, write_positions) =
+                        LDDFunction::relation_product_meta(m, &read_indices, &write_indices)?;
+                    let relation = LDDFunction::empty_set(m)?;
+                    Ok((project_ldd, meta, read_positions, write_positions, relation))
+                })?;
 
             groups.push(SymbolicLpsGroup {
                 lps: Rc::clone(&lps),
@@ -256,7 +261,7 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
                     interleaved[write_positions[m]] = *index as Value;
                 }
 
-                let cube = LDDFunction::singleton(storage, interleaved.as_slice())?;
+                let cube = storage.with_manager_shared(|m| LDDFunction::singleton(m, interleaved.as_slice()))?;
                 *relation = relation.union(&cube)?;
                 Ok(())
             })?;

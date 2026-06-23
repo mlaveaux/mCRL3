@@ -1,3 +1,4 @@
+use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
@@ -32,10 +33,14 @@ pub fn from_iter<'a, I>(manager: &LDDManagerRef, iter: I) -> LDDFunction
 where
     I: Iterator<Item = &'a Vec<Value>>,
 {
-    let mut result = LDDFunction::empty_set(manager).expect("Failed to create the empty set");
+    let mut result = manager
+        .with_manager_shared(|m| LDDFunction::empty_set(m))
+        .expect("Failed to create the empty set");
 
     for vector in iter {
-        let single = LDDFunction::singleton(manager, vector).expect("Failed to create a singleton");
+        let single = manager
+            .with_manager_shared(|m| LDDFunction::singleton(m, vector))
+            .expect("Failed to create a singleton");
         result = result.union(&single).expect("Failed to compute the union");
     }
 

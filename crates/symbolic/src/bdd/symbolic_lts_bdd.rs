@@ -160,7 +160,7 @@ impl SymbolicLtsBdd {
         );
 
         // Convert the states to a BDD representation.
-        let bits_dd = LDDFunction::singleton(manager, &state_bits)?;
+        let bits_dd = manager.with_manager_shared(|m| LDDFunction::singleton(m, &state_bits))?;
         let all_state_variables_bits: Vec<VarNo> = state_variables_bits.iter().flatten().cloned().collect();
         let states = ldd_to_bdd(manager, manager_bdd, lts.states(), &bits_dd, &all_state_variables_bits)?;
         let initial_state = ldd_to_bdd(
@@ -211,7 +211,7 @@ impl SymbolicLtsBdd {
                 index, group, relation_bits, variables
             );
 
-            let bits_dd = LDDFunction::singleton(manager, &relation_bits)?;
+            let bits_dd = manager.with_manager_shared(|m| LDDFunction::singleton(m, &relation_bits))?;
             let relation_bdd = ldd_to_bdd(manager, manager_bdd, group.relation(), &bits_dd, &variables)?;
 
             transition_groups.push(SummandGroupBdd::new(

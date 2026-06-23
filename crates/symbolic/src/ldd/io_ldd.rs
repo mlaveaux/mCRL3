@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 
@@ -37,8 +38,8 @@ impl<W: BitStreamWrite> BinaryLddWriter<W> {
 
         // Add the true and false constants
         let mut nodes = IndexedSet::new();
-        nodes.insert(LDDFunction::empty_set(manager)?);
-        nodes.insert(LDDFunction::empty_vector(manager)?);
+        nodes.insert(manager.with_manager_shared(|m| LDDFunction::empty_set(m))?);
+        nodes.insert(manager.with_manager_shared(|m| LDDFunction::empty_vector(m))?);
 
         Ok(Self {
             writer,
@@ -118,7 +119,9 @@ impl<R: BitStreamRead> BinaryLddReader<R> {
         }
 
         // Add the true and false constants
-        let nodes = vec![LDDFunction::empty_set(storage)?, LDDFunction::empty_vector(storage)?];
+        let nodes = storage.with_manager_shared(|m| -> Result<_, MercError> {
+            Ok(vec![LDDFunction::empty_set(m)?, LDDFunction::empty_vector(m)?])
+        })?;
         Ok(Self { reader, nodes })
     }
 
@@ -156,7 +159,8 @@ impl<R: BitStreamRead> BinaryLddReader<R> {
                     self.nodes.len()
                 ))?
                 .clone();
-            let ldd = LDDFunction::make_node(storage, value as u32, &down, &right)?;
+            let ldd =
+                storage.with_manager_shared(|m| LDDFunction::make_node(m, value as u32, &down, &right))?;
             self.nodes.push(ldd);
         }
     }
@@ -202,8 +206,8 @@ mod tests {
         let manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
         for term in [
-            LDDFunction::empty_set(&manager).unwrap(),
-            LDDFunction::empty_vector(&manager).unwrap(),
+            manager.with_manager_shared(|m| LDDFunction::empty_set(m)).unwrap(),
+            manager.with_manager_shared(|m| LDDFunction::empty_vector(m)).unwrap(),
         ] {
             let mut vector: Vec<u8> = Vec::new();
             let stream = BitStreamWriter::new(&mut vector);
