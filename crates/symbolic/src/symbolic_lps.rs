@@ -13,14 +13,24 @@ use crate::Relation;
 ///
 /// Any type with an initial state and transition groups can be explored via [crate::reachability].
 pub trait SymbolicLPS {
+    /// The transition group type backing this LTS.
+    type Group: TransitionGroup;
+
     /// Returns the LDD representing the initial state(s).
     fn initial_state(&self) -> &LDDFunction;
 
     /// Returns the transition groups.
-    fn transition_groups(&self) -> &[impl TransitionGroup];
+    fn transition_groups(&self) -> &[Self::Group];
 
     /// Returns the transition groups (mutable), needed for on-the-fly learning.
-    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup];
+    fn transition_groups_mut(&mut self) -> &mut [Self::Group];
+
+    /// Creates a fresh learning context, threaded through [TransitionGroup::learn_successors].
+    ///
+    /// The context owns the per-run mutable state shared by all groups (e.g. an enumeration backend
+    /// and value interning), so the groups themselves need no interior mutability. It is created once
+    /// per reachability run and must outlive every learning call.
+    fn create_context(&self) -> <Self::Group as TransitionGroup>::Context;
 
     /// Computes the dependency graph from the read/write indices of each transition group.
     fn dependency_graph(&self) -> DependencyGraph {
@@ -41,6 +51,9 @@ pub trait SymbolicLPS {
 
 /// A single LDD-based transition group for a set of summands (short vector encoding).
 pub trait TransitionGroup: fmt::Debug {
+    /// Per-run mutable state threaded into [Self::learn_successors]; `()` when nothing is learned.
+    type Context;
+
     /// Returns the transition relation T' -> U' for this summand group.
     fn relation(&self) -> &LDDFunction;
 
@@ -57,7 +70,12 @@ pub trait TransitionGroup: fmt::Debug {
     fn meta(&self) -> &LDDFunction;
 
     /// Learns the successors of `todo` and incorporates them into [Self::relation].
-    fn learn_successors(&mut self, manager: &LDDManagerRef, todo: &LDDFunction) -> Result<(), MercError>;
+    fn learn_successors(
+        &mut self,
+        context: &mut Self::Context,
+        manager: &LDDManagerRef,
+        todo: &LDDFunction,
+    ) -> Result<(), MercError>;
 }
 
 /// A short vector transition relation for a group of summands.
@@ -142,6 +160,8 @@ impl SummandGroup {
 }
 
 impl TransitionGroup for SummandGroup {
+    type Context = ();
+
     fn relation(&self) -> &LDDFunction {
         &self.relation
     }
@@ -162,7 +182,12 @@ impl TransitionGroup for SummandGroup {
         Some(self.action_label_index)
     }
 
-    fn learn_successors(&mut self, _storage: &LDDManagerRef, _todo: &LDDFunction) -> Result<(), MercError> {
+    fn learn_successors(
+        &mut self,
+        _context: &mut (),
+        _storage: &LDDManagerRef,
+        _todo: &LDDFunction,
+    ) -> Result<(), MercError> {
         Ok(())
     }
 }

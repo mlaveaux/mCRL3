@@ -79,6 +79,9 @@ pub fn reachability_with_options<L: SymbolicLPS>(
         );
     }
 
+    // Created once: the learning context (and any value interning it holds) must persist across
+    // iterations so successors learned in later iterations stay consistent with earlier ones.
+    let mut context = lts.create_context();
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone();
     let mut iteration = 0;
@@ -95,7 +98,7 @@ pub fn reachability_with_options<L: SymbolicLPS>(
         while !todo.is_empty() {
             debug!("Iteration {}: todo size = {}", iteration, todo.len());
 
-            let todo1 = step(storage, lts, &todo, options.strategy, timing)?;
+            let todo1 = step(storage, lts, &mut context, &todo, options.strategy, timing)?;
 
             trace!("todo1 = {}", LddDisplay::new(&todo1));
 
@@ -116,6 +119,7 @@ pub fn reachability_with_options<L: SymbolicLPS>(
 fn step<L: SymbolicLPS>(
     storage: &LDDManagerRef,
     lts: &mut L,
+    context: &mut <L::Group as TransitionGroup>::Context,
     todo: &LDDFunction,
     strategy: ExplorationStrategy,
     timing: &Timing,
@@ -143,7 +147,7 @@ fn step<L: SymbolicLPS>(
             trace!("Learning successors for transition group {}:", i);
             let source = if chaining { todo1.clone() } else { todo.clone() };
             timing.measure(&format!("learn_successors_{}", i), || {
-                transition.learn_successors(storage, &source)
+                transition.learn_successors(context, storage, &source)
             })?;
 
             let result = source.relational_product(transition.relation(), transition.meta())?;
@@ -159,7 +163,7 @@ fn step<L: SymbolicLPS>(
         for i in 0..groups.len() {
             trace!("Learning successors for transition group {}:", i);
             timing.measure(&format!("learn_successors_{}", i), || {
-                groups[i].learn_successors(storage, &todo1)
+                groups[i].learn_successors(context, storage, &todo1)
             })?;
 
             // Apply group i repeatedly until it no longer adds new states.

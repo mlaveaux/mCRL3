@@ -82,17 +82,21 @@ impl SylvanLts {
 }
 
 impl SymbolicLPS for SylvanLts {
+    type Group = SylvanTransitionGroup;
+
     fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
-    fn transition_groups(&self) -> &[impl TransitionGroup] {
+    fn transition_groups(&self) -> &[Self::Group] {
         &self.transition_groups
     }
 
-    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+    fn transition_groups_mut(&mut self) -> &mut [Self::Group] {
         &mut self.transition_groups
     }
+
+    fn create_context(&self) {}
 }
 
 /// A transition group read from a Sylvan file.
@@ -116,6 +120,8 @@ impl SylvanTransitionGroup {
 }
 
 impl TransitionGroup for SylvanTransitionGroup {
+    type Context = ();
+
     fn relation(&self) -> &LDDFunction {
         &self.relation
     }
@@ -136,7 +142,12 @@ impl TransitionGroup for SylvanTransitionGroup {
         &self.meta
     }
 
-    fn learn_successors(&mut self, _manager: &LDDManagerRef, _todo: &LDDFunction) -> Result<(), MercError> {
+    fn learn_successors(
+        &mut self,
+        _context: &mut (),
+        _manager: &LDDManagerRef,
+        _todo: &LDDFunction,
+    ) -> Result<(), MercError> {
         // All states are already explored.
         Ok(())
     }

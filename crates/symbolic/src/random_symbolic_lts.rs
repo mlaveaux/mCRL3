@@ -17,7 +17,6 @@ use merc_utilities::Timing;
 use crate::SummandGroup;
 use crate::SymbolicLPS;
 use crate::SymbolicLts;
-use crate::TransitionGroup;
 use crate::from_iter;
 use crate::random_vector_set;
 use crate::reachability;
@@ -111,15 +110,19 @@ struct ExplorationLps {
 }
 
 impl SymbolicLPS for ExplorationLps {
+    type Group = SummandGroup;
+
     fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
-    fn transition_groups(&self) -> &[impl TransitionGroup] {
+    fn transition_groups(&self) -> &[Self::Group] {
         &self.summand_groups
     }
 
-    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+    fn transition_groups_mut(&mut self) -> &mut [Self::Group] {
         &mut self.summand_groups
     }
+
+    fn create_context(&self) {}
 }

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
@@ -15,9 +14,6 @@ use crate::SymbolicLPS;
 use crate::TransitionGroup;
 use crate::iter;
 
-/// The per-thread enumeration context produced by an [LPS].
-type Context<L> = <<L as LPS>::Summand as Summand>::Context;
-
 /// A symbolic LDD view of any [`merc_explore::LPS`].
 ///
 /// This adapts the explicit-exploration abstraction (an `LPS` exposing summands
@@ -31,26 +27,34 @@ type Context<L> = <<L as LPS>::Summand as Summand>::Context;
 /// keeps a separate per-position interning into dense LDD values so the decision
 /// diagrams stay compact regardless of how the `LPS` numbers its values.
 pub struct SymbolicLps<L: LPS> {
+    /// The wrapped `LPS` definition; the single source of summands and the
+    /// `prepare`/`enumerate` machinery. Shared immutably with every group.
+    lps: Rc<L>,
+
+    /// One symbolic transition group per summand.
     groups: Vec<SymbolicLpsGroup<L>>,
+
+    /// The encoded initial state.
     initial_state: LDDFunction,
 }
 
-/// State shared between a [`SymbolicLps`] and all of its groups.
-struct Shared<L: LPS> {
-    /// The wrapped `LPS` definition; the single source of summands and the
-    /// `prepare`/`enumerate` machinery.
-    lps: L,
-
-    /// The enumeration backend, created once via [`LPS::create_context`].
-    context: RefCell<Context<L>>,
+/// Per-run learning state threaded through [SymbolicLpsGroup::learn_successors].
+///
+/// Holds the mutable state shared by all groups of one [SymbolicLps], so the
+/// groups themselves need no interior mutability.
+pub struct SymbolicContext<L: LPS> {
+    /// The enumeration backend created by [`LPS::create_context`].
+    enumerate: <L::Summand as Summand>::Context,
 
     /// Per state-vector position interning of `LPS` values into dense LDD values.
-    columns: RefCell<Vec<IndexedSet<L::Value>>>,
+    columns: Vec<IndexedSet<L::Value>>,
 }
 
 impl<L: LPS> SymbolicLps<L> {
     /// Wraps `lps` into a symbolic LDD view, encoding its initial state.
     pub fn new(manager: &LDDManagerRef, lps: L) -> Result<Self, MercError> {
+        let lps = Rc::new(lps);
+
         let initial_values = lps.initial_state();
         let num_positions = initial_values.len();
 
@@ -64,16 +68,9 @@ impl<L: LPS> SymbolicLps<L> {
         }
         let initial_state = LDDFunction::singleton(manager, &initial_vector)?;
 
-        let context = lps.create_context();
-        let shared = Rc::new(Shared {
-            lps,
-            context: RefCell::new(context),
-            columns: RefCell::new(columns),
-        });
-
         // Build one symbolic group per summand.
-        let mut groups = Vec::with_capacity(shared.lps.summands().len());
-        for (index, summand) in shared.lps.summands().iter().enumerate() {
+        let mut groups = Vec::with_capacity(lps.summands().len());
+        for (index, summand) in lps.summands().iter().enumerate() {
             let mut read_indices: Vec<Value> = summand.read_positions().iter().map(|&p| p as Value).collect();
             let mut write_indices: Vec<Value> = summand.write_positions().iter().map(|&p| p as Value).collect();
             // The short-vector encoding requires sorted read/write indices.
@@ -86,6 +83,7 @@ impl<L: LPS> SymbolicLps<L> {
             let relation = LDDFunction::empty_set(manager)?;
 
             groups.push(SymbolicLpsGroup {
+                lps: Rc::clone(&lps),
                 index,
                 read_indices,
                 write_indices,
@@ -94,32 +92,61 @@ impl<L: LPS> SymbolicLps<L> {
                 project_ldd,
                 meta,
                 relation,
-                shared: Rc::clone(&shared),
             });
         }
 
-        Ok(SymbolicLps { groups, initial_state })
+        Ok(SymbolicLps {
+            lps,
+            groups,
+            initial_state,
+        })
+    }
+
+    /// Builds the per-position interning seeded with the initial-state values.
+    ///
+    /// Re-inserting `initial_state()` into fresh per-column sets reproduces the
+    /// exact dense indices used when [Self::new] encoded the initial LDD, so the
+    /// learned relations stay consistent with it.
+    fn initial_columns(&self) -> Vec<IndexedSet<L::Value>> {
+        let initial_values = self.lps.initial_state();
+        let mut columns: Vec<IndexedSet<L::Value>> = (0..initial_values.len()).map(|_| IndexedSet::new()).collect();
+        for (position, value) in initial_values.iter().enumerate() {
+            columns[position].insert(*value);
+        }
+        columns
     }
 }
 
 impl<L: LPS> SymbolicLPS for SymbolicLps<L> {
+    type Group = SymbolicLpsGroup<L>;
+
     fn initial_state(&self) -> &LDDFunction {
         &self.initial_state
     }
 
-    fn transition_groups(&self) -> &[impl TransitionGroup] {
+    fn transition_groups(&self) -> &[Self::Group] {
         &self.groups
     }
 
-    fn transition_groups_mut(&mut self) -> &mut [impl TransitionGroup] {
+    fn transition_groups_mut(&mut self) -> &mut [Self::Group] {
         &mut self.groups
+    }
+
+    fn create_context(&self) -> SymbolicContext<L> {
+        SymbolicContext {
+            enumerate: self.lps.create_context(),
+            columns: self.initial_columns(),
+        }
     }
 }
 
 /// A single summand of a [`SymbolicLps`], encoded as a short-vector LDD
 /// transition relation that is learned on the fly during reachability.
-struct SymbolicLpsGroup<L: LPS> {
-    /// Index of this summand within `shared.lps.summands()`.
+pub struct SymbolicLpsGroup<L: LPS> {
+    /// The wrapped `LPS`, shared immutably with [SymbolicLps].
+    lps: Rc<L>,
+
+    /// Index of this summand within `lps.summands()`.
     index: usize,
 
     /// Full state-vector positions read by the summand (sorted).
@@ -142,12 +169,11 @@ struct SymbolicLpsGroup<L: LPS> {
 
     /// The learned transition relation `T' -> U'`, grown on the fly.
     relation: LDDFunction,
-
-    /// Shared `LPS`, enumeration context and per-position interning.
-    shared: Rc<Shared<L>>,
 }
 
 impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
+    type Context = SymbolicContext<L>;
+
     fn relation(&self) -> &LDDFunction {
         &self.relation
     }
@@ -168,15 +194,24 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         &self.meta
     }
 
-    fn learn_successors(&mut self, storage: &LDDManagerRef, todo: &LDDFunction) -> Result<(), MercError> {
+    fn learn_successors(
+        &mut self,
+        context: &mut SymbolicContext<L>,
+        storage: &LDDManagerRef,
+        todo: &LDDFunction,
+    ) -> Result<(), MercError> {
         let proj = todo.project(&self.project_ldd)?;
+
+        // Borrow the backend and the interning as disjoint fields so the
+        // enumeration callback can grow the interning while the backend call is
+        // in progress.
+        let SymbolicContext { enumerate, columns } = context;
 
         // Reusable full-length state buffer. Non-read positions keep the initial
         // state's values: they are never read by this summand (guaranteed by the
         // read-positions contract), so any valid value works; the read positions
         // are overlaid from each short state below.
-        let mut full_state = self.shared.lps.initial_state();
-        debug_assert_eq!(full_state.len(), self.shared.columns.borrow().len());
+        let mut full_state = self.lps.initial_state();
 
         // Reusable interleaved short vector for the relation singletons.
         let mut interleaved: Vec<Value> = vec![0; self.read_indices.len() + self.write_indices.len()];
@@ -184,6 +219,8 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         // Accumulate into a local relation so the enumeration callback does not
         // have to borrow `self`.
         let mut relation = self.relation.clone();
+
+        let summand = &self.lps.summands()[self.index];
 
         let mut states = iter(&proj);
         while let Some(short_state) = states.next() {
@@ -195,49 +232,28 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
 
             // Overlay the short read values into the full state buffer and the
             // interleaved read positions.
-            {
-                let columns = self.shared.columns.borrow();
-                for (k, &value) in short_state.iter().enumerate() {
-                    let full_pos = self.read_indices[k] as usize;
-                    full_state[full_pos] = *columns[full_pos]
-                        .get_by_index(value as usize)
-                        .expect("read value must already be interned");
-                    interleaved[self.read_positions[k]] = value;
-                }
+            for (k, &value) in short_state.iter().enumerate() {
+                let full_pos = self.read_indices[k] as usize;
+                full_state[full_pos] = *columns[full_pos]
+                    .get_by_index(value as usize)
+                    .expect("read value must already be interned");
+                interleaved[self.read_positions[k]] = value;
             }
 
-            // `prepare` sets the backend assignments for this state and returns
-            // the summands that may fire; skip when this group is not among them.
-            // For plain LPSs every summand fires; for PBESs this is the
-            // equation-index gate.
-            let fires = {
-                let mut context = self.shared.context.borrow_mut();
-                self.shared
-                    .lps
-                    .prepare(&mut context, &full_state)
-                    .any(|index| index == self.index)
-            };
-            if !fires {
-                continue;
-            }
+            // Prepare the backend assignments for this state.
+            let _ = self.lps.prepare(enumerate, &full_state);
 
             // Enumerate the successors, building the write side of each short
             // transition vector and unioning it into the relation.
-            let mut context = self.shared.context.borrow_mut();
-            let summand = &self.shared.lps.summands()[self.index];
-            let shared = &self.shared;
             let write_indices = &self.write_indices;
             let write_positions = &self.write_positions;
             let interleaved = &mut interleaved;
             let relation = &mut relation;
 
-            summand.enumerate(&mut context, &full_state, |_label, next_state| {
-                {
-                    let mut columns = shared.columns.borrow_mut();
-                    for (m, &full_pos) in write_indices.iter().enumerate() {
-                        let (index, _) = columns[full_pos as usize].insert(next_state[full_pos as usize]);
-                        interleaved[write_positions[m]] = *index as Value;
-                    }
+            summand.enumerate(enumerate, &full_state, |_label, next_state| {
+                for (m, &full_pos) in write_indices.iter().enumerate() {
+                    let (index, _) = columns[full_pos as usize].insert(next_state[full_pos as usize]);
+                    interleaved[write_positions[m]] = *index as Value;
                 }
 
                 let cube = LDDFunction::singleton(storage, interleaved.as_slice())?;
