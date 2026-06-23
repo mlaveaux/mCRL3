@@ -4,6 +4,7 @@ use std::io::Read;
 
 use log::info;
 use merc_utilities::MercError;
+use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
@@ -27,13 +28,11 @@ pub fn read_sylvan<R: Read>(manager: &LDDManagerRef, stream: &mut R) -> Result<S
     for _ in 0..num_transitions {
         let (read_proj, write_proj) = read_projection(stream)?;
 
-        let meta = LDDFunction::relation_product_meta(manager, &read_proj, &write_proj)?.0;
-        groups.push(SylvanTransitionGroup::new(
-            LDDFunction::empty_set(manager)?,
-            meta,
-            read_proj,
-            write_proj,
-        ));
+        let (meta, empty) = manager.with_manager_shared(|m| -> Result<_, MercError> {
+            let meta = LDDFunction::relation_product_meta(m, &read_proj, &write_proj)?.0;
+            Ok((meta, LDDFunction::empty_set(m)?))
+        })?;
+        groups.push(SylvanTransitionGroup::new(empty, meta, read_proj, write_proj));
     }
 
     for transition in groups.iter_mut().take(num_transitions) {
@@ -202,7 +201,8 @@ impl SylvanReader {
             let down = self.node_from_index(manager, down)?;
             let right = self.node_from_index(manager, right)?;
 
-            let ldd = LDDFunction::make_node(manager, value as Value, &down, &right)?;
+            let ldd =
+                manager.with_manager_shared(|m| LDDFunction::make_node(m, value as Value, &down, &right))?;
             self.indexed_set.insert(self.last_index, ldd);
 
             self.last_index += 1;
@@ -215,9 +215,9 @@ impl SylvanReader {
     /// Returns the LDD belonging to the given index.
     fn node_from_index(&self, manager: &LDDManagerRef, index: u64) -> Result<LDDFunction, MercError> {
         if index == 0 {
-            Ok(LDDFunction::empty_set(manager)?)
+            Ok(manager.with_manager_shared(|m| LDDFunction::empty_set(m))?)
         } else if index == 1 {
-            Ok(LDDFunction::empty_vector(manager)?)
+            Ok(manager.with_manager_shared(|m| LDDFunction::empty_vector(m))?)
         } else {
             Ok(self
                 .indexed_set

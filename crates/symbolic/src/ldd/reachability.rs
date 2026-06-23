@@ -1,6 +1,7 @@
 use log::debug;
 use log::info;
 use log::trace;
+use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 
@@ -140,7 +141,7 @@ fn step<L: SymbolicLPS>(
         let mut todo1 = if chaining {
             todo.clone()
         } else {
-            LDDFunction::empty_set(storage)?
+            storage.with_manager_shared(|m| LDDFunction::empty_set(m))?
         };
 
         for (i, transition) in groups.iter_mut().enumerate() {

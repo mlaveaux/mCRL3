@@ -162,9 +162,9 @@ partial_ord_enum_variants_reordered = "allow"
 
 # Use a fork of oxidd until the LDD branch is integrated.
 [patch.crates-io]
-oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
-oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
-oxidd-dump = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
-oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
-oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
-oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "4ed048be1f064f6dc4497a396204de35e4c1568b" }
+oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "62d441c11eb23b6991731ea80579198426809834" }
+oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "62d441c11eb23b6991731ea80579198426809834" }
+oxidd-dump = { git = "https://github.com/mlaveaux/oxidd", rev = "62d441c11eb23b6991731ea80579198426809834" }
+oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "62d441c11eb23b6991731ea80579198426809834" }
+oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "62d441c11eb23b6991731ea80579198426809834" }
+oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "62d441c11eb23b6991731ea80579198426809834" }

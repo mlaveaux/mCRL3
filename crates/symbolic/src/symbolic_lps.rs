@@ -2,6 +2,7 @@ use std::fmt;
 
 use merc_data::DataVariable;
 use merc_utilities::MercError;
+use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
@@ -134,7 +135,11 @@ impl SummandGroup {
         write_parameter_indices.sort_unstable();
         read_parameter_indices.sort_unstable();
 
-        let meta = LDDFunction::relation_product_meta(manager, &read_parameter_indices, &write_parameter_indices)?.0;
+        let meta = manager
+            .with_manager_shared(|m| {
+                LDDFunction::relation_product_meta(m, &read_parameter_indices, &write_parameter_indices)
+            })?
+            .0;
         let action_label_index = read_parameters.len() + write_parameters.len();
 
         Ok(Self {
