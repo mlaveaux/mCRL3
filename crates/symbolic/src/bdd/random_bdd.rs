@@ -4,13 +4,10 @@ use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
 use oxidd::util::OutOfMemory;
-#[cfg(test)]
 use rand::Rng;
-#[cfg(test)]
 use rand::RngExt;
 
 /// Generate `num_vectors` random bitvectors of length `num_vars`.
-#[cfg(test)]
 pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usize) -> Vec<Vec<OptBool>> {
     let mut vectors = Vec::new();
     // random_range panics on an empty range, so a request for zero vectors yields nothing.
@@ -34,8 +31,6 @@ pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usiz
 }
 
 /// Constructs a BDD representing the given cube (bitvector) over the given variables.
-///
-/// Unlike the other helpers here this one is used in production (signature refinement).
 pub fn bdd_from_cube(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
@@ -60,7 +55,6 @@ pub fn bdd_from_cube(
 }
 
 /// Create a BDD from the given iterator over bitvector.
-#[cfg(test)]
 pub fn bdd_from_iter<'a, I>(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
@@ -78,7 +72,6 @@ where
 }
 
 /// Create a random BDD over the given variables with the given number of cubes.
-#[cfg(test)]
 pub fn random_bdd<R: Rng>(
     manager_ref: &BDDManagerRef,
     rng: &mut R,
