@@ -1,5 +1,3 @@
-//! Functions in this module are only relevant for testing purposes.
-
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;

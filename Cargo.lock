@@ -1426,6 +1426,7 @@ dependencies = [
  "merc_aterm",
  "merc_collections",
  "merc_data",
+ "merc_explore",
  "merc_io",
  "merc_lts",
  "merc_number",

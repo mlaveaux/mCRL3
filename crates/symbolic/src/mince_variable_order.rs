@@ -25,7 +25,7 @@ trait Partitioner {
 /// algorithm and the KaHyPar partitioning tool.
 pub fn reorder(kahypar_path: &Path, kahypar_ini_path: &Path, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
     reorder_with(&KaHyParPartitioner::new(kahypar_path, kahypar_ini_path), graph)
-}   
+}
 
 /// Computes a variable order using the MINCE algorithm with the given [Partitioner].
 fn reorder_with<P: Partitioner>(partitioner: &P, graph: &DependencyGraph) -> Result<Vec<usize>, MercError> {
@@ -234,7 +234,7 @@ fn add_edge(
     }
 }
 
-/// A [Partitioner] that bipartitions hypergraphs by invoking the external KaHyPar tool.
+/// Bipartitions hypergraphs by invoking the external KaHyPar tool.
 pub struct KaHyParPartitioner {
     kahypar_path: PathBuf,
     kahypar_ini_path: PathBuf,
@@ -392,7 +392,9 @@ mod tests {
     impl Partitioner for RandomPartitioner {
         fn partition(&self, hypergraph: &Hypergraph) -> Result<Vec<usize>, MercError> {
             let mut rng = self.rng.borrow_mut();
-            Ok((0..hypergraph.num_vertices).map(|_| rng.random_range(0..2usize)).collect())
+            Ok((0..hypergraph.num_vertices)
+                .map(|_| rng.random_range(0..2usize))
+                .collect())
         }
     }
 
