@@ -113,6 +113,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Miri does not support external calls.
     fn test_enabled_writes_file() {
         let base = tempfile::tempdir().expect("failed to create base temp dir");
         let base_path = base.path().to_str().expect("temp path is valid UTF-8");
@@ -136,12 +137,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Miri does not support external calls.
     fn test_temp_dir_disabled_creates_directory() {
         let dir = temp_dir_in(None, "merc_io_test").expect("temp dir should be created");
         assert!(dir.path().is_dir(), "temp dir should exist on disk");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Miri does not support external calls.
     fn test_temp_dir_enabled_uses_base() {
         let base = tempfile::tempdir().expect("failed to create base temp dir");
         let base_path = base.path().to_str().expect("temp path is valid UTF-8");
