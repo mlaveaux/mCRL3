@@ -486,7 +486,7 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
                 Ok(Some(quotient))
             }
             Equivalence::StrongBisim => {
-                refine_bisimulation(&manager_ref, &lts_bdd)?;
+                let _ = refine_bisimulation(&manager_ref, &lts_bdd)?;
                 Ok(None)
             }
         }

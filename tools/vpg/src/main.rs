@@ -59,7 +59,7 @@ use merc_vpg::write_vpg;
 
 /// Default node capacity for the Oxidd decision diagram manager. The choice
 /// for this value is fairly arbitrary.
-const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2024;
+const DEFAULT_OXIDD_NODE_CAPACITY: usize = 2028;
 
 /// A command line tool for variability parity games
 #[derive(clap::Parser, Debug)]
