@@ -18,7 +18,6 @@ merc_utilities.workspace = true
 merc_vpg = { workspace = true, features = ["clap"] }
 oxidd.workspace = true
 
-boxcar.workspace = true
 clap.workspace = true
 env_logger.workspace = true
 itertools.workspace = true

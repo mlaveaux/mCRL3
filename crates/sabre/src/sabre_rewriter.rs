@@ -63,9 +63,8 @@ impl SabreRewriter {
     pub fn stack_based_normalise(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let result = THREAD_TERM_POOL.with(|tp| {
-            SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, &mut self.builder, t, &mut stats)
-        });
+        let result = THREAD_TERM_POOL
+            .with(|tp| SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, &mut self.builder, t, &mut stats));
 
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",

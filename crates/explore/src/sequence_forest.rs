@@ -2,6 +2,7 @@ use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::mem;
 
+use merc_unsafety::ConcurrentAppendVec;
 use merc_unsafety::ShardedHashMap;
 use rustc_hash::FxBuildHasher;
 
@@ -150,9 +151,9 @@ pub struct SequenceForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHash
 where
     V: Copy,
 {
-    /// The shared node pool. The append-only vector hands out the dense node
-    /// index itself, so a node's slot index is its interned identity.
-    nodes: boxcar::Vec<[V; N]>,
+    /// The shared node pool. Each push hands out the index a node is stored at,
+    /// which serves as its interned identity. Indices are unique but not dense.
+    nodes: ConcurrentAppendVec<[V; N]>,
     /// One interning index per height, mapping a node's content to its index in
     /// `nodes`. Avoids duplicating the `nodes` information by passing the hash
     /// and equality functions as closures.
@@ -193,7 +194,7 @@ where
             .map(|_| ShardedHashMap::with_shards_and_hasher(FOREST_SHARDS, S::default()))
             .collect();
         SequenceForest {
-            nodes: boxcar::Vec::new(),
+            nodes: ConcurrentAppendVec::new(),
             tables,
         }
     }
@@ -279,7 +280,7 @@ where
             return index;
         }
 
-        // `push` appends the node and returns its dense index. The slot is
+        // `push` appends the node and returns the index it landed at. The slot is
         // published before `push` returns, so any thread that later reads the
         // index from `tables` can resolve it in `nodes`. `make` runs only on a
         // miss and while the shard is write-locked, so the index is unique.
@@ -357,7 +358,7 @@ where
     /// is the deduplicated node count, not the total number of entries across
     /// all trees.
     pub fn node_count(&self) -> usize {
-        self.nodes.count()
+        self.nodes.len()
     }
 
     /// Removes every tree from the forest, invalidating all outstanding
@@ -390,7 +391,7 @@ pub struct Iter<'a, V, const N: usize>
 where
     V: Copy,
 {
-    nodes: &'a boxcar::Vec<[V; N]>,
+    nodes: &'a ConcurrentAppendVec<[V; N]>,
     /// Frames on the path from the root, each holding the node's slot array, the
     /// index of the next slot to visit in it, and the node's height.
     stack: [([V; N], u32, u8); MAX_DEPTH],

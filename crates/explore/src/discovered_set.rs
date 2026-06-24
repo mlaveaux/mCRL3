@@ -7,7 +7,8 @@ use crate::Tree;
 
 /// A stable handle to a state stored in a [`DiscoveredSet`].
 ///
-/// References are dense and assigned in insertion order starting from zero.
+/// Handles are stable and unique per state, but the underlying indices may be
+/// sparse rather than a contiguous `0..n`.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct StateRef(usize);
@@ -30,7 +31,7 @@ where
 {
     /// Hash-consed forest backing every stored state sequence.
     forest: SequenceForest<T, 2>,
-    /// Deduplicates canonical roots and assigns each a dense index into the
+    /// Deduplicates canonical roots and assigns each a stable index into the
     /// forest.
     states: ConcurrentIndexedSet<Tree>,
 }
