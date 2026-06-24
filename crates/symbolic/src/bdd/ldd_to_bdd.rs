@@ -125,7 +125,7 @@ pub fn ldd_to_bdd_edge<'id>(
 /// Converts a BDD representing a set of bitblasted vectors back into an LDD
 /// representing the same set, i.e., the inverse of [ldd_to_bdd].
 pub fn bdd_to_ldd(
-    ldd_manager: &LDDManagerRef,
+    ldd_manager_ref: &LDDManagerRef,
     manager_ref: &BDDManagerRef,
     bdd: &BDDFunction,
     variables: &[VarNo],
@@ -134,26 +134,30 @@ pub fn bdd_to_ldd(
     current_value: Value,
 ) -> Result<LDDFunction, OutOfMemory> {
     let mut cache = FxHashMap::default();
+    // Hold both manager locks for the whole recursion: every LDD node is built with the lock-free
+    // `*_edge` constructors, so the entire conversion runs under a single shared lock per manager.
     manager_ref.with_manager_shared(|manager| {
-        let edge = bdd.as_edge(manager);
-        bdd_to_ldd_edge(
-            ldd_manager,
-            manager,
-            &mut cache,
-            edge.borrowed(),
-            variables,
-            bits_per_layer,
-            current_bit,
-            current_value,
-        )
+        ldd_manager_ref.with_manager_shared(|ldd_manager| {
+            let edge = bdd.as_edge(manager);
+            bdd_to_ldd_edge(
+                ldd_manager,
+                manager,
+                &mut cache,
+                edge.borrowed(),
+                variables,
+                bits_per_layer,
+                current_bit,
+                current_value,
+            )
+        })
     })
 }
 
 /// Recursive implementation of [bdd_to_ldd].
 #[allow(clippy::mutable_key_type)]
 #[allow(clippy::too_many_arguments)]
-pub fn bdd_to_ldd_edge<'id>(
-    ldd_manager: &LDDManagerRef,
+pub fn bdd_to_ldd_edge<'id, 'ldd>(
+    ldd_manager: &<LDDFunction as Function>::Manager<'ldd>,
     manager: &<BDDFunction as Function>::Manager<'id>,
     cache: &mut FxHashMap<(BDDFunction, usize, Value, Value), LDDFunction>,
     bdd: Borrowed<EdgeOfFunc<'id, BDDFunction>>,
@@ -168,11 +172,11 @@ pub fn bdd_to_ldd_edge<'id>(
             // Base cases
             match terminal {
                 BDDTerminal::False => {
-                    return ldd_manager.with_manager_shared(|m| LDDFunction::empty_set(m));
+                    return LDDFunction::empty_set(ldd_manager);
                 }
                 BDDTerminal::True => {
                     if variables.is_empty() {
-                        return ldd_manager.with_manager_shared(|m| LDDFunction::singleton(m, &[current_value]));
+                        return LDDFunction::singleton(ldd_manager, &[current_value]);
                     }
 
                     // If there are still variables left, we must generate don't cares for the remaining layers.
@@ -197,10 +201,8 @@ pub fn bdd_to_ldd_edge<'id>(
                         // We reached the last bit for this layer, variable still belongs to next layer.
                         let down =
                             bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
-                        ldd_manager.with_manager_shared(|m| {
-                            let right = LDDFunction::empty_set(m)?;
-                            LDDFunction::make_node(m, current_value, &down, &right)
-                        })?
+                        let right = LDDFunction::empty_set(ldd_manager)?;
+                        LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
                     } else {
                         debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
                         let high = bdd_to_ldd_edge(
@@ -223,7 +225,7 @@ pub fn bdd_to_ldd_edge<'id>(
                             current_bit + 1,
                             current_value,
                         )?;
-                        high.union(&low)?
+                        LDDFunction::union_edge(ldd_manager, &high, &low)?
                     };
 
                     cache.insert(cache_key, result.clone());
@@ -257,10 +259,8 @@ pub fn bdd_to_ldd_edge<'id>(
         if num_bits == current_bit {
             // We reached the last bit for this layer, variable still belongs to next layer.
             let down = bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
-            ldd_manager.with_manager_shared(|m| {
-                let right = LDDFunction::empty_set(m)?;
-                LDDFunction::make_node(m, current_value, &down, &right)
-            })?
+            let right = LDDFunction::empty_set(ldd_manager)?;
+            LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
         } else {
             debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
             let high = bdd_to_ldd_edge(
@@ -283,17 +283,15 @@ pub fn bdd_to_ldd_edge<'id>(
                 current_bit + 1,
                 current_value,
             )?;
-            high.union(&low)?
+            LDDFunction::union_edge(ldd_manager, &high, &low)?
         }
     } else {
         debug_assert_eq!(*variable_level, bdd_node.level(), "Levels do not match");
         if num_bits == current_bit {
             // We reached the last bit for this layer
             let down = bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
-            ldd_manager.with_manager_shared(|m| {
-                let right = LDDFunction::empty_set(m)?;
-                LDDFunction::make_node(m, current_value, &down, &right)
-            })?
+            let right = LDDFunction::empty_set(ldd_manager)?;
+            LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
         } else {
             debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
             let (bdd_high, bdd_low) = collect_children(bdd_node);
@@ -320,7 +318,7 @@ pub fn bdd_to_ldd_edge<'id>(
                 current_value,
             )?;
 
-            high.union(&low)?
+            LDDFunction::union_edge(ldd_manager, &high, &low)?
         }
     };
 
@@ -498,7 +496,9 @@ mod tests {
 
             let highest = compute_highest(&manager, &ldd);
             let bits = compute_bits(&highest);
-            let bits_dd = manager.with_manager_shared(|m| LDDFunction::singleton(m, &bits)).unwrap();
+            let bits_dd = manager
+                .with_manager_shared(|m| LDDFunction::singleton(m, &bits))
+                .unwrap();
 
             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
