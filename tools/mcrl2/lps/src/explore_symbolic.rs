@@ -1,10 +1,12 @@
 use log::debug;
-use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 
 use mcrl2::LinearProcessSpecification;
+use merc_symbolic::ExplorationStrategy;
+use merc_symbolic::ReachabilityOptions;
+use merc_symbolic::ReachabilityResult;
 use merc_symbolic::SymbolicLps;
-use merc_symbolic::reachability;
+use merc_symbolic::reachability_with_options;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -19,14 +21,20 @@ use crate::explore_explicit::ExplicitLinearProcessSpecification;
 pub(crate) fn explore_lps_symbolic(
     storage: &LDDManagerRef,
     lps: &LinearProcessSpecification,
+    strategy: ExplorationStrategy,
+    detect_deadlocks: bool,
     timing: &Timing,
-) -> Result<LDDFunction, MercError> {
+) -> Result<ReachabilityResult, MercError> {
     let lps = ExplicitLinearProcessSpecification::new(lps)?;
     let mut symbolic = SymbolicLps::new(storage, lps)?;
 
     debug!("{symbolic:?}");
 
-    reachability(storage, &mut symbolic, timing)
+    let options = ReachabilityOptions {
+        strategy,
+        detect_deadlocks,
+    };
+    reachability_with_options(storage, &mut symbolic, &options, timing)
 }
 
 #[cfg(test)]
@@ -35,6 +43,7 @@ mod tests {
     use std::process::Command;
 
     use mcrl2::read_lps;
+    use merc_symbolic::ExplorationStrategy;
     use merc_utilities::Timing;
 
     use super::explore_lps_symbolic;
@@ -67,7 +76,9 @@ mod tests {
         let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);
         let timing = Timing::new();
 
-        let states = explore_lps_symbolic(&storage, &lps, &timing).expect("Failed to explore LPS");
+        let states = explore_lps_symbolic(&storage, &lps, ExplorationStrategy::default(), false, &timing)
+            .expect("Failed to explore LPS")
+            .states;
         let num_of_states = states.len();
 
         assert_eq!(

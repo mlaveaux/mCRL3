@@ -9,6 +9,7 @@ use clap::Subcommand;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_lts::AutFormat;
+use merc_symbolic::ExplorationStrategy as SymbolicExplorationStrategy;
 use merc_lts::AutStream;
 use merc_lts::MutexLtsBuilder;
 use merc_tools::VerbosityFlag;
@@ -99,6 +100,14 @@ struct ExploreArgs {
     /// Explicitly choose the format of the input LPS file.
     #[arg(long, short('i'), value_enum)]
     format: Option<LpsFormat>,
+
+    /// The strategy used to apply the transition groups during reachability.
+    #[arg(long, short('s'), value_enum, default_value_t = SymbolicExplorationStrategy::default())]
+    strategy: SymbolicExplorationStrategy,
+
+    /// Detect and report deadlock states (reachable states with no outgoing transition).
+    #[arg(long)]
+    deadlocks: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -187,8 +196,11 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
 
     let storage = init_ldd_manager(cli);
 
-    let states = explore_lps_symbolic(&storage, &lps, timing)?;
-    println!("Number of states: {}", states.len());
+    let result = explore_lps_symbolic(&storage, &lps, args.strategy, args.deadlocks, timing)?;
+    println!("Number of states: {}", result.states.len());
+    if let Some(deadlocks) = &result.deadlocks {
+        println!("Number of deadlocks: {}", deadlocks.len());
+    }
 
     Ok(())
 }
