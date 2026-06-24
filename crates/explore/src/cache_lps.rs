@@ -218,7 +218,7 @@ impl CacheMetrics {
 impl fmt::Display for CacheMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if cfg!(not(feature = "metrics")) {
-            return writeln!(f, "enable the 'metrics' feature to see cache metrics");
+            return write!(f, "enable the 'metrics' feature to see cache metrics");
         }
 
         writeln!(f, "summand cache metrics:")?;
