@@ -8,6 +8,7 @@ use merc_utilities::MercError;
 use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::RelationProductMeta;
 use oxidd::ldd::Value;
 use streaming_iterator::StreamingIterator;
 
@@ -78,11 +79,14 @@ impl<L: LPS> SymbolicLps<L> {
             read_indices.sort_unstable();
             write_indices.sort_unstable();
 
-            let (project_ldd, meta, read_positions, write_positions, relation) = manager
-                .with_manager_shared(|m| -> Result<_, MercError> {
+            let (project_ldd, meta, read_positions, write_positions, relation) =
+                manager.with_manager_shared(|m| -> Result<_, MercError> {
                     let project_ldd = LDDFunction::projection_meta(m, &read_indices)?;
-                    let (meta, read_positions, write_positions) =
-                        LDDFunction::relation_product_meta(m, &read_indices, &write_indices)?;
+                    let RelationProductMeta {
+                        meta,
+                        read_positions,
+                        write_positions,
+                    } = LDDFunction::relation_product_meta(m, &read_indices, &write_indices)?;
                     let relation = LDDFunction::empty_set(m)?;
                     Ok((project_ldd, meta, read_positions, write_positions, relation))
                 })?;

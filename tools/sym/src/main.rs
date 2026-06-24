@@ -299,7 +299,9 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
             println!(
                 "LTS has {} states",
                 timing.measure("explore", || -> Result<_, MercError> {
-                    Ok(reachability_with_options(&storage, &mut lts, &options, timing)?.len())
+                    Ok(reachability_with_options(&storage, &mut lts, &options, timing)?
+                        .states
+                        .len())
                 })?
             );
         }
@@ -347,9 +349,9 @@ fn explore_impl<L: SymbolicLTS>(
         println!(
             "LTS has {} states",
             timing.measure("explore", || -> Result<_, MercError> {
-                let states = reachability_with_options(storage, lts, &options, timing)?;
+                let result = reachability_with_options(storage, lts, &options, timing)?;
 
-                Ok(states.len())
+                Ok(result.states.len())
             })?
         );
     }
