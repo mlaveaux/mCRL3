@@ -57,7 +57,6 @@ members = [
 ahash = "0.8"
 bitstream-io = "4.10"
 bitvec = "1.1"
-boxcar = "0.2"
 bumpalo = "3.20"
 clap = { version = "4.6", features = ["derive"] }
 core_affinity2 = "0.15"
@@ -162,9 +161,9 @@ partial_ord_enum_variants_reordered = "allow"
 
 # Use a local checkout of the oxidd fork until the LDD branch is integrated.
 [patch.crates-io]
-oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
-oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
-oxidd-dump =  { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
-oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
-oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
-oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
+oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
+oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
+oxidd-dump =  { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
+oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
+oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
+oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }

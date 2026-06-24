@@ -20,18 +20,15 @@ use super::thread_aterm_pool::THREAD_TERM_POOL;
 /// `T = DataExpressionRef<'static>` instance of this blanket impl.
 impl<T: Markable, S> Markable for ConcurrentIndexedSet<T, S> {
     fn mark(&self, mut todo: Todo) {
-        // Indices are dense `0..len`, so iterating by index visits every
-        // interned value. Stop-the-world collection means `len` is stable here.
-        for index in 0..ConcurrentIndexedSet::len(self) {
-            if let Some(value) = self.get_by_index(index) {
-                value.mark(todo.as_mut());
-            }
+        // Indices may be sparse, so iterate the resident values rather than by
+        // index. Stop-the-world collection means the set is stable here.
+        for value in self.iter() {
+            value.mark(todo.as_mut());
         }
     }
 
     fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        (0..ConcurrentIndexedSet::len(self))
-            .any(|index| self.get_by_index(index).is_some_and(|v| v.contains_term(term)))
+        self.iter().any(|value| value.contains_term(term))
     }
 
     fn len(&self) -> usize {

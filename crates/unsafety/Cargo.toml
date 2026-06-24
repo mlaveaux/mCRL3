@@ -30,7 +30,6 @@ merc_io.workspace = true
 merc_utilities.workspace = true
 
 allocator-api2.workspace = true
-boxcar.workspace = true
 crossbeam-utils.workspace = true
 dashmap.workspace = true
 equivalent.workspace = true

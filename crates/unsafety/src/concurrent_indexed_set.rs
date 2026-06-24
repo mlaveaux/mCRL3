@@ -1,39 +1,27 @@
-//! An append-only, thread-safe set that assigns every distinct value a stable
-//! dense index.
-//!
-//! Unlike [`merc_collections::IndexedSet`], this set never removes and never
-//! reuses a slot, which is exactly what concurrent interning needs: state
-//! vectors during exploration, the LTS label table, and similar workloads only
-//! ever insert and read back by index. Dropping removal and the generational
-//! index makes the structure safe to share by `&self` across threads.
-//!
-//! It is the same shape [`super::ShardedHashMap`] already powers in
-//! `DiscoveredSet`: a [`boxcar::Vec`] gives index-stable concurrent `push` plus
-//! `get_by_index`, and a [`ShardedHashMap`] keyed by the dense index (its
-//! hash/equality closures dereference the vector) deduplicates values without
-//! storing a second copy of the payload.
-
 use std::hash::BuildHasher;
 use std::hash::Hash;
 
 use rustc_hash::FxBuildHasher;
 
+use crate::ConcurrentAppendVec;
 use crate::ShardedHashMap;
 
-/// An append-only set mapping each distinct value of type `T` to a dense
-/// `usize` index assigned in insertion order from zero.
+/// An append-only set mapping each distinct value of type `T` to a stable
+/// `usize` index.
 ///
 /// The set is thread-safe: values can be inserted and looked up concurrently
-/// through `&self` from multiple threads. There is no removal; an index stays
-/// valid for the lifetime of the set (until [`ConcurrentIndexedSet::clear`],
-/// which requires `&mut self`).
+/// through `&self` from multiple threads. To keep concurrent insertion
+/// contention-free the indices are unique and stable but **not dense**, so walk
+/// [`ConcurrentIndexedSet::iter`] rather than `0..len`. There is no removal; an
+/// index stays valid for the lifetime of the set (until
+/// [`ConcurrentIndexedSet::clear`], which requires `&mut self`).
 pub struct ConcurrentIndexedSet<T, S = FxBuildHasher> {
     /// Stores each distinct value at the index handed out for it. Indices are
-    /// stable and the vector supports concurrent `push`/`get`.
-    values: boxcar::Vec<T>,
-    /// Hash index from a value's hash to its dense index in `values`. Stores
-    /// only the index; the hash and equality closures dereference `values`, so
-    /// the payload is not duplicated.
+    /// stable but may be sparse.
+    values: ConcurrentAppendVec<T>,
+    /// Hash index from a value's hash to its index in `values`. Stores only the
+    /// index; the hash and equality closures dereference `values`, so the
+    /// payload is not duplicated.
     table: ShardedHashMap<usize, S>,
 }
 
@@ -41,16 +29,16 @@ impl<T, S: Default> ConcurrentIndexedSet<T, S> {
     /// Creates a new empty set with the default hasher.
     pub fn new() -> ConcurrentIndexedSet<T, S> {
         ConcurrentIndexedSet {
-            values: boxcar::Vec::new(),
+            values: ConcurrentAppendVec::new(),
             table: ShardedHashMap::with_hasher(S::default()),
         }
     }
 
-    /// Creates a new empty set with room for at least `capacity` values before
-    /// reallocating.
+    /// Creates a new empty set whose hash index has room for at least
+    /// `capacity` values before reallocating.
     pub fn with_capacity(capacity: usize) -> ConcurrentIndexedSet<T, S> {
         ConcurrentIndexedSet {
-            values: boxcar::Vec::with_capacity(capacity),
+            values: ConcurrentAppendVec::new(),
             table: ShardedHashMap::with_capacity_and_hasher(capacity, S::default()),
         }
     }
@@ -66,7 +54,7 @@ where
     /// present.
     pub fn insert(&self, value: T) -> (usize, bool) {
         let hash = self.table.hash(&value);
-        let eq = |&index: &usize| self.values[index] == value;
+        let eq = |&index: &usize| self.values.get(index).expect("indexed value must exist") == &value;
 
         // Fast path: the value is already present, so no write lock is needed.
         if let Some(index) = self.table.find(hash, eq) {
@@ -81,7 +69,10 @@ where
         self.table.find_or_insert_with(
             hash,
             eq,
-            |&index| self.table.hash(&self.values[index]),
+            |&index| {
+                self.table
+                    .hash(self.values.get(index).expect("indexed value must exist"))
+            },
             || self.values.push(value.clone()),
         )
     }
@@ -89,7 +80,9 @@ where
     /// Returns the index of `value` if it is present, or `None` otherwise.
     pub fn index(&self, value: &T) -> Option<usize> {
         let hash = self.table.hash(value);
-        self.table.find(hash, |&index| &self.values[index] == value)
+        self.table.find(hash, |&index| {
+            self.values.get(index).expect("indexed value must exist") == value
+        })
     }
 
     /// Returns true if `value` is present in the set.
@@ -99,15 +92,21 @@ where
 }
 
 impl<T, S> ConcurrentIndexedSet<T, S> {
-    /// Returns a reference to the value at `index`, or `None` if the index has
-    /// not been handed out.
+    /// Returns a reference to the value at `index`, or `None` if the index was
+    /// never handed out (out of range or a sparse gap).
     pub fn get_by_index(&self, index: usize) -> Option<&T> {
         self.values.get(index)
     }
 
+    /// Returns an iterator over the resident values. Order is unspecified, and
+    /// indices are not exposed because they may be sparse.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.values.iter()
+    }
+
     /// Returns the number of distinct values in the set.
     pub fn len(&self) -> usize {
-        self.values.count()
+        self.values.len()
     }
 
     /// Returns true if the set is empty.
@@ -131,6 +130,7 @@ impl<T, S: Default> Default for ConcurrentIndexedSet<T, S> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::collections::HashSet;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -144,8 +144,9 @@ mod tests {
 
     /// Inserts random values from a small space and checks the set against a
     /// `HashMap<value, index>` oracle after every step: the fresh-insert flag,
-    /// the dense index assigned in insertion order, and that every read path
-    /// (`index`, `contains`, `get_by_index`) round-trips against the model.
+    /// the index assigned in insertion order (dense on a single thread), and
+    /// that every read path (`index`, `contains`, `get_by_index`) round-trips
+    /// against the model.
     #[test]
     #[cfg_attr(miri, ignore)]
     fn random_insert_dedup_and_roundtrip() {
@@ -216,12 +217,16 @@ mod tests {
             "every fresh insertion is a distinct resident value"
         );
 
-        // Indices are dense (`0..len`): each resolves to a value in range and
-        // `index` is the inverse of `get_by_index`.
-        for index in 0..set.len() {
-            let &value = set.get_by_index(index).expect("a dense index resolves");
+        // Indices may be sparse, so iterate the resident values rather than
+        // `0..len`. Each must be in range and round-trip through `index` and
+        // `get_by_index`.
+        let mut residents = HashSet::new();
+        for &value in set.iter() {
             assert!(value < values, "only inserted values are resident");
-            assert_eq!(set.index(&value), Some(index), "lookup is the inverse of get_by_index");
+            assert!(residents.insert(value), "each value is resident once");
+            let index = set.index(&value).expect("a resident value has an index");
+            assert_eq!(set.get_by_index(index), Some(&value), "index is the inverse of lookup");
         }
+        assert_eq!(residents.len(), set.len(), "iter visits every resident value once");
     }
 }
