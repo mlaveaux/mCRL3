@@ -17,6 +17,7 @@ use crate::utilities::ConfigurationStack;
 use crate::utilities::DataPositionIndexed;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
+use crate::utilities::TermStackBuilder;
 
 /// A shared trait for all the rewriters
 pub trait RewriteEngine {
@@ -37,6 +38,9 @@ pub struct RewritingStatistics {
 /// The Set Automaton based Rewrite Engine implementation.
 pub struct SabreRewriter {
     automaton: SetAutomaton<AnnouncementSabre>,
+    /// A reusable builder for evaluating right-hand side term stacks, kept to
+    /// avoid allocating a fresh one on every rewrite step.
+    builder: TermStackBuilder,
 }
 
 impl RewriteEngine for SabreRewriter {
@@ -49,15 +53,19 @@ impl SabreRewriter {
     pub fn new(spec: &RewriteSpecification) -> Self {
         let automaton = SetAutomaton::new(spec, AnnouncementSabre::new, false);
 
-        SabreRewriter { automaton }
+        SabreRewriter {
+            automaton,
+            builder: TermStackBuilder::new(),
+        }
     }
 
     /// Function to rewrite a term. See the module documentation.
     pub fn stack_based_normalise(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let result =
-            THREAD_TERM_POOL.with(|tp| SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, t, &mut stats));
+        let result = THREAD_TERM_POOL.with(|tp| {
+            SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, &mut self.builder, t, &mut stats)
+        });
 
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
@@ -72,6 +80,7 @@ impl SabreRewriter {
     fn stack_based_normalise_aux(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
+        builder: &mut TermStackBuilder,
         t: &DataExpression,
         stats: &mut RewritingStatistics,
     ) -> DataExpression {
@@ -123,6 +132,7 @@ impl SabreRewriter {
                                             SabreRewriter::apply_rewrite_rule(
                                                 tp,
                                                 automaton,
+                                                builder,
                                                 announcement,
                                                 annotation,
                                                 leaf_index,
@@ -180,6 +190,7 @@ impl SabreRewriter {
                                     SabreRewriter::apply_rewrite_rule(
                                         tp,
                                         automaton,
+                                        builder,
                                         announcement,
                                         annotation,
                                         leaf_index,
@@ -193,6 +204,7 @@ impl SabreRewriter {
                                         && SabreRewriter::conditions_hold(
                                             tp,
                                             automaton,
+                                            builder,
                                             announcement,
                                             annotation,
                                             leaf_term,
@@ -203,6 +215,7 @@ impl SabreRewriter {
                                         SabreRewriter::apply_rewrite_rule(
                                             tp,
                                             automaton,
+                                            builder,
                                             announcement,
                                             annotation,
                                             leaf_index,
@@ -228,6 +241,7 @@ impl SabreRewriter {
     fn apply_rewrite_rule(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
+        builder: &mut TermStackBuilder,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
         leaf_index: usize,
@@ -242,7 +256,7 @@ impl SabreRewriter {
         // Computes the new subterm of the configuration
         let new_subterm = annotation
             .rhs_term_stack
-            .evaluate(&leaf_subterm.get_data_position(&announcement.position));
+            .evaluate_with(&leaf_subterm.get_data_position(&announcement.position), builder);
 
         debug_trace!(
             "rewrote {} to {} using rule {}",
@@ -261,6 +275,7 @@ impl SabreRewriter {
     fn conditions_hold(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
+        builder: &mut TermStackBuilder,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
         subterm: &DataExpressionRef<'_>,
@@ -269,13 +284,13 @@ impl SabreRewriter {
         let subterm = subterm.get_data_position(&announcement.position);
 
         for c in &annotation.conditions {
-            let rhs: DataExpression = c.rhs_term_stack.evaluate(&subterm);
-            let lhs: DataExpression = c.lhs_term_stack.evaluate(&subterm);
+            let rhs: DataExpression = c.rhs_term_stack.evaluate_with(&subterm, builder);
+            let lhs: DataExpression = c.lhs_term_stack.evaluate_with(&subterm, builder);
 
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {
-                let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, &rhs, stats);
-                let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, &lhs, stats);
+                let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, builder, &rhs, stats);
+                let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, builder, &lhs, stats);
 
                 // If lhs != rhs && !equality OR equality && lhs == rhs.
                 if (!c.equality && lhs_normal == rhs_normal) || (c.equality && lhs_normal != rhs_normal) {
