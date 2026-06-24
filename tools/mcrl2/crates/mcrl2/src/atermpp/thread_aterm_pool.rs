@@ -232,6 +232,8 @@ impl ThreadTermPool {
                 "Dropped term {:?}, index {}, protection set {}",
                 term.term, term.root, self.index
             );
+            // SAFETY: `term.root` was returned by a matching `protect` and the
+            // owning `ATerm` is dropped exactly once, so it is unprotected once.
             protection_set.unprotect(term.root);
         }
     }
@@ -244,6 +246,8 @@ impl ThreadTermPool {
                 "Dropped container index {}, protection set {}",
                 container_root, self.index
             );
+            // SAFETY: `container_root` was returned by a matching `protect` and
+            // the owning handle is dropped exactly once, so it is unprotected once.
             container_protection_set.unprotect(container_root);
         }
     }

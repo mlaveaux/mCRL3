@@ -326,7 +326,11 @@ impl ThreadTermPool {
 
     /// Unprotects a term from this thread's protection set.
     pub fn drop(&self, term: &ATerm) {
-        self.lock_protection_set().term_protection_set.unprotect(term.root());
+        // SAFETY: `term.root()` was returned by a matching `protect` and the
+        // owning `ATerm` is dropped exactly once, so it is unprotected once.
+        unsafe {
+            self.lock_protection_set().term_protection_set.unprotect(term.root());
+        }
 
         debug_trace!(
             "Unprotected term {:?}, root {}, protection set {}",
@@ -347,7 +351,11 @@ impl ThreadTermPool {
 
     /// Unprotects a container from this thread's container protection set.
     pub fn drop_container(&self, root: ProtectionIndex) {
-        self.lock_protection_set().container_protection_set.unprotect(root);
+        // SAFETY: `root` was returned by a matching `protect_container` and the
+        // owning handle is dropped exactly once, so it is unprotected once.
+        unsafe {
+            self.lock_protection_set().container_protection_set.unprotect(root);
+        }
 
         debug_trace!("Unprotected container index {}, protection set {}", root, self.index());
     }
@@ -380,9 +388,14 @@ impl ThreadTermPool {
 
     /// Unprotects a symbol, allowing it to be garbage collected.
     pub fn drop_symbol(&self, symbol: &mut Symbol) {
-        self.lock_protection_set()
-            .symbol_protection_set
-            .unprotect(symbol.root());
+        // SAFETY: `symbol.root()` was returned by a matching `protect_symbol`
+        // and the owning `Symbol` is dropped exactly once, so it is
+        // unprotected once.
+        unsafe {
+            self.lock_protection_set()
+                .symbol_protection_set
+                .unprotect(symbol.root());
+        }
     }
 
     /// Returns the symbol for ATermInt

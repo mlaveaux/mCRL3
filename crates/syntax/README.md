@@ -13,7 +13,7 @@ manipulating the AST is much easier.
 The mCRL2 specifications can simply be parsed using the untyped variants of the
 various objects: `UntypedProcessSpecification`, `UntypedDataSpecification`, etc.
 
-```Rust
+```rust
 use merc_syntax::UntypedProcessSpecification;
 
 let mcrl2_spec = UntypedProcessSpecification::parse("

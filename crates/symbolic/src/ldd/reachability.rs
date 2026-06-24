@@ -341,11 +341,6 @@ mod test {
     }
 
     #[test]
-    // TODO: un-ignore once oxidd's `relational_predecessor` is fixed. It panics with
-    // `unreachable!("Invalid terminal")` because `apply_relational_predecessor` calls `apply_union`
-    // on a `True` terminal in the write-of-pair / write-only cases (`relational_product` works on the
-    // same relation/meta). The merc-side deadlock wiring below is correct and mirrors mCRL2's lpsreach.
-    #[ignore = "blocked by oxidd relational_predecessor bug (apply_union on True terminal)"]
     fn test_reachability_detect_deadlocks() {
         for strategy in [
             ExplorationStrategy::BreadthFirst,
