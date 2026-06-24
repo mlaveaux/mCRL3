@@ -128,7 +128,6 @@ where
 /// processed.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,
-    timing: &Timing,
     make_local: MakeLocal,
     on_state: OnState,
     on_transition: OnTransition,

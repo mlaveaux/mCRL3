@@ -246,10 +246,8 @@ where
 
     let initial = timing.measure("explore", || -> Result<_, MercError> {
         pool.install(|| {
-            let timing = Timing::new();
             let (initial, _locals) = explore_parallel(
                 lps,
-                &timing,
                 || (),
                 |_local: &mut (), _state, _info: &()| {
                     states.increment();

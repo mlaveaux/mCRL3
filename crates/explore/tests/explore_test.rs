@@ -79,7 +79,6 @@ where
 {
     let (_initial, locals) = explore_parallel(
         lps,
-        &Timing::new(),
         Accumulator::default,
         |acc, index, info| {
             acc.states.insert(index.value(), info.clone());
@@ -196,7 +195,6 @@ fn parallel_propagates_callback_error() {
     let lps = MockLps::grid(&[3, 3]);
     let result = explore_parallel(
         &lps,
-        &Timing::new(),
         || (),
         |_local, _index, _info| Ok(()),
         |_local, _from, _label, _to| Err("boom".into()),
