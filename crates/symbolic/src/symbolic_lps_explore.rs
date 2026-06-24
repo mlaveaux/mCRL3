@@ -249,8 +249,12 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
                 interleaved[self.read_positions[k]] = value;
             }
 
-            // Prepare the backend assignments for this state.
-            let _ = self.lps.prepare(enumerate, &full_state);
+            // Prepare the backend assignments for this state and check whether
+            // this group's summand may fire from it.
+            let applicable = self.lps.prepare(enumerate, &full_state).any(|i| i == self.index);
+            if !applicable {
+                continue;
+            }
 
             // Enumerate the successors, building the write side of each short
             // transition vector and unioning it into the relation.
