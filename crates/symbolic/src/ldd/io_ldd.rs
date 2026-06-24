@@ -38,8 +38,11 @@ impl<W: BitStreamWrite> BinaryLddWriter<W> {
 
         // Add the true and false constants
         let mut nodes = IndexedSet::new();
-        nodes.insert(manager.with_manager_shared(|m| LDDFunction::empty_set(m))?);
-        nodes.insert(manager.with_manager_shared(|m| LDDFunction::empty_vector(m))?);
+        manager.with_manager_shared(|m| -> Result<(), MercError> {
+            nodes.insert(LDDFunction::empty_set(m)?);
+            nodes.insert(LDDFunction::empty_vector(m)?);
+            Ok(())
+        })?;
 
         Ok(Self {
             writer,
@@ -159,8 +162,7 @@ impl<R: BitStreamRead> BinaryLddReader<R> {
                     self.nodes.len()
                 ))?
                 .clone();
-            let ldd =
-                storage.with_manager_shared(|m| LDDFunction::make_node(m, value as u32, &down, &right))?;
+            let ldd = storage.with_manager_shared(|m| LDDFunction::make_node(m, value as u32, &down, &right))?;
             self.nodes.push(ldd);
         }
     }
@@ -205,10 +207,13 @@ mod tests {
     fn test_binary_ldd_stream_terminals() {
         let manager = oxidd::ldd::new_manager(2048, 1024, 1);
 
-        for term in [
-            manager.with_manager_shared(|m| LDDFunction::empty_set(m)).unwrap(),
-            manager.with_manager_shared(|m| LDDFunction::empty_vector(m)).unwrap(),
-        ] {
+        let terminals = manager.with_manager_shared(|m| {
+            [
+                LDDFunction::empty_set(m).unwrap(),
+                LDDFunction::empty_vector(m).unwrap(),
+            ]
+        });
+        for term in terminals {
             let mut vector: Vec<u8> = Vec::new();
             let stream = BitStreamWriter::new(&mut vector);
             let mut output_stream = BinaryLddWriter::new(&manager, stream).unwrap();

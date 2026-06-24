@@ -29,7 +29,7 @@ pub fn read_sylvan<R: Read>(manager: &LDDManagerRef, stream: &mut R) -> Result<S
         let (read_proj, write_proj) = read_projection(stream)?;
 
         let (meta, empty) = manager.with_manager_shared(|m| -> Result<_, MercError> {
-            let meta = LDDFunction::relation_product_meta(m, &read_proj, &write_proj)?.0;
+            let meta = LDDFunction::relation_product_meta(m, &read_proj, &write_proj)?.meta;
             Ok((meta, LDDFunction::empty_set(m)?))
         })?;
         groups.push(SylvanTransitionGroup::new(empty, meta, read_proj, write_proj));
@@ -201,8 +201,7 @@ impl SylvanReader {
             let down = self.node_from_index(manager, down)?;
             let right = self.node_from_index(manager, right)?;
 
-            let ldd =
-                manager.with_manager_shared(|m| LDDFunction::make_node(m, value as Value, &down, &right))?;
+            let ldd = manager.with_manager_shared(|m| LDDFunction::make_node(m, value as Value, &down, &right))?;
             self.indexed_set.insert(self.last_index, ldd);
 
             self.last_index += 1;
