@@ -235,13 +235,12 @@ mod tests {
     use crate::convert_symbolic_lts_bdd;
     use crate::quotient_symbolic;
     use crate::random_symbolic_lts;
-    use crate::sigref_symbolic;
+    use crate::bdd::refine_bisimulation;
 
     #[test]
     #[ignore = "refine_bisimulation aborts in oxidd_reorder::set_var_order; see function docs"]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_refine_bisimulation() {
-        use crate::refine::refine_bisimulation;
 
         random_test(100, |rng| {
             let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
