@@ -454,7 +454,11 @@ impl Drop for ATermSend {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        guard.unprotect(self.root);
+        // SAFETY: `self.root` was protected when this `ATermSend` was created and
+        // `Drop` runs exactly once, so the root is unprotected exactly once.
+        unsafe {
+            guard.unprotect(self.root);
+        }
     }
 }
 

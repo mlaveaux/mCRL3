@@ -439,7 +439,11 @@ impl Clone for ATermSend {
 impl Drop for ATermSend {
     fn drop(&mut self) {
         if !self.term.ptr.is_null() {
-            SEND_PROTECTION_SET.lock().unprotect(self.root);
+            // SAFETY: `self.root` was protected when this `ATermSend` was created
+            // and `Drop` runs exactly once, so the root is unprotected once.
+            unsafe {
+                SEND_PROTECTION_SET.lock().unprotect(self.root);
+            }
         }
     }
 }

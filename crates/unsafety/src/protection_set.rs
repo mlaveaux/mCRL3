@@ -115,7 +115,12 @@ impl<T> ProtectionSet<T> {
 
     /// Remove protection from the given object. Note that index must be the
     /// index returned by the [ProtectionSet::protect] call.
-    pub fn unprotect(&mut self, index: ProtectionIndex) {
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `index` refers to a currently protected
+    /// entry and that it is not unprotected more than once.
+    pub unsafe fn unprotect(&mut self, index: ProtectionIndex) {
         let index = self.generation_counter.get_index(index.0);
         self.size -= 1;
 
@@ -337,7 +342,11 @@ mod tests {
             // Unprotect a number of roots.
             for index in 0..2500 {
                 assert!(protection_set[indices[index]] <= 1000);
-                protection_set.unprotect(indices[index]);
+                // SAFETY: each recorded index is protected exactly once and is
+                // unprotected only here, so there is no double-unprotect.
+                unsafe {
+                    protection_set.unprotect(indices[index]);
+                }
                 indices.remove(index);
             }
 
@@ -383,7 +392,10 @@ mod tests {
         assert_eq!(set[idx2], "value2");
 
         // Test unprotect
-        set.unprotect(idx1);
+        // SAFETY: `idx1` is currently protected and is unprotected only once.
+        unsafe {
+            set.unprotect(idx1);
+        }
         assert!(!set.contains_root(idx1));
         assert!(set.contains_root(idx2));
 
@@ -416,7 +428,10 @@ mod verification {
         ps.replace(idx, v2);
         assert_eq!(ps[idx], v2);
 
-        ps.unprotect(idx);
+        // SAFETY: `idx` is currently protected and is unprotected only once.
+        unsafe {
+            ps.unprotect(idx);
+        }
         assert!(ps.is_empty());
         assert!(!ps.contains_root(idx));
         // The insertion counter is monotonic and is not affected by unprotect.
@@ -433,7 +448,10 @@ mod verification {
         let v2: u32 = kani::any();
 
         let i1 = ps.protect(v1);
-        ps.unprotect(i1);
+        // SAFETY: `i1` is currently protected and is unprotected only once.
+        unsafe {
+            ps.unprotect(i1);
+        }
         let i2 = ps.protect(v2);
 
         assert!(ps.contains_root(i2));
