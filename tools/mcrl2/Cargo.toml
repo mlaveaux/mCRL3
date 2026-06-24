@@ -60,16 +60,16 @@ merc_syntax = { path = "../../crates/syntax" }
 merc_utilities = { path = "../../crates/utilities" }
 merc_vpg = { path = "../../crates/vpg" }
 
-oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260", features = ["manager-pointer"] }
+oxidd = { version = "0.11", features = ["manager-pointer"] }
 
 # Use a local version of mCRL2-sys for development.
 # [patch."https://github.com/MERCorg/mCRL2-sys"]
 # mcrl2-sys = { path = "crates/mCRL2-sys" }
 
 [patch.crates-io]
-oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260" }
-oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260" }
-oxidd-dump = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260" }
-oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260" }
-oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260" }
-oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "d34a5aa5354e1f22b5d81e4b5657dd8a6fc56260" }
+oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
+oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
+oxidd-dump = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
+oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
+oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
+oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "487f546e3d3cd5d09a5e6cfd77f8ae788fc39d18" }
