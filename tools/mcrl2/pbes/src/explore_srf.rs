@@ -157,25 +157,26 @@ where
     M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)> + Sync,
     <M::Summand as Summand>::Context: Send,
 {
-    let (_initial, partitions) = pool.install(|| {
-        let timing = Timing::new();
-        explore_parallel(
-            lps,
-            &timing,
-            PbesPartition::default,
-            |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
-                partition
-                    .vertices
-                    .push((VertexIndex::new(state.value()), info.0, info.1));
-                Ok(())
-            },
-            |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
-                partition
-                    .edges
-                    .push((VertexIndex::new(from.value()), VertexIndex::new(to.value())));
-                Ok(())
-            },
-        )
+    let timing = Timing::new();
+    let (_initial, partitions) = timing.measure("explore", || {
+        pool.install(|| {
+            explore_parallel(
+                lps,
+                PbesPartition::default,
+                |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
+                    partition
+                        .vertices
+                        .push((VertexIndex::new(state.value()), info.0, info.1));
+                    Ok(())
+                },
+                |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
+                    partition
+                        .edges
+                        .push((VertexIndex::new(from.value()), VertexIndex::new(to.value())));
+                    Ok(())
+                },
+            )
+        })
     })?;
 
     let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
