@@ -5,6 +5,8 @@ use std::slice::Iter;
 
 use itertools::Itertools;
 
+use crate::vec_difference::Difference;
+
 #[macro_export]
 macro_rules! vecbag {
     () => {
@@ -155,46 +157,6 @@ impl<T: Ord> VecBag<T> {
 impl<T: Ord> FromIterator<T> for VecBag<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(iter.into_iter().collect())
-    }
-}
-
-/// A lazy iterator that yields the difference of two bags. The elements are yielded in sorted order.
-struct Difference<'a, T, I> {
-    self_iter: I,
-    other_iter: I,
-    other_next: Option<&'a T>,
-    marker: PhantomData<&'a T>,
-}
-
-impl<'a, T, I> Iterator for Difference<'a, T, I>
-where
-    I: Iterator<Item = &'a T>,
-    T: Ord + PartialEq,
-{
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.other_next.is_none() {
-            self.other_next = self.other_iter.next();
-        }
-
-        for self_val in self.self_iter.by_ref() {
-            loop {
-                match self.other_next {
-                    Some(other_val) => match self_val.cmp(other_val) {
-                        Ordering::Equal => {
-                            self.other_next = self.other_iter.next();
-                            break;
-                        }
-                        Ordering::Greater => self.other_next = self.other_iter.next(),
-                        Ordering::Less => return Some(self_val),
-                    },
-                    None => return Some(self_val),
-                }
-            }
-        }
-
-        None
     }
 }
 

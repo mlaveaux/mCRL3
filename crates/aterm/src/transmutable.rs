@@ -58,18 +58,21 @@ unsafe impl Transmutable for SymbolRef<'static> {
     }
 }
 
-unsafe impl<T: Transmutable> Transmutable for Option<T> {
+unsafe impl<T: Transmutable> Transmutable for Option<T>
+where
+    for<'a> T::Target<'a>: Sized,
+{
     type Target<'a>
-        = Option<T>
+        = Option<T::Target<'a>>
     where
         T: 'a;
 
     unsafe fn transmute_lifetime<'a>(&self) -> &'a Self::Target<'a> {
-        unsafe { transmute::<&Self, &'a Option<T>>(self) }
+        unsafe { transmute::<&Self, &'a Option<T::Target<'a>>>(self) }
     }
 
     unsafe fn transmute_lifetime_mut<'a>(&mut self) -> &'a mut Self::Target<'a> {
-        unsafe { transmute::<&mut Self, &'a mut Option<T>>(self) }
+        unsafe { transmute::<&mut Self, &'a mut Option<T::Target<'a>>>(self) }
     }
 }
 

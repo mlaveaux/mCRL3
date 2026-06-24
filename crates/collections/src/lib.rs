@@ -7,6 +7,7 @@ mod graph;
 mod indexed_partition;
 mod indexed_set;
 mod scc_decomposition;
+mod vec_difference;
 mod vecbag;
 mod vecset;
 

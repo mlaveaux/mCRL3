@@ -69,7 +69,7 @@ impl From<u8> for PacketType {
             3 => PacketType::ATermIntOutput,
             // Unreachable in practice: every caller derives `value` from `read_bits(PACKET_BITS)`
             // with `PACKET_BITS == 2`, so it is always in `0..=3`. Kept as a defensive guard.
-            _ => panic!("Invalid packet type: {value}"),
+            _ => unreachable!("Invalid packet type: {value}"),
         }
     }
 }
