@@ -645,4 +645,41 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn test_random_bytevector_permute_indices_fast() {
+        random_test(100, |rng| {
+            // Generate a random vector to permute.
+            let elements = (0..rng.random_range(1..10))
+                .map(|_| rng.random_range(0..100))
+                .collect::<Vec<_>>();
+
+            let vec = ByteCompressedVec::with_iter(elements.iter().cloned());
+
+            let permutation = {
+                let mut order: Vec<usize> = (0..elements.len()).collect();
+                order.shuffle(rng);
+                order
+            };
+
+            let mut fast = vec.clone();
+            fast.permute_indices_fast(|i| permutation[i]);
+
+            // The result must be [v_p(0), v_p(1), ..., v_p(n-1)].
+            for i in 0..elements.len() {
+                assert_eq!(
+                    fast.index(i),
+                    elements[permutation[i]],
+                    "Element at index {} should be {}",
+                    i,
+                    elements[permutation[i]]
+                );
+            }
+
+            // It must also agree with the slower `permute_indices`.
+            let mut slow = vec.clone();
+            slow.permute_indices(|i| permutation[i]);
+            assert_eq!(fast, slow, "fast and slow permutation must agree");
+        });
+    }
 }
