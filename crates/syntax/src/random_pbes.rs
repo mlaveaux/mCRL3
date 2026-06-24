@@ -23,6 +23,19 @@ const PRED_INTS: &[&str] = &["m", "n"];
 const PRED_BOOLS: &[&str] = &["b", "c"];
 const QUANT_INTS: &[&str] = &["t", "u", "v", "w"];
 
+/// Parameters held constant throughout the random PBES generation.
+struct PbesGenConfig<'a> {
+    /// The predicate variables available for instantiation in leaves.
+    predicate_vars: &'a [PredVar],
+
+    /// Whether quantifiers may be generated.
+    use_quantifiers: bool,
+
+    /// Probability that a leaf is a predicate variable instantiation rather than
+    /// a `val(...)` atom.
+    propvar_probability: f64,
+}
+
 /// Generates a random PBES.
 ///
 /// `atom_count` and `propvar_count` together control the expression size: their sum determines the
@@ -44,10 +57,16 @@ pub fn random_pbes<R: Rng>(
     let propvar_prob = propvar_count as f64 / total as f64;
     let depth = total.ilog2() as usize + 1;
 
+    let config = PbesGenConfig {
+        predicate_vars: &pred_vars,
+        use_quantifiers,
+        propvar_probability: propvar_prob,
+    };
+
     let mut equations = Vec::new();
     for pv in &pred_vars {
         let freevars = pv.expr_freevars();
-        let formula = random_pbes_expr(rng, depth, &freevars, &pred_vars, use_quantifiers, propvar_prob, false);
+        let formula = random_pbes_expr(rng, depth, &freevars, &config, false);
         let operator = if rng.random_bool(0.5) {
             FixedPointOperator::Least
         } else {
@@ -78,15 +97,9 @@ pub fn random_pbes<R: Rng>(
     }
 }
 
-fn random_leaf<R: Rng>(
-    rng: &mut R,
-    freevars: &[IdDecl],
-    pred_vars: &[PredVar],
-    propvar_prob: f64,
-    negated: bool,
-) -> PbesExpr {
-    if !pred_vars.is_empty() && rng.random_bool(propvar_prob) {
-        let pv = pred_vars.choose(rng).unwrap();
+fn random_leaf<R: Rng>(rng: &mut R, freevars: &[IdDecl], config: &PbesGenConfig, negated: bool) -> PbesExpr {
+    if !config.predicate_vars.is_empty() && rng.random_bool(config.propvar_probability) {
+        let pv = config.predicate_vars.choose(rng).unwrap();
         let args = pv
             .params
             .iter()
@@ -121,17 +134,15 @@ fn random_pbes_expr<R: Rng>(
     rng: &mut R,
     depth: usize,
     freevars: &[IdDecl],
-    predicate_vars: &[PredVar],
-    use_quantifiers: bool,
-    propvar_probability: f64,
+    config: &PbesGenConfig,
     negated: bool,
 ) -> PbesExpr {
     if depth == 0 {
-        return random_leaf(rng, freevars, predicate_vars, propvar_probability, negated);
+        return random_leaf(rng, freevars, config, negated);
     }
 
     // Binary operators are over-represented to bias toward non-trivial trees.
-    let op_table: &[u8] = if use_quantifiers {
+    let op_table: &[u8] = if config.use_quantifiers {
         &[0, 1, 2, 3, 0, 1, 2, 3, 4, 5]
     } else {
         &[0, 1, 2, 3]
@@ -140,36 +151,12 @@ fn random_pbes_expr<R: Rng>(
 
     match op {
         0 => {
-            let inner = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                !negated,
-            );
+            let inner = random_pbes_expr(rng, depth - 1, freevars, config, !negated);
             PbesExpr::Negation(Box::new(inner))
         }
         1 => {
-            let l = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                negated,
-            );
-            let r = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                negated,
-            );
+            let l = random_pbes_expr(rng, depth - 1, freevars, config, negated);
+            let r = random_pbes_expr(rng, depth - 1, freevars, config, negated);
             PbesExpr::Binary {
                 op: PbesExprBinaryOp::Conjunction,
                 lhs: Box::new(l),
@@ -177,24 +164,8 @@ fn random_pbes_expr<R: Rng>(
             }
         }
         2 => {
-            let l = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                negated,
-            );
-            let r = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                negated,
-            );
+            let l = random_pbes_expr(rng, depth - 1, freevars, config, negated);
+            let r = random_pbes_expr(rng, depth - 1, freevars, config, negated);
             PbesExpr::Binary {
                 op: PbesExprBinaryOp::Disjunction,
                 lhs: Box::new(l),
@@ -203,50 +174,16 @@ fn random_pbes_expr<R: Rng>(
         }
         3 => {
             // Antecedent flips polarity for monotonicity.
-            let l = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                !negated,
-            );
-            let r = random_pbes_expr(
-                rng,
-                depth - 1,
-                freevars,
-                predicate_vars,
-                use_quantifiers,
-                propvar_probability,
-                negated,
-            );
+            let l = random_pbes_expr(rng, depth - 1, freevars, config, !negated);
+            let r = random_pbes_expr(rng, depth - 1, freevars, config, negated);
             PbesExpr::Binary {
                 op: PbesExprBinaryOp::Implies,
                 lhs: Box::new(l),
                 rhs: Box::new(r),
             }
         }
-        4 => random_quantifier(
-            rng,
-            Quantifier::Forall,
-            depth - 1,
-            freevars,
-            predicate_vars,
-            use_quantifiers,
-            propvar_probability,
-            negated,
-        ),
-        5 => random_quantifier(
-            rng,
-            Quantifier::Exists,
-            depth - 1,
-            freevars,
-            predicate_vars,
-            use_quantifiers,
-            propvar_probability,
-            negated,
-        ),
+        4 => random_quantifier(rng, Quantifier::Forall, depth - 1, freevars, config, negated),
+        5 => random_quantifier(rng, Quantifier::Exists, depth - 1, freevars, config, negated),
         _ => unreachable!(),
     }
 }
@@ -262,9 +199,7 @@ fn random_quantifier<R: Rng>(
     quantifier: Quantifier,
     depth: usize,
     freevars: &[IdDecl],
-    pred_vars: &[PredVar],
-    use_quantifiers: bool,
-    propvar_probability: f64,
+    config: &PbesGenConfig,
     negated: bool,
 ) -> PbesExpr {
     let available: Vec<&str> = QUANT_INTS
@@ -274,7 +209,7 @@ fn random_quantifier<R: Rng>(
         .collect();
 
     if available.is_empty() {
-        return random_leaf(rng, freevars, pred_vars, propvar_probability, negated);
+        return random_leaf(rng, freevars, config, negated);
     }
 
     let var_name = (*available.choose(rng).expect("available is non-empty")).to_string();
@@ -283,15 +218,7 @@ fn random_quantifier<R: Rng>(
     let mut new_freevars = freevars.to_vec();
     new_freevars.push(as_expr_decl(&var_name));
 
-    let body = random_pbes_expr(
-        rng,
-        depth,
-        &new_freevars,
-        pred_vars,
-        use_quantifiers,
-        propvar_probability,
-        negated,
-    );
+    let body = random_pbes_expr(rng, depth, &new_freevars, config, negated);
 
     // Bound the quantifier variable to ensure termination: forall t. t < 3 => body  /  exists t. t < 3 && body
     let bound = PbesExpr::DataValExpr(DataExpr::Binary {

@@ -14,6 +14,18 @@ use crate::ExplorationStrategy;
 use crate::is_refinement_generic;
 use crate::is_stable;
 
+/// The outcome of an impossible-futures refinement check.
+pub struct ImpossibleFuturesResult<Index, Label> {
+    /// Whether the impossible-futures refinement holds.
+    pub result: bool,
+
+    /// The node in the counter-example tree that witnesses the failure, if any.
+    pub counter_example: Option<Index>,
+
+    /// The impossible futures (traces) witnessing the failure, if any.
+    pub impossible_futures: Option<Vec<Vec<Label>>>,
+}
+
 /// Checks for the impossible futures refinement between the initial state of
 /// the `lts` and the `initial_spec` state.
 ///
@@ -27,7 +39,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     initial_spec: StateIndex,
     strategy: ExplorationStrategy,
     counter_example: &mut CE,
-) -> (bool, Option<CE::Index>, Option<Vec<Vec<L::Label>>>) {
+) -> ImpossibleFuturesResult<CE::Index, L::Label> {
     let mut antichain = Antichain::new();
 
     // The inner antichain is reused between computations of the weak trace inclusion. The positive antichain contains all the
@@ -35,7 +47,7 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
     let negative_antichain = RefCell::new(Antichain::new());
     let mut positive_antichain = PositiveAntichain::new();
 
-    let result = is_refinement_generic(
+    let (holds, ce_index, impossible_futures) = is_refinement_generic(
         strategy,
         lts,
         lts.initial_state_index(),
@@ -93,7 +105,11 @@ pub fn is_impossible_futures_refinement<L: LTS, CE: CounterExampleTree>(
 
     debug!("Antichain stats: {:?}", antichain.metrics());
     debug!("Negative antichain stats: {:?}", negative_antichain.borrow().metrics());
-    result
+    ImpossibleFuturesResult {
+        result: holds,
+        counter_example: ce_index,
+        impossible_futures,
+    }
 }
 
 /// A combined antichain that checks both the persistent positive antichain and

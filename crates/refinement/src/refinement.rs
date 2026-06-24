@@ -14,6 +14,7 @@ use merc_utilities::Timing;
 
 use crate::CounterExample;
 use crate::CounterExampleConstructor;
+use crate::ImpossibleFuturesResult;
 use crate::InnerCe;
 use crate::is_failures_refinement;
 use crate::is_impossible_futures_refinement;
@@ -196,8 +197,11 @@ pub fn refines<L: LTS>(
                     }
                 }
                 RefinementType::ImpossibleFutures => {
-                    let (result, ce_state, ce_inner) =
-                        is_impossible_futures_refinement(&merged_lts, initial_spec, strategy, &mut ce_constructor);
+                    let ImpossibleFuturesResult {
+                        result,
+                        counter_example: ce_state,
+                        impossible_futures: ce_inner,
+                    } = is_impossible_futures_refinement(&merged_lts, initial_spec, strategy, &mut ce_constructor);
 
                     if let Some(state) = ce_state {
                         // Reconstruct a trace from the counter example tree, relabelling the indices to their actual labels.
@@ -235,7 +239,7 @@ pub fn refines<L: LTS>(
                     (result, None)
                 }
                 RefinementType::ImpossibleFutures => {
-                    let (result, _, _) = is_impossible_futures_refinement(&merged_lts, initial_spec, strategy, &mut ());
+                    let result = is_impossible_futures_refinement(&merged_lts, initial_spec, strategy, &mut ()).result;
                     (result, None)
                 }
             }

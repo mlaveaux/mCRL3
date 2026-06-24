@@ -407,6 +407,7 @@ impl LearnSuccessorsContext {
     /// aterms. For each solution the callback receives a slice of next-state
     /// values together with a pointer to the multi-action term rewritten under
     /// the current substitution.
+    #[allow(clippy::too_many_arguments)]
     pub fn enumerate_raw<F>(
         &self,
         // Information of the summand

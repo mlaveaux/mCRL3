@@ -479,6 +479,7 @@ fn signature_strong(
 /// This function computes the new partition `P` such that:
 ///
 /// > For all states s, t it holds that P(s) == P(t) iff signature(s) == signature(t)
+#[allow(clippy::too_many_arguments)]
 fn refine(
     manager_ref: &BDDManagerRef,
     cache: &mut FxHashMap<(BDDFunction, BDDFunction), BDDFunction>,

@@ -140,6 +140,7 @@ pub fn is_failures_refinement<L: LTS, CE: CounterExampleTree>(
 /// The antichain data structure is used for storing explored states. However,
 /// as opposed to a discovered set it allows for pruning additional pairs based
 /// on the `antichain` property.
+#[allow(clippy::too_many_arguments)]
 pub fn is_refinement_generic<L: LTS, A: AC<StateIndex, StateIndex>, CE: CounterExampleTree, F, G, CC>(
     strategy: ExplorationStrategy,
     merged_lts: &L,

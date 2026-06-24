@@ -186,15 +186,13 @@ fn random_leaf<R: Rng>(
     // Build a weighted table: Action has high weight, Delta/Tau low, ProcessInstance medium.
     let mut table: Vec<usize> = vec![0, 1]; // Delta=0, Tau=1
     if !actions.is_empty() {
-        for _ in 0..8 {
-            table.push(2); // Action
-        }
+        table.extend(std::iter::repeat_n(2, 8));
     }
+
     if !proc_vars.is_empty() && !is_guarded {
-        for _ in 0..2 {
-            table.push(3); // ProcessInstance — only when an action guard precedes us
-        }
+        table.extend(std::iter::repeat_n(3, 2)); // ProcessInstance=3
     }
+
     match *table.choose(rng).expect("table always contains at least Delta and Tau") {
         0 => ProcessExpr::Delta,
         1 => ProcessExpr::Tau,
