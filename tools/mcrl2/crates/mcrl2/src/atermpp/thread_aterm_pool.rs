@@ -292,13 +292,7 @@ impl ThreadTermPool {
         self.gc_counter.set(counter);
 
         // `guard.unlock()` returns true only when this leaves the outermost
-        // shared section, i.e. the thread is no longer busy. Automatic garbage
-        // collection and resizing are disabled (see `global_aterm_pool`) because
-        // they acquire the exclusive busy-forbidden lock, which is not reentrant
-        // and would deadlock if triggered from inside a shared section. Doing it
-        // here, outside the shared section and only every `TEST_GC_INTERVAL`
-        // creations, is both safe and cheap: each call is a no-op until enough
-        // new terms have been created to cross the pool's internal interval.
+        // shared section, i.e. the thread is no longer busy.
         if guard.unlock() && counter == 0 {
             mcrl2_aterm_pool_test_garbage_collection();
             mcrl2_aterm_pool_resize();

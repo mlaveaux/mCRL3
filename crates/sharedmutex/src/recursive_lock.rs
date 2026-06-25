@@ -81,6 +81,32 @@ impl<T> RecursiveLock<T> {
         Ok(RecursiveLockWriteGuard { mutex: self, guard })
     }
 
+    /// Acquires a write lock on the mutex without blocking.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics when called inside a read or write section. In that case the underlying mutex
+    /// would not wait for this thread's own lock, handing out `&mut T` while a `&T` or another
+    /// `&mut T` is live.
+    pub fn try_write(&self) -> Result<Option<RecursiveLockWriteGuard<'_, T>>, Box<dyn Error + '_>> {
+        assert!(
+            self.recursive_depth.get() == 0,
+            "Cannot call try_write() inside an existing read or write section"
+        );
+        // Acquire the underlying lock before touching any bookkeeping, so a
+        // failed acquisition leaves the recursive state untouched.
+        let guard = self.inner.try_write()?;
+
+        self.write_calls.set(self.write_calls.get() + 1);
+
+        if let Some(guard) = guard {
+            self.recursive_depth.set(1);
+            Ok(Some(RecursiveLockWriteGuard { mutex: self, guard }))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Acquires a read lock on the mutex.
     ///
     /// # Panics

@@ -429,12 +429,10 @@ impl ThreadTermPool {
     pub fn collect_garbage(&self) {
         if !self.term_pool.is_locked() {
             // Trigger garbage collection and acquire a new counter value.
-            let value = self
-                .term_pool
-                .write()
-                .expect("Lock poisoned!")
-                .trigger_garbage_collection();
-            self.garbage_collection_counter.set(value);
+            if let Some(mut guard) = self.term_pool.try_write().expect("Lock poisoned!") {
+                let value = guard.trigger_garbage_collection();
+                self.garbage_collection_counter.set(value);
+            }
         }
     }
 
