@@ -54,7 +54,11 @@ where
     /// present.
     pub fn insert(&self, value: T) -> (usize, bool) {
         let hash = self.table.hash(&value);
-        let eq = |&index: &usize| self.values.get(index).expect("indexed value must exist") == &value;
+        // SAFETY (this and the hash closure below): the table only ever holds
+        // indices returned by `push`, and every read here runs under the shard
+        // lock that ordered that push's publish, so the slot is initialized and
+        // visible — `get_unchecked` is sound.
+        let eq = |&index: &usize| unsafe { self.values.get_unchecked(index) } == &value;
 
         // Fast path: the value is already present, so no write lock is needed.
         if let Some(index) = self.table.find(hash, eq) {
@@ -69,10 +73,7 @@ where
         self.table.find_or_insert_with(
             hash,
             eq,
-            |&index| {
-                self.table
-                    .hash(self.values.get(index).expect("indexed value must exist"))
-            },
+            |&index| self.table.hash(unsafe { self.values.get_unchecked(index) }),
             || self.values.push(value.clone()),
         )
     }
@@ -80,9 +81,10 @@ where
     /// Returns the index of `value` if it is present, or `None` otherwise.
     pub fn index(&self, value: &T) -> Option<usize> {
         let hash = self.table.hash(value);
-        self.table.find(hash, |&index| {
-            self.values.get(index).expect("indexed value must exist") == value
-        })
+        // SAFETY: indices in the table were returned by `push` and published
+        // under the shard lock this read takes, so `get_unchecked` is sound.
+        self.table
+            .find(hash, |&index| unsafe { self.values.get_unchecked(index) } == value)
     }
 
     /// Returns true if `value` is present in the set.

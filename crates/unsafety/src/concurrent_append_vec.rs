@@ -213,6 +213,29 @@ impl<T, const BLOCK: usize> ConcurrentAppendVec<T, BLOCK> {
         }
     }
 
+    /// Returns the element at `index` without verifying that it was written.
+    ///
+    /// # Safety
+    ///
+    /// `index` must have been returned by a previous [`push`](Self::push) whose
+    /// effect is visible to the caller through external synchronization (a lock,
+    /// or joining the producing thread). Passing an out-of-range index or a
+    /// reserved-but-unwritten gap is undefined behavior. Skipping the per-block
+    /// commit load makes this cheaper than [`get`](Self::get) on hot read paths.
+    pub unsafe fn get_unchecked(&self, index: usize) -> &T {
+        let (bucket_index, block, offset) = Self::locate(index);
+        let pointer = self.buckets[bucket_index].load(Ordering::Acquire);
+        debug_assert!(!pointer.is_null(), "get_unchecked on an unallocated bucket");
+        let slot = block * BLOCK + offset;
+        // SAFETY: by the contract `index` came from a published `push`, so its
+        // bucket is allocated and the slot initialized, and that push
+        // happens-before this read; reading the slot is therefore sound.
+        unsafe {
+            let bucket = &*pointer;
+            (*bucket.slots[slot].get()).assume_init_ref()
+        }
+    }
+
     /// Returns the number of elements written, summed across threads.
     ///
     /// This walks every thread that has pushed, so it is `O(threads)`; it is a
@@ -386,6 +409,19 @@ mod tests {
         assert_eq!(vec.get(3), None);
         assert_eq!(vec.get(1000), None, "out of range");
         assert_eq!(vec.len(), 2);
+    }
+
+    /// `get_unchecked` returns the same reference as `get` for written indices,
+    /// across the block and bucket boundaries that a small `BLOCK` produces.
+    #[test]
+    fn get_unchecked_matches_get() {
+        let vec: ConcurrentAppendVec<u64, 4> = ConcurrentAppendVec::new();
+        let entries: Vec<(usize, u64)> = (0..40u64).map(|value| (vec.push(value * 7), value * 7)).collect();
+        for (index, value) in entries {
+            // SAFETY: `index` was just returned by `push` on this thread.
+            assert_eq!(unsafe { vec.get_unchecked(index) }, &value);
+            assert_eq!(vec.get(index), Some(&value));
+        }
     }
 
     /// Pushes across many threads, then verifies after the join that every
