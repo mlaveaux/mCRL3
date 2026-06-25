@@ -300,7 +300,10 @@ where
 
     /// Returns a copy of the interned node at `index`, which must exist.
     fn node(&self, index: usize) -> [V; N] {
-        *self.nodes.get(index).expect("interned node must exist")
+        // SAFETY: `index` came from `tables`, which only holds indices returned
+        // by `push`; the interning shard lock published that write before this
+        // read, so `get_unchecked` is sound.
+        *unsafe { self.nodes.get_unchecked(index) }
     }
 }
 
@@ -338,7 +341,10 @@ where
         let mut stack = [([V::EMPTY; N], 0u32, 0u8); MAX_DEPTH];
         let mut depth = 0;
         if !tree.is_empty() {
-            let root = *self.nodes.get(tree.root()).expect("root node must exist");
+            // SAFETY: a `Tree` is only produced by interning its nodes, so the
+            // root index was returned by `push` and is published to any thread
+            // that holds the handle.
+            let root = *unsafe { self.nodes.get_unchecked(tree.root()) };
             stack[0] = (root, 0, tree.height());
             depth = 1;
         }
@@ -427,7 +433,9 @@ where
 
             // Otherwise it is a child reference; descend into it.
             assert!(self.depth < max_depth(N), "tree deeper than max_depth({N})");
-            let child = *self.nodes.get(value.as_child()).expect("child node must exist");
+            // SAFETY: child indices are stored in interned nodes, so they were
+            // returned by `push` and published when the tree was built.
+            let child = *unsafe { self.nodes.get_unchecked(value.as_child()) };
             self.stack[self.depth] = (child, 0, height - 1);
             self.depth += 1;
         }
