@@ -12,6 +12,7 @@ mod inner {
     pub(super) use std::sync::Arc;
     pub(super) use std::sync::Mutex;
     pub(super) use std::sync::MutexGuard;
+    pub(super) use std::sync::TryLockError;
     pub(super) use std::sync::atomic::AtomicBool;
     pub(super) use std::sync::atomic::Ordering;
     pub(super) use std::sync::atomic::fence;
@@ -21,6 +22,7 @@ mod inner {
 #[cfg(loom)]
 mod inner {
     pub use std::mem::ManuallyDrop;
+    pub use std::sync::TryLockError;
 
     pub use loom::cell::UnsafeCell;
     pub use loom::hint::spin_loop;
@@ -364,7 +366,31 @@ impl<T> BfSharedMutex<T> {
     /// Provide write access to the underlying object, only a single mutable reference to the object exists.
     pub fn write<'a>(&'a self) -> Result<BfSharedMutexWriteGuard<'a, T>, Box<dyn Error + 'a>> {
         let other = self.shared.other.lock()?;
+        Ok(self.acquire_exclusive(other))
+    }
 
+    /// Attempts to acquire write access without blocking on the inner registration mutex.
+    ///
+    /// Returns `Ok(None)` when that inner mutex is already locked by another thread, which
+    /// happens while another clone is acquiring or releasing a write lock (or is otherwise
+    /// inside the protocol's critical section). This lets a caller bail out instead of waiting,
+    /// for example to skip garbage collection when another thread is already performing it.
+    pub fn try_write<'a>(&'a self) -> Result<Option<BfSharedMutexWriteGuard<'a, T>>, Box<dyn Error + 'a>> {
+        let other = match self.shared.other.try_lock() {
+            Ok(other) => other,
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Poisoned(err)) => return Err(Box::new(err)),
+        };
+
+        Ok(Some(self.acquire_exclusive(other)))
+    }
+
+    /// Completes the busy-forbidden protocol for exclusive access once the inner registration
+    /// mutex has been locked, forbidding all instances and waiting for any busy readers to exit.
+    fn acquire_exclusive<'a>(
+        &'a self,
+        other: MutexGuard<'a, Vec<Option<Arc<CachePadded<SharedMutexControl>>>>>,
+    ) -> BfSharedMutexWriteGuard<'a, T> {
         debug_assert!(
             !self.control.busy.load(Ordering::Relaxed),
             "Can only exclusive lock outside of a shared lock, no upgrading!"
@@ -399,12 +425,12 @@ impl<T> BfSharedMutex<T> {
         }
 
         // We now have exclusive access to the object according to the protocol
-        Ok(BfSharedMutexWriteGuard {
+        BfSharedMutexWriteGuard {
             mutex: self,
             guard: other,
             #[cfg(loom)]
             ptr: ManuallyDrop::new(self.shared.object.get_mut()),
-        })
+        }
     }
 
     /// Check if this instance's read lock is currently held (i.e., this instance's `busy` flag is set).
@@ -572,6 +598,58 @@ mod tests {
         );
     }
 
+    /// A `try_write` that observes the inner registration mutex already locked must report
+    /// failure instead of handing out a second exclusive reference.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_bf_shared_mutex_try_write_fails_when_locked() {
+        let shared_mutex = BfSharedMutex::new(0);
+        let other = shared_mutex.clone();
+
+        let guard = shared_mutex.write().unwrap();
+
+        // While the write guard holds the inner mutex, no clone can acquire it.
+        assert!(other.try_write().unwrap().is_none());
+        assert!(shared_mutex.try_write().unwrap().is_none());
+
+        drop(guard);
+
+        // Once released, a non-blocking write succeeds again.
+        let mut guard = other.try_write().unwrap().expect("try_write should succeed after unlock");
+        *guard += 1;
+        drop(guard);
+
+        assert_eq!(*shared_mutex.read().unwrap(), 1);
+    }
+
+    /// Many threads racing through `try_write` must never lose an increment: each successful
+    /// attempt is guaranteed exclusive access, so retrying until success yields an exact count.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_concurrent_bf_shared_mutex_try_write() {
+        let shared_number = BfSharedMutex::new(0);
+        let num_iterations = 500;
+        let num_threads = 4;
+
+        test_threads(
+            num_threads,
+            || shared_number.clone(),
+            move |number| {
+                for _ in 0..num_iterations {
+                    // Retry until exclusive access is granted; a contended attempt returns None.
+                    loop {
+                        if let Some(mut guard) = number.try_write().unwrap() {
+                            *guard += 1;
+                            break;
+                        }
+                    }
+                }
+            },
+        );
+
+        assert_eq!(*shared_number.write().unwrap(), num_threads * num_iterations);
+    }
+
     #[test]
     #[cfg(loom)]
     fn test_loom_bf_shared_mutex() {
@@ -590,6 +668,38 @@ mod tests {
                         let result = *shared_mutex.read().unwrap();
 
                         *shared_mutex.write().unwrap() = !result;
+                    })
+                })
+                .collect();
+
+            for th in threads {
+                th.join().unwrap();
+            }
+        });
+    }
+
+    #[test]
+    #[cfg(loom)]
+    fn test_loom_bf_shared_mutex_try_write() {
+        let mut builder = loom::model::Builder::new();
+        // A bound of at least 2 is needed to find the missing fence.
+        builder.preemption_bound = Some(2);
+
+        builder.check(|| {
+            let shared_mutex = BfSharedMutex::new(0u32);
+
+            let threads: Vec<_> = (0..2)
+                .map(|_| {
+                    let shared_mutex = shared_mutex.clone();
+                    loom::thread::spawn(move || {
+                        // A non-blocking write attempt either succeeds with exclusive
+                        // access or reports contention; both branches must be sound.
+                        if let Some(mut guard) = shared_mutex.try_write().unwrap() {
+                            *guard += 1;
+                        }
+
+                        // A subsequent read must always succeed under the protocol.
+                        let _ = *shared_mutex.read().unwrap();
                     })
                 })
                 .collect();
