@@ -155,100 +155,105 @@ where
     // Set when any worker's callback returns an error so the others stop promptly.
     let aborted = AtomicBool::new(false);
 
-    let results = timing.measure("explore", || {
-        rayon::broadcast(|broadcast| -> (Local, Option<MercError>) {
-            let me = broadcast.index();
+    let results = rayon::broadcast(|broadcast| -> (Local, Option<MercError>) {
+        let me = broadcast.index();
 
-            // Each worker owns its deque, created here on its own thread
-            // Publish its stealer so peers can balance against it.
-            let local_deque: Worker<StateRef> = Worker::new_lifo();
-            let _ = stealers[me].set(local_deque.stealer());
+        // Each worker owns its deque, created here on its own thread
+        // Publish its stealer so peers can balance against it.
+        let local_deque: Worker<StateRef> = Worker::new_lifo();
+        let _ = stealers[me].set(local_deque.stealer());
 
-            // The first worker seeds the initial state onto its own deque; the
-            // others pick it up by stealing.
-            if me == 0 {
-                local_deque.push(initial_ref);
+        // The first worker seeds the initial state onto its own deque; the
+        // others pick it up by stealing.
+        if me == 0 {
+            local_deque.push(initial_ref);
+        }
+
+        // Thread-affine per-worker scratch and enumeration backend, created
+        // and dropped on this same physical worker thread.
+        let mut context = lps.create_context();
+        let mut forest_context = SequenceForestContext::new();
+        let mut state_buf: Vec<P::Value> = Vec::new();
+        // Successors discovered while processing one state, counted in a
+        // single atomic update and pushed onto the deque only afterwards.
+        let mut successors: Vec<StateRef> = Vec::new();
+        let mut local = make_local();
+        let mut first_error: Option<MercError> = None;
+
+        // Per-worker work-stealing instrumentation, emitted at debug level
+        // when this worker finishes.
+        let mut stats = StealMetrics::default();
+
+        let backoff = Backoff::new();
+        loop {
+            if aborted.load(Ordering::Relaxed) {
+                break;
             }
 
-            // Thread-affine per-worker scratch and enumeration backend, created
-            // and dropped on this same physical worker thread.
-            let mut context = lps.create_context();
-            let mut forest_context = SequenceForestContext::new();
-            let mut state_buf: Vec<P::Value> = Vec::new();
-            // Successors discovered while processing one state, counted in a
-            // single atomic update and pushed onto the deque only afterwards.
-            let mut successors: Vec<StateRef> = Vec::new();
-            let mut local = make_local();
-            let mut first_error: Option<MercError> = None;
-
-            let backoff = Backoff::new();
-            loop {
-                if aborted.load(Ordering::Relaxed) {
+            let Some(state_ref) = find_task(&local_deque, &stealers, me, &mut stats) else {
+                // No work found this sweep. Stop once every state has been
+                // processed, otherwise keep trying: a busy peer may still
+                // discover successors that become stealable.
+                if pending.load(Ordering::Acquire) == 0 {
                     break;
                 }
+                stats.idle_sweeps += 1;
+                backoff.snooze();
+                continue;
+            };
+            backoff.reset();
 
-                let Some(state_ref) = find_task(&local_deque, &stealers, me, &aborted) else {
-                    // No work found this sweep. Stop once every state has been
-                    // processed, otherwise keep trying: a busy peer may still
-                    // discover successors that become stealable.
-                    if pending.load(Ordering::Acquire) == 0 {
-                        break;
-                    }
-                    backoff.snooze();
-                    continue;
-                };
-                backoff.reset();
+            let result = (|| -> Result<(), MercError> {
+                let found = discovered.get_into(state_ref, &mut state_buf);
+                debug_assert!(found, "StateRef from work queue must be valid");
+                let from = StateIndex::new(state_ref.index());
+                let summands_to_explore = lps.prepare(&mut context, &state_buf);
 
-                let result = (|| -> Result<(), MercError> {
-                    let found = discovered.get_into(state_ref, &mut state_buf);
-                    debug_assert!(found, "StateRef from work queue must be valid");
-                    let from = StateIndex::new(state_ref.index());
-                    let summands_to_explore = lps.prepare(&mut context, &state_buf);
+                let info = lps.state_info(&state_buf);
+                on_state(&mut local, from, &info)?;
 
-                    let info = lps.state_info(&state_buf);
-                    on_state(&mut local, from, &info)?;
+                let summands = lps.summands();
+                for index in summands_to_explore {
+                    summands[index].enumerate(&mut context, &state_buf, |label, next_state| {
+                        let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
+                        let to = StateIndex::new(target_ref.index());
+                        on_transition(&mut local, from, label, to)?;
+                        if is_new {
+                            successors.push(target_ref);
+                        }
+                        Ok(())
+                    })?;
+                }
+                Ok(())
+            })();
 
-                    let summands = lps.summands();
-                    for index in summands_to_explore {
-                        summands[index].enumerate(&mut context, &state_buf, |label, next_state| {
-                            let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
-                            let to = StateIndex::new(target_ref.index());
-                            on_transition(&mut local, from, label, to)?;
-                            if is_new {
-                                successors.push(target_ref);
-                            }
-                            Ok(())
-                        })?;
-                    }
-                    Ok(())
-                })();
-
-                match result {
-                    Ok(()) => {
-                        // Apply this state's net effect on the outstanding-work
-                        // count in a single atomic update.
-                        let produced = successors.len();
-                        if produced == 0 {
-                            pending.fetch_sub(1, Ordering::AcqRel);
-                        } else {
-                            pending.fetch_add(produced - 1, Ordering::AcqRel);
-                            for successor in successors.drain(..) {
-                                local_deque.push(successor);
-                            }
+            match result {
+                Ok(()) => {
+                    // Apply this state's net effect on the outstanding-work
+                    // count in a single atomic update.
+                    let produced = successors.len();
+                    if produced == 0 {
+                        pending.fetch_sub(1, Ordering::AcqRel);
+                    } else {
+                        pending.fetch_add(produced - 1, Ordering::AcqRel);
+                        for successor in successors.drain(..) {
+                            local_deque.push(successor);
                         }
                     }
-                    Err(err) => {
-                        // Abort: the pending counter is left as-is since `aborted`
-                        // now drives every worker to stop, independent of it.
-                        first_error = Some(err);
-                        aborted.store(true, Ordering::Relaxed);
-                        break;
-                    }
+                }
+                Err(err) => {
+                    // Abort: the pending counter is left as-is since `aborted`
+                    // now drives every worker to stop, independent of it.
+                    first_error = Some(err);
+                    aborted.store(true, Ordering::Relaxed);
+                    break;
                 }
             }
+        }
 
-            (local, first_error)
-        })
+        stats.log(me);
+
+        (local, first_error)
     });
 
     // Surface the first error in worker-index order, otherwise return one
@@ -268,36 +273,81 @@ where
     Ok((StateIndex::new(initial_ref.index()), locals))
 }
 
+/// Per-worker work-stealing counters, collected while a worker runs and logged
+/// at debug level when it finishes. Used to diagnose load balancing: a healthy
+/// run keeps the stolen fraction modest and idle sweeps low.
+#[derive(Default)]
+struct StealMetrics {
+    /// Tasks taken from the worker's own deque.
+    local_pops: u64,
+    /// Tasks obtained by stealing a batch from a peer.
+    steals: u64,
+    /// `Steal::Retry` results observed while stealing (CAS contention with peers).
+    steal_retries: u64,
+    /// Sweeps that found no work anywhere, each followed by a snooze.
+    idle_sweeps: u64,
+}
+
+impl StealMetrics {
+    /// Emits this worker's counters at debug level.
+    fn log(&self, worker: usize) {
+        let processed = self.local_pops + self.steals;
+        let stolen_pct = if processed == 0 {
+            0.0
+        } else {
+            100.0 * self.steals as f64 / processed as f64
+        };
+        log::debug!(
+            "explore worker {worker}: processed {processed} states ({} local, {} stolen = {stolen_pct:.1}%), \
+             {} steal retries, {} idle sweeps",
+            self.local_pops,
+            self.steals,
+            self.steal_retries,
+            self.idle_sweeps,
+        );
+    }
+}
+
 /// Finds the next state for a worker to process: its own deque first, then a
 /// batch stolen from a peer worker. `me` is the caller's own index, skipped
-/// while stealing.
+/// while stealing. The stealing strategy is selected by [`RANDOMIZED_STEALING`].
 ///
-/// A peer whose slot is not yet registered is simply skipped; the caller
-/// retries while the pending counter says work remains, so no startup barrier
-/// is needed. Returns `None` when a full sweep observed every peer deque empty,
-/// or when `aborted` is set so a worker never spins on steal contention while
-/// the run is shutting down.
-fn find_task<T>(local: &Worker<T>, stealers: &[OnceLock<Stealer<T>>], me: usize, aborted: &AtomicBool) -> Option<T> {
-    local.pop().or_else(|| {
-        loop {
-            let mut retry = false;
-            for (_, slot) in stealers.iter().enumerate().filter(|(index, _)| *index != me) {
-                let Some(stealer) = slot.get() else { continue };
-                if let Steal::Retry = stealer.steal_batch(local) {
-                    retry = true;
-                }
-            }
+/// On a sweep with no successful steal the function returns `None` regardless of
+/// whether peers were empty or merely contended (`Steal::Retry`). The caller's
+/// loop then re-checks the `pending` counter and `aborted` flag before snoozing
+/// and trying again, so retries are paced by the outer backoff and a worker can
+/// never spin here in isolation while the run is shutting down.
+fn find_task<T>(
+    local: &Worker<T>,
+    stealers: &[OnceLock<Stealer<T>>],
+    me: usize,
+    stats: &mut StealMetrics,
+) -> Option<T> {
+    if let Some(task) = local.pop() {
+        stats.local_pops += 1;
+        return Some(task);
+    }
 
-            // A full sweep extended the local deque with whatever it could steal;
-            // pop from it. Only give up once no peer asked us to retry.
-            if let Some(task) = local.pop() {
-                return Some(task);
-            }
-            // Stop retrying once no peer asked us to, or the run is aborting; the
-            // caller's loop then observes `aborted` and breaks.
-            if !retry || aborted.load(Ordering::Relaxed) {
-                return None;
-            }
+
+    // Drain a batch from every peer in fixed index order,
+    // then pop one task from the local deque.
+    for (index, slot) in stealers.iter().enumerate() {
+        if index == me {
+            continue;
         }
-    })
+
+        let Some(stealer) = slot.get() else {
+            continue;
+        };
+
+        if let Steal::Retry = stealer.steal_batch(local) {
+            stats.steal_retries += 1;
+        }
+    }
+
+    let task = local.pop();
+    if task.is_some() {
+        stats.steals += 1;
+    }
+    task
 }
