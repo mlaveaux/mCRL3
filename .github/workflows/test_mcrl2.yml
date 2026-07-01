@@ -36,12 +36,12 @@ jobs:
       uses: taiki-e/install-action@nextest
       
     - name: Checkout the repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         submodules: true
 
     - name: Checkout mCRL2
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         repository: mCRL2org/mCRL2
         ref: 4e62c71e1f622e663ed466378f76c7d5ed4f398a
