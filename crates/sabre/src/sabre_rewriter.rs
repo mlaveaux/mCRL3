@@ -198,8 +198,13 @@ impl SabreRewriter {
                                     );
                                 }
                                 SideInfoType::EquivalenceAndConditionCheck(announcement, annotation) => {
+                                    // The equivalence classes and conditions are checked relative to
+                                    // the match root, which sits at `announcement.position` inside the
+                                    // leaf term (the same root used by `apply_rewrite_rule`).
+                                    let matched = leaf_term.get_data_position(&announcement.position);
+
                                     // Apply the delayed rewrite rule if the conditions hold
-                                    if check_equivalence_classes(leaf_term, &annotation.equivalence_classes)
+                                    if check_equivalence_classes(&matched, &annotation.equivalence_classes)
                                         && SabreRewriter::conditions_hold(
                                             tp,
                                             automaton,
@@ -221,6 +226,16 @@ impl SabreRewriter {
                                             &mut cs,
                                             stats,
                                         );
+                                    } else {
+                                        // The check failed, so this announcement does not apply. The
+                                        // side info was already popped, so move back to the previous
+                                        // configuration that still has side info.
+                                        drop(read_terms);
+                                        let prev = cs.get_prev_with_side_info();
+                                        cs.current_node = prev;
+                                        if let Some(n) = prev {
+                                            cs.jump_back(n, tp);
+                                        }
                                     }
                                 }
                             }
