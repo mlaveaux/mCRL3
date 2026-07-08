@@ -46,7 +46,8 @@ jobs:
         submodules: true
 
     - name: Run tests
-      run: cargo +nightly miri nextest run --no-fail-fast
+      # merc_macros is a proc-macro crate: its tests always run natively outside Miri.
+      run: cargo +nightly miri nextest run --no-fail-fast --workspace --exclude merc_macros
       env:
         RUST_BACKTRACE: full
         RUST_LOG: debug
