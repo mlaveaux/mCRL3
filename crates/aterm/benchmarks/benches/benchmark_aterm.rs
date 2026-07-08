@@ -60,7 +60,7 @@ fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &s
     debug_assert!(depth > 0, "Depth must be greater than 0");
 
     // Create function symbols
-    let f_symbol = Symbol::new(function_name, 2);
+    let f_symbol = Symbol::new(function_name, ARITY);
     let c_symbol = Symbol::new(leaf_name, 0);
 
     // Create the leaf term c
@@ -75,7 +75,7 @@ fn create_nested_function<const ARITY: usize>(function_name: &str, leaf_name: &s
     }
 
     debug_assert_eq!(f_term.get_head_symbol().name(), function_name);
-    debug_assert_eq!(f_term.get_head_symbol().arity(), 2);
+    debug_assert_eq!(f_term.get_head_symbol().arity(), ARITY);
 
     f_term
 }
