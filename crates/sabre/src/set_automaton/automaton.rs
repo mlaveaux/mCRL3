@@ -16,6 +16,7 @@ use merc_data::is_data_application;
 use merc_data::is_data_function_symbol;
 use merc_data::is_data_machine_number;
 use merc_data::is_data_variable;
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use smallvec::smallvec;
 
@@ -29,7 +30,7 @@ use super::MatchGoal;
 /// The Set Automaton used to find all matching patterns in a term.
 pub struct SetAutomaton<T> {
     states: Vec<State>,
-    transitions: HashMap<(usize, usize), Transition<T>>,
+    transitions: FxHashMap<(usize, usize), Transition<T>>,
 }
 
 /// A match announcement contains the rule that can be announced as a match at
@@ -158,7 +159,7 @@ impl<M> SetAutomaton<M> {
         map_goals_state.insert(initial_match_goals, 0);
 
         let mut states = vec![initial_state];
-        let mut transitions = HashMap::default();
+        let mut transitions = FxHashMap::default();
 
         // Pick a state to explore
         while let Some(s_index) = queue.pop_front() {
