@@ -266,9 +266,17 @@ impl<M> SetAutomaton<M> {
         &self.states
     }
 
-    /// Returns the transitions of the automaton
-    pub fn transitions(&self) -> &HashMap<(usize, usize), Transition<M>> {
-        &self.transitions
+    /// Returns the transition for the given state and function symbol operation
+    /// id, if one exists.
+    pub fn get_transition(&self, state: usize, operation_id: usize) -> Option<&Transition<M>> {
+        self.transitions.get(&(state, operation_id))
+    }
+
+    /// Iterates over all transitions as `(state, operation_id, transition)` tuples.
+    pub fn iter_transitions(&self) -> impl Iterator<Item = (usize, usize, &Transition<M>)> {
+        self.transitions
+            .iter()
+            .map(|(&(state, operation_id), transition)| (state, operation_id, transition))
     }
 
     /// Provides a formatter for the .dot file format

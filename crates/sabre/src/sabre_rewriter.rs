@@ -15,6 +15,7 @@ use crate::set_automaton::SetAutomaton;
 use crate::utilities::AnnouncementSabre;
 use crate::utilities::ConfigurationStack;
 use crate::utilities::DataPositionIndexed;
+use crate::utilities::DataSubstitutionBuilder;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
 use crate::utilities::TermStackBuilder;
@@ -41,6 +42,9 @@ pub struct SabreRewriter {
     /// A reusable builder for evaluating right-hand side term stacks, kept to
     /// avoid allocating a fresh one on every rewrite step.
     builder: TermStackBuilder,
+    /// A reusable substitution builder handed to the top-level configuration
+    /// stack, kept to avoid registering a protected container on every call.
+    substitution_builder: DataSubstitutionBuilder,
 }
 
 impl RewriteEngine for SabreRewriter {
@@ -56,6 +60,7 @@ impl SabreRewriter {
         SabreRewriter {
             automaton,
             builder: TermStackBuilder::new(),
+            substitution_builder: DataSubstitutionBuilder::default(),
         }
     }
 
@@ -63,8 +68,16 @@ impl SabreRewriter {
     pub fn stack_based_normalise(&mut self, t: &DataExpression) -> DataExpression {
         let mut stats = RewritingStatistics::default();
 
-        let result = THREAD_TERM_POOL
-            .with(|tp| SabreRewriter::stack_based_normalise_aux(tp, &self.automaton, &mut self.builder, t, &mut stats));
+        let result = THREAD_TERM_POOL.with(|tp| {
+            SabreRewriter::stack_based_normalise_aux(
+                tp,
+                &self.automaton,
+                &mut self.builder,
+                &mut self.substitution_builder,
+                t,
+                &mut stats,
+            )
+        });
 
         info!(
             "{} rewrites, {} single steps and {} symbol comparisons",
@@ -80,13 +93,14 @@ impl SabreRewriter {
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         builder: &mut TermStackBuilder,
+        substitution_builder: &mut DataSubstitutionBuilder,
         t: &DataExpression,
         stats: &mut RewritingStatistics,
     ) -> DataExpression {
         stats.recursions += 1;
 
         // We explore the configuration tree depth first using a ConfigurationStack
-        let mut cs = ConfigurationStack::new(0, t);
+        let mut cs = ConfigurationStack::new(0, t, substitution_builder);
 
         // Big loop until we know we have a normal form
         'outer: loop {
@@ -110,10 +124,7 @@ impl SabreRewriter {
                             stats.symbol_comparisons += 1;
 
                             // Get the transition belonging to the observed symbol
-                            if let Some(tr) = automaton
-                                .transitions()
-                                .get(&(leaf.state, function_symbol.operation_id()))
-                            {
+                            if let Some(tr) = automaton.get_transition(leaf.state, function_symbol.operation_id()) {
                                 // Loop over the match announcements of the transition
                                 for (announcement, annotation) in &tr.announcements {
                                     if annotation.conditions.is_empty() && annotation.equivalence_classes.is_empty() {
@@ -206,13 +217,7 @@ impl SabreRewriter {
                                     // Apply the delayed rewrite rule if the conditions hold
                                     if check_equivalence_classes(&matched, &annotation.equivalence_classes)
                                         && SabreRewriter::conditions_hold(
-                                            tp,
-                                            automaton,
-                                            builder,
-                                            announcement,
-                                            annotation,
-                                            leaf_term,
-                                            stats,
+                                            tp, automaton, builder, annotation, &matched, stats,
                                         )
                                     {
                                         drop(read_terms);
@@ -259,7 +264,7 @@ impl SabreRewriter {
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
         leaf_index: usize,
-        cs: &mut ConfigurationStack<'_>,
+        cs: &mut ConfigurationStack<'_, '_>,
         stats: &mut RewritingStatistics,
     ) {
         stats.rewrite_steps += 1;
@@ -286,25 +291,43 @@ impl SabreRewriter {
     }
 
     /// Checks conditions and subterm equality of non-linear patterns.
+    ///
+    /// `matched` is the subterm at the match root (`announcement.position`), which
+    /// the caller has already resolved.
     fn conditions_hold(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         builder: &mut TermStackBuilder,
-        announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
-        subterm: &DataExpressionRef<'_>,
+        matched: &DataExpressionRef<'_>,
         stats: &mut RewritingStatistics,
     ) -> bool {
-        let subterm = subterm.get_data_position(&announcement.position);
+        // The parent configuration stack still borrows the caller's substitution
+        // builder, so the recursive normalisation of conditions needs its own.
+        let mut substitution_builder = DataSubstitutionBuilder::default();
 
         for c in &annotation.conditions {
-            let rhs: DataExpression = c.rhs_term_stack.evaluate_with(&subterm, builder);
-            let lhs: DataExpression = c.lhs_term_stack.evaluate_with(&subterm, builder);
+            let rhs: DataExpression = c.rhs_term_stack.evaluate_with(matched, builder);
+            let lhs: DataExpression = c.lhs_term_stack.evaluate_with(matched, builder);
 
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {
-                let rhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, builder, &rhs, stats);
-                let lhs_normal = SabreRewriter::stack_based_normalise_aux(tp, automaton, builder, &lhs, stats);
+                let rhs_normal = SabreRewriter::stack_based_normalise_aux(
+                    tp,
+                    automaton,
+                    builder,
+                    &mut substitution_builder,
+                    &rhs,
+                    stats,
+                );
+                let lhs_normal = SabreRewriter::stack_based_normalise_aux(
+                    tp,
+                    automaton,
+                    builder,
+                    &mut substitution_builder,
+                    &lhs,
+                    stats,
+                );
 
                 // If lhs != rhs && !equality OR equality && lhs == rhs.
                 if (!c.equality && lhs_normal == rhs_normal) || (c.equality && lhs_normal != rhs_normal) {
