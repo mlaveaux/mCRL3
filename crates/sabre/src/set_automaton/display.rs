@@ -53,8 +53,8 @@ impl<M> fmt::Debug for SetAutomaton<M> {
             writeln!(f, "State {state_index} {{\n{s:?}")?;
 
             writeln!(f, "Transitions: {{")?;
-            for ((from, _), tr) in self.transitions() {
-                if state_index == *from {
+            for (from, _, tr) in self.iter_transitions() {
+                if state_index == from {
                     writeln!(f, "\t {tr:?}")?;
                 }
             }
@@ -95,7 +95,7 @@ impl<M> fmt::Display for DotFormatter<'_, M> {
             )?;
         }
 
-        for ((i, _), tr) in self.automaton.transitions() {
+        for (i, _, tr) in self.automaton.iter_transitions() {
             let announcements = tr.announcements.iter().format_with(", ", |(announcement, _), f| {
                 f(&format_args!("{}@{}", announcement.rule.rhs, announcement.position))
             });
