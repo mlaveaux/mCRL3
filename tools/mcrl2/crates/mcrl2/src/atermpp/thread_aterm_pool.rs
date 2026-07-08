@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
+use log::debug;
 use log::trace;
 
 use mcrl2_sys::atermpp::ffi;
@@ -16,8 +17,9 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize;
-use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_test_garbage_collection;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_create;
 use mcrl2_sys::cxx::Exception;
 use mcrl2_sys::cxx::UniquePtr;
@@ -66,6 +68,10 @@ pub struct ThreadTermPool {
     /// allowed outside of a shared lock section. Therefore, we count
     /// (arbitrarily) to reduce the amount of this is checked.
     gc_counter: Cell<usize>,
+    
+    /// Keeps track of the maximum size the term pool should reach before
+    /// triggering garbage collection.
+    size_until_gc: Cell<usize>,
 
     /// Temporary storage for arguments when creating terms.
     arguments: RefCell<Vec<*const ffi::_aterm>>,
@@ -87,6 +93,7 @@ impl ThreadTermPool {
             list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_list_function_symbol()) },
             empty_list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_empty_list_function_symbol()) },
             gc_counter: Cell::new(TEST_GC_INTERVAL),
+            size_until_gc: Cell::new(mcrl2_aterm_pool_capacity()),
             data_appl: RefCell::new(vec![]),
             arguments: RefCell::new(vec![]),
             _callback: ManuallyDrop::new(mcrl2_aterm_pool_register_mark_callback(
@@ -98,7 +105,10 @@ impl ThreadTermPool {
 
     /// Trigger a garbage collection explicitly.
     pub fn collect(&self) {
+        debug!("Collecting mCRL2 aterm pool garbage");
         mcrl2_aterm_pool_collect_garbage();
+        // Garbage collection was performed, so we can reset the size limit.
+        self.size_until_gc.set(mcrl2_aterm_pool_capacity());
     }
 
     /// Creates an ATerm from a string.
@@ -294,7 +304,11 @@ impl ThreadTermPool {
         // `guard.unlock()` returns true only when this leaves the outermost
         // shared section, i.e. the thread is no longer busy.
         if guard.unlock() && counter == 0 {
-            mcrl2_aterm_pool_test_garbage_collection();
+            // If garbage collection is necessary according to our requirements.
+            if mcrl2_aterm_pool_size() >= self.size_until_gc.get() {
+                self.collect();
+            }
+
             mcrl2_aterm_pool_resize();
             self.gc_counter.set(TEST_GC_INTERVAL);
         }
