@@ -190,6 +190,12 @@ fn benchmark_shared_lookup(c: &mut Criterion) {
     }
 }
 
+/// The leaf symbol name used by a given thread in the "unique" benchmarks below, so that each
+/// thread constructs (and later looks up) its own separate term.
+fn unique_leaf_name(id: usize) -> String {
+    format!("c{id}")
+}
+
 // In these three benchmarks all threads operate on their own separate term.
 fn benchmark_unique_creation(c: &mut Criterion) {
     const SIZE: usize = 400000;
@@ -209,7 +215,7 @@ fn benchmark_unique_creation(c: &mut Criterion) {
                         benchmark_threads(num_threads, move |id| {
                             black_box(create_nested_function::<2>(
                                 "f",
-                                &format!("c{}", id),
+                                &unique_leaf_name(id),
                                 SIZE / num_threads,
                             ));
                         });
@@ -240,7 +246,7 @@ fn benchmark_unique_inspect(c: &mut Criterion) {
             |b, &num_threads| {
                 let terms: Arc<Vec<ATermSend>> = Arc::new(
                     (0..num_threads)
-                        .map(|id| ATermSend::from(create_nested_function::<2>("f", &format!("c{}", id), SIZE)))
+                        .map(|id| ATermSend::from(create_nested_function::<2>("f", &unique_leaf_name(id), SIZE)))
                         .collect(),
                 );
 
@@ -264,26 +270,29 @@ fn benchmark_unique_lookup(c: &mut Criterion) {
 
     THREAD_TERM_POOL.with(|tp| tp.automatic_garbage_collection(false));
 
-    // Keep one protected instance
-    let f = create_nested_function::<2>("f", "c", SIZE);
-
     for num_threads in THREADS {
         c.bench_with_input(
             BenchmarkId::new("unique_lookup", num_threads),
             &num_threads,
             |b, &num_threads| {
+                // Keep one protected instance per thread, matching what each thread looks up
+                // below, so the benchmark measures term pool lookups rather than creation.
+                let terms: Vec<ATerm> = (0..num_threads)
+                    .map(|id| create_nested_function::<2>("f", &unique_leaf_name(id), SIZE))
+                    .collect();
+
                 b.iter(|| {
                     benchmark_threads(num_threads, move |id| {
                         for _ in 0..ITERATIONS / num_threads {
-                            black_box(create_nested_function::<2>("f", &format!("c{}", id), SIZE));
+                            black_box(create_nested_function::<2>("f", &unique_leaf_name(id), SIZE));
                         }
                     });
-                })
+                });
+
+                drop(terms);
             },
         );
     }
-
-    drop(f);
 }
 
 criterion_group!(
