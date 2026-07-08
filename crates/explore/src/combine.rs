@@ -87,7 +87,8 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
             .into());
         }
 
-        // The left hand side of a communication cannot overlap with any other communication's left hand side.
+        // The left hand side of a communication cannot overlap with any other communication's left hand side. This is the definition used in mCRL2,
+        // for example a|b -> a is a valid communication expression.
         for (j, comm_j) in comm.iter().enumerate() {
             if i != j && comm_i.from.actions.iter().any(|a| comm_j.from.actions.contains(a)) {
                 return Err(format!(
