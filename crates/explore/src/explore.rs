@@ -8,6 +8,9 @@ use crossbeam_deque::Steal;
 use crossbeam_deque::Stealer;
 use crossbeam_deque::Worker;
 use crossbeam_utils::Backoff;
+use rand::RngExt;
+use rand::SeedableRng;
+use rand::rngs::SmallRng;
 
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
@@ -184,13 +187,16 @@ where
         // when this worker finishes.
         let mut stats = StealMetrics::default();
 
+        // Per-worker RNG driving randomized victim selection while stealing.
+        let mut rng = SmallRng::from_rng(&mut rand::rng());
+
         let backoff = Backoff::new();
         loop {
             if aborted.load(Ordering::Relaxed) {
                 break;
             }
 
-            let Some(state_ref) = find_task(&local_deque, &stealers, me, &mut stats) else {
+            let Some(state_ref) = find_task(&local_deque, &stealers, me, &mut rng, &mut stats) else {
                 // No work found this sweep. Stop once every state has been
                 // processed, otherwise keep trying: a busy peer may still
                 // discover successors that become stealable.
@@ -309,8 +315,8 @@ impl StealMetrics {
 }
 
 /// Finds the next state for a worker to process: its own deque first, then a
-/// batch stolen from a peer worker. `me` is the caller's own index, skipped
-/// while stealing. The stealing strategy is selected by [`RANDOMIZED_STEALING`].
+/// batch stolen from a peer worker. Each attempt samples a random peer index
+/// (`me` is skipped). Stops at the first peer that yields a task.
 ///
 /// On a sweep with no successful steal the function returns `None` regardless of
 /// whether peers were empty or merely contended (`Steal::Retry`). The caller's
@@ -321,6 +327,7 @@ fn find_task<T>(
     local: &Worker<T>,
     stealers: &[OnceLock<Stealer<T>>],
     me: usize,
+    rng: &mut SmallRng,
     stats: &mut StealMetrics,
 ) -> Option<T> {
     if let Some(task) = local.pop() {
@@ -328,26 +335,28 @@ fn find_task<T>(
         return Some(task);
     }
 
-
-    // Drain a batch from every peer in fixed index order,
-    // then pop one task from the local deque.
-    for (index, slot) in stealers.iter().enumerate() {
+    // Try up to one random peer per worker; some peers may be sampled more
+    // than once and others not at all, which is fine since a sweep that finds
+    // nothing is retried by the caller.
+    for _ in 0..stealers.len() {
+        let index = rng.random_range(0..stealers.len());
         if index == me {
             continue;
         }
 
-        let Some(stealer) = slot.get() else {
+        let Some(stealer) = stealers[index].get() else {
             continue;
         };
 
-        if let Steal::Retry = stealer.steal_batch(local) {
-            stats.steal_retries += 1;
+        match stealer.steal_batch_and_pop(local) {
+            Steal::Success(task) => {
+                stats.steals += 1;
+                return Some(task);
+            }
+            Steal::Retry => stats.steal_retries += 1,
+            Steal::Empty => {}
         }
     }
 
-    let task = local.pop();
-    if task.is_some() {
-        stats.steals += 1;
-    }
-    task
+    None
 }
