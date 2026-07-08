@@ -36,9 +36,7 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     // between runs. Emit transitions in a deterministic (state, symbol) order so
     // the generated source is reproducible and diffable.
     let sorted_transitions: Vec<(usize, usize, &_)> = apma
-        .transitions()
-        .iter()
-        .map(|((from, symbol), transition)| (*from, *symbol, transition))
+        .iter_transitions()
         .sorted_by_key(|(from, symbol, _)| (*from, *symbol))
         .collect();
 

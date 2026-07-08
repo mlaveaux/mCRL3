@@ -57,8 +57,8 @@ where
 
         // The term at the first position must be equivalent to all other positions.
         let mut iter_pos = ec.positions.iter();
-        let first = iter_pos.next().unwrap();
-        iter_pos.all(|other_pos| term.get_data_position(first) == term.get_data_position(other_pos))
+        let first = term.get_data_position(iter_pos.next().unwrap());
+        iter_pos.all(|other_pos| first == term.get_data_position(other_pos))
     })
 }
 
