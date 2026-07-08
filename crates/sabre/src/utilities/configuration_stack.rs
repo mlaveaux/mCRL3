@@ -126,7 +126,7 @@ pub(crate) enum SideInfoType<'a> {
 
 /// A configuration stack. The first element is the root of the configuration tree.
 #[derive(Debug)]
-pub(crate) struct ConfigurationStack<'a> {
+pub(crate) struct ConfigurationStack<'a, 'b> {
     pub stack: Vec<Configuration<'a>>,
     pub terms: Protected<Vec<DataExpressionRef<'static>>>,
 
@@ -141,20 +141,25 @@ pub(crate) struct ConfigurationStack<'a> {
     /// oldest_reliable_subterm is an index to the highest configuration in the tree that is up to date.
     pub oldest_reliable_subterm: usize,
 
-    /// A reusable substitution builder for the configuration stack.
-    pub substitution_builder: DataSubstitutionBuilder,
+    /// A reusable substitution builder, borrowed from the caller so that a
+    /// protected container is not registered on every rewrite call.
+    pub substitution_builder: &'b mut DataSubstitutionBuilder,
 }
 
-impl<'a> ConfigurationStack<'a> {
+impl<'a, 'b> ConfigurationStack<'a, 'b> {
     /// Initialise the stack with one Configuration containing 'term' and the initial state of the set automaton
-    pub(crate) fn new(state: usize, term: &DataExpression) -> ConfigurationStack<'a> {
+    pub(crate) fn new(
+        state: usize,
+        term: &DataExpression,
+        substitution_builder: &'b mut DataSubstitutionBuilder,
+    ) -> ConfigurationStack<'a, 'b> {
         let mut conf_list = ConfigurationStack {
             stack: Vec::with_capacity(8),
             side_branch_stack: vec![],
-            terms: Protected::new(vec![]),
+            terms: Protected::new(Vec::with_capacity(8)),
             current_node: Some(0),
             oldest_reliable_subterm: 0,
-            substitution_builder: DataSubstitutionBuilder::default(),
+            substitution_builder,
         };
         conf_list.stack.push(Configuration { state, position: None });
 
@@ -229,7 +234,7 @@ impl<'a> ConfigurationStack<'a> {
         // Safety: subterm is stored in the container on the next line.
         let subterm = unsafe {
             write_terms.protect(&data_substitute_with(
-                &mut self.substitution_builder,
+                self.substitution_builder,
                 tp,
                 &write_terms[depth],
                 new_subterm,
@@ -263,8 +268,10 @@ impl<'a> ConfigurationStack<'a> {
     /// Roll back the configuration stack to level 'depth'.
     /// This function is used exclusively when a subtree has been explored and no matches have been found.
     pub(crate) fn jump_back(&mut self, depth: usize, tp: &ThreadTermPool) {
-        // Updated subterms may have to be propagated up the configuration tree
-        self.integrate_updated_subterms(depth, tp, true);
+        // Updated subterms may have to be propagated up the configuration tree.
+        // Only the subterm at 'depth' needs to be correct: everything below it is
+        // truncated away immediately afterwards.
+        self.integrate_updated_subterms(depth, tp);
         self.current_node = Some(depth);
         self.stack.truncate(depth + 1);
         self.terms.write().truncate(depth + 1);
@@ -274,8 +281,7 @@ impl<'a> ConfigurationStack<'a> {
 
     /// When going back up the configuration tree the subterms stored in the configuration tree must be updated
     /// This function ensures that the Configuration at depth 'end' is made up to date.
-    /// If store_intermediate is true, all configurations below 'end' are also up to date.
-    pub(crate) fn integrate_updated_subterms(&mut self, end: usize, tp: &ThreadTermPool, store_intermediate: bool) {
+    pub(crate) fn integrate_updated_subterms(&mut self, end: usize, tp: &ThreadTermPool) {
         // Check if there is anything to do. Start updating from self.oldest_reliable_subterm
         let mut up_to_date = self.oldest_reliable_subterm;
         if up_to_date == 0 || end >= up_to_date {
@@ -286,14 +292,16 @@ impl<'a> ConfigurationStack<'a> {
         // Safety: subterm is kept in write_terms throughout this function.
         let mut subterm = unsafe { write_terms.protect(&write_terms[up_to_date]) };
 
-        // Go over the configurations one by one until we reach 'end'
+        // Go over the configurations one by one until we reach 'end'. The running
+        // subterm is stored back into the container at every level rather than
+        // held as an owned protected term.
         while up_to_date > end {
             // If the position is not deepened nothing needs to be done, otherwise substitute on the position stored in the configuration.
             subterm = match self.stack[up_to_date].position {
                 None => subterm,
                 Some(position) => {
                     let t = data_substitute_with(
-                        &mut self.substitution_builder,
+                        self.substitution_builder,
                         tp,
                         &write_terms[up_to_date - 1],
                         subterm.protect().into(),
@@ -305,18 +313,12 @@ impl<'a> ConfigurationStack<'a> {
             };
             up_to_date -= 1;
 
-            if store_intermediate {
-                // Safety: subterm is stored in the container on the next line.
-                let subterm = unsafe { write_terms.protect(&subterm) };
-                write_terms[up_to_date] = subterm.into();
-            }
+            // Safety: subterm is stored in the container on the next line.
+            let stored = unsafe { write_terms.protect(&subterm) };
+            write_terms[up_to_date] = stored.into();
         }
 
         self.oldest_reliable_subterm = up_to_date;
-
-        // Safety: subterm is stored in the container on the next line.
-        let subterm = unsafe { write_terms.protect(&subterm) };
-        write_terms[up_to_date] = subterm.into();
     }
 
     /// Final term computed by integrating all subterms up to the root configuration
@@ -340,7 +342,7 @@ impl<'a> ConfigurationStack<'a> {
     }
 }
 
-impl fmt::Display for ConfigurationStack<'_> {
+impl fmt::Display for ConfigurationStack<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Current node: {:?}", self.current_node)?;
         for (i, c) in self.stack.iter().enumerate() {
