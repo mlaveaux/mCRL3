@@ -615,7 +615,10 @@ mod tests {
         drop(guard);
 
         // Once released, a non-blocking write succeeds again.
-        let mut guard = other.try_write().unwrap().expect("try_write should succeed after unlock");
+        let mut guard = other
+            .try_write()
+            .unwrap()
+            .expect("try_write should succeed after unlock");
         *guard += 1;
         drop(guard);
 

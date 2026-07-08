@@ -82,9 +82,9 @@ impl<T> RecursiveLock<T> {
     }
 
     /// Acquires a write lock on the mutex without blocking.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics when called inside a read or write section. In that case the underlying mutex
     /// would not wait for this thread's own lock, handing out `&mut T` while a `&T` or another
     /// `&mut T` is live.
