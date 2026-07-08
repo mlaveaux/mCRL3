@@ -493,7 +493,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_bdd_variable_rename() {
-        let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
+        let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
         let vars: Vec<BDDFunction> = manager_ref
             .with_manager_exclusive(|manager| {
@@ -510,7 +510,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_bdd_support() {
         random_test(25, |rng| {
-            let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
+            let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
             let vars = manager_ref
                 .with_manager_exclusive(|manager| {
@@ -532,7 +532,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_bdd_renaming() {
         random_test(25, |rng| {
-            let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
+            let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
             let vars = manager_ref
                 .with_manager_exclusive(|manager| {
@@ -563,7 +563,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_bdd_renaming_reverse() {
         random_test(25, |rng| {
-            let manager_ref = oxidd::bdd::new_manager(2048, 2048, 1024);
+            let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
 
             let vars = manager_ref
                 .with_manager_exclusive(|manager| {
