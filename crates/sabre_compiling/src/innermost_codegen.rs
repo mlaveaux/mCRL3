@@ -32,9 +32,8 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);
     debug_assert!(!apma.states().is_empty(), "Automaton must have at least one state");
 
-    // `transitions()` is a `HashMap`, so its iteration order is not stable
-    // between runs. Emit transitions in a deterministic (state, symbol) order so
-    // the generated source is reproducible and diffable.
+    // Emit transitions in a deterministic (state, symbol) order so the generated
+    // source is reproducible and diffable.
     let sorted_transitions: Vec<(usize, usize, &_)> = apma
         .iter_transitions()
         .sorted_by_key(|(from, symbol, _)| (*from, *symbol))
