@@ -22,12 +22,13 @@ merc_syntax.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 
-clap ={ workspace = true, optional = true }
+clap = { workspace = true, optional = true }
 core_affinity2.workspace = true
 crossbeam-deque.workspace = true
 crossbeam-utils.workspace = true
 itertools.workspace = true
 log.workspace = true
+rand.workspace = true
 rayon.workspace = true
 rustc-hash.workspace = true
 streaming-iterator.workspace = true
@@ -35,4 +36,3 @@ streaming-iterator.workspace = true
 [dev-dependencies]
 merc_reduction.workspace = true
 tempfile.workspace = true
-rand.workspace = true
