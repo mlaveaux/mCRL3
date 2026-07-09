@@ -7,6 +7,7 @@ use std::hash::Hasher;
 use std::ops::Deref;
 use std::ptr::NonNull;
 use std::ptr::addr_eq;
+use std::ptr::slice_from_raw_parts_mut;
 #[cfg(debug_assertions)]
 use std::sync::Arc;
 
@@ -17,7 +18,9 @@ use dashmap::DashSet;
 use equivalent::Equivalent;
 
 use crate::AllocatorDst;
+use crate::Erasable;
 use crate::SliceDst;
+use crate::Thin;
 
 /// A handle to an element stored in a [`StablePointerSet`].
 ///
@@ -31,11 +34,15 @@ use crate::SliceDst;
 /// Deliberately not `Clone`: duplicating a handle extends the set of pointers
 /// that must be kept valid, so duplication goes through the unsafe
 /// [`StablePointer::copy`].
+///
+/// The pointer is stored type-erased ([`Thin`]) so a handle is always a single
+/// machine word, even when `T` is a slice DST whose native pointer would be
+/// wide. The slice length is reconstructed from the pointee on deref via
+/// [`Erasable`].
 #[repr(C)]
-pub struct StablePointer<T: ?Sized> {
-    /// The raw pointer to the element.
-    /// This is a NonNull pointer, which means it is guaranteed to be non-null.
-    ptr: NonNull<T>,
+pub struct StablePointer<T: ?Sized + Erasable> {
+    /// The thin, type-erased pointer to the element. Guaranteed non-null.
+    ptr: Thin<T>,
 
     /// Keep track of reference counts in debug mode.
     #[cfg(debug_assertions)]
@@ -46,7 +53,7 @@ pub struct StablePointer<T: ?Sized> {
 #[cfg(not(debug_assertions))]
 const _: () = assert!(std::mem::size_of::<Option<StablePointer<usize>>>() == std::mem::size_of::<usize>());
 
-impl<T: ?Sized> StablePointer<T> {
+impl<T: ?Sized + Erasable> StablePointer<T> {
     /// Returns true if this is the last reference to the pointer.
     fn is_last_reference(&self) -> bool {
         #[cfg(debug_assertions)]
@@ -67,7 +74,7 @@ impl<T: ?Sized> StablePointer<T> {
     /// The caller must ensure that the pointer is valid and points to a valid T that outlives the StablePointer.
     pub unsafe fn from_ptr(ptr: NonNull<T>) -> Self {
         Self {
-            ptr,
+            ptr: Thin::new(ptr),
             #[cfg(debug_assertions)]
             reference_counter: Arc::new(()),
         }
@@ -81,51 +88,57 @@ impl<T: ?Sized> StablePointer<T> {
     /// The caller must ensure that `ptr` points to the same allocation as
     /// `source` (potentially with a different pointee type/metadata) and
     /// remains valid for at least as long as any derived StablePointer.
-    pub unsafe fn from_related_ptr<U: ?Sized>(ptr: NonNull<U>, #[allow(unused)] source: &Self) -> StablePointer<U> {
+    pub unsafe fn from_related_ptr<U: ?Sized + Erasable>(
+        ptr: NonNull<U>,
+        #[allow(unused)] source: &Self,
+    ) -> StablePointer<U> {
         StablePointer {
-            ptr,
+            ptr: Thin::new(ptr),
             #[cfg(debug_assertions)]
             reference_counter: source.reference_counter.clone(),
         }
     }
 
     /// Returns public access to the underlying pointer.
+    ///
+    /// For a slice DST this reconstructs the wide pointer from the pointee, so
+    /// it reads the header; prefer identity operations (eq/hash) that do not.
     pub fn ptr(&self) -> NonNull<T> {
-        self.ptr
+        self.ptr.as_nonnull()
     }
 }
 
-impl<T: ?Sized> PartialEq for StablePointer<T> {
+impl<T: ?Sized + Erasable> PartialEq for StablePointer<T> {
     fn eq(&self, other: &Self) -> bool {
-        // Identity is the pointer address; the pointee is never read here.
-        addr_eq(self.ptr.as_ptr(), other.ptr.as_ptr())
+        // Identity is the erased address; the pointee is never read here.
+        addr_eq(self.ptr.as_erased().as_ptr(), other.ptr.as_erased().as_ptr())
     }
 }
 
-impl<T: ?Sized> Eq for StablePointer<T> {}
+impl<T: ?Sized + Erasable> Eq for StablePointer<T> {}
 
-impl<T: ?Sized> Ord for StablePointer<T> {
+impl<T: ?Sized + Erasable> Ord for StablePointer<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.ptr.as_ptr().cast::<()>().cmp(&(other.ptr.as_ptr().cast::<()>()))
+        self.ptr.as_erased().cmp(&other.ptr.as_erased())
     }
 }
 
-impl<T: ?Sized> PartialOrd for StablePointer<T> {
+impl<T: ?Sized + Erasable> PartialOrd for StablePointer<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: ?Sized> Hash for StablePointer<T> {
+impl<T: ?Sized + Erasable> Hash for StablePointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ptr.hash(state);
+        self.ptr.as_erased().hash(state);
     }
 }
 
-unsafe impl<T: ?Sized + Send> Send for StablePointer<T> {}
-unsafe impl<T: ?Sized + Sync> Sync for StablePointer<T> {}
+unsafe impl<T: ?Sized + Erasable + Send> Send for StablePointer<T> {}
+unsafe impl<T: ?Sized + Erasable + Sync> Sync for StablePointer<T> {}
 
-impl<T: ?Sized> StablePointer<T> {
+impl<T: ?Sized + Erasable> StablePointer<T> {
     /// Returns a copy of the StablePointer.
     ///
     /// # Safety
@@ -143,7 +156,7 @@ impl<T: ?Sized> StablePointer<T> {
     /// Creates a new StablePointer from a boxed element.
     fn from_entry(entry: &Entry<T>) -> Self {
         Self {
-            ptr: entry.ptr,
+            ptr: Thin::new(entry.ptr),
             #[cfg(debug_assertions)]
             reference_counter: entry.reference_counter.clone(),
         }
@@ -158,13 +171,33 @@ impl<T: ?Sized> StablePointer<T> {
     /// of the returned borrow. This is not tracked by the borrow checker.
     pub unsafe fn deref(&self) -> &T {
         // SAFETY: the caller guarantees the pointee outlives the returned borrow.
+        // `as_ref` reconstructs the wide pointer from the pointee's header.
         unsafe { self.ptr.as_ref() }
     }
 }
 
-impl<T: fmt::Debug + ?Sized> fmt::Debug for StablePointer<T> {
+impl<T: ?Sized + Erasable + SliceDst> StablePointer<T> {
+    /// Reconstructs the wide pointer from a caller-supplied slice length instead
+    /// of reading the pointee's header, as [`StablePointer::ptr`] does.
+    ///
+    /// This is the fast path for callers that already know the length (e.g. a
+    /// compile-time-constant arity), avoiding the dependent header load.
+    ///
+    /// # Safety
+    ///
+    /// `len` must equal the pointee's [`SliceDst::length`]. Passing a larger
+    /// value yields a pointer that reads out of bounds when dereferenced.
+    pub unsafe fn ptr_with_len(&self, len: usize) -> NonNull<T> {
+        let slice = slice_from_raw_parts_mut(self.ptr.as_erased().as_ptr().cast::<()>(), len);
+        // SAFETY: the address originates from a `NonNull`, so it is non-null; the
+        // caller guarantees `len` matches the pointee's slice length.
+        T::retype(unsafe { NonNull::new_unchecked(slice) })
+    }
+}
+
+impl<T: ?Sized + Erasable> fmt::Debug for StablePointer<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("StablePointer").field(&self.ptr).finish()
+        f.debug_tuple("StablePointer").field(&self.ptr.as_erased()).finish()
     }
 }
 
@@ -177,7 +210,7 @@ impl<T: fmt::Debug + ?Sized> fmt::Debug for StablePointer<T> {
 /// Uses an allocator for memory management, defaulting to the global allocator.
 pub struct StablePointerSet<T: ?Sized, S = RandomState, A = Global>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
     S: BuildHasher + Clone,
     A: Allocator + AllocatorDst,
 {
@@ -188,7 +221,7 @@ where
 
 impl<T: ?Sized> Default for StablePointerSet<T, RandomState, Global>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
 {
     fn default() -> Self {
         Self::new()
@@ -197,7 +230,7 @@ where
 
 impl<T: ?Sized> StablePointerSet<T, RandomState, Global>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
 {
     /// Creates an empty StablePointerSet with the default hasher and global allocator.
     pub fn new() -> Self {
@@ -218,7 +251,7 @@ where
 
 impl<T: ?Sized, S> StablePointerSet<T, S, Global>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
     S: BuildHasher + Clone,
 {
     /// Creates an empty StablePointerSet with the specified hasher and global allocator.
@@ -240,7 +273,7 @@ where
 
 impl<T: ?Sized, S, A> StablePointerSet<T, S, A>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
     S: BuildHasher + Clone,
     A: Allocator + AllocatorDst,
 {
@@ -446,9 +479,10 @@ where
                 // one reference to the element.
 
                 // SAFETY: We have exclusive access during drop and the pointer
-                // is valid
+                // is valid. `element.ptr` is the stored wide pointer, so no
+                // header read is needed to recover the slice length.
                 unsafe {
-                    self.drop_and_deallocate_entry(ptr.ptr);
+                    self.drop_and_deallocate_entry(element.ptr);
                 }
                 return false;
             }
@@ -478,7 +512,7 @@ where
     }
 }
 
-impl<T: ?Sized + SliceDst, S, A> StablePointerSet<T, S, A>
+impl<T: ?Sized + SliceDst + Erasable, S, A> StablePointerSet<T, S, A>
 where
     T: Hash + Eq,
     S: BuildHasher + Clone,
@@ -559,9 +593,9 @@ where
 
                 // TODO: I suppose this can go wrong with begin_insert(x); insert(x); remove(x); end_insert(x) chain.
                 if let Some(existing_ptr) = self.get(value) {
-                    // SAFETY: We have exclusive access during drop and the pointer is valid
+                    // SAFETY: We have exclusive access during drop and the pointer is valid.
                     unsafe {
-                        self.drop_and_deallocate_entry(ptr.ptr);
+                        self.drop_and_deallocate_entry(ptr.ptr.as_nonnull());
                     }
 
                     return (existing_ptr, false);
@@ -576,7 +610,7 @@ where
 
 impl<T, S, A> StablePointerSet<T, S, A>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
     S: BuildHasher + Clone,
     A: Allocator + AllocatorDst,
 {
@@ -631,7 +665,7 @@ where
 
 impl<T: ?Sized, S, A> Drop for StablePointerSet<T, S, A>
 where
-    T: Hash + Eq + SliceDst,
+    T: Hash + Eq + SliceDst + Erasable,
     S: BuildHasher + Clone,
     A: Allocator + AllocatorDst,
 {

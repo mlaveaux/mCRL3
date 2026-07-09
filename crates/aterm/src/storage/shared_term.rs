@@ -191,14 +191,15 @@ mod tests {
             "A SharedTerm without arguments should be the same size as the Symbol"
         );
 
-        // TODO: Shared terms are still too large.
-        // assert_eq!(
-        //     SharedTerm::layout_for(2)
-        //         .expect("The layout should not overflow")
-        //         .size(),
-        //     3 * std::mem::size_of::<usize>(),
-        //     "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
-        // );
+        // A thin `ATermRef` is a single word, so the arguments no longer carry redundant slice
+        // length metadata: a binary term is the symbol word plus two argument words.
+        assert_eq!(
+            SharedTerm::layout_for(2)
+                .expect("The layout should not overflow")
+                .size(),
+            3 * std::mem::size_of::<usize>(),
+            "A SharedTerm with arity two should be the same size as the Symbol and two ATermRef arguments"
+        );
     }
 
     #[test]

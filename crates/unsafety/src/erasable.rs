@@ -5,6 +5,10 @@ use std::ptr::NonNull;
 
 /// A thin, type-erased pointer. This should mimic the interface of NonNull, but
 /// with the ability to erase the type information.
+///
+/// `repr(transparent)` guarantees the same layout and niche as the underlying
+/// [`ErasedPtr`], so `Option<Thin<T>>` stays pointer-sized.
+#[repr(transparent)]
 pub struct Thin<T: ?Sized + Erasable> {
     ptr: ErasedPtr,
     marker: PhantomData<fn() -> T>,
@@ -30,6 +34,15 @@ impl<T: ?Sized + Erasable> Thin<T> {
 }
 
 impl<T: ?Sized + Erasable> Thin<T> {
+    /// Returns the raw erased address without reconstructing the fat pointer.
+    ///
+    /// Use this for identity operations (comparison, hashing) that only need the
+    /// address, avoiding the `unerase` memory read that `as_ptr`/`as_ref` incur
+    /// for slice DSTs.
+    pub fn as_erased(&self) -> ErasedPtr {
+        self.ptr
+    }
+
     pub fn as_ptr(&self) -> *mut T {
         unsafe { T::unerase(self.ptr) }.as_ptr()
     }

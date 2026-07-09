@@ -4,7 +4,6 @@ use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ops::Index;
 
-use bitvec::vec::BitVec;
 use merc_utilities::GenerationCounter;
 use merc_utilities::GenerationalIndex;
 
@@ -210,20 +209,24 @@ impl<T> Drop for ProtectionSet<T> {
         // drop every slot that is not free. Testing membership against the free
         // list per slot instead would make this O(n^2), which for a protection
         // set grown to millions of slots effectively never finishes.
-        let mut is_free: BitVec = BitVec::repeat(false, self.roots.len());
+        //
+        // A plain `Vec<bool>` is used rather than a bit-packed vector: at one byte
+        // per slot it is negligible next to `roots` (which holds the `T` objects),
+        // and it keeps this drop path free of the pointer tricks that trip Miri.
+        let mut is_free = vec![false; self.roots.len()];
         for free_idx in self.freelist_iter() {
-            is_free.set(free_idx, true);
+            is_free[free_idx] = true;
         }
 
-        for index in 0..self.roots.len() {
-            if is_free[index] {
+        for (root, free) in self.roots.iter_mut().zip(is_free) {
+            if free {
                 continue;
             }
 
             // SAFETY: slots not in the freelist still contain a live protected
             // object that must be dropped.
             unsafe {
-                ManuallyDrop::drop(&mut self.roots[index].object);
+                ManuallyDrop::drop(&mut root.object);
             }
         }
     }

@@ -532,11 +532,16 @@ impl Marker<'_> {
                     // Each term should be marked.
                     self.marked_terms.insert(term.copy());
 
-                    // Mark the function symbol.
-                    self.marked_symbols.insert(term.deref().symbol().shared().copy());
+                    // Reconstruct the wide reference once; each `deref` rebuilds it from the
+                    // symbol header, so we reuse the borrow for both the symbol and arguments.
+                    let shared = term.deref();
 
-                    // For some terms, such as ATermInt, we must ONLY consider the valid arguments (indicated by the arity)
-                    for arg in term.deref().arguments()[0..term.deref().symbol().arity()].iter() {
+                    // Mark the function symbol.
+                    self.marked_symbols.insert(shared.symbol().shared().copy());
+
+                    // The arguments slice already has exactly the symbol's arity as its length
+                    // (integer terms reconstruct to an empty slice), so iterating it is correct.
+                    for arg in shared.arguments().iter() {
                         // Skip if unnecessary, otherwise mark before pushing to stack since it can be shared.
                         if !self.marked_terms.contains(arg.shared()) {
                             self.marked_terms.insert(arg.shared().copy());

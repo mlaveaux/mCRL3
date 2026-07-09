@@ -303,4 +303,10 @@ mod tests {
     // argument array produces the same byte offsets in both representations.
     const _: () = assert!(size_of::<ATermIndex>() == size_of::<ATermRef<'static>>());
     const _: () = assert!(align_of::<ATermIndex>() == align_of::<ATermRef<'static>>());
+
+    // With a thin `ATermIndex` (one word), a binary term is a symbol word plus two argument
+    // words: 24 bytes, down from 40 when the arguments were wide slice pointers. Only holds in
+    // release builds, where `StablePointer` drops its debug reference counter.
+    #[cfg(not(debug_assertions))]
+    const _: () = assert!(size_of::<SharedTermFixed<2>>() == 3 * size_of::<usize>());
 }

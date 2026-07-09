@@ -75,8 +75,10 @@ mod inner {
         /// term reads past the end of the term's allocation, which is
         /// undefined behaviour.
         pub unsafe fn value_unchecked(&self) -> usize {
-            // SAFETY: The caller guarantees that this term wraps an integer term.
-            unsafe { self.shared().ptr().cast::<SharedTermInt>().as_ref().value() }
+            // SAFETY: The caller guarantees that this term wraps an integer term, which has a
+            // zero-arity symbol; passing 0 avoids reading the symbol header just to rebuild the
+            // wide pointer that the cast to the sized `SharedTermInt` immediately discards.
+            unsafe { self.shared().ptr_with_len(0).cast::<SharedTermInt>().as_ref().value() }
         }
     }
 }
