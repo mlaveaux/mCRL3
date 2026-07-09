@@ -249,6 +249,7 @@ impl Hash for SharedSymbol {
 mod tests {
     use std::sync::atomic::Ordering;
 
+    use crate::Symb;
     use crate::Symbol;
     use crate::storage::THREAD_TERM_POOL;
 
@@ -261,6 +262,18 @@ mod tests {
 
         // Should be the same object
         assert_eq!(f1, f2);
+    }
+
+    #[test]
+    fn test_symbol_non_ascii_name_with_numeric_suffix() {
+        merc_utilities::test_logger();
+
+        // `update_prefix` slices the name at `rfind(non-digit) + 1`, a byte
+        // index that is only a char boundary when that character is one byte
+        // wide. A multi-byte character directly before a digit suffix must not
+        // panic symbol creation.
+        let symbol = Symbol::new("λ5", 0);
+        assert_eq!(symbol.name(), "λ5");
     }
 
     #[test]

@@ -171,6 +171,53 @@ fn cached_matches_sequential() {
     }
 }
 
+/// The LTS builders (`LtsBuilderMem`, `AutStream`) derive their state count as
+/// `max(transition endpoint) + 1`, and `require_num_of_states` can only raise
+/// it. The parallel driver must therefore hand out dense `0..n` state indices
+/// exactly like the sequential driver, otherwise every per-worker block gap in
+/// the discovered set materialises as a phantom deadlock state in the built LTS.
+#[test]
+#[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
+fn parallel_state_indices_are_dense() {
+    // Large enough that several workers insert states concurrently.
+    let lps = MockLps::grid(&[50, 50]);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .expect("failed to build rayon pool");
+
+    // Per-worker accumulator: (states seen, highest state index seen).
+    let (initial, locals) = pool
+        .install(|| {
+            explore_parallel(
+                &lps,
+                <(usize, usize)>::default,
+                |acc: &mut (usize, usize), index, _info: &State| {
+                    acc.0 += 1;
+                    acc.1 = acc.1.max(index.value());
+                    Ok(())
+                },
+                |acc: &mut (usize, usize), from, _label, to| {
+                    acc.1 = acc.1.max(from.value()).max(to.value());
+                    Ok(())
+                },
+            )
+        })
+        .expect("parallel exploration succeeds");
+
+    let total: usize = locals.iter().map(|(states, _)| states).sum();
+    let max_index = locals.iter().map(|(_, max)| *max).max().unwrap_or(0);
+
+    assert_eq!(total, 51 * 51, "sanity: every grid state is discovered exactly once");
+    assert!(initial.value() < total, "the initial state index must be in range");
+    assert_eq!(
+        max_index + 1,
+        total,
+        "state indices handed to the callbacks must be dense 0..n; \
+         sparse indices become phantom deadlock states in the LTS builders"
+    );
+}
+
 #[test]
 fn sequential_propagates_callback_error() {
     // A transition callback that always fails must surface as an error rather
