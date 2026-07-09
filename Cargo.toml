@@ -127,7 +127,7 @@ bindgen = "0.72"
 
 # The workspace crates.
 merc_aterm = { version = "3.0", path = "crates/aterm" }
-merc_collections = { version = "2.0", path = "crates/collections" }
+merc_collections = { version = "3.0", path = "crates/collections" }
 merc_data = { version = "3.0", path = "crates/data" }
 merc_explore = { version = "2.0", path = "crates/explore" }
 merc_io = { version = "3.0", path = "crates/io" }
