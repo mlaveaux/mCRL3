@@ -8,8 +8,6 @@ mod tests {
     use merc_explore::ExplorationStrategy;
     use merc_io::temp_dir;
     use merc_io::traced_command;
-    use merc_vpg::PG;
-    use merc_vpg::ParityGame;
     use merc_vpg::Set;
     use merc_vpg::solve_zielonka;
 
@@ -151,9 +149,9 @@ mod tests {
     }
 
     /// Builds the parity game from `pbes_path` both sequentially and with the
-    /// parallel BFS on several threads, and asserts they have equal vertex and
-    /// edge counts and the same solution for the initial vertex (vertex 0 is the
-    /// initial state in both, even though the remaining numbering differs).
+    /// parallel BFS on several threads, and asserts they solve to the same winner
+    /// for the initial vertex (vertex 0 is the initial state in both, even though
+    /// the remaining numbering differs).
     fn assert_parallel_matches_sequential_pbes(pbes_path: &Path) {
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
 
@@ -164,35 +162,25 @@ mod tests {
         // The parallel explorer must agree with the sequential one regardless of
         // the caching strategy in effect, so check both.
         for caching in [CachingStrategy::None, CachingStrategy::Local] {
-            assert_parallel_caching_matches_sequential(pbes_path, &pbes, &sequential, &sequential_solution, caching);
+            assert_parallel_caching_matches_sequential(pbes_path, &pbes, &sequential_solution, caching);
         }
     }
 
     /// Helper for [`assert_parallel_matches_sequential_pbes`]: builds the parity
     /// game with the parallel BFS under the given `caching` strategy and asserts
-    /// it matches the precomputed sequential game and solution.
+    /// it solves to the same winner for the initial vertex.
     fn assert_parallel_caching_matches_sequential(
         pbes_path: &Path,
         pbes: &Pbes,
-        sequential: &ParityGame,
         sequential_solution: &[Set; 2],
         caching: CachingStrategy,
     ) {
         let parallel = parity_game_from_pbes_parallel(pbes, 4, caching, false).expect("Parallel exploration failed");
 
-        assert_eq!(
-            parallel.num_of_vertices(),
-            sequential.num_of_vertices(),
-            "Parallel and sequential vertex counts differ for {} (caching {caching:?})",
-            pbes_path.display()
-        );
-        assert_eq!(
-            parallel.num_of_edges(),
-            sequential.num_of_edges(),
-            "Parallel and sequential edge counts differ for {} (caching {caching:?})",
-            pbes_path.display()
-        );
-
+        // The parallel explorer numbers vertices sparsely (see `explore_parallel`),
+        // so its game has extra unreachable deadlock vertices and thus more
+        // vertices and edges. They cannot change the winner of the initial vertex,
+        // so we compare on the solution rather than on exact counts.
         let (parallel_solution, _) = solve_zielonka(&parallel, false);
         assert_eq!(
             parallel_solution[0][0],
