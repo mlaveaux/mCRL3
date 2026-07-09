@@ -135,8 +135,9 @@ fn support_edge<'id>(
 
 pub type Substitution = [(VarNo, VarNo)];
 
-/// Specialized substitution function for variables renaming that only works for
-/// `f[x <- x+1]` renamings.
+/// Specialized substitution function for variables renaming that only works
+/// when the target variable is on the level directly below the renamed
+/// variable.
 ///
 /// # Details
 ///
@@ -145,35 +146,46 @@ pub type Substitution = [(VarNo, VarNo)];
 /// > f[x <- g] = (!g ∧ f[x <- false]) ∨ (g ∧ f[x <- true])
 ///
 /// but its computation can be fairly expensive. Restricting the substitution to
-/// only renaming variables from 'x' to 'x+1' allows for a more efficient
-/// implementation, as follows:
+/// only renaming variables from 'x' to the variable directly below allows for a
+/// more efficient implementation, as follows:
 ///
 /// > `f[x <- x+1] = (!x+1 ∧ f[x <- false]) ∨ (x+1 ∧ f[x <- true])`
 /// > `            = make_node(x+1, f[x <- true][x+1 <- true], f[x <- false][x+1 <- false])`
 ///
-/// This function checks whether the inputs satisfy this restriction and then
-/// performs the renaming.
+/// where `x+1` denotes the level below `x`. The variable pairs are translated
+/// to level pairs internally, so the renaming remains correct after the
+/// variable order has been changed, as long as each target variable is directly
+/// below the renamed variable in the current order.
 pub fn variable_rename(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
     substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
-    // Every substitution must be from a lower variable to a higher variable.
-    for (from, to) in substitution {
-        debug_assert!(from + 1 == *to, "Variable renaming must be from 'x' to 'x+1'");
-    }
-
-    let mut cache = FxHashMap::default();
-
     manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
+        // The recursion works on levels; variable numbers only coincide with
+        // levels while no reordering has taken place.
+        let mut levels: Vec<(LevelNo, LevelNo)> = substitution
+            .iter()
+            .map(|(from, to)| (manager.var_to_level(*from), manager.var_to_level(*to)))
+            .collect();
+        levels.sort_unstable();
+
+        // Every substitution must be to the level directly below.
+        for (from, to) in &levels {
+            debug_assert!(from + 1 == *to, "Variable renaming must be to the level directly below");
+        }
+
+        let mut cache = FxHashMap::default();
+
         Ok(BDDFunction::from_edge(
             manager,
-            variable_rename_edge(manager, &mut cache, function.as_edge(manager).borrowed(), substitution)?,
+            variable_rename_edge(manager, &mut cache, function.as_edge(manager).borrowed(), &levels)?,
         ))
     })
 }
 
-/// Implementation of [variable_rename].
+/// Implementation of [variable_rename]. The `substitution` contains pairs of
+/// *levels* (not variable numbers), sorted ascendingly.
 ///
 /// # Cache key
 ///
@@ -262,8 +274,9 @@ pub fn variable_rename_edge<'id>(
     Ok(result)
 }
 
-/// Specialized substitution function for variables renaming that only works for
-/// `f[x+1 <- x]` renamings, similar to [variable_rename].
+/// Specialized substitution function for variables renaming that only works
+/// when the target variable is on the level directly above the renamed
+/// variable, similar to [variable_rename].
 ///
 /// # Details
 ///
@@ -271,27 +284,39 @@ pub fn variable_rename_edge<'id>(
 ///
 /// > `f[x+1 <- x] = (!x ∧ f[x+1 <- false]) ∨ (x ∧ f[x+1 <- true])`
 /// > `            = make_node(x, f[x+1 <- true][x <- true] , f[x+1 <- false][x <- false])`
+///
+/// where `x+1` denotes the level below `x`. The variable pairs are translated
+/// to level pairs internally, as in [variable_rename].
 pub fn variable_rename_reverse(
     manager_ref: &BDDManagerRef,
     function: &BDDFunction,
     substitution: &Substitution,
 ) -> Result<BDDFunction, OutOfMemory> {
-    // Every substitution must be from a higher variable to a lower variable.
-    for (from, to) in substitution {
-        debug_assert!(*from == to + 1, "Variable renaming must be from 'x+1' to 'x'");
-    }
-
-    let mut cache = FxHashMap::default();
-
     manager_ref.with_manager_shared(|manager| -> Result<BDDFunction, OutOfMemory> {
+        // The recursion works on levels; variable numbers only coincide with
+        // levels while no reordering has taken place.
+        let mut levels: Vec<(LevelNo, LevelNo)> = substitution
+            .iter()
+            .map(|(from, to)| (manager.var_to_level(*from), manager.var_to_level(*to)))
+            .collect();
+        levels.sort_unstable();
+
+        // Every substitution must be to the level directly above.
+        for (from, to) in &levels {
+            debug_assert!(*from == to + 1, "Variable renaming must be to the level directly above");
+        }
+
+        let mut cache = FxHashMap::default();
+
         Ok(BDDFunction::from_edge(
             manager,
-            variable_rename_reverse_edge(manager, &mut cache, function.as_edge(manager).borrowed(), substitution)?,
+            variable_rename_reverse_edge(manager, &mut cache, function.as_edge(manager).borrowed(), &levels)?,
         ))
     })
 }
 
-/// Implementation of [variable_rename_reverse].
+/// Implementation of [variable_rename_reverse]. The `substitution` contains
+/// pairs of *levels* (not variable numbers), sorted ascendingly.
 ///
 /// # Cache key
 ///
