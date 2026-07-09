@@ -124,11 +124,47 @@ pub(crate) enum SideInfoType<'a> {
     EquivalenceAndConditionCheck(&'a MatchAnnouncement, &'a AnnouncementSabre),
 }
 
-/// A configuration stack. The first element is the root of the configuration tree.
-#[derive(Debug)]
-pub(crate) struct ConfigurationStack<'a, 'b> {
-    pub stack: Vec<Configuration<'a>>,
+/// Storage shared by every configuration stack frame: the top-level
+/// normalisation and every nested condition normalisation.
+///
+/// The configuration subterms of all active frames are laid out back-to-back in
+/// a single protected `terms` container (LIFO: a nested frame appends its
+/// subterms after its parent's and truncates them away when it completes). Using
+/// one container means garbage collection marks every live configuration subterm
+/// through a single root, instead of registering one container per frame.
+pub(crate) struct SharedTermStack {
+    /// The configuration subterms of all active frames.
     pub terms: Protected<Vec<DataExpressionRef<'static>>>,
+    /// A reusable scratch buffer for [data_substitute_with]. It is emptied by
+    /// every call, so a single instance is shared across all frames.
+    pub substitution_builder: DataSubstitutionBuilder,
+}
+
+impl SharedTermStack {
+    pub(crate) fn new() -> Self {
+        SharedTermStack {
+            terms: Protected::new(Vec::with_capacity(8)),
+            substitution_builder: DataSubstitutionBuilder::default(),
+        }
+    }
+}
+
+impl Default for SharedTermStack {
+    fn default() -> Self {
+        SharedTermStack::new()
+    }
+}
+
+/// A configuration stack. The first element is the root of the configuration tree.
+///
+/// The configuration subterms are not stored here but in a shared
+/// [SharedTermStack] passed to every method; this frame's subterms start at
+/// index `terms_base` in that shared storage. All other indices (`current_node`,
+/// `oldest_reliable_subterm`, `leaf_index`, `depth`, ...) are frame-local, so
+/// the shared storage is indexed at `terms_base + local_index`.
+#[derive(Debug)]
+pub(crate) struct ConfigurationStack<'a> {
+    pub stack: Vec<Configuration<'a>>,
 
     /// Separate stack with extra information on some configurations
     pub side_branch_stack: Vec<SideInfo<'a>>,
@@ -141,31 +177,26 @@ pub(crate) struct ConfigurationStack<'a, 'b> {
     /// oldest_reliable_subterm is an index to the highest configuration in the tree that is up to date.
     pub oldest_reliable_subterm: usize,
 
-    /// A reusable substitution builder, borrowed from the caller so that a
-    /// protected container is not registered on every rewrite call.
-    pub substitution_builder: &'b mut DataSubstitutionBuilder,
+    /// Index of this frame's first subterm in the shared term stack.
+    pub(crate) terms_base: usize,
 }
 
-impl<'a, 'b> ConfigurationStack<'a, 'b> {
+impl<'a> ConfigurationStack<'a> {
     /// Initialise the stack with one Configuration containing 'term' and the initial state of the set automaton
-    pub(crate) fn new(
-        state: usize,
-        term: &DataExpression,
-        substitution_builder: &'b mut DataSubstitutionBuilder,
-    ) -> ConfigurationStack<'a, 'b> {
+    pub(crate) fn new(pool: &mut SharedTermStack, state: usize, term: &DataExpression) -> ConfigurationStack<'a> {
+        let mut write_terms = pool.terms.write();
+        let terms_base = write_terms.len();
+        write_terms.push(term.copy());
+        drop(write_terms);
+
         let mut conf_list = ConfigurationStack {
             stack: Vec::with_capacity(8),
             side_branch_stack: vec![],
-            terms: Protected::new(Vec::with_capacity(8)),
             current_node: Some(0),
             oldest_reliable_subterm: 0,
-            substitution_builder,
+            terms_base,
         };
         conf_list.stack.push(Configuration { state, position: None });
-
-        let mut write_conf_list = conf_list.terms.write();
-        write_conf_list.push(term.copy());
-        drop(write_conf_list);
 
         conf_list
     }
@@ -181,7 +212,7 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
     }
 
     /// Grow a Configuration with index c. tr_slice contains the hypertransition to possibly multiple states
-    pub(crate) fn grow(&mut self, c: usize, tr_slice: &'a [(DataPosition, usize)]) {
+    pub(crate) fn grow(&mut self, pool: &mut SharedTermStack, c: usize, tr_slice: &'a [(DataPosition, usize)]) {
         // Pick the first transition to grow the stack
         let (pos, des) = tr_slice.first().unwrap();
 
@@ -202,9 +233,10 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
         self.stack.push(new_leaf);
 
         // Push the term belonging to the leaf.
-        let mut write_terms = self.terms.write();
+        let base = self.terms_base;
+        let mut write_terms = pool.terms.write();
         // Safety: t is pushed into the container on the next line.
-        let t = unsafe { write_terms.protect(&write_terms[c].get_data_position(pos)) };
+        let t = unsafe { write_terms.protect(&write_terms[base + c].get_data_position(pos)) };
         write_terms.push(t.into());
 
         self.current_node = Some(c + 1);
@@ -214,34 +246,36 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
     /// of the matching rewrite rule was observed (at index 'depth').
     pub(crate) fn prune(
         &mut self,
+        pool: &mut SharedTermStack,
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         depth: usize,
         new_subterm: DataExpression,
     ) {
+        let base = self.terms_base;
         self.current_node = Some(depth);
 
         // Reroll the configuration stack by truncating the Vec (which is a constant time operation)
         self.stack.truncate(depth + 1);
-        self.terms.write().truncate(depth + 1);
+        pool.terms.write().truncate(base + depth + 1);
 
         // Remove side info for the deleted configurations
         self.roll_back_side_info_stack(depth, true);
 
         // Update the subterm stored at the prune point.
         // Note that the subterm stored earlier may not have been up to date. We replace it with a term that is up to date
-        let mut write_terms = self.terms.write();
+        let mut write_terms = pool.terms.write();
         // Safety: subterm is stored in the container on the next line.
         let subterm = unsafe {
             write_terms.protect(&data_substitute_with(
-                self.substitution_builder,
+                &mut pool.substitution_builder,
                 tp,
-                &write_terms[depth],
+                &write_terms[base + depth],
                 new_subterm,
                 automaton.states()[self.stack[depth].state].label(),
             ))
         };
-        write_terms[depth] = subterm.into();
+        write_terms[base + depth] = subterm.into();
 
         self.oldest_reliable_subterm = depth;
     }
@@ -267,30 +301,31 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
 
     /// Roll back the configuration stack to level 'depth'.
     /// This function is used exclusively when a subtree has been explored and no matches have been found.
-    pub(crate) fn jump_back(&mut self, depth: usize, tp: &ThreadTermPool) {
+    pub(crate) fn jump_back(&mut self, pool: &mut SharedTermStack, depth: usize, tp: &ThreadTermPool) {
         // Updated subterms may have to be propagated up the configuration tree.
         // Only the subterm at 'depth' needs to be correct: everything below it is
         // truncated away immediately afterwards.
-        self.integrate_updated_subterms(depth, tp);
+        self.integrate_updated_subterms(pool, depth, tp);
         self.current_node = Some(depth);
         self.stack.truncate(depth + 1);
-        self.terms.write().truncate(depth + 1);
+        pool.terms.write().truncate(self.terms_base + depth + 1);
 
         self.roll_back_side_info_stack(depth, false);
     }
 
     /// When going back up the configuration tree the subterms stored in the configuration tree must be updated
     /// This function ensures that the Configuration at depth 'end' is made up to date.
-    pub(crate) fn integrate_updated_subterms(&mut self, end: usize, tp: &ThreadTermPool) {
+    pub(crate) fn integrate_updated_subterms(&mut self, pool: &mut SharedTermStack, end: usize, tp: &ThreadTermPool) {
         // Check if there is anything to do. Start updating from self.oldest_reliable_subterm
         let mut up_to_date = self.oldest_reliable_subterm;
         if up_to_date == 0 || end >= up_to_date {
             return;
         }
+        let base = self.terms_base;
 
-        let mut write_terms = self.terms.write();
+        let mut write_terms = pool.terms.write();
         // Safety: subterm is kept in write_terms throughout this function.
-        let mut subterm = unsafe { write_terms.protect(&write_terms[up_to_date]) };
+        let mut subterm = unsafe { write_terms.protect(&write_terms[base + up_to_date]) };
 
         // Go over the configurations one by one until we reach 'end'. The running
         // subterm is stored back into the container at every level rather than
@@ -301,9 +336,9 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
                 None => subterm,
                 Some(position) => {
                     let t = data_substitute_with(
-                        self.substitution_builder,
+                        &mut pool.substitution_builder,
                         tp,
-                        &write_terms[up_to_date - 1],
+                        &write_terms[base + up_to_date - 1],
                         subterm.protect().into(),
                         position,
                     );
@@ -315,16 +350,21 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
 
             // Safety: subterm is stored in the container on the next line.
             let stored = unsafe { write_terms.protect(&subterm) };
-            write_terms[up_to_date] = stored.into();
+            write_terms[base + up_to_date] = stored.into();
         }
 
         self.oldest_reliable_subterm = up_to_date;
     }
 
-    /// Final term computed by integrating all subterms up to the root configuration
-    pub(crate) fn compute_final_term(&mut self, tp: &ThreadTermPool) -> DataExpression {
-        self.jump_back(0, tp);
-        self.terms.read()[0].protect()
+    /// Final term computed by integrating all subterms up to the root configuration.
+    ///
+    /// This also pops the frame from the shared term stack, so it must be the
+    /// last method called on the frame.
+    pub(crate) fn compute_final_term(&mut self, pool: &mut SharedTermStack, tp: &ThreadTermPool) -> DataExpression {
+        self.jump_back(pool, 0, tp);
+        let result = pool.terms.read()[self.terms_base].protect();
+        pool.terms.write().truncate(self.terms_base);
+        result
     }
 
     /// Returns a SideInfoType object if there is side info for the configuration with index 'leaf_index'
@@ -342,9 +382,15 @@ impl<'a, 'b> ConfigurationStack<'a, 'b> {
     }
 }
 
-impl fmt::Display for ConfigurationStack<'_, '_> {
+impl fmt::Display for ConfigurationStack<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Current node: {:?}", self.current_node)?;
+        // The configuration subterms live in the shared term stack, which this
+        // type does not hold a reference to, so they are not printed here.
+        writeln!(
+            f,
+            "Current node: {:?} (terms base {})",
+            self.current_node, self.terms_base
+        )?;
         for (i, c) in self.stack.iter().enumerate() {
             writeln!(f, "Configuration {i} ")?;
             writeln!(f, "    State: {:?}", c.state)?;
@@ -356,7 +402,6 @@ impl fmt::Display for ConfigurationStack<'_, '_> {
                     None => "None".to_string(),
                 }
             )?;
-            writeln!(f, "    Subterm: {}", self.terms.read()[i])?;
 
             for side_branch in &self.side_branch_stack {
                 if i == side_branch.corresponding_configuration {

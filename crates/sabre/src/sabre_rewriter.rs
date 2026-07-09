@@ -15,7 +15,7 @@ use crate::set_automaton::SetAutomaton;
 use crate::utilities::AnnouncementSabre;
 use crate::utilities::ConfigurationStack;
 use crate::utilities::DataPositionIndexed;
-use crate::utilities::DataSubstitutionBuilder;
+use crate::utilities::SharedTermStack;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
 use crate::utilities::TermStackBuilder;
@@ -26,7 +26,7 @@ pub trait RewriteEngine {
     fn rewrite(&mut self, term: &DataExpression) -> DataExpression;
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RewritingStatistics {
     /// Count the number of rewrite rules applied
     pub rewrite_steps: usize,
@@ -42,9 +42,11 @@ pub struct SabreRewriter {
     /// A reusable builder for evaluating right-hand side term stacks, kept to
     /// avoid allocating a fresh one on every rewrite step.
     builder: TermStackBuilder,
-    /// A reusable substitution builder handed to the top-level configuration
-    /// stack, kept to avoid registering a protected container on every call.
-    substitution_builder: DataSubstitutionBuilder,
+    /// The shared LIFO term stack reused by every normalisation, including the
+    /// nested ones performed while checking conditions. Keeping a single
+    /// instance means only one protected container is ever registered, instead
+    /// of one per configuration stack.
+    term_stack: SharedTermStack,
 }
 
 impl RewriteEngine for SabreRewriter {
@@ -60,7 +62,7 @@ impl SabreRewriter {
         SabreRewriter {
             automaton,
             builder: TermStackBuilder::new(),
-            substitution_builder: DataSubstitutionBuilder::default(),
+            term_stack: SharedTermStack::new(),
         }
     }
 
@@ -100,14 +102,14 @@ impl SabreRewriter {
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         builder: &mut TermStackBuilder,
-        substitution_builder: &mut DataSubstitutionBuilder,
+        term_stack: &mut SharedTermStack,
         t: &DataExpression,
         stats: &mut RewritingStatistics,
     ) -> DataExpression {
         stats.recursions += 1;
 
         // We explore the configuration tree depth first using a ConfigurationStack
-        let mut cs = ConfigurationStack::new(0, t, substitution_builder);
+        let mut cs = ConfigurationStack::new(term_stack, 0, t);
 
         // Big loop until we know we have a normal form
         'outer: loop {
@@ -117,21 +119,21 @@ impl SabreRewriter {
 
                 // Check if there is any configuration leaf left to explore, if not we have found a normal form
                 if let Some(leaf_index) = cs.get_unexplored_leaf() {
-                    let leaf = &mut cs.stack[leaf_index];
-                    let read_terms = cs.terms.read();
-                    let leaf_term = &read_terms[leaf_index];
+                    let leaf_state = cs.stack[leaf_index].state;
+                    let read_terms = term_stack.terms.read();
+                    let leaf_term = &read_terms[cs.terms_base + leaf_index];
 
                     match ConfigurationStack::pop_side_branch_leaf(&mut cs.side_branch_stack, leaf_index) {
                         None => {
                             // Observe a symbol according to the state label of the set automaton.
                             let pos: DataExpressionRef =
-                                leaf_term.get_data_position(automaton.states()[leaf.state].label());
+                                leaf_term.get_data_position(automaton.states()[leaf_state].label());
 
                             let function_symbol = pos.data_function_symbol();
                             stats.symbol_comparisons += 1;
 
                             // Get the transition belonging to the observed symbol
-                            if let Some(tr) = automaton.get_transition(leaf.state, function_symbol.operation_id()) {
+                            if let Some(tr) = automaton.get_transition(leaf_state, function_symbol.operation_id()) {
                                 // Loop over the match announcements of the transition
                                 for (announcement, annotation) in &tr.announcements {
                                     if annotation.conditions.is_empty() && annotation.equivalence_classes.is_empty() {
@@ -150,6 +152,7 @@ impl SabreRewriter {
                                                 tp,
                                                 automaton,
                                                 builder,
+                                                term_stack,
                                                 announcement,
                                                 annotation,
                                                 leaf_index,
@@ -178,19 +181,19 @@ impl SabreRewriter {
                                     let prev = cs.get_prev_with_side_info();
                                     cs.current_node = prev;
                                     if let Some(n) = prev {
-                                        cs.jump_back(n, tp);
+                                        cs.jump_back(term_stack, n, tp);
                                     }
                                 } else {
                                     // Grow the bud; if there is more than one destination a SideBranch object will be placed on the side stack
                                     let tr_slice = tr.destinations.as_slice();
-                                    cs.grow(leaf_index, tr_slice);
+                                    cs.grow(term_stack, leaf_index, tr_slice);
                                 }
                             } else {
+                                drop(read_terms);
                                 let prev = cs.get_prev_with_side_info();
                                 cs.current_node = prev;
                                 if let Some(n) = prev {
-                                    drop(read_terms);
-                                    cs.jump_back(n, tp);
+                                    cs.jump_back(term_stack, n, tp);
                                 }
                             }
                         }
@@ -199,7 +202,7 @@ impl SabreRewriter {
                                 SideInfoType::SideBranch(sb) => {
                                     // If there is a SideBranch pick the next child configuration
                                     drop(read_terms);
-                                    cs.grow(leaf_index, sb);
+                                    cs.grow(term_stack, leaf_index, sb);
                                 }
                                 SideInfoType::DelayedRewriteRule(announcement, annotation) => {
                                     drop(read_terms);
@@ -208,6 +211,7 @@ impl SabreRewriter {
                                         tp,
                                         automaton,
                                         builder,
+                                        term_stack,
                                         announcement,
                                         annotation,
                                         leaf_index,
@@ -218,20 +222,24 @@ impl SabreRewriter {
                                 SideInfoType::EquivalenceAndConditionCheck(announcement, annotation) => {
                                     // The equivalence classes and conditions are checked relative to
                                     // the match root, which sits at `announcement.position` inside the
-                                    // leaf term (the same root used by `apply_rewrite_rule`).
-                                    let matched = leaf_term.get_data_position(&announcement.position);
+                                    // leaf term (the same root used by `apply_rewrite_rule`). Protect
+                                    // it so the shared term stack can be reused by the recursive
+                                    // condition normalisation once the read guard is dropped.
+                                    let matched: DataExpression =
+                                        leaf_term.get_data_position(&announcement.position).protect();
+                                    drop(read_terms);
 
                                     // Apply the delayed rewrite rule if the conditions hold
                                     if check_equivalence_classes(&matched, &annotation.equivalence_classes)
                                         && SabreRewriter::conditions_hold(
-                                            tp, automaton, builder, annotation, &matched, stats,
+                                            tp, automaton, builder, term_stack, annotation, &matched, stats,
                                         )
                                     {
-                                        drop(read_terms);
                                         SabreRewriter::apply_rewrite_rule(
                                             tp,
                                             automaton,
                                             builder,
+                                            term_stack,
                                             announcement,
                                             annotation,
                                             leaf_index,
@@ -242,11 +250,10 @@ impl SabreRewriter {
                                         // The check failed, so this announcement does not apply. The
                                         // side info was already popped, so move back to the previous
                                         // configuration that still has side info.
-                                        drop(read_terms);
                                         let prev = cs.get_prev_with_side_info();
                                         cs.current_node = prev;
                                         if let Some(n) = prev {
-                                            cs.jump_back(n, tp);
+                                            cs.jump_back(term_stack, n, tp);
                                         }
                                     }
                                 }
@@ -260,7 +267,7 @@ impl SabreRewriter {
             }
         }
 
-        cs.compute_final_term(tp)
+        cs.compute_final_term(term_stack, tp)
     }
 
     /// Apply a rewrite rule and prune back
@@ -269,16 +276,17 @@ impl SabreRewriter {
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         builder: &mut TermStackBuilder,
+        term_stack: &mut SharedTermStack,
         announcement: &MatchAnnouncement,
         annotation: &AnnouncementSabre,
         leaf_index: usize,
-        cs: &mut ConfigurationStack<'_, '_>,
+        cs: &mut ConfigurationStack<'_>,
         stats: &mut RewritingStatistics,
     ) {
         stats.rewrite_steps += 1;
 
-        let read_terms = cs.terms.read();
-        let leaf_subterm: &DataExpressionRef<'_> = &read_terms[leaf_index];
+        let read_terms = term_stack.terms.read();
+        let leaf_subterm: &DataExpressionRef<'_> = &read_terms[cs.terms_base + leaf_index];
 
         // Computes the new subterm of the configuration
         let new_subterm = annotation
@@ -295,47 +303,33 @@ impl SabreRewriter {
         // The match announcement tells us how far we need to prune back.
         let prune_point = leaf_index - announcement.symbols_seen;
         drop(read_terms);
-        cs.prune(tp, automaton, prune_point, new_subterm);
+        cs.prune(term_stack, tp, automaton, prune_point, new_subterm);
     }
 
     /// Checks conditions and subterm equality of non-linear patterns.
     ///
     /// `matched` is the subterm at the match root (`announcement.position`), which
-    /// the caller has already resolved.
+    /// the caller has already resolved. The recursive normalisation reuses the
+    /// shared `term_stack` (the parent frame's subterms sit below it, LIFO).
     fn conditions_hold(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
         builder: &mut TermStackBuilder,
+        term_stack: &mut SharedTermStack,
         annotation: &AnnouncementSabre,
-        matched: &DataExpressionRef<'_>,
+        matched: &DataExpression,
         stats: &mut RewritingStatistics,
     ) -> bool {
-        // The parent configuration stack still borrows the caller's substitution
-        // builder, so the recursive normalisation of conditions needs its own.
-        let mut substitution_builder = DataSubstitutionBuilder::default();
-
         for c in &annotation.conditions {
             let rhs: DataExpression = c.rhs_term_stack.evaluate_with(matched, builder);
             let lhs: DataExpression = c.lhs_term_stack.evaluate_with(matched, builder);
 
             // Equality => lhs == rhs.
             if !c.equality || lhs != rhs {
-                let rhs_normal = SabreRewriter::stack_based_normalise_aux(
-                    tp,
-                    automaton,
-                    builder,
-                    &mut substitution_builder,
-                    &rhs,
-                    stats,
-                );
-                let lhs_normal = SabreRewriter::stack_based_normalise_aux(
-                    tp,
-                    automaton,
-                    builder,
-                    &mut substitution_builder,
-                    &lhs,
-                    stats,
-                );
+                let rhs_normal =
+                    SabreRewriter::stack_based_normalise_aux(tp, automaton, builder, term_stack, &rhs, stats);
+                let lhs_normal =
+                    SabreRewriter::stack_based_normalise_aux(tp, automaton, builder, term_stack, &lhs, stats);
 
                 // If lhs != rhs && !equality OR equality && lhs == rhs.
                 if (!c.equality && lhs_normal == rhs_normal) || (c.equality && lhs_normal != rhs_normal) {
