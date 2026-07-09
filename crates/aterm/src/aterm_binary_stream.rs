@@ -578,11 +578,65 @@ impl<'a, R: Read> ExactSizeIterator for ATermReadIter<'a, R> {
 mod tests {
     use merc_utilities::random_test;
 
+    use crate::ATerm;
     use crate::ATermRead;
     use crate::ATermWrite;
     use crate::BinaryATermReader;
     use crate::BinaryATermWriter;
     use crate::random_term;
+
+    /// A sink that accepts a fixed number of bytes and then fails, mimicking a
+    /// disk that fills up (or a pipe that breaks) in the middle of writing.
+    struct FailAfter {
+        remaining: usize,
+    }
+
+    impl std::io::Write for FailAfter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if buf.len() <= self.remaining {
+                self.remaining -= buf.len();
+                Ok(buf.len())
+            } else {
+                Err(std::io::Error::other("sink full"))
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_read_aterm_iter_invalid_count_is_error() {
+        // A valid stream whose first output term is not an ATermInt. This is what
+        // read_aterm_iter() encounters when given a wrong or corrupt (but
+        // well-formed) file, so it must report an error instead of panicking.
+        let mut stream: Vec<u8> = Vec::new();
+        let mut output_stream = BinaryATermWriter::new(&mut stream).unwrap();
+        output_stream.write_aterm(&ATerm::from_string("f(a,b)").unwrap()).unwrap();
+        ATermWrite::flush(&mut output_stream).unwrap();
+        drop(output_stream);
+
+        let mut input_stream = BinaryATermReader::new(&stream[..]).unwrap();
+        assert!(
+            input_stream.read_aterm_iter().is_err(),
+            "a non-integer element count must be reported as a stream error"
+        );
+    }
+
+    #[test]
+    fn test_writer_drop_after_io_error_does_not_panic() {
+        // Allow the 5-byte BAF header, then fail every write.
+        let mut writer = BinaryATermWriter::new(FailAfter { remaining: 5 }).unwrap();
+
+        let result = writer.write_aterm(&ATerm::from_string("f(a,b)").unwrap());
+        assert!(result.is_err(), "the sink rejects everything after the header");
+
+        // The caller is already handling the write error; dropping the writer must
+        // not panic on the (equally failing) implicit flush. A panic here would
+        // abort the process when the drop happens during unwinding.
+        drop(writer);
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Miri is too slow

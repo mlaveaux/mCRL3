@@ -685,6 +685,22 @@ mod tests {
     use crate::storage::THREAD_TERM_POOL;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Building 300k terms is too slow under miri.
+    fn test_debug_deeply_nested_term() {
+        // Debug formatting recurses once per nesting level, so a deeply nested
+        // term must not overflow the stack.
+        let f = Symbol::new("f", 1);
+        let mut t = ATerm::constant(&Symbol::new("a", 0));
+        for _ in 0..300_000 {
+            t = ATerm::with_args(&f, &[t]).protect();
+        }
+
+        let text = format!("{t:?}");
+        assert!(text.starts_with("f(f("));
+        assert!(text.ends_with("))"));
+    }
+
+    #[test]
     fn test_send_term_outlives_creating_thread() {
         // An ATermSend created on a thread must keep its term alive after that thread exits,
         // even across garbage collection. This pins the invariant relied upon when GC reclaims
