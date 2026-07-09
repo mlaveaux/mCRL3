@@ -260,7 +260,13 @@ pub fn structured_sort_spec(
                 .collect::<Vec<_>>()
                 .join(" && ")
         };
-        writeln!(eqns, "    {} == {} = {equal};", application(i, "x"), application(i, "y")).unwrap();
+        writeln!(
+            eqns,
+            "    {} == {} = {equal};",
+            application(i, "x"),
+            application(i, "y")
+        )
+        .unwrap();
         for j in 0..constructors.len() {
             if j != i {
                 writeln!(eqns, "    {} == {} = false;", application(i, "x"), application(j, "y")).unwrap();
@@ -292,7 +298,13 @@ pub fn structured_sort_spec(
         } else {
             lexicographic(i, constructor.args.len(), "<=")
         };
-        writeln!(eqns, "    {} <= {} = {less_equal};", application(i, "x"), application(i, "y")).unwrap();
+        writeln!(
+            eqns,
+            "    {} <= {} = {less_equal};",
+            application(i, "x"),
+            application(i, "y")
+        )
+        .unwrap();
         for j in 0..constructors.len() {
             if i < j {
                 writeln!(eqns, "    {} <= {} = true;", application(i, "x"), application(j, "y")).unwrap();
@@ -313,7 +325,9 @@ pub fn structured_sort_spec(
 
 #[cfg(test)]
 mod tests {
-    use super::{ComplexSort, Infallible, MercError, SortExpression, UntypedDataSpecification, Write, apply_sort_expression, formatdoc, replace_sort, replace_sort_expression, structured_sort_spec};
+    use super::SortExpression;
+    use super::UntypedDataSpecification;
+    use super::structured_sort_spec;
 
     /// Extracts the structured sort expression from `sort <ident> = <struct>;`.
     fn struct_sort(spec: &str) -> SortExpression {
