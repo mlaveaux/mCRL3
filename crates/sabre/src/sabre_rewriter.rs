@@ -66,6 +66,13 @@ impl SabreRewriter {
 
     /// Function to rewrite a term. See the module documentation.
     pub fn stack_based_normalise(&mut self, t: &DataExpression) -> DataExpression {
+        self.rewrite_with_statistics(t).0
+    }
+
+    /// Rewrites `t` to normal form and returns the normal form together with the
+    /// [RewritingStatistics] gathered while doing so, most notably the number of
+    /// applied rewrite steps.
+    pub fn rewrite_with_statistics(&mut self, t: &DataExpression) -> (DataExpression, RewritingStatistics) {
         let mut stats = RewritingStatistics::default();
 
         let result = THREAD_TERM_POOL.with(|tp| {
@@ -73,7 +80,7 @@ impl SabreRewriter {
                 tp,
                 &self.automaton,
                 &mut self.builder,
-                &mut self.substitution_builder,
+                &mut self.term_stack,
                 t,
                 &mut stats,
             )
@@ -84,7 +91,7 @@ impl SabreRewriter {
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
         );
 
-        result
+        (result, stats)
     }
 
     /// The _aux function splits the [TermPool] pool and the [SetAutomaton] to make borrow checker happy.

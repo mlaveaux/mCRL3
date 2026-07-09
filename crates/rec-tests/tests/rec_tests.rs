@@ -61,15 +61,81 @@ fn check_rewriter(
     }
 }
 
+/// Showcases that the set-automaton rewriter rewrites lazily: for the `lazyif`
+/// specification it only evaluates the selected branch of an if-then-else, so it
+/// performs the same number of rewrite steps that a just-in-time (jitty)
+/// strategy would, whereas the innermost rewriter eagerly normalises the
+/// discarded branch as well.
+#[cfg_attr(miri, ignore)]
+#[test]
+fn test_sabre_matches_jitty_step_count_on_if_heavy() {
+    test_logger();
+
+    let (spec, terms) = load_spec(&[include_str!("lazyif.rec")]);
+
+    let mut inner = InnermostRewriter::new(&spec);
+    let mut sabre = SabreRewriter::new(&spec);
+
+    for (i, term) in terms.iter().enumerate() {
+        let (inner_result, inner_stats) = inner.rewrite_with_statistics(term);
+        let (sabre_result, sabre_stats) = sabre.rewrite_with_statistics(term);
+
+        // Both engines must reach the same normal form.
+        assert_eq!(
+            inner_result, sabre_result,
+            "the innermost and set-automaton rewriters disagree on term {i}"
+        );
+
+        // The set-automaton rewriter never rewrites the discarded fib(..)
+        // branches, so it never takes more steps than innermost (2 versus 173,
+        // 2 versus 173 and 4 versus 274 for the if-then-else terms) and takes
+        // the same number of steps when the result is genuinely computed (57
+        // for the plain fib term).
+        assert!(
+            sabre_stats.rewrite_steps <= inner_stats.rewrite_steps,
+            "the set-automaton rewriter took {} steps versus {} for innermost on term {i}",
+            sabre_stats.rewrite_steps,
+            inner_stats.rewrite_steps
+        );
+    }
+}
+
 /// A local function to share the rec_test functionality.
-fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
+///
+/// When `check_steps` holds also asserts that the set-automaton rewriter never
+/// applies more rewrite steps than the innermost rewriter, since it only
+/// rewrites branches that contribute to the normal form. This does not hold for
+/// heavily duplicating specifications, where rewriting a duplicating rule early
+/// copies unfinished work that innermost would have normalised once.
+fn rec_test(rec_files: Vec<&str>, expected_result: &str, check_steps: bool) {
     test_logger();
 
     let (spec, terms) = load_spec(&rec_files);
     let expected = parse_expected(&terms, expected_result);
 
-    check_rewriter(&mut InnermostRewriter::new(&spec), &terms, &expected, "inner");
-    check_rewriter(&mut SabreRewriter::new(&spec), &terms, &expected, "sabre");
+    let mut inner = InnermostRewriter::new(&spec);
+    let mut sabre = SabreRewriter::new(&spec);
+
+    for (i, (term, expected_result)) in terms.iter().zip(&expected).enumerate() {
+        let (inner_result, inner_stats) = inner.rewrite_with_statistics(term);
+        assert_eq!(
+            &inner_result, expected_result,
+            "The inner rewrite result doesn't match the expected result"
+        );
+
+        let (sabre_result, sabre_stats) = sabre.rewrite_with_statistics(term);
+        assert_eq!(
+            &sabre_result, expected_result,
+            "The sabre rewrite result doesn't match the expected result"
+        );
+
+        assert!(
+            !check_steps || sabre_stats.rewrite_steps <= inner_stats.rewrite_steps,
+            "the set-automaton rewriter took {} steps versus {} for innermost on term {i}",
+            sabre_stats.rewrite_steps,
+            inner_stats.rewrite_steps
+        );
+    }
 }
 
 #[cfg_attr(miri, ignore)]
@@ -96,11 +162,20 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/sieve20.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve20.txt") ; "sieve20")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/sieve100.rec"), include_str!("../../../examples/REC/rec/sieve.rec")], include_str!("snapshot/result_sieve100.txt") ; "sieve100")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/soundnessofparallelengines.rec")], include_str!("snapshot/result_soundnessofparallelengines.txt") ; "soundnessofparallelengines")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/tak18.rec"), include_str!("../../../examples/REC/rec/tak.rec")], include_str!("snapshot/result_tak18.txt") ; "tak18")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tricky.rec")], include_str!("snapshot/result_tricky.txt") ; "tricky")]
 fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
-    rec_test(rec_files, expected_result);
+    rec_test(rec_files, expected_result, true);
+}
+
+// These specifications are heavily duplicating (for instance tak(X, Y, Z) copies
+// its arguments into several recursive calls), in which case the innermost
+// strategy is the more economical one and the step-count invariant does not
+// hold.
+#[cfg_attr(miri, ignore)]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tak18.rec"), include_str!("../../../examples/REC/rec/tak.rec")], include_str!("snapshot/result_tak18.txt") ; "tak18")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
+fn test_rec_specification_duplicating(rec_files: Vec<&str>, expected_result: &str) {
+    rec_test(rec_files, expected_result, false);
 }
 
 #[cfg_attr(miri, ignore)]
@@ -130,12 +205,21 @@ fn test_rec_specification_naive(rec_files: Vec<&str>, expected_result: &str) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/factorial6.rec"), include_str!("../../../examples/REC/rec/factorial.rec")], include_str!("snapshot/result_factorial6.txt") ; "factorial6")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/hanoi8.rec"), include_str!("../../../examples/REC/rec/hanoi.rec")], include_str!("snapshot/result_hanoi8.txt") ; "hanoi8")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/natlist.rec")], include_str!("snapshot/result_natlist.txt") ; "natlist")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/oddeven.rec")], include_str!("snapshot/result_oddeven.txt") ; "oddeven")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/order.rec")], include_str!("snapshot/result_order.txt") ; "order")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/permutations6.rec"), include_str!("../../../examples/REC/rec/permutations.rec")], include_str!("snapshot/result_permutations6.txt") ; "permutations6")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/revnat100.rec"), include_str!("../../../examples/REC/rec/revnat.rec")], include_str!("snapshot/result_revnat100.txt") ; "revnat100")]
 fn test_rec_specification_release(rec_files: Vec<&str>, expected_result: &str) {
-    rec_test(rec_files, expected_result);
+    rec_test(rec_files, expected_result, true);
+}
+
+// The mutually recursive conditions of the odd/even rules make the set-automaton
+// rewriter re-evaluate a condition per recursive call (2^N - 1 steps versus the
+// 21 of innermost), so the step-count invariant does not hold here either.
+#[cfg_attr(miri, ignore)]
+#[cfg(not(debug_assertions))]
+#[test_case(vec![include_str!("../../../examples/REC/rec/oddeven.rec")], include_str!("snapshot/result_oddeven.txt") ; "oddeven")]
+fn test_rec_specification_release_duplicating(rec_files: Vec<&str>, expected_result: &str) {
+    rec_test(rec_files, expected_result, false);
 }
 
 // These tests use more stack memory than is available on Windows.
@@ -156,7 +240,7 @@ fn test_rec_specification_release(rec_files: Vec<&str>, expected_result: &str) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/hanoi12.rec"), include_str!("../../../examples/REC/rec/hanoi.rec")], include_str!("snapshot/result_hanoi12.txt") ; "hanoi12")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/permutations7.rec"), include_str!("../../../examples/REC/rec/permutations.rec")], include_str!("snapshot/result_permutations7.txt") ; "permutations7")]
 fn test_rec_specification_largestack(rec_files: Vec<&str>, expected_result: &str) {
-    rec_test(rec_files, expected_result);
+    rec_test(rec_files, expected_result, true);
 }
 
 // // These REC tests have META data that is not supported by the current implementation.

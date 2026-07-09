@@ -26,6 +26,15 @@ use merc_utilities::debug_trace;
 
 impl RewriteEngine for InnermostRewriter {
     fn rewrite(&mut self, t: &DataExpression) -> DataExpression {
+        self.rewrite_with_statistics(t).0
+    }
+}
+
+impl InnermostRewriter {
+    /// Rewrites `t` to normal form and returns the normal form together with the
+    /// [RewritingStatistics] gathered while doing so, most notably the number of
+    /// applied rewrite steps.
+    pub fn rewrite_with_statistics(&mut self, t: &DataExpression) -> (DataExpression, RewritingStatistics) {
         let mut stats = RewritingStatistics::default();
 
         debug_trace!("input: {}", t);
@@ -38,11 +47,9 @@ impl RewriteEngine for InnermostRewriter {
             "{} rewrites, {} single steps and {} symbol comparisons",
             stats.recursions, stats.rewrite_steps, stats.symbol_comparisons
         );
-        result
+        (result, stats)
     }
-}
 
-impl InnermostRewriter {
     /// Creates a new InnermostRewriter from the given rewrite specification.
     pub fn new(spec: &RewriteSpecification) -> InnermostRewriter {
         let apma = SetAutomaton::new(spec, AnnouncementInnermost::new, true);

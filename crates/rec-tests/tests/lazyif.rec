@@ -1,0 +1,55 @@
+REC-SPEC Lazyif
+
+# Showcases that the outermost set-automaton rewriter (SabreRewriter) only
+# rewrites the branch of an if-then-else that is actually selected. It therefore
+# performs the same number of rewrite steps that a just-in-time (jitty) strategy
+# would perform, while the innermost rewriter eagerly normalises *both* branches
+# and wastes all the work spent on the discarded one.
+#
+# Every term below selects a trivial branch but hides an expensive fib(..) call
+# in the branch that is thrown away. Innermost still evaluates that fib(..); the
+# set-automaton rewriter never touches it. See the rewrite-step comparison in
+# crates/rec-tests/tests/rec_tests.rs.
+
+SORTS
+  Bool Nat
+CONS
+  true : -> Bool
+  false : -> Bool
+  zero : -> Nat
+  s : Nat -> Nat
+OPNS
+  if : Bool Nat Nat -> Nat
+  leq : Nat Nat -> Bool
+  plus : Nat Nat -> Nat
+  fib : Nat -> Nat
+VARS
+  X Y N M : Nat
+RULES
+  if(true, X, Y) -> X
+  if(false, X, Y) -> Y
+  leq(zero, N) -> true
+  leq(s(N), zero) -> false
+  leq(s(N), s(M)) -> leq(N, M)
+  plus(zero, N) -> N
+  plus(s(N), M) -> s(plus(N, M))
+  fib(zero) -> zero
+  fib(s(zero)) -> s(zero)
+  fib(s(s(N))) -> plus(fib(s(N)), fib(N))
+EVAL
+
+  # The condition holds, so the first branch (zero) is selected and the fib(8)
+  # in the discarded second branch is never evaluated.
+  if(leq(zero, zero), zero, fib(s(s(s(s(s(s(s(s(zero))))))))))
+
+  # The condition fails, so the second branch (zero) is selected and the fib(8)
+  # in the discarded first branch is never evaluated.
+  if(leq(s(zero), zero), fib(s(s(s(s(s(s(s(s(zero))))))))), zero)
+
+  # Nested selection: both discarded branches hold an expensive fib(..).
+  if(leq(zero, zero), if(leq(s(zero), zero), fib(s(s(s(s(s(s(s(zero)))))))), s(zero)), fib(s(s(s(s(s(s(s(s(zero))))))))))
+
+  # A genuinely computed result, so both engines do the same real work and agree.
+  fib(s(s(s(s(s(s(zero)))))))
+
+END-SPEC

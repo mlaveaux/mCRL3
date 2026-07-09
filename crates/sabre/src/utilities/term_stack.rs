@@ -152,6 +152,14 @@ impl TermStack {
             }
         }
 
+        // A term always contributes at least its root variable or function
+        // symbol to the stack. `InnermostStack::integrate` relies on this
+        // (`stack_size - 1` would otherwise underflow).
+        debug_assert!(
+            stack_size >= 1,
+            "A right-hand side must contain at least one variable or function symbol"
+        );
+
         TermStack {
             innermost_stack,
             stack_size,
