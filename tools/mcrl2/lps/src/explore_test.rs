@@ -13,7 +13,9 @@ mod tests {
     use merc_lts::AutStream;
     use merc_lts::LTS;
     use merc_lts::LtsBuilderFast;
+    use merc_lts::LtsMultiAction;
     use merc_lts::MutexLtsBuilder;
+    use merc_lts::SimpleAction;
     use merc_lts::StateIndex;
     use merc_lts::read_mcrl2_aut;
     use merc_lts::write_mcrl2_aut;
@@ -60,7 +62,16 @@ mod tests {
             traced_command(Command::new(&lps2lts).arg(&lps_path).arg(&aut_path)).expect("Failed to execute lps2lts");
         assert!(status.success(), "lps2lts failed with status: {status}");
 
-        let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap()).expect("Failed to read reference .aut");
+        // Parse the labels as multi-actions (a multiset of actions) rather than
+        // comparing the pretty-printed strings verbatim: mCRL2 does not
+        // guarantee a canonical order for the `|`-separated actions of a
+        // multi-action, so two equivalent multi-actions (e.g. reached via
+        // different summands, or printed by a different tool) can be printed
+        // with their actions in a different order.
+        let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap())
+            .expect("Failed to read reference .aut")
+            .relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label))
+            .unwrap();
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
@@ -95,7 +106,9 @@ mod tests {
             compare_lts(
                 Equivalence::StrongBisim,
                 reference_lts,
-                result_lts.relabel(|label| { Ok(label.to_string()) }).unwrap(),
+                result_lts
+                    .relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label.to_string()))
+                    .unwrap(),
                 false,
                 &Timing::new(),
             ),
