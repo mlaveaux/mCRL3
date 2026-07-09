@@ -3,6 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use log::debug;
@@ -69,6 +71,11 @@ pub struct GlobalTermPool {
     /// Indicates whether automatic garbage collection is enabled.
     garbage_collection: bool,
 
+    /// The number of terms that may still be created before garbage collection should be
+    /// triggered. Set to roughly `capacity - len` after each collection and consumed by the
+    /// thread pools in chunks (see [crate::storage::ThreadTermPool]) to avoid contention.
+    gc_budget: AtomicUsize,
+
     /// Default terms
     int_symbol: SymbolRef<'static>,
     empty_list_symbol: SymbolRef<'static>,
@@ -88,7 +95,7 @@ impl GlobalTermPool {
         let list_symbol = unsafe { SymbolRef::from_index(&&symbol_pool.create("<list_constructor>", 2)) };
         let empty_list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<empty_list>", 0)) };
 
-        GlobalTermPool {
+        let pool = GlobalTermPool {
             terms: ATermStorage::new(),
             symbol_pool,
             thread_pools: ThreadPoolList(Vec::new()),
@@ -100,10 +107,15 @@ impl GlobalTermPool {
             marked_symbols: FxHashSet::default(),
             stack: Vec::new(),
             garbage_collection: true,
+            gc_budget: AtomicUsize::new(0),
             int_symbol,
             list_symbol,
             empty_list_symbol,
-        }
+        };
+
+        // Initialise the budget from the free capacity of the freshly created storage.
+        pool.reset_gc_budget();
+        pool
     }
 
     /// Returns the number of terms in the pool.
@@ -224,18 +236,52 @@ impl GlobalTermPool {
         }
     }
 
-    /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
+    /// Triggers garbage collection if necessary, refreshes the global budget and returns the
+    /// per-thread chunk the calling thread pool should count down before touching the budget
+    /// again.
     pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
         if self.garbage_collection {
             // Garbage collection is enabled.
             self.collect_garbage();
         }
 
-        if AGGRESSIVE_GC {
-            return 1;
-        }
+        self.reset_gc_budget()
+    }
 
-        self.len()
+    /// Recomputes the global GC budget from the free storage capacity and returns the per-thread
+    /// chunk (the budget divided over the registered thread pools, to avoid every thread
+    /// contending on the shared counter).
+    pub(crate) fn reset_gc_budget(&self) -> usize {
+        let budget = if AGGRESSIVE_GC {
+            1
+        } else {
+            self.terms.capacity().saturating_sub(self.len()).max(1)
+        };
+
+        self.gc_budget.store(budget, Ordering::Relaxed);
+        (budget / self.num_thread_pools()).max(1)
+    }
+
+    /// Subtracts `amount` from the global GC budget, saturating at zero so it never wraps, and
+    /// returns the budget as it was *before* the subtraction. A returned value not greater than
+    /// `amount` means the budget is exhausted and a collection should be triggered.
+    pub(crate) fn consume_gc_budget(&self, amount: usize) -> usize {
+        self.gc_budget
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_sub(amount))
+            })
+            .expect("the update closure always returns Some")
+    }
+
+    /// Returns the current per-thread budget chunk without recomputing the global budget. Used
+    /// by a newly registered thread pool to obtain its initial counter.
+    pub(crate) fn gc_budget_chunk(&self) -> usize {
+        (self.gc_budget.load(Ordering::Relaxed) / self.num_thread_pools()).max(1)
+    }
+
+    /// Returns the number of registered (live) thread pools, at least one.
+    fn num_thread_pools(&self) -> usize {
+        self.thread_pools.iter().flatten().count().max(1)
     }
 
     /// Enables or disables automatic garbage collection.

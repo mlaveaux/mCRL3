@@ -29,7 +29,6 @@ use crate::Term;
 use crate::TermParser;
 use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
-use crate::storage::AGGRESSIVE_GC;
 use crate::storage::GlobalTermPool;
 use crate::storage::GlobalTermPoolGuard;
 use crate::storage::SharedTerm;
@@ -54,8 +53,14 @@ pub struct ThreadTermPool {
     /// A separate protection set for sendable terms, see [crate::ATermSend].
     send_term_protection_set: Arc<Mutex<ProtectionSet<ATermIndex>>>,
 
-    /// The number of times terms have been created before garbage collection is triggered.
+    /// Counts down the number of terms this thread may still create before it must consume the
+    /// next chunk from the global budget (see [GlobalTermPool::reset_gc_budget]).
     garbage_collection_counter: Cell<usize>,
+
+    /// The size of a single budget chunk: the amount subtracted from the global budget, and the
+    /// value [Self::garbage_collection_counter] is refilled to, each time the counter reaches
+    /// zero.
+    garbage_collection_chunk: Cell<usize>,
 
     /// A vector of terms that are used to store the arguments of a term for lookup.
     tmp_arguments: RefCell<Vec<ATermRef<'static>>>,
@@ -81,13 +86,16 @@ impl ThreadTermPool {
         let int_symbol = pool.get_int_symbol().copy();
         let empty_list_symbol = pool.get_empty_list_symbol().copy();
         let list_symbol = pool.get_list_symbol().copy();
+
+        // Claim a share of the current global budget as this thread's initial chunk.
+        let chunk = pool.gc_budget_chunk();
         drop(pool);
 
-        // Arbitrary value to trigger garbage collection
         Self {
             protection_sets,
             send_term_protection_set,
-            garbage_collection_counter: Cell::new(if AGGRESSIVE_GC { 1 } else { 1000 }),
+            garbage_collection_counter: Cell::new(chunk),
+            garbage_collection_chunk: Cell::new(chunk),
             tmp_arguments: RefCell::new(Vec::new()),
             int_symbol,
             empty_list_symbol,
@@ -422,17 +430,24 @@ impl ThreadTermPool {
     pub fn force_collect_garbage(&self) {
         let mut guard = self.term_pool.write().expect("Lock poisoned!");
         guard.collect_garbage();
+        self.set_budget_chunk(guard.reset_gc_budget());
     }
 
     /// Perform a garbage collection.
     pub fn collect_garbage(&self) {
         if !self.term_pool.is_locked() {
-            // Trigger garbage collection and acquire a new counter value.
+            // Trigger garbage collection and acquire a fresh budget chunk.
             if let Some(mut guard) = self.term_pool.try_write().expect("Lock poisoned!") {
-                let value = guard.trigger_garbage_collection();
-                self.garbage_collection_counter.set(value);
+                self.set_budget_chunk(guard.trigger_garbage_collection());
             }
         }
+    }
+
+    /// Records the per-thread budget chunk returned by the global pool, resetting the local
+    /// counter to count it down.
+    fn set_budget_chunk(&self, chunk: usize) {
+        self.garbage_collection_chunk.set(chunk);
+        self.garbage_collection_counter.set(chunk);
     }
 
     /// Triggers delayed garbage collection if the counter has reached zero.
@@ -465,10 +480,28 @@ impl ThreadTermPool {
         self.trigger_garbage_collection();
     }
 
-    /// Triggers garbage collection if the counter has reached zero.
+    /// Consumes the next budget chunk once the local counter is exhausted, triggering garbage
+    /// collection when the shared global budget has run out.
     fn trigger_garbage_collection(&self) {
         if self.garbage_collection_counter.get() == 0 && !self.term_pool.is_locked() {
-            self.collect_garbage();
+            let chunk = self.garbage_collection_chunk.get();
+
+            // Subtract this thread's chunk from the shared budget. The read guard is only needed
+            // to reach the atomic and is dropped before a potential collection acquires the write
+            // lock.
+            let previous = self
+                .term_pool
+                .read_recursive()
+                .expect("Lock poisoned!")
+                .consume_gc_budget(chunk);
+
+            if previous <= chunk {
+                // The global budget is exhausted, so collect and obtain a fresh chunk.
+                self.collect_garbage();
+            } else {
+                // Budget remains; refill the local counter to count down the next chunk.
+                self.garbage_collection_counter.set(chunk);
+            }
         }
     }
 

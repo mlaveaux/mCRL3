@@ -28,6 +28,7 @@ crossbeam-deque.workspace = true
 crossbeam-utils.workspace = true
 itertools.workspace = true
 log.workspace = true
+quanta.workspace = true
 rand.workspace = true
 rayon.workspace = true
 rustc-hash.workspace = true

@@ -228,6 +228,20 @@ impl ATermStorage {
             + self.terms_7.len()
             + self.terms.len()
     }
+
+    /// Returns the total number of terms that fit before any table must grow.
+    pub(crate) fn capacity(&self) -> usize {
+        self.int_terms.capacity()
+            + self.terms_0.capacity()
+            + self.terms_1.capacity()
+            + self.terms_2.capacity()
+            + self.terms_3.capacity()
+            + self.terms_4.capacity()
+            + self.terms_5.capacity()
+            + self.terms_6.capacity()
+            + self.terms_7.capacity()
+            + self.terms.capacity()
+    }
 }
 
 /// Casts a pointer to a term in a fixed-size storage to a pointer to a
