@@ -206,7 +206,7 @@ pub struct ControlFlowGraphVertex {
     outgoing_edges: Vec<(*const local_control_flow_graph_vertex, Vec<usize>)>,
 
     /// Retains ownership of the algorithm that owns the underlying vertex, and
-    /// outgoin edges.
+    /// outgoing edges.
     _algorithm: Rc<UniquePtr<stategraph_algorithm>>,
 }
 

@@ -295,7 +295,12 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
     match format {
         SymFormat::Sylvan => {
             let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&storage, &mut file))?;
-            // Sylvan format carries no action labels or parameter values, so BDD conversion is not supported.
+
+            if args.use_bdd {
+                // Sylvan format carries no action labels or parameter values, so BDD conversion is not supported.
+                return Err("BDD exploration is not supported for Sylvan format".into());
+            }
+
             println!(
                 "LTS has {} states",
                 timing.measure("explore", || -> Result<_, MercError> {
