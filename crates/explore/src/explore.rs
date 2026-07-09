@@ -129,6 +129,13 @@ where
 /// The returned `Vec<Local>` holds one accumulator per worker (one per pool
 /// thread), each carrying the merged result of every state that worker
 /// processed.
+///
+/// # State numbering
+///
+/// The [`StateIndex`] values passed to the closures come from the shared
+/// [`DiscoveredSet`], whose backing store hands each worker a whole block of
+/// consecutive indices at once to keep index allocation contention-free. This
+/// means that the returned state indices are not dense.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,
     make_local: MakeLocal,

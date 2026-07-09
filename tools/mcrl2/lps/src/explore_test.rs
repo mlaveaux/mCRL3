@@ -232,10 +232,11 @@ mod tests {
         });
     }
 
-    /// Explores `lps_path` both sequentially and with the parallel level-
-    /// synchronised BFS on several threads, and asserts the two LTSs have equal
-    /// state/transition counts and are strongly bisimilar. State numbering is
-    /// nondeterministic under parallelism, so the comparison is up to bisimulation.
+    /// Explores `lps_path` both sequentially and with the parallel work-stealing
+    /// search on several threads, and asserts the two LTSs are strongly
+    /// bisimilar. The parallel explorer numbers states sparsely (see the
+    /// assertion below), so its LTS carries extra unreachable deadlock states and
+    /// the comparison is only up to bisimulation rather than on exact counts.
     fn assert_parallel_matches_sequential(lps_path: &Path) {
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
 
@@ -275,18 +276,9 @@ mod tests {
         buffer.set_position(0);
         let parallel = read_mcrl2_aut(&mut buffer).expect("Failed to read parallel AUT output");
 
-        assert_eq!(
-            parallel.num_of_states(),
-            sequential.num_of_states(),
-            "Parallel and sequential state counts differ for {}",
-            lps_path.display()
-        );
-        assert_eq!(
-            parallel.num_of_transitions(),
-            sequential.num_of_transitions(),
-            "Parallel and sequential transition counts differ for {}",
-            lps_path.display()
-        );
+        // The parallel explorer numbers states sparsely (see `explore_parallel`),
+        // so its LTS has extra unreachable deadlock states: compare up to
+        // bisimulation rather than on exact state counts.
         assert!(
             compare_lts(Equivalence::StrongBisim, parallel, sequential, false, &Timing::new()),
             "Parallel and sequential LTSs are not strongly bisimilar for {}",
