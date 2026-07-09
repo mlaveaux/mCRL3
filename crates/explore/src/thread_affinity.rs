@@ -1,17 +1,27 @@
 use log::debug;
+use log::info;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
 
 use merc_utilities::MercError;
 
+use crate::CpuTopology;
+
 /// Builds a rayon thread pool with `num_threads` workers.
 ///
 /// When `pinned` is set, workers are pinned round-robin to the available CPU
-/// cores. If no core information is available on this platform, the pool is
-/// still created but worker pinning is skipped.
+/// cores, and the measured CPU topology (SMT/shared-cache/socket clustering
+/// and inter-core latencies) is logged at info level. If no core information
+/// is available on this platform, the pool is still created but worker
+/// pinning is skipped.
 pub fn configure_rayon_thread_pool(num_threads: usize, pinned: bool) -> Result<ThreadPool, MercError> {
     let worker_count = num_threads.max(1);
     let cores = if pinned {
+        match CpuTopology::detect() {
+            Ok(topology) => info!("Detected CPU topology:\n{topology}"),
+            Err(error) => debug!("Failed to detect CPU topology: {error}"),
+        }
+
         core_affinity2::get_core_ids().unwrap_or_default()
     } else {
         Vec::new()

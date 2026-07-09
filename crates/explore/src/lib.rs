@@ -1,5 +1,6 @@
 mod cache_lps;
 mod combine;
+mod cpu_topology;
 mod discovered_set;
 mod explore;
 mod lps;
@@ -8,6 +9,7 @@ mod thread_affinity;
 
 pub use cache_lps::*;
 pub use combine::*;
+pub use cpu_topology::*;
 pub use discovered_set::*;
 pub use explore::*;
 pub use lps::*;
