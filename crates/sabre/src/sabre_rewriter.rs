@@ -257,6 +257,7 @@ impl SabreRewriter {
     }
 
     /// Apply a rewrite rule and prune back
+    #[allow(clippy::too_many_arguments)]
     fn apply_rewrite_rule(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,
