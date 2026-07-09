@@ -214,6 +214,7 @@ mod tests {
     use super::convert_symbolic_lts;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_convert_symbolic_lts() {
         test_logger();
 

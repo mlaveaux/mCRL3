@@ -204,6 +204,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_binary_ldd_stream_terminals() {
         let manager = oxidd::ldd::new_manager(2048, 1024, 1);
 

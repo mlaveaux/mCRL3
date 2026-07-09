@@ -341,6 +341,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_reachability_detect_deadlocks() {
         for strategy in [
             ExplorationStrategy::BreadthFirst,
