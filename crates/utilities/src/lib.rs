@@ -6,6 +6,8 @@ mod cast_macro;
 
 mod debug_trace;
 mod error;
+mod fixed_cache_policy;
+mod fixed_size_cache;
 mod generational_index;
 mod helper;
 mod kani_rng;
@@ -18,6 +20,8 @@ mod test_logger;
 mod timing;
 
 pub use error::*;
+pub use fixed_cache_policy::*;
+pub use fixed_size_cache::*;
 pub use generational_index::*;
 pub use helper::*;
 pub use permutation::*;
