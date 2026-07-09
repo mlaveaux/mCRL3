@@ -1,5 +1,6 @@
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
+use oxidd::ldd::Value;
 use rand::Rng;
 use rand::RngExt;
 use rand::seq::IndexedRandom;
@@ -72,7 +73,17 @@ pub fn random_symbolic_lts<R: Rng>(
             .cloned()
             .collect::<Vec<_>>();
 
-        let relation = random_vector_set(rng, 10, read_parameters.len() + write_parameters.len() + 1, 5);
+        // The last position of every relation vector is the action label, which must
+        // stay within the declared action labels; the state positions range over the
+        // parameter values.
+        let mut relation = random_vector_set(rng, 10, read_parameters.len() + write_parameters.len(), 5);
+        let relation: Vec<Vec<Value>> = relation
+            .drain()
+            .map(|mut vector| {
+                vector.push(rng.random_range(0..num_action_labels as Value));
+                vector
+            })
+            .collect();
         let relation_bdd = from_iter(manager, relation.iter());
 
         summand_groups.push(SummandGroup::new(
