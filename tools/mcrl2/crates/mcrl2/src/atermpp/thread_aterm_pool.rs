@@ -14,12 +14,12 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_create_int;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_empty_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_from_string;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_list_function_symbol;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
-use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize;
-use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_create;
 use mcrl2_sys::cxx::Exception;
 use mcrl2_sys::cxx::UniquePtr;
@@ -68,7 +68,7 @@ pub struct ThreadTermPool {
     /// allowed outside of a shared lock section. Therefore, we count
     /// (arbitrarily) to reduce the amount of this is checked.
     gc_counter: Cell<usize>,
-    
+
     /// Keeps track of the maximum size the term pool should reach before
     /// triggering garbage collection.
     size_until_gc: Cell<usize>,
