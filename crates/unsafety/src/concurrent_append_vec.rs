@@ -27,7 +27,7 @@ const FIRST_BLOCKS: usize = 1 << FIRST_BITS;
 ///
 /// # Details
 ///
-/// Where [`boxcar::Vec`] tags every slot with its own atomic flag and
+/// Where `boxcar::Vec` tags every slot with its own atomic flag and
 /// `append-only-vec` keeps indices dense with a per-push compare-exchange spin,
 /// this structure hands each thread a whole *block* of `BLOCK` consecutive
 /// indices with a single `fetch_add` and lets it fill them with plain writes.
