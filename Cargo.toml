@@ -69,11 +69,11 @@ html-escape = "0.2"
 itertools = "0.15"
 log = { version = "0.4", features = ["kv"] }
 num = "0.4"
-oxidd = { version = "0.11", features = ["manager-pointer"] }
-oxidd-dump = "0.6"
-oxidd-core = "0.11"
-oxidd-reorder = "0.6"
-oxidd-rules-bdd = "0.11"
+oxidd = { version = "0.12", features = ["manager-pointer"] }
+oxidd-dump = "0.7"
+oxidd-core = "0.12"
+oxidd-reorder = "0.7"
+oxidd-rules-bdd = "0.12"
 oxidd-rules-ldd = "0.11"
 parking_lot = "0.12"
 pest = "2.8"
@@ -162,9 +162,9 @@ partial_ord_enum_variants_reordered = "allow"
 
 # Use a local checkout of the oxidd fork until the LDD branch is integrated.
 [patch.crates-io]
-oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
-oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
-oxidd-dump =  { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
-oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
-oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
-oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "eb50cb1b5aa8ea290696becbc4fe4296639c1367" }
+oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
+oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
+oxidd-dump =  { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
+oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
+oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
+oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }

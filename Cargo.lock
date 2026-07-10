@@ -119,7 +119,7 @@ dependencies = [
 [[package]]
 name = "arcslab"
 version = "0.1.2"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "crossbeam-utils",
  "derive-where",
@@ -493,6 +493,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashu-base"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "993b95dc1b248e3f5747dcb017a41d6e75853a2e5ee4504f7d537c5b8dffdae4"
+
+[[package]]
+name = "dashu-int"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49c05a0d5cb0b39fcc87c46432fdac24b90dce239857c7f6b798be4ffc3c42c6"
+dependencies = [
+ "cfg-if",
+ "dashu-base",
+ "num-modular",
+ "rustversion",
+ "static_assertions",
+]
+
+[[package]]
 name = "defmt"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -636,15 +655,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
-name = "flume"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
-dependencies = [
- "spin",
-]
-
-[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -774,7 +784,7 @@ checksum = "46c1ff2d1cbf39efe5af0900ced8a069b5e61557a17544eb0c4a50239937389e"
 [[package]]
 name = "hugealloc"
 version = "0.1.1"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "allocator-api2 0.2.21",
  "libc",
@@ -799,12 +809,6 @@ checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
 dependencies = [
  "rustversion",
 ]
-
-[[package]]
-name = "is_sorted"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "357376465c37db3372ef6a00585d336ed3d0f11d4345eef77ebcb05865392b21"
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -926,7 +930,10 @@ dependencies = [
 [[package]]
 name = "linear-hashtbl"
 version = "0.1.4"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
+dependencies = [
+ "allocator-api2 0.2.21",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -1410,6 +1417,7 @@ dependencies = [
  "merc_collections",
  "merc_syntax",
  "merc_utilities",
+ "test-case",
  "thiserror",
 ]
 
@@ -1583,6 +1591,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-modular"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc41a1374056e9672221567958a66c16be12d0e2c1b408761e14d901c237d5e0"
+
+[[package]]
 name = "num-rational"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1641,8 +1655,8 @@ dependencies = [
 
 [[package]]
 name = "oxidd"
-version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "cfg-if",
  "derive-where",
@@ -1664,8 +1678,8 @@ dependencies = [
 
 [[package]]
 name = "oxidd-cache"
-version = "0.11.1"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "allocator-api2 0.2.21",
  "document-features",
@@ -1676,16 +1690,17 @@ dependencies = [
 
 [[package]]
 name = "oxidd-core"
-version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
+ "dashu-int",
  "nanorand",
 ]
 
 [[package]]
 name = "oxidd-derive"
-version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1695,12 +1710,11 @@ dependencies = [
 
 [[package]]
 name = "oxidd-dump"
-version = "0.6.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.7.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
- "is_sorted",
  "memchr",
  "oxidd-core",
  "oxidd-derive",
@@ -1709,51 +1723,57 @@ dependencies = [
 
 [[package]]
 name = "oxidd-manager-index"
-version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
+ "allocator-api2 0.2.21",
  "crossbeam-utils",
  "derive-where",
  "fixedbitset 0.5.7",
+ "hugealloc",
  "linear-hashtbl",
  "oxidd-core",
  "parking_lot",
  "rayon",
  "rustc-hash 1.1.0",
+ "scopeguard",
 ]
 
 [[package]]
 name = "oxidd-manager-pointer"
-version = "0.6.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.7.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
+ "allocator-api2 0.2.21",
  "arcslab",
  "derive-where",
  "fixedbitset 0.5.7",
+ "hugealloc",
  "linear-hashtbl",
  "oxidd-core",
  "parking_lot",
  "rayon",
  "rustc-hash 1.1.0",
- "sptr",
+ "scopeguard",
 ]
 
 [[package]]
 name = "oxidd-reorder"
-version = "0.6.1"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.7.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
- "flume",
- "is_sorted",
+ "fixedbitset 0.5.7",
  "oxidd-core",
+ "parking_lot",
  "rayon",
+ "scopeguard",
  "smallvec",
 ]
 
 [[package]]
 name = "oxidd-rules-bdd"
-version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
@@ -1765,7 +1785,7 @@ dependencies = [
 [[package]]
 name = "oxidd-rules-ldd"
 version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "oxidd-core",
  "oxidd-derive",
@@ -1773,8 +1793,8 @@ dependencies = [
 
 [[package]]
 name = "oxidd-rules-mtbdd"
-version = "0.6.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.7.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
@@ -1785,8 +1805,8 @@ dependencies = [
 
 [[package]]
 name = "oxidd-rules-tdd"
-version = "0.6.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.7.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "document-features",
  "oxidd-core",
@@ -1796,8 +1816,8 @@ dependencies = [
 
 [[package]]
 name = "oxidd-rules-zbdd"
-version = "0.11.0"
-source = "git+https://github.com/mlaveaux/oxidd?rev=eb50cb1b5aa8ea290696becbc4fe4296639c1367#eb50cb1b5aa8ea290696becbc4fe4296639c1367"
+version = "0.12.0"
+source = "git+https://github.com/mlaveaux/oxidd?rev=b0e524d4ef974d715894abda5b4429b319ea7f62#b0e524d4ef974d715894abda5b4429b319ea7f62"
 dependencies = [
  "document-features",
  "fixedbitset 0.5.7",
@@ -2302,19 +2322,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-dependencies = [
- "lock_api",
-]
-
-[[package]]
 name = "sptr"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "streaming-iterator"
