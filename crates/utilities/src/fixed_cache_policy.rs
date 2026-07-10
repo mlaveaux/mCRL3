@@ -19,7 +19,7 @@ pub trait CachePolicy<K>: Default {
     fn replacement_candidate<V>(&mut self, cache: &HashMap<K, V>) -> Option<K>;
 }
 
-/// A policy that replaces an arbitrary (but deterministic) element.
+/// A policy that replaces an arbitrary element.
 #[derive(Debug, Default)]
 pub struct NoPolicy;
 
@@ -81,6 +81,12 @@ impl<K: Clone + Eq + Hash> CachePolicy<K> for FifoPolicy<K> {
 #[derive(Debug)]
 pub struct LruPolicy<K> {
     queue: VecDeque<K>,
+}
+
+impl<K> LruPolicy<K> {
+    pub fn new() -> Self {
+        Self { queue: VecDeque::new() }
+    }
 }
 
 impl<K> Default for LruPolicy<K> {
