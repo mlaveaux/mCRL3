@@ -346,3 +346,35 @@ where
     // The visitor did not break the traversal.
     Ok(None)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ops::ControlFlow;
+
+    use crate::Sort;
+    use crate::SortExpression;
+
+    use super::visit_sort_expr;
+
+    /// Regression test: the FlattenedFunction arm used to discard `Break`
+    /// results from both the domain sorts and the range.
+    #[test]
+    fn test_visit_sort_expr_breaks_inside_flattened_function() {
+        let sort = SortExpression::FlattenedFunction {
+            domain: vec![SortExpression::Simple(Sort::Nat)],
+            range: Box::new(SortExpression::Simple(Sort::Bool)),
+        };
+
+        let found = visit_sort_expr(&sort, |expr| match expr {
+            SortExpression::Simple(Sort::Nat) => ControlFlow::Break("domain"),
+            _ => ControlFlow::Continue(()),
+        });
+        assert_eq!(found, Some("domain"));
+
+        let found = visit_sort_expr(&sort, |expr| match expr {
+            SortExpression::Simple(Sort::Bool) => ControlFlow::Break("range"),
+            _ => ControlFlow::Continue(()),
+        });
+        assert_eq!(found, Some("range"));
+    }
+}
