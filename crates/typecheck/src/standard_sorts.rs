@@ -4,13 +4,14 @@ use std::fmt::Write;
 use indoc::formatdoc;
 
 use merc_syntax::ComplexSort;
+use merc_syntax::ConstructorDecl;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
 
 /// Returns a standard data specification containing the standard sorts and their associated constructors, mappings, and equations.
-pub fn basic_sort_data_specification() -> Result<UntypedDataSpecification, MercError> {
+pub(crate) fn basic_sort_data_specification() -> Result<UntypedDataSpecification, MercError> {
     let mut result = UntypedDataSpecification::default();
 
     // Append the relevant specifications for the sorts that are present in the specification.
@@ -34,7 +35,7 @@ pub fn basic_sort_data_specification() -> Result<UntypedDataSpecification, MercE
 }
 
 /// Constructs a data specification for a standard sort;
-pub fn standard_sort(sort: &SortExpression) -> Result<UntypedDataSpecification, MercError> {
+pub(crate) fn standard_sort(sort: &SortExpression) -> Result<UntypedDataSpecification, MercError> {
     if let SortExpression::Complex(complex, sort) = sort {
         let text = match complex {
             ComplexSort::List => include_str!("../../syntax/spec/list.mcrl2"),
@@ -97,6 +98,10 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
             && id == identifier
         {
             return Ok(Some(result_sort.clone()));
+        if let SortExpression::Reference(id) = expr
+            && id == identifier
+        {
+            return Ok(Some(result_sort.clone()));
         }
 
         Ok(None)
@@ -106,6 +111,10 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
 
 /// Generate a data specification for any sort based on the rules in Appendix `B`.
 pub fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
+    UntypedDataSpecification::parse(&formatdoc! {"
+// Reserved for wiring the comparison/`if` operators of each sort (docs/typecheck.md G3).
+#[allow(dead_code)]
+pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
     UntypedDataSpecification::parse(&formatdoc! {"
         map ==, !=, <, <=, >=, >: {sort} # {sort} -> Bool;
             if: Bool # {sort} # {sort} -> {sort};
@@ -124,33 +133,26 @@ pub fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
             x > y  = y < x;
             x >= y = y <= x;
     "})
+    "})
 }
 
-/// Generates a data specification for a structured sort, the rules are given in Appendix `B.10`.
+/// Generates the defining equations of a structured sort, following Appendix `B.10`.
 ///
 /// # Details
 ///
-/// Given a structured sort with constructors `c_1, ..., c_n`, where every
+/// Given the constructors `c_1, ..., c_n` of a structured sort, where every
 /// constructor `c_i` has arguments of sorts `A_{i,1}, ..., A_{i,k_i}`, this
-/// generates the sort `Struct<name>` together with:
+/// generates the equations defining the recognisers, the projections, and the
+/// comparison operators `==`, `<` and `<=` over the constructors.
 ///
-///   - the constructor `c_i : A_{i,1} # ... # A_{i,k_i} -> Struct<name>`;
-///   - the recogniser `isC_i : Struct<name> -> Bool` (only when a recogniser is
-///     declared for `c_i`);
-///   - the projection `pr_{i,j} : Struct<name> -> A_{i,j}` (only when a
-///     projection name is declared for the argument);
-///   - the equations defining the recognisers, the projections, and the
-///     comparison operators `==`, `<` and `<=` over the constructors.
-pub fn structured_sort_spec(
-    name: &str,
-    structured_sort: &SortExpression,
+/// Only equations are generated; the abstract sort and the constructor,
+/// recogniser and projection declarations are introduced by
+/// `desugar_structured_sorts`, which also yields the `constructors` passed
+/// here. The result joins the system-defined specification, like the other
+/// Appendix-B content.
+pub(crate) fn structured_sort_equations(
+    constructors: &[ConstructorDecl],
 ) -> Result<UntypedDataSpecification, MercError> {
-    let SortExpression::Struct { inner: constructors } = structured_sort else {
-        unreachable!("structured_sort_spec should only be called on structured sorts");
-    };
-
-    let name = format!("Struct{}", name);
-
     // Builds the term `c_i(<prefix>i_0, ..., <prefix>i_{k_i - 1})`, using the
     // bare constructor name when `c_i` takes no arguments.
     let application = |i: usize, prefix: &str| -> String {
@@ -179,44 +181,6 @@ pub fn structured_sort_spec(
     };
 
     let mut spec = String::new();
-
-    // sort Struct@n;
-    writeln!(spec, "sort {name};\n").unwrap();
-
-    // cons c_i : A_{i,1} # ... # A_{i,k_i} -> Struct@n;
-    writeln!(spec, "cons").unwrap();
-    for constructor in constructors {
-        if constructor.args.is_empty() {
-            writeln!(spec, "    {}: {name};", constructor.name).unwrap();
-        } else {
-            let domain = constructor
-                .args
-                .iter()
-                .map(|(_, sort)| sort.to_string())
-                .collect::<Vec<_>>()
-                .join(" # ");
-            writeln!(spec, "    {}: {domain} -> {name};", constructor.name).unwrap();
-        }
-    }
-    writeln!(spec).unwrap();
-
-    // map: recognisers and projections (only those that are declared explicitly).
-    let mut maps = String::new();
-    for constructor in constructors {
-        if let Some(recogniser) = &constructor.projection {
-            writeln!(maps, "    {recogniser}: {name} -> Bool;").unwrap();
-        }
-    }
-    for constructor in constructors {
-        for (projection, sort) in &constructor.args {
-            if let Some(projection) = projection {
-                writeln!(maps, "    {projection}: {name} -> {sort};").unwrap();
-            }
-        }
-    }
-    if !maps.is_empty() {
-        write!(spec, "map\n{maps}\n").unwrap();
-    }
 
     // var: one x/y pair per constructor argument.
     let mut vars = String::new();
@@ -325,61 +289,68 @@ pub fn structured_sort_spec(
 
 #[cfg(test)]
 mod tests {
+    use merc_syntax::ConstructorDecl;
+
     use super::SortExpression;
     use super::UntypedDataSpecification;
-    use super::structured_sort_spec;
+    use super::structured_sort_equations;
 
-    /// Extracts the structured sort expression from `sort <ident> = <struct>;`.
-    fn struct_sort(spec: &str) -> SortExpression {
+    /// Extracts the constructors of the structured sort in `sort <ident> = <struct>;`.
+    fn struct_constructors(spec: &str) -> Vec<ConstructorDecl> {
         let spec = UntypedDataSpecification::parse(spec).unwrap();
-        spec.sort_declarations
+        let expr = spec
+            .sort_declarations
             .into_iter()
             .find_map(|decl| decl.expr)
-            .expect("expected a sort alias with a structured sort")
+            .expect("expected a sort alias with a structured sort");
+        let SortExpression::Struct { inner } = expr else {
+            panic!("expected a structured sort");
+        };
+        inner
     }
 
     #[test]
-    fn structured_sort_spec_generates_a_parseable_specification() {
-        let sort = struct_sort("sort D = struct c1(pr1: Nat, pr2: Bool)?is_c1 | c2?is_c2 | c3(Nat);");
+    fn structured_sort_equations_generates_a_parseable_specification() {
+        let constructors = struct_constructors("sort D = struct c1(pr1: Nat, pr2: Bool)?is_c1 | c2?is_c2 | c3(Nat);");
 
-        // The generated specification should be well-formed and parseable.
-        let generated = structured_sort_spec("D", &sort).unwrap();
+        // The generated specification should be well-formed and parseable, and
+        // contain only equations; the declarations come from desugaring.
+        let generated = structured_sort_equations(&constructors).unwrap();
+        assert!(generated.sort_declarations.is_empty());
+        assert!(generated.constructor_declarations.is_empty());
+        assert!(generated.map_declarations.is_empty());
 
-        // The sort itself and every constructor are declared.
-        assert_eq!(generated.sort_declarations.len(), 1);
-        assert_eq!(generated.sort_declarations[0].identifier, "StructD");
-
-        let constructors: Vec<_> = generated
-            .constructor_declarations
+        let equations = generated
+            .equation_declarations
             .iter()
-            .map(|c| c.identifier.as_str())
-            .collect();
-        assert!(constructors.contains(&"c1"));
-        assert!(constructors.contains(&"c2"));
-        assert!(constructors.contains(&"c3"));
+            .flat_map(|eqn_spec| &eqn_spec.equations)
+            .map(|eqn| format!("{} = {}", eqn.lhs, eqn.rhs))
+            .collect::<Vec<_>>();
 
-        // Recognisers and the declared projections appear as mappings.
-        let maps: Vec<_> = generated
-            .map_declarations
-            .iter()
-            .map(|m| m.identifier.as_str())
-            .collect();
-        assert!(maps.contains(&"is_c1"));
-        assert!(maps.contains(&"is_c2"));
-        assert!(maps.contains(&"pr1"));
-        assert!(maps.contains(&"pr2"));
+        // Recogniser and projection equations for the declared names.
+        assert!(
+            equations
+                .iter()
+                .any(|eqn| eqn.contains("is_c1") && eqn.contains("true"))
+        );
+        assert!(
+            equations
+                .iter()
+                .any(|eqn| eqn.contains("is_c1") && eqn.contains("false"))
+        );
+        assert!(equations.iter().any(|eqn| eqn.contains("pr1")));
 
-        // c3 has no recogniser and no projection, so neither should be generated.
-        assert!(!maps.contains(&"is_c3"));
+        // c3 has no recogniser, so no equation defines one for it.
+        assert!(!equations.iter().any(|eqn| eqn.contains("is_c3")));
     }
 
     #[test]
-    fn structured_sort_spec_supports_only_constant_constructors() {
+    fn structured_sort_equations_supports_only_constant_constructors() {
         // A structured sort where no constructor has arguments generates no
         // variables, so the `eqn` block must be emitted without a `var` block.
-        let sort = struct_sort("sort E = struct red | green | blue;");
-        let generated = structured_sort_spec("E", &sort).unwrap();
+        let constructors = struct_constructors("sort E = struct red | green | blue;");
+        let generated = structured_sort_equations(&constructors).unwrap();
 
-        assert_eq!(generated.constructor_declarations.len(), 3);
+        assert!(!generated.equation_declarations.is_empty());
     }
 }
