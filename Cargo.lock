@@ -1418,6 +1418,7 @@ dependencies = [
  "merc_collections",
  "merc_syntax",
  "merc_utilities",
+ "rand",
  "test-case",
  "thiserror",
 ]
