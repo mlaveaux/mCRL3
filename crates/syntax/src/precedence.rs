@@ -37,8 +37,8 @@ pub static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
     PrattParser::new()
         // Sort operators
-        .op(Op::infix(Rule::SortExprFunction, Assoc::Left)) // $right 0
-        .op(Op::infix(Rule::SortExprProduct, Assoc::Right)) // $left 1
+        .op(Op::infix(Rule::SortExprFunction, Assoc::Right)) // $right 0
+        .op(Op::infix(Rule::SortExprProduct, Assoc::Left)) // $left 1
 });
 
 #[allow(clippy::result_large_err)]
