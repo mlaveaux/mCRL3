@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use merc_collections::IndexedSet;
 use merc_syntax::DefId;
 use merc_syntax::SortExpression;
@@ -9,7 +11,14 @@ use crate::WellTypedError;
 /// Ensure that all DefIds in the data specification are resolved. Returns an
 /// indexed set that indicates the mapping from sort identifiers to their
 /// DefIds.
-pub fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<IndexedSet<String>, WellTypedError> {
+pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<IndexedSet<String>, WellTypedError> {
+    // mCRL2 silently deduplicates byte-identical sort declarations
+    // (sort_specification::add_alias), so repeated identical declarations are
+    // accepted; conflicting redeclarations still fail below.
+    let mut seen = HashSet::new();
+    spec.sort_declarations
+        .retain(|decl| seen.insert((decl.identifier.clone(), decl.expr.clone())));
+
     // Every sort declaration should have a unique name.
     let mut sorts = IndexedSet::new();
 
@@ -31,7 +40,7 @@ pub fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<IndexedSet<S
 }
 
 // Apply a mapping function to every sort in the specification.
-pub fn map_sorts_in_spec<E, F>(spec: &mut UntypedDataSpecification, mut f: F) -> Result<(), E>
+pub(crate) fn map_sorts_in_spec<E, F>(spec: &mut UntypedDataSpecification, mut f: F) -> Result<(), E>
 where
     F: FnMut(&SortExpression) -> Result<SortExpression, E>,
 {
@@ -72,4 +81,74 @@ fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Resu
 
         Ok(None)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_syntax::DataExpr;
+    use merc_syntax::SortExpression;
+    use merc_syntax::UntypedDataSpecification;
+
+    use crate::DataSpecification;
+    use crate::WellTypedError;
+
+    #[test]
+    fn test_identical_duplicate_sort_is_deduplicated() {
+        let spec = UntypedDataSpecification::parse(
+            "
+            sort D = List(Bool);
+            sort D = List(Bool);
+        ",
+        )
+        .unwrap();
+
+        DataSpecification::from_untyped(spec).expect("identical redeclarations are deduplicated as in mCRL2");
+    }
+
+    #[test]
+    fn test_conflicting_duplicate_sort_is_rejected() {
+        let spec = UntypedDataSpecification::parse(
+            "
+            sort D = List(Bool);
+            sort D = List(Nat);
+        ",
+        )
+        .unwrap();
+
+        match DataSpecification::from_untyped(spec) {
+            Err(WellTypedError::DuplicateSortDeclaration { sort }) if sort == "D" => {}
+            Err(other) => panic!("Unexpected error {:?}", other),
+            _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    /// Locks the resolution boundary documented on
+    /// `DataSpecification::data_specification`: name resolution rewrites the
+    /// declaration-level sorts, but leaves sorts on binders inside equation
+    /// bodies as `Reference`s (they are resolved later during data-expression
+    /// type checking).
+    #[test]
+    fn test_equation_body_binder_sorts_are_not_resolved() {
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort D = struct d1 | d2;
+                 map f: D -> Bool;
+                 var x: D;
+                 eqn f(x) = forall y: D. y == x;",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        let equation = &spec.data_specification().equation_declarations[0];
+
+        // The declaration-level variable `x: D` is resolved.
+        assert!(matches!(equation.variables[0].sort, SortExpression::Resolved(_, _)));
+
+        // The quantifier binder `y: D` in the body is still an unresolved reference.
+        let DataExpr::Quantifier { variables, .. } = &equation.equations[0].rhs else {
+            panic!("expected a quantifier body, got {:?}", equation.equations[0].rhs);
+        };
+        assert!(matches!(variables[0].sort, SortExpression::Reference(_)));
+    }
 }
