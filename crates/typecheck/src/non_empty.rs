@@ -1,66 +1,63 @@
 use std::collections::HashSet;
 
 use merc_syntax::DefId;
-use merc_syntax::IdDecl;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::argument_sorts;
 use crate::target_sort;
 
-/// Returns true iff the sort is syntactically non-empty, i.e., there is at
-/// least one constructor for the target sort that has a non-empty sort.
-pub fn is_nonempty_sort(sort: &str, spec: &UntypedDataSpecification) -> bool {
-    debug_assert!(
-        spec.sort_declarations.iter().any(|id| id.id.is_some()),
-        "The sorts must be resolved"
-    );
+/// Returns the set of syntactically non-empty sorts.
+///
+/// A sort that is the target of at least one constructor can be empty; every
+/// other declared sort (an abstract sort or an alias) is unconstrained and
+/// assumed non-empty. The set is therefore seeded with those non-constructor
+/// sorts and then grown as the least fixpoint of the non-emptiness rule: a
+/// constructor sort becomes non-empty as soon as it has a constructor all of
+/// whose argument sorts are non-empty. Built-in, container and function argument
+/// sorts are treated as non-empty.
+pub(crate) fn nonempty_sorts(spec: &UntypedDataSpecification) -> HashSet<DefId> {
+    let constructor_sorts: HashSet<DefId> = spec
+        .constructor_declarations
+        .iter()
+        .filter_map(|constructor| match target_sort(&constructor.sort) {
+            SortExpression::Resolved(_, id) => Some(*id),
+            _ => None,
+        })
+        .collect();
 
-    let sort_id = spec
+    let mut nonempty: HashSet<DefId> = spec
         .sort_declarations
         .iter()
-        .find(|id| id.identifier == sort)
-        .expect("The sort should be declared")
-        .id
-        .unwrap();
+        .map(|declaration| declaration.id.expect("Name must have been resolved"))
+        .filter(|id| !constructor_sorts.contains(id))
+        .collect();
 
-    let mut seen = HashSet::new();
-    is_nonempty_sort_rec(sort_id, &spec.constructor_declarations, &mut seen)
-}
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for constructor in &spec.constructor_declarations {
+            let SortExpression::Resolved(_, target) = target_sort(&constructor.sort) else {
+                unreachable!("The target sort of a constructor should be a resolved sort");
+            };
 
-/// The recursive definition of non-emptiness.
-fn is_nonempty_sort_rec(sort: DefId, constructors: &Vec<IdDecl>, seen: &mut HashSet<DefId>) -> bool {
-    if seen.contains(&sort) {
-        return false; // We have already seen this sort, so we have a cycle.
+            if nonempty.contains(target) {
+                continue;
+            }
+
+            let all_arguments_nonempty = argument_sorts(&constructor.sort).iter().all(|argument| match argument {
+                SortExpression::Resolved(_, id) => nonempty.contains(id),
+                _ => true,
+            });
+
+            if all_arguments_nonempty {
+                nonempty.insert(*target);
+                changed = true;
+            }
+        }
     }
 
-    for constructor in constructors.iter().filter(|id| {
-        if let SortExpression::Resolved(_, id) = target_sort(&id.sort) {
-            *id == sort
-        } else {
-            unreachable!(
-                "The target sort of a constructor should always be a reference sort, but is not for {:?}",
-                id.sort
-            )
-        }
-    }) {
-        if argument_sorts(&constructor.sort).is_empty() {
-            return true; // We have found a constructor with no arguments, so the sort is non-empty.
-        }
-
-        seen.insert(sort); // Mark the current sort as seen to avoid cycles.
-
-        if argument_sorts(&constructor.sort).iter().all(|arg| match arg {
-            SortExpression::Resolved(_, id) => is_nonempty_sort_rec(*id, constructors, seen),
-            _ => true,
-        }) {
-            return true; // All argument sorts are non-empty, so the sort is non-empty.
-        }
-
-        seen.remove(&sort); // Unmark the current sort as seen to allow other paths to explore it.        
-    }
-
-    false
+    nonempty
 }
 
 #[cfg(test)]
@@ -85,5 +82,22 @@ mod tests {
             Err(other) => panic!("Unexpected {:?}", other),
             _ => panic!("Unexpected from_untyped to fail"),
         }
+    }
+
+    #[test]
+    fn test_constant_constructor_is_nonempty() {
+        // Regression: a constant constructor `c: S` has no argument sorts and
+        // makes `S` non-empty; the non-emptiness check must not treat it as a
+        // function sort (which panicked in `argument_sorts`).
+        let spec = UntypedDataSpecification::parse("sort S;\ncons c: S;").unwrap();
+        DataSpecification::from_untyped(spec).expect("a sort with a constant constructor is non-empty");
+    }
+
+    #[test]
+    fn test_abstract_argument_sort_is_nonempty() {
+        // Regression: an abstract sort `D` used as a constructor argument is
+        // unconstrained and assumed non-empty, so `E` is non-empty here.
+        let spec = UntypedDataSpecification::parse("sort D;\n     E;\ncons c: D -> E;").unwrap();
+        DataSpecification::from_untyped(spec).expect("a constructor over an abstract argument sort is non-empty");
     }
 }
