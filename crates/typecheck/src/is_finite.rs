@@ -2,7 +2,9 @@ use merc_syntax::ComplexSort;
 use merc_syntax::SortExpression;
 
 /// Returns true iff the sort is finite.
-pub fn is_finite(sort: &SortExpression) -> bool {
+// Reserved for finiteness-dependent checks; not consumed by a pass yet.
+#[allow(dead_code)]
+pub(crate) fn is_finite(sort: &SortExpression) -> bool {
     match sort {
         SortExpression::Product { lhs, rhs } => is_finite(lhs) && is_finite(rhs),
         SortExpression::Function { domain, range: _ } => is_finite(domain),
