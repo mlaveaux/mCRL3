@@ -6,6 +6,7 @@ use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::try_visit_sort_expr_with;
+use merc_syntax::visit_sort_expr;
 use merc_utilities::MercError;
 
 use crate::InferenceError;
@@ -187,6 +188,21 @@ fn check_product_spine(sort: &SortExpression) -> Result<(), WellTypedError> {
         }
         _ => check_products_within_domains(sort),
     }
+}
+
+/// Returns whether a binder sort inside an equation body can be resolved by
+/// the pipeline today. An anonymous `struct` is not hoisted out of expressions
+/// by `hoist_anonymous_structs`, and a bare product sort is not a sort (mCRL2
+/// rejects it), so a construct binding either is deferred rather than resolved
+/// (see G7/G8 in docs/typecheck.md).
+pub(crate) fn is_supported_binder_sort(sort: &SortExpression) -> bool {
+    let contains_struct = visit_sort_expr(sort, |expr| match expr {
+        SortExpression::Struct { .. } => ControlFlow::Break(()),
+        _ => ControlFlow::Continue(()),
+    })
+    .is_some();
+
+    !contains_struct && check_products_within_domains(sort).is_ok()
 }
 
 #[cfg(test)]
