@@ -1,81 +1,136 @@
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 
-use merc_collections::BlockIndex;
-use merc_collections::BlockPartition;
-use merc_collections::Graph;
-use merc_collections::scc_decomposition;
+use merc_syntax::ComplexSort;
 use merc_syntax::DefId;
+use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::visit_sort_expr;
-use merc_utilities::TagIndex;
+use merc_syntax::try_visit_sort_expr_with;
 
-/// Returns true iff there is a cycle in the alias declarations.
-pub fn has_alias_cycle(spec: &UntypedDataSpecification) -> Result<(), Vec<DefId>> {
-    // A mapping that keeps track of the relation between sorts.
-    let mut mapping: HashMap<DefId, Vec<DefId>> = HashMap::new();
+/// An error found in the alias declarations by [check_aliases].
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub(crate) enum AliasError {
+    /// The alias reaches itself through basic sorts, containers or function
+    /// sorts, so expanding it does not terminate. The cycle starts at the
+    /// offending alias and lists the aliases visited along the way.
+    #[error("alias cycle through {cycle:?}")]
+    Circular { cycle: Vec<DefId> },
+    /// The alias reaches itself through a function sort, or a `Set` or `Bag`
+    /// container, possibly via a structured sort. Such sorts have no sensible
+    /// (cardinality-consistent) interpretation.
+    #[error("sort {sort:?} is recursively defined via a function sort, or a set or a bag type container")]
+    ThroughFunctionSort { sort: DefId },
+}
 
+/// Checks the alias declarations, mirroring mCRL2's `sort_type_checker`:
+///
+/// - `check_alias_circularity`: an alias may not reach itself through basic
+///   sorts, containers or function sorts. Structured sorts terminate the
+///   search because recursion through a constructor is well-defined, e.g.
+///   `sort Tree = struct leaf | node(Tree, Tree);`.
+/// - `check_for_sort_alias_loop_through_function_sort`: recursion through a
+///   function sort or a `Set`/`Bag` container is rejected even when it passes
+///   through a structured sort, e.g. `sort S = struct f(S -> Bool);`. A loop
+///   through a `List` (or `FSet`/`FBag`) container is allowed.
+///
+/// Requires that all sort names in the specification have been resolved.
+pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), AliasError> {
+    let mut alias_map: HashMap<DefId, &SortExpression> = HashMap::new();
     for sort_decl in &spec.sort_declarations {
         if let Some(alias) = &sort_decl.expr {
+            alias_map.insert(sort_decl.id.expect("Name must have been resolved"), alias);
+        }
+    }
+
+    // Iterate in declaration order so the reported cycle is deterministic.
+    for sort_decl in &spec.sort_declarations {
+        if let Some(alias) = &sort_decl.expr {
+            let lhs = sort_decl.id.expect("Name must have been resolved");
             let mut visited = Vec::new();
-
-            visit_sort_expr::<(), _>(alias, |sort| {
-                if let SortExpression::Resolved(_, id) = sort {
-                    visited.push(*id);
-                }
-
-                ControlFlow::Continue(())
-            });
-
-            mapping.insert(sort_decl.id.expect("Name must have been resolved"), visited);
+            check_function_sort_loop(lhs, alias, &mut visited, false, &alias_map)?;
+            debug_assert!(visited.is_empty());
+            check_circularity(lhs, alias, &mut visited, &alias_map)?;
+            debug_assert!(visited.is_empty());
         }
     }
 
-    let scc_partition =
-        BlockPartition::<()>::from_indexed_partition(&scc_decomposition(&SortGraph { mapping }, |_, _, _| true));
-
-    for block in (0..scc_partition.len()).map(BlockIndex::new) {
-        if scc_partition.block(block).len() > 1 {
-            return Err(scc_partition.iter_block(block).map(DefId::new).collect());
-        }
-    }
     Ok(())
 }
 
-/// A graph structure representing the alias declarations in a data
-/// specification. The vertices are the sorts, and there is an edge from sort A
-/// to sort B if B is contained in the alias of A, i.e. `A -> B` if `A = List(B)`.
-struct SortGraph {
-    mapping: HashMap<DefId, Vec<DefId>>,
+/// The recursion of mCRL2's `check_alias_circularity`: searches for `lhs`
+/// through aliases, containers and function sorts, stopping at structured
+/// sorts.
+fn check_circularity(
+    lhs: DefId,
+    rhs: &SortExpression,
+    visited: &mut Vec<DefId>,
+    alias_map: &HashMap<DefId, &SortExpression>,
+) -> Result<(), AliasError> {
+    try_visit_sort_expr_with::<AliasError, (), (), _>(rhs, (), |expr, ()| match expr {
+        SortExpression::Resolved(_, id) => {
+            if *id == lhs {
+                let mut cycle = vec![lhs];
+                cycle.extend(visited.iter().copied());
+                return Err(AliasError::Circular { cycle });
+            }
+            if !visited.contains(id)
+                && let Some(alias) = alias_map.get(id)
+            {
+                visited.push(*id);
+                check_circularity(lhs, alias, visited, alias_map)?;
+                visited.pop();
+            }
+            Ok(ControlFlow::Continue(SortDescend::Descend(())))
+        }
+        // Recursion through a structured sort is well-defined, so the search
+        // deliberately stops here.
+        SortExpression::Struct { .. } => Ok(ControlFlow::Continue(SortDescend::Prune)),
+        SortExpression::Reference(_) => unreachable!("Names must have been resolved"),
+        _ => Ok(ControlFlow::Continue(SortDescend::Descend(()))),
+    })
+    .map(|_| ())
 }
 
-/// A unique type for the sorts.
-pub struct SortTag;
-
-/// The index type for a sort.
-pub type SortIndex = TagIndex<usize, SortTag>;
-
-impl Graph for SortGraph {
-    type VertexIndex = SortIndex;
-
-    type LabelIndex = ();
-
-    fn num_of_vertices(&self) -> usize {
-        self.mapping.keys().map(|id| **id).max().map_or(0, |max_id| max_id + 1)
-    }
-
-    fn iter_vertices(&self) -> impl Iterator<Item = Self::VertexIndex> {
-        (0..self.num_of_vertices()).map(SortIndex::new)
-    }
-
-    fn outgoing_edges(&self, vertex: Self::VertexIndex) -> impl Iterator<Item = (Self::LabelIndex, Self::VertexIndex)> {
-        self.mapping
-            .get(&DefId::new(*vertex))
-            .into_iter()
-            .flat_map(|targets| targets.iter())
-            .map(|id| ((), SortIndex::new(**id)))
-    }
+/// The recursion of mCRL2's `check_for_sort_alias_loop_through_function_sort`:
+/// searches for `lhs` through aliases, containers, function sorts *and*
+/// structured sorts, and reports a loop only when a function sort or a
+/// `Set`/`Bag` container was passed along the way (the `observed` context).
+fn check_function_sort_loop(
+    lhs: DefId,
+    rhs: &SortExpression,
+    visited: &mut Vec<DefId>,
+    observed: bool,
+    alias_map: &HashMap<DefId, &SortExpression>,
+) -> Result<(), AliasError> {
+    try_visit_sort_expr_with::<AliasError, (), bool, _>(rhs, observed, |expr, observed| match expr {
+        SortExpression::Resolved(_, id) => {
+            if *id == lhs && observed {
+                return Err(AliasError::ThroughFunctionSort { sort: lhs });
+            }
+            if !visited.contains(id)
+                && let Some(alias) = alias_map.get(id)
+            {
+                visited.push(*id);
+                check_function_sort_loop(lhs, alias, visited, observed, alias_map)?;
+                visited.pop();
+            }
+            Ok(ControlFlow::Continue(SortDescend::Descend(observed)))
+        }
+        // The container kind *replaces* the flag, as in mCRL2: passing through
+        // a List (or FSet/FBag) resets an earlier function-sort observation, so
+        // `struct f(Bool -> List(S))` is accepted.
+        SortExpression::Complex(op, _) => Ok(ControlFlow::Continue(SortDescend::Descend(matches!(
+            op,
+            ComplexSort::Set | ComplexSort::Bag
+        )))),
+        SortExpression::Function { .. } | SortExpression::FlattenedFunction { .. } => {
+            Ok(ControlFlow::Continue(SortDescend::Descend(true)))
+        }
+        SortExpression::Reference(_) => unreachable!("Names must have been resolved"),
+        _ => Ok(ControlFlow::Continue(SortDescend::Descend(observed))),
+    })
+    .map(|_| ())
 }
 
 #[cfg(test)]
@@ -87,18 +142,103 @@ mod tests {
 
     #[test]
     fn test_trivial_alias_cycle() {
-        let spec = UntypedDataSpecification::parse(
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
             "sort S = T;
             T = U;
             U = S;",
-        )
-        .unwrap();
-
-        match DataSpecification::from_untyped(spec) {
+        ).unwrap()) {
             Err(WellTypedError::AliasCycle { sorts })
                 if sorts == vec!["S".to_string(), "T".to_string(), "U".to_string()] => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
+    }
+
+    #[test]
+    fn test_alias_self_loop_through_container() {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort S = List(S);"
+        ).unwrap()) {
+            Err(WellTypedError::AliasCycle { sorts }) if sorts == vec!["S".to_string()] => {}
+            Err(other) => panic!("Unexpected error {:?}", other),
+            _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    #[test]
+    fn test_alias_cycle_through_function_sort() {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort S = List(S -> Bool);"
+        ).unwrap()) {
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(other) => panic!("Unexpected error {:?}", other),
+            _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    #[test]
+    fn test_recursive_struct_is_allowed() {
+        DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort Tree = struct leaf | node(Tree, Tree);"
+        ).unwrap())
+        .expect("recursion through a structured sort is well-defined");
+    }
+
+    #[test]
+    fn test_recursive_struct_through_list_is_allowed() {
+        DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort Forest = struct node(List(Forest));"
+        ).unwrap())
+        .expect("recursion through a List container in a structured sort is allowed");
+    }
+
+    #[test]
+    fn test_recursive_struct_through_function_sort() {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort S = struct f(S -> Bool);"
+        ).unwrap()) {
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(other) => panic!("Unexpected error {:?}", other),
+            _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    #[test]
+    fn test_recursive_struct_through_set() {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort S = struct f(Set(S));"
+        ).unwrap()) {
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(other) => panic!("Unexpected error {:?}", other),
+            _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    #[test]
+    fn test_recursive_struct_through_function_into_list_is_allowed() {
+        DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort S = struct f(Bool -> List(S));"
+        ).unwrap())
+        .expect("a List container resets the function-sort observation, as in mCRL2");
+    }
+
+    #[test]
+    fn test_recursive_struct_through_function_into_set() {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort S = struct f(Bool -> Set(S));"
+        ).unwrap()) {
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(other) => panic!("Unexpected error {:?}", other),
+            _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    #[test]
+    fn test_mutually_recursive_structs_are_allowed() {
+        DataSpecification::from_untyped(UntypedDataSpecification::parse(
+            "sort A = struct f(B);
+            B = struct g(A) | h;",
+        ).unwrap())
+        .expect("mutual recursion through structured sorts is well-defined");
     }
 }
