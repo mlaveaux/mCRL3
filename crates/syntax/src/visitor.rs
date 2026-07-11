@@ -40,6 +40,90 @@ where
     visit_sort_expr_rec(sort_expr, &mut visitor)
 }
 
+/// Controls how [`try_visit_sort_expr_with`] proceeds below the current node.
+pub enum SortDescend<C> {
+    /// Visit the children, passing them the given context.
+    Descend(C),
+    /// Do not visit the children (the visitor handled them itself, or they are
+    /// irrelevant).
+    Prune,
+}
+
+/// Visits all sort expressions top-down while threading a visitor-chosen
+/// context from each node to its children, and allowing subtrees to be pruned.
+///
+/// The context makes position-dependent checks expressible — e.g. "was a
+/// function sort passed on the way here" — which the plain
+/// [`try_visit_sort_expr`] cannot do. Note that all children of a node receive
+/// the same context; if the children need different treatment, handle them in
+/// the visitor and return [`SortDescend::Prune`].
+pub fn try_visit_sort_expr_with<E, T, C, F>(sort_expr: &SortExpression, ctx: C, mut visitor: F) -> Result<Option<T>, E>
+where
+    C: Copy,
+    F: FnMut(&SortExpression, C) -> Result<ControlFlow<T, SortDescend<C>>, E>,
+{
+    visit_sort_expr_with_rec(sort_expr, ctx, &mut visitor)
+}
+
+/// See [`try_visit_sort_expr_with`].
+fn visit_sort_expr_with_rec<E, T, C, F>(sort_expr: &SortExpression, ctx: C, visitor: &mut F) -> Result<Option<T>, E>
+where
+    C: Copy,
+    F: FnMut(&SortExpression, C) -> Result<ControlFlow<T, SortDescend<C>>, E>,
+{
+    let ctx = match visitor(sort_expr, ctx)? {
+        ControlFlow::Break(result) => return Ok(Some(result)),
+        ControlFlow::Continue(SortDescend::Prune) => return Ok(None),
+        ControlFlow::Continue(SortDescend::Descend(ctx)) => ctx,
+    };
+
+    match sort_expr {
+        SortExpression::Product { lhs, rhs } => {
+            if let Some(result) = visit_sort_expr_with_rec(lhs, ctx, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_sort_expr_with_rec(rhs, ctx, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        SortExpression::Function { domain, range } => {
+            if let Some(result) = visit_sort_expr_with_rec(domain, ctx, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_sort_expr_with_rec(range, ctx, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        SortExpression::Struct { inner } => {
+            for constructor in inner {
+                for (_name, sort) in &constructor.args {
+                    if let Some(result) = visit_sort_expr_with_rec(sort, ctx, visitor)? {
+                        return Ok(Some(result));
+                    }
+                }
+            }
+        }
+        SortExpression::Complex(_complex_sort, sort_expression) => {
+            if let Some(result) = visit_sort_expr_with_rec(sort_expression, ctx, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        SortExpression::FlattenedFunction { domain, range } => {
+            for domain_sort in domain {
+                if let Some(result) = visit_sort_expr_with_rec(domain_sort, ctx, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+            if let Some(result) = visit_sort_expr_with_rec(range, ctx, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {}
+    }
+
+    Ok(None)
+}
+
 /// See [`visit_statefrm`].
 fn visit_statefrm_rec<T, F>(formula: &StateFrm, function: &mut F) -> Result<Option<T>, MercError>
 where
@@ -149,9 +233,13 @@ where
         }
         SortExpression::FlattenedFunction { domain, range } => {
             for domain_sort in domain {
-                visit_sort_expr_rec(domain_sort, function)?;
+                if let Some(result) = visit_sort_expr_rec(domain_sort, function)? {
+                    return Ok(Some(result));
+                }
             }
-            visit_sort_expr_rec(range, function)?;
+            if let Some(result) = visit_sort_expr_rec(range, function)? {
+                return Ok(Some(result));
+            }
         }
         SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {}
     }
