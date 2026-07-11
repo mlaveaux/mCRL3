@@ -142,11 +142,14 @@ mod tests {
 
     #[test]
     fn test_trivial_alias_cycle() {
-        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = T;
+        match DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort S = T;
             T = U;
             U = S;",
-        ).unwrap()) {
+            )
+            .unwrap(),
+        ) {
             Err(WellTypedError::AliasCycle { sorts })
                 if sorts == vec!["S".to_string(), "T".to_string(), "U".to_string()] => {}
             Err(other) => panic!("Unexpected error {:?}", other),
@@ -156,9 +159,7 @@ mod tests {
 
     #[test]
     fn test_alias_self_loop_through_container() {
-        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = List(S);"
-        ).unwrap()) {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = List(S);").unwrap()) {
             Err(WellTypedError::AliasCycle { sorts }) if sorts == vec!["S".to_string()] => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -167,9 +168,7 @@ mod tests {
 
     #[test]
     fn test_alias_cycle_through_function_sort() {
-        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = List(S -> Bool);"
-        ).unwrap()) {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = List(S -> Bool);").unwrap()) {
             Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -178,25 +177,24 @@ mod tests {
 
     #[test]
     fn test_recursive_struct_is_allowed() {
-        DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort Tree = struct leaf | node(Tree, Tree);"
-        ).unwrap())
+        DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort Tree = struct leaf | node(Tree, Tree);").unwrap(),
+        )
         .expect("recursion through a structured sort is well-defined");
     }
 
     #[test]
     fn test_recursive_struct_through_list_is_allowed() {
-        DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort Forest = struct node(List(Forest));"
-        ).unwrap())
+        DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort Forest = struct node(List(Forest));").unwrap(),
+        )
         .expect("recursion through a List container in a structured sort is allowed");
     }
 
     #[test]
     fn test_recursive_struct_through_function_sort() {
-        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = struct f(S -> Bool);"
-        ).unwrap()) {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = struct f(S -> Bool);").unwrap())
+        {
             Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -205,9 +203,7 @@ mod tests {
 
     #[test]
     fn test_recursive_struct_through_set() {
-        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = struct f(Set(S));"
-        ).unwrap()) {
+        match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = struct f(Set(S));").unwrap()) {
             Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -216,17 +212,17 @@ mod tests {
 
     #[test]
     fn test_recursive_struct_through_function_into_list_is_allowed() {
-        DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = struct f(Bool -> List(S));"
-        ).unwrap())
+        DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort S = struct f(Bool -> List(S));").unwrap(),
+        )
         .expect("a List container resets the function-sort observation, as in mCRL2");
     }
 
     #[test]
     fn test_recursive_struct_through_function_into_set() {
-        match DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort S = struct f(Bool -> Set(S));"
-        ).unwrap()) {
+        match DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort S = struct f(Bool -> Set(S));").unwrap(),
+        ) {
             Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -235,10 +231,13 @@ mod tests {
 
     #[test]
     fn test_mutually_recursive_structs_are_allowed() {
-        DataSpecification::from_untyped(UntypedDataSpecification::parse(
-            "sort A = struct f(B);
+        DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort A = struct f(B);
             B = struct g(A) | h;",
-        ).unwrap())
+            )
+            .unwrap(),
+        )
         .expect("mutual recursion through structured sorts is well-defined");
     }
 }
