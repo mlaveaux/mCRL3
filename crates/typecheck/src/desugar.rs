@@ -1,5 +1,8 @@
 use std::convert::Infallible;
 
+use log::debug;
+use log::trace;
+
 use merc_syntax::ConstructorDecl;
 use merc_syntax::IdDecl;
 use merc_syntax::Sort;
@@ -102,6 +105,7 @@ impl Hoister {
         }
 
         let name = format!("@struct{}", self.fresh.len());
+        debug!("desugar: hoisted anonymous struct '{body}' as sort '{name}'");
         self.table.push((body.clone(), name.clone()));
         self.fresh.push(SortDecl {
             identifier: name.clone(),
@@ -148,15 +152,18 @@ pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> V
         let sort = SortExpression::Resolved(declaration.identifier.clone(), id);
         // The structured sort becomes an abstract sort carrying its constructors.
         declaration.expr = None;
+        debug!(
+            "desugar: struct '{}' desugared into {} constructor(s)",
+            declaration.identifier,
+            inner.len()
+        );
 
         for constructor in &inner {
             // cons c: A_1 # ... # A_n -> D  (or c: D when it has no arguments).
             let domain = constructor.args.iter().map(|(_, sort)| sort.clone()).collect();
-            constructors.push(IdDecl::new(
-                constructor.name.clone(),
-                function_sort(domain, sort.clone()),
-                Span::default(),
-            ));
+            let constructor_sort = function_sort(domain, sort.clone());
+            trace!("desugar:   cons {}: {constructor_sort}", constructor.name);
+            constructors.push(IdDecl::new(constructor.name.clone(), constructor_sort, Span::default()));
 
             // map is_c: D -> Bool  (recogniser), when one is declared.
             if let Some(recogniser) = &constructor.projection {
@@ -205,6 +212,7 @@ fn function_sort(domain: Vec<SortExpression>, range: SortExpression) -> SortExpr
 /// projection shared by several constructors is generated only once.
 fn push_unique(mappings: &mut Vec<IdDecl>, mapping: IdDecl) {
     if !mappings.contains(&mapping) {
+        trace!("desugar:   map {}: {}", mapping.identifier, mapping.sort);
         mappings.push(mapping);
     }
 }
