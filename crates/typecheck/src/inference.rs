@@ -9,6 +9,7 @@ use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
 use merc_syntax::EqnSpecId;
 use merc_syntax::EquationId;
+use merc_syntax::IdDecl;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
@@ -40,9 +41,11 @@ pub(crate) struct ExprTag;
 /// constraints before the callee's overload disjunction), over the condition,
 /// left-hand side and right-hand side in that order. Container literals number
 /// their members in syntactic order (a bag member before its multiplicity); a
-/// comprehension numbers only its predicate — the bound variable has no id,
-/// like the equation variables. Phase-4 lowering re-walks the same lowered
-/// AST, so this numbering must stay deterministic.
+/// comprehension numbers only its predicate, and a `lambda`/`forall`/`exists`
+/// only its body — the bound variables have no id, like the equation
+/// variables. A `whr` numbers each assignment's right-hand side, in binding
+/// order, before the body. Phase-4 lowering re-walks the same lowered AST, so
+/// this numbering must stay deterministic.
 pub(crate) type ExprId = TagIndex<usize, ExprTag>;
 
 /// What a name (`Id` node) in an equation resolved to.
@@ -61,9 +64,9 @@ pub(crate) enum NameTarget {
 /// The Phase-3 typing result of a single equation (docs/typecheck.md §9).
 #[derive(Debug)]
 pub(crate) enum EquationTyping {
-    /// The equation contains a construct core inference does not cover yet
-    /// (`lambda`, `forall`/`exists`, `whr`); it is left untyped rather than
-    /// rejected.
+    /// The equation binds a variable through a sort core inference does not
+    /// cover yet (an anonymous `struct`, a bare product; see
+    /// [is_supported_binder_sort]); it is left untyped rather than rejected.
     Skipped,
     // Consumed by Phase-4 lowering (docs/typecheck.md §9); exercised by tests only until then.
     #[allow(dead_code)]
@@ -87,6 +90,9 @@ pub enum InferenceError {
 
     #[error("the condition '{condition}' cannot have sort Bool")]
     ConditionNotBool { condition: String },
+
+    #[error("the body '{body}' of a forall/exists must have sort Bool")]
+    QuantifierNotBool { body: String },
 
     #[error("the equation '{equation}' has no valid sort assignment")]
     NoTyping { equation: String },
@@ -398,8 +404,9 @@ enum Constraint {
 
 /// Why constraint generation stopped early.
 enum GenFailure {
-    /// The equation contains a construct deferred to a later phase; the
-    /// equation is skipped rather than rejected.
+    /// A binder in the equation declares a sort core inference does not cover
+    /// yet (see [is_supported_binder_sort]); the equation is skipped rather
+    /// than rejected.
     Unsupported,
     Error(InferenceError),
 }
@@ -594,9 +601,59 @@ impl<'a> ConstraintGenerator<'a> {
                     }));
                 }
             }
-            // Deferred to Phase 4 (binders, docs/typecheck.md §9).
-            DataExpr::Lambda { .. } | DataExpr::Quantifier { .. } | DataExpr::Whr { .. } => {
-                return Err(GenFailure::Unsupported);
+            DataExpr::Lambda { variables, body } => {
+                // The result is a function from the bound variables' declared
+                // sorts to the body's sort (mCRL2's `UnArrowProd`/rebuild in
+                // `TraverseVarConsTypeD`'s lambda case).
+                let function_sort = self.with_binder_scope(variables, |this, sorts| {
+                    let body_sort = this.visit(body)?;
+                    let parameters = sorts.iter().map(|&sort| this.unifier.resolved_node(sort)).collect();
+                    Ok(this.unifier.function(parameters, body_sort))
+                })?;
+                self.bind_fresh(node, function_sort);
+            }
+            DataExpr::Quantifier { op: _, variables, body } => {
+                // A `forall`/`exists` is `Bool`, and requires its body to be
+                // `Bool` too (mCRL2 checks both with `TypeMatchA(Bool, ..)`).
+                let bool_node = self.unifier.resolved_node(self.ctx.sorts.bool_sort());
+                self.with_binder_scope(variables, |this, _sorts| {
+                    let body_sort = this.visit(body)?;
+                    if !this.unifier.unify(&this.ctx.sorts, body_sort, bool_node) {
+                        return Err(GenFailure::Error(InferenceError::QuantifierNotBool {
+                            body: body.to_string(),
+                        }));
+                    }
+                    Ok(())
+                })?;
+                self.bind_fresh(node, bool_node);
+            }
+            DataExpr::Whr { expr, assignments } => {
+                // Each assignment's right-hand side is typed in the outer
+                // scope — bindings do not see each other, only the body does
+                // (mCRL2 types every `WhereElem` against the original
+                // `DeclaredVars`, only extending the context once, for the
+                // body). So every right-hand side is visited first, and only
+                // then are the names shadowed as a batch.
+                // The bound variable's sort is the assignment's own inferred
+                // sort node, so it has no [ExprId] and no declared sort to
+                // resolve, unlike a comprehension/lambda/quantifier binder.
+                let mut bindings = Vec::with_capacity(assignments.len());
+                for assignment in assignments {
+                    let value_node = self.visit(&assignment.expr)?;
+                    bindings.push((assignment.identifier.as_str(), value_node));
+                }
+                let mut shadowed = Vec::with_capacity(bindings.len());
+                for &(name, value_node) in &bindings {
+                    shadowed.push((name, self.variables.insert(name, value_node)));
+                }
+                let body_sort = self.visit(expr)?;
+                for (name, previous) in shadowed.into_iter().rev() {
+                    match previous {
+                        Some(previous) => self.variables.insert(name, previous),
+                        None => self.variables.remove(name),
+                    };
+                }
+                self.bind_fresh(node, body_sort);
             }
             DataExpr::List(_) | DataExpr::Unary { .. } | DataExpr::Binary { .. } | DataExpr::FunctionUpdate { .. } => {
                 unreachable!("lowering rewrote this expression form")
@@ -611,6 +668,40 @@ impl<'a> ConstraintGenerator<'a> {
     fn bind_fresh(&mut self, node: InferSortId, sort: InferSortId) {
         let unified = self.unifier.unify(&self.ctx.sorts, node, sort);
         debug_assert!(unified, "a fresh variable unifies with any sort");
+    }
+
+    /// Resolves the declared sort of each of `variables` (deferring an
+    /// unsupported binder sort, see [Self::binder_sort]) and shadows it in
+    /// `self.variables` for the scope of `f`, restoring the previous bindings
+    /// (or removing them) afterwards — the multi-variable generalization of
+    /// the shadowing done inline for a comprehension's single bound variable.
+    /// Used by `lambda` and `forall`/`exists`, which declare their variables'
+    /// sorts, unlike a `whr` binding whose sort follows from its right-hand side.
+    fn with_binder_scope<T>(
+        &mut self,
+        variables: &'a [IdDecl],
+        f: impl FnOnce(&mut Self, &[ResolvedSortId]) -> Result<T, GenFailure>,
+    ) -> Result<T, GenFailure> {
+        let mut sorts = Vec::with_capacity(variables.len());
+        let mut shadowed = Vec::with_capacity(variables.len());
+        for variable in variables {
+            let sort = self.binder_sort(&variable.sort)?;
+            let node = self.unifier.resolved_node(sort);
+            let name = variable.identifier.as_str();
+            shadowed.push((name, self.variables.insert(name, node)));
+            sorts.push(sort);
+        }
+
+        let result = f(self, &sorts);
+
+        for (name, previous) in shadowed.into_iter().rev() {
+            match previous {
+                Some(previous) => self.variables.insert(name, previous),
+                None => self.variables.remove(name),
+            };
+        }
+
+        result
     }
 
     /// Resolves the declared sort of a comprehension's bound variable onto the
@@ -813,6 +904,9 @@ impl Solver<'_> {
     /// Solves the constraints from `index` onward; returns whether any leaf
     /// was reached below this point.
     fn solve(&mut self, index: usize) -> bool {
+        if self.dominated() {
+            return false;
+        }
         let Some(constraint) = self.constraints.get(index) else {
             self.leaf();
             return true;
@@ -822,6 +916,25 @@ impl Solver<'_> {
             Constraint::Sub(sub) => self.solve_sub(sub, index),
             Constraint::Lit(lit) => self.solve_lit(lit, index),
             Constraint::Comprehension(comprehension) => self.solve_comprehension(comprehension, index),
+        }
+    }
+
+    /// Branch-and-bound pruning: whether the measure accumulated so far is
+    /// already strictly worse, component for component, than the incumbent's
+    /// corresponding prefix. A `Disjunction`/`Comprehension` contributes no
+    /// measure component of its own (every disjunct is tried, so a tie is
+    /// still detected as ambiguity), so without this check every disjunct is
+    /// explored to its leaf even once a strictly better solution is already
+    /// known — on an equation with many independent overloaded operators
+    /// (repeated arithmetic sub-expressions, say) that is exponential in the
+    /// number of disjunctions. Pruning is exact: a prefix that is already
+    /// strictly greater can never become equal or smaller, since earlier
+    /// measure components dominate the lexicographic order, so this changes
+    /// nothing about which typing wins or which equations are ambiguous.
+    fn dominated(&self) -> bool {
+        match &self.best {
+            Some(best) => self.measure.as_slice() > &best.measure[..self.measure.len()],
+            None => false,
         }
     }
 
@@ -1193,9 +1306,69 @@ mod tests {
     }
 
     #[test]
-    fn test_deferred_constructs_are_skipped() {
+    fn test_lambda_infers_function_sort() {
         let spec = typed("map f: Nat -> Bool; eqn f = lambda n: Nat. true;");
-        assert!(matches!(&*spec.equation_typings()[0][0], EquationTyping::Skipped));
+
+        // Ids: 0 = `f`, 1 = `lambda n: Nat. true`, 2 = `true`. The lambda's
+        // own sort is the function from its bound variable's declared sort to
+        // its body's sort; the bound variable `n` has no id of its own.
+        let (sorts, _) = typing(&spec);
+        let interner = &spec.context().sorts;
+        assert_eq!(sorts[0], spec.declaration_sorts().mappings[0]);
+        match interner.get(sorts[1]) {
+            ResolvedSort::Function { domain, range } => {
+                assert_eq!(domain.as_slice(), [interner.nat_sort()]);
+                assert_eq!(*range, interner.bool_sort());
+            }
+            other => panic!("expected a function sort, got {other:?}"),
+        }
+        assert_eq!(sorts[2], interner.bool_sort());
+    }
+
+    #[test]
+    fn test_quantifier_infers_bool_sort() {
+        let spec = typed("map b: Bool; eqn b = forall n: Nat. n >= 0;");
+
+        // A `forall`/`exists` is always `Bool`, regardless of the body.
+        let (sorts, _) = typing(&spec);
+        let interner = &spec.context().sorts;
+        assert_eq!(sorts[0], interner.bool_sort());
+        assert_eq!(sorts[1], interner.bool_sort());
+    }
+
+    #[test]
+    fn test_quantifier_requires_boolean_body() {
+        let error = inference_error("map b: Bool; eqn b = forall n: Nat. n;");
+        assert!(matches!(error, InferenceError::QuantifierNotBool { .. }), "{error}");
+    }
+
+    #[test]
+    fn test_where_binds_variable_to_assignment_sort() {
+        // `x` inside the body takes the sort inferred for its assignment `2`
+        // (here upcast to `Nat`, matching `g`'s declared sort), rather than a
+        // declared binder sort.
+        let spec = typed("map g: Nat; eqn g = (x + 1) whr x = 2 end;");
+        let EquationTyping::Inferred { .. } = &*spec.equation_typings()[0][0] else {
+            panic!("expected an inferred typing");
+        };
+    }
+
+    #[test]
+    fn test_where_assignments_do_not_see_each_other() {
+        // Every assignment's right-hand side is typed against the outer
+        // scope, not against sibling bindings, so `y`'s `x` resolves to the
+        // declared `Nat` variable even though this `whr` also rebinds `x` to
+        // a `Bool` (mCRL2's `TraverseVarConsTypeD` types every `WhereElem`
+        // against the original `DeclaredVars`, only extending the context
+        // once, for the body).
+        let spec = typed("map f: Nat -> Bool; var x: Nat; eqn f(x) = true whr x = false, y = x end;");
+
+        // Ids: 0 = `f(x)`, 1 = `x`, 2 = `f`, 3 = the `whr` expression,
+        // 4 = `false` (the `x` assignment), 5 = `x` (the `y` assignment,
+        // resolved before either name is shadowed), 6 = `true` (the body).
+        let (sorts, _) = typing(&spec);
+        let interner = &spec.context().sorts;
+        assert_eq!(sorts[5], interner.nat_sort());
     }
 
     /// Extracts the inferred sorts and name targets of the first equation.
