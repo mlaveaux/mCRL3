@@ -5,6 +5,7 @@ use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
+use merc_syntax::visit_data_expr;
 use merc_syntax::visit_sort_expr;
 
 use crate::is_supported_binder_sort;
@@ -104,69 +105,37 @@ fn collect_system_sorts_in_spec(
 /// are skipped: inference defers the constructs that bind them, so their
 /// operators are never looked up.
 fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, include_functions: bool) {
-    match expr {
-        DataExpr::SetBagComp { variable, predicate } => {
-            if is_supported_binder_sort(&variable.sort) {
-                collect_system_sorts(&variable.sort, out, include_functions);
-                out.push(SortExpression::Complex(
-                    ComplexSort::Set,
-                    Box::new(variable.sort.clone()),
-                ));
-                out.push(SortExpression::Complex(
-                    ComplexSort::Bag,
-                    Box::new(variable.sort.clone()),
-                ));
-            }
-            collect_system_sorts_in_expr(predicate, out, include_functions);
-        }
-        DataExpr::Lambda { variables, body } | DataExpr::Quantifier { op: _, variables, body } => {
-            for variable in variables {
+    visit_data_expr::<(), _>(expr, |expr| {
+        match expr {
+            DataExpr::SetBagComp { variable, predicate: _ } => {
                 if is_supported_binder_sort(&variable.sort) {
                     collect_system_sorts(&variable.sort, out, include_functions);
+                    out.push(SortExpression::Complex(
+                        ComplexSort::Set,
+                        Box::new(variable.sort.clone()),
+                    ));
+                    out.push(SortExpression::Complex(
+                        ComplexSort::Bag,
+                        Box::new(variable.sort.clone()),
+                    ));
                 }
             }
-            collect_system_sorts_in_expr(body, out, include_functions);
-        }
-        DataExpr::Application { function, arguments } => {
-            collect_system_sorts_in_expr(function, out, include_functions);
-            for argument in arguments {
-                collect_system_sorts_in_expr(argument, out, include_functions);
+            DataExpr::Lambda { variables, body: _ }
+            | DataExpr::Quantifier {
+                op: _,
+                variables,
+                body: _,
+            } => {
+                for variable in variables {
+                    if is_supported_binder_sort(&variable.sort) {
+                        collect_system_sorts(&variable.sort, out, include_functions);
+                    }
+                }
             }
+            _ => {}
         }
-        DataExpr::Unary { op: _, expr } => collect_system_sorts_in_expr(expr, out, include_functions),
-        DataExpr::Binary { op: _, lhs, rhs } => {
-            collect_system_sorts_in_expr(lhs, out, include_functions);
-            collect_system_sorts_in_expr(rhs, out, include_functions);
-        }
-        DataExpr::List(elements) | DataExpr::Set(elements) => {
-            for element in elements {
-                collect_system_sorts_in_expr(element, out, include_functions);
-            }
-        }
-        DataExpr::Bag(elements) => {
-            for element in elements {
-                collect_system_sorts_in_expr(&element.expr, out, include_functions);
-                collect_system_sorts_in_expr(&element.multiplicity, out, include_functions);
-            }
-        }
-        DataExpr::FunctionUpdate { expr, update } => {
-            collect_system_sorts_in_expr(expr, out, include_functions);
-            collect_system_sorts_in_expr(&update.expr, out, include_functions);
-            collect_system_sorts_in_expr(&update.update, out, include_functions);
-        }
-        DataExpr::Whr { expr, assignments } => {
-            collect_system_sorts_in_expr(expr, out, include_functions);
-            for assignment in assignments {
-                collect_system_sorts_in_expr(&assignment.expr, out, include_functions);
-            }
-        }
-        DataExpr::Id(_)
-        | DataExpr::Number(_)
-        | DataExpr::Bool(_)
-        | DataExpr::EmptyList
-        | DataExpr::EmptySet
-        | DataExpr::EmptyBag => {}
-    }
+        ControlFlow::Continue(())
+    });
 }
 
 /// Collects the system-defined sorts in a single sort expression, recursing

@@ -4,7 +4,9 @@ use log::debug;
 use log::trace;
 
 use merc_syntax::ConstructorDecl;
+use merc_syntax::ConstructorId;
 use merc_syntax::IdDecl;
+use merc_syntax::MapId;
 use merc_syntax::Sort;
 use merc_syntax::SortDecl;
 use merc_syntax::SortExpression;
@@ -138,8 +140,8 @@ impl Hoister {
 /// Runs after name resolution, so the generated sorts are already resolved and
 /// flattened, and the structured sort keeps its `DefId`.
 pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> Vec<Vec<ConstructorDecl>> {
-    let mut constructors = Vec::new();
-    let mut mappings = Vec::new();
+    let mut constructors: Vec<IdDecl<ConstructorId>> = Vec::new();
+    let mut mappings: Vec<IdDecl<MapId>> = Vec::new();
     let mut structs = Vec::new();
 
     for declaration in &mut spec.sort_declarations {
@@ -210,7 +212,7 @@ fn function_sort(domain: Vec<SortExpression>, range: SortExpression) -> SortExpr
 
 /// Appends `mapping` unless an identical declaration is already present, so a
 /// projection shared by several constructors is generated only once.
-fn push_unique(mappings: &mut Vec<IdDecl>, mapping: IdDecl) {
+fn push_unique(mappings: &mut Vec<IdDecl<MapId>>, mapping: IdDecl<MapId>) {
     if !mappings.contains(&mapping) {
         trace!("desugar:   map {}: {}", mapping.identifier, mapping.sort);
         mappings.push(mapping);

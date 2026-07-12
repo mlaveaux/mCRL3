@@ -327,7 +327,7 @@ mod tests {
         // declaration sort, or the generated equation would reference the
         // undeclared `S`.
         let spec = UntypedDataSpecification::parse("map f: Set(Nat);").unwrap();
-        let generated = standard_sort(&spec.map_declarations[0].sort).unwrap();
+        let generated = standard_sort(&spec.map_declarations[0].sort);
 
         let equations: Vec<String> = generated
             .equation_declarations
