@@ -1,5 +1,9 @@
 use merc_utilities::MercError;
 
+use crate::Assignment;
+use crate::BagElement;
+use crate::DataExpr;
+use crate::DataExprUpdate;
 use crate::RegFrm;
 use crate::SortExpression;
 use crate::StateFrm;
@@ -23,6 +27,17 @@ where
     F: FnMut(&SortExpression) -> Result<Option<SortExpression>, E>,
 {
     apply_sort_expression_rec(sort_expr, &mut function)
+}
+
+/// Rebuilds a data expression bottom-up: the subexpressions of every node are
+/// mapped first, then `function` is applied to the node with its rebuilt
+/// children. The expression returned by `function` is not traversed again, so
+/// the mapping always terminates.
+pub fn map_data_expr<F>(expr: DataExpr, mut function: F) -> DataExpr
+where
+    F: FnMut(DataExpr) -> DataExpr,
+{
+    map_data_expr_rec(expr, &mut function)
 }
 
 /// Applies the given `function` recursively to the regular formula.
@@ -165,6 +180,90 @@ where
     }
 }
 
+/// See [`map_data_expr`].
+fn map_data_expr_rec<F>(expr: DataExpr, apply: &mut F) -> DataExpr
+where
+    F: FnMut(DataExpr) -> DataExpr,
+{
+    let expr = match expr {
+        DataExpr::Application { function, arguments } => DataExpr::Application {
+            function: Box::new(map_data_expr_rec(*function, apply)),
+            arguments: arguments
+                .into_iter()
+                .map(|argument| map_data_expr_rec(argument, apply))
+                .collect(),
+        },
+        DataExpr::List(elements) => DataExpr::List(
+            elements
+                .into_iter()
+                .map(|element| map_data_expr_rec(element, apply))
+                .collect(),
+        ),
+        DataExpr::Set(elements) => DataExpr::Set(
+            elements
+                .into_iter()
+                .map(|element| map_data_expr_rec(element, apply))
+                .collect(),
+        ),
+        DataExpr::Bag(elements) => DataExpr::Bag(
+            elements
+                .into_iter()
+                .map(|element| BagElement {
+                    expr: map_data_expr_rec(element.expr, apply),
+                    multiplicity: map_data_expr_rec(element.multiplicity, apply),
+                })
+                .collect(),
+        ),
+        DataExpr::SetBagComp { variable, predicate } => DataExpr::SetBagComp {
+            variable,
+            predicate: Box::new(map_data_expr_rec(*predicate, apply)),
+        },
+        DataExpr::Lambda { variables, body } => DataExpr::Lambda {
+            variables,
+            body: Box::new(map_data_expr_rec(*body, apply)),
+        },
+        DataExpr::Quantifier { op, variables, body } => DataExpr::Quantifier {
+            op,
+            variables,
+            body: Box::new(map_data_expr_rec(*body, apply)),
+        },
+        DataExpr::Unary { op, expr } => DataExpr::Unary {
+            op,
+            expr: Box::new(map_data_expr_rec(*expr, apply)),
+        },
+        DataExpr::Binary { op, lhs, rhs } => DataExpr::Binary {
+            op,
+            lhs: Box::new(map_data_expr_rec(*lhs, apply)),
+            rhs: Box::new(map_data_expr_rec(*rhs, apply)),
+        },
+        DataExpr::FunctionUpdate { expr, update } => DataExpr::FunctionUpdate {
+            expr: Box::new(map_data_expr_rec(*expr, apply)),
+            update: Box::new(DataExprUpdate {
+                expr: map_data_expr_rec(update.expr, apply),
+                update: map_data_expr_rec(update.update, apply),
+            }),
+        },
+        DataExpr::Whr { expr, assignments } => DataExpr::Whr {
+            expr: Box::new(map_data_expr_rec(*expr, apply)),
+            assignments: assignments
+                .into_iter()
+                .map(|assignment| Assignment {
+                    identifier: assignment.identifier,
+                    expr: map_data_expr_rec(assignment.expr, apply),
+                })
+                .collect(),
+        },
+        DataExpr::Id(_)
+        | DataExpr::Number(_)
+        | DataExpr::Bool(_)
+        | DataExpr::EmptyList
+        | DataExpr::EmptySet
+        | DataExpr::EmptyBag => expr,
+    };
+
+    apply(expr)
+}
+
 /// See [`apply_sort_expression`].
 fn apply_sort_expression_rec<E, F>(sort_expr: SortExpression, apply: &mut F) -> Result<SortExpression, E>
 where
@@ -227,10 +326,13 @@ where
 mod tests {
     use std::vec;
 
+    use crate::DataExpr;
+    use crate::DataExprBinaryOp;
     use crate::StateFrm;
     use crate::UntypedStateFrmSpec;
 
     use super::apply_statefrm;
+    use super::map_data_expr;
 
     #[test]
     fn test_visit_state_frm_variables() {
@@ -247,5 +349,24 @@ mod tests {
         .unwrap();
 
         assert_eq!(variables, vec!["X", "X", "Y"]);
+    }
+
+    /// Children are mapped before their parent: rewriting the addition to its
+    /// left operand yields the already-mapped operand.
+    #[test]
+    fn test_map_data_expr_maps_bottom_up() {
+        let expr = DataExpr::parse("x + z").unwrap();
+
+        let mapped = map_data_expr(expr, |expr| match expr {
+            DataExpr::Id(name) if name == "x" => DataExpr::Number("1".to_string()),
+            DataExpr::Binary {
+                op: DataExprBinaryOp::Add,
+                lhs,
+                rhs: _,
+            } => *lhs,
+            expr => expr,
+        });
+
+        assert_eq!(mapped, DataExpr::Number("1".to_string()));
     }
 }
