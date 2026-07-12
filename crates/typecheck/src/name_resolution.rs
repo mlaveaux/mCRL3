@@ -5,8 +5,12 @@ use std::ops::ControlFlow;
 use log::debug;
 
 use merc_collections::IndexedSet;
+use merc_syntax::ConstructorId;
 use merc_syntax::DataExpr;
 use merc_syntax::DefId;
+use merc_syntax::EqnSpecId;
+use merc_syntax::EquationId;
+use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
@@ -51,6 +55,27 @@ pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<Index
     map_sorts_in_spec(spec, |sort| resolve_sort_id(sort, &sorts))?;
 
     Ok(sorts)
+}
+
+/// Assigns a unique id to every constructor declaration, map declaration,
+/// equation specification block and equation, mirroring the [DefId] that
+/// [resolve_names] assigns to sort declarations. Unlike sort declarations,
+/// these lists can grow after name resolution (struct desugaring appends
+/// further constructors and mappings), so this must run after
+/// `desugar_structured_sorts` rather than as part of [resolve_names].
+pub(crate) fn assign_declaration_ids(spec: &mut UntypedDataSpecification) {
+    for (i, decl) in spec.constructor_declarations.iter_mut().enumerate() {
+        decl.id = Some(ConstructorId::new(i));
+    }
+    for (i, decl) in spec.map_declarations.iter_mut().enumerate() {
+        decl.id = Some(MapId::new(i));
+    }
+    for (i, eqn_spec) in spec.equation_declarations.iter_mut().enumerate() {
+        eqn_spec.id = Some(EqnSpecId::new(i));
+        for (j, equation) in eqn_spec.equations.iter_mut().enumerate() {
+            equation.id = Some(EquationId::new(j));
+        }
+    }
 }
 
 // Apply a mapping function to every sort in the specification, including the
@@ -121,7 +146,8 @@ where
     Ok(())
 }
 
-/// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
+/// Rewrites every `Reference` node of `sort` to `Resolved(name, DefId)` using
+/// the sort-name index built by [resolve_names], or fails on an undeclared name.
 fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Result<SortExpression, WellTypedError> {
     apply_sort_expression(sort.clone(), |expr| {
         if let SortExpression::Reference(name) = expr {
@@ -138,7 +164,11 @@ fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use merc_syntax::ConstructorId;
     use merc_syntax::DataExpr;
+    use merc_syntax::EqnSpecId;
+    use merc_syntax::EquationId;
+    use merc_syntax::MapId;
     use merc_syntax::SortExpression;
     use merc_syntax::UntypedDataSpecification;
 
@@ -213,5 +243,59 @@ mod tests {
             Err(other) => panic!("unexpected error {other:?}"),
             _ => panic!("expected from_untyped to fail"),
         }
+    }
+
+    /// Constructor and map declarations get their own id, distinct from sort
+    /// [DefId]s, assigned after struct desugaring so the constructors it
+    /// generates (`c1`, `c2`) are covered too. Equation specification blocks
+    /// and the equations within them get an id as well, the latter local to
+    /// its enclosing block.
+    #[test]
+    fn test_declarations_get_distinct_ids() {
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort D = struct c1 | c2;
+                 map f: D -> Bool;
+                     g: D -> Bool;
+                 var x: D;
+                 eqn f(x) = true;
+                     g(x) = false;
+                 var y: D;
+                 eqn f(y) = g(y);",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        let data = spec.data_specification();
+
+        let constructor_ids: Vec<_> = data.constructor_declarations.iter().map(|decl| decl.id).collect();
+        assert_eq!(
+            constructor_ids,
+            vec![Some(ConstructorId::new(0)), Some(ConstructorId::new(1))]
+        );
+
+        let map_ids: Vec<_> = data.map_declarations.iter().map(|decl| decl.id).collect();
+        assert_eq!(map_ids, vec![Some(MapId::new(0)), Some(MapId::new(1))]);
+
+        assert_eq!(data.equation_declarations[0].id, Some(EqnSpecId::new(0)));
+        assert_eq!(
+            data.equation_declarations[0]
+                .equations
+                .iter()
+                .map(|eqn| eqn.id)
+                .collect::<Vec<_>>(),
+            vec![Some(EquationId::new(0)), Some(EquationId::new(1))]
+        );
+
+        assert_eq!(data.equation_declarations[1].id, Some(EqnSpecId::new(1)));
+        assert_eq!(
+            data.equation_declarations[1]
+                .equations
+                .iter()
+                .map(|eqn| eqn.id)
+                .collect::<Vec<_>>(),
+            vec![Some(EquationId::new(0))]
+        );
     }
 }

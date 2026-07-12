@@ -13,9 +13,9 @@ use crate::AliasError;
 use crate::DeclarationSorts;
 use crate::EquationTyping;
 use crate::Signature;
-use crate::SystemSortNames;
 use crate::TypeckContext;
 use crate::WellTypedError;
+use crate::assign_declaration_ids;
 use crate::basic_sort_data_specification;
 use crate::build_system_defined_specification;
 use crate::check_aliases;
@@ -44,10 +44,6 @@ pub struct DataSpecification {
     system: UntypedDataSpecification,
     context: TypeckContext,
     declaration_sorts: DeclarationSorts,
-    /// The display names of the system-internal sorts (`@NatPair`, ...).
-    // Consumed by the sort rendering of inference errors (docs/typecheck.md §9).
-    #[allow(dead_code)]
-    system_sort_names: SystemSortNames,
     equation_typings: Vec<Vec<Rc<EquationTyping>>>,
 }
 
@@ -102,6 +98,10 @@ impl DataSpecification {
             structs.len(),
             structs.iter().map(Vec::len).sum::<usize>()
         );
+
+        // Assign ids to the constructor, map and equation declarations, now
+        // that desugaring has appended every constructor/map it generates.
+        assign_declaration_ids(&mut spec);
 
         // Compute the (S, C, M) signature and run the signature-layer checks of
         // 15.1.7 (docs/typecheck.md §5 stage 2). This runs before alias
@@ -173,7 +173,7 @@ impl DataSpecification {
         // every element sort — so their per-sort instantiations (part of
         // `system`, for the equations) are deliberately not resolved into the
         // signature: listing an operation both ways would misreport ambiguity.
-        let system_sort_names = resolve_system_signature(&mut context, &spec, &basics)?;
+        resolve_system_signature(&mut context, &spec, &basics)?;
         debug!("typecheck: resolved the system signature");
 
         // Phase-3 core inference over the user equations (docs/typecheck.md
@@ -187,7 +187,6 @@ impl DataSpecification {
             system,
             context,
             declaration_sorts,
-            system_sort_names,
             equation_typings,
         })
     }
@@ -278,7 +277,8 @@ pub(crate) fn argument_sorts(sort: &SortExpression) -> &[SortExpression] {
     }
 }
 
-/// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
+/// Rewrites every `Function` node of `sort` into a `FlattenedFunction` whose
+/// domain is the flattened `Product` spine (`(A#B)->C` becomes `A#B->C`).
 fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
     apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible> {
         if let SortExpression::Function { domain, range } = expr {
@@ -313,6 +313,8 @@ fn flatten_function_domain_rec(sort: &SortExpression, domain: &mut Vec<SortExpre
 mod tests {
     use std::rc::Rc;
 
+    use merc_syntax::EqnSpecId;
+    use merc_syntax::EquationId;
     use merc_syntax::UntypedDataSpecification;
 
     use crate::DataSpecification;
@@ -324,8 +326,13 @@ mod tests {
         let mut checked = DataSpecification::from_untyped(spec).unwrap();
 
         let first = Rc::clone(&checked.equation_typings[0][0]);
-        let again =
-            query_equation_typing(&mut checked.context, &checked.spec, &checked.declaration_sorts, (0, 0)).unwrap();
+        let again = query_equation_typing(
+            &mut checked.context,
+            &checked.spec,
+            &checked.declaration_sorts,
+            (EqnSpecId::new(0), EquationId::new(0)),
+        )
+        .unwrap();
         assert!(Rc::ptr_eq(&first, &again));
     }
 }

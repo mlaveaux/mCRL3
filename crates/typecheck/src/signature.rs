@@ -52,8 +52,13 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
     for sort in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
         check_products_within_domains(sort)?;
     }
-    for decl in spec.constructor_declarations.iter().chain(&spec.map_declarations) {
-        check_products_within_domains(&decl.sort)?;
+    for sort in spec
+        .constructor_declarations
+        .iter()
+        .map(|decl| &decl.sort)
+        .chain(spec.map_declarations.iter().map(|decl| &decl.sort))
+    {
+        check_products_within_domains(sort)?;
     }
 
     let mut signature = Signature {

@@ -7,6 +7,8 @@ use merc_syntax::Sort;
 use merc_syntax::UntypedDataSpecification;
 use merc_utilities::TagIndex;
 
+use crate::TypeckContext;
+
 /// A unique type for interned resolved sorts.
 pub(crate) struct ResolvedSortTag;
 
@@ -106,22 +108,26 @@ pub(crate) fn number_sort_from_generality(generality: u32) -> Sort {
 }
 
 /// Renders a resolved sort for debug logging. Nominal sorts take their name
-/// from the user declarations; a [DefId] outside them (a system-internal sort,
-/// see [crate::SystemSortNames]) is rendered by its index.
-pub(crate) fn display_sort(sorts: &SortInterner, spec: &UntypedDataSpecification, id: ResolvedSortId) -> String {
-    match sorts.get(id) {
+/// from the user declarations, falling back to [TypeckContext::system_sort_names]
+/// for a system-internal sort (`@NatPair`, ...) and finally to a bare index.
+pub(crate) fn display_sort(ctx: &TypeckContext, spec: &UntypedDataSpecification, id: ResolvedSortId) -> String {
+    match ctx.sorts.get(id) {
         ResolvedSort::Unit => "@Unit".to_string(),
         ResolvedSort::Primitive(sort) => sort.to_string(),
-        ResolvedSort::Generic { op, subsort } => format!("{op}({})", display_sort(sorts, spec, *subsort)),
+        ResolvedSort::Generic { op, subsort } => format!("{op}({})", display_sort(ctx, spec, *subsort)),
         ResolvedSort::Function { domain, range } => {
-            let domain: Vec<String> = domain.iter().map(|sort| display_sort(sorts, spec, *sort)).collect();
-            format!("{} -> {}", domain.join(" # "), display_sort(sorts, spec, *range))
+            let domain: Vec<String> = domain.iter().map(|sort| display_sort(ctx, spec, *sort)).collect();
+            format!("{} -> {}", domain.join(" # "), display_sort(ctx, spec, *range))
         }
-        ResolvedSort::Def(def) => spec
-            .sort_declarations
-            .get(**def)
-            .map(|decl| decl.identifier.clone())
-            .unwrap_or_else(|| format!("@sort_{}", **def)),
+        ResolvedSort::Def(def) => {
+            if let Some(decl) = spec.sort_declarations.get(**def) {
+                decl.identifier.clone()
+            } else if let Some(name) = ctx.system_sort_names.as_ref().and_then(|names| names.name(*def)) {
+                name.to_string()
+            } else {
+                format!("@sort_{}", **def)
+            }
+        }
     }
 }
 
@@ -241,10 +247,6 @@ impl SortInterner {
     }
 }
 
-// The lattice queries below are the Phase-3 inference vocabulary
-// (docs/typecheck.md §9); until that phase lands they are exercised by tests
-// only, so they are not dead-code roots for the library build.
-#[allow(dead_code)]
 impl SortInterner {
     /// Returns the resolved sort denoted by an id.
     ///
@@ -259,6 +261,10 @@ impl SortInterner {
         &self.arena[*id]
     }
 
+    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9):
+    // rendering the `Unit` sort and the `Int`/`Real` literals of an inserted
+    // cast. Exercised by tests only until then.
+    #[allow(dead_code)]
     pub(crate) fn unit_sort(&self) -> ResolvedSortId {
         self.unit_sort
     }
@@ -275,15 +281,21 @@ impl SortInterner {
         self.nat_sort
     }
 
+    #[allow(dead_code)]
     pub(crate) fn int_sort(&self) -> ResolvedSortId {
         self.int_sort
     }
 
+    #[allow(dead_code)]
     pub(crate) fn real_sort(&self) -> ResolvedSortId {
         self.real_sort
     }
 
     /// Compares two sorts by the sub-sort ordering.
+    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9),
+    // which needs the ordering to decide which side of an equation a cast
+    // belongs on; exercised by tests only until then.
+    #[allow(dead_code)]
     pub(crate) fn partial_cmp(&self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<Ordering> {
         if lhs == rhs {
             return Some(Ordering::Equal);
@@ -296,6 +308,10 @@ impl SortInterner {
     ///
     /// This operation is commutative, associative and idempotent. It does not
     /// report errors, it simply returns `None`.
+    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9);
+    // inference widens via `Unifier::strict_super_sorts` instead of this
+    // lattice join, so it is exercised by tests only until then.
+    #[allow(dead_code)]
     pub(crate) fn join(&mut self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<ResolvedSortId> {
         if lhs == rhs {
             return Some(lhs);
@@ -337,6 +353,9 @@ impl SortInterner {
 
     /// Finds the greatest common subsort of two sorts, or `None` when they are
     /// incomparable.
+    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9),
+    // the dual of `join`; exercised by tests only until then.
+    #[allow(dead_code)]
     pub(crate) fn meet(&mut self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<ResolvedSortId> {
         if lhs == rhs {
             return Some(lhs);
