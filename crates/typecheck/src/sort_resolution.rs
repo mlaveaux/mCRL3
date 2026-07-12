@@ -1,23 +1,30 @@
+use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
+use merc_syntax::EqnSpecId;
+use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::ResolvedSortId;
 use crate::TypeckContext;
 
-/// The resolved sorts of every declaration in a checked specification, stored
-/// positionally because constructor and map declarations carry no [DefId] (only
-/// sort declarations do).
+/// The resolved sorts of every declaration in a checked specification,
+/// indexed by the declaration's own id (assigned by
+/// [assign_declaration_ids](crate::assign_declaration_ids), which must run
+/// before this query): [ConstructorId] for `constructors`, [MapId] for
+/// `mappings`, [EqnSpecId] for `equation_variables`. Since those ids are
+/// themselves assigned 0..len in declaration order, each vector is stored
+/// directly indexable by its id rather than through a separate map.
 ///
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content (see G3 in `docs/typecheck.md`).
 pub(crate) struct DeclarationSorts {
-    /// Parallel to `constructor_declarations`.
+    /// Indexed by [ConstructorId].
     pub(crate) constructors: Vec<ResolvedSortId>,
-    /// Parallel to `map_declarations`.
+    /// Indexed by [MapId].
     pub(crate) mappings: Vec<ResolvedSortId>,
-    /// Parallel to `equation_declarations`; the inner vector is parallel to the
-    /// equation's variable list.
+    /// Indexed by [EqnSpecId]; the inner vector is parallel to that block's
+    /// variable list.
     pub(crate) equation_variables: Vec<Vec<ResolvedSortId>>,
 }
 
@@ -52,6 +59,27 @@ pub(crate) fn resolve_declaration_sorts(ctx: &mut TypeckContext, spec: &UntypedD
             .collect(),
     };
 
+    debug_assert!(
+        spec.constructor_declarations
+            .iter()
+            .enumerate()
+            .all(|(i, decl)| decl.id == Some(ConstructorId::new(i))),
+        "assign_declaration_ids must have run over the final constructor_declarations list"
+    );
+    debug_assert!(
+        spec.map_declarations
+            .iter()
+            .enumerate()
+            .all(|(i, decl)| decl.id == Some(MapId::new(i))),
+        "assign_declaration_ids must have run over the final map_declarations list"
+    );
+    debug_assert!(
+        spec.equation_declarations
+            .iter()
+            .enumerate()
+            .all(|(i, eqn_spec)| eqn_spec.id == Some(EqnSpecId::new(i))),
+        "assign_declaration_ids must have run over equation_declarations"
+    );
     debug_assert_eq!(result.constructors.len(), spec.constructor_declarations.len());
     debug_assert_eq!(result.mappings.len(), spec.map_declarations.len());
     debug_assert_eq!(result.equation_variables.len(), spec.equation_declarations.len());

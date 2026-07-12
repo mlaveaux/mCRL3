@@ -27,32 +27,33 @@ pub(crate) struct SystemSortNames {
 
 impl SystemSortNames {
     /// The name of a system-internal sort, or `None` for a user [DefId].
-    // Consumed by the sort rendering of inference errors (docs/typecheck.md §9).
-    #[allow(dead_code)]
     pub(crate) fn name(&self, def: DefId) -> Option<&str> {
         self.names.get(&def).map(String::as_str)
     }
 }
 
-/// Resolves the constructor and mapping declarations of the system-defined
-/// specification onto the interned sort lattice, giving Phase-3 inference the
-/// overload sets of the built-in operators (`&&`, `+`, `|>`, ...). Stored as
-/// [TypeckContext::system_signature]; the returned [SystemSortNames] name the
-/// fresh ids minted for the system-internal sorts.
+/// Resolves the constructor and mapping declarations of the *basic-sort* part
+/// of the system-defined specification onto the interned sort lattice, giving
+/// Phase-3 inference the overload sets of the built-in operators (`&&`, `+`,
+/// …). Stores [TypeckContext::system_signature] and
+/// [TypeckContext::system_sort_names] (the fresh ids minted for the
+/// system-internal sorts, e.g. `@NatPair`).
+///
+/// `system` must be the *basic-sort* specification ([basic_sort_data_specification]),
+/// not the full system-defined specification `build_system_defined_specification`
+/// produces: the container operations are looked up polymorphically instead
+/// (`POLYMORPHIC_SIGNATURE`), because resolving their per-sort instantiations
+/// here as well would misreport ambiguity (a name would have both a concrete
+/// and a polymorphic candidate for the same sort).
 ///
 /// Unlike `query_signature` this runs no well-typedness checks: the system
 /// specification is trusted content, and legitimately declares things a user
 /// cannot, such as constructors for the basic sorts (`@c0: Nat`).
-///
-/// Requires `system` to be built by `build_system_defined_specification` from
-/// the normalized `user_spec`: sorts substituted into the Appendix-B templates
-/// are then `Resolved` nodes of the user specification, so only the
-/// system-internal names (`@NatPair`) remain as `Reference` nodes.
 pub(crate) fn resolve_system_signature(
     ctx: &mut TypeckContext,
     user_spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
-) -> Result<SystemSortNames, WellTypedError> {
+) -> Result<(), WellTypedError> {
     // The system specification re-declares the basic sorts (`sort Bool;`),
     // which already resolve as primitives; only the remaining declarations
     // denote system-internal nominal sorts.
@@ -88,7 +89,8 @@ pub(crate) fn resolve_system_signature(
     }
 
     ctx.system_signature = Some(Rc::new(signature));
-    Ok(SystemSortNames { names })
+    ctx.system_sort_names = Some(SystemSortNames { names });
+    Ok(())
 }
 
 fn is_basic_sort_name(name: &str) -> bool {
@@ -113,14 +115,20 @@ pub(crate) struct PolymorphicSignature {
 pub(crate) static POLYMORPHIC_SIGNATURE: LazyLock<PolymorphicSignature> = LazyLock::new(|| {
     let mut ops: HashMap<String, Vec<SortExpression>> = HashMap::new();
     for template in CONTAINER_TEMPLATES.all() {
-        for decl in template
+        for (identifier, sort) in template
             .constructor_declarations
             .iter()
-            .chain(&template.map_declarations)
+            .map(|decl| (&decl.identifier, &decl.sort))
+            .chain(
+                template
+                    .map_declarations
+                    .iter()
+                    .map(|decl| (&decl.identifier, &decl.sort)),
+            )
         {
-            let overloads = ops.entry(decl.identifier.clone()).or_default();
-            if !overloads.contains(&decl.sort) {
-                overloads.push(decl.sort.clone());
+            let overloads = ops.entry(identifier.clone()).or_default();
+            if !overloads.contains(sort) {
+                overloads.push(sort.clone());
             }
         }
     }
@@ -203,24 +211,24 @@ mod tests {
 
     use crate::DataSpecification;
     use crate::ResolvedSort;
-    use crate::SystemSortNames;
     use crate::TypeckContext;
     use crate::WellTypedError;
+    use crate::basic_sort_data_specification;
     use crate::resolve_system_signature;
 
-    /// Type checks `text` and resolves the system signature of its
-    /// system-defined specification in a fresh context.
-    fn resolve(text: &str) -> (DataSpecification, TypeckContext, SystemSortNames) {
+    /// Type checks `text` and resolves the basic-sort system signature in a
+    /// fresh context, as `DataSpecification::from_untyped` does.
+    fn resolve(text: &str) -> (DataSpecification, TypeckContext) {
         let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse(text).unwrap()).unwrap();
         let mut ctx = TypeckContext::new();
-        let names =
-            resolve_system_signature(&mut ctx, spec.data_specification(), spec.system_defined_specification()).unwrap();
-        (spec, ctx, names)
+        let basics = basic_sort_data_specification();
+        resolve_system_signature(&mut ctx, spec.data_specification(), &basics).unwrap();
+        (spec, ctx)
     }
 
     #[test]
     fn test_boolean_operators_are_resolved() {
-        let (_, ctx, _) = resolve("map f: Bool;");
+        let (_, ctx) = resolve("map f: Bool;");
         let signature = ctx.system_signature.as_ref().unwrap();
 
         let bool_sort = ctx.sorts.primitive(Sort::Bool);
@@ -238,16 +246,27 @@ mod tests {
     fn test_overloads_are_collected() {
         // Appendix B declares `max` for Pos # Nat, Nat # Pos and Nat # Nat
         // (and more through Int), all collected as one overloaded name.
-        let (_, ctx, _) = resolve("map f: Nat;");
+        let (_, ctx) = resolve("map f: Nat;");
         let signature = ctx.system_signature.as_ref().unwrap();
         assert!(signature.mappings["max"].len() >= 3);
     }
 
     #[test]
     fn test_template_instantiation_carries_user_sorts() {
-        // The list template is instantiated with the user sort `D`, so the
-        // cons operator `|>` resolves to `D # List(D) -> List(D)`.
-        let (spec, mut ctx, _) = resolve("sort D = struct s; map f: List(D);");
+        // `resolve_system_sort`'s handling of `Resolved` nodes, exercised
+        // directly: production only ever feeds `resolve_system_signature` the
+        // basic-sort spec (see its doc comment), so this instantiates the
+        // full system-defined spec — containers included — in an isolated
+        // context to check the substitution logic itself. The list template
+        // instantiated with the user sort `D` should resolve `|>` to
+        // `D # List(D) -> List(D)`.
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort D = struct s; map f: List(D);").unwrap(),
+        )
+        .unwrap();
+        let mut ctx = TypeckContext::new();
+        resolve_system_signature(&mut ctx, spec.data_specification(), spec.system_defined_specification()).unwrap();
+
         let def = DefId::new(*spec.sorts().index("D").unwrap());
         let d = ctx.sorts.def(def);
         let d_list = ctx.sorts.generic(ComplexSort::List, d);
@@ -261,7 +280,7 @@ mod tests {
     fn test_system_internal_sort_gets_fresh_def() {
         // `@NatPair` exists only in the system specification; it gets a nominal
         // id past the user declarations, and its name is kept for display.
-        let (spec, ctx, names) = resolve("sort D; map f: D;");
+        let (spec, ctx) = resolve("sort D; map f: D;");
         let signature = ctx.system_signature.as_ref().unwrap();
 
         let pair_constructor = signature.constructors["@cPair"][0];
@@ -272,6 +291,7 @@ mod tests {
             panic!("expected a nominal sort");
         };
         assert!(**def >= spec.data_specification().sort_declarations.len());
+        let names = ctx.system_sort_names.as_ref().unwrap();
         assert_eq!(names.name(*def), Some("@NatPair"));
     }
 
