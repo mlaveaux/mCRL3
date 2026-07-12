@@ -1,10 +1,16 @@
 use std::collections::HashSet;
+use std::convert::Infallible;
+use std::ops::ControlFlow;
+
+use log::debug;
 
 use merc_collections::IndexedSet;
+use merc_syntax::DataExpr;
 use merc_syntax::DefId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
+use merc_syntax::try_visit_data_expr_mut;
 
 use crate::WellTypedError;
 
@@ -16,8 +22,15 @@ pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<Index
     // (sort_specification::add_alias), so repeated identical declarations are
     // accepted; conflicting redeclarations still fail below.
     let mut seen = HashSet::new();
+    let before = spec.sort_declarations.len();
     spec.sort_declarations
         .retain(|decl| seen.insert((decl.identifier.clone(), decl.expr.clone())));
+    if spec.sort_declarations.len() < before {
+        debug!(
+            "resolve_names: deduplicated {} identical sort declaration(s)",
+            before - spec.sort_declarations.len()
+        );
+    }
 
     // Every sort declaration should have a unique name.
     let mut sorts = IndexedSet::new();
@@ -25,6 +38,7 @@ pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<Index
     // Assign unique IDs to all sort declarations
     for (i, sort) in spec.sort_declarations.iter_mut().enumerate() {
         sort.id = Some(DefId::new(i));
+        debug!("resolve_names: sort '{}' declared as id {i}", sort.identifier);
 
         if !sorts.insert(sort.identifier.clone()).1 {
             return Err(WellTypedError::DuplicateSortDeclaration {
@@ -39,7 +53,10 @@ pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<Index
     Ok(sorts)
 }
 
-// Apply a mapping function to every sort in the specification.
+// Apply a mapping function to every sort in the specification, including the
+// binder sorts inside equation expressions, so the sort passes (flattening,
+// name resolution, normalization) treat `{ x: S | .. }` and `lambda x: S. ..`
+// like any declaration-level sort.
 pub(crate) fn map_sorts_in_spec<E, F>(spec: &mut UntypedDataSpecification, mut f: F) -> Result<(), E>
 where
     F: FnMut(&SortExpression) -> Result<SortExpression, E>,
@@ -63,7 +80,43 @@ where
         for var in &mut equation.variables {
             var.sort = f(&var.sort)?;
         }
+        for eqn in &mut equation.equations {
+            if let Some(condition) = &mut eqn.condition {
+                map_sorts_in_data_expr(condition, &mut f)?;
+            }
+            map_sorts_in_data_expr(&mut eqn.lhs, &mut f)?;
+            map_sorts_in_data_expr(&mut eqn.rhs, &mut f)?;
+        }
     }
+
+    Ok(())
+}
+
+/// Applies `f` to every binder sort (lambda, quantifier and set/bag
+/// comprehension variables) inside a data expression.
+fn map_sorts_in_data_expr<E, F>(expr: &mut DataExpr, f: &mut F) -> Result<(), E>
+where
+    F: FnMut(&SortExpression) -> Result<SortExpression, E>,
+{
+    let _: Option<Infallible> = try_visit_data_expr_mut(expr, |expr| {
+        match expr {
+            DataExpr::Lambda { variables, body: _ }
+            | DataExpr::Quantifier {
+                op: _,
+                variables,
+                body: _,
+            } => {
+                for variable in variables {
+                    variable.sort = f(&variable.sort)?;
+                }
+            }
+            DataExpr::SetBagComp { variable, predicate: _ } => {
+                variable.sort = f(&variable.sort)?;
+            }
+            _ => {}
+        }
+        Ok(ControlFlow::Continue(()))
+    })?;
 
     Ok(())
 }
@@ -123,12 +176,10 @@ mod tests {
     }
 
     /// Locks the resolution boundary documented on
-    /// `DataSpecification::data_specification`: name resolution rewrites the
-    /// declaration-level sorts, but leaves sorts on binders inside equation
-    /// bodies as `Reference`s (they are resolved later during data-expression
-    /// type checking).
+    /// `DataSpecification::data_specification`: name resolution covers the
+    /// binder sorts inside equation bodies like any declaration-level sort.
     #[test]
-    fn test_equation_body_binder_sorts_are_not_resolved() {
+    fn test_equation_body_binder_sorts_are_resolved() {
         let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse(
                 "sort D = struct d1 | d2;
@@ -145,10 +196,22 @@ mod tests {
         // The declaration-level variable `x: D` is resolved.
         assert!(matches!(equation.variables[0].sort, SortExpression::Resolved(_, _)));
 
-        // The quantifier binder `y: D` in the body is still an unresolved reference.
+        // The quantifier binder `y: D` in the body is resolved as well.
         let DataExpr::Quantifier { variables, .. } = &equation.equations[0].rhs else {
             panic!("expected a quantifier body, got {:?}", equation.equations[0].rhs);
         };
-        assert!(matches!(variables[0].sort, SortExpression::Reference(_)));
+        assert!(matches!(variables[0].sort, SortExpression::Resolved(_, _)));
+    }
+
+    /// An undeclared sort on a binder inside an equation body is rejected like
+    /// an undeclared sort anywhere else.
+    #[test]
+    fn test_undeclared_binder_sort_is_rejected() {
+        let spec = UntypedDataSpecification::parse("map s: Set(Nat); eqn s = { n: Undeclared | true };").unwrap();
+        match DataSpecification::from_untyped(spec) {
+            Err(WellTypedError::UndefinedSort { sort }) if sort == "Undeclared" => {}
+            Err(other) => panic!("unexpected error {other:?}"),
+            _ => panic!("expected from_untyped to fail"),
+        }
     }
 }
