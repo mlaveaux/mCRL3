@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 
 use thiserror::Error;
@@ -34,7 +35,15 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
         check_products_within_domains(&decl.sort)?;
     }
     for equation in &spec.equation_declarations {
+        // Inference resolves a variable by name, so a duplicate would silently
+        // shadow the earlier declaration; mCRL2 rejects the block outright.
+        let mut names = HashSet::new();
         for var in &equation.variables {
+            if !names.insert(var.identifier.as_str()) {
+                return Err(WellTypedError::DuplicateEquationVariable {
+                    variable: var.identifier.clone(),
+                });
+            }
             check_products_within_domains(&var.sort)?;
         }
     }
@@ -106,6 +115,9 @@ pub enum WellTypedError {
 
     #[error("A product sort '{}' may only appear as the domain of a function sort", sort)]
     ProductSortOutsideFunctionDomain { sort: String },
+
+    #[error("The variable '{}' occurs multiple times in a var block", variable)]
+    DuplicateEquationVariable { variable: String },
 
     #[error("Alias cycle detected: {:?}", sorts)]
     AliasCycle { sorts: Vec<String> },
@@ -227,6 +239,26 @@ mod tests {
                 if constructor == "f" && sort == "Nat" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
+        }
+    }
+
+    /// Inference resolves variables by name, so without this check a
+    /// duplicate would win by declaration order: `var n: Bool; n: Nat;` was
+    /// accepted (the later `n: Nat` shadowing the earlier declaration) while
+    /// the swapped order was rejected with a misleading no-typing error.
+    /// mCRL2 rejects both ("The variable n occurs multiple times").
+    #[test]
+    fn test_duplicate_equation_variable_is_rejected() {
+        for text in [
+            "map f: Nat -> Bool; var n: Bool; n: Nat; eqn f(n) = true;",
+            "map f: Nat -> Bool; var n: Nat; n: Bool; eqn f(n) = true;",
+        ] {
+            let spec = UntypedDataSpecification::parse(text).unwrap();
+            match DataSpecification::from_untyped(spec) {
+                Err(WellTypedError::DuplicateEquationVariable { variable }) if variable == "n" => {}
+                Err(other) => panic!("Unexpected error {:?}", other),
+                _ => panic!("Expected from_untyped to fail"),
+            }
         }
     }
 
