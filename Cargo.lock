@@ -1046,6 +1046,7 @@ dependencies = [
  "merc_sabre-compiling",
  "merc_syntax",
  "merc_tools",
+ "merc_typecheck",
  "merc_unsafety",
  "merc_utilities",
 ]
@@ -1436,6 +1437,7 @@ version = "2.0.0"
 dependencies = [
  "ena",
  "indoc",
+ "log",
  "merc_collections",
  "merc_syntax",
  "merc_utilities",
