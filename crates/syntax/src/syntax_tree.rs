@@ -2,11 +2,38 @@ use std::hash::Hash;
 
 use merc_utilities::TagIndex;
 
-/// A unique type for declarations.
+/// A unique type for sort declarations.
 pub struct DefTag;
 
-/// The index type for a label.
+/// The index type for a sort declaration, assigned during name resolution.
 pub type DefId = TagIndex<usize, DefTag>;
+
+/// A unique type for constructor declarations.
+pub struct ConstructorTag;
+
+/// The index type for a constructor declaration, local to
+/// `UntypedDataSpecification::constructor_declarations`.
+pub type ConstructorId = TagIndex<usize, ConstructorTag>;
+
+/// A unique type for map declarations.
+pub struct MapTag;
+
+/// The index type for a map declaration, local to
+/// `UntypedDataSpecification::map_declarations`.
+pub type MapId = TagIndex<usize, MapTag>;
+
+/// A unique type for equation specification blocks (`var ... eqn ...`).
+pub struct EqnSpecTag;
+
+/// The index type for an equation specification block, local to
+/// `UntypedDataSpecification::equation_declarations`.
+pub type EqnSpecId = TagIndex<usize, EqnSpecTag>;
+
+/// A unique type for equation declarations.
+pub struct EquationTag;
+
+/// The index type for a single equation, local to its enclosing `EqnSpec`.
+pub type EquationId = TagIndex<usize, EquationTag>;
 
 /// A complete mCRL2 process specification.
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
@@ -22,8 +49,8 @@ pub struct UntypedProcessSpecification {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedDataSpecification {
     pub sort_declarations: Vec<SortDecl>,
-    pub constructor_declarations: Vec<IdDecl>,
-    pub map_declarations: Vec<IdDecl>,
+    pub constructor_declarations: Vec<IdDecl<ConstructorId>>,
+    pub map_declarations: Vec<IdDecl<MapId>>,
     pub equation_declarations: Vec<EqnSpec>,
 }
 
@@ -97,25 +124,44 @@ impl PropVarInst {
 }
 
 /// A declaration of an identifier with its sort.
+///
+/// Reused for every "name: sort" binding in the grammar (constructor and map
+/// declarations, equation/global/quantifier/lambda variables, ...), so the
+/// declaration-id type is generic: it defaults to [DefId] for the binder-like
+/// uses that never assign one, and is instantiated with [ConstructorId] or
+/// [MapId] for the two lists that do.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct IdDecl {
+pub struct IdDecl<Id = DefId> {
     /// Identifier being declared
     pub identifier: String,
     /// Sort expression for this identifier
     pub sort: SortExpression,
     /// Source location information
     pub span: Span,
-    /// Unique ID assigned to this declaration during name resolution.
-    pub id: Option<DefId>,
+    /// Unique ID assigned to this declaration during name/id resolution.
+    pub id: Option<Id>,
 }
 
-impl IdDecl {
+impl<Id> IdDecl<Id> {
     /// Creates a new identifier declaration with the given identifier, sort, and span.
     pub fn new(identifier: String, sort: SortExpression, span: Span) -> Self {
         IdDecl {
             identifier,
             sort,
             span,
+            id: None,
+        }
+    }
+
+    /// Reinterprets this declaration under a different id type, discarding its
+    /// `id` (an id from one declaration list, e.g. sorts, is meaningless in
+    /// another, e.g. constructors). Used where the grammar parses a shared
+    /// "name: sort" shape into a list with its own id namespace.
+    pub fn retag<NewId>(self) -> IdDecl<NewId> {
+        IdDecl {
+            identifier: self.identifier,
+            sort: self.sort,
+            span: self.span,
             id: None,
         }
     }
@@ -209,6 +255,8 @@ impl SortDecl {
 pub struct EqnSpec {
     pub variables: Vec<IdDecl>,
     pub equations: Vec<EqnDecl>,
+    /// Unique ID assigned to this block during declaration-id resolution.
+    pub id: Option<EqnSpecId>,
 }
 
 /// Equation declaration
@@ -218,6 +266,9 @@ pub struct EqnDecl {
     pub lhs: DataExpr,
     pub rhs: DataExpr,
     pub span: Span,
+    /// Unique ID assigned to this equation during declaration-id resolution,
+    /// local to its enclosing [EqnSpec].
+    pub id: Option<EquationId>,
 }
 
 /// Action declaration

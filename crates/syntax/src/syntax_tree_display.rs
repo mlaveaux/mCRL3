@@ -340,7 +340,7 @@ impl fmt::Display for DataExpr {
     }
 }
 
-impl fmt::Display for IdDecl {
+impl<Id> fmt::Display for IdDecl<Id> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.identifier, self.sort)
     }

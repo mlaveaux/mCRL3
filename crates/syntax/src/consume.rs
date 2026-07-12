@@ -18,6 +18,7 @@ use crate::CommExpr;
 use crate::ComplexSort;
 use crate::Condition;
 use crate::ConstructorDecl;
+use crate::ConstructorId;
 use crate::DataExpr;
 use crate::DataExprUnaryOp;
 use crate::DataExprUpdate;
@@ -26,6 +27,7 @@ use crate::EqnDecl;
 use crate::EqnSpec;
 use crate::FixedPointOperator;
 use crate::IdDecl;
+use crate::MapId;
 use crate::Mcrl2Parser;
 use crate::MultiAction;
 use crate::MultiActionLabel;
@@ -507,10 +509,10 @@ impl Mcrl2Parser {
         )
     }
 
-    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
+    fn MapSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl<MapId>>> {
         match_nodes!(spec.into_children();
             [IdsDecl(decls)..] => {
-                Ok(decls.flatten().collect())
+                Ok(decls.flatten().map(IdDecl::retag).collect())
             }
         )
     }
@@ -539,10 +541,10 @@ impl Mcrl2Parser {
         )
     }
 
-    fn ConsSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl>> {
+    fn ConsSpec(spec: ParseNode) -> ParseResult<Vec<IdDecl<ConstructorId>>> {
         match_nodes!(spec.into_children();
             [IdsDecl(decls)..] => {
-                Ok(decls.flatten().collect())
+                Ok(decls.flatten().map(IdDecl::retag).collect())
             }
         )
     }
@@ -1416,10 +1418,10 @@ impl Mcrl2Parser {
 
         match_nodes!(spec.into_children();
             [VarSpec(variables), EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables, equations: decls.collect() });
+                ids.push(EqnSpec { variables, equations: decls.collect(), id: None });
             },
             [EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect() });
+                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect(), id: None });
             },
         );
 
@@ -1430,10 +1432,10 @@ impl Mcrl2Parser {
         let span = decl.as_span();
         match_nodes!(decl.into_children();
             [DataExpr(condition), DataExpr(lhs), DataExpr(rhs)] => {
-                Ok(EqnDecl { condition: Some(condition), lhs, rhs, span: span.into() })
+                Ok(EqnDecl { condition: Some(condition), lhs, rhs, span: span.into(), id: None })
             },
             [DataExpr(lhs), DataExpr(rhs)] => {
-                Ok(EqnDecl { condition: None, lhs, rhs, span: span.into() })
+                Ok(EqnDecl { condition: None, lhs, rhs, span: span.into(), id: None })
             },
         )
     }
