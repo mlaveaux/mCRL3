@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
+use std::iter;
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -31,6 +32,7 @@ use crate::aterm::ATerm;
 use crate::aterm::ATermRef;
 use crate::storage::GlobalTermPool;
 use crate::storage::GlobalTermPoolGuard;
+use crate::storage::MAX_FIXED_ARITY;
 use crate::storage::SharedTerm;
 use crate::storage::SharedTermProtection;
 use crate::storage::global_aterm_pool::GLOBAL_TERM_POOL;
@@ -132,16 +134,24 @@ impl ThreadTermPool {
         self.trigger_garbage_collection();
 
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-        let mut arguments = self.tmp_arguments.borrow_mut();
 
-        arguments.clear();
-        for arg in args {
-            unsafe {
-                arguments.push(ATermRef::from_index(arg.shared()));
+        let (index, inserted) = if symbol.arity() <= MAX_FIXED_ARITY {
+            // Fast path: build the fixed-arity key straight from the input slice, skipping
+            // the `tmp_arguments` buffer round-trip.
+            guard.create_term_fixed(symbol, args)
+        } else {
+            let mut arguments = self.tmp_arguments.borrow_mut();
+
+            arguments.clear();
+            for arg in args {
+                unsafe {
+                    arguments.push(ATermRef::from_index(arg.shared()));
+                }
             }
-        }
 
-        let (index, inserted) = guard.create_term_array(symbol, &arguments);
+            guard.create_term_array(symbol, &arguments)
+        };
+
         let result = self.make_return(index, guard);
 
         if inserted {
@@ -169,9 +179,10 @@ impl ThreadTermPool {
     ///
     /// # Panics
     ///
-    /// The iterator is driven while an internal argument buffer is borrowed, so an
-    /// iterator that itself constructs terms (e.g. through [ATerm::with_args] or
-    /// [crate::ATerm::with_iter]) panics with a `RefCell` double borrow.
+    /// For symbols with arity above the fixed-arity limit the iterator is driven while an
+    /// internal argument buffer is borrowed, so an iterator that itself constructs terms
+    /// (e.g. through [ATerm::with_args] or [crate::ATerm::with_iter]) panics with a
+    /// `RefCell` double borrow.
     pub fn create_term_iter<'a, 'b, 'c, 'd, S, I, T>(&self, symbol: &'b S, args: I) -> ATerm
     where
         S: Symb<'a, 'b>,
@@ -179,15 +190,25 @@ impl ThreadTermPool {
         T: Term<'c, 'd>,
     {
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-        let mut arguments = self.tmp_arguments.borrow_mut();
-        arguments.clear();
-        for arg in args {
-            unsafe {
-                arguments.push(ATermRef::from_index(arg.shared()));
-            }
-        }
 
-        let (index, inserted) = guard.create_term_array(symbol, &arguments);
+        let (index, inserted) = if symbol.arity() <= MAX_FIXED_ARITY {
+            // Fast path: feed the argument indices straight into the fixed-arity storage,
+            // skipping the `tmp_arguments` buffer round-trip.
+            // SAFETY: the read guard blocks garbage collection, so every copied index stays
+            // valid until the inserted term stores it; afterwards the GC marks the arguments
+            // of live terms.
+            guard.create_term_fixed_iter(symbol, args.into_iter().map(|arg| unsafe { arg.shared().copy() }))
+        } else {
+            let mut arguments = self.tmp_arguments.borrow_mut();
+            arguments.clear();
+            for arg in args {
+                unsafe {
+                    arguments.push(ATermRef::from_index(arg.shared()));
+                }
+            }
+
+            guard.create_term_array(symbol, &arguments)
+        };
 
         let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
 
@@ -236,9 +257,9 @@ impl ThreadTermPool {
     ///
     /// # Panics
     ///
-    /// The iterator is driven while an internal argument buffer is borrowed, so an
-    /// iterator that itself constructs terms panics with a `RefCell` double borrow;
-    /// see [Self::create_term_iter].
+    /// For symbols with arity above the fixed-arity limit the iterator is driven while an
+    /// internal argument buffer is borrowed, so an iterator that itself constructs terms
+    /// panics with a `RefCell` double borrow; see [Self::create_term_iter].
     pub fn create_term_iter_head<'a, 'b, 'c, 'd, 'e, 'f, S, H, I, T>(
         &self,
         symbol: &'b S,
@@ -252,18 +273,32 @@ impl ThreadTermPool {
         T: Term<'e, 'f>,
     {
         let guard = self.term_pool.read_recursive().expect("Lock poisoned!");
-        let mut arguments = self.tmp_arguments.borrow_mut();
-        arguments.clear();
-        unsafe {
-            arguments.push(ATermRef::from_index(head.shared()));
-        }
-        for arg in args {
-            unsafe {
-                arguments.push(ATermRef::from_index(arg.shared()));
-            }
-        }
 
-        let (index, inserted) = guard.create_term_array(symbol, &arguments);
+        let (index, inserted) = if symbol.arity() <= MAX_FIXED_ARITY {
+            // Fast path: feed the head and argument indices straight into the fixed-arity
+            // storage, skipping the `tmp_arguments` buffer round-trip.
+            // SAFETY: the read guard blocks garbage collection, so every copied index stays
+            // valid until the inserted term stores it; afterwards the GC marks the arguments
+            // of live terms.
+            let head_index = unsafe { head.shared().copy() };
+            guard.create_term_fixed_iter(
+                symbol,
+                iter::once(head_index).chain(args.into_iter().map(|arg| unsafe { arg.shared().copy() })),
+            )
+        } else {
+            let mut arguments = self.tmp_arguments.borrow_mut();
+            arguments.clear();
+            unsafe {
+                arguments.push(ATermRef::from_index(head.shared()));
+            }
+            for arg in args {
+                unsafe {
+                    arguments.push(ATermRef::from_index(arg.shared()));
+                }
+            }
+
+            guard.create_term_array(symbol, &arguments)
+        };
 
         let result = self.protect_guard(guard, &unsafe { ATermRef::from_index(&index) });
 

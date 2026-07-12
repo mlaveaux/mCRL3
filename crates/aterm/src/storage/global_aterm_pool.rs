@@ -155,6 +155,38 @@ impl GlobalTermPool {
         self.terms.insert(symbol, args)
     }
 
+    /// Create a term of arity at most [crate::storage::aterm_storage::MAX_FIXED_ARITY] directly
+    /// from the given argument slice, without an intermediate `ATermRef` buffer.
+    ///
+    /// Crate-private: the returned pointer is unprotected, see [Self::create_int].
+    pub(crate) fn create_term_fixed<'a, 'b, 'c, 'd, S, T>(
+        &self,
+        symbol: &'b S,
+        args: &[T],
+    ) -> (StablePointer<SharedTerm>, bool)
+    where
+        S: Symb<'a, 'b>,
+        T: Term<'c, 'd>,
+    {
+        self.terms.insert_fixed(symbol, args)
+    }
+
+    /// Create a term of arity at most [crate::storage::aterm_storage::MAX_FIXED_ARITY] straight
+    /// from an iterator over argument indices, see [Self::create_term_fixed].
+    ///
+    /// Crate-private: the returned pointer is unprotected, see [Self::create_int].
+    pub(crate) fn create_term_fixed_iter<'a, 'b, S, I>(
+        &self,
+        symbol: &'b S,
+        args: I,
+    ) -> (StablePointer<SharedTerm>, bool)
+    where
+        S: Symb<'a, 'b>,
+        I: Iterator<Item = ATermIndex>,
+    {
+        self.terms.insert_fixed_iter(symbol, args)
+    }
+
     /// Create a function symbol
     ///
     /// Crate-private: `protect` receives an unprotected index, see [Self::create_int].
