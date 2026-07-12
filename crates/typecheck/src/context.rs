@@ -4,12 +4,15 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 use merc_syntax::DefId;
+use merc_syntax::EqnSpecId;
+use merc_syntax::EquationId;
 
 use crate::EquationTyping;
 use crate::InferenceError;
 use crate::ResolvedSortId;
 use crate::Signature;
 use crate::SortInterner;
+use crate::SystemSortNames;
 
 /// The context shared by all type-checking queries.
 ///
@@ -33,10 +36,14 @@ pub(crate) struct TypeckContext {
     /// `resolve_system_signature` under the same regime as
     /// [TypeckContext::signature].
     pub(crate) system_signature: Option<Rc<Signature>>,
-    /// The memoized results of `query_equation_typing`, keyed by (eqn
-    /// specification index, equation index). Failures are stored too, as the
-    /// cache contract requires.
-    pub(crate) equation_typing: QueryCache<(usize, usize), Result<Rc<EquationTyping>, InferenceError>>,
+    /// The display names of the system-internal sorts (`@NatPair`, ...),
+    /// filled by the same call as [TypeckContext::system_signature]; consulted
+    /// by `display_sort` for debug logging.
+    pub(crate) system_sort_names: Option<SystemSortNames>,
+    /// The memoized results of `query_equation_typing`, keyed by the id of the
+    /// enclosing equation specification block and the equation's own id
+    /// within it. Failures are stored too, as the cache contract requires.
+    pub(crate) equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Rc<EquationTyping>, InferenceError>>,
 }
 
 impl TypeckContext {
@@ -46,6 +53,7 @@ impl TypeckContext {
             sort_of_def: QueryCache::new(),
             signature: None,
             system_signature: None,
+            system_sort_names: None,
             equation_typing: QueryCache::new(),
         }
     }

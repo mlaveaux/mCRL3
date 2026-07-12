@@ -31,8 +31,13 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
     for sort in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
         check_products_within_domains(sort)?;
     }
-    for decl in spec.constructor_declarations.iter().chain(&spec.map_declarations) {
-        check_products_within_domains(&decl.sort)?;
+    for sort in spec
+        .constructor_declarations
+        .iter()
+        .map(|decl| &decl.sort)
+        .chain(spec.map_declarations.iter().map(|decl| &decl.sort))
+    {
+        check_products_within_domains(sort)?;
     }
     for equation in &spec.equation_declarations {
         // Inference resolves a variable by name, so a duplicate would silently

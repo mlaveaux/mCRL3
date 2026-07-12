@@ -7,6 +7,8 @@ use log::trace;
 
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
+use merc_syntax::EqnSpecId;
+use merc_syntax::EquationId;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
@@ -96,22 +98,25 @@ pub enum InferenceError {
     UnderdeterminedSort { equation: String },
 }
 
-/// Returns the typing of one user equation, keyed by `(index of the eqn
-/// specification, index of the equation within it)`. Memoized on
+/// Returns the typing of one user equation, keyed by the id of its enclosing
+/// equation specification block and its own id within that block (assigned by
+/// [assign_declaration_ids](crate::assign_declaration_ids)). Memoized on
 /// [TypeckContext::equation_typing].
 pub(crate) fn query_equation_typing(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
     declaration_sorts: &DeclarationSorts,
-    key: (usize, usize),
+    key: (EqnSpecId, EquationId),
 ) -> Result<Rc<EquationTyping>, InferenceError> {
+    let (eqn_spec_id, equation_id) = key;
+
     // Checked before the cache lock: an out-of-range key would panic inside
     // `infer_equation` with the entry left `InProgress`, misreporting any
     // later identical query as a cyclic dependency.
     debug_assert!(
         spec.equation_declarations
-            .get(key.0)
-            .is_some_and(|eqn_spec| key.1 < eqn_spec.equations.len()),
+            .get(*eqn_spec_id)
+            .is_some_and(|eqn_spec| *equation_id < eqn_spec.equations.len()),
         "equation typing key {key:?} must index an equation of the specification"
     );
 
@@ -122,7 +127,7 @@ pub(crate) fn query_equation_typing(
     {
         Some(result) => result.clone(),
         None => {
-            let result = infer_equation(ctx, spec, declaration_sorts, key.0, key.1).map(Rc::new);
+            let result = infer_equation(ctx, spec, declaration_sorts, eqn_spec_id, equation_id).map(Rc::new);
             ctx.equation_typing.unlock(key, result).clone()
         }
     }
@@ -137,14 +142,16 @@ pub(crate) fn check_equations(
     declaration_sorts: &DeclarationSorts,
 ) -> Result<Vec<Vec<Rc<EquationTyping>>>, InferenceError> {
     let mut typings = Vec::with_capacity(spec.equation_declarations.len());
-    for (spec_index, eqn_spec) in spec.equation_declarations.iter().enumerate() {
+    for eqn_spec in &spec.equation_declarations {
+        let eqn_spec_id = eqn_spec.id.expect("assign_declaration_ids ran before check_equations");
         let mut spec_typings = Vec::with_capacity(eqn_spec.equations.len());
-        for equation_index in 0..eqn_spec.equations.len() {
+        for equation in &eqn_spec.equations {
+            let equation_id = equation.id.expect("assign_declaration_ids ran before check_equations");
             spec_typings.push(query_equation_typing(
                 ctx,
                 spec,
                 declaration_sorts,
-                (spec_index, equation_index),
+                (eqn_spec_id, equation_id),
             )?);
         }
         typings.push(spec_typings);
@@ -163,11 +170,11 @@ fn infer_equation(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
     declaration_sorts: &DeclarationSorts,
-    spec_index: usize,
-    equation_index: usize,
+    eqn_spec_id: EqnSpecId,
+    equation_id: EquationId,
 ) -> Result<EquationTyping, InferenceError> {
-    let eqn_spec = &spec.equation_declarations[spec_index];
-    let equation = &eqn_spec.equations[equation_index];
+    let eqn_spec = &spec.equation_declarations[eqn_spec_id];
+    let equation = &eqn_spec.equations[equation_id];
     let equation_text = || format!("{} = {}", equation.lhs, equation.rhs);
     debug!("inference: typing equation '{}'", equation_text());
 
@@ -178,13 +185,13 @@ fn infer_equation(
     let mut variables = HashMap::new();
     debug_assert_eq!(
         eqn_spec.variables.len(),
-        declaration_sorts.equation_variables[spec_index].len(),
+        declaration_sorts.equation_variables[eqn_spec_id].len(),
         "the resolved variable sorts are positionally parallel to the variable declarations"
     );
     for (var, &sort) in eqn_spec
         .variables
         .iter()
-        .zip(&declaration_sorts.equation_variables[spec_index])
+        .zip(&declaration_sorts.equation_variables[eqn_spec_id])
     {
         let node = unifier.resolved_node(sort);
         variables.insert(var.identifier.as_str(), node);
@@ -313,16 +320,16 @@ fn infer_equation(
                     for (var, &sort) in eqn_spec
                         .variables
                         .iter()
-                        .zip(&declaration_sorts.equation_variables[spec_index])
+                        .zip(&declaration_sorts.equation_variables[eqn_spec_id])
                     {
                         debug!(
                             "inference:   variable {}: {}",
                             var.identifier,
-                            display_sort(&ctx.sorts, spec, sort)
+                            display_sort(ctx, spec, sort)
                         );
                     }
                     for (&sort, text) in sorts.iter().zip(&expr_texts) {
-                        debug!("inference:   '{text}': {}", display_sort(&ctx.sorts, spec, sort));
+                        debug!("inference:   '{text}': {}", display_sort(ctx, spec, sort));
                     }
                 }
                 Ok(EquationTyping::Inferred { sorts, names })
