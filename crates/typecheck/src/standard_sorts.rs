@@ -10,6 +10,8 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
 
+use crate::map_sorts_in_spec;
+
 /// Returns a standard data specification containing the standard sorts and their associated constructors, mappings, and equations.
 pub(crate) fn basic_sort_data_specification() -> Result<UntypedDataSpecification, MercError> {
     let mut result = UntypedDataSpecification::default();
@@ -32,6 +34,24 @@ pub(crate) fn basic_sort_data_specification() -> Result<UntypedDataSpecification
     ))?);
 
     Ok(result)
+}
+
+/// The raw, uninstantiated container and function-update templates. The sort
+/// names `S` and `T` are the templates' sort variables: they remain unresolved
+/// `Reference` nodes, to be substituted ([standard_sort]) or instantiated with
+/// fresh unification variables (`polymorphic_system_signature`).
+pub(crate) fn container_template_specifications() -> Result<Vec<UntypedDataSpecification>, MercError> {
+    [
+        include_str!("../../syntax/spec/list.mcrl2"),
+        include_str!("../../syntax/spec/set.mcrl2"),
+        include_str!("../../syntax/spec/fset.mcrl2"),
+        include_str!("../../syntax/spec/bag.mcrl2"),
+        include_str!("../../syntax/spec/fbag.mcrl2"),
+        include_str!("../../syntax/spec/function_update.mcrl2"),
+    ]
+    .into_iter()
+    .map(UntypedDataSpecification::parse)
+    .collect()
 }
 
 /// Constructs a data specification for a standard sort;
@@ -70,23 +90,16 @@ pub(crate) fn standard_sort(sort: &SortExpression) -> Result<UntypedDataSpecific
 ///
 /// This function can be used to instantiate polymorphic types, for example,
 /// replacing identifier `S` in the specification for `List(S)` by `Nat` to get
-/// a specification for `List(Nat)`.
+/// a specification for `List(Nat)`. The substitution covers every sort in the
+/// specification, including the binder sorts inside equations (`forall c:S.`
+/// in the set/bag templates).
 fn replace_sort(spec: &UntypedDataSpecification, identifier: &str, sort: &SortExpression) -> UntypedDataSpecification {
     let mut result = spec.clone();
 
-    for constructor in &mut result.constructor_declarations {
-        constructor.sort = replace_sort_expression(&constructor.sort, identifier, sort);
-    }
-
-    for map in &mut result.map_declarations {
-        map.sort = replace_sort_expression(&map.sort, identifier, sort);
-    }
-
-    for equation in &mut result.equation_declarations {
-        for var in &mut equation.variables {
-            var.sort = replace_sort_expression(&var.sort, identifier, sort);
-        }
-    }
+    map_sorts_in_spec(&mut result, |expr| -> Result<_, Infallible> {
+        Ok(replace_sort_expression(expr, identifier, sort))
+    })
+    .expect("substitution never fails");
 
     result
 }
@@ -293,7 +306,29 @@ mod tests {
 
     use super::SortExpression;
     use super::UntypedDataSpecification;
+    use super::standard_sort;
     use super::structured_sort_equations;
+
+    #[test]
+    fn test_standard_sort_substitutes_binder_sorts() {
+        // The set template's `==` equation quantifies over the element sort
+        // (`forall c:S.`); instantiation must substitute binder sorts like any
+        // declaration sort, or the generated equation would reference the
+        // undeclared `S`.
+        let spec = UntypedDataSpecification::parse("map f: Set(Nat);").unwrap();
+        let generated = standard_sort(&spec.map_declarations[0].sort).unwrap();
+
+        let equations: Vec<String> = generated
+            .equation_declarations
+            .iter()
+            .flat_map(|eqn_spec| &eqn_spec.equations)
+            .map(|eqn| eqn.to_string())
+            .collect();
+        assert!(
+            equations.iter().any(|eqn| eqn.contains("forall c: Nat")),
+            "the quantifier's binder sort should be instantiated: {equations:#?}"
+        );
+    }
 
     /// Extracts the constructors of the structured sort in `sort <ident> = <struct>;`.
     fn struct_constructors(spec: &str) -> Vec<ConstructorDecl> {

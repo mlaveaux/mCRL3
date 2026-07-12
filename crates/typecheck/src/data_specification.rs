@@ -1,6 +1,8 @@
 use std::convert::Infallible;
 use std::rc::Rc;
 
+use log::debug;
+
 use merc_collections::IndexedSet;
 use merc_syntax::DefId;
 use merc_syntax::SortExpression;
@@ -14,6 +16,7 @@ use crate::Signature;
 use crate::SystemSortNames;
 use crate::TypeckContext;
 use crate::WellTypedError;
+use crate::basic_sort_data_specification;
 use crate::build_system_defined_specification;
 use crate::check_aliases;
 use crate::check_equations;
@@ -51,10 +54,22 @@ pub struct DataSpecification {
 impl DataSpecification {
     /// Create a completed well-typed data specification from an untyped data specification.
     pub fn from_untyped(mut spec: UntypedDataSpecification) -> Result<Self, WellTypedError> {
+        debug!(
+            "typecheck: starting on {} sort, {} constructor, {} map and {} equation declaration(s)",
+            spec.sort_declarations.len(),
+            spec.constructor_declarations.len(),
+            spec.map_declarations.len(),
+            spec.equation_declarations.len()
+        );
+
         // Hoist anonymous structured sorts into fresh named declarations, so
         // name resolution, the alias checks and the desugaring below only ever
         // see named structs.
         hoist_anonymous_structs(&mut spec);
+        debug!(
+            "typecheck: hoisted anonymous structs; {} sort declaration(s) remain",
+            spec.sort_declarations.len()
+        );
 
         map_sorts_in_spec(&mut spec, |sort| -> Result<_, Infallible> {
             Ok(flatten_function_sorts(sort))
@@ -62,6 +77,7 @@ impl DataSpecification {
         .expect("The inner function never fails");
 
         let sorts = resolve_names(&mut spec)?;
+        debug!("typecheck: resolved {} sort name(s)", sorts.len());
 
         check_aliases(&spec).map_err(|err| {
             let name = |id: &DefId| sorts.get_by_index(**id).expect("The sort should be declared").clone();
@@ -81,6 +97,11 @@ impl DataSpecification {
         // function sort), and before the checks below so the constructors it
         // introduces participate in them.
         let structs = desugar_structured_sorts(&mut spec);
+        debug!(
+            "typecheck: desugared {} structured sort(s) into {} constructor(s)",
+            structs.len(),
+            structs.iter().map(Vec::len).sum::<usize>()
+        );
 
         // Compute the (S, C, M) signature and run the signature-layer checks of
         // 15.1.7 (docs/typecheck.md §5 stage 2). This runs before alias
@@ -89,17 +110,20 @@ impl DataSpecification {
         // alias indirection lazily.
         let mut context = TypeckContext::new();
         query_signature(&mut context, &spec)?;
+        debug!("typecheck: signature checks passed");
 
         // Expand aliases to a canonical form now that they are known to be
         // acyclic, so the well-typedness check and the stored spec see sorts
         // without alias indirection.
         normalize_sorts(&mut spec);
+        debug!("typecheck: normalized alias indirection");
 
         // Safety net over the normalized spec: it repeats the constructor
         // target and symbol-disjointness checks syntactically, and additionally
         // covers equation-variable sorts and the sort-emptiness check, which
         // the signature query does not.
         is_well_typed(&spec)?;
+        debug!("typecheck: well-typedness checks passed");
 
         // Lower the built-in operator nodes in the user equations to named
         // applications (docs/typecheck.md §5 stage 1), so Phase-3 inference
@@ -107,10 +131,13 @@ impl DataSpecification {
         // touch data expressions, so after this point the stored spec is both
         // normalized and fully lowered.
         lower_data_expressions(&mut spec);
+        debug!("typecheck: lowered the user equations");
 
         // Collect the Appendix-B definitions for the basic and container sorts
-        // that the specification uses.
-        let mut system = build_system_defined_specification(&spec).map_err(WellTypedError::Custom)?;
+        // that the specification uses. The basic-sort part is kept aside: it
+        // is also the input of the system signature below.
+        let basics = basic_sort_data_specification().map_err(WellTypedError::Custom)?;
+        let mut system = build_system_defined_specification(&spec, basics.clone()).map_err(WellTypedError::Custom)?;
 
         // The defining equations of each structured sort (Appendix B.10) join
         // the system-defined part: they use the `==`/`<`/`<=` operators that
@@ -122,19 +149,37 @@ impl DataSpecification {
         // The system equations parse with the same operator nodes (`b && true`,
         // `d |> s`), so they are lowered like the user equations.
         lower_data_expressions(&mut system);
+        debug!(
+            "typecheck: built the system-defined specification with {} sort, {} map and {} equation declaration(s)",
+            system.sort_declarations.len(),
+            system.map_declarations.len(),
+            system.equation_declarations.len()
+        );
 
         // Resolve the declaration-level sorts of the user specification onto
         // the interned sort lattice (docs/typecheck.md §5 stage 3). The system
         // specification is still unresolved content and is not covered (G3).
         let declaration_sorts = resolve_declaration_sorts(&mut context, &spec);
+        debug!(
+            "typecheck: resolved {} constructor and {} mapping declaration sort(s)",
+            declaration_sorts.constructors.len(),
+            declaration_sorts.mappings.len()
+        );
 
-        // Resolve the system-defined declarations onto the same lattice, so
-        // Phase-3 inference sees the overload sets of the built-in operators.
-        let system_sort_names = resolve_system_signature(&mut context, &spec, &system)?;
+        // Resolve the system-defined declarations of the *basic* sorts onto
+        // the same lattice, so Phase-3 inference sees the overload sets of the
+        // built-in operators. The container operations are looked up
+        // polymorphically instead (`POLYMORPHIC_SIGNATURE`) — they exist for
+        // every element sort — so their per-sort instantiations (part of
+        // `system`, for the equations) are deliberately not resolved into the
+        // signature: listing an operation both ways would misreport ambiguity.
+        let system_sort_names = resolve_system_signature(&mut context, &spec, &basics)?;
+        debug!("typecheck: resolved the system signature");
 
         // Phase-3 core inference over the user equations (docs/typecheck.md
         // §9); equations using constructs it does not cover yet are skipped.
         let equation_typings = check_equations(&mut context, &spec, &declaration_sorts)?;
+        debug!("typecheck: inference finished; the specification is well-typed");
 
         Ok(Self {
             spec,
@@ -147,12 +192,11 @@ impl DataSpecification {
         })
     }
 
-    /// The resolved data specification. The declaration-level sorts (on `sort`,
-    /// `cons`, `map` declarations and equation variable lists) have their names
-    /// resolved to a [`DefId`]; sorts on binders inside equation bodies
-    /// (`forall`/`exists`/`lambda`/comprehensions) are resolved later, as part
-    /// of data-expression type checking. All equation expressions are lowered:
-    /// built-in operators appear as named applications (`==(x, y)`).
+    /// The resolved data specification. Every sort — on `sort`, `cons`, `map`
+    /// declarations, equation variable lists, and the binders inside equation
+    /// bodies (`forall`/`exists`/`lambda`/comprehensions) — has its names
+    /// resolved to a [`DefId`]. All equation expressions are lowered: built-in
+    /// operators appear as named applications (`==(x, y)`).
     pub fn data_specification(&self) -> &UntypedDataSpecification {
         &self.spec
     }
@@ -195,7 +239,7 @@ impl DataSpecification {
     pub(crate) fn signature(&self) -> &Signature {
         self.context
             .signature
-            .as_ref()
+            .as_deref()
             .expect("query_signature ran in from_untyped")
     }
 
