@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::fmt::Write;
+use std::sync::LazyLock;
 
 use indoc::formatdoc;
 
@@ -12,72 +13,82 @@ use merc_utilities::MercError;
 
 use crate::map_sorts_in_spec;
 
-/// Returns a standard data specification containing the standard sorts and their associated constructors, mappings, and equations.
-pub(crate) fn basic_sort_data_specification() -> Result<UntypedDataSpecification, MercError> {
-    let mut result = UntypedDataSpecification::default();
-
-    // Append the relevant specifications for the sorts that are present in the specification.
-    result.merge(&UntypedDataSpecification::parse(include_str!(
-        "../../syntax/spec/bool.mcrl2"
-    ))?);
-    result.merge(&UntypedDataSpecification::parse(include_str!(
-        "../../syntax/spec/pos.mcrl2"
-    ))?);
-    result.merge(&UntypedDataSpecification::parse(include_str!(
-        "../../syntax/spec/int.mcrl2"
-    ))?);
-    result.merge(&UntypedDataSpecification::parse(include_str!(
-        "../../syntax/spec/nat.mcrl2"
-    ))?);
-    result.merge(&UntypedDataSpecification::parse(include_str!(
-        "../../syntax/spec/real.mcrl2"
-    ))?);
-
-    Ok(result)
+/// Parses a bundled `spec/*.mcrl2` file. The templates are compiled in, so a
+/// parse failure is a build defect, not a runtime condition — the statics
+/// below panic instead of threading a `Result` through every caller.
+fn parse_template(text: &str) -> UntypedDataSpecification {
+    UntypedDataSpecification::parse(text).expect("the bundled templates parse")
 }
 
-/// The raw, uninstantiated container and function-update templates. The sort
-/// names `S` and `T` are the templates' sort variables: they remain unresolved
-/// `Reference` nodes, to be substituted ([standard_sort]) or instantiated with
-/// fresh unification variables (`polymorphic_system_signature`).
-pub(crate) fn container_template_specifications() -> Result<Vec<UntypedDataSpecification>, MercError> {
-    [
-        include_str!("../../syntax/spec/list.mcrl2"),
-        include_str!("../../syntax/spec/set.mcrl2"),
-        include_str!("../../syntax/spec/fset.mcrl2"),
-        include_str!("../../syntax/spec/bag.mcrl2"),
-        include_str!("../../syntax/spec/fbag.mcrl2"),
-        include_str!("../../syntax/spec/function_update.mcrl2"),
-    ]
-    .into_iter()
-    .map(UntypedDataSpecification::parse)
-    .collect()
+/// The merged specifications of the five basic sorts (Appendix B.1–B.7),
+/// parsed once like the Pratt parsers of `merc_syntax`.
+static BASIC_SORTS: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
+    let mut result = UntypedDataSpecification::default();
+    result.merge(&parse_template(include_str!("../../syntax/spec/bool.mcrl2")));
+    result.merge(&parse_template(include_str!("../../syntax/spec/pos.mcrl2")));
+    result.merge(&parse_template(include_str!("../../syntax/spec/int.mcrl2")));
+    result.merge(&parse_template(include_str!("../../syntax/spec/nat.mcrl2")));
+    result.merge(&parse_template(include_str!("../../syntax/spec/real.mcrl2")));
+    result
+});
+
+/// The raw, uninstantiated container and function-update templates, parsed
+/// once. The sort names `S` and `T` are the templates' sort variables: they
+/// remain unresolved `Reference` nodes, to be substituted ([standard_sort]) or
+/// instantiated with fresh unification variables (`POLYMORPHIC_SIGNATURE`).
+pub(crate) struct ContainerTemplates {
+    list: UntypedDataSpecification,
+    set: UntypedDataSpecification,
+    fset: UntypedDataSpecification,
+    bag: UntypedDataSpecification,
+    fbag: UntypedDataSpecification,
+    function_update: UntypedDataSpecification,
+}
+
+impl ContainerTemplates {
+    /// All templates, for building the polymorphic signature.
+    pub(crate) fn all(&self) -> [&UntypedDataSpecification; 6] {
+        [
+            &self.list,
+            &self.set,
+            &self.fset,
+            &self.bag,
+            &self.fbag,
+            &self.function_update,
+        ]
+    }
+}
+
+pub(crate) static CONTAINER_TEMPLATES: LazyLock<ContainerTemplates> = LazyLock::new(|| ContainerTemplates {
+    list: parse_template(include_str!("../../syntax/spec/list.mcrl2")),
+    set: parse_template(include_str!("../../syntax/spec/set.mcrl2")),
+    fset: parse_template(include_str!("../../syntax/spec/fset.mcrl2")),
+    bag: parse_template(include_str!("../../syntax/spec/bag.mcrl2")),
+    fbag: parse_template(include_str!("../../syntax/spec/fbag.mcrl2")),
+    function_update: parse_template(include_str!("../../syntax/spec/function_update.mcrl2")),
+});
+
+/// Returns a standard data specification containing the standard sorts and their associated constructors, mappings, and equations.
+pub(crate) fn basic_sort_data_specification() -> UntypedDataSpecification {
+    BASIC_SORTS.clone()
 }
 
 /// Constructs a data specification for a standard sort;
-pub(crate) fn standard_sort(sort: &SortExpression) -> Result<UntypedDataSpecification, MercError> {
+pub(crate) fn standard_sort(sort: &SortExpression) -> UntypedDataSpecification {
     if let SortExpression::Complex(complex, sort) = sort {
-        let text = match complex {
-            ComplexSort::List => include_str!("../../syntax/spec/list.mcrl2"),
-            ComplexSort::Set => include_str!("../../syntax/spec/set.mcrl2"),
-            ComplexSort::FSet => include_str!("../../syntax/spec/fset.mcrl2"),
-            ComplexSort::Bag => include_str!("../../syntax/spec/bag.mcrl2"),
-            ComplexSort::FBag => include_str!("../../syntax/spec/fbag.mcrl2"),
+        let template = match complex {
+            ComplexSort::List => &CONTAINER_TEMPLATES.list,
+            ComplexSort::Set => &CONTAINER_TEMPLATES.set,
+            ComplexSort::FSet => &CONTAINER_TEMPLATES.fset,
+            ComplexSort::Bag => &CONTAINER_TEMPLATES.bag,
+            ComplexSort::FBag => &CONTAINER_TEMPLATES.fbag,
         };
 
-        let spec = UntypedDataSpecification::parse(text)?;
-
-        Ok(replace_sort(&spec, "S", sort))
+        replace_sort(template, "S", sort)
     } else if let SortExpression::Function { domain, range } = sort {
-        let text = include_str!("../../syntax/spec/function_update.mcrl2");
-
-        let spec = UntypedDataSpecification::parse(text)?;
-
         // In the specification we define the function S -> T.
-        let spec = replace_sort(&spec, "S", domain);
-        let spec = replace_sort(&spec, "T", range);
-
-        Ok(spec)
+        let spec = replace_sort(&CONTAINER_TEMPLATES.function_update, "S", domain);
+        replace_sort(&spec, "T", range)
     } else {
         unreachable!("The given sort {} is not a standard sort", sort);
     }
