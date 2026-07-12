@@ -45,6 +45,10 @@ const INITIAL_CAPACITY: usize = 1024;
 /// The number of terms stored in every block of the fixed-size storage.
 const BLOCK_SIZE: usize = 1024;
 
+/// The largest arity stored in the fixed-size tables; larger terms go into the
+/// dynamically sized `terms` storage.
+pub(crate) const MAX_FIXED_ARITY: usize = 7;
+
 impl ATermStorage {
     /// Creates a new, empty storage.
     pub(crate) fn new() -> Self {
@@ -80,13 +84,76 @@ impl ATermStorage {
             "The number of arguments does not match the arity of the symbol"
         );
 
+        if symbol.arity() <= MAX_FIXED_ARITY {
+            return self.insert_fixed(symbol, args);
+        }
+
+        let shared_term = SharedTermLookup {
+            symbol: SymbolRef::from_symbol(symbol),
+            arguments: args,
+        };
+
+        unsafe {
+            self.terms
+                .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
+                    SharedTerm::construct(ptr, key)
+                })
+        }
+    }
+
+    /// Inserts a term whose arity is at most [MAX_FIXED_ARITY] into the corresponding fixed-size
+    /// storage, building the `SharedTermFixed<N>` key straight from the argument slice.
+    ///
+    /// Taking the arguments as a generic `T: Term` slice lets callers pass the terms they already
+    /// have (e.g. the input slice of [crate::ATerm::with_args]) without first materialising an
+    /// intermediate `ATermRef` buffer.
+    pub(crate) fn insert_fixed<'a, 'b, 'c, 'd, S, T>(
+        &self,
+        symbol: &'b S,
+        args: &[T],
+    ) -> (StablePointer<SharedTerm>, bool)
+    where
+        S: Symb<'a, 'b>,
+        T: Term<'c, 'd>,
+    {
+        debug_assert_eq!(
+            symbol.arity(),
+            args.len(),
+            "The number of arguments does not match the arity of the symbol"
+        );
+
         // SAFETY: the copied argument indices are stored inside the inserted term, and the
         // GC marks the arguments of every live term, so each argument stays in the pool at
         // least as long as the term referencing it; the copies are dropped when the term
         // itself is reclaimed.
-        let arg = |i: usize| unsafe { args[i].shared().copy() };
+        self.insert_fixed_iter(symbol, args.iter().map(|arg| unsafe { arg.shared().copy() }))
+    }
 
-        match symbol.arity() {
+    /// Inserts a term whose arity is at most [MAX_FIXED_ARITY], pulling the argument indices
+    /// straight from the iterator. Counterpart of [Self::insert_fixed] for callers that only
+    /// have an iterator and would otherwise round-trip through an intermediate buffer.
+    ///
+    /// The caller produces the `ATermIndex` copies (an unsafe operation) and thereby
+    /// guarantees they stay valid until the inserted term takes ownership of them.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the iterator yields fewer items than the arity of the symbol.
+    pub(crate) fn insert_fixed_iter<'a, 'b, S, I>(
+        &self,
+        symbol: &'b S,
+        mut args: I,
+    ) -> (StablePointer<SharedTerm>, bool)
+    where
+        S: Symb<'a, 'b>,
+        I: Iterator<Item = ATermIndex>,
+    {
+        let mut arg = || {
+            args.next()
+                .expect("The iterator yields fewer arguments than the arity of the symbol")
+        };
+
+        let result = match symbol.arity() {
             0 => {
                 let (result, inserted) = self.terms_0.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
@@ -97,66 +164,60 @@ impl ATermStorage {
             1 => {
                 let (result, inserted) = self.terms_1.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0)],
+                    args: [arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 1), inserted) }
             }
             2 => {
                 let (result, inserted) = self.terms_2.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0), arg(1)],
+                    args: [arg(), arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 2), inserted) }
             }
             3 => {
                 let (result, inserted) = self.terms_3.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0), arg(1), arg(2)],
+                    args: [arg(), arg(), arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 3), inserted) }
             }
             4 => {
                 let (result, inserted) = self.terms_4.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0), arg(1), arg(2), arg(3)],
+                    args: [arg(), arg(), arg(), arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 4), inserted) }
             }
             5 => {
                 let (result, inserted) = self.terms_5.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0), arg(1), arg(2), arg(3), arg(4)],
+                    args: [arg(), arg(), arg(), arg(), arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 5), inserted) }
             }
             6 => {
                 let (result, inserted) = self.terms_6.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0), arg(1), arg(2), arg(3), arg(4), arg(5)],
+                    args: [arg(), arg(), arg(), arg(), arg(), arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 6), inserted) }
             }
             7 => {
                 let (result, inserted) = self.terms_7.insert(SharedTermFixed {
                     symbol: SymbolRef::from_symbol(symbol),
-                    args: [arg(0), arg(1), arg(2), arg(3), arg(4), arg(5), arg(6)],
+                    args: [arg(), arg(), arg(), arg(), arg(), arg(), arg()],
                 });
                 unsafe { (cast_to_shared_term_ptr(&result, 7), inserted) }
             }
-            _ => {
-                let shared_term = SharedTermLookup {
-                    symbol: SymbolRef::from_symbol(symbol),
-                    arguments: args,
-                };
+            arity => unreachable!("insert_fixed_iter called with arity {arity} > {MAX_FIXED_ARITY}"),
+        };
 
-                unsafe {
-                    self.terms
-                        .insert_equiv_dst(&shared_term, SharedTerm::length_for(&shared_term), |ptr, key| {
-                            SharedTerm::construct(ptr, key)
-                        })
-                }
-            }
-        }
+        debug_assert!(
+            args.next().is_none(),
+            "The iterator yields more arguments than the arity of the symbol"
+        );
+        result
     }
 
     /// Inserts an integer term into the storage, returning a pointer to the stored term
