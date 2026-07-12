@@ -11,10 +11,12 @@ use log::warn;
 use merc_rec_tests::load_rec_from_file;
 use merc_rewrite::Rewriter;
 use merc_rewrite::rewrite_rec;
+use merc_syntax::UntypedDataSpecification;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_tools::report_error;
+use merc_typecheck::DataSpecification;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
@@ -50,6 +52,14 @@ enum Commands {
     Convert(ConvertArgs),
 }
 
+#[derive(Debug, clap::ValueEnum, Clone)]
+enum Format {
+    /// The REC format, which is the native format of this tool.
+    Rec,
+    /// The mCRL2 format, which is the format used by the mCRL2 toolset.
+    Mcrl2,
+}
+
 #[derive(clap::Args, Debug)]
 struct RewriteArgs {
     rewriter: Rewriter,
@@ -60,6 +70,9 @@ struct RewriteArgs {
 
     /// File containing the terms to be rewritten.
     terms: Option<String>,
+
+    #[arg(long, value_enum)]
+    format: Option<Format>,
 
     /// Print the rewritten term(s)
     #[arg(long)]
@@ -104,22 +117,35 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
     if let Some(command) = commands {
         match command {
             Commands::Rewrite(args) => {
-                if args.specification.extension() == Some(OsStr::new("rec")) {
-                    if args.terms.is_some() {
-                        warn!(
-                            "The --terms option is currently ignored when rewriting REC specifications, the terms are taken from the REC spec."
-                        );
-                    }
-
-                    let (syntax_spec, syntax_terms) = load_rec_from_file(&args.specification)?;
-
-                    let spec = syntax_spec.to_rewrite_spec();
-
-                    rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, timing)?;
+                let format = if let Some(format) = args.format {
+                    format
+                } else if args.specification.extension() == Some(OsStr::new("rec")) {
+                    Format::Rec
                 } else if args.specification.extension() == Some(OsStr::new("mcrl2")) {
-                    return Err("Rewriting mCRL2 specifications is not yet supported".into());
+                    Format::Mcrl2
                 } else {
                     return Err("Unsupported file extension for rewriting, expected .rec or .mcrl2".into());
+                };
+
+                match format {
+                    Format::Rec => {
+                        if args.terms.is_some() {
+                            warn!(
+                                "The --terms option is currently ignored when rewriting REC specifications, the terms are taken from the REC spec."
+                            );
+                        }
+
+                        let (syntax_spec, syntax_terms) = load_rec_from_file(&args.specification)?;
+
+                        let spec = syntax_spec.to_rewrite_spec();
+
+                        rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, timing)?;
+                    }
+                    Format::Mcrl2 => {
+                        let spec = UntypedDataSpecification::parse(&std::fs::read_to_string(&args.specification)?)?;
+
+                        let _typed_spec = DataSpecification::from_untyped(spec)?;
+                    }
                 }
             }
             Commands::Convert(args) => {
