@@ -4,6 +4,7 @@ use std::ops::ControlFlow;
 use merc_utilities::MercError;
 
 use crate::ActFrm;
+use crate::DataExpr;
 use crate::RegFrm;
 use crate::SortExpression;
 use crate::StateFrm;
@@ -38,6 +39,35 @@ where
     F: FnMut(&SortExpression) -> Result<ControlFlow<T>, E>,
 {
     visit_sort_expr_rec(sort_expr, &mut visitor)
+}
+
+/// Visits all subexpressions of a data expression in pre-order.
+pub fn visit_data_expr<T, F>(expr: &DataExpr, mut visitor: F) -> Option<T>
+where
+    F: FnMut(&DataExpr) -> ControlFlow<T>,
+{
+    try_visit_data_expr(expr, |expr| -> Result<_, Infallible> { Ok(visitor(expr)) })
+        .expect("Inner function does not fail")
+}
+
+/// Visits all subexpressions of a data expression in pre-order, allowing the
+/// visitor to return an error.
+pub fn try_visit_data_expr<E, T, F>(expr: &DataExpr, mut visitor: F) -> Result<Option<T>, E>
+where
+    F: FnMut(&DataExpr) -> Result<ControlFlow<T>, E>,
+{
+    visit_data_expr_rec(expr, &mut visitor)
+}
+
+/// Visits all subexpressions of a data expression in pre-order, allowing the
+/// visitor to mutate each node in place. Children are visited after the
+/// visitor ran on their parent, so they are the children of the possibly
+/// mutated node.
+pub fn try_visit_data_expr_mut<E, T, F>(expr: &mut DataExpr, mut visitor: F) -> Result<Option<T>, E>
+where
+    F: FnMut(&mut DataExpr) -> Result<ControlFlow<T>, E>,
+{
+    visit_data_expr_mut_rec(expr, &mut visitor)
 }
 
 /// Controls how [`try_visit_sort_expr_with`] proceeds below the current node.
@@ -248,6 +278,204 @@ where
     Ok(None)
 }
 
+/// See [`try_visit_data_expr`].
+fn visit_data_expr_rec<E, T, F>(expr: &DataExpr, visitor: &mut F) -> Result<Option<T>, E>
+where
+    F: FnMut(&DataExpr) -> Result<ControlFlow<T>, E>,
+{
+    if let ControlFlow::Break(result) = visitor(expr)? {
+        // The visitor requested to break the traversal.
+        return Ok(Some(result));
+    }
+
+    match expr {
+        DataExpr::Application { function, arguments } => {
+            if let Some(result) = visit_data_expr_rec(function, visitor)? {
+                return Ok(Some(result));
+            }
+            for argument in arguments {
+                if let Some(result) = visit_data_expr_rec(argument, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::List(elements) | DataExpr::Set(elements) => {
+            for element in elements {
+                if let Some(result) = visit_data_expr_rec(element, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::Bag(elements) => {
+            for element in elements {
+                if let Some(result) = visit_data_expr_rec(&element.expr, visitor)? {
+                    return Ok(Some(result));
+                }
+                if let Some(result) = visit_data_expr_rec(&element.multiplicity, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::SetBagComp { variable: _, predicate } => {
+            if let Some(result) = visit_data_expr_rec(predicate, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Lambda { variables: _, body }
+        | DataExpr::Quantifier {
+            op: _,
+            variables: _,
+            body,
+        } => {
+            if let Some(result) = visit_data_expr_rec(body, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Unary { op: _, expr } => {
+            if let Some(result) = visit_data_expr_rec(expr, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Binary { op: _, lhs, rhs } => {
+            if let Some(result) = visit_data_expr_rec(lhs, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_data_expr_rec(rhs, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::FunctionUpdate { expr, update } => {
+            if let Some(result) = visit_data_expr_rec(expr, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_data_expr_rec(&update.expr, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_data_expr_rec(&update.update, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Whr { expr, assignments } => {
+            if let Some(result) = visit_data_expr_rec(expr, visitor)? {
+                return Ok(Some(result));
+            }
+            for assignment in assignments {
+                if let Some(result) = visit_data_expr_rec(&assignment.expr, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::Id(_)
+        | DataExpr::Number(_)
+        | DataExpr::Bool(_)
+        | DataExpr::EmptyList
+        | DataExpr::EmptySet
+        | DataExpr::EmptyBag => {}
+    }
+
+    // The visitor did not break the traversal.
+    Ok(None)
+}
+
+/// See [`try_visit_data_expr_mut`].
+fn visit_data_expr_mut_rec<E, T, F>(expr: &mut DataExpr, visitor: &mut F) -> Result<Option<T>, E>
+where
+    F: FnMut(&mut DataExpr) -> Result<ControlFlow<T>, E>,
+{
+    if let ControlFlow::Break(result) = visitor(expr)? {
+        // The visitor requested to break the traversal.
+        return Ok(Some(result));
+    }
+
+    match expr {
+        DataExpr::Application { function, arguments } => {
+            if let Some(result) = visit_data_expr_mut_rec(function, visitor)? {
+                return Ok(Some(result));
+            }
+            for argument in arguments {
+                if let Some(result) = visit_data_expr_mut_rec(argument, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::List(elements) | DataExpr::Set(elements) => {
+            for element in elements {
+                if let Some(result) = visit_data_expr_mut_rec(element, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::Bag(elements) => {
+            for element in elements {
+                if let Some(result) = visit_data_expr_mut_rec(&mut element.expr, visitor)? {
+                    return Ok(Some(result));
+                }
+                if let Some(result) = visit_data_expr_mut_rec(&mut element.multiplicity, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::SetBagComp { variable: _, predicate } => {
+            if let Some(result) = visit_data_expr_mut_rec(predicate, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Lambda { variables: _, body }
+        | DataExpr::Quantifier {
+            op: _,
+            variables: _,
+            body,
+        } => {
+            if let Some(result) = visit_data_expr_mut_rec(body, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Unary { op: _, expr } => {
+            if let Some(result) = visit_data_expr_mut_rec(expr, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Binary { op: _, lhs, rhs } => {
+            if let Some(result) = visit_data_expr_mut_rec(lhs, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_data_expr_mut_rec(rhs, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::FunctionUpdate { expr, update } => {
+            if let Some(result) = visit_data_expr_mut_rec(expr, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_data_expr_mut_rec(&mut update.expr, visitor)? {
+                return Ok(Some(result));
+            }
+            if let Some(result) = visit_data_expr_mut_rec(&mut update.update, visitor)? {
+                return Ok(Some(result));
+            }
+        }
+        DataExpr::Whr { expr, assignments } => {
+            if let Some(result) = visit_data_expr_mut_rec(expr, visitor)? {
+                return Ok(Some(result));
+            }
+            for assignment in assignments {
+                if let Some(result) = visit_data_expr_mut_rec(&mut assignment.expr, visitor)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        DataExpr::Id(_)
+        | DataExpr::Number(_)
+        | DataExpr::Bool(_)
+        | DataExpr::EmptyList
+        | DataExpr::EmptySet
+        | DataExpr::EmptyBag => {}
+    }
+
+    // The visitor did not break the traversal.
+    Ok(None)
+}
+
 /// Maps the given `function` recursively to the regular formula.
 pub fn visit_regular_formula<T, F>(formula: &RegFrm, mut function: F) -> Result<Option<T>, MercError>
 where
@@ -349,11 +577,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
     use std::ops::ControlFlow;
 
+    use crate::DataExpr;
     use crate::Sort;
     use crate::SortExpression;
 
+    use super::try_visit_data_expr_mut;
+    use super::visit_data_expr;
     use super::visit_sort_expr;
 
     /// Regression test: the FlattenedFunction arm used to discard `Break`
@@ -376,5 +608,38 @@ mod tests {
             _ => ControlFlow::Continue(()),
         });
         assert_eq!(found, Some("range"));
+    }
+
+    /// The easy-to-miss children (bag multiplicities and whr assignments) are
+    /// visited as well.
+    #[test]
+    fn test_visit_data_expr_reaches_nested_children() {
+        let expr = DataExpr::parse("f(v) whr v = { e: m } end").unwrap();
+
+        for name in ["v", "e", "m"] {
+            let found = visit_data_expr(&expr, |expr| match expr {
+                DataExpr::Id(id) if id == name => ControlFlow::Break(()),
+                _ => ControlFlow::Continue(()),
+            });
+            assert_eq!(found, Some(()), "identifier {name} was not visited");
+        }
+    }
+
+    #[test]
+    fn test_try_visit_data_expr_mut_rewrites_in_place() {
+        let mut expr = DataExpr::parse("x + f(x)").unwrap();
+
+        let result: Option<Infallible> = try_visit_data_expr_mut(&mut expr, |expr| {
+            if let DataExpr::Id(name) = expr
+                && name == "x"
+            {
+                *name = "y".to_string();
+            }
+            Ok::<_, Infallible>(ControlFlow::Continue(()))
+        })
+        .unwrap();
+
+        assert!(result.is_none());
+        assert_eq!(expr, DataExpr::parse("y + f(y)").unwrap());
     }
 }

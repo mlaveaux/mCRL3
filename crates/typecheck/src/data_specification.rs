@@ -136,8 +136,8 @@ impl DataSpecification {
         // Collect the Appendix-B definitions for the basic and container sorts
         // that the specification uses. The basic-sort part is kept aside: it
         // is also the input of the system signature below.
-        let basics = basic_sort_data_specification().map_err(WellTypedError::Custom)?;
-        let mut system = build_system_defined_specification(&spec, basics.clone()).map_err(WellTypedError::Custom)?;
+        let basics = basic_sort_data_specification();
+        let mut system = build_system_defined_specification(&spec, basics.clone());
 
         // The defining equations of each structured sort (Appendix B.10) join
         // the system-defined part: they use the `==`/`<`/`<=` operators that

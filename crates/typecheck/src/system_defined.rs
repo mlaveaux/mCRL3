@@ -6,7 +6,6 @@ use merc_syntax::DataExpr;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_sort_expr;
-use merc_utilities::MercError;
 
 use crate::is_supported_binder_sort;
 use crate::standard_sort;
@@ -35,7 +34,7 @@ use crate::standard_sort;
 pub(crate) fn build_system_defined_specification(
     spec: &UntypedDataSpecification,
     basics: UntypedDataSpecification,
-) -> Result<UntypedDataSpecification, MercError> {
+) -> UntypedDataSpecification {
     let mut result = basics;
 
     let mut worklist = Vec::new();
@@ -48,7 +47,7 @@ pub(crate) fn build_system_defined_specification(
             continue;
         }
 
-        let generated = standard_sort(&sort)?;
+        let generated = standard_sort(&sort);
         // A container is defined in terms of other containers, so re-scan the
         // generated specification for those. Function sorts are collected from
         // the user specification only: the function-update operators introduce
@@ -58,7 +57,7 @@ pub(crate) fn build_system_defined_specification(
         result.merge(&generated);
     }
 
-    Ok(result)
+    result
 }
 
 /// Collects every container sort — and, when `include_functions`, every
@@ -233,8 +232,8 @@ mod tests {
     }
 
     fn system_spec(text: &str) -> UntypedDataSpecification {
-        let basics = basic_sort_data_specification().unwrap();
-        build_system_defined_specification(&UntypedDataSpecification::parse(text).unwrap(), basics).unwrap()
+        let basics = basic_sort_data_specification();
+        build_system_defined_specification(&UntypedDataSpecification::parse(text).unwrap(), basics)
     }
 
     #[test]
