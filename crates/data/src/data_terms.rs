@@ -26,6 +26,16 @@ pub struct DataSymbols {
     pub structured_sort_symbol: ManuallyDrop<Symbol>,
     pub untyped_sort_symbol: ManuallyDrop<Symbol>,
     pub untyped_possible_sorts_symbol: ManuallyDrop<Symbol>,
+    pub sort_alias_symbol: ManuallyDrop<Symbol>,
+
+    // Container kinds: leaf terms in their own right, the first argument of a
+    // `SortCons` rather than encoded in its symbol name (mirrors mCRL2's
+    // `container_type`/`list_container`/…).
+    pub list_container_symbol: ManuallyDrop<Symbol>,
+    pub set_container_symbol: ManuallyDrop<Symbol>,
+    pub bag_container_symbol: ManuallyDrop<Symbol>,
+    pub fset_container_symbol: ManuallyDrop<Symbol>,
+    pub fbag_container_symbol: ManuallyDrop<Symbol>,
 
     // Data expressions that are abstractions
     pub data_binder_symbol: ManuallyDrop<Symbol>,
@@ -43,6 +53,9 @@ pub struct DataSymbols {
     pub data_where_clause: ManuallyDrop<Symbol>,
     pub data_untyped_identifier_clause: ManuallyDrop<Symbol>,
 
+    /// A data equation, not itself a data expression.
+    pub data_equation_symbol: ManuallyDrop<Symbol>,
+
     /// The data application symbol for a given arity.
     data_appl: Vec<Symbol>,
 }
@@ -56,6 +69,13 @@ impl DataSymbols {
             structured_sort_symbol: ManuallyDrop::new(Symbol::new("SortStruct", 1)),
             untyped_sort_symbol: ManuallyDrop::new(Symbol::new("UntypedSortUnknown", 0)),
             untyped_possible_sorts_symbol: ManuallyDrop::new(Symbol::new("UntypedSortsPossible", 1)),
+            sort_alias_symbol: ManuallyDrop::new(Symbol::new("SortRef", 2)),
+
+            list_container_symbol: ManuallyDrop::new(Symbol::new("SortList", 0)),
+            set_container_symbol: ManuallyDrop::new(Symbol::new("SortSet", 0)),
+            bag_container_symbol: ManuallyDrop::new(Symbol::new("SortBag", 0)),
+            fset_container_symbol: ManuallyDrop::new(Symbol::new("SortFSet", 0)),
+            fbag_container_symbol: ManuallyDrop::new(Symbol::new("SortFBag", 0)),
 
             data_binder_symbol: ManuallyDrop::new(Symbol::new("Binder", 3)),
             data_lambda_symbol: ManuallyDrop::new(Symbol::new("Lambda", 0)),
@@ -70,6 +90,7 @@ impl DataSymbols {
             data_variable: ManuallyDrop::new(Symbol::new("DataVarId", 2)),
             data_where_clause: ManuallyDrop::new(Symbol::new("Where", 2)),
             data_untyped_identifier_clause: ManuallyDrop::new(Symbol::new("UntypedIdentifier", 1)),
+            data_equation_symbol: ManuallyDrop::new(Symbol::new("DataEqn", 4)),
 
             data_appl: Vec::new(),
         }
@@ -148,6 +169,26 @@ impl DataSymbols {
     pub fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.basic_sort_symbol.copy()
     }
+
+    /// Returns true iff the given term is a function (`SortArrow`) sort.
+    pub fn is_function_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+        term.get_head_symbol() == self.function_sort_symbol.copy()
+    }
+
+    /// Returns true iff the given term is a container (`SortCons`) sort.
+    pub fn is_container_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+        term.get_head_symbol() == self.container_sort_symbol.copy()
+    }
+
+    /// Returns true iff the given term is a sort alias (`SortRef`).
+    pub fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+        term.get_head_symbol() == self.sort_alias_symbol.copy()
+    }
+
+    /// Returns true iff the given term is a data equation (`DataEqn`).
+    pub fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+        term.get_head_symbol() == self.data_equation_symbol.copy()
+    }
 }
 
 // Helper functions to access the DATA_SYMBOLS thread local storage.
@@ -160,6 +201,16 @@ pub fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
 /// See [DataSymbols::is_basic_sort].
 pub fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_basic_sort(term))
+}
+
+/// See [DataSymbols::is_function_sort].
+pub fn is_function_sort<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_function_sort(term))
+}
+
+/// See [DataSymbols::is_container_sort].
+pub fn is_container_sort<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_container_sort(term))
 }
 
 /// See [DataSymbols::is_data_variable].
@@ -195,4 +246,14 @@ pub fn is_data_binder<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
 /// See [DataSymbols::is_data_application].
 pub fn is_data_application<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_application(term))
+}
+
+/// See [DataSymbols::is_sort_alias].
+pub fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_sort_alias(term))
+}
+
+/// See [DataSymbols::is_data_equation].
+pub fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_equation(term))
 }

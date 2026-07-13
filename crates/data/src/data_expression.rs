@@ -7,6 +7,7 @@ use delegate::delegate;
 use merc_aterm::ATerm;
 use merc_aterm::ATermArgs;
 use merc_aterm::ATermIndex;
+use merc_aterm::ATermList;
 use merc_aterm::ATermRef;
 use merc_aterm::ATermString;
 use merc_aterm::Markable;
@@ -23,10 +24,12 @@ use merc_macros::merc_derive_terms;
 use merc_macros::merc_ignore;
 use merc_macros::merc_term;
 
+use crate::BasicSort;
 use crate::DATA_SYMBOLS;
 use crate::SortExpression;
 use crate::SortExpressionRef;
 use crate::is_data_application;
+use crate::is_data_equation;
 use crate::is_data_expression;
 use crate::is_data_function_symbol;
 use crate::is_data_machine_number;
@@ -168,6 +171,18 @@ mod inner {
                     &[Into::<ATerm>::into(name.into()), SortExpression::unknown_sort().into()],
                 )
                 .protect(),
+            })
+        }
+
+        /// Creates a function symbol with the given name and sort.
+        #[merc_ignore]
+        pub fn with_sort<N: Into<ATermString>>(name: N, sort: SortExpressionRef<'_>) -> DataFunctionSymbol {
+            DATA_SYMBOLS.with_borrow(|ds| {
+                let t = name.into();
+                let args: &[ATermRef<'_>] = &[t.copy().into(), sort.into()];
+                DataFunctionSymbol {
+                    term: ATerm::with_args(ds.data_function_symbol.deref(), args).protect(),
+                }
             })
         }
 
@@ -354,6 +369,76 @@ mod inner {
         }
     }
 
+    /// A data equation. `condition -> lhs = rhs`. Not itself a data expression.
+    #[merc_term(is_data_equation)]
+    pub struct DataEquation {
+        term: ATerm,
+    }
+
+    impl DataEquation {
+        /// Builds the equation `variables. condition => lhs = rhs`. `condition: None`
+        /// is an unconditional equation, encoded as the literal `true` — mCRL2's own
+        /// `data_equation` class has no separate "no condition" state at this layer.
+        #[merc_ignore]
+        pub fn new(
+            variables: &[DataVariable],
+            condition: Option<DataExpression>,
+            lhs: DataExpression,
+            rhs: DataExpression,
+        ) -> DataEquation {
+            let condition = condition.unwrap_or_else(true_literal);
+            DATA_SYMBOLS.with_borrow(|ds| {
+                let variables: ATermList<DataVariable> = ATermList::from_double_iter(variables.iter().cloned());
+                let args: [ATerm; 4] = [variables.into(), condition.into(), lhs.into(), rhs.into()];
+                DataEquation {
+                    term: ATerm::with_args(ds.data_equation_symbol.deref(), &args).protect(),
+                }
+            })
+        }
+
+        /// Returns the equation's bound variables.
+        pub fn variables(&self) -> ATermList<DataVariable> {
+            self.term.arg(0).into()
+        }
+
+        /// Returns the equation's condition, or `None` for an unconditional equation
+        /// (the literal `true`).
+        pub fn condition(&self) -> Option<DataExpressionRef<'_>> {
+            let condition: DataExpressionRef<'_> = self.term.arg(1).into();
+            if condition.protect() == true_literal() {
+                None
+            } else {
+                Some(condition)
+            }
+        }
+
+        /// Returns the left-hand side of the equation.
+        pub fn lhs(&self) -> DataExpressionRef<'_> {
+            self.term.arg(2).into()
+        }
+
+        /// Returns the right-hand side of the equation.
+        pub fn rhs(&self) -> DataExpressionRef<'_> {
+            self.term.arg(3).into()
+        }
+    }
+
+    impl fmt::Display for DataEquation {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            if let Some(condition) = self.condition() {
+                write!(f, "{condition} -> ")?;
+            }
+            write!(f, "{} = {}", self.lhs(), self.rhs())
+        }
+    }
+
+    /// The canonical `Bool` literal `true` (mCRL2's `sort_bool::true_`), used as the
+    /// wire-format placeholder for an unconditional equation's condition.
+    #[merc_ignore]
+    fn true_literal() -> DataExpression {
+        DataFunctionSymbol::with_sort("true", SortExpression::from(BasicSort::new("Bool")).copy()).into()
+    }
+
     /// Conversions to `DataExpression`
     #[merc_ignore]
     impl From<DataFunctionSymbol> for DataExpression {
@@ -485,13 +570,27 @@ mod tests {
     use merc_aterm::ATermInt;
 
     use crate::is_data_application;
+    use crate::is_data_equation;
     use crate::is_data_machine_number;
     use crate::is_data_variable;
 
+    use crate::BasicSort;
+    use crate::SortExpression;
+
     use super::DataApplication;
+    use super::DataEquation;
     use super::DataExpression;
     use super::DataFunctionSymbol;
     use super::DataVariable;
+
+    #[test]
+    fn test_function_symbol_with_sort() {
+        let sort: SortExpression = BasicSort::new("Nat").into();
+        let f = DataFunctionSymbol::with_sort("f", sort.copy());
+
+        assert_eq!(f.name(), "f");
+        assert_eq!(f.sort().protect(), sort);
+    }
 
     #[test]
     fn test_print() {
@@ -579,5 +678,37 @@ mod tests {
         assert!(is_data_application(&expr));
         assert_eq!(expr.data_function_symbol().name(), "x");
         assert_eq!(expr.data_arguments().count(), 1);
+    }
+
+    #[test]
+    fn test_data_equation_unconditional() {
+        let sort: SortExpression = BasicSort::new("Nat").into();
+        let x = DataVariable::with_sort("x", sort.copy());
+        let lhs: DataExpression =
+            DataApplication::with_args(&DataFunctionSymbol::new("f"), std::slice::from_ref(&x)).into();
+        let rhs: DataExpression = x.clone().into();
+
+        let equation = DataEquation::new(std::slice::from_ref(&x), None, lhs.clone(), rhs.clone());
+
+        assert!(is_data_equation(&equation));
+        assert!(equation.condition().is_none());
+        assert_eq!(equation.lhs().protect(), lhs);
+        assert_eq!(equation.rhs().protect(), rhs);
+        assert_eq!(equation.variables().to_vec(), vec![x]);
+        assert_eq!(format!("{equation}"), "f(x) = x");
+    }
+
+    #[test]
+    fn test_data_equation_conditional() {
+        let sort: SortExpression = BasicSort::new("Bool").into();
+        let b = DataVariable::with_sort("b", sort.copy());
+        let condition: DataExpression = b.clone().into();
+        let lhs = DataFunctionSymbol::new("f").into();
+        let rhs = DataFunctionSymbol::new("g").into();
+
+        let equation = DataEquation::new(&[b], Some(condition), lhs, rhs);
+
+        assert!(equation.condition().is_some());
+        assert_eq!(format!("{equation}"), "b -> f = g");
     }
 }
