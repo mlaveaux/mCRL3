@@ -14,8 +14,8 @@ use merc_aterm::BinaryATermReader;
 use merc_aterm::BinaryATermWriter;
 use merc_aterm::Symbol;
 use merc_data::DataExpression;
-use merc_data::DataSpecification;
 use merc_data::DataVariable;
+use merc_data::Mcrl2DataSpecification;
 use merc_io::BitStreamRead;
 use merc_io::BitStreamWrite;
 use merc_lts::LtsAction;
@@ -77,7 +77,7 @@ pub fn read_symbolic_lts<R: Read>(
         return Err("Expected symbolic labelled transition system stream".into());
     }
 
-    let data_spec = DataSpecification::read(&mut stream)?;
+    let data_spec = Mcrl2DataSpecification::read(&mut stream)?;
     let process_parameters: ATermList<DataVariable> = stream.read_aterm()?.ok_or("Expected process parameters")?.into();
     let process_parameters: Vec<DataVariable> = process_parameters.to_vec();
 

@@ -18,7 +18,7 @@ use merc_aterm::BinaryATermReader;
 use merc_aterm::BinaryATermWriter;
 use merc_aterm::Symbol;
 use merc_aterm::is_list_term;
-use merc_data::DataSpecification;
+use merc_data::Mcrl2DataSpecification;
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
 use merc_utilities::MercError;
@@ -45,7 +45,7 @@ pub fn read_lts<R: Read>(
     }
 
     // Read the data specification, parameters, and actions.
-    let _data_spec = DataSpecification::read(&mut reader)?;
+    let _data_spec = Mcrl2DataSpecification::read(&mut reader)?;
     let _parameters = reader.read_aterm()?;
     let _actions = reader.read_aterm()?;
 
@@ -134,7 +134,7 @@ pub fn read_lts<R: Read>(
 ///
 /// ```plain
 ///     lts_marker: ATerm
-///     data_spec: see [`merc_data::DataSpecification::write`]
+///     data_spec: see [`merc_data::Mcrl2DataSpecification::write`]
 ///     parameters: ATermList
 ///     action_labels: ATermList
 /// ```
@@ -167,7 +167,7 @@ where
     writer.write_aterm(&lts_marker())?;
 
     // Write the data specification, parameters, and actions.
-    DataSpecification::default().write(&mut writer)?;
+    Mcrl2DataSpecification::default().write(&mut writer)?;
     writer.write_aterm(&ATermList::<ATerm>::empty().into())?; // Empty parameters
     writer.write_aterm(&ATermList::<ATerm>::empty().into())?; // Empty action labels
 

@@ -8,7 +8,6 @@ use rand::seq::IteratorRandom;
 
 use merc_aterm::ATermString;
 use merc_data::DataExpression;
-use merc_data::DataSpecification;
 use merc_data::DataVariable;
 use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
@@ -106,7 +105,7 @@ pub fn random_symbolic_lts<R: Rng>(
     let reachable = reachability(manager, &mut lps, &Timing::new())?;
 
     Ok(SymbolicLts::new(
-        DataSpecification::default(),
+        Mcrl2DataSpecification::default(),
         parameters,
         reachable,
         initial_state_ldd,
