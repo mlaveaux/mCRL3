@@ -1428,6 +1428,7 @@ dependencies = [
  "indoc",
  "log",
  "merc_collections",
+ "merc_data",
  "merc_syntax",
  "merc_utilities",
  "rand",

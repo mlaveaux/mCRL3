@@ -291,11 +291,9 @@ impl SortInterner {
         self.real_sort
     }
 
-    /// Compares two sorts by the sub-sort ordering.
-    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9),
-    // which needs the ordering to decide which side of an equation a cast
-    // belongs on; exercised by tests only until then.
-    #[allow(dead_code)]
+    /// Compares two sorts by the sub-sort ordering. `lowering.rs` uses this to
+    /// decide which side of an application argument or equation join a
+    /// coercion belongs on (docs/typecheck.md §9a step 2).
     pub(crate) fn partial_cmp(&self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<Ordering> {
         if lhs == rhs {
             return Some(Ordering::Equal);

@@ -6,6 +6,7 @@ mod inference;
 mod is_finite;
 mod is_well_typed;
 mod lower;
+mod lowering;
 mod name_resolution;
 mod non_empty;
 mod normalize;
@@ -30,6 +31,8 @@ pub(crate) use inference::*;
 pub(crate) use is_finite::*;
 pub(crate) use is_well_typed::*;
 pub(crate) use lower::*;
+#[allow(unused_imports)]
+pub(crate) use lowering::*;
 pub(crate) use name_resolution::*;
 pub(crate) use non_empty::*;
 pub(crate) use normalize::*;
