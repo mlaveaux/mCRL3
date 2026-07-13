@@ -187,6 +187,38 @@ fn test_upcast_pos_plus_nat_via_variables() {
 }
 
 #[test]
+fn test_repeated_arithmetic_stays_tractable() {
+    // G5 (docs/typecheck.md): before the `Numeric` constraint replaced the
+    // `+`/`*` overload disjunction with a direct lookup, an equation with
+    // several repeated `2*i+k`-shaped sub-expressions (the pattern that
+    // excludes `cellular_automata.mcrl2` from the corpus harness) explored
+    // every combination of every occurrence's candidate overloads and did
+    // not terminate in reasonable time. A regression here would show up as
+    // this test taking far longer than the rest of the suite.
+    check_ok(
+        "map f: Nat -> Bool;
+         var i: Nat;
+         eqn f(i) = if(2*i+1==2*i+2,
+                       if(2*i+3==2*i+4,
+                          if(2*i+5==2*i+6,
+                             if(2*i+7==2*i+8,
+                                if(2*i+9==2*i+10,
+                                   if(2*i+11==2*i+12,
+                                      if(2*i+13==2*i+14,
+                                         if(2*i+15==2*i+16,
+                                            2*i+17==2*i+18,
+                                            false),
+                                         false),
+                                      false),
+                                   false),
+                                false),
+                             false),
+                          false),
+                       false);",
+    );
+}
+
+#[test]
 fn test_list_literal_mixed_nat_pos_joins_to_nat() {
     // mCRL2: test_list_nat_pos, test_list_pos_nat.
     check_ok("map l: List(Nat); eqn l = [0, 1, 2];");
@@ -604,9 +636,15 @@ fn test_anonymous_struct_variable_sorts() {
     // compare while a recogniser makes the sorts distinct. mCRL2:
     // test_equal_context, test_not_equal_context.
     check_ok("map b: Bool; var x: struct t?is_t; y: struct t?is_t; eqn b = (x == y);");
+    // `struct t` and `struct t?is_t` hoist to distinct anonymous structs that
+    // both declare a nullary constructor named `t`, so this is now rejected
+    // at the signature stage by the same zero-arity-name guard as
+    // test_cross_struct_duplicate_constant_name_rejected (§7a.1/.2,
+    // docs/typecheck.md), earlier than the `x == y` sort mismatch this test
+    // originally caught at inference time.
     let err = check_err("map b: Bool; var x: struct t; y: struct t?is_t; eqn b = (x == y);");
     assert!(
-        matches!(err, WellTypedError::Inference(InferenceError::NoTyping { .. })),
+        matches!(err, WellTypedError::DuplicateConstantDifferentSort { .. }),
         "{err}"
     );
 }
@@ -918,12 +956,15 @@ fn test_emptyset_complement_subset_reverse() {
     check_ok("map b: Bool; eqn b = {} <= !{};");
 }
 
-// Known gap behind the next three anchors: an anonymous-struct binder sort
-// defers the whole equation (EquationTyping::Skipped), so these
-// specifications are accepted unchecked where mCRL2 rejects them (the inline
-// struct's constructor `t` is not usable in the body, and `struct t?is_t` is
-// a different sort than `struct t`). Rejecting them requires hoisting binder
-// structs (G8/Phase 4).
+// Known gap behind the next two anchors: hoisting (§7a.3, docs/typecheck.md)
+// made the binder sort itself resolvable — `x: struct t` inside the lambda is
+// structurally identical to the declaration-position `struct t` in `b`'s
+// domain, so both hoist to the *same* `@struct<n>` and `x == t` now type
+// checks. mCRL2 still rejects this: an inline (expression-position) struct's
+// constructor `t` is not usable inside the very body that binds it, a scoping
+// rule hoisting alone does not model. Fix = Phase 4 (G8): lowering needs to
+// know which occurrences of a hoisted constructor came from an inline binder
+// annotation, not a declaration.
 
 #[test]
 #[should_panic(expected = "expected the specification to be rejected")]
@@ -940,12 +981,15 @@ fn test_inline_struct_recogniser_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "expected the specification to be rejected")]
-// mCRL2: test_inline_structs_compare_recogniser.
+// `struct t?is_t` and `struct t` each hoist to their own anonymous struct
+// (the recogniser makes them structurally distinct), both declaring a
+// nullary constructor named `t` — now rejected by the same zero-arity-name
+// guard as test_cross_struct_duplicate_constant_name_rejected (§7a.1/.2,
+// docs/typecheck.md), independently of the `x == y` sort mismatch mCRL2's
+// own verdict is presumably also about. mCRL2: test_inline_structs_compare_recogniser.
 fn test_inline_structs_compare_recogniser_rejected() {
     check_err(
         "map b: (struct t?is_t) # (struct t) -> Bool;
          eqn b = lambda x: struct t?is_t, y: struct t. x == y;",
     );
 }
-

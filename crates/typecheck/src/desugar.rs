@@ -5,6 +5,7 @@ use log::trace;
 
 use merc_syntax::ConstructorDecl;
 use merc_syntax::ConstructorId;
+use merc_syntax::DataExpr;
 use merc_syntax::IdDecl;
 use merc_syntax::MapId;
 use merc_syntax::Sort;
@@ -13,6 +14,7 @@ use merc_syntax::SortExpression;
 use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
+use merc_syntax::map_data_expr;
 
 /// Hoists every anonymous structured sort — a `struct` occurring inside another
 /// sort expression rather than as the body of a sort declaration — into a fresh
@@ -61,9 +63,56 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
         for variable in &mut equation.variables {
             variable.sort = hoister.hoist(variable.sort.clone());
         }
+        for eqn in &mut equation.equations {
+            if let Some(condition) = &mut eqn.condition {
+                hoist_binder_sorts_in_place(&mut hoister, condition);
+            }
+            hoist_binder_sorts_in_place(&mut hoister, &mut eqn.lhs);
+            hoist_binder_sorts_in_place(&mut hoister, &mut eqn.rhs);
+        }
     }
 
     spec.sort_declarations.append(&mut hoister.fresh);
+}
+
+/// Hoists the anonymous structs on every `lambda`/`forall`/`exists`/set-bag-
+/// comprehension binder sort inside `expr`, in place — the expression-body
+/// counterpart of the declaration-position hoisting above (§7a.3,
+/// docs/typecheck.md): without this, a binder over an anonymous `struct` was
+/// left with an unresolvable sort and its equation deferred to
+/// `EquationTyping::Skipped` rather than type checked.
+fn hoist_binder_sorts_in_place(hoister: &mut Hoister, expr: &mut DataExpr) {
+    let owned = std::mem::replace(expr, DataExpr::EmptyList);
+    *expr = hoist_binder_sorts(hoister, owned);
+}
+
+fn hoist_binder_sorts(hoister: &mut Hoister, expr: DataExpr) -> DataExpr {
+    map_data_expr(expr, |node| match node {
+        DataExpr::SetBagComp {
+            mut variable,
+            predicate,
+        } => {
+            variable.sort = hoister.hoist(variable.sort);
+            DataExpr::SetBagComp { variable, predicate }
+        }
+        DataExpr::Lambda { mut variables, body } => {
+            for variable in &mut variables {
+                variable.sort = hoister.hoist(variable.sort.clone());
+            }
+            DataExpr::Lambda { variables, body }
+        }
+        DataExpr::Quantifier {
+            op,
+            mut variables,
+            body,
+        } => {
+            for variable in &mut variables {
+                variable.sort = hoister.hoist(variable.sort.clone());
+            }
+            DataExpr::Quantifier { op, variables, body }
+        }
+        node => node,
+    })
 }
 
 struct Hoister {

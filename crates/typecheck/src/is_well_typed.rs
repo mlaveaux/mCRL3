@@ -7,7 +7,6 @@ use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::try_visit_sort_expr_with;
-use merc_syntax::visit_sort_expr;
 use merc_utilities::MercError;
 
 use crate::InferenceError;
@@ -100,6 +99,12 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
 pub enum WellTypedError {
     #[error("Constructor '{}' and mapping '{}' have the same identifier", constructor, map)]
     ConstructorAndMappingConflict { constructor: String, map: String },
+
+    #[error("Zero-arity constant '{}' is declared more than once with different sorts", name)]
+    DuplicateConstantDifferentSort { name: String },
+
+    #[error("'{}' redeclares a system-defined function", name)]
+    SystemFunctionRedeclared { name: String },
 
     #[error(
         "Constructors cannot be defined for basic sorts, but constructor '{}' is defined for sort '{}'",
@@ -208,18 +213,13 @@ fn check_product_spine(sort: &SortExpression) -> Result<(), WellTypedError> {
 }
 
 /// Returns whether a binder sort inside an equation body can be resolved by
-/// the pipeline today. An anonymous `struct` is not hoisted out of expressions
-/// by `hoist_anonymous_structs`, and a bare product sort is not a sort (mCRL2
-/// rejects it), so a construct binding either is deferred rather than resolved
-/// (see G7/G8 in docs/typecheck.md).
+/// the pipeline today. `hoist_anonymous_structs` hoists an anonymous `struct`
+/// on a binder into a named declaration like any other occurrence, so the
+/// only remaining unsupported shape is a bare product sort, which is not a
+/// sort at all (mCRL2 rejects it) — a construct binding one is deferred
+/// rather than resolved (see G8 in docs/typecheck.md).
 pub(crate) fn is_supported_binder_sort(sort: &SortExpression) -> bool {
-    let contains_struct = visit_sort_expr(sort, |expr| match expr {
-        SortExpression::Struct { .. } => ControlFlow::Break(()),
-        _ => ControlFlow::Continue(()),
-    })
-    .is_some();
-
-    !contains_struct && check_products_within_domains(sort).is_ok()
+    check_products_within_domains(sort).is_ok()
 }
 
 #[cfg(test)]
