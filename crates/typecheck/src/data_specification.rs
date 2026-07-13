@@ -20,6 +20,8 @@ use crate::basic_sort_data_specification;
 use crate::build_system_defined_specification;
 use crate::check_aliases;
 use crate::check_equations;
+use crate::check_no_system_function_redeclaration;
+use crate::check_system_specification;
 use crate::desugar_structured_sorts;
 use crate::hoist_anonymous_structs;
 use crate::is_well_typed;
@@ -137,6 +139,9 @@ impl DataSpecification {
         // that the specification uses. The basic-sort part is kept aside: it
         // is also the input of the system signature below.
         let basics = basic_sort_data_specification();
+        check_no_system_function_redeclaration(&spec, &basics)?;
+        debug!("typecheck: no user declaration redeclares a system function");
+
         let mut system = build_system_defined_specification(&spec, basics.clone());
 
         // The defining equations of each structured sort (Appendix B.10) join
@@ -149,6 +154,16 @@ impl DataSpecification {
         // The system equations parse with the same operator nodes (`b && true`,
         // `d |> s`), so they are lowered like the user equations.
         lower_data_expressions(&mut system);
+
+        // The system-defined content is generated (instantiated templates and
+        // desugared-struct equations), so a defect in it is a bug in a
+        // template or generator rather than a user error: debug builds verify
+        // it instead of trusting the generators.
+        if cfg!(debug_assertions)
+            && let Err(error) = check_system_specification(&spec, &system)
+        {
+            panic!("the generated system-defined specification is malformed: {error}");
+        }
         debug!(
             "typecheck: built the system-defined specification with {} sort, {} map and {} equation declaration(s)",
             system.sort_declarations.len(),
@@ -208,9 +223,10 @@ impl DataSpecification {
 
     /// The system-defined (Appendix-B) declarations for the basic and container
     /// sorts that occur in the specification, plus the defining equations of
-    /// the desugared structured sorts (Appendix B.10). This is trusted content
-    /// with unresolved sorts but lowered equation expressions; multi-argument
-    /// function updates are not included yet (see G3 in `docs/typecheck.md`).
+    /// the desugared structured sorts (Appendix B.10). This is generated
+    /// content with unresolved sorts but lowered equation expressions, verified
+    /// in debug builds by `check_system_specification`; multi-argument function
+    /// updates are not included yet (see G3 in `docs/typecheck.md`).
     pub fn system_defined_specification(&self) -> &UntypedDataSpecification {
         &self.system
     }
