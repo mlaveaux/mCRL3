@@ -289,14 +289,6 @@ pub(crate) fn lower_bool_literal(value: bool) -> DataExpression {
     bool_literal(value)
 }
 
-/// Names lowered as the polymorphic comparison/`if` schemes: their concrete
-/// function sort is exactly the inferred sort of their own `Id` node (no
-/// template reverse-engineering needed, unlike the container operations,
-/// which are deferred — see [Lowering::lower_id]).
-fn is_supported_scheme(name: &str) -> bool {
-    matches!(name, "==" | "!=" | "<" | "<=" | ">" | ">=" | "if")
-}
-
 /// The result of lowering one equation (§9a step 1, docs/typecheck.md).
 // Consumed by the eventual `DataSpecification` assembly (§9a step 5); exercised by tests only until then.
 #[allow(dead_code)]
@@ -313,12 +305,12 @@ pub(crate) struct LoweredEquation {
 /// `merc_data::DataExpression`s bottom-up.
 ///
 /// Covers the "foundation + non-binder happy path" slice of Phase 4:
-/// variables, user-declared-op applications, the polymorphic comparison/`if`
-/// builtins, numeric/boolean literals, and the numeric/container coercions
-/// widening an application argument or the equation's own LHS/RHS to a shared
-/// sort (§9a step 2). Returns `None` — not an error — the moment the
-/// equation needs anything outside that slice (a container literal/operation,
-/// `@func_update`, or a binder), which is expected to exclude most
+/// variables, declared-op and builtin-op applications (including polymorphic
+/// comparison/`if`/container ops — §9a step 3), numeric/boolean literals, and
+/// the numeric/container coercions widening an application argument or the
+/// equation's own LHS/RHS to a shared sort (§9a step 2). Returns `None` —
+/// not an error — the moment the equation needs anything outside that slice (a
+/// container literal or a binder), which is expected to exclude most
 /// real-world equations for now; concrete-builtin/container recovery and
 /// binder lowering are follow-up work (§9a steps 3–4).
 // Consumed by the eventual `DataSpecification` assembly; exercised by tests only until then.
@@ -442,16 +434,9 @@ impl Lowering<'_> {
             NameTarget::Variable => {
                 Some(DataVariable::with_sort(name, lower_sort(self.ctx, self.spec, sort).copy()).into())
             }
-            NameTarget::Op { .. } => {
+            NameTarget::Op { .. } | NameTarget::Builtin => {
                 Some(DataFunctionSymbol::with_sort(name, lower_sort(self.ctx, self.spec, sort).copy()).into())
             }
-            NameTarget::Builtin if is_supported_scheme(name) => {
-                Some(DataFunctionSymbol::with_sort(name, lower_sort(self.ctx, self.spec, sort).copy()).into())
-            }
-            // A container operation or `@func_update`: recovering the
-            // concrete operator from the template needs the reverse mapping
-            // §9a step 3 describes, not yet implemented.
-            NameTarget::Builtin => None,
         }
     }
 
@@ -736,5 +721,35 @@ mod tests {
     #[test]
     fn test_binder_bails() {
         assert!(lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").is_none());
+    }
+
+    // === lower_equation: §9a step 3 — all NameTarget::Builtin ops use inferred sort ===
+
+    #[test]
+    fn test_builtin_arithmetic_op() {
+        // `+` is a system-declared op (`NameTarget::Op` after overload resolution against
+        // the basic-sort system signature), but verifies that arithmetic resolves.
+        let equation = lower("map n: Nat; var a: Nat; b: Nat; eqn n = a + b;").expect("arithmetic lowers");
+        assert_eq!(equation.rhs.to_string(), "+(a, b)");
+    }
+
+    #[test]
+    fn test_builtin_polymorphic_container_op() {
+        // `in` is a POLYMORPHIC_SIGNATURE op (`NameTarget::Builtin`) whose
+        // inferred sort is the concrete instantiation; the lowered term embeds
+        // that sort directly.
+        let equation = lower("map b: Bool; var n: Nat; s: Set(Nat); eqn b = n in s;")
+            .expect("container op lowers with step 3 fix");
+        assert_eq!(equation.rhs.to_string(), "in(n, s)");
+    }
+
+    #[test]
+    fn test_builtin_func_update() {
+        // `@func_update` is lowered by lower.rs to an Application; with the
+        // step-3 fix its Builtin target uses the inferred sort directly.
+        let equation =
+            lower("map f: Nat -> Bool; map g: Nat -> Bool; var n: Nat; eqn g = f[n -> true];")
+                .expect("@func_update lowers with step 3 fix");
+        assert_eq!(equation.rhs.to_string(), "@func_update(f, n, true)");
     }
 }
