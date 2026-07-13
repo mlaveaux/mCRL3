@@ -66,6 +66,15 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
         mappings: HashMap::new(),
     };
 
+    // mCRL2's `add_constant` keys zero-arity constructors/mappings by *name*
+    // only, rejecting a second declaration under any different sort — even
+    // across `cons`/`map` and across different structs (two structs each
+    // declaring a nullary `open`, say). A symbol with a function sort is
+    // unaffected: its overloads are disambiguated by argument sort instead
+    // (Phase-3 overload resolution), which is why `signature.constructors`/
+    // `mappings` allow distinct-sort overloads freely.
+    let mut constants: HashMap<String, ResolvedSortId> = HashMap::new();
+
     for decl in &spec.constructor_declarations {
         let id = resolve_sort(ctx, spec, &decl.sort);
 
@@ -94,6 +103,7 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
             _ => {}
         }
 
+        check_constant_name(&mut constants, ctx, &decl.identifier, id)?;
         push_overload(signature.constructors.entry(decl.identifier.clone()).or_default(), id);
     }
 
@@ -115,10 +125,35 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
             });
         }
 
+        check_constant_name(&mut constants, ctx, &decl.identifier, id)?;
         push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
     }
 
     Ok(signature)
+}
+
+/// Rejects a second zero-arity declaration of `name` under a different sort
+/// than a previous one (see the comment on `constants` in
+/// [compute_signature]). Symbols with a function sort are not zero-arity and
+/// pass through untouched.
+fn check_constant_name(
+    constants: &mut HashMap<String, ResolvedSortId>,
+    ctx: &TypeckContext,
+    name: &str,
+    id: ResolvedSortId,
+) -> Result<(), WellTypedError> {
+    if matches!(ctx.sorts.get(id), ResolvedSort::Function { .. }) {
+        return Ok(());
+    }
+    match constants.get(name) {
+        Some(&existing) if existing != id => {
+            Err(WellTypedError::DuplicateConstantDifferentSort { name: name.to_string() })
+        }
+        _ => {
+            constants.insert(name.to_string(), id);
+            Ok(())
+        }
+    }
 }
 
 /// Appends `id` unless it is already an overload, so duplicate declarations of

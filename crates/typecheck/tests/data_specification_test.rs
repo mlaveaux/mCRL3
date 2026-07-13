@@ -1,10 +1,11 @@
 //! Data-specification type-checking tests.
 //!
 //! The first group is ported from mCRL2's
-//! `libraries/data/test/typecheck_test.cpp` and `normalize_sorts_test.cpp`,
-//! restricted to the cases that exercise the sort / alias / well-typedness
-//! layer that `merc_typecheck` currently implements. The second group is a
-//! randomized property test over acyclic alias graphs.
+//! `libraries/data/test/typecheck_test.cpp` and `normalize_sorts_test.cpp`:
+//! the specification-level cases (sort, alias, declaration and
+//! well-typedness checks). The equation-level cases live in
+//! `inference_test.rs`. The second group is a randomized property test over
+//! acyclic alias graphs.
 
 use std::collections::HashSet;
 
@@ -55,9 +56,9 @@ fn test_duplicate_sort_conflicting() {
 #[test]
 fn test_constructor_and_mapping_same_symbol() {
     // The same symbol `f: S` cannot be declared as both a constructor and a
-    // mapping. (mCRL2 additionally rejects `cons f: S; map f: T;` on ambiguity
-    // grounds; distinguishing different-sort overloads is overload resolution,
-    // which is not implemented yet, so merc currently accepts that.)
+    // mapping. (mCRL2 additionally rejects the different-sort form
+    // `cons f: S; map f: T;` — see
+    // test_duplicate_constant_different_sort_rejected_cons_map below.)
     check("sort S;\ncons f: S;\nmap  f: S;\n", false);
 }
 
@@ -105,9 +106,33 @@ fn test_recursive_function_sort_reverse() {
 
 // === Alias self-loop table (typecheck_test.cpp:1565-1636, test_sort_aliases) ===
 // `alias.rs`'s existing tests already cover several rows of this table
-// (direct/indirect cycles, List/FSet/FBag self-loops, struct-boxed
-// recursion through List/Set/function-sort, mutual struct recursion); these
-// add the rows that were not yet exercised.
+// (direct/indirect cycles, the List self-loop, struct-boxed recursion
+// through List/Set/function-sort, mutual struct recursion); these add the
+// rows that were not yet exercised.
+
+#[test]
+fn test_bare_self_alias_rejected() {
+    // Row A1 = A1: the shortest possible cycle.
+    match check_err("sort A1 = A1;") {
+        WellTypedError::AliasCycle { sorts } if sorts.contains(&"A1".to_string()) => {}
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+fn test_bare_fset_fbag_self_alias_rejected() {
+    // Rows A12 = FSet(A12) and A13 = FBag(A13): like the List row these are
+    // plain cycles (`AliasCycle`), not function-sort loops — the *finite*
+    // containers do not set the function-sort flag the way Set/Bag below do.
+    match check_err("sort A12 = FSet(A12);") {
+        WellTypedError::AliasCycle { sorts } if sorts.contains(&"A12".to_string()) => {}
+        other => panic!("unexpected error {other}"),
+    }
+    match check_err("sort A13 = FBag(A13);") {
+        WellTypedError::AliasCycle { sorts } if sorts.contains(&"A13".to_string()) => {}
+        other => panic!("unexpected error {other}"),
+    }
+}
 
 #[test]
 fn test_bare_set_self_alias_rejected() {
@@ -173,33 +198,95 @@ fn test_recursive_struct_without_base_case_is_empty() {
     }
 }
 
-// === Known gaps (bug-candidates): duplicate/shadowed declaration names ===
-// Ignored so the suite stays green; each documents a confirmed divergence
-// from mCRL2 and encodes the *correct* (mCRL2-matching) behavior, so
-// removing `#[ignore]` is the regression test once the gap is closed.
+// === Remaining spec-level typecheck_test.cpp / normalize_sorts_test.cpp ports ===
 
 #[test]
-#[ignore = "known gap: mCRL2 keys zero-arity constants by name only (add_constant), rejecting \
-            any second declaration regardless of sort; merc's signature only dedupes identical \
-            overloads and otherwise allows distinct-sort overloads, including nullary ones. \
-            mCRL2: test_data_specification_constructor_same_signature"]
+fn test_sort_name_reused_as_map_and_variable() {
+    // `S` is a sort, a mapping and an equation variable at once; the variable
+    // shadows the mapping inside the equation, so `S(S)` applies the
+    // non-function variable and the equation is rejected. mCRL2:
+    // test_sort_as_variable.
+    check(
+        "sort S;\nmap  S: S -> Bool;\nvar  S: S;\neqn  S(S)  =  S == S;\n",
+        false,
+    );
+}
+
+#[test]
+fn test_recursive_struct_via_function_codomain() {
+    // Struct recursion in a function sort's *codomain* (row A8 of the alias
+    // table; the domain variant is alias.rs's
+    // test_recursive_struct_through_function_sort). mCRL2:
+    // test_recursive_struct_via_function.
+    match check_err("sort G = struct f(Nat -> G);") {
+        WellTypedError::RecursiveAliasThroughFunctionSort { sort } if sort == "G" => {}
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+fn test_recursive_struct_list_indirect() {
+    // Struct recursion through a List alias one level removed. mCRL2:
+    // test_recursive_struct_list_indirect.
+    check("sort LP = List(P);\n     P = struct b(x: LP);\n", true);
+}
+
+#[test]
+fn test_duplicate_variables_in_var_block() {
+    // mCRL2 keeps both cases disabled as expected-failures — its checker does
+    // not catch the duplicate — but rejection is the intended semantics, and
+    // merc rejects. mCRL2: test_multiple_variables,
+    // test_multiple_variables_reversed (both disabled upstream).
+    check(
+        "sort S;\nmap g: Bool;\nvar x: Nat;\n    x: S;\neqn g = (x == x + 1);\n",
+        false,
+    );
+    check(
+        "sort S;\nmap g: Bool;\nvar x: S;\n    x: Nat;\neqn g = (x == x + 1);\n",
+        false,
+    );
+}
+
+#[test]
+fn test_normalize_sorts_across_equations() {
+    // Struct aliases used by mappings and equations together — the merc
+    // analogue of normalize_sorts_test.cpp's test_normalize_sorts, with the
+    // mappings that test adds through the C++ API declared inline instead.
+    check(
+        "sort Bit = struct e0 | e1;\n\
+              AbsBit = struct arbitrary;\n\
+         map  inv: Bit -> Bit;\n\
+              h: Bit -> AbsBit;\n\
+              abseq: AbsBit # AbsBit -> Set(Bool);\n\
+              absinv: AbsBit -> Set(AbsBit);\n\
+         eqn  inv(e0) = e1;\n\
+              inv(e1) = e0;\n",
+        true,
+    );
+}
+
+// === Signature-layer name guards: duplicate/shadowed declaration names ===
+
+#[test]
+// mCRL2 keys zero-arity constants by name only (add_constant), rejecting any
+// second declaration regardless of sort. mCRL2: test_data_specification_constructor_same_signature.
 fn test_duplicate_constant_different_sort_rejected_cons_cons() {
     check("sort S; T; cons f: S; f: T;", false);
 }
 
 #[test]
-#[ignore = "known gap: see test_duplicate_constant_different_sort_rejected_cons_cons; here the \
-            second declaration is a `map` instead of a `cons`. \
-            mCRL2: test_data_specification_constructor_map_same_signature"]
+// See test_duplicate_constant_different_sort_rejected_cons_cons; here the
+// second declaration is a `map` instead of a `cons`.
+// mCRL2: test_data_specification_constructor_map_same_signature.
 fn test_duplicate_constant_different_sort_rejected_cons_map() {
     check("sort S; T; cons f: S; map f: T;", false);
 }
 
 #[test]
-#[ignore = "known gap: two different structs each declaring a nullary constructor of the same \
-            name (`open`, `closed`) should be rejected for the same reason as \
-            test_duplicate_constant_different_sort_rejected_* — merc currently allows it. \
-            mCRL2: normalize_sorts_test.cpp test_loop_free_knuth_bendix_completion"]
+// Two different structs each declaring a nullary constructor of the same
+// name (`open`, `closed`) are rejected for the same reason as
+// test_duplicate_constant_different_sort_rejected_*.
+// mCRL2: normalize_sorts_test.cpp test_loop_free_knuth_bendix_completion.
 fn test_cross_struct_duplicate_constant_name_rejected() {
     check(
         "sort front_doorstate = struct open | closed;
@@ -209,10 +296,10 @@ fn test_cross_struct_duplicate_constant_name_rejected() {
 }
 
 #[test]
-#[ignore = "known gap: mCRL2's add_function rejects any user map/cons whose name collides with \
-            a system function, regardless of sort (\"Attempt to redeclare a system function\"); \
-            merc has no such check and accepts a verbatim redeclaration like this one. No direct \
-            typecheck_test.cpp case; derived from mCRL2's typecheck.cpp add_function guard."]
+// mCRL2's add_function rejects any user map/cons whose name collides with a
+// system function, regardless of sort ("Attempt to redeclare a system
+// function"). No direct typecheck_test.cpp case; derived from mCRL2's
+// typecheck.cpp add_function guard.
 fn test_user_declaration_shadowing_system_conversion_rejected() {
     check("map Nat2Pos: Nat -> Pos;", false);
 }
