@@ -8,6 +8,8 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_data_expr;
 use merc_syntax::visit_sort_expr;
 
+use crate::POLYMORPHIC_SIGNATURE;
+use crate::WellTypedError;
 use crate::is_supported_binder_sort;
 use crate::standard_sort;
 
@@ -27,8 +29,9 @@ use crate::standard_sort;
 /// `DataSpecification::from_untyped`.
 ///
 /// The result is deliberately left unresolved: it uses the built-in `Simple`
-/// sorts and the Appendix-B operator names, and is trusted content rather than
-/// something re-checked against the user-oriented well-typedness rules.
+/// sorts and the Appendix-B operator names, and is not re-checked against the
+/// user-oriented well-typedness rules — debug builds instead verify its basic
+/// hygiene via `check_system_specification`.
 ///
 /// `basics` is the [basic_sort_data_specification], passed in because the
 /// caller also needs it separately (for the system signature).
@@ -59,6 +62,45 @@ pub(crate) fn build_system_defined_specification(
     }
 
     result
+}
+
+/// mCRL2's `add_function` rejects any user `cons`/`map` declaration whose
+/// name collides with a system-defined function, regardless of the user's
+/// declared sort ("Attempt to redeclare a system function"): the
+/// always-present basic-sort operators (`basics`), the polymorphic
+/// container operations (`POLYMORPHIC_SIGNATURE`), and the built-in
+/// comparison/`if` schemes. This is a pure name comparison — it does not
+/// need sort resolution — so it can run as soon as `basics` is available.
+pub(crate) fn check_no_system_function_redeclaration(
+    spec: &UntypedDataSpecification,
+    basics: &UntypedDataSpecification,
+) -> Result<(), WellTypedError> {
+    let mut reserved: HashSet<&str> = HashSet::new();
+    reserved.extend(
+        basics
+            .constructor_declarations
+            .iter()
+            .map(|decl| decl.identifier.as_str()),
+    );
+    reserved.extend(basics.map_declarations.iter().map(|decl| decl.identifier.as_str()));
+    reserved.extend(POLYMORPHIC_SIGNATURE.ops.keys().map(String::as_str));
+    reserved.extend(["==", "!=", "<", "<=", ">", ">=", "if"]);
+
+    for decl in &spec.constructor_declarations {
+        if reserved.contains(decl.identifier.as_str()) {
+            return Err(WellTypedError::SystemFunctionRedeclared {
+                name: decl.identifier.clone(),
+            });
+        }
+    }
+    for decl in &spec.map_declarations {
+        if reserved.contains(decl.identifier.as_str()) {
+            return Err(WellTypedError::SystemFunctionRedeclared {
+                name: decl.identifier.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Collects every container sort — and, when `include_functions`, every
