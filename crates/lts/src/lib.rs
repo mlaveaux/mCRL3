@@ -11,7 +11,6 @@ mod lts;
 mod lts_builder;
 mod lts_builder_fast;
 mod multi_action;
-mod product_lts;
 mod random_lts;
 mod reachability;
 
