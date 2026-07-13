@@ -24,11 +24,11 @@ fn parse_template(text: &str) -> UntypedDataSpecification {
 /// parsed once like the Pratt parsers of `merc_syntax`.
 static BASIC_SORTS: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
     let mut result = UntypedDataSpecification::default();
-    result.merge(&parse_template(include_str!("../../syntax/spec/bool.mcrl2")));
-    result.merge(&parse_template(include_str!("../../syntax/spec/pos.mcrl2")));
-    result.merge(&parse_template(include_str!("../../syntax/spec/int.mcrl2")));
-    result.merge(&parse_template(include_str!("../../syntax/spec/nat.mcrl2")));
-    result.merge(&parse_template(include_str!("../../syntax/spec/real.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/bool.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/pos.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/int.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/nat.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/real.mcrl2")));
     result
 });
 
@@ -60,12 +60,12 @@ impl ContainerTemplates {
 }
 
 pub(crate) static CONTAINER_TEMPLATES: LazyLock<ContainerTemplates> = LazyLock::new(|| ContainerTemplates {
-    list: parse_template(include_str!("../../syntax/spec/list.mcrl2")),
-    set: parse_template(include_str!("../../syntax/spec/set.mcrl2")),
-    fset: parse_template(include_str!("../../syntax/spec/fset.mcrl2")),
-    bag: parse_template(include_str!("../../syntax/spec/bag.mcrl2")),
-    fbag: parse_template(include_str!("../../syntax/spec/fbag.mcrl2")),
-    function_update: parse_template(include_str!("../../syntax/spec/function_update.mcrl2")),
+    list: parse_template(include_str!("../../../syntax/spec/list.mcrl2")),
+    set: parse_template(include_str!("../../../syntax/spec/set.mcrl2")),
+    fset: parse_template(include_str!("../../../syntax/spec/fset.mcrl2")),
+    bag: parse_template(include_str!("../../../syntax/spec/bag.mcrl2")),
+    fbag: parse_template(include_str!("../../../syntax/spec/fbag.mcrl2")),
+    function_update: parse_template(include_str!("../../../syntax/spec/function_update.mcrl2")),
 });
 
 /// Returns a standard data specification containing the standard sorts and their associated constructors, mappings, and equations.
