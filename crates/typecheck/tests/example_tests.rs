@@ -19,15 +19,7 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/mCRL2/academic/bounded_ricart-agrawala/RA_fixed+reduced/RA_fixed+reduced_spec.mcrl2") ; "ra_fixed+reduced_spec.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/bounded_ricart-agrawala/RA_original/RA_original_spec.mcrl2") ; "ra_original_spec.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/cabp/cabp.mcrl2") ; "cabp.mcrl2")]
-// Excluded: the `T` equation nests `exists`/`lambda` around ~9 repeated
-// `2*i+k`-shaped sub-expressions, each contributing a `+`/`*` overload
-// disjunction; `solve_disjunction` explores every disjunct exhaustively (only
-// a duplicate/tied leaf proves non-ambiguity), and branch-and-bound pruning
-// alone doesn't bound that — it's still running after 18M+ search nodes.
-// A real fix needs mCRL2-faithful numeric-overload promotion (`+: Pos # Nat
-// -> Pos` etc. must stay precise, so the disjuncts can't just collapse into
-// one polymorphic scheme like `==`/`if` — see docs/typecheck.md G5).
-// #[test_case(include_str!("../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2") ; "cellular_automata.mcrl2")]
+#[test_case(include_str!("../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2") ; "cellular_automata.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/commprot/commprot.mcrl2") ; "commprot.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/dining/dining3.mcrl2") ; "dining3.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/dining/dining3_cs.mcrl2") ; "dining3_cs.mcrl2")]
