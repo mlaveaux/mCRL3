@@ -32,6 +32,7 @@ use merc_reduction::reduce_lts;
 use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
 use merc_refinement::refines;
+use merc_syntax::generate_distinguishing_formula;
 use merc_syntax::generate_formula;
 use merc_syntax::parse_action_names;
 use merc_syntax::parse_allow_action_names;
@@ -120,6 +121,11 @@ struct CompareArgs {
 
     /// Specify the input LTS.
     right_filename: PathBuf,
+
+    /// If set, outputs a distinguishing formula when the LTSs are not
+    /// equivalent. Only supported for (naive) strong bisimulation.
+    #[arg(short = 'c', long)]
+    counter_example: Option<PathBuf>,
 
     /// Explicitly specify the LTS file format.
     #[arg(long)]
@@ -397,6 +403,15 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
 
 /// Compares two LTSs for equivalence modulo any of the available equivalences.
 fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercError> {
+    if args.counter_example.is_some()
+        && !matches!(
+            args.equivalence,
+            Equivalence::StrongBisimNaive
+        )
+    {
+        return Err("Distinguishing formulas are only supported for naive strong bisimulation.".into());
+    }
+
     let format = guess_lts_format_from_extension(&args.left_filename, args.format).ok_or("Unknown LTS file format.")?;
 
     info!("Assuming format {:?} for both LTSs.", format);
@@ -414,15 +429,37 @@ fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercErr
         LargeFormatter(right_lts.num_of_transitions())
     );
 
-    let equivalent = apply_lts_pair!(left_lts, right_lts, timing, |left, right, timing| {
-        merc_reduction::compare_lts(args.equivalence, left, right, !args.no_preprocess, timing)
-    });
+    apply_lts_pair!(left_lts, right_lts, timing, |left,
+                                                  right,
+                                                  timing|
+     -> Result<(), MercError> {
+        let (equivalent, counter_example) = merc_reduction::compare_lts(
+            args.equivalence,
+            left,
+            right,
+            !args.no_preprocess,
+            args.counter_example.is_some(),
+            timing,
+        );
 
-    if equivalent {
-        println!("true");
-    } else {
-        println!("false");
-    }
+        if equivalent {
+            println!("true");
+        } else {
+            if let Some(formula) = counter_example {
+                if let Some(path) = &args.counter_example {
+                    // Generate a distinguishing formula and output it to the given path.
+                    let mut writer = File::create(path)?;
+                    writeln!(&mut writer, "{}", generate_distinguishing_formula(&formula))?;
+                } else {
+                    panic!("Counter example path not provided.");
+                }
+            }
+
+            println!("false");
+        }
+
+        Ok(())
+    })?;
 
     Ok(())
 }

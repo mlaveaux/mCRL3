@@ -195,8 +195,10 @@ fn test_mcrl2_ltscombine() {
                 expected_lts,
                 result_lts,
                 false,
+                false,
                 &Timing::new(),
-            ),
+            )
+            .0,
             "The resulting LTSs are not bisimilar."
         );
     });

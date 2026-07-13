@@ -7,7 +7,6 @@ use crate::RegFrm;
 use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmOp;
-use crate::StateFrmUnaryOp;
 use crate::StateVarDecl;
 use merc_lts::TransitionLabel;
 use merc_reduction::DistinguishingFormula;
@@ -101,31 +100,44 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
 /// The resulting formula holds in one of the two compared states but not the
 /// other, witnessing that they are not strongly bisimilar.
 pub fn generate_distinguishing_formula<L: TransitionLabel>(formula: &DistinguishingFormula<L>) -> StateFrm {
-    match formula {
-        DistinguishingFormula::Diamond { label, conjuncts } => StateFrm::Modality {
-            operator: ModalityOperator::Diamond,
-            formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
-            expr: Box::new(distinguishing_conjunction(conjuncts)),
-        },
-        DistinguishingFormula::Negate(inner) => StateFrm::Unary {
-            op: StateFrmUnaryOp::Negation,
-            expr: Box::new(generate_distinguishing_formula(inner)),
-        },
-    }
+    distinguishing_to_statefrm(formula, false)
 }
 
-/// Builds the conjunction `c_0 && c_1 && ...` of the converted conjuncts, which
-/// is `true` when there are no conjuncts.
-fn distinguishing_conjunction<L: TransitionLabel>(conjuncts: &[DistinguishingFormula<L>]) -> StateFrm {
-    conjuncts
-        .iter()
-        .map(generate_distinguishing_formula)
-        .reduce(|lhs, rhs| StateFrm::Binary {
-            op: StateFrmOp::Conjunction,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        })
-        .unwrap_or(StateFrm::True)
+/// Converts a [`DistinguishingFormula`] to a [`StateFrm`], treating it as
+/// negated when `negated` is set.
+///
+/// Negation is pushed inward through the modalities via the modal De Morgan
+/// laws (`!<a>phi == [a]!phi`, dually for `[a]`, distributing over the
+/// conjuncts), rather than emitted as a bare [`StateFrm::Unary`] negation:
+/// consumers such as `merc_vpg`'s parity-game translation only accept
+/// formulas without free negation.
+fn distinguishing_to_statefrm<L: TransitionLabel>(formula: &DistinguishingFormula<L>, negated: bool) -> StateFrm {
+    match formula {
+        DistinguishingFormula::Negate(inner) => distinguishing_to_statefrm(inner, !negated),
+        DistinguishingFormula::Diamond { label, conjuncts } => {
+            let (operator, op, unit) = if negated {
+                (ModalityOperator::Box, StateFrmOp::Disjunction, StateFrm::False)
+            } else {
+                (ModalityOperator::Diamond, StateFrmOp::Conjunction, StateFrm::True)
+            };
+
+            let expr = conjuncts
+                .iter()
+                .map(|conjunct| distinguishing_to_statefrm(conjunct, negated))
+                .reduce(|lhs, rhs| StateFrm::Binary {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                })
+                .unwrap_or(unit);
+
+            StateFrm::Modality {
+                operator,
+                formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
+                expr: Box::new(expr),
+            }
+        }
+    }
 }
 
 /// Generates a formula `[tau* . label1 . tau* . label2. ... . tau*]expr`, or

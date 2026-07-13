@@ -476,7 +476,7 @@ mod tests {
             files.dump("result.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
-            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &timing));
+            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, false, &timing).0);
         })
     }
 
@@ -499,7 +499,7 @@ mod tests {
             files.dump("result.aut", |f| write_aut(f, &result)).unwrap();
             files.dump("expected.aut", |f| write_aut(f, &expected)).unwrap();
 
-            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, &timing));
+            assert!(compare_lts(Equivalence::StrongBisim, result, expected, false, false, &timing).0);
         })
     }
 }

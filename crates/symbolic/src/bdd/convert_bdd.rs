@@ -350,8 +350,10 @@ mod tests {
                     explicit_lts,
                     explicit_lts_bdd,
                     false,
+                    false,
                     &Timing::new()
-                ),
+                )
+                .0,
                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
             );
         });

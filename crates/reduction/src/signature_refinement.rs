@@ -20,8 +20,11 @@ use merc_utilities::Timing;
 
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
+use crate::DistinguishingFormula;
 use crate::DivergencePreservingLts;
 use crate::Partition;
+use crate::PartitionTree;
+use crate::RefinementForest;
 use crate::Signature;
 use crate::SignatureBuilder;
 use crate::branching_bisim_signature;
@@ -57,13 +60,49 @@ pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (L, BlockPartitio
 
 /// Computes a strong bisimulation partitioning using signature refinement
 pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition) {
-    let partition = timing.measure("reduction", || {
-        signature_refinement_naive::<_, _, false>(&lts, |state_index, partition, _, builder| {
-            strong_bisim_signature(state_index, &lts, partition, builder);
-        })
-    });
-
+    let partition = strong_bisim_sigref_naive_impl(&lts, &mut (), timing);
     (lts, partition)
+}
+
+/// Computes a strong bisimulation partitioning using signature refinement,
+/// additionally returning the [`PartitionTree`] recorded during refinement.
+///
+/// The tree can be used to reconstruct a minimal-depth distinguishing formula
+/// for any two states found in different blocks, via
+/// [`PartitionTree::distinguish`].
+pub fn strong_bisim_sigref_naive_with_tree<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition, PartitionTree) {
+    let mut tree = PartitionTree::new(lts.num_of_states());
+    let partition = strong_bisim_sigref_naive_impl(&lts, &mut tree, timing);
+    (lts, partition, tree)
+}
+
+/// Computes a minimal-depth distinguishing formula for states `s` and `t` of
+/// `lts` under strong bisimulation, or [`None`] when they are bisimilar.
+pub fn strong_bisim_distinguishing_formula<L: LTS>(
+    lts: L,
+    s: StateIndex,
+    t: StateIndex,
+    timing: &Timing,
+) -> Option<DistinguishingFormula<L::Label>> {
+    let (lts, _, tree) = strong_bisim_sigref_naive_with_tree(lts, timing);
+    tree.distinguish(s, t, lts.labels())
+}
+
+/// Implementation shared by [strong_bisim_sigref_naive] and [strong_bisim_sigref_naive_with_tree].
+fn strong_bisim_sigref_naive_impl<L: LTS, R: RefinementForest>(
+    lts: &L,
+    forest: &mut R,
+    timing: &Timing,
+) -> IndexedPartition {
+    timing.measure("reduction", || {
+        signature_refinement_naive::<_, _, _, false>(
+            lts,
+            |state_index, partition, _, builder| {
+                strong_bisim_signature(state_index, lts, partition, builder);
+            },
+            forest,
+        )
+    })
 }
 
 /// Computes a branching bisimulation partitioning using signature refinement.
@@ -182,7 +221,7 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
         let mut visited = FxHashSet::default();
         let mut stack = Vec::new();
 
-        signature_refinement_naive::<_, _, false>(
+        signature_refinement_naive::<_, _, _, false>(
             preprocessed_lts,
             |state_index, partition, state_to_signature, builder| {
                 branching_bisim_signature_sorted(state_index, preprocessed_lts, partition, state_to_signature, builder);
@@ -207,6 +246,7 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
                     );
                 }
             },
+            &mut (),
         )
     })
 }
@@ -298,7 +338,7 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
     let partition = timing.measure("reduction", || {
         if divergence_preserving {
             let divergence_preserving_lts = DivergencePreservingLts::new(&preprocessed_lts);
-            signature_refinement_naive::<_, _, true>(
+            signature_refinement_naive::<_, _, _, true>(
                 &divergence_preserving_lts,
                 |state_index, partition, state_to_signature, builder| {
                     weak_bisim_signature_sorted(
@@ -309,13 +349,15 @@ fn weak_bisim_sigref_naive_impl<L: LTS>(
                         builder,
                     )
                 },
+                &mut (),
             )
         } else {
-            signature_refinement_naive::<_, _, true>(
+            signature_refinement_naive::<_, _, _, true>(
                 &preprocessed_lts,
                 |state_index, partition, state_to_signature, builder| {
                     weak_bisim_signature_sorted(state_index, &preprocessed_lts, partition, state_to_signature, builder)
                 },
+                &mut (),
             )
         }
     });
@@ -647,7 +689,16 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
 /// The signature function is called for each state and should fill the
 /// signature builder with the signature of the state. It consists of the
 /// current partition, the signatures per state for the next partition.
-fn signature_refinement_naive<F, L: LTS, const WEAK: bool>(lts: &L, mut signature: F) -> IndexedPartition
+///
+/// The `forest` records the block-history of the refinement, which can later
+/// be used to reconstruct a distinguishing formula for any two states in
+/// different final blocks. Pass `&mut ()` when this is not needed; the no-op
+/// implementation is free.
+fn signature_refinement_naive<F, L: LTS, R: RefinementForest, const WEAK: bool>(
+    lts: &L,
+    mut signature: F,
+    forest: &mut R,
+) -> IndexedPartition
 where
     F: FnMut(StateIndex, &IndexedPartition, &Vec<Signature<'_>>, &mut SignatureBuilder),
 {
@@ -749,6 +800,8 @@ where
             next_partition.set_block(*state_index, new_id);
         }
 
+        forest.record_level(&partition, &next_partition);
+
         iteration += 1;
 
         debug_assert!(
@@ -756,6 +809,8 @@ where
             "There can never be more splits than number of states, but at least two iterations for stability"
         );
     }
+
+    forest.finalize(lts, &partition);
 
     trace!("Refinement partition {partition}");
     debug_assert!(

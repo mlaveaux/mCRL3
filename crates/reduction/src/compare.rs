@@ -1,26 +1,65 @@
 #![forbid(unsafe_code)]
 
+use log::warn;
 use merc_lts::LTS;
 use merc_utilities::Timing;
 
+use crate::DistinguishingFormula;
 use crate::Equivalence;
 use crate::Partition;
 use crate::branching_bisim_sigref;
 use crate::branching_bisim_sigref_naive;
 use crate::strong_bisim_sigref;
 use crate::strong_bisim_sigref_naive;
+use crate::strong_bisim_sigref_naive_with_tree;
 use crate::weak_bisim_sigref_inductive_naive;
 use crate::weak_bisim_sigref_naive;
 use crate::weak_bisimulation;
 use crate::weak_bisimulation_parallel;
 
-// Compare two LTSs for equivalence using the given algorithm.
-pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preprocess: bool, timing: &Timing) -> bool {
+/// Compares two LTSs for equivalence using the given algorithm.
+///
+/// When `counter_example` is set and `equivalence` is a strong bisimulation
+/// variant, a `false` result comes with a minimal-depth distinguishing
+/// formula that holds in the left LTS but not in the right one. Other
+/// equivalences do not yet support counter-example construction: the
+/// comparison result is still correct, but no formula is produced.
+pub fn compare_lts<L: LTS>(
+    equivalence: Equivalence,
+    left: L,
+    right: L,
+    preprocess: bool,
+    counter_example: bool,
+    timing: &Timing,
+) -> (bool, Option<DistinguishingFormula<L::Label>>) {
     let (merged, rhs_initial) = timing.measure("merge lts", || left.merge_disjoint(&right));
     drop(right); // No longer needed.
 
+    if counter_example {
+        match equivalence {
+            Equivalence::StrongBisimNaive => {
+                let (lts, partition, tree) = strong_bisim_sigref_naive_with_tree(merged, timing);
+                let lhs_initial = lts.initial_state_index();
+
+                return if partition.block_number(lhs_initial) == partition.block_number(rhs_initial) {
+                    (true, None)
+                } else {
+                    let formula = tree
+                        .distinguish(lhs_initial, rhs_initial, lts.labels())
+                        .expect("states in different blocks under strong bisimulation must be distinguishable");
+                    (false, Some(formula))
+                };
+            }
+            _ => {
+                warn!(
+                    "Counter-example generation is only supported for strong bisimulation; comparing {equivalence:?} without one."
+                );
+            }
+        }
+    }
+
     // Reduce the merged LTS modulo the given equivalence and return the partition
-    match equivalence {
+    let equal = match equivalence {
         Equivalence::WeakBisim => {
             let (lts, rhs_initial, partition) = weak_bisimulation(merged, rhs_initial, preprocess, false, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
@@ -81,7 +120,9 @@ pub fn compare_lts<L: LTS>(equivalence: Equivalence, left: L, right: L, preproce
             let (lts, rhs_initial, partition) = branching_bisim_sigref_naive(merged, rhs_initial, true, timing);
             partition.block_number(lts.initial_state_index()) == partition.block_number(rhs_initial)
         }
-    }
+    };
+
+    (equal, None)
 }
 
 #[cfg(test)]
@@ -122,13 +163,17 @@ mod tests {
             files.dump("permuted.aut", |w| write_aut(w, &permuted_lts)).unwrap();
 
             // Check that the original and permuted LTS are bisimilar.
-            assert!(compare_lts(
-                compare::Equivalence::StrongBisim,
-                lts,
-                permuted_lts,
-                false,
-                &timing
-            ));
+            assert!(
+                compare_lts(
+                    compare::Equivalence::StrongBisim,
+                    lts,
+                    permuted_lts,
+                    false,
+                    false,
+                    &timing
+                )
+                .0
+            );
         })
     }
 
@@ -146,29 +191,37 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let weak_bisim_parallel = compare_lts(
                 compare::Equivalence::WeakBisimParallel,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let weak_bisim_sigref = compare_lts(
                 compare::Equivalence::WeakBisimSigref,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let weak_bisim_sigref_naive = compare_lts(
                 compare::Equivalence::WeakBisimSigrefNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
 
             assert_eq!(
                 weak_bisim, weak_bisim_parallel,
@@ -199,29 +252,37 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let weak_bisim_dp_parallel = compare_lts(
                 compare::Equivalence::WeakBisimParallelDivergencePreserving,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let weak_bisim_dp_sigref = compare_lts(
                 compare::Equivalence::WeakBisimSigrefDivergencePreserving,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let weak_bisim_dp_sigref_naive = compare_lts(
                 compare::Equivalence::WeakBisimSigrefNaiveDivergencePreserving,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
 
             assert_eq!(
                 weak_bisim_dp, weak_bisim_dp_parallel,
@@ -252,15 +313,19 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let strong_bisim_naive = compare_lts(
                 compare::Equivalence::StrongBisimNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
 
             assert_eq!(
                 strong_bisim, strong_bisim_naive,
@@ -283,15 +348,19 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let branching_bisim_naive = compare_lts(
                 compare::Equivalence::BranchingBisimNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
 
             assert_eq!(
                 branching_bisim, branching_bisim_naive,
@@ -314,15 +383,19 @@ mod tests {
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
             let branching_bisim_dp_naive = compare_lts(
                 compare::Equivalence::BranchingBisimDivergencePreservingNaive,
                 lts1.clone(),
                 lts2.clone(),
                 false,
+                false,
                 &timing,
-            );
+            )
+            .0;
 
             assert_eq!(
                 branching_bisim_dp, branching_bisim_dp_naive,

@@ -110,8 +110,10 @@ mod tests {
                     .relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label.to_string()))
                     .unwrap(),
                 false,
+                false,
                 &Timing::new(),
-            ),
+            )
+            .0,
             "LTSs are not strongly bisimilar for {spec_relative_path} with {strategy:?}"
         );
     }
@@ -238,8 +240,10 @@ mod tests {
                     reference_lts,
                     result_lts.relabel(|label| { Ok(label.to_string()) }).unwrap(),
                     false,
+                    false,
                     &Timing::new(),
-                ),
+                )
+                .0,
                 "LTSs are not strongly bisimilar with {strategy:?}"
             );
         });
@@ -293,7 +297,7 @@ mod tests {
         // so its LTS has extra unreachable deadlock states: compare up to
         // bisimulation rather than on exact state counts.
         assert!(
-            compare_lts(Equivalence::StrongBisim, parallel, sequential, false, &Timing::new()),
+            compare_lts(Equivalence::StrongBisim, parallel, sequential, false, false, &Timing::new()).0,
             "Parallel and sequential LTSs are not strongly bisimilar for {}",
             lps_path.display()
         );

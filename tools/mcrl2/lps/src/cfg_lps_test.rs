@@ -71,7 +71,7 @@ mod tests {
             lps_path.display()
         );
         assert!(
-            compare_lts(Equivalence::StrongBisim, reference, cfg, false, &Timing::new()),
+            compare_lts(Equivalence::StrongBisim, reference, cfg, false, false, &Timing::new()).0,
             "Control flow and explicit LTSs are not strongly bisimilar for {}",
             lps_path.display()
         );

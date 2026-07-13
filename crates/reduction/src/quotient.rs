@@ -287,7 +287,7 @@ mod tests {
         files.dump("quotient.aut", |w| write_aut(w, &reduced)).unwrap();
 
         assert!(
-            compare_lts(equivalence, lts, reduced, false, &timing),
+            compare_lts(equivalence, lts, reduced, false, false, &timing).0,
             "Quotient is not equivalent under {equivalence:?}",
         );
     }

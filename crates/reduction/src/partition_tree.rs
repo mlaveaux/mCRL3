@@ -81,6 +81,13 @@ impl RefinementForest for () {
 
 impl RefinementForest for PartitionTree {
     fn record_level<P: Partition, Q: Partition>(&mut self, previous: &P, next: &Q) {
+        debug_assert!(
+            next.num_of_blocks() >= previous.num_of_blocks(),
+            "record_level requires `next` ({} blocks) to refine `previous` ({} blocks)",
+            next.num_of_blocks(),
+            previous.num_of_blocks()
+        );
+
         let next_count = next.num_of_blocks();
 
         // Determine, for every new block, the old block it was split from (shared

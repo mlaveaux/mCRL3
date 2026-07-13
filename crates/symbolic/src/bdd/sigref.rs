@@ -1218,8 +1218,10 @@ mod tests {
                     explicit_lts_reduced,
                     symbolic_lts_reduced,
                     false,
+                    false,
                     &Timing::new()
-                ),
+                )
+                .0,
                 "Both the explicit LTS and the one converted from the symbolic LTS should be bisimilar"
             );
         });

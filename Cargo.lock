@@ -1468,6 +1468,7 @@ dependencies = [
  "merc_io",
  "merc_lts",
  "merc_macros",
+ "merc_reduction",
  "merc_refinement",
  "merc_symbolic",
  "merc_syntax",
