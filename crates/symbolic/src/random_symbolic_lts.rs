@@ -95,6 +95,7 @@ pub fn random_symbolic_lts<R: Rng>(
 
     Ok(SymbolicLts::new(
         DataSpecification::default(),
+        parameters,
         reachable,
         initial_state_ldd,
         lps.summand_groups,

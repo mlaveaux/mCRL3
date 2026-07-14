@@ -6,6 +6,7 @@ use oxidd::ldd::LDDManagerRef;
 
 use merc_aterm::ATerm;
 use merc_aterm::ATermRead;
+use merc_aterm::ATermWrite;
 use merc_collections::IndexedSet;
 use merc_io::BitStreamRead;
 use merc_io::BitStreamWrite;
@@ -99,6 +100,29 @@ impl<W: BitStreamWrite> BinaryLddWriter<W> {
     /// inserted the current node, so we use the current number of nodes.
     fn ldd_index_width(nodes: &IndexedSet<LDDFunction>) -> u8 {
         bits_for_value(nodes.len())
+    }
+}
+
+impl<W: BitStreamWrite + ATermWrite> ATermWrite for BinaryLddWriter<W> {
+    delegate::delegate! {
+        to self.writer {
+            fn write_aterm(&mut self, term: &ATerm) -> Result<(), MercError>;
+            fn write_aterm_iter<I>(&mut self, iter: I) -> Result<(), MercError>
+            where
+                I: ExactSizeIterator<Item = ATerm>;
+            fn flush(&mut self) -> Result<(), MercError>;
+        }
+    }
+}
+
+impl<W: BitStreamWrite> BitStreamWrite for BinaryLddWriter<W> {
+    delegate::delegate! {
+        to self.writer {
+            fn write_bits(&mut self, value: u64, number_of_bits: u8) -> Result<(), MercError>;
+            fn write_string(&mut self, s: &str) -> Result<(), MercError>;
+            fn write_integer(&mut self, value: u64) -> Result<(), MercError>;
+            fn flush(&mut self) -> Result<(), MercError>;
+        }
     }
 }
 
