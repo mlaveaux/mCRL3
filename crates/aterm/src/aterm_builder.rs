@@ -6,6 +6,7 @@ use merc_utilities::MercError;
 use merc_utilities::debug_trace;
 
 use crate::ATerm;
+use crate::Symb;
 use crate::Symbol;
 use crate::Term;
 use crate::storage::ThreadTermPool;
@@ -36,6 +37,11 @@ where
             t.clone(),
             |tp, args, t| match function(tp, &t) {
                 Some(result) => Ok(Yield::Term(result)),
+                None if t.get_head_symbol().arity() == 0 => {
+                    // Arity-0 terms can carry data outside their symbol, such
+                    // as ATermInt.
+                    Ok(Yield::Term(t))
+                }
                 None => {
                     for arg in t.arguments() {
                         args.push(arg.protect());
@@ -95,6 +101,12 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
         G: Fn(&ThreadTermPool, C, std::iter::Flatten<std::slice::Iter<Option<ATerm>>>) -> Result<ATerm, MercError>,
     {
         debug_trace!("Transforming {:?}", input);
+
+        // A previous call may have returned early via `?` on error, leaving
+        // partially evaluated state behind.
+        self.terms.clear();
+        self.configs.clear();
+
         self.terms.push(None);
         self.configs.push(Config::Apply(input, 0));
 
@@ -114,6 +126,11 @@ impl<I: fmt::Debug, C: fmt::Debug> TermBuilder<I, C> {
                                 .insert(top_of_stack, Config::Construct(input, arity, result));
                         }
                         Yield::Term(term) => {
+                            debug_assert_eq!(
+                                args.len(),
+                                0,
+                                "Yield::Term discards any arguments pushed onto the argument stack"
+                            );
                             self.terms[result] = Some(term);
                         }
                     }
