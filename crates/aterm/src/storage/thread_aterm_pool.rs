@@ -502,18 +502,16 @@ impl ThreadTermPool {
         index: ATermIndex,
         guard: RecursiveLockReadGuard<'_, GlobalTermPool>,
     ) -> Return<ATermRef<'static>> {
-        // SAFETY: The guard is guaranteed to live as long as the returned term, since it is thread local and Return cannot be sent to other threads.
+        // SAFETY: The guard borrows from `term_pool`. Its implicit `Drop` never runs because
+        // `Return` stores it in a `ManuallyDrop` and releases it through `THREAD_TERM_POOL`,
+        // which panics if the thread-local pool is gone instead of dereferencing a dangling
+        // lock. `Return` is also `!Send`, so it never crosses to another thread.
         unsafe {
             Return::new(
                 std::mem::transmute::<RecursiveLockReadGuard<'_, _>, RecursiveLockReadGuard<'static, _>>(guard),
                 ATermRef::from_index(&index),
             )
         }
-    }
-
-    /// Returns the index of the protection set.
-    fn index(&self) -> usize {
-        self.lock_protection_set().index
     }
 
     /// The protection set is locked by the global read-write lock
@@ -528,9 +526,20 @@ impl ThreadTermPool {
 impl Drop for ThreadTermPool {
     fn drop(&mut self) {
         let mut write = self.term_pool.write().expect("Lock poisoned!");
+        // SAFETY: `ThreadTermPool` is being dropped and we hold the global write lock,
+        // so this protection set cannot be mutated concurrently.
+        let protection = unsafe { &*self.protection_sets.get() };
+
+        // In the normal case all thread-local terms, symbols, and containers have been dropped
+        // by the time the thread exits, so these sets are empty. Any that remain are reachable
+        // from state that outlives this thread (for example a `static` or another thread-local,
+        // such as the default data symbols in `merc_data`). Adopt them as global orphan roots so
+        // that later read-only inspection cannot dereference reclaimed memory. The orphan sets
+        // deduplicate, so repeatedly leaking the same shared roots does not grow memory unboundedly.
+        write.protect_orphan_roots(protection);
 
         debug!("{}", write.metrics());
-        write.deregister_thread_pool(self.index());
+        write.deregister_thread_pool(protection.index);
 
         debug!("{}", unsafe { &mut *self.protection_sets.get() }.metrics());
         debug!(
@@ -571,7 +580,11 @@ impl DerefMut for ProtectionSetGuard<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::ManuallyDrop;
+    use std::sync::mpsc;
+
     use crate::ATerm;
+    use crate::ATermRef;
     use crate::Symb;
     use crate::Symbol;
     use crate::Term;
@@ -645,5 +658,38 @@ mod tests {
         assert!(t.get_head_symbol().name() == "f");
         assert!(t.arg(0).get_head_symbol().name() == "g");
         assert!(t.arg(1).get_head_symbol().name() == "b");
+    }
+
+    #[test]
+    fn test_orphaned_thread_term_remains_readable_after_gc() {
+        merc_utilities::test_logger();
+
+        let (tx, rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let term = ATerm::with_args(&Symbol::new("f_tls", 1), &[ATerm::constant(&Symbol::new("a_tls", 0))])
+                .protect();
+
+            // SAFETY: the term index is copied while protected and only used for read-only
+            // inspection in this regression test.
+            tx.send(unsafe { term.shared().copy() })
+                .expect("Channel send should succeed");
+
+            // Leak the term so it is still protected at thread teardown, exercising the orphan
+            // adoption path. The bug we guard against is post-teardown read UB.
+            std::mem::forget(ManuallyDrop::new(term));
+        });
+
+        handle.join().expect("Thread should join without panic");
+        let orphan_index = rx.recv().expect("Channel receive should succeed");
+
+        for _ in 0..10 {
+            THREAD_TERM_POOL.with(|tp| tp.force_collect_garbage());
+        }
+
+        // SAFETY: the index was adopted into the global orphan set during `ThreadTermPool::drop`,
+        // so read-only inspection remains valid.
+        let orphan = unsafe { ATermRef::from_index(&orphan_index) };
+        assert_eq!(orphan.get_head_symbol().name(), "f_tls");
+        assert_eq!(orphan.arg(0).get_head_symbol().name(), "a_tls");
     }
 }

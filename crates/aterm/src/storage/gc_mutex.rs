@@ -82,11 +82,16 @@ impl<T> Deref for GcMutexReadGuard<'_, T> {
 
 impl<T> Drop for GcMutexReadGuard<'_, T> {
     fn drop(&mut self) {
-        if self.guard.read_depth() == 1 {
-            THREAD_TERM_POOL.with(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
-        } else {
-            unsafe { ManuallyDrop::drop(&mut self.guard) };
-        }
+        // Access the guard only through `THREAD_TERM_POOL`. If the thread-local pool is already
+        // destroyed, `with` panics before we dereference the guard (which borrows the
+        // thread-local term pool), turning a would-be use-after-free into a deterministic panic.
+        THREAD_TERM_POOL.with(|tp| {
+            if self.guard.read_depth() == 1 {
+                unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) }
+            } else {
+                unsafe { ManuallyDrop::drop(&mut self.guard) };
+            }
+        });
     }
 }
 
@@ -116,12 +121,17 @@ impl<T> DerefMut for GcMutexGuard<'_, T> {
 
 impl<T> Drop for GcMutexGuard<'_, T> {
     fn drop(&mut self) {
-        if self.guard.read_depth() == 1 {
-            // If this is the last guard, we can trigger garbage collection when it was delayed earlier.
-            THREAD_TERM_POOL.with(|tp| unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) })
-        } else {
-            // Just drop the guard
-            unsafe { ManuallyDrop::drop(&mut self.guard) };
-        }
+        // Access the guard only through `THREAD_TERM_POOL`. If the thread-local pool is already
+        // destroyed, `with` panics before we dereference the guard (which borrows the
+        // thread-local term pool), turning a would-be use-after-free into a deterministic panic.
+        THREAD_TERM_POOL.with(|tp| {
+            if self.guard.read_depth() == 1 {
+                // If this is the last guard, we can trigger garbage collection when it was delayed earlier.
+                unsafe { tp.trigger_delayed_garbage_collection(&mut self.guard) }
+            } else {
+                // Just drop the guard
+                unsafe { ManuallyDrop::drop(&mut self.guard) };
+            }
+        });
     }
 }
