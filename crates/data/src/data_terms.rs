@@ -53,8 +53,11 @@ pub struct DataSymbols {
     pub data_where_clause: ManuallyDrop<Symbol>,
     pub data_untyped_identifier_clause: ManuallyDrop<Symbol>,
 
-    /// A data equation, not itself a data expression.
+    /// A data expression, not itself a data expression.
     pub data_equation_symbol: ManuallyDrop<Symbol>,
+
+    /// A where-clause assignment `x := e`, used inside a `Where` term.
+    pub data_whr_decl_symbol: ManuallyDrop<Symbol>,
 
     /// The data application symbol for a given arity.
     data_appl: Vec<Symbol>,
@@ -91,6 +94,7 @@ impl DataSymbols {
             data_where_clause: ManuallyDrop::new(Symbol::new("Where", 2)),
             data_untyped_identifier_clause: ManuallyDrop::new(Symbol::new("UntypedIdentifier", 1)),
             data_equation_symbol: ManuallyDrop::new(Symbol::new("DataEqn", 4)),
+            data_whr_decl_symbol: ManuallyDrop::new(Symbol::new("WhrDecl", 2)),
 
             data_appl: Vec::new(),
         }
@@ -189,6 +193,11 @@ impl DataSymbols {
     pub fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_equation_symbol.copy()
     }
+
+    /// Returns true iff the given term is a where-clause assignment (`WhrDecl`).
+    pub fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+        term.get_head_symbol() == self.data_whr_decl_symbol.copy()
+    }
 }
 
 // Helper functions to access the DATA_SYMBOLS thread local storage.
@@ -256,4 +265,9 @@ pub fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
 /// See [DataSymbols::is_data_equation].
 pub fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_equation(term))
+}
+
+/// See [DataSymbols::is_data_whr_decl].
+pub fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+    DATA_SYMBOLS.with_borrow(|ds| ds.is_data_whr_decl(term))
 }

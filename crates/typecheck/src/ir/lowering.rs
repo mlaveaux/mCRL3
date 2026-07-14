@@ -1,20 +1,32 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use merc_data::BasicSort;
+use merc_data::BinderType;
 use merc_data::ContainerSortKind;
+use merc_data::DataAbstraction;
 use merc_data::DataApplication;
+use merc_data::DataEquation;
 use merc_data::DataExpression;
 use merc_data::DataFunctionSymbol;
 use merc_data::DataVariable;
+use merc_data::DataWhrDecl;
+use merc_data::DataWhereClause;
+use merc_data::Mcrl2DataSpecification;
+use merc_data::SortAlias;
 use merc_data::SortArrow;
 use merc_data::SortCons;
 use merc_data::SortExpression as DataSortExpression;
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
+use merc_syntax::BagElement;
+use merc_syntax::Quantifier;
 use merc_syntax::Sort;
+use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 
+use crate::DeclarationSorts;
 use crate::EquationTyping;
 use crate::ExprId;
 use crate::NameTarget;
@@ -384,16 +396,15 @@ impl Lowering<'_> {
             DataExpr::Number(value) => self.lower_number(sort, value),
             DataExpr::Bool(value) => Some(lower_bool_literal(*value)),
             DataExpr::Application { function, arguments } => self.lower_application(sort, function, arguments),
-            // Deferred: container literals/operations and binders (§9a steps 3 and 4).
-            DataExpr::EmptyList
-            | DataExpr::EmptySet
-            | DataExpr::EmptyBag
-            | DataExpr::Set(_)
-            | DataExpr::Bag(_)
-            | DataExpr::SetBagComp { .. }
-            | DataExpr::Lambda { .. }
-            | DataExpr::Quantifier { .. }
-            | DataExpr::Whr { .. } => None,
+            DataExpr::EmptyList => Some(self.lower_empty_container(sort, ComplexSort::List)),
+            DataExpr::EmptySet => Some(self.lower_empty_container(sort, ComplexSort::FSet)),
+            DataExpr::EmptyBag => Some(self.lower_empty_container(sort, ComplexSort::FBag)),
+            DataExpr::Set(members) => self.lower_set(sort, members),
+            DataExpr::Bag(members) => self.lower_bag(sort, members),
+            DataExpr::SetBagComp { variable, predicate } => self.lower_setbagcomp(sort, variable, predicate),
+            DataExpr::Lambda { variables, body } => self.lower_lambda(variables, body),
+            DataExpr::Quantifier { op, variables, body } => self.lower_quantifier(op.clone(), variables, body),
+            DataExpr::Whr { expr, assignments } => self.lower_whr(expr, assignments),
             DataExpr::List(_) | DataExpr::Unary { .. } | DataExpr::Binary { .. } | DataExpr::FunctionUpdate { .. } => {
                 unreachable!("lower.rs already rewrote this expression form before inference ran")
             }
@@ -482,12 +493,271 @@ impl Lowering<'_> {
 
         Some(DataApplication::with_args(&function_term, &coerced_terms).into())
     }
+
+    /// Builds the empty-container constant for `EmptyList` / `EmptySet` / `EmptyBag`.
+    /// The sort for the constant is extracted from the node's own inferred sort.
+    fn lower_empty_container(&self, sort: ResolvedSortId, op: ComplexSort) -> DataExpression {
+        let ResolvedSort::Generic { subsort: element_id, .. } = self.ctx.sorts.get(sort) else {
+            unreachable!("empty container always infers to a Generic sort")
+        };
+        let element = lower_sort(self.ctx, self.spec, *element_id);
+        let container: DataSortExpression = SortCons::new(container_kind(op), element).into();
+        let name = match op {
+            ComplexSort::List => "[]",
+            ComplexSort::FSet => "{}",
+            ComplexSort::FBag => "{:}",
+            _ => unreachable!("lower_empty_container only handles List/FSet/FBag"),
+        };
+        DataFunctionSymbol::with_sort(name, container.copy()).into()
+    }
+
+    /// Lowers `{m1, m2, …}` (parsed as `FSet(S)`) to `@fset_insert(m1, @fset_insert(m2, {}))`.
+    fn lower_set(&mut self, sort: ResolvedSortId, members: &[DataExpr]) -> Option<DataExpression> {
+        let ResolvedSort::Generic { subsort: element_id, .. } = self.ctx.sorts.get(sort) else {
+            unreachable!("Set literal always infers to FSet(S)")
+        };
+        let element_id = *element_id;
+        let element = lower_sort(self.ctx, self.spec, element_id);
+        let fset: DataSortExpression = SortCons::new(ContainerSortKind::FSet, element.clone()).into();
+        let fset_insert = function_symbol("@fset_insert", &[element.clone(), fset.clone()], fset.clone());
+
+        let empty: DataExpression = DataFunctionSymbol::with_sort("{}", fset.copy()).into();
+        let mut lowered = Vec::with_capacity(members.len());
+        for member in members {
+            let member_sort = self.sorts[self.next_id];
+            let member_term = self.lower(member)?;
+            lowered.push((member_term, member_sort));
+        }
+        let mut result = empty;
+        for (member_term, member_sort) in lowered.into_iter().rev() {
+            let coerced = self.coerce(member_term, member_sort, element_id)?;
+            result = DataApplication::with_args(&fset_insert, &[coerced, result]).into();
+        }
+        Some(result)
+    }
+
+    /// Lowers `{e1:m1, e2:m2, …}` (parsed as `FBag(S)`) to
+    /// `@fbag_cinsert(e1, m1, @fbag_cinsert(e2, m2, {:}))`.
+    fn lower_bag(&mut self, sort: ResolvedSortId, members: &[BagElement]) -> Option<DataExpression> {
+        let ResolvedSort::Generic { subsort: element_id, .. } = self.ctx.sorts.get(sort) else {
+            unreachable!("Bag literal always infers to FBag(S)")
+        };
+        let element_id = *element_id;
+        let nat_id = self.ctx.sorts.nat_sort();
+        let element = lower_sort(self.ctx, self.spec, element_id);
+        let fbag: DataSortExpression = SortCons::new(ContainerSortKind::FBag, element.clone()).into();
+        let fbag_cinsert =
+            function_symbol("@fbag_cinsert", &[element.clone(), nat_sort(), fbag.clone()], fbag.clone());
+
+        let empty: DataExpression = DataFunctionSymbol::with_sort("{:}", fbag.copy()).into();
+        let mut lowered = Vec::with_capacity(members.len());
+        for member in members {
+            let elem_sort = self.sorts[self.next_id];
+            let elem_term = self.lower(&member.expr)?;
+            let mult_sort = self.sorts[self.next_id];
+            let mult_term = self.lower(&member.multiplicity)?;
+            lowered.push((elem_term, elem_sort, mult_term, mult_sort));
+        }
+        let mut result = empty;
+        for (elem_term, elem_sort, mult_term, mult_sort) in lowered.into_iter().rev() {
+            let coerced_elem = self.coerce(elem_term, elem_sort, element_id)?;
+            let coerced_mult = self.coerce(mult_term, mult_sort, nat_id)?;
+            result = DataApplication::with_args(&fbag_cinsert, &[coerced_elem, coerced_mult, result]).into();
+        }
+        Some(result)
+    }
+
+    fn lower_lambda(&mut self, variables: &[merc_syntax::IdDecl], body: &DataExpr) -> Option<DataExpression> {
+        let vars: Vec<DataVariable> = variables
+            .iter()
+            .map(|v| DataVariable::with_sort(v.identifier.as_str(), lower_syntax_sort(&v.sort).copy()))
+            .collect();
+        let body = self.lower(body)?;
+        Some(DataAbstraction::new(BinderType::Lambda, &vars, body).into())
+    }
+
+    fn lower_quantifier(
+        &mut self,
+        op: Quantifier,
+        variables: &[merc_syntax::IdDecl],
+        body: &DataExpr,
+    ) -> Option<DataExpression> {
+        let binder = match op {
+            Quantifier::Forall => BinderType::Forall,
+            Quantifier::Exists => BinderType::Exists,
+        };
+        let vars: Vec<DataVariable> = variables
+            .iter()
+            .map(|v| DataVariable::with_sort(v.identifier.as_str(), lower_syntax_sort(&v.sort).copy()))
+            .collect();
+        let body = self.lower(body)?;
+        Some(DataAbstraction::new(binder, &vars, body).into())
+    }
+
+    fn lower_setbagcomp(
+        &mut self,
+        sort: ResolvedSortId,
+        variable: &merc_syntax::IdDecl,
+        predicate: &DataExpr,
+    ) -> Option<DataExpression> {
+        let (op, element_id) = match self.ctx.sorts.get(sort) {
+            ResolvedSort::Generic { op, subsort } => (*op, *subsort),
+            _ => unreachable!("SetBagComp always infers to Set or Bag"),
+        };
+        let binder_type = match op {
+            ComplexSort::Set => BinderType::SetComp,
+            ComplexSort::Bag => BinderType::BagComp,
+            _ => unreachable!("SetBagComp infers only to Set or Bag"),
+        };
+        let var =
+            DataVariable::with_sort(variable.identifier.as_str(), lower_sort(self.ctx, self.spec, element_id).copy());
+        let body = self.lower(predicate)?;
+        Some(DataAbstraction::new(binder_type, &[var], body).into())
+    }
+
+    fn lower_whr(&mut self, expr: &DataExpr, assignments: &[merc_syntax::Assignment]) -> Option<DataExpression> {
+        let mut whr_decls = Vec::with_capacity(assignments.len());
+        for assignment in assignments {
+            let assignment_sort = self.sorts[self.next_id];
+            let assignment_term = self.lower(&assignment.expr)?;
+            let var = DataVariable::with_sort(
+                assignment.identifier.as_str(),
+                lower_sort(self.ctx, self.spec, assignment_sort).copy(),
+            );
+            whr_decls.push(DataWhrDecl::new(var, assignment_term));
+        }
+        let body = self.lower(expr)?;
+        Some(DataWhereClause::new(body, &whr_decls).into())
+    }
+}
+
+/// Converts a (normalized, desugared) `merc_syntax` sort expression into the
+/// `merc_data` sort term the mCRL2 binary schema uses.
+///
+/// Handles every form left after the `from_untyped` pipeline:
+/// `Simple` → `BasicSort`, `Complex` → `SortCons`, `FlattenedFunction` and
+/// `Function` (the system spec is not flattened) → `SortArrow`, `Resolved` and
+/// `Reference` → `BasicSort` by name. `Struct` and a bare `Product` are
+/// unreachable at this point.
+pub(crate) fn lower_syntax_sort(sort: &SortExpression) -> DataSortExpression {
+    match sort {
+        SortExpression::Simple(s) => BasicSort::new(primitive_name(*s)).into(),
+        SortExpression::Complex(op, sub) => SortCons::new(container_kind(*op), lower_syntax_sort(sub)).into(),
+        SortExpression::FlattenedFunction { domain, range } => {
+            let domain: Vec<DataSortExpression> = domain.iter().map(lower_syntax_sort).collect();
+            SortArrow::new(&domain, lower_syntax_sort(range)).into()
+        }
+        SortExpression::Function { domain, range } => {
+            // The system spec is not flattened; flatten the Product spine here.
+            let mut flat = Vec::new();
+            flatten_product_domain(domain, &mut flat);
+            SortArrow::new(&flat, lower_syntax_sort(range)).into()
+        }
+        // A user-declared or struct-representative sort after name resolution,
+        // or an unresolved template reference in the system spec (e.g. "S", "T").
+        // Both use the string name — the identity of a nominal sort IS its name
+        // in the mCRL2 binary schema (§6a, docs/typecheck.md).
+        SortExpression::Resolved(name, _) | SortExpression::Reference(name) => {
+            BasicSort::new(name.as_str()).into()
+        }
+        SortExpression::Struct { .. } | SortExpression::Product { .. } => {
+            unreachable!("struct/product sorts are desugared/flattened before lowering")
+        }
+    }
+}
+
+fn flatten_product_domain(sort: &SortExpression, domain: &mut Vec<DataSortExpression>) {
+    match sort {
+        SortExpression::Product { lhs, rhs } => {
+            flatten_product_domain(lhs, domain);
+            flatten_product_domain(rhs, domain);
+        }
+        _ => domain.push(lower_syntax_sort(sort)),
+    }
+}
+
+/// Assembles a [`Mcrl2DataSpecification`] from the already-type-checked user
+/// and system specifications (§9a step 5, docs/typecheck.md):
+///
+/// - **sorts** — user abstract sorts (those whose declaration has no right-hand
+///   side after desugaring and normalization).
+/// - **aliases** — user sort aliases (those that do have a right-hand side).
+/// - **constructors / mappings** — user declarations lowered via the interned
+///   sort lattice, followed by system declarations lowered directly from their
+///   syntax sorts (the system spec is deliberately left unresolved — §G3).
+/// - **equations** — user equations whose [`EquationTyping`] is
+///   [`EquationTyping::Inferred`] and whose expression tree is fully supported
+///   by [`lower_equation`]; unsupported equations (container literals, binders)
+///   are silently skipped and will be added when Phase-4 lowering extends to
+///   cover them. System equations are not yet included (same gap).
+pub(crate) fn lower_data_specification(
+    ctx: &TypeckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    declaration_sorts: &DeclarationSorts,
+    equation_typings: &[Vec<Rc<EquationTyping>>],
+) -> Mcrl2DataSpecification {
+    let sorts: Vec<BasicSort> = spec
+        .sort_declarations
+        .iter()
+        .filter(|d| d.expr.is_none())
+        .map(|d| BasicSort::new(d.identifier.as_str()))
+        .collect();
+
+    let aliases: Vec<SortAlias> = spec
+        .sort_declarations
+        .iter()
+        .filter_map(|d| {
+            let expr = d.expr.as_ref()?;
+            Some(SortAlias::new(BasicSort::new(d.identifier.as_str()), lower_syntax_sort(expr)))
+        })
+        .collect();
+
+    let mut constructors: Vec<DataFunctionSymbol> = spec
+        .constructor_declarations
+        .iter()
+        .zip(&declaration_sorts.constructors)
+        .map(|(decl, &sort_id)| DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_sort(ctx, spec, sort_id).copy()))
+        .collect();
+    for decl in &system.constructor_declarations {
+        constructors.push(DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_syntax_sort(&decl.sort).copy()));
+    }
+
+    let mut mappings: Vec<DataFunctionSymbol> = spec
+        .map_declarations
+        .iter()
+        .zip(&declaration_sorts.mappings)
+        .map(|(decl, &sort_id)| DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_sort(ctx, spec, sort_id).copy()))
+        .collect();
+    for decl in &system.map_declarations {
+        mappings.push(DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_syntax_sort(&decl.sort).copy()));
+    }
+
+    let mut equations: Vec<DataEquation> = Vec::new();
+    for (eqn_spec, typings) in spec.equation_declarations.iter().zip(equation_typings) {
+        let vars: Vec<DataVariable> = eqn_spec
+            .variables
+            .iter()
+            .map(|var| DataVariable::with_sort(var.identifier.as_str(), lower_syntax_sort(&var.sort).copy()))
+            .collect();
+        for (eqn, typing) in eqn_spec.equations.iter().zip(typings.iter()) {
+            let Some(lowered) = lower_equation(ctx, spec, typing, eqn.condition.as_ref(), &eqn.lhs, &eqn.rhs) else {
+                continue;
+            };
+            equations.push(DataEquation::new(&vars, lowered.condition, lowered.lhs, lowered.rhs));
+        }
+    }
+
+    Mcrl2DataSpecification::new(sorts, aliases, constructors, mappings, equations)
 }
 
 #[cfg(test)]
 mod tests {
     use merc_data::is_container_sort;
+    use merc_data::is_data_binder;
+    use merc_data::is_data_function_symbol;
     use merc_data::is_function_sort;
+    use merc_data::is_data_where_clause;
     use merc_syntax::Sort;
     use merc_syntax::UntypedDataSpecification;
 
@@ -713,14 +983,110 @@ mod tests {
         assert_eq!(equation.lhs.to_string(), "s(@bag(@zero_, e))");
     }
 
+    // === lower_equation: §9a step 3 — container literal lowering ===
+
     #[test]
-    fn test_container_literal_bails() {
-        assert!(lower("map s: List(Nat); eqn s = [];").is_none());
+    // §9a step 3 fixed: empty list now lowers to the `[]` constant.
+    fn test_empty_list_lowers() {
+        let equation = lower("map s: List(Nat); eqn s = [];").expect("empty list lowers");
+        assert_eq!(equation.rhs.to_string(), "[]");
     }
 
     #[test]
-    fn test_binder_bails() {
-        assert!(lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").is_none());
+    fn test_empty_set_lowers() {
+        let equation = lower("map s: FSet(Nat); eqn s = {};").expect("empty set lowers");
+        assert_eq!(equation.rhs.to_string(), "{}");
+    }
+
+    #[test]
+    fn test_empty_bag_lowers() {
+        let equation = lower("map b: FBag(Nat); eqn b = {:};").expect("empty bag lowers");
+        assert_eq!(equation.rhs.to_string(), "{:}");
+    }
+
+    #[test]
+    fn test_fset_literal_lowers() {
+        let equation = lower("map s: FSet(Nat); var n: Nat; eqn s = {n};").expect("singleton FSet lowers");
+        // @fset_insert(n, {})
+        assert!(equation.rhs.to_string().contains("@fset_insert"), "{}", equation.rhs);
+    }
+
+    #[test]
+    fn test_fset_literal_two_elements_lowers() {
+        let equation = lower("map s: FSet(Nat); var n: Nat; m: Nat; eqn s = {n, m};").expect("two-element FSet lowers");
+        let rhs = equation.rhs.to_string();
+        assert!(rhs.contains("@fset_insert"), "{rhs}");
+    }
+
+    #[test]
+    fn test_fbag_literal_lowers() {
+        let equation = lower("map b: FBag(Nat); var n: Nat; eqn b = {n: 1};").expect("singleton FBag lowers");
+        // @fbag_cinsert(n, @cNat(@c1), {:})  — 1 infers Pos, widened to Nat
+        let rhs = equation.rhs.to_string();
+        assert!(rhs.contains("@fbag_cinsert"), "{rhs}");
+    }
+
+    #[test]
+    fn test_empty_list_sort_is_embedded() {
+        // The `[]` constant must carry a container (List) sort as its embedded sort.
+        let equation = lower("map s: List(Nat); eqn s = [];").expect("empty list lowers");
+        assert!(is_container_sort(&equation.rhs.data_sort()), "sort should be container: {}", equation.rhs.data_sort());
+    }
+
+    #[test]
+    fn test_set_literal_widens_element_to_nat() {
+        // `{1}` : FSet(Nat) — the `1` infers Pos, coerced to element sort Nat.
+        let equation = lower("map s: FSet(Nat); eqn s = {1};").expect("FSet literal lowers");
+        let rhs = equation.rhs.to_string();
+        // The element is coerced Pos→Nat via @cNat.
+        assert!(rhs.contains("@cNat"), "element coercion Pos→Nat expected in: {rhs}");
+    }
+
+    #[test]
+    // §9a step 4 fixed: lambda now lowers to a Binder(Lambda, ...) aterm.
+    fn test_lambda_lowers() {
+        let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
+        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+    }
+
+    #[test]
+    fn test_forall_lowers() {
+        let equation = lower("map b: Bool; eqn b = forall x: Bool. x;").expect("forall lowers");
+        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+    }
+
+    #[test]
+    fn test_exists_lowers() {
+        let equation = lower("map b: Bool; eqn b = exists x: Bool. x;").expect("exists lowers");
+        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+    }
+
+    #[test]
+    fn test_setcomp_lowers() {
+        let equation = lower("map s: Set(Nat); eqn s = { x: Nat | x == 0 };").expect("set comprehension lowers");
+        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+    }
+
+    #[test]
+    fn test_bagcomp_lowers() {
+        let equation = lower("map b: Bag(Nat); eqn b = { x: Nat | x + 0 };").expect("bag comprehension lowers");
+        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+    }
+
+    #[test]
+    fn test_whr_lowers() {
+        let equation = lower("map f: Bool; var x: Bool; eqn f = x whr x = true end;").expect("where clause lowers");
+        assert!(is_data_where_clause(&equation.rhs), "rhs should be a where clause: {}", equation.rhs);
+    }
+
+    #[test]
+    fn test_lambda_variable_has_sort() {
+        // The bound variable in the Binder must carry its declared sort.
+        let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
+        let rhs_str = equation.rhs.to_string();
+        // The lowered term must contain a DataVarId encoding for x: Bool.
+        assert!(rhs_str.contains("DataVarId"), "bound variable should be DataVarId in: {rhs_str}");
+        assert!(is_data_function_symbol(&equation.lhs), "lhs should be a function symbol: {}", equation.lhs);
     }
 
     // === lower_equation: §9a step 3 — all NameTarget::Builtin ops use inferred sort ===

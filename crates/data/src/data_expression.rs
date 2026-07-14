@@ -34,6 +34,21 @@ use crate::is_data_expression;
 use crate::is_data_function_symbol;
 use crate::is_data_machine_number;
 use crate::is_data_variable;
+use crate::is_data_binder;
+use crate::is_data_where_clause;
+use crate::is_data_whr_decl;
+
+/// The kind of a binder in a `DataAbstraction` — mirrors mCRL2's
+/// `data::binder_type` enum (the 0-arity marker term that is the first child
+/// of every `Binder(type, vars, body)` aterm).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinderType {
+    Lambda,
+    Forall,
+    Exists,
+    SetComp,
+    BagComp,
+}
 
 // This module is only used internally to run the proc macro.
 #[merc_derive_terms]
@@ -432,6 +447,92 @@ mod inner {
         }
     }
 
+    /// A data abstraction (lambda, forall/exists quantifier, or set/bag comprehension).
+    /// Wire format: `Binder(binder_type, [var…], body)` — arity 3.
+    #[merc_term(is_data_binder)]
+    pub struct DataAbstraction {
+        term: ATerm,
+    }
+
+    impl DataAbstraction {
+        #[merc_ignore]
+        pub fn new(binder: super::BinderType, variables: &[DataVariable], body: DataExpression) -> DataAbstraction {
+            DATA_SYMBOLS.with_borrow(|ds| {
+                let binder_sym = match binder {
+                    super::BinderType::Lambda => ds.data_lambda_symbol.deref(),
+                    super::BinderType::Forall => ds.data_forall_symbol.deref(),
+                    super::BinderType::Exists => ds.data_exists_symbol.deref(),
+                    super::BinderType::SetComp => ds.data_set_comprehension_symbol.deref(),
+                    super::BinderType::BagComp => ds.data_bag_comprehension_symbol.deref(),
+                };
+                let empty: &[ATerm] = &[];
+                let binder_term: ATerm = ATerm::with_args(binder_sym, empty).protect();
+                let vars: ATermList<DataVariable> = ATermList::from_double_iter(variables.iter().cloned());
+                let args: [ATerm; 3] = [binder_term, vars.into(), body.into()];
+                DataAbstraction {
+                    term: ATerm::with_args(ds.data_binder_symbol.deref(), &args).protect(),
+                }
+            })
+        }
+    }
+
+    impl fmt::Display for DataAbstraction {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.term)
+        }
+    }
+
+    /// A single where-clause binding `identifier := expr`.
+    /// Wire format: `WhrDecl(DataVarId(name, sort), DataExpression)` — arity 2.
+    #[merc_term(is_data_whr_decl)]
+    pub struct DataWhrDecl {
+        term: ATerm,
+    }
+
+    impl DataWhrDecl {
+        #[merc_ignore]
+        pub fn new(variable: DataVariable, expr: DataExpression) -> DataWhrDecl {
+            DATA_SYMBOLS.with_borrow(|ds| {
+                let args: [ATerm; 2] = [variable.into(), expr.into()];
+                DataWhrDecl {
+                    term: ATerm::with_args(ds.data_whr_decl_symbol.deref(), &args).protect(),
+                }
+            })
+        }
+    }
+
+    impl fmt::Display for DataWhrDecl {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.term)
+        }
+    }
+
+    /// A where clause `body whr [x := e, …] end`.
+    /// Wire format: `Where(body, [WhrDecl…])` — arity 2.
+    #[merc_term(is_data_where_clause)]
+    pub struct DataWhereClause {
+        term: ATerm,
+    }
+
+    impl DataWhereClause {
+        #[merc_ignore]
+        pub fn new(body: DataExpression, assignments: &[DataWhrDecl]) -> DataWhereClause {
+            DATA_SYMBOLS.with_borrow(|ds| {
+                let list: ATermList<DataWhrDecl> = ATermList::from_double_iter(assignments.iter().cloned());
+                let args: [ATerm; 2] = [body.into(), list.into()];
+                DataWhereClause {
+                    term: ATerm::with_args(ds.data_where_clause.deref(), &args).protect(),
+                }
+            })
+        }
+    }
+
+    impl fmt::Display for DataWhereClause {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.term)
+        }
+    }
+
     /// The canonical `Bool` literal `true` (mCRL2's `sort_bool::true_`), used as the
     /// wire-format placeholder for an unconditional equation's condition.
     #[merc_ignore]
@@ -450,6 +551,20 @@ mod inner {
     #[merc_ignore]
     impl From<DataApplication> for DataExpression {
         fn from(value: DataApplication) -> Self {
+            value.term.into()
+        }
+    }
+
+    #[merc_ignore]
+    impl From<DataAbstraction> for DataExpression {
+        fn from(value: DataAbstraction) -> Self {
+            value.term.into()
+        }
+    }
+
+    #[merc_ignore]
+    impl From<DataWhereClause> for DataExpression {
+        fn from(value: DataWhereClause) -> Self {
             value.term.into()
         }
     }
