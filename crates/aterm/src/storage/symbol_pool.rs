@@ -105,72 +105,6 @@ impl SymbolPool {
         let removed_blocks = self.symbols.allocator_mut().remove_free_blocks();
         debug!("Removed {} blocks from the symbol pool", removed_blocks);
     }
-
-    /// Creates a new prefix counter for the given prefix.
-    pub fn create_prefix(&self, prefix: &str) -> Arc<AtomicUsize> {
-        // Create a new counter for the prefix if it does not exist. The fast path avoids
-        // allocating the key string on a hit; the miss path uses `entry`/`or_insert_with` so
-        // the get-then-insert is atomic even when called concurrently through the `&self` API.
-        let result = if let Some(result) = self.prefix_to_register_function_map.get(prefix) {
-            result.clone()
-        } else {
-            self.prefix_to_register_function_map
-                .entry(prefix.to_string())
-                .or_insert_with(|| Arc::new(AtomicUsize::new(0)))
-                .clone()
-        };
-
-        // Ensure the counter starts at a sufficiently large index
-        self.get_sufficiently_large_postfix_index(prefix, &result);
-        result
-    }
-
-    /// Removes a prefix counter from the pool.
-    pub fn remove_prefix(&self, prefix: &str) {
-        // Remove the prefix counter if it exists
-        self.prefix_to_register_function_map.remove(prefix);
-    }
-
-    /// Updates the counter for a registered prefix for the newly created symbol.
-    fn update_prefix(&self, name: &str) {
-        // Check whether there is a registered prefix p such that name equal pn where n is a number.
-        // In that case prevent that pn will be generated as a fresh function name.
-        let start_of_index = name
-            .rfind(|c: char| !c.is_ascii_digit())
-            .map(|pos| pos + 1)
-            .unwrap_or(0);
-
-        if start_of_index < name.len() {
-            let potential_number = &name[start_of_index..];
-            let prefix = &name[..start_of_index];
-
-            if let Some(counter) = self.prefix_to_register_function_map.get(prefix)
-                && let Ok(number) = potential_number.parse::<usize>()
-            {
-                counter.fetch_max(number + 1, Ordering::Relaxed);
-            }
-        }
-    }
-
-    /// Traverse all symbols to find the maximum numeric suffix for this prefix
-    fn get_sufficiently_large_postfix_index(&self, prefix: &str, counter: &Arc<AtomicUsize>) {
-        // SAFETY: this traversal does not remove any symbol, so every yielded
-        // reference stays valid for the duration of the loop.
-        for symbol in unsafe { self.symbols.iter() } {
-            let name = symbol.name();
-            if name.starts_with(prefix) {
-                // Symbol name starts with the prefix, check for numeric suffix
-                let suffix_start = prefix.len();
-                if suffix_start < name.len() {
-                    let suffix = &name[suffix_start..];
-                    if let Ok(number) = suffix.parse::<usize>() {
-                        // There is a numeric suffix, update the counter if it's larger
-                        counter.fetch_max(number + 1, Ordering::Relaxed);
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// Represents a function symbol with a name and arity.
@@ -247,11 +181,7 @@ impl Hash for SharedSymbol {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
-
-    use crate::Symb;
     use crate::Symbol;
-    use crate::storage::THREAD_TERM_POOL;
 
     #[test]
     fn test_symbol_sharing() {
@@ -262,34 +192,5 @@ mod tests {
 
         // Should be the same object
         assert_eq!(f1, f2);
-    }
-
-    #[test]
-    fn test_symbol_non_ascii_name_with_numeric_suffix() {
-        merc_utilities::test_logger();
-
-        // `update_prefix` slices the name at `rfind(non-digit) + 1`, a byte
-        // index that is only a char boundary when that character is one byte
-        // wide. A multi-byte character directly before a digit suffix must not
-        // panic symbol creation.
-        let symbol = Symbol::new("λ5", 0);
-        assert_eq!(symbol.name(), "λ5");
-    }
-
-    #[test]
-    fn test_prefix_counter() {
-        merc_utilities::test_logger();
-
-        let _symbol = Symbol::new("x69", 0);
-        let _symbol2 = Symbol::new("x_y", 0);
-
-        let value = THREAD_TERM_POOL.with(|tp| tp.term_pool().write().expect("Lock poisoned!").register_prefix("x"));
-
-        assert_eq!(value.load(Ordering::Relaxed), 70);
-
-        let _symbol3 = Symbol::new("x_no_effect", 0);
-        let _symbol4 = Symbol::new("x130", 0);
-
-        assert_eq!(value.load(Ordering::Relaxed), 131);
     }
 }
