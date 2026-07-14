@@ -6,6 +6,7 @@ use log::debug;
 use log::info;
 use log::trace;
 use merc_io::TimeProgress;
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use oxidd::BooleanFunction;
@@ -50,12 +51,12 @@ use crate::variable_rename;
 /// # Details
 ///
 /// The implementation is based on the following paper:
-///  
+///
 /// > Tom van Dijk and Jaco van de Pol. Multi-core Symbolic Bisimulation
 /// > Minimization.
-pub fn sigref_symbolic(
+pub fn sigref_symbolic<L: TransitionLabel>(
     manager_ref: &BDDManagerRef,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
     timing: &Timing,
     split_signature: bool,
     extend_relation: bool,
@@ -83,12 +84,12 @@ pub fn sigref_symbolic(
 /// and write variables then cover the full state domain. When `merge_transitions`
 /// is set, the (extended) relations are then combined into a single transition
 /// group covering the full state domain.
-fn preprocess_lts(
+fn preprocess_lts<L: TransitionLabel>(
     manager_ref: &BDDManagerRef,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
     extend_relations: bool,
     merge_transitions: bool,
-) -> Result<SymbolicLtsBdd, MercError> {
+) -> Result<SymbolicLtsBdd<L>, MercError> {
     if !extend_relations && !merge_transitions {
         let groups = lts
             .transition_groups()
@@ -140,9 +141,9 @@ fn preprocess_lts(
 }
 
 /// Implementation of [sigref_symbolic] on an already preprocessed LTS.
-fn sigref_symbolic_impl(
+fn sigref_symbolic_impl<L: TransitionLabel>(
     manager_ref: &BDDManagerRef,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
     timing: &Timing,
     split_signature: bool,
     visualize: bool,
@@ -395,7 +396,10 @@ fn sigref_symbolic_impl(
 ///
 /// Two transition groups are combined if they share action labels, this ensures that in split signature mode
 /// the action labels of all transition groups are disjoint.
-fn combine_transition_groups(manager_ref: &BDDManagerRef, lts: &SymbolicLtsBdd) -> Result<Vec<Vec<usize>>, MercError> {
+fn combine_transition_groups<L: TransitionLabel>(
+    manager_ref: &BDDManagerRef,
+    lts: &SymbolicLtsBdd<L>,
+) -> Result<Vec<Vec<usize>>, MercError> {
     // In split signature mode we must ensure that the action labels of all transition groups are disjoint. We do this by merging
     // transition groups that share action labels.
 

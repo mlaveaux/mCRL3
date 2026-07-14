@@ -12,6 +12,7 @@ use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
 use merc_lts::LtsBuilder;
 use merc_lts::StateIndex;
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 
 use crate::CubeIterAll;
@@ -26,10 +27,10 @@ use crate::to_value;
 ///
 /// This basically applies the symbolic transitions to every state in the state
 /// space, and constructs the explicit LTS.
-pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
+pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
     _manager_ref: &BDDManagerRef,
     output: &mut B,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
 ) -> Result<B::LTS, MercError> {
     // Compute for every read and write index its position in the transition vector.
     let state_variables = lts.state_variables().to_vec();
@@ -208,7 +209,8 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
                 let label = lts
                     .action_labels()
                     .get(action_value as usize)
-                    .ok_or("Found transition with unknown action label")?;
+                    .ok_or("Found transition with unknown action label")?
+                    .to_string();
 
                 // Find the target state index.
                 let target_index = discovered
@@ -223,7 +225,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>>(
                         cube, target, label
                     );
 
-                    output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
+                    output.add_transition(StateIndex::new(*state_index), &label, StateIndex::new(*target_index))?;
                 }
             }
         }

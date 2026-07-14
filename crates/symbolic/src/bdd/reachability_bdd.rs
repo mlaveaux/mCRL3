@@ -10,6 +10,7 @@ use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OutOfMemory;
 
 use merc_io::TimeProgress;
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use oxidd_dump::Visualizer;
 
@@ -23,9 +24,9 @@ use crate::variable_rename_reverse;
 /// # Details
 ///
 /// When `visualize` has been set to true, intermediate BDDs are visualized using `oxidd-vis`.
-pub fn reachability_bdd(
+pub fn reachability_bdd<L: TransitionLabel>(
     manager_ref: &BDDManagerRef,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
     visualize: bool,
 ) -> Result<BDDFunction, MercError> {
     let mut todo = lts.initial_state().clone();

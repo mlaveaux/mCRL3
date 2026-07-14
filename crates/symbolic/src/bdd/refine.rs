@@ -1,5 +1,6 @@
 use log::info;
 use merc_io::TimeProgress;
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 use oxidd::BooleanFunction;
 use oxidd::BooleanFunctionQuant;
@@ -22,9 +23,9 @@ use crate::variable_rename;
 /// Returns the block relation `B(p, b)` together with the block-encoding
 /// variables `b` (in allocation order). The block variables are required to
 /// interpret the relation, e.g. to feed it into [`crate::quotient_symbolic`].
-pub fn refine_bisimulation(
+pub fn refine_bisimulation<L: TransitionLabel>(
     manager_ref: &BDDManagerRef,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
 ) -> Result<(BDDFunction, Vec<VarNo>), MercError> {
     // Computes the BDD representing all (next) state variables.
     let state_vars = manager_ref.with_manager_shared(|manager| -> Result<_, OutOfMemory> {

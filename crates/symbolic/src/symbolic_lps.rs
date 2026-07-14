@@ -110,30 +110,37 @@ impl SummandGroup {
         write_parameters: Vec<DataVariable>,
         relation: LDDFunction,
     ) -> Result<Self, MercError> {
-        let mut read_parameter_indices: Vec<Value> = read_parameters
-            .iter()
+        // Build (position-in-parameters, variable) pairs, then sort by position so
+        // read_parameters[i] always corresponds to read_parameter_indices[i].
+        let mut read_pairs: Vec<(Value, DataVariable)> = read_parameters
+            .into_iter()
             .map(|var| {
                 parameters
                     .iter()
-                    .position(|p| p == var)
+                    .position(|p| p == &var)
                     .ok_or(format!("Cannot find read parameter {var:?}"))
-                    .map(|pos| pos as Value)
+                    .map(|pos| (pos as Value, var))
             })
-            .collect::<Result<Vec<Value>, _>>()?;
+            .collect::<Result<_, _>>()?;
 
-        let mut write_parameter_indices: Vec<Value> = write_parameters
-            .iter()
+        let mut write_pairs: Vec<(Value, DataVariable)> = write_parameters
+            .into_iter()
             .map(|var| {
                 parameters
                     .iter()
-                    .position(|p| p == var)
+                    .position(|p| p == &var)
                     .ok_or(format!("Cannot find write parameter {var:?}"))
-                    .map(|pos| pos as Value)
+                    .map(|pos| (pos as Value, var))
             })
-            .collect::<Result<Vec<Value>, _>>()?;
+            .collect::<Result<_, _>>()?;
 
-        write_parameter_indices.sort_unstable();
-        read_parameter_indices.sort_unstable();
+        read_pairs.sort_unstable_by_key(|(idx, _)| *idx);
+        write_pairs.sort_unstable_by_key(|(idx, _)| *idx);
+
+        let (read_parameter_indices, read_parameters): (Vec<Value>, Vec<DataVariable>) =
+            read_pairs.into_iter().unzip();
+        let (write_parameter_indices, write_parameters): (Vec<Value>, Vec<DataVariable>) =
+            write_pairs.into_iter().unzip();
 
         let meta = manager
             .with_manager_shared(|m| {

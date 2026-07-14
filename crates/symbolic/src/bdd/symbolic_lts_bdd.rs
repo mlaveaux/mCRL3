@@ -3,6 +3,9 @@ use std::ops::Range;
 use itertools::Itertools;
 use log::debug;
 use log::info;
+use merc_data::DataSpecification;
+use merc_data::DataVariable;
+use merc_lts::TransitionLabel;
 use oxidd::BooleanFunction;
 use oxidd::Manager;
 use oxidd::ManagerRef;
@@ -19,7 +22,10 @@ use merc_utilities::MercError;
 use oxidd::ldd::LDDFunction;
 
 use crate::SymbolicLTS;
+use crate::SymbolicLts;
+use crate::SummandGroup;
 use crate::TransitionGroup;
+use crate::bdd_to_ldd;
 use crate::compute_bits;
 use crate::compute_highest;
 use crate::ldd_to_bdd;
@@ -27,7 +33,7 @@ use crate::required_bits;
 
 /// A symbolic LTS that uses BDDs for the symbolic representation, instead of
 /// LDDs as done in [crate::SymbolicLts].
-pub struct SymbolicLtsBdd {
+pub struct SymbolicLtsBdd<L: TransitionLabel> {
     /// The BDD representing the set of states.
     states: BDDFunction,
 
@@ -49,16 +55,15 @@ pub struct SymbolicLtsBdd {
     /// The action variable indices used to represent the action labels.
     action_variable_indices: Vec<VarNo>,
 
-    /// The action labels of the LTS, stored as their string representation,
-    /// their position corresponds to the LDD values.
-    action_labels: Vec<String>,
+    /// The action labels of the LTS, their position corresponds to the LDD values.
+    action_labels: Vec<L>,
 
     /// The possible values for each process parameter, their position
     /// corresponds to the LDD values.
     parameter_values: Vec<Vec<DataExpression>>,
 }
 
-impl SymbolicLtsBdd {
+impl<L: TransitionLabel> SymbolicLtsBdd<L> {
     /// Converts a symbolic LTS using LDDs into a symbolic LTS using BDDs.
     ///
     /// # Details
@@ -66,10 +71,10 @@ impl SymbolicLtsBdd {
     /// The resulting BDD is assumed to only be valid for the reachable states
     /// of the LDD symbolic LTS, as unreachable states may not be representable
     /// with the number of bits assigned to each state variable.
-    pub fn from_symbolic_lts<L: SymbolicLTS>(
+    pub fn from_symbolic_lts<LS: SymbolicLTS<Label = L>>(
         manager: &LDDManagerRef,
         manager_bdd: &BDDManagerRef,
-        lts: &L,
+        lts: &LS,
     ) -> Result<Self, MercError> {
         info!("Converting symbolic LTS from LDD to BDD representation...");
 
@@ -320,7 +325,7 @@ impl SymbolicLtsBdd {
     }
 
     /// Returns the action labels of the LTS.
-    pub fn action_labels(&self) -> &[String] {
+    pub fn action_labels(&self) -> &[L] {
         &self.action_labels
     }
 
@@ -328,6 +333,188 @@ impl SymbolicLtsBdd {
     pub fn parameter_values(&self) -> &[Vec<DataExpression>] {
         &self.parameter_values
     }
+
+    /// Converts this BDD-based symbolic LTS into an LDD-based [SymbolicLts].
+    ///
+    /// # Details
+    ///
+    /// This is primarily intended for writing quotient results back to the
+    /// mCRL2 `.sym` format through [crate::write_symbolic_lts].
+    pub fn to_symbolic_lts(
+        &self,
+        ldd_manager: &LDDManagerRef,
+        bdd_manager: &BDDManagerRef,
+    ) -> Result<SymbolicLts<L>, MercError> {
+        let state_bits: Vec<Value> = self.state_variable_num_of_bits.clone();
+        let state_groups = split_variables_by_state_group(
+            &self.state_variable_indices,
+            &self.state_variable_num_of_bits,
+            "state",
+        )?;
+        let next_state_groups = split_variables_by_state_group(
+            &self.next_state_variables_indices,
+            &self.state_variable_num_of_bits,
+            "next-state",
+        )?;
+
+        let states = bdd_to_ldd(
+            ldd_manager,
+            bdd_manager,
+            &self.states,
+            &self.state_variable_indices,
+            &state_bits,
+            0,
+            0,
+        )?;
+        let initial_state = bdd_to_ldd(
+            ldd_manager,
+            bdd_manager,
+            &self.initial_state,
+            &self.state_variable_indices,
+            &state_bits,
+            0,
+            0,
+        )?;
+
+        let process_parameters: Vec<DataVariable> = (0..self.state_variable_num_of_bits.len())
+            .map(|index| DataVariable::new(format!("x{index}").as_str()))
+            .collect();
+
+        let mut summand_groups = Vec::with_capacity(self.transition_groups.len());
+        for group in &self.transition_groups {
+            let read_state_indices = decode_state_group_indices(
+                group.read_variables(),
+                &state_groups,
+                "transition group read variables",
+            )?;
+            let write_state_indices = decode_state_group_indices(
+                group.write_variables(),
+                &next_state_groups,
+                "transition group write variables",
+            )?;
+
+            let mut relation_variables: Vec<VarNo> = Vec::new();
+            let mut relation_bits: Vec<Value> = Vec::new();
+
+            for &state_index in &read_state_indices {
+                relation_variables.extend_from_slice(&state_groups[state_index]);
+                relation_bits.push(self.state_variable_num_of_bits[state_index]);
+            }
+
+            for &state_index in &write_state_indices {
+                relation_variables.extend_from_slice(&next_state_groups[state_index]);
+                relation_bits.push(self.state_variable_num_of_bits[state_index]);
+            }
+
+            if self.action_variable_indices.is_empty() {
+                return Err("Cannot convert symbolic LTS BDD without action variables".into());
+            }
+
+            relation_variables.extend_from_slice(&self.action_variable_indices);
+            relation_bits.push(self.action_variable_indices.len() as Value);
+
+            let relation = bdd_to_ldd(
+                ldd_manager,
+                bdd_manager,
+                group.relation(),
+                &relation_variables,
+                &relation_bits,
+                0,
+                0,
+            )?;
+
+            let read_parameters = read_state_indices
+                .iter()
+                .map(|&index| process_parameters[index].clone())
+                .collect();
+            let write_parameters = write_state_indices
+                .iter()
+                .map(|&index| process_parameters[index].clone())
+                .collect();
+
+            summand_groups.push(SummandGroup::new(
+                ldd_manager,
+                &process_parameters,
+                read_parameters,
+                write_parameters,
+                relation,
+            )?);
+        }
+
+        let action_labels = self.action_labels.clone();
+
+        let parameter_values = vec![Vec::new(); process_parameters.len()];
+
+        Ok(SymbolicLts::new(
+            DataSpecification::default(),
+            process_parameters,
+            states,
+            initial_state,
+            summand_groups,
+            action_labels,
+            parameter_values,
+        ))
+    }
+}
+
+fn split_variables_by_state_group(
+    variables: &[VarNo],
+    bits_per_state_variable: &[Value],
+    kind: &str,
+) -> Result<Vec<Vec<VarNo>>, MercError> {
+    let expected_num_of_variables: usize = bits_per_state_variable
+        .iter()
+        .map(|&bits| bits as usize)
+        .sum();
+    if variables.len() != expected_num_of_variables {
+        return Err(format!(
+            "Invalid {kind} variables: expected {expected_num_of_variables}, found {}",
+            variables.len()
+        )
+        .into());
+    }
+
+    let mut offset = 0usize;
+    let mut groups = Vec::with_capacity(bits_per_state_variable.len());
+    for &bits in bits_per_state_variable {
+        let end = offset + bits as usize;
+        groups.push(variables[offset..end].to_vec());
+        offset = end;
+    }
+
+    Ok(groups)
+}
+
+fn decode_state_group_indices(
+    group_variables: &[VarNo],
+    all_state_groups: &[Vec<VarNo>],
+    description: &str,
+) -> Result<Vec<usize>, MercError> {
+    let mut result = Vec::new();
+
+    for (state_index, state_bits) in all_state_groups.iter().enumerate() {
+        let present_count = state_bits
+            .iter()
+            .filter(|bit| group_variables.contains(bit))
+            .count();
+
+        if present_count == 0 {
+            continue;
+        }
+
+        if present_count != state_bits.len() {
+            return Err(format!(
+                "Invalid {description}: state variable {state_index} appears with {} out of {} bits",
+                present_count,
+                state_bits.len()
+            )
+            .into());
+        }
+
+        result.push(state_index);
+    }
+
+    Ok(result)
 }
 
 pub struct SummandGroupBdd {
@@ -390,10 +577,17 @@ pub fn compute_vars_bdd(
 
 #[cfg(test)]
 mod tests {
+    use merc_lts::LtsBuilderMem;
+    use merc_reduction::Equivalence;
+    use merc_reduction::compare_lts;
+    use merc_utilities::Timing;
     use merc_utilities::test_logger;
 
+    use crate::convert_symbolic_lts;
     use crate::SymbolicLtsBdd;
+    use crate::quotient_symbolic;
     use crate::read_symbolic_lts;
+    use crate::sigref_symbolic;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -408,5 +602,42 @@ mod tests {
 
         // This only tests that the conversion does not panic.
         SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &symbolic_lts).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_quotient_to_symbolic_lts_roundtrip() {
+        test_logger();
+
+        let input = include_bytes!("../../../../examples/lts/abp.sym");
+
+        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
+        let symbolic_lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();
+
+        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &symbolic_lts).unwrap();
+        let (partition, block_vars, _) =
+            sigref_symbolic(&bdd_manager, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
+        let quotient = quotient_symbolic(&bdd_manager, &lts_bdd, &partition, &block_vars).unwrap();
+
+        let quotient_ldd = quotient.to_symbolic_lts(&ldd_manager, &bdd_manager).unwrap();
+
+        let mut original_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+        let original_explicit =
+            crate::convert_symbolic_lts_bdd(&bdd_manager, &mut original_builder, &quotient).unwrap();
+
+        let mut converted_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+        let converted_explicit = convert_symbolic_lts(&ldd_manager, &mut converted_builder, &quotient_ldd).unwrap();
+
+        assert!(
+            compare_lts(
+                Equivalence::StrongBisim,
+                original_explicit,
+                converted_explicit,
+                false,
+                &Timing::new()
+            ),
+            "BDD quotient should remain bisimilar after conversion to SymbolicLts"
+        );
     }
 }

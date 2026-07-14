@@ -9,6 +9,7 @@ use merc_aterm::ATermString;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
+use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
 use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
@@ -27,7 +28,7 @@ pub fn random_symbolic_lts<R: Rng>(
     manager: &LDDManagerRef,
     num_state_variables: usize,
     num_action_labels: usize,
-) -> Result<SymbolicLts, MercError> {
+) -> Result<SymbolicLts<LtsMultiAction<LtsAction>>, MercError> {
     let num_of_values = 5usize;
 
     let states = random_vector_set(rng, 100, num_state_variables, num_of_values as u32);

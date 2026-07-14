@@ -12,6 +12,7 @@ use oxidd::bdd::BDDManagerRef;
 use oxidd::error::DuplicateVarName;
 use oxidd::ldd::Value;
 
+use merc_lts::TransitionLabel;
 use merc_utilities::MercError;
 
 use crate::SummandGroupBdd;
@@ -28,12 +29,12 @@ use crate::variable_rename_reverse;
 /// set of "next-block" variables (used as the target-block bits).
 ///
 /// The action variables and action labels are inherited from `lts`.
-pub fn quotient_symbolic(
+pub fn quotient_symbolic<L: TransitionLabel>(
     manager_ref: &BDDManagerRef,
-    lts: &SymbolicLtsBdd,
+    lts: &SymbolicLtsBdd<L>,
     partition: &BDDFunction,
     block_vars: &[VarNo],
-) -> Result<SymbolicLtsBdd, MercError> {
+) -> Result<SymbolicLtsBdd<L>, MercError> {
     let num_block_bits = block_vars.len();
 
     // Allocate next-block variables in the manager (one per source-block bit).

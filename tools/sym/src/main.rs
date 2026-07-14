@@ -13,6 +13,8 @@ use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::write_bcg;
+use merc_lts::LtsAction;
+use merc_lts::LtsMultiAction;
 use merc_symbolic::ExplorationStrategy;
 use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SymFormat;
@@ -31,6 +33,7 @@ use merc_symbolic::read_symbolic_lts;
 use merc_symbolic::refine_bisimulation;
 use merc_symbolic::reorder;
 use merc_symbolic::sigref_symbolic;
+use merc_symbolic::write_symbolic_lts;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -116,6 +119,10 @@ struct ReachabilityArgs {
     /// Detect deadlock states (states without outgoing transitions).
     #[arg(long)]
     detect_deadlocks: bool,
+
+    /// Write the reachable symbolic LTS to this .sym output file.
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -302,28 +309,33 @@ fn handle_reachability(cli: &Cli, args: &ReachabilityArgs, timing: &Timing) -> R
     let mut file = File::open(&args.filename)?;
     match format {
         SymFormat::Sylvan => {
+            if args.output.is_some() {
+                return Err("Writing output is only supported for the .sym format".into());
+            }
+
             let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&storage, &mut file))?;
 
-            println!(
-                "LTS has {} states",
-                timing.measure("reachability", || -> Result<_, MercError> {
-                    Ok(reachability_with_options(&storage, &mut lts, &options, timing)?
-                        .states
-                        .len())
-                })?
-            );
+            let result = timing.measure("reachability", || {
+                reachability_with_options(&storage, &mut lts, &options, timing)
+            })?;
+
+            println!("LTS has {} states", result.states.len());
         }
         SymFormat::Sym => {
             let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&storage, &mut file))?;
 
-            println!(
-                "LTS has {} states",
-                timing.measure("reachability", || -> Result<_, MercError> {
-                    Ok(reachability_with_options(&storage, &mut lts, &options, timing)?
-                        .states
-                        .len())
-                })?
-            );
+            let result = timing.measure("reachability", || {
+                reachability_with_options(&storage, &mut lts, &options, timing)
+            })?;
+
+            println!("LTS has {} states", result.states.len());
+
+            if let Some(output) = &args.output {
+                lts.set_states(result.states);
+                timing.measure("write_symbolic_lts", || {
+                    write_symbolic_lts(&storage, File::create(output)?, &lts)
+                })?;
+            }
         }
     }
 
@@ -351,11 +363,9 @@ fn handle_reachability_bdd(cli: &Cli, args: &ReachabilityBddArgs, timing: &Timin
     })?;
 
     if !lts_bdd.initial_state().satisfiable() {
-        return Err(
-            "BDD conversion produced an unsatisfiable initial state; \
+        return Err("BDD conversion produced an unsatisfiable initial state; \
              SymbolicLtsBdd::from_symbolic_lts is likely miscompiling this input"
-                .into(),
-        );
+            .into());
     }
 
     println!(
@@ -371,10 +381,9 @@ fn handle_reachability_bdd(cli: &Cli, args: &ReachabilityBddArgs, timing: &Timin
                 );
             }
 
-            let num_reachable_states_bdd = reachable_states_bdd.sat_count::<u64, FxBuildHasher>(
-                lts_bdd.state_variables().len() as u32,
-                &mut SatCountCache::default(),
-            ) as usize;
+            let num_reachable_states_bdd = reachable_states_bdd
+                .sat_count::<u64, FxBuildHasher>(lts_bdd.state_variables().len() as u32, &mut SatCountCache::default())
+                as usize;
             Ok(num_reachable_states_bdd)
         })?
     );
@@ -524,7 +533,7 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         SymbolicLtsBdd::from_symbolic_lts(&storage, &manager_ref, &lts)
     })?;
 
-    let quotient_lts = timing.measure("reduction", || -> Result<Option<SymbolicLtsBdd>, MercError> {
+    let quotient_lts = timing.measure("reduction", || -> Result<Option<SymbolicLtsBdd<LtsMultiAction<LtsAction>>>, MercError> {
         match args.equivalence {
             Equivalence::StrongBisimSigref => {
                 let (partition, block_vars, _num_of_blocks) = sigref_symbolic(
@@ -552,6 +561,16 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
     if let Some(output) = &args.output {
         let quotient_lts =
             quotient_lts.ok_or("Writing the quotient is not yet supported for the selected equivalence")?;
+
+        if guess_format_from_extension(output, None) == Some(SymFormat::Sym) {
+            let quotient_ldd = timing.measure("convert_ldd", || {
+                quotient_lts.to_symbolic_lts(&storage, &manager_ref)
+            })?;
+
+            let mut output_file = File::create(output)?;
+            write_symbolic_lts(&storage, &mut output_file, &quotient_ldd)?;
+            return Ok(());
+        }
 
         let output_format =
             guess_lts_format_from_extension(output, args.output_format).ok_or("Cannot determine output LTS format")?;

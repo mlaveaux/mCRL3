@@ -1,8 +1,7 @@
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
-use merc_lts::LtsAction;
-use merc_lts::LtsMultiAction;
+use merc_lts::TransitionLabel;
 use oxidd::ldd::LDDFunction;
 
 use crate::SummandGroup;
@@ -10,7 +9,7 @@ use crate::SymbolicLPS;
 use crate::SymbolicLTS;
 
 /// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
-pub struct SymbolicLts {
+pub struct SymbolicLts<L: TransitionLabel> {
     data_specification: DataSpecification,
 
     /// The process parameters, in the order used to index the LDD vectors.
@@ -21,16 +20,15 @@ pub struct SymbolicLts {
     initial_state: LDDFunction,
     summand_groups: Vec<SummandGroup>,
 
-    /// The action labels of the LTS, stored as their string representation,
-    /// their position corresponds to the LDD values.
-    action_labels: Vec<String>,
+    /// The action labels of the LTS, their position corresponds to the LDD values.
+    action_labels: Vec<L>,
 
     /// The possible values for each process parameter, their position
     /// corresponds to the LDD values.
     parameter_values: Vec<Vec<DataExpression>>,
 }
 
-impl SymbolicLts {
+impl<L: TransitionLabel> SymbolicLts<L> {
     /// Creates a new symbolic LTS.
     ///
     /// `states` is the known state space (pass `initial_state.clone()` when the full set is not
@@ -41,15 +39,10 @@ impl SymbolicLts {
         states: LDDFunction,
         initial_state: LDDFunction,
         summand_groups: Vec<SummandGroup>,
-        action_labels: Vec<LtsMultiAction<LtsAction>>,
+        action_labels: Vec<L>,
         parameter_values: Vec<Vec<DataExpression>>,
     ) -> Self {
-        let action_labels = action_labels
-            .into_iter()
-            .map(|aterm| format!("{}", aterm))
-            .collect::<Vec<String>>();
-
-        debug_assert_eq!(
+        assert_eq!(
             parameter_values.len(),
             process_parameters.len(),
             "parameter_values must have one entry per process parameter"
@@ -79,9 +72,15 @@ impl SymbolicLts {
     pub fn parameter_values(&self) -> &[Vec<DataExpression>] {
         &self.parameter_values
     }
+
+    /// Replaces the state set with `states`, typically the reachable set from
+    /// [crate::reachability].
+    pub fn set_states(&mut self, states: LDDFunction) {
+        self.states = states;
+    }
 }
 
-impl SymbolicLPS for SymbolicLts {
+impl<L: TransitionLabel> SymbolicLPS for SymbolicLts<L> {
     type Group = SummandGroup;
 
     fn initial_state(&self) -> &LDDFunction {
@@ -99,12 +98,14 @@ impl SymbolicLPS for SymbolicLts {
     fn create_context(&self) {}
 }
 
-impl SymbolicLTS for SymbolicLts {
+impl<L: TransitionLabel> SymbolicLTS for SymbolicLts<L> {
+    type Label = L;
+
     fn states(&self) -> &LDDFunction {
         &self.states
     }
 
-    fn action_labels(&self) -> &[String] {
+    fn action_labels(&self) -> &[L] {
         &self.action_labels
     }
 
