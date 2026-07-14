@@ -174,27 +174,47 @@ impl fmt::Display for ATermRef<'_> {
     }
 }
 
+/// A pending unit of work for the iterative [ATermRef] formatter: either a
+/// subterm that still needs to be formatted, or a literal separator that was
+/// deferred until its subterms are printed.
+enum FormatFrame<'a> {
+    Term(ATermRef<'a>),
+    Str(&'static str),
+}
+
 impl fmt::Debug for ATermRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if is_int_term(self) {
-            write!(f, "{}", Into::<ATermIntRef>::into(self.copy()))?;
-        } else if is_list_term(self) || is_empty_list_term(self) {
-            write!(f, "{}", Into::<ATermList<ATerm>>::into(self.copy()))?;
-        } else if self.arguments().is_empty() {
-            write!(f, "{}", self.get_head_symbol().name())?;
-        } else {
-            // Format the term with its head symbol and arguments, avoiding trailing comma
-            write!(f, "{:?}(", self.get_head_symbol())?;
+        // Formatting recurses once per nesting level in the naive
+        // implementation, which overflows the stack on deeply nested terms
+        // (e.g. Peano numerals). Walk the term with an explicit stack instead.
+        let mut stack = vec![FormatFrame::Term(self.copy())];
 
-            let mut args = self.arguments().peekable();
-            while let Some(arg) = args.next() {
-                write!(f, "{arg:?}")?;
-                if args.peek().is_some() {
-                    write!(f, ", ")?;
+        while let Some(frame) = stack.pop() {
+            match frame {
+                FormatFrame::Str(s) => write!(f, "{s}")?,
+                FormatFrame::Term(t) => {
+                    if is_int_term(&t) {
+                        write!(f, "{}", Into::<ATermIntRef>::into(t.copy()))?;
+                    } else if is_list_term(&t) || is_empty_list_term(&t) {
+                        write!(f, "{}", Into::<ATermList<ATerm>>::into(t.copy()))?;
+                    } else if t.arguments().is_empty() {
+                        write!(f, "{}", t.get_head_symbol().name())?;
+                    } else {
+                        // Format the term with its head symbol and arguments, avoiding trailing comma.
+                        write!(f, "{:?}(", t.get_head_symbol())?;
+
+                        let args = t.arguments().rev();
+                        let num_args = args.len();
+                        stack.push(FormatFrame::Str(")"));
+                        for (i, arg) in args.enumerate() {
+                            stack.push(FormatFrame::Term(arg));
+                            if i + 1 < num_args {
+                                stack.push(FormatFrame::Str(", "));
+                            }
+                        }
+                    }
                 }
             }
-
-            write!(f, ")")?;
         }
 
         Ok(())
@@ -683,6 +703,23 @@ mod tests {
     use crate::Symbol;
     use crate::Term;
     use crate::storage::THREAD_TERM_POOL;
+
+    #[test]
+    fn test_debug_multi_arg_term_argument_order() {
+        // Pins the exact left-to-right, comma-separated output of the iterative
+        // formatter for a multi-argument, multi-level term.
+        let f = Symbol::new("f_debug_order_test", 3);
+        let g = Symbol::new("g_debug_order_test", 1);
+        let a = ATerm::constant(&Symbol::new("a_debug_order_test", 0));
+        let b = ATerm::constant(&Symbol::new("b_debug_order_test", 0));
+        let c = ATerm::with_args(&g, &[b.copy()]).protect();
+        let t = ATerm::with_args(&f, &[a.copy(), b.copy(), c.copy()]).protect();
+
+        assert_eq!(
+            format!("{t:?}"),
+            "f_debug_order_test(a_debug_order_test, b_debug_order_test, g_debug_order_test(b_debug_order_test))"
+        );
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)] // Building 300k terms is too slow under miri.
