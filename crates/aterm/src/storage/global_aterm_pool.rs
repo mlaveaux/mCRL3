@@ -38,9 +38,6 @@ pub(crate) const AGGRESSIVE_GC: bool = false;
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = RecursiveLockReadGuard<'a, GlobalTermPool>;
 
-/// A type alias for deletion hooks
-type DeletionHook = Box<dyn Fn(&ATermIndex) + Sync + Send>;
-
 /// The single global (singleton) term pool, accessed via [GLOBAL_TERM_POOL].
 pub struct GlobalTermPool {
     /// Unique table of all terms with stable pointers for references
