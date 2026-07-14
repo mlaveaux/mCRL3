@@ -4,6 +4,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -226,17 +227,17 @@ impl fmt::Debug for ATermRef<'_> {
 /// # Safety
 ///
 /// Note that terms use thread-local state for their protection mechanism, so
-/// [ATerm] is not [Send]. Moreover, this means that terms cannot be stored in
-/// thread-local storage themselves, or at least must be destroyed before the
-/// thread exists, because the order in which thread-local destructors are
-/// called is undefined. For this purpose one can use `ManuallyDrop` to simply
-/// never drop thread local terms, since exiting the thread will clean up the
-/// protection sets anyway.
+/// [ATerm] is not [Send]. Terms should not be dropped after the thread that
+/// created them has exited, because the order in which thread-local destructors
+/// run is undefined and dropping a term after `THREAD_TERM_POOL` is gone panics.
+/// For this purpose one can wrap terms kept in thread-local storage in
+/// `ManuallyDrop` to simply never drop them.
 ///
-/// We do not mark term access as unsafe, since that would make their use
-/// cumbersome. An alternative would be to require
-/// THREAD_TERM_POOL.with(|tp| ...) around every access, but that would
-/// be very verbose.
+/// Read-only inspection of a term after its originating thread has exited
+/// remains memory-safe: any roots still protected at thread teardown are adopted
+/// into a global orphan set (deduplicated), so their storage is not reclaimed.
+///
+/// If you need to send a term across threads, use [ATermSend] instead.
 pub struct ATerm {
     term: ATermRef<'static>,
 
@@ -321,7 +322,13 @@ impl ATerm {
         // `self.root`; from then on the protection set keeps the term alive
         // until this `ATerm` unprotects it.
         let index = unsafe { value.shared().copy() };
-        THREAD_TERM_POOL.with(|tp| tp.replace(value.guard, self.root, unsafe { index.copy() }));
+        // Move the guard out of `value` without running `Return::drop`, since we release the
+        // guard ourselves inside the `THREAD_TERM_POOL.with` closure below.
+        let mut value = ManuallyDrop::new(value);
+        // SAFETY: `value` is wrapped in `ManuallyDrop`, so `guard` (and `term`) are not dropped
+        // or read again after this move.
+        let guard = unsafe { ManuallyDrop::take(&mut value.guard) };
+        THREAD_TERM_POOL.with(|tp| tp.replace(guard, self.root, unsafe { index.copy() }));
 
         // Set the term itself.
         self.term = unsafe { ATermRef::from_index(&index) };
@@ -506,13 +513,22 @@ where
 /// The resulting term can have a lifetime tied to the thread-local term pool.
 pub struct Return<T> {
     term: T,
-    guard: RecursiveLockReadGuard<'static, GlobalTermPool>,
+
+    /// The recursive read guard borrows from the [RecursiveLock] owned by this thread's
+    /// [crate::storage::ThreadTermPool]. It is wrapped in [ManuallyDrop] so that its own
+    /// [Drop] (which dereferences that lock) never runs implicitly; instead [Return::drop]
+    /// releases it through [THREAD_TERM_POOL], which panics if the thread-local pool is already
+    /// gone rather than dereferencing a dangling lock.
+    guard: ManuallyDrop<RecursiveLockReadGuard<'static, GlobalTermPool>>,
 }
 
 impl<T> Return<T> {
     /// Creates a new return value wrapping the given term.
     pub fn new(guard: RecursiveLockReadGuard<'static, GlobalTermPool>, term: T) -> Self {
-        Return { term, guard }
+        Return {
+            term,
+            guard: ManuallyDrop::new(guard),
+        }
     }
 
     /// Casts the inner term to another type, while keeping the same guard.
@@ -520,10 +536,29 @@ impl<T> Return<T> {
     where
         T: Into<U>,
     {
+        // Move the guard out without running `Self::drop`, then hand it to the new `Return`.
+        let mut this = ManuallyDrop::new(self);
+        // SAFETY: `this` is wrapped in `ManuallyDrop`, so `guard` is not read or dropped again.
+        let guard = unsafe { ManuallyDrop::take(&mut this.guard) };
+        // SAFETY: `term` is likewise not dropped or read again after this move.
+        let term = unsafe { std::ptr::read(&this.term) };
         Return {
-            term: self.term.into(),
-            guard: self.guard,
+            term: term.into(),
+            guard: ManuallyDrop::new(guard),
         }
+    }
+}
+
+impl<T> Drop for Return<T> {
+    fn drop(&mut self) {
+        // Release the guard through the thread-local pool. If the thread-local pool has already
+        // been destroyed, `with` panics before we ever touch the guard, so we never dereference
+        // the dangling `RecursiveLock` it borrows from. This turns a would-be use-after-free
+        // into a deterministic panic.
+        THREAD_TERM_POOL.with(|_| {
+            // SAFETY: `guard` is never used again after this `Return` is dropped.
+            unsafe { ManuallyDrop::drop(&mut self.guard) };
+        });
     }
 }
 

@@ -139,24 +139,31 @@ library, but every module that only uses safe Rust is marked with
 `#![forbid(unsafe_code)]`. This crate is a full reimplementation of the ATerm
 library used in the [mCRL2](https://mcrl2.org) toolset.
 
-Misuse of `GcMutex`, used by the `Protected` struct, can lead to undefined
-behaviour in safe code. Ensure that the guards returned from `GcMutex` are not
-used after the `THREAD_TERM_POOL` is dropped, which happens when the thread
-terminates. The same applies to the `Return<T>` struct, which also holds a
-reference to the thread local term pool. Alternatively, we could have required
-access to `THREAD_TERM_POOL` to only be called through the closures, but this
-would have made the API more cumbersome to use.
+The guards returned by `GcMutex` (used by the `Protected` struct) and the
+`Return<T>` struct both borrow the thread-local term pool. Dropping either of
+them after the `THREAD_TERM_POOL` is gone (which happens when the thread
+terminates) panics deterministically instead of causing undefined behaviour,
+since they access the pool through `THREAD_TERM_POOL`. Alternatively, we could
+have required access to `THREAD_TERM_POOL` to only be called through closures,
+but this would have made the API more cumbersome to use.
 
-Furthermore, the `protect` and `protect_symbol` methods of `Protected` must be
-used in a way that the resulting term or symbol is inserted into the container,
-otherwise undefined behaviour may occur after garbage collection. This is
-checked in debug mode, but the checks are far too expensive to be performed in
-release mode.
-
-Reading the `value()` of an `ATermInt` that is not actually a valid integer term
-leads to undefined behaviour. This is also only checked in debug mode.
+Terms, symbols, and `Protected` containers that are still reachable when their
+creating thread exits are adopted into a global orphan set during thread-local
+pool teardown. This keeps their storage alive so that read-only inspection of raw
+`ATermRef` values remains memory-safe even after the thread is gone; the orphan
+set deduplicates, so repeatedly leaking the same shared roots (such as the
+default data symbols kept in thread-local storage) does not grow memory
+unboundedly. Dropping an `ATerm` after its thread exits still panics rather than
+silently leaking, because it accesses `THREAD_TERM_POOL`; wrap terms kept in
+thread-local storage in `ManuallyDrop` to avoid the undefined destructor
+ordering. To keep terms alive across threads, use `ATermSend` instead.
 
 ## Changelog
+
+### 3.0.0
+
+Reviewed the crate extensively to ensure that safe code cannot lead to UB except
+for the documented cases above. Added various `Send` and `Sync` bounds.
 
 ### 2.0.0
 

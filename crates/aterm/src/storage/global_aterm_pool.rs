@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use log::debug;
+use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
 use merc_io::LargeFormatter;
@@ -47,6 +48,15 @@ pub struct GlobalTermPool {
     thread_pools: ThreadPoolList,
     /// A separate protection set for sendable terms, see [crate::ATermSend].
     send_term_protection_sets: Vec<Option<Arc<Mutex<ProtectionSet<ATermIndex>>>>>,
+    /// Term roots adopted from thread-local protection sets when their owning thread exits while
+    /// the terms are still reachable. Deduplicated so repeatedly leaking the same shared term
+    /// (for example the default data symbols) does not grow this set unboundedly.
+    orphan_term_protection_set: FxHashSet<ATermIndex>,
+    /// Symbol roots adopted from thread-local protection sets during thread teardown, deduplicated.
+    orphan_symbol_protection_set: FxHashSet<SymbolIndex>,
+    /// Container roots adopted from thread-local protection sets during thread teardown, keyed by
+    /// the container's [Arc] pointer address so the same container is retained at most once.
+    orphan_container_protection_set: FxHashMap<usize, Arc<dyn Markable + Sync + Send>>,
 
     // Data structures used for garbage collection
     /// Used to avoid reallocations for the markings of all terms - uses pointers as keys
@@ -82,6 +92,9 @@ impl GlobalTermPool {
             symbol_pool,
             thread_pools: ThreadPoolList(Vec::new()),
             send_term_protection_sets: Vec::new(),
+            orphan_term_protection_set: FxHashSet::default(),
+            orphan_symbol_protection_set: FxHashSet::default(),
+            orphan_container_protection_set: FxHashMap::default(),
             marked_terms: FxHashSet::default(),
             marked_symbols: FxHashSet::default(),
             stack: Vec::new(),
@@ -186,6 +199,30 @@ impl GlobalTermPool {
         }
     }
 
+    /// Adopts the term, symbol, and container roots that were still protected in a thread-local
+    /// set when its thread exited. Deduplicated, so repeatedly leaking the same shared roots does
+    /// not grow the orphan sets unboundedly.
+    pub(crate) fn protect_orphan_roots(&mut self, protection: &SharedTermProtection) {
+        for (_root, term) in protection.term_protection_set.iter() {
+            // SAFETY: the value is copied from a currently protected root; the copy is owned by
+            // the orphan set, which keeps the term alive as an additional GC root.
+            self.orphan_term_protection_set.insert(unsafe { term.copy() });
+        }
+
+        for (_root, symbol) in protection.symbol_protection_set.iter() {
+            // SAFETY: the value is copied from a currently protected symbol root; the copy is
+            // owned by the orphan set, which keeps the symbol alive as an additional GC root.
+            self.orphan_symbol_protection_set.insert(unsafe { symbol.copy() });
+        }
+
+        for (_root, container) in protection.container_protection_set.iter() {
+            let key = Arc::as_ptr(container) as *const () as usize;
+            self.orphan_container_protection_set
+                .entry(key)
+                .or_insert_with(|| container.clone());
+        }
+    }
+
     /// Triggers garbage collection if necessary and returns an updated counter for the thread local pool.
     pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
         if self.garbage_collection {
@@ -260,6 +297,25 @@ impl GlobalTermPool {
                     ATermRef::from_index(term).mark(&mut marker);
                 }
             }
+        }
+
+        for term in &self.orphan_term_protection_set {
+            debug_trace!("Marking orphaned term {term:?}");
+            unsafe {
+                ATermRef::from_index(term).mark(&mut marker);
+            }
+        }
+
+        for symbol in &self.orphan_symbol_protection_set {
+            debug_trace!("Marking orphaned symbol {symbol:?}");
+            // SAFETY: the orphan set keeps the symbol alive, and the mark-set entry is dropped
+            // when the sweep below finishes.
+            marker.marked_symbols.insert(unsafe { symbol.copy() });
+        }
+
+        for container in self.orphan_container_protection_set.values() {
+            debug_trace!("Marking orphaned container");
+            container.mark(&mut marker);
         }
 
         // Reclaim send-term protection sets whose owning thread has exited and that hold no
