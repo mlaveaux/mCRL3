@@ -1,7 +1,7 @@
 use oxidd::BooleanFunction;
+use oxidd::BooleanFunctionQuant;
 use oxidd::Edge;
 use oxidd::Function;
-use oxidd::HasLevel;
 use oxidd::Manager;
 use oxidd::ManagerRef;
 use oxidd::VarNo;
@@ -18,7 +18,6 @@ use oxidd_core::util::EdgeDropGuard;
 use oxidd_rules_bdd::simple::BDDTerminal;
 use rustc_hash::FxHashMap;
 
-use crate::collect_children;
 use crate::height;
 
 /// Converts an LDD representing a set of vectors into a BDD representing the
@@ -166,77 +165,24 @@ pub fn bdd_to_ldd_edge<'id, 'ldd>(
     current_bit: Value,
     current_value: Value,
 ) -> Result<LDDFunction, OutOfMemory> {
-    let bdd_node = match manager.get_node(&bdd) {
-        oxidd::Node::Inner(node) => node,
-        oxidd::Node::Terminal(terminal) => {
-            // Base cases
-            match terminal {
-                BDDTerminal::False => {
-                    return LDDFunction::empty_set(ldd_manager);
-                }
-                BDDTerminal::True => {
-                    if variables.is_empty() {
-                        return LDDFunction::singleton(ldd_manager, &[current_value]);
-                    }
+    // Base case: the empty set is represented by the False terminal.
+    if let oxidd::Node::Terminal(BDDTerminal::False) = manager.get_node(&bdd) {
+        return LDDFunction::empty_set(ldd_manager);
+    }
 
-                    // If there are still variables left, we must generate don't cares for the remaining layers.
-                    // Cache this because the True terminal can be reached via many shared BDD paths.
-                    let cache_key = (
-                        BDDFunction::from_edge_ref(manager, &*bdd),
-                        variables.len(),
-                        current_bit,
-                        current_value,
-                    );
-                    if let Some(cached) = cache.get(&cache_key) {
-                        return Ok(cached.clone());
-                    }
+    // Base case: once all variables have been consumed the decoded value is complete. The BDD must
+    // be the True terminal here, since any remaining path would require further variables.
+    if variables.is_empty() {
+        debug_assert!(
+            matches!(manager.get_node(&bdd), oxidd::Node::Terminal(BDDTerminal::True)),
+            "Expected the True terminal after consuming all variables"
+        );
+        return LDDFunction::singleton(ldd_manager, &[current_value]);
+    }
 
-                    let num_bits = bits_per_layer
-                        .first()
-                        .copied()
-                        .expect("Missing bits per layer for current layer");
-
-                    // There are don't care variables in this BDD that have been skipped, so generate both branches.
-                    let result = if num_bits == current_bit {
-                        // We reached the last bit for this layer, variable still belongs to next layer.
-                        let down =
-                            bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
-                        let right = LDDFunction::empty_set(ldd_manager)?;
-                        LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
-                    } else {
-                        debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
-                        let high = bdd_to_ldd_edge(
-                            ldd_manager,
-                            manager,
-                            cache,
-                            bdd.borrowed(),
-                            &variables[1..],
-                            bits_per_layer,
-                            current_bit + 1,
-                            current_value | (1 << (num_bits - current_bit - 1)),
-                        )?;
-                        let low = bdd_to_ldd_edge(
-                            ldd_manager,
-                            manager,
-                            cache,
-                            bdd,
-                            &variables[1..],
-                            bits_per_layer,
-                            current_bit + 1,
-                            current_value,
-                        )?;
-                        LDDFunction::union_edge(ldd_manager, &high, &low)?
-                    };
-
-                    cache.insert(cache_key, result.clone());
-                    return Ok(result);
-                }
-            }
-        }
-    };
-
-    // Cache lookup: shared BDD subgraphs are expanded independently each time without this,
-    // causing exponential blowup when the same inner node is reachable via multiple paths.
+    // Cache lookup: shared BDD subgraphs (including the True terminal reached while variables
+    // remain) are otherwise expanded independently each time, causing exponential blowup when the
+    // same node is reachable via multiple paths.
     let cache_key = (
         BDDFunction::from_edge_ref(manager, &*bdd),
         variables.len(),
@@ -253,73 +199,49 @@ pub fn bdd_to_ldd_edge<'id, 'ldd>(
         .copied()
         .expect("Missing bits per layer for current layer");
 
-    let variable_level = variables.first().expect("Missing variable for current layer");
-    let result = if *variable_level < bdd_node.level() {
-        // There are don't care variables in this BDD that have been skipped, so generate both branches without cofactors.
-        if num_bits == current_bit {
-            // We reached the last bit for this layer, variable still belongs to next layer.
-            let down = bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
-            let right = LDDFunction::empty_set(ldd_manager)?;
-            LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
-        } else {
-            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
-            let high = bdd_to_ldd_edge(
-                ldd_manager,
-                manager,
-                cache,
-                bdd.borrowed(),
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value | (1 << (num_bits - current_bit - 1)),
-            )?;
-            let low = bdd_to_ldd_edge(
-                ldd_manager,
-                manager,
-                cache,
-                bdd,
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value,
-            )?;
-            LDDFunction::union_edge(ldd_manager, &high, &low)?
-        }
+    let result = if num_bits == current_bit {
+        // We reached the last bit for this layer, so emit an LDD node holding the decoded value and
+        // continue decoding the next layer.
+        let down = bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
+        let right = LDDFunction::empty_set(ldd_manager)?;
+        LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
     } else {
-        debug_assert_eq!(*variable_level, bdd_node.level(), "Levels do not match");
-        if num_bits == current_bit {
-            // We reached the last bit for this layer
-            let down = bdd_to_ldd_edge(ldd_manager, manager, cache, bdd, variables, &bits_per_layer[1..], 0, 0)?;
-            let right = LDDFunction::empty_set(ldd_manager)?;
-            LDDFunction::make_node(ldd_manager, current_value, &down, &right)?
-        } else {
-            debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
-            let (bdd_high, bdd_low) = collect_children(bdd_node);
+        debug_assert!(current_bit < num_bits, "Current bit exceeds number of bits for layer");
 
-            // Recurse for high and low cofactors
-            let high = bdd_to_ldd_edge(
-                ldd_manager,
-                manager,
-                cache,
-                bdd_high,
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value | (1 << (num_bits - current_bit - 1)),
-            )?;
-            let low = bdd_to_ldd_edge(
-                ldd_manager,
-                manager,
-                cache,
-                bdd_low,
-                &variables[1..],
-                bits_per_layer,
-                current_bit + 1,
-                current_value,
-            )?;
+        // Cofactor the BDD with respect to the variable for the current bit. Extracting an explicit
+        // cofactor (instead of assuming the variable sits at the top of the BDD) makes decoding
+        // independent of the BDD variable ordering. This is required because state and next-state
+        // bit variables are interleaved level-wise, whereas a relation groups all read bits before
+        // all write bits, so the variable list is generally not in level order.
+        let var = *variables.first().expect("Missing variable for current layer");
+        let var_edge = EdgeDropGuard::new(manager, BDDFunction::var_edge(manager, var)?);
+        let neg_var_edge = EdgeDropGuard::new(manager, BDDFunction::not_edge(manager, &var_edge)?);
 
-            LDDFunction::union_edge(ldd_manager, &high, &low)?
-        }
+        let high_edge = EdgeDropGuard::new(manager, BDDFunction::restrict_edge(manager, &*bdd, &var_edge)?);
+        let low_edge = EdgeDropGuard::new(manager, BDDFunction::restrict_edge(manager, &*bdd, &neg_var_edge)?);
+
+        // Recurse for high and low cofactors
+        let high = bdd_to_ldd_edge(
+            ldd_manager,
+            manager,
+            cache,
+            high_edge.borrowed(),
+            &variables[1..],
+            bits_per_layer,
+            current_bit + 1,
+            current_value | (1 << (num_bits - current_bit - 1)),
+        )?;
+        let low = bdd_to_ldd_edge(
+            ldd_manager,
+            manager,
+            cache,
+            low_edge.borrowed(),
+            &variables[1..],
+            bits_per_layer,
+            current_bit + 1,
+            current_value,
+        )?;
+        LDDFunction::union_edge(ldd_manager, &high, &low)?
     };
 
     cache.insert(cache_key, result.clone());

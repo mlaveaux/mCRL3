@@ -21,9 +21,9 @@ use merc_data::DataExpression;
 use merc_utilities::MercError;
 use oxidd::ldd::LDDFunction;
 
+use crate::SummandGroup;
 use crate::SymbolicLTS;
 use crate::SymbolicLts;
-use crate::SummandGroup;
 use crate::TransitionGroup;
 use crate::bdd_to_ldd;
 use crate::compute_bits;
@@ -346,11 +346,8 @@ impl<L: TransitionLabel> SymbolicLtsBdd<L> {
         bdd_manager: &BDDManagerRef,
     ) -> Result<SymbolicLts<L>, MercError> {
         let state_bits: Vec<Value> = self.state_variable_num_of_bits.clone();
-        let state_groups = split_variables_by_state_group(
-            &self.state_variable_indices,
-            &self.state_variable_num_of_bits,
-            "state",
-        )?;
+        let state_groups =
+            split_variables_by_state_group(&self.state_variable_indices, &self.state_variable_num_of_bits, "state")?;
         let next_state_groups = split_variables_by_state_group(
             &self.next_state_variables_indices,
             &self.state_variable_num_of_bits,
@@ -382,28 +379,38 @@ impl<L: TransitionLabel> SymbolicLtsBdd<L> {
 
         let mut summand_groups = Vec::with_capacity(self.transition_groups.len());
         for group in &self.transition_groups {
-            let read_state_indices = decode_state_group_indices(
-                group.read_variables(),
-                &state_groups,
-                "transition group read variables",
-            )?;
+            let read_state_indices =
+                decode_state_group_indices(group.read_variables(), &state_groups, "transition group read variables")?;
             let write_state_indices = decode_state_group_indices(
                 group.write_variables(),
                 &next_state_groups,
                 "transition group write variables",
             )?;
 
+            let num_state_variables = self.state_variable_num_of_bits.len();
+            let mut reads_state = vec![false; num_state_variables];
+            let mut writes_state = vec![false; num_state_variables];
+            for &index in &read_state_indices {
+                reads_state[index] = true;
+            }
+            for &index in &write_state_indices {
+                writes_state[index] = true;
+            }
+
             let mut relation_variables: Vec<VarNo> = Vec::new();
             let mut relation_bits: Vec<Value> = Vec::new();
 
-            for &state_index in &read_state_indices {
-                relation_variables.extend_from_slice(&state_groups[state_index]);
-                relation_bits.push(self.state_variable_num_of_bits[state_index]);
-            }
-
-            for &state_index in &write_state_indices {
-                relation_variables.extend_from_slice(&next_state_groups[state_index]);
-                relation_bits.push(self.state_variable_num_of_bits[state_index]);
+            // Keep the same per-layer ordering as `from_symbolic_lts`:
+            // iterate state variables in index order and append read segment before write segment.
+            for state_index in 0..num_state_variables {
+                if reads_state[state_index] {
+                    relation_variables.extend_from_slice(&state_groups[state_index]);
+                    relation_bits.push(self.state_variable_num_of_bits[state_index]);
+                }
+                if writes_state[state_index] {
+                    relation_variables.extend_from_slice(&next_state_groups[state_index]);
+                    relation_bits.push(self.state_variable_num_of_bits[state_index]);
+                }
             }
 
             if self.action_variable_indices.is_empty() {
@@ -462,10 +469,7 @@ fn split_variables_by_state_group(
     bits_per_state_variable: &[Value],
     kind: &str,
 ) -> Result<Vec<Vec<VarNo>>, MercError> {
-    let expected_num_of_variables: usize = bits_per_state_variable
-        .iter()
-        .map(|&bits| bits as usize)
-        .sum();
+    let expected_num_of_variables: usize = bits_per_state_variable.iter().map(|&bits| bits as usize).sum();
     if variables.len() != expected_num_of_variables {
         return Err(format!(
             "Invalid {kind} variables: expected {expected_num_of_variables}, found {}",
@@ -493,10 +497,7 @@ fn decode_state_group_indices(
     let mut result = Vec::new();
 
     for (state_index, state_bits) in all_state_groups.iter().enumerate() {
-        let present_count = state_bits
-            .iter()
-            .filter(|bit| group_variables.contains(bit))
-            .count();
+        let present_count = state_bits.iter().filter(|bit| group_variables.contains(bit)).count();
 
         if present_count == 0 {
             continue;
@@ -581,13 +582,14 @@ mod tests {
     use merc_reduction::Equivalence;
     use merc_reduction::compare_lts;
     use merc_utilities::Timing;
+    use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
-    use crate::convert_symbolic_lts;
     use crate::SymbolicLtsBdd;
-    use crate::quotient_symbolic;
+    use crate::convert_symbolic_lts;
+    use crate::convert_symbolic_lts_bdd;
+    use crate::random_symbolic_lts;
     use crate::read_symbolic_lts;
-    use crate::sigref_symbolic;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
@@ -606,38 +608,62 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_quotient_to_symbolic_lts_roundtrip() {
-        test_logger();
+    fn test_random_to_symbolic_lts_conversion() {
+        random_test(25, |rng| {
+            let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+            let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
 
-        let input = include_bytes!("../../../../examples/lts/abp.sym");
+            let mut chosen = None;
+            for _ in 0..20 {
+                let lts = random_symbolic_lts(rng, &ldd_manager, 10, 5).unwrap();
+                let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
-        let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
-        let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
-        let symbolic_lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();
+                // `to_symbolic_lts` reconstructs layer order from bit-level variables; zero-bit
+                // state variables carry no bit-level representation and are outside this conversion path.
+                if lts_bdd.state_variable_num_of_bits().iter().all(|&bits| bits > 0) {
+                    chosen = Some((lts, lts_bdd));
+                    break;
+                }
+            }
 
-        let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &symbolic_lts).unwrap();
-        let (partition, block_vars, _) =
-            sigref_symbolic(&bdd_manager, &lts_bdd, &Timing::new(), false, false, false, false).unwrap();
-        let quotient = quotient_symbolic(&bdd_manager, &lts_bdd, &partition, &block_vars).unwrap();
+            let (lts, lts_bdd) = chosen.expect("Failed to generate a random LTS with non-zero state bit-widths");
+            let converted_lts = lts_bdd.to_symbolic_lts(&ldd_manager, &bdd_manager).unwrap();
 
-        let quotient_ldd = quotient.to_symbolic_lts(&ldd_manager, &bdd_manager).unwrap();
+            let mut original_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_from_original = convert_symbolic_lts(&ldd_manager, &mut original_builder, &lts).unwrap();
 
-        let mut original_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-        let original_explicit =
-            crate::convert_symbolic_lts_bdd(&bdd_manager, &mut original_builder, &quotient).unwrap();
+            let mut converted_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_from_converted =
+                convert_symbolic_lts(&ldd_manager, &mut converted_builder, &converted_lts).unwrap();
 
-        let mut converted_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
-        let converted_explicit = convert_symbolic_lts(&ldd_manager, &mut converted_builder, &quotient_ldd).unwrap();
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_from_original,
+                    explicit_from_converted,
+                    false,
+                    &Timing::new()
+                ),
+                "Original LTS and LTS converted via SymbolicLtsBdd::to_symbolic_lts should be bisimilar"
+            );
 
-        assert!(
-            compare_lts(
-                Equivalence::StrongBisim,
-                original_explicit,
-                converted_explicit,
-                false,
-                &Timing::new()
-            ),
-            "BDD quotient should remain bisimilar after conversion to SymbolicLts"
-        );
+            let mut direct_bdd_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_from_bdd = convert_symbolic_lts_bdd(&bdd_manager, &mut direct_bdd_builder, &lts_bdd).unwrap();
+
+            let mut converted_again_builder = LtsBuilderMem::new(Vec::new(), Vec::new());
+            let explicit_from_roundtrip =
+                convert_symbolic_lts(&ldd_manager, &mut converted_again_builder, &converted_lts).unwrap();
+
+            assert!(
+                compare_lts(
+                    Equivalence::StrongBisim,
+                    explicit_from_bdd,
+                    explicit_from_roundtrip,
+                    false,
+                    &Timing::new()
+                ),
+                "Direct BDD conversion and BDD->LDD->explicit conversion should be bisimilar"
+            );
+        });
     }
 }
