@@ -127,7 +127,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
                 let action_value = transition[group
                     .action_label_index()
                     .ok_or("Transition vector should at least have the action label")?];
-                let label = &lts.action_labels()[action_value as usize];
+                let label = lts.action_labels()[action_value as usize].to_string();
 
                 // Find the target state index.
                 let target_index = discovered
@@ -142,7 +142,7 @@ pub fn convert_symbolic_lts<B: LtsBuilder<String>, L: SymbolicLTS>(
                         state, target, label
                     );
 
-                    output.add_transition(StateIndex::new(*state_index), label, StateIndex::new(*target_index))?;
+                    output.add_transition(StateIndex::new(*state_index), &label, StateIndex::new(*target_index))?;
                 }
             }
         }

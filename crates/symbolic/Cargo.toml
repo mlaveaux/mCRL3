@@ -43,3 +43,4 @@ streaming-iterator.workspace = true
 
 [dev-dependencies]
 merc_reduction.workspace = true
+merc_syntax.workspace = true

@@ -45,9 +45,9 @@ mod inner {
 
     impl ATermString {
         /// Creates a new ATermString from a string slice.
-        /// 
+        ///
         /// # Panics
-        /// 
+        ///
         /// This function will panic if the string is a reserved symbol name.
         #[merc_ignore]
         pub fn new<S>(string: S) -> Self

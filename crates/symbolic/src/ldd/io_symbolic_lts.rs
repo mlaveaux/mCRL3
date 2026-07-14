@@ -13,7 +13,6 @@ use merc_aterm::ATermWrite;
 use merc_aterm::BinaryATermReader;
 use merc_aterm::BinaryATermWriter;
 use merc_aterm::Symbol;
-use merc_collections::VecBag;
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
 use merc_data::DataVariable;
@@ -65,7 +64,10 @@ use crate::TransitionGroup;
 ///   For each write parameter:
 ///     <write parameter>: ATerm
 /// ```
-pub fn read_symbolic_lts<R: Read>(manager: &LDDManagerRef, reader: R) -> Result<SymbolicLts, MercError> {
+pub fn read_symbolic_lts<R: Read>(
+    manager: &LDDManagerRef,
+    reader: R,
+) -> Result<SymbolicLts<LtsMultiAction<LtsAction>>, MercError> {
     info!("Reading symbolic LTS in the mCRL2 symbolic format...");
 
     let aterm_stream = BinaryATermReader::new(BufReader::new(reader))?;
@@ -158,7 +160,11 @@ pub fn read_symbolic_lts<R: Read>(manager: &LDDManagerRef, reader: R) -> Result<
 
 /// Writes a symbolic LTS to a binary stream in the mCRL2 `.sym` format, see [read_symbolic_lts]
 /// for the structure of the stream.
-pub fn write_symbolic_lts<W: Write>(manager: &LDDManagerRef, writer: W, lts: &SymbolicLts) -> Result<(), MercError> {
+pub fn write_symbolic_lts<W: Write>(
+    manager: &LDDManagerRef,
+    writer: W,
+    lts: &SymbolicLts<LtsMultiAction<LtsAction>>,
+) -> Result<(), MercError> {
     info!("Writing symbolic LTS in the mCRL2 symbolic format...");
 
     let aterm_stream = BinaryATermWriter::new(BufWriter::new(writer))?;
@@ -190,16 +196,7 @@ pub fn write_symbolic_lts<W: Write>(manager: &LDDManagerRef, writer: W, lts: &Sy
     stream.write_integer(lts.action_labels().len() as u64)?;
     for (i, label) in lts.action_labels().iter().enumerate() {
         debug!("Action {}: {}", i, label);
-
-        // Action labels are only kept as their formatted string, so a tau label (formatted
-        // as "τ") is special-cased back into the empty multi-action; other labels round-trip
-        // as a single action since the original argument structure is no longer available.
-        let action = if label == "τ" {
-            LtsMultiAction::new(VecBag::new())
-        } else {
-            LtsMultiAction::new(VecBag::singleton(LtsAction::new(label.clone(), Vec::new())))
-        };
-        stream.write_aterm(&action.to_mcrl2_aterm()?)?;
+        stream.write_aterm(&label.to_mcrl2_aterm()?)?;
     }
 
     // Write the summand groups.
@@ -218,6 +215,7 @@ pub fn write_symbolic_lts<W: Write>(manager: &LDDManagerRef, writer: W, lts: &Sy
         stream.write_ldd(group.relation())?;
     }
 
+    ATermWrite::flush(&mut stream)?;
     info!("Finished writing symbolic LTS.");
     Ok(())
 }

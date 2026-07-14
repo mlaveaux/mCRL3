@@ -10,17 +10,22 @@ use merc_io::TimeProgress;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use merc_lts::TransitionLabel;
+
 use crate::LddDisplay;
 use crate::SymbolicLPS;
 use crate::TransitionGroup;
 
 /// A symbolic LTS — extends [SymbolicLPS] with LTS-specific metadata.
 pub trait SymbolicLTS: SymbolicLPS {
+    /// The label type for transitions in this LTS.
+    type Label: TransitionLabel;
+
     /// Returns the LDD representing the set of states.
     fn states(&self) -> &LDDFunction;
 
     /// Returns the action labels for the LTS.
-    fn action_labels(&self) -> &[String];
+    fn action_labels(&self) -> &[Self::Label];
 
     /// Returns the possible values for each process parameter.
     fn parameter_values(&self) -> &[Vec<DataExpression>];
