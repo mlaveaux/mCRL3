@@ -77,10 +77,11 @@ pub struct GlobalTermPool {
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
-        // Insert the default symbols, mirrors the symbols defined in mCRL2. These are created
-        // via `create_reserved` rather than `create` so that no name/arity supplied to the
-        // public `Symbol::new` can ever alias one of them.
+        // Insert the default symbols, mirrors the symbols defined in mCRL2.
+        // Only aterm_int has to be reserved since it behaves special with the
+        // integer terms, the other two are just normal symbols.
         let mut symbol_pool = SymbolPool::new();
+
         // SAFETY: the default symbols are marked on every collection (see `collect_garbage`),
         // so these indices stay valid for the lifetime of the pool.
         let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create_reserved("<aterm_int>", 0)) };

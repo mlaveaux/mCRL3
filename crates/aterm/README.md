@@ -143,8 +143,10 @@ library used in the [mCRL2](https://mcrl2.org) toolset.
 
 ### 3.0.0
 
-Reviewed the crate extensively to ensure that safe code cannot lead to UB except
-for the documented cases above. Added various `Send` and `Sync` bounds.
+Reviewed the crate extensively to ensure that safe code cannot lead to UB. This
+did introduce various thread local storage calls that could reduce performance,
+but benchmarks show a minimal impact in practice. Added various `Send` and `Sync`
+bounds.
 
 ### 2.0.0
 
