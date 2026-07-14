@@ -26,21 +26,19 @@ use merc_utilities::random_test;
 fn compare_ldd_bdd_reachability(sym_path: &Path) {
     // LDD path: read into its own manager and run symbolic reachability.
     let ldd_storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
-    let mut lts_ldd =
-        read_symbolic_lts(&ldd_storage, File::open(sym_path).expect("Failed to open sym file"))
-            .expect("Failed to read sym file for LDD path");
+    let mut lts_ldd = read_symbolic_lts(&ldd_storage, File::open(sym_path).expect("Failed to open sym file"))
+        .expect("Failed to read sym file for LDD path");
     let ldd_count = reachability(&ldd_storage, &mut lts_ldd, &Timing::new())
         .expect("LDD reachability failed")
         .len();
 
     // BDD path: read a second time so the two paths are fully independent.
     let bdd_ldd_storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
-    let lts_for_bdd =
-        read_symbolic_lts(&bdd_ldd_storage, File::open(sym_path).expect("Failed to open sym file"))
-            .expect("Failed to read sym file for BDD path");
+    let lts_for_bdd = read_symbolic_lts(&bdd_ldd_storage, File::open(sym_path).expect("Failed to open sym file"))
+        .expect("Failed to read sym file for BDD path");
     let bdd_manager = oxidd::bdd::new_manager(1 << 16, 1 << 16, 1);
-    let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&bdd_ldd_storage, &bdd_manager, &lts_for_bdd)
-        .expect("BDD conversion failed");
+    let lts_bdd =
+        SymbolicLtsBdd::from_symbolic_lts(&bdd_ldd_storage, &bdd_manager, &lts_for_bdd).expect("BDD conversion failed");
     let reachable = reachability_bdd(&bdd_manager, &lts_bdd, false).expect("BDD reachability failed");
     let bdd_count = approx_satcount(
         &reachable,
@@ -94,12 +92,12 @@ fn test_lpsreach_random_reachability() {
         let spec = random_lps(rng, 4, 2, 0.4);
         std::fs::write(&spec_path, spec.to_string()).expect("Failed to write random LPS spec");
 
-        let status = traced_command(Command::new(&txt2lps).arg(&spec_path).arg(&lps_path))
-            .expect("Failed to execute txt2lps");
+        let status =
+            traced_command(Command::new(&txt2lps).arg(&spec_path).arg(&lps_path)).expect("Failed to execute txt2lps");
         assert!(status.success(), "txt2lps failed with status: {status}");
 
-        let status = traced_command(Command::new(&lpsreach).arg(&lps_path).arg(&sym_path))
-            .expect("Failed to execute lpsreach");
+        let status =
+            traced_command(Command::new(&lpsreach).arg(&lps_path).arg(&sym_path)).expect("Failed to execute lpsreach");
         assert!(status.success(), "lpsreach failed with status: {status}");
 
         compare_ldd_bdd_reachability(&sym_path);

@@ -666,8 +666,8 @@ mod tests {
 
         let (tx, rx) = mpsc::channel();
         let handle = thread::spawn(move || {
-            let term = ATerm::with_args(&Symbol::new("f_tls", 1), &[ATerm::constant(&Symbol::new("a_tls", 0))])
-                .protect();
+            let term =
+                ATerm::with_args(&Symbol::new("f_tls", 1), &[ATerm::constant(&Symbol::new("a_tls", 0))]).protect();
 
             // SAFETY: the term index is copied while protected and only used for read-only
             // inspection in this regression test.
