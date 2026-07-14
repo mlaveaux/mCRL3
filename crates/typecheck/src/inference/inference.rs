@@ -1206,20 +1206,19 @@ impl Solver<'_> {
 
     /// Reads the solution out of the current variable bindings, before
     /// backtracking destroys them.
+    ///
+    /// Any sort variable that is still free after solving (e.g. the element
+    /// sort of `#[]` where only the container length is observed, never the
+    /// element) defaults to `Bool` (§7a.4, docs/typecheck.md). This matches
+    /// mCRL2's acceptance of such equations and avoids a spurious
+    /// `UnderdeterminedSort` error.
     fn extract(&mut self) -> Candidate {
-        let mut sorts = Vec::with_capacity(self.expr_sorts.len());
-        for &node in self.expr_sorts {
-            match self.unifier.resolve(self.sorts, node) {
-                Some(sort) => sorts.push(sort),
-                None => {
-                    return Candidate {
-                        measure: self.measure.clone(),
-                        duplicate: false,
-                        typing: None,
-                    };
-                }
-            }
-        }
+        let bool_sort = self.sorts.bool_sort();
+        let sorts: Vec<ResolvedSortId> = self
+            .expr_sorts
+            .iter()
+            .map(|&node| self.unifier.resolve_or_default(self.sorts, node, bool_sort))
+            .collect();
 
         let mut names = self.base_names.clone();
         for &(expr, target) in &self.choices {
@@ -1346,9 +1345,22 @@ mod tests {
     }
 
     #[test]
-    fn test_free_element_sort_is_underdetermined() {
-        let error = inference_error("map b: Bool; eqn b = [] == [];");
-        assert!(matches!(error, InferenceError::UnderdeterminedSort { .. }), "{error}");
+    fn test_free_element_sort_defaults_to_bool() {
+        // A free element sort (the element of an empty list whose sort is
+        // never constrained by context) defaults to Bool (§7a.4,
+        // docs/typecheck.md) rather than causing UnderdeterminedSort.
+        let spec = typed("map b: Bool; eqn b = [] == [];");
+        // ExprIds: 0 = `b`, 1 = `==([], [])`, 2 = first `[]`, 3 = second
+        // `[]`, 4 = `==`. Both empty lists take List(Bool).
+        let (sorts, _) = typing(&spec);
+        let interner = &spec.context().sorts;
+        for &list_sort in &sorts[2..=3] {
+            let ResolvedSort::Generic { op, subsort } = interner.get(list_sort) else {
+                panic!("expected a container sort");
+            };
+            assert_eq!(*op, ComplexSort::List);
+            assert_eq!(*subsort, interner.bool_sort());
+        }
     }
 
     #[test]
@@ -1521,9 +1533,21 @@ mod tests {
     }
 
     #[test]
-    fn test_free_empty_set_is_underdetermined() {
-        let error = inference_error("map b: Bool; eqn b = {} == {};");
-        assert!(matches!(error, InferenceError::UnderdeterminedSort { .. }), "{error}");
+    fn test_free_empty_set_defaults_to_bool() {
+        // Same as test_free_element_sort_defaults_to_bool: a free element sort
+        // of an empty finite set defaults to Bool (§7a.4).
+        let spec = typed("map b: Bool; eqn b = {} == {};");
+        // ExprIds: 0 = `b`, 1 = `==([], [])`, 2 = first `{}`, 3 = second
+        // `{}`, 4 = `==`. Both empty sets take FSet(Bool).
+        let (sorts, _) = typing(&spec);
+        let interner = &spec.context().sorts;
+        for &set_sort in &sorts[2..=3] {
+            let ResolvedSort::Generic { op, subsort } = interner.get(set_sort) else {
+                panic!("expected a container sort");
+            };
+            assert_eq!(*op, ComplexSort::FSet);
+            assert_eq!(*subsort, interner.bool_sort());
+        }
     }
 
     #[test]
