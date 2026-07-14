@@ -8,85 +8,81 @@ use merc_syntax::UntypedDataSpecification;
 use crate::ResolvedSortId;
 use crate::TypeckContext;
 
-/// The resolved sorts of every declaration in a checked specification,
-/// indexed by the declaration's own id (assigned by
-/// [assign_declaration_ids](crate::assign_declaration_ids), which must run
-/// before this query): [ConstructorId] for `constructors`, [MapId] for
-/// `mappings`, [EqnSpecId] for `equation_variables`. Since those ids are
-/// themselves assigned 0..len in declaration order, each vector is stored
-/// directly indexable by its id rather than through a separate map.
+/// Returns the resolved sort of the constructor with the given [ConstructorId],
+/// memoized on [TypeckContext::sort_of_constructor]. Requires
+/// `id` to originate from `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content (see G3 in `docs/typecheck.md`).
-pub(crate) struct DeclarationSorts {
-    /// Indexed by [ConstructorId].
-    pub(crate) constructors: Vec<ResolvedSortId>,
-    /// Indexed by [MapId].
-    pub(crate) mappings: Vec<ResolvedSortId>,
-    /// Indexed by [EqnSpecId]; the inner vector is parallel to that block's
-    /// variable list.
-    pub(crate) equation_variables: Vec<Vec<ResolvedSortId>>,
+pub(crate) fn query_sort_of_constructor(
+    ctx: &mut TypeckContext,
+    spec: &UntypedDataSpecification,
+    id: ConstructorId,
+) -> ResolvedSortId {
+    match ctx
+        .sort_of_constructor
+        .get_or_lock(id)
+        .expect("constructor sort has no cyclic dependency")
+    {
+        Some(&sort) => sort,
+        None => {
+            let sort = resolve_sort(ctx, spec, &spec.constructor_declarations[id].sort);
+            *ctx.sort_of_constructor.unlock(id, sort)
+        }
+    }
 }
 
-/// Resolves the sort of every constructor, map and equation variable in `spec`
-/// onto the interned sort lattice of `ctx`.
+/// Returns the resolved sort of the map with the given [MapId], memoized on
+/// [TypeckContext::sort_of_map]. Requires `id` to originate from
+/// `assign_declaration_ids` on `spec`.
 ///
-/// Requires `spec` to have passed the `from_untyped` pipeline up to and
-/// including `normalize_sorts`: names resolved, structured sorts desugared, and
-/// alias indirection expanded.
-pub(crate) fn resolve_declaration_sorts(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -> DeclarationSorts {
-    let result = DeclarationSorts {
-        constructors: spec
-            .constructor_declarations
-            .iter()
-            .map(|decl| resolve_sort(ctx, spec, &decl.sort))
-            .collect(),
-        mappings: spec
-            .map_declarations
-            .iter()
-            .map(|decl| resolve_sort(ctx, spec, &decl.sort))
-            .collect(),
-        equation_variables: spec
-            .equation_declarations
-            .iter()
-            .map(|equation| {
-                equation
-                    .variables
-                    .iter()
-                    .map(|var| resolve_sort(ctx, spec, &var.sort))
-                    .collect()
-            })
-            .collect(),
-    };
-
-    debug_assert!(
-        spec.constructor_declarations
-            .iter()
-            .enumerate()
-            .all(|(i, decl)| decl.id == Some(ConstructorId::new(i))),
-        "assign_declaration_ids must have run over the final constructor_declarations list"
-    );
-    debug_assert!(
-        spec.map_declarations
-            .iter()
-            .enumerate()
-            .all(|(i, decl)| decl.id == Some(MapId::new(i))),
-        "assign_declaration_ids must have run over the final map_declarations list"
-    );
-    debug_assert!(
-        spec.equation_declarations
-            .iter()
-            .enumerate()
-            .all(|(i, eqn_spec)| eqn_spec.id == Some(EqnSpecId::new(i))),
-        "assign_declaration_ids must have run over equation_declarations"
-    );
-    debug_assert_eq!(result.constructors.len(), spec.constructor_declarations.len());
-    debug_assert_eq!(result.mappings.len(), spec.map_declarations.len());
-    debug_assert_eq!(result.equation_variables.len(), spec.equation_declarations.len());
-    result
+/// Covers the user specification only; the system-defined specification is
+/// still unresolved content (see G3 in `docs/typecheck.md`).
+pub(crate) fn query_sort_of_map(
+    ctx: &mut TypeckContext,
+    spec: &UntypedDataSpecification,
+    id: MapId,
+) -> ResolvedSortId {
+    match ctx
+        .sort_of_map
+        .get_or_lock(id)
+        .expect("map sort has no cyclic dependency")
+    {
+        Some(&sort) => sort,
+        None => {
+            let sort = resolve_sort(ctx, spec, &spec.map_declarations[id].sort);
+            *ctx.sort_of_map.unlock(id, sort)
+        }
+    }
 }
 
-/// Resolves a single sort expression to its interned [ResolvedSortId].
+/// Returns the resolved sort of the `var_idx`-th variable in the equation
+/// block identified by `eqn_spec_id`, memoized on
+/// [TypeckContext::sort_of_equation_var]. Requires both ids to originate from
+/// `assign_declaration_ids` on `spec`.
+///
+/// Covers the user specification only; the system-defined specification is
+/// still unresolved content (see G3 in `docs/typecheck.md`).
+pub(crate) fn query_sort_of_equation_var(
+    ctx: &mut TypeckContext,
+    spec: &UntypedDataSpecification,
+    eqn_spec_id: EqnSpecId,
+    var_idx: usize,
+) -> ResolvedSortId {
+    match ctx
+        .sort_of_equation_var
+        .get_or_lock((eqn_spec_id, var_idx))
+        .expect("equation variable sort has no cyclic dependency")
+    {
+        Some(&sort) => sort,
+        None => {
+            let sort =
+                resolve_sort(ctx, spec, &spec.equation_declarations[eqn_spec_id].variables[var_idx].sort);
+            *ctx.sort_of_equation_var.unlock((eqn_spec_id, var_idx), sort)
+        }
+    }
+}
+
 ///
 /// Requires names resolved and structured sorts desugared; alias indirection
 /// need not be expanded, since a `Resolved` sort goes through
@@ -184,7 +180,9 @@ pub(crate) fn query_sort_of_def(
 #[cfg(test)]
 mod tests {
     use merc_syntax::ComplexSort;
+    use merc_syntax::ConstructorId;
     use merc_syntax::DefId;
+    use merc_syntax::MapId;
     use merc_syntax::Sort;
     use merc_syntax::UntypedDataSpecification;
 
@@ -202,7 +200,7 @@ mod tests {
 
     /// The resolved sort of the `index`-th map declaration.
     fn mapping(spec: &DataSpecification, index: usize) -> ResolvedSortId {
-        spec.declaration_sorts().mappings[index]
+        spec.sort_of_map(MapId::new(index))
     }
 
     #[test]
@@ -255,7 +253,7 @@ mod tests {
         let spec = typecheck("sort D = struct a | b; map f: D;");
         let def = DefId::new(*spec.sorts().index("D").expect("D should be declared"));
         assert_eq!(*spec.context().sorts.get(mapping(&spec, 0)), ResolvedSort::Def(def));
-        assert_eq!(spec.declaration_sorts().constructors[0], mapping(&spec, 0));
+        assert_eq!(spec.sort_of_constructor(ConstructorId::new(0)), mapping(&spec, 0));
     }
 
     #[test]
@@ -267,9 +265,12 @@ mod tests {
     #[test]
     fn test_resolve_equation_variables() {
         let spec = typecheck("map f: Nat -> Bool; var n: Nat; eqn f(n) = true;");
+        let eqn_spec_id = spec.data_specification().equation_declarations[0]
+            .id
+            .expect("assign_declaration_ids ran");
         assert_eq!(
-            spec.declaration_sorts().equation_variables,
-            vec![vec![spec.context().sorts.primitive(Sort::Nat)]]
+            spec.sort_of_equation_var(eqn_spec_id, 0),
+            spec.context().sorts.primitive(Sort::Nat)
         );
     }
 

@@ -15,7 +15,6 @@ use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_utilities::TagIndex;
 
-use crate::DeclarationSorts;
 use crate::InferSort;
 use crate::InferSortId;
 use crate::POLYMORPHIC_SIGNATURE;
@@ -29,6 +28,7 @@ use crate::display_sort;
 use crate::is_lowered;
 use crate::is_supported_binder_sort;
 use crate::number_generality;
+use crate::query_sort_of_equation_var;
 use crate::resolve_sort;
 
 /// A unique type for expression nodes within a single equation.
@@ -111,7 +111,6 @@ pub enum InferenceError {
 pub(crate) fn query_equation_typing(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
-    declaration_sorts: &DeclarationSorts,
     key: (EqnSpecId, EquationId),
 ) -> Result<Rc<EquationTyping>, InferenceError> {
     let (eqn_spec_id, equation_id) = key;
@@ -133,7 +132,7 @@ pub(crate) fn query_equation_typing(
     {
         Some(result) => result.clone(),
         None => {
-            let result = infer_equation(ctx, spec, declaration_sorts, eqn_spec_id, equation_id).map(Rc::new);
+            let result = infer_equation(ctx, spec, eqn_spec_id, equation_id).map(Rc::new);
             ctx.equation_typing.unlock(key, result).clone()
         }
     }
@@ -145,7 +144,6 @@ pub(crate) fn query_equation_typing(
 pub(crate) fn check_equations(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
-    declaration_sorts: &DeclarationSorts,
 ) -> Result<Vec<Vec<Rc<EquationTyping>>>, InferenceError> {
     let mut typings = Vec::with_capacity(spec.equation_declarations.len());
     for eqn_spec in &spec.equation_declarations {
@@ -156,7 +154,6 @@ pub(crate) fn check_equations(
             spec_typings.push(query_equation_typing(
                 ctx,
                 spec,
-                declaration_sorts,
                 (eqn_spec_id, equation_id),
             )?);
         }
@@ -175,7 +172,6 @@ pub(crate) fn check_equations(
 fn infer_equation(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
-    declaration_sorts: &DeclarationSorts,
     eqn_spec_id: EqnSpecId,
     equation_id: EquationId,
 ) -> Result<EquationTyping, InferenceError> {
@@ -189,16 +185,8 @@ fn infer_equation(
     // The equation variables shadow constructors and mappings on lookup; their
     // declared sorts are concrete, so all uses of a variable share one node.
     let mut variables = HashMap::new();
-    debug_assert_eq!(
-        eqn_spec.variables.len(),
-        declaration_sorts.equation_variables[eqn_spec_id].len(),
-        "the resolved variable sorts are positionally parallel to the variable declarations"
-    );
-    for (var, &sort) in eqn_spec
-        .variables
-        .iter()
-        .zip(&declaration_sorts.equation_variables[eqn_spec_id])
-    {
+    for (var_idx, var) in eqn_spec.variables.iter().enumerate() {
+        let sort = query_sort_of_equation_var(ctx, spec, eqn_spec_id, var_idx);
         let node = unifier.resolved_node(sort);
         variables.insert(var.identifier.as_str(), node);
     }
@@ -207,7 +195,7 @@ fn infer_equation(
     // because the generator needs the context mutably: resolving a
     // comprehension's binder sort interns sorts and fills the sort-of-def
     // cache mid-walk.
-    let signature = Rc::clone(ctx.signature.as_ref().expect("query_signature ran before inference"));
+    let signature = Rc::clone(ctx.signature.as_ref().expect("build_signature ran before inference"));
     let system_signature = Rc::clone(
         ctx.system_signature
             .as_ref()
@@ -323,11 +311,10 @@ fn infer_equation(
 
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
-                    for (var, &sort) in eqn_spec
-                        .variables
-                        .iter()
-                        .zip(&declaration_sorts.equation_variables[eqn_spec_id])
-                    {
+                    for (var_idx, var) in eqn_spec.variables.iter().enumerate() {
+                        // The cache was populated in the variables-binding loop above.
+                        let sort = ctx.sort_of_equation_var.get(&(eqn_spec_id, var_idx)).copied()
+                            .expect("equation variable sort was resolved above");
                         debug!(
                             "inference:   variable {}: {}",
                             var.identifier,
@@ -1328,7 +1315,7 @@ mod tests {
         };
         assert_eq!(names[&ExprId::new(4)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.bool_sort());
-        assert_eq!(sorts[2], spec.declaration_sorts().constructors[0]);
+        assert_eq!(sorts[2], spec.sort_of_constructor(merc_syntax::ConstructorId::new(0)));
     }
 
     #[test]
@@ -1407,7 +1394,7 @@ mod tests {
         // its body's sort; the bound variable `n` has no id of its own.
         let (sorts, _) = typing(&spec);
         let interner = &spec.context().sorts;
-        assert_eq!(sorts[0], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[0], spec.sort_of_map(merc_syntax::MapId::new(0)));
         match interner.get(sorts[1]) {
             ResolvedSort::Function { domain, range } => {
                 assert_eq!(domain.as_slice(), [interner.nat_sort()]);
@@ -1479,7 +1466,7 @@ mod tests {
         // Ids: 0 = `s`, 1 = `{1, 2}`, 2 = `1`, 3 = `2`. The literal's sort is
         // the declared `FSet(Pos)`.
         let (sorts, _) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(sorts[2], spec.context().sorts.pos_sort());
     }
 
@@ -1507,7 +1494,7 @@ mod tests {
         // Ids: 0 = `s`, 1 = the set, 2 = `1`, 3 = `n`. The element sort is
         // the join `Int`; the literal itself stays `Pos`.
         let (sorts, _) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(sorts[2], spec.context().sorts.pos_sort());
         assert_eq!(sorts[3], spec.context().sorts.int_sort());
     }
@@ -1557,7 +1544,7 @@ mod tests {
         // Ids: 0 = `b`, 1 = the bag, 2 = `0`, 3 = the count `2`. The count
         // keeps its minimal `Pos` and is upcast into the `Nat` it must have.
         let (sorts, _) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(sorts[2], spec.context().sorts.nat_sort());
         assert_eq!(sorts[3], spec.context().sorts.pos_sort());
     }
@@ -1589,7 +1576,7 @@ mod tests {
         // 4 = `3`, 5 = `<`. The boolean body makes a `Set(Nat)`; the bound
         // variable resolves like an equation variable.
         let (sorts, names) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(sorts[2], spec.context().sorts.bool_sort());
         assert_eq!(sorts[3], spec.context().sorts.nat_sort());
         assert_eq!(names[&ExprId::new(3)], NameTarget::Variable);
@@ -1602,7 +1589,7 @@ mod tests {
         // Ids: 0 = `b`, 1 = the comprehension, 2 = `m`. The `Nat` body reads
         // as the multiplicity function of a `Bag(Nat)`.
         let (sorts, _) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(sorts[2], spec.context().sorts.nat_sort());
     }
 
@@ -1614,7 +1601,7 @@ mod tests {
         // and Phase-4 lowering inserts the `Pos` → `Nat` coercion, as mCRL2
         // does.
         let (sorts, _) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(sorts[2], spec.context().sorts.pos_sort());
     }
 
@@ -1649,7 +1636,7 @@ mod tests {
     fn test_comprehension_over_alias_and_user_sort() {
         let spec = typed("sort A = Nat; map s: Set(A); eqn s = { a: A | a < 3 };");
         let (sorts, _) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
 
         typed("sort D = struct d1 | d2; map s: Set(D); eqn s = { x: D | x == d1 };");
     }
@@ -1677,7 +1664,7 @@ mod tests {
             panic!("expected a container sort");
         };
         assert_eq!(*op, ComplexSort::FSet);
-        assert_eq!(*subsort, spec.declaration_sorts().constructors[0]);
+        assert_eq!(*subsort, spec.sort_of_constructor(merc_syntax::ConstructorId::new(0)));
         assert_eq!(names[&ExprId::new(8)], NameTarget::Builtin);
     }
 
@@ -1699,7 +1686,7 @@ mod tests {
         // Ids: 0 = `g`, 1 = the update, 2 = `f`, 3 = `1`, 4 = `true`,
         // 5 = `@func_update`.
         let (sorts, names) = typing(&spec);
-        assert_eq!(sorts[1], spec.declaration_sorts().mappings[0]);
+        assert_eq!(sorts[1], spec.sort_of_map(merc_syntax::MapId::new(0)));
         assert_eq!(names[&ExprId::new(5)], NameTarget::Builtin);
     }
 }

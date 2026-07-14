@@ -5,13 +5,15 @@ use log::debug;
 
 use merc_collections::IndexedSet;
 use merc_data::Mcrl2DataSpecification;
+use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
+use merc_syntax::EqnSpecId;
+use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 
 use crate::AliasError;
-use crate::DeclarationSorts;
 use crate::EquationTyping;
 use crate::Signature;
 use crate::TypeckContext;
@@ -30,8 +32,7 @@ use crate::lower_data_expressions;
 use crate::lower_data_specification;
 use crate::map_sorts_in_spec;
 use crate::normalize_sorts;
-use crate::query_signature;
-use crate::resolve_declaration_sorts;
+use crate::build_signature;
 use crate::resolve_names;
 use crate::resolve_system_signature;
 use crate::structured_sort_equations;
@@ -47,7 +48,6 @@ pub struct DataSpecification {
     sorts: IndexedSet<String>,
     system: UntypedDataSpecification,
     context: TypeckContext,
-    declaration_sorts: DeclarationSorts,
     equation_typings: Vec<Vec<Rc<EquationTyping>>>,
     mcrl2_spec: Mcrl2DataSpecification,
 }
@@ -114,7 +114,7 @@ impl DataSpecification {
         // semantic facts come from the interned sort lattice, which expands
         // alias indirection lazily.
         let mut context = TypeckContext::new();
-        query_signature(&mut context, &spec)?;
+        build_signature(&mut context, &spec)?;
         debug!("typecheck: signature checks passed");
 
         // Expand aliases to a canonical form now that they are known to be
@@ -174,16 +174,6 @@ impl DataSpecification {
             system.equation_declarations.len()
         );
 
-        // Resolve the declaration-level sorts of the user specification onto
-        // the interned sort lattice (docs/typecheck.md §5 stage 3). The system
-        // specification is still unresolved content and is not covered (G3).
-        let declaration_sorts = resolve_declaration_sorts(&mut context, &spec);
-        debug!(
-            "typecheck: resolved {} constructor and {} mapping declaration sort(s)",
-            declaration_sorts.constructors.len(),
-            declaration_sorts.mappings.len()
-        );
-
         // Resolve the system-defined declarations of the *basic* sorts onto
         // the same lattice, so Phase-3 inference sees the overload sets of the
         // built-in operators. The container operations are looked up
@@ -196,13 +186,15 @@ impl DataSpecification {
 
         // Phase-3 core inference over the user equations (docs/typecheck.md
         // §9); equations using constructs it does not cover yet are skipped.
-        let equation_typings = check_equations(&mut context, &spec, &declaration_sorts)?;
+        // Declaration-level sorts (constructors, maps, equation variables) are
+        // resolved lazily on first use via the query caches in `context`.
+        let equation_typings = check_equations(&mut context, &spec)?;
         debug!("typecheck: inference finished; the specification is well-typed");
 
         // Phase-4 lowering: assemble the typed Mcrl2DataSpecification. Equations
         // that still use container literals or binders are silently skipped;
         // they will be included once lower_equation's coverage is extended.
-        let mcrl2_spec = lower_data_specification(&context, &spec, &system, &declaration_sorts, &equation_typings);
+        let mcrl2_spec = lower_data_specification(&mut context, &spec, &system, &equation_typings);
         debug!(
             "typecheck: lowered {} equation(s) (of {} user equation(s))",
             mcrl2_spec.equations().len(),
@@ -214,7 +206,6 @@ impl DataSpecification {
             sorts,
             system,
             context,
-            declaration_sorts,
             equation_typings,
             mcrl2_spec,
         })
@@ -245,8 +236,9 @@ impl DataSpecification {
         &self.system
     }
 
-    /// The query context holding the interned sorts referenced by
-    /// [`Self::declaration_sorts`].
+    /// The query context holding the interned sorts referenced by the
+    /// declaration-sort queries ([`crate::query_sort_of_constructor`],
+    /// [`crate::query_sort_of_map`], [`crate::query_sort_of_equation_var`]).
     // Consumed by Phase-3 inference (docs/typecheck.md §9); exercised by tests only until then.
     #[allow(dead_code)]
     pub(crate) fn context(&self) -> &TypeckContext {
@@ -256,9 +248,43 @@ impl DataSpecification {
     /// The resolved sorts of the user declarations, positionally parallel to
     /// the declaration lists of [`Self::data_specification`].
     // Consumed by Phase-3 inference (docs/typecheck.md §9); exercised by tests only until then.
+    /// The resolved sort of the constructor declaration with the given
+    /// [ConstructorId]. Requires `id` to be a valid constructor id from this
+    /// specification; panics if called before `from_untyped` has completed.
+    // Consumed by Phase-3 inference (docs/typecheck.md §9); exercised by tests only until then.
     #[allow(dead_code)]
-    pub(crate) fn declaration_sorts(&self) -> &DeclarationSorts {
-        &self.declaration_sorts
+    pub(crate) fn sort_of_constructor(&self, id: ConstructorId) -> crate::ResolvedSortId {
+        self.context
+            .sort_of_constructor
+            .get(&id)
+            .copied()
+            .expect("constructor sorts are all resolved during from_untyped")
+    }
+
+    /// The resolved sort of the map declaration with the given [MapId].
+    /// Requires `id` to be a valid map id from this specification; panics if
+    /// called before `from_untyped` has completed.
+    // Consumed by Phase-3 inference (docs/typecheck.md §9); exercised by tests only until then.
+    #[allow(dead_code)]
+    pub(crate) fn sort_of_map(&self, id: MapId) -> crate::ResolvedSortId {
+        self.context
+            .sort_of_map
+            .get(&id)
+            .copied()
+            .expect("map sorts are all resolved during from_untyped")
+    }
+
+    /// The resolved sort of the `var_idx`-th variable in the equation block
+    /// identified by `eqn_spec_id`. Requires both ids to be valid from this
+    /// specification; panics if called before `from_untyped` has completed.
+    // Consumed by Phase-3 inference (docs/typecheck.md §9); exercised by tests only until then.
+    #[allow(dead_code)]
+    pub(crate) fn sort_of_equation_var(&self, eqn_spec_id: EqnSpecId, var_idx: usize) -> crate::ResolvedSortId {
+        self.context
+            .sort_of_equation_var
+            .get(&(eqn_spec_id, var_idx))
+            .copied()
+            .expect("equation variable sorts are all resolved during from_untyped")
     }
 
     /// The (S, C, M) signature: the resolved overload sets of every constructor
@@ -269,7 +295,7 @@ impl DataSpecification {
         self.context
             .signature
             .as_deref()
-            .expect("query_signature ran in from_untyped")
+            .expect("build_signature ran in from_untyped")
     }
 
     /// The Phase-3 typing of every user equation, positionally parallel to
@@ -371,7 +397,6 @@ mod tests {
         let again = query_equation_typing(
             &mut checked.context,
             &checked.spec,
-            &checked.declaration_sorts,
             (EqnSpecId::new(0), EquationId::new(0)),
         )
         .unwrap();

@@ -26,13 +26,14 @@ use merc_syntax::Sort;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 
-use crate::DeclarationSorts;
 use crate::EquationTyping;
 use crate::ExprId;
 use crate::NameTarget;
 use crate::ResolvedSort;
 use crate::ResolvedSortId;
 use crate::TypeckContext;
+use crate::query_sort_of_constructor;
+use crate::query_sort_of_map;
 
 /// The mCRL2 name of a basic sort, matching the literal `SortId` names the
 /// binary aterm format uses (not `Sort`'s derived `Debug`/`Display`, which
@@ -160,14 +161,14 @@ pub(crate) fn lower_sort(
             SortArrow::new(&domain, lower_sort(ctx, spec, *range)).into()
         }
         ResolvedSort::Def(def) => {
-            let name = if let Some(decl) = spec.sort_declarations.get(**def) {
-                decl.identifier.clone()
-            } else if let Some(name) = ctx.system_sort_names.as_ref().and_then(|names| names.name(*def)) {
-                name.to_string()
-            } else {
-                format!("@sort_{}", **def)
-            };
-            BasicSort::new(name.as_str()).into()
+            let system_index = **def - spec.sort_declarations.len();
+            let name = spec
+                .sort_declarations
+                .get(**def)
+                .map(|d| d.identifier.as_str())
+                .or_else(|| ctx.system_sort_decls.get(system_index).map(String::as_str))
+                .unwrap_or("@sort_unknown");
+            BasicSort::new(name).into()
         }
     }
 }
@@ -691,10 +692,9 @@ fn flatten_product_domain(sort: &SortExpression, domain: &mut Vec<DataSortExpres
 ///   are silently skipped and will be added when Phase-4 lowering extends to
 ///   cover them. System equations are not yet included (same gap).
 pub(crate) fn lower_data_specification(
-    ctx: &TypeckContext,
+    ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
-    declaration_sorts: &DeclarationSorts,
     equation_typings: &[Vec<Rc<EquationTyping>>],
 ) -> Mcrl2DataSpecification {
     let sorts: Vec<BasicSort> = spec
@@ -716,8 +716,11 @@ pub(crate) fn lower_data_specification(
     let mut constructors: Vec<DataFunctionSymbol> = spec
         .constructor_declarations
         .iter()
-        .zip(&declaration_sorts.constructors)
-        .map(|(decl, &sort_id)| DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_sort(ctx, spec, sort_id).copy()))
+        .map(|decl| {
+            let id = decl.id.expect("assign_declaration_ids ran before lowering");
+            let sort_id = query_sort_of_constructor(ctx, spec, id);
+            DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_sort(ctx, spec, sort_id).copy())
+        })
         .collect();
     for decl in &system.constructor_declarations {
         constructors.push(DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_syntax_sort(&decl.sort).copy()));
@@ -726,8 +729,11 @@ pub(crate) fn lower_data_specification(
     let mut mappings: Vec<DataFunctionSymbol> = spec
         .map_declarations
         .iter()
-        .zip(&declaration_sorts.mappings)
-        .map(|(decl, &sort_id)| DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_sort(ctx, spec, sort_id).copy()))
+        .map(|decl| {
+            let id = decl.id.expect("assign_declaration_ids ran before lowering");
+            let sort_id = query_sort_of_map(ctx, spec, id);
+            DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_sort(ctx, spec, sort_id).copy())
+        })
         .collect();
     for decl in &system.map_declarations {
         mappings.push(DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_syntax_sort(&decl.sort).copy()));
@@ -795,7 +801,7 @@ mod tests {
         let sort = lower_sort(
             spec.context(),
             spec.data_specification(),
-            spec.declaration_sorts().mappings[0],
+            spec.sort_of_map(merc_syntax::MapId::new(0)),
         );
         assert_eq!(sort.to_string(), "Nat");
     }
@@ -806,7 +812,7 @@ mod tests {
         let sort = lower_sort(
             spec.context(),
             spec.data_specification(),
-            spec.declaration_sorts().mappings[0],
+            spec.sort_of_map(merc_syntax::MapId::new(0)),
         );
         assert!(is_container_sort(&sort));
     }
@@ -817,7 +823,7 @@ mod tests {
         let sort = lower_sort(
             spec.context(),
             spec.data_specification(),
-            spec.declaration_sorts().mappings[0],
+            spec.sort_of_map(merc_syntax::MapId::new(0)),
         );
         assert!(is_function_sort(&sort));
     }
@@ -828,7 +834,7 @@ mod tests {
         let sort = lower_sort(
             spec.context(),
             spec.data_specification(),
-            spec.declaration_sorts().mappings[0],
+            spec.sort_of_map(merc_syntax::MapId::new(0)),
         );
         assert_eq!(sort.to_string(), "D");
     }

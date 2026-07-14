@@ -23,16 +23,16 @@ pub(crate) struct Signature {
     pub(crate) mappings: HashMap<String, Vec<ResolvedSortId>>,
 }
 
-/// Returns the signature of `spec`, running the signature-layer well-typedness
-/// checks of 15.1.7 the first time it is called. Memoized on
-/// [TypeckContext::signature].
+/// Computes the signature of `spec` and stores it on `ctx`, running the
+/// signature-layer well-typedness checks of 15.1.7. Idempotent: a second call
+/// is a no-op that returns the already-stored result.
 ///
 /// Runs *before* `normalize_sorts`, so the errors refer to sorts as the user
 /// wrote them (`D` rather than its alias expansion `Nat`); the semantic facts
 /// are obtained through the interned sort lattice instead, which expands alias
 /// indirection lazily via `query_sort_of_def`. Requires names to be resolved
 /// and structured sorts to be desugared.
-pub(crate) fn query_signature<'a>(
+pub(crate) fn build_signature<'a>(
     ctx: &'a mut TypeckContext,
     spec: &UntypedDataSpecification,
 ) -> Result<&'a Signature, WellTypedError> {
@@ -172,7 +172,7 @@ mod tests {
     use crate::Signature;
     use crate::TypeckContext;
     use crate::WellTypedError;
-    use crate::query_signature;
+    use crate::build_signature;
 
     fn typecheck(text: &str) -> DataSpecification {
         DataSpecification::from_untyped(UntypedDataSpecification::parse(text).unwrap()).unwrap()
@@ -200,9 +200,12 @@ mod tests {
         let signature = spec.signature();
         assert_eq!(
             signature.constructors["c"],
-            vec![spec.declaration_sorts().constructors[0]]
+            vec![spec.sort_of_constructor(merc_syntax::ConstructorId::new(0))]
         );
-        assert_eq!(signature.mappings["g"], vec![spec.declaration_sorts().mappings[0]]);
+        assert_eq!(
+            signature.mappings["g"],
+            vec![spec.sort_of_map(merc_syntax::MapId::new(0))]
+        );
     }
 
     #[test]
@@ -303,12 +306,12 @@ mod tests {
     }
 
     #[test]
-    fn test_query_signature_is_memoized() {
+    fn test_build_signature_is_idempotent() {
         let spec = typecheck("sort D; cons c: D; map f: D -> Bool;");
 
         let mut ctx = TypeckContext::new();
-        let first: *const Signature = query_signature(&mut ctx, spec.data_specification()).unwrap();
-        let second: *const Signature = query_signature(&mut ctx, spec.data_specification()).unwrap();
-        assert!(std::ptr::eq(first, second), "the second query must be a cache hit");
+        let first: *const Signature = build_signature(&mut ctx, spec.data_specification()).unwrap();
+        let second: *const Signature = build_signature(&mut ctx, spec.data_specification()).unwrap();
+        assert!(std::ptr::eq(first, second), "the second call must return the already-stored signature");
     }
 }
