@@ -80,8 +80,10 @@ struct Cli {
 enum Commands {
     /// Print information related to the given symbolic LTS.
     Info(InfoArgs),
-    /// Explore the given symbolic LTS.
-    Explore(ExploreArgs),
+    /// Computes the reachable state count of a symbolic LTS using LDD-based reachability.
+    Reachability(ReachabilityArgs),
+    /// Computes the reachable state count of a symbolic LTS using BDD-based reachability.
+    ReachabilityBdd(ReachabilityBddArgs),
     /// Computes a reordering for a dependency graph given by lpsreach or pbessolvesymbolic.
     Reorder(ReorderArgs),
     /// Convert a symbolic LTS to a concrete LTS.
@@ -100,28 +102,33 @@ struct InfoArgs {
 }
 
 #[derive(clap::Args, Debug)]
-struct ExploreArgs {
+struct ReachabilityArgs {
     filename: PathBuf,
 
     /// Sets the input symbolic LTS format.
     #[arg(long)]
     format: Option<SymFormat>,
 
-    /// Use BDD based exploration by converting the symbolic LTS
-    #[arg(long)]
-    use_bdd: bool,
-
-    /// Visualize intermediate BDDs using oxidd-vis.
-    #[arg(long)]
-    visualize: bool,
-
-    /// Exploration strategy to use (LDD path only; ignored with --use-bdd).
+    /// Exploration strategy to use.
     #[arg(long, value_enum, default_value = "breadth-first")]
     strategy: ExplorationStrategy,
 
     /// Detect deadlock states (states without outgoing transitions).
     #[arg(long)]
     detect_deadlocks: bool,
+}
+
+#[derive(clap::Args, Debug)]
+struct ReachabilityBddArgs {
+    filename: PathBuf,
+
+    /// Sets the input symbolic LTS format.
+    #[arg(long)]
+    format: Option<SymFormat>,
+
+    /// Visualize intermediate BDDs using oxidd-vis.
+    #[arg(long)]
+    visualize: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -249,7 +256,8 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
     if let Some(command) = &cli.commands {
         match command {
             Commands::Info(args) => handle_info(cli, args, timing)?,
-            Commands::Explore(args) => handle_explore(cli, args, timing)?,
+            Commands::Reachability(args) => handle_reachability(cli, args, timing)?,
+            Commands::ReachabilityBdd(args) => handle_reachability_bdd(cli, args, timing)?,
             Commands::Reorder(args) => handle_reorder(args, timing)?,
             Commands::Convert(args) => handle_convert(cli, args, timing)?,
             Commands::Reduce(args) => handle_reduce(cli, args, timing)?,
@@ -280,8 +288,8 @@ fn handle_info(cli: &Cli, args: &InfoArgs, timing: &Timing) -> Result<(), MercEr
     Ok(())
 }
 
-/// Explores the given symbolic LTS.
-fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), MercError> {
+/// Computes the reachable state count of the given symbolic LTS using LDD-based reachability.
+fn handle_reachability(cli: &Cli, args: &ReachabilityArgs, timing: &Timing) -> Result<(), MercError> {
     let storage = init_ldd_manager(cli);
 
     let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
@@ -296,14 +304,9 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
         SymFormat::Sylvan => {
             let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&storage, &mut file))?;
 
-            if args.use_bdd {
-                // Sylvan format carries no action labels or parameter values, so BDD conversion is not supported.
-                return Err("BDD exploration is not supported for Sylvan format".into());
-            }
-
             println!(
                 "LTS has {} states",
-                timing.measure("explore", || -> Result<_, MercError> {
+                timing.measure("reachability", || -> Result<_, MercError> {
                     Ok(reachability_with_options(&storage, &mut lts, &options, timing)?
                         .states
                         .len())
@@ -312,54 +315,70 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
         }
         SymFormat::Sym => {
             let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&storage, &mut file))?;
-            explore_impl(&storage, cli, args, &mut lts, timing)?;
+
+            println!(
+                "LTS has {} states",
+                timing.measure("reachability", || -> Result<_, MercError> {
+                    Ok(reachability_with_options(&storage, &mut lts, &options, timing)?
+                        .states
+                        .len())
+                })?
+            );
         }
     }
 
     Ok(())
 }
 
-fn explore_impl<L: SymbolicLTS>(
-    storage: &oxidd::ldd::LDDManagerRef,
-    cli: &Cli,
-    args: &ExploreArgs,
-    lts: &mut L,
-    timing: &Timing,
-) -> Result<(), MercError> {
-    if args.use_bdd {
-        let manager_ref = init_bdd_manager(cli);
+/// Computes the reachable state count of the given symbolic LTS using BDD-based reachability.
+fn handle_reachability_bdd(cli: &Cli, args: &ReachabilityBddArgs, timing: &Timing) -> Result<(), MercError> {
+    let storage = init_ldd_manager(cli);
 
-        let lts_bdd = timing.measure("convert_bdd", || {
-            SymbolicLtsBdd::from_symbolic_lts(storage, &manager_ref, lts)
-        })?;
+    let format = guess_format_from_extension(&args.filename, args.format).ok_or("Cannot determine input format")?;
 
-        println!(
-            "LTS has {} states",
-            timing.measure("explore_bdd", || -> Result<_, MercError> {
-                let reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, args.visualize)?;
+    if format != SymFormat::Sym {
+        // Sylvan format carries no action labels or parameter values, so BDD conversion is not supported.
+        return Err("BDD reachability is only supported for the .sym format".into());
+    }
 
-                let num_reachable_states_bdd = reachable_states_bdd.sat_count::<u64, FxBuildHasher>(
-                    lts_bdd.state_variables().len() as u32,
-                    &mut SatCountCache::default(),
-                ) as usize;
-                Ok(num_reachable_states_bdd)
-            })?
-        );
-    } else {
-        let options = ReachabilityOptions {
-            strategy: args.strategy,
-            detect_deadlocks: args.detect_deadlocks,
-        };
+    let mut file = File::open(&args.filename)?;
+    let lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&storage, &mut file))?;
 
-        println!(
-            "LTS has {} states",
-            timing.measure("explore", || -> Result<_, MercError> {
-                let result = reachability_with_options(storage, lts, &options, timing)?;
+    let manager_ref = init_bdd_manager(cli);
 
-                Ok(result.states.len())
-            })?
+    let lts_bdd = timing.measure("convert_bdd", || {
+        SymbolicLtsBdd::from_symbolic_lts(&storage, &manager_ref, &lts)
+    })?;
+
+    if !lts_bdd.initial_state().satisfiable() {
+        return Err(
+            "BDD conversion produced an unsatisfiable initial state; \
+             SymbolicLtsBdd::from_symbolic_lts is likely miscompiling this input"
+                .into(),
         );
     }
+
+    println!(
+        "LTS has {} states",
+        timing.measure("reachability_bdd", || -> Result<_, MercError> {
+            let reachable_states_bdd = reachability_bdd(&manager_ref, &lts_bdd, args.visualize)?;
+
+            if !reachable_states_bdd.satisfiable() {
+                return Err(
+                    "BDD reachability returned an unsatisfiable state set despite a satisfiable \
+                     initial state; this indicates a reachability_bdd regression"
+                        .into(),
+                );
+            }
+
+            let num_reachable_states_bdd = reachable_states_bdd.sat_count::<u64, FxBuildHasher>(
+                lts_bdd.state_variables().len() as u32,
+                &mut SatCountCache::default(),
+            ) as usize;
+            Ok(num_reachable_states_bdd)
+        })?
+    );
+
     Ok(())
 }
 
