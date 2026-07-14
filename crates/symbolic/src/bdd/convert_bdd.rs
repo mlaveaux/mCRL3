@@ -1,6 +1,10 @@
 use log::info;
 use log::trace;
+use oxidd::BooleanFunction;
+use oxidd::BooleanFunctionQuant;
+use oxidd::ManagerRef;
 use oxidd::VarNo;
+use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OptBool;
 use rustc_hash::FxBuildHasher;
@@ -28,7 +32,7 @@ use crate::to_value;
 /// This basically applies the symbolic transitions to every state in the state
 /// space, and constructs the explicit LTS.
 pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
-    _manager_ref: &BDDManagerRef,
+    manager_ref: &BDDManagerRef,
     output: &mut B,
     lts: &SymbolicLtsBdd<L>,
 ) -> Result<B::LTS, MercError> {
@@ -60,19 +64,22 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
         offsets
     };
 
-    let mut read_positions = Vec::new();
+    let mut read_var_positions = Vec::new();
     let mut write_positions = Vec::new();
-    let mut transition_variables = Vec::new();
+    let mut enum_variables = Vec::new();
     let mut action_positions = Vec::new();
 
     for group in lts.transition_groups() {
-        let read_group: FxHashSet<usize> = group
+        // For each read variable, remember its position in the (concrete) state vector so
+        // we can build the restriction cube for the current state without hashmap lookups.
+        let read_positions: Vec<(VarNo, usize)> = group
             .read_variables()
             .iter()
-            .map(|var| {
-                *state_variable_indices
-                    .get(var)
-                    .expect("Read variable was not found in state variables")
+            .map(|&var| {
+                let pos = *state_variable_indices
+                    .get(&var)
+                    .expect("Read variable was not found in state variables");
+                (var, pos)
             })
             .collect();
 
@@ -88,21 +95,19 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
 
         let mut variables = Vec::new();
 
-        let (rpos, wpos) = compute_positions(
-            &state_variables,
+        let wpos = compute_positions(
             &next_state_variables,
             &action_variables,
             &state_group_offsets,
-            &read_group,
             &write_group,
             &mut variables,
         );
 
         let action_start = variables.len() - action_variables.len();
         action_positions.push(action_start);
-        transition_variables.push(variables);
+        enum_variables.push(variables);
 
-        read_positions.push(rpos);
+        read_var_positions.push(read_positions);
         write_positions.push(wpos);
     }
 
@@ -130,8 +135,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
     // All states have been explored, so add them to the discovered set immediately.
     let mut discovered: IndexedSet<Vec<OptBool>, FxBuildHasher> = IndexedSet::new();
     for cube in CubeIterAll::with_variables(lts.states(), &state_variables) {
-        let mut cube = cube?;
-        concretize_cube(&mut cube);
+        let cube = cube?;
 
         let (_, inserted) = discovered.insert(cube);
         debug_assert!(inserted, "State space contains duplicate states");
@@ -159,8 +163,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
 
     let mut index = 0usize;
     for cube in CubeIterAll::with_variables(lts.states(), &state_variables) {
-        let mut cube = cube?;
-        concretize_cube(&mut cube);
+        let cube = cube?;
 
         // Find the index of this state, it was already added before.
         let state_index = discovered
@@ -169,27 +172,15 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
 
         // Apply every transition group to this state.
         for (group_index, group) in lts.transition_groups().iter().enumerate() {
-            for transition in CubeIterAll::with_variables(group.relation(), &transition_variables[group_index]) {
-                let mut transition = transition?;
-                concretize_cube(&mut transition);
+            // Restrict the transition relation to the current state's read-variable assignment.
+            // This directly yields the transitions enabled in this state, so no per-transition
+            // read-parameter matching is required and transitions of other states are never
+            // enumerated.
+            let restriction = build_state_restriction(manager_ref, &read_var_positions[group_index], &cube)?;
+            let relation = group.relation().restrict(&restriction)?;
 
-                // Try to match the read parameters of this vector.
-                let mut matches = true;
-                for (&read_variable, &read_position) in
-                    group.read_variables().iter().zip(read_positions[group_index].iter())
-                {
-                    let state_pos = *state_variable_indices
-                        .get(&read_variable)
-                        .expect("Read variable was not found in state variables");
-                    if cube[state_pos] != transition[read_position] {
-                        matches = false;
-                        break;
-                    }
-                }
-
-                if !matches {
-                    continue;
-                }
+            for transition in CubeIterAll::with_variables(&relation, &enum_variables[group_index]) {
+                let transition = transition?;
 
                 // Apply the transition writes to the state vector.
                 target.clone_from_slice(&cube);
@@ -239,8 +230,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
 
     // Find the initial state.
     let mut initial_state = CubeIterAll::with_variables(lts.initial_state(), &state_variables);
-    let mut initial_state = initial_state.next().ok_or("Symbolic LTS has no initial state")??;
-    concretize_cube(&mut initial_state);
+    let initial_state = initial_state.next().ok_or("Symbolic LTS has no initial state")??;
 
     let initial_state_index = discovered
         .index(&initial_state)
@@ -249,52 +239,60 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
     output.finish(StateIndex::new(*initial_state_index))
 }
 
-/// Replace all don't-care bits in the cube with false, to get a concrete state vector.
-fn concretize_cube(cube: &mut [OptBool]) {
-    for bit in cube {
-        if *bit == OptBool::None {
-            *bit = OptBool::False;
+/// Builds a BDD restriction cube fixing every read variable to its concrete value
+/// in the given state, suitable for use with [`BooleanFunctionQuant::restrict`].
+fn build_state_restriction(
+    manager_ref: &BDDManagerRef,
+    read_positions: &[(VarNo, usize)],
+    state: &[OptBool],
+) -> Result<BDDFunction, MercError> {
+    manager_ref.with_manager_shared(|manager| {
+        let mut result = BDDFunction::t(manager);
+
+        for &(var, pos) in read_positions {
+            let literal = BDDFunction::var(manager, var)?;
+            result = match state[pos] {
+                OptBool::True => result.and(&literal)?,
+                // Concrete states never contain don't cares, so treat None as false.
+                OptBool::False | OptBool::None => result.and(&literal.not()?)?,
+            };
         }
-    }
+
+        Ok(result)
+    })
 }
 
-/// Computes the positions of the read and write indices in the transition vector.
+/// Computes the positions of the write indices in the enumeration vector.
+///
+/// The enumeration vector consists of the write variables (in state-group order) followed
+/// by the action variables. The returned vector maps each pushed write variable to its
+/// position in the enumeration vector.
 fn compute_positions(
-    state_variables: &[VarNo],
     next_state_variables: &[VarNo],
     action_variables: &[VarNo],
     state_group_offsets: &[usize],
-    read_group: &FxHashSet<usize>,
     write_group: &FxHashSet<usize>,
-    transition_variables: &mut Vec<VarNo>,
-) -> (Vec<usize>, Vec<usize>) {
-    let mut rpos = Vec::new();
+    enum_variables: &mut Vec<VarNo>,
+) -> Vec<usize> {
     let mut wpos = Vec::new();
 
     for (state_group, &offset) in state_group_offsets.iter().enumerate() {
         let end = state_group_offsets
             .get(state_group + 1)
             .copied()
-            .unwrap_or(state_variables.len());
-
-        if read_group.contains(&offset) {
-            for bit in state_variables.iter().take(end).skip(offset) {
-                rpos.push(transition_variables.len());
-                transition_variables.push(*bit);
-            }
-        }
+            .unwrap_or(next_state_variables.len());
 
         if write_group.contains(&offset) {
             for bit in next_state_variables.iter().take(end).skip(offset) {
-                wpos.push(transition_variables.len());
-                transition_variables.push(*bit);
+                wpos.push(enum_variables.len());
+                enum_variables.push(*bit);
             }
         }
     }
 
-    transition_variables.extend(action_variables.iter().copied());
+    enum_variables.extend(action_variables.iter().copied());
 
-    (rpos, wpos)
+    wpos
 }
 
 #[cfg(test)]
