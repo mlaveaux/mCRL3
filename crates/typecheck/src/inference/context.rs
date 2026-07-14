@@ -3,16 +3,17 @@ use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::rc::Rc;
 
+use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
 use merc_syntax::EquationId;
+use merc_syntax::MapId;
 
 use crate::EquationTyping;
 use crate::InferenceError;
 use crate::ResolvedSortId;
 use crate::Signature;
 use crate::SortInterner;
-use crate::SystemSortNames;
 
 /// The context shared by all type-checking queries.
 ///
@@ -24,22 +25,31 @@ use crate::SystemSortNames;
 pub(crate) struct TypeckContext {
     pub(crate) sorts: SortInterner,
     pub(crate) sort_of_def: QueryCache<DefId, ResolvedSortId>,
-    /// The memoized result of `query_signature`, computed once per context; a
-    /// context serves a single specification, so there is no key. A plain
-    /// [Option] rather than a [QueryCache]: the query cannot re-enter itself,
-    /// and its error is not `Clone`, so the cache contract of storing failures
-    /// cannot be met — the pipeline aborts on failure instead. Behind an [Rc]
-    /// so inference can hold the signature while mutating the context (it
-    /// interns binder sorts mid-walk).
+    /// The memoized resolved sort of each constructor declaration, keyed by
+    /// [ConstructorId]. Populated lazily by `query_sort_of_constructor`.
+    pub(crate) sort_of_constructor: QueryCache<ConstructorId, ResolvedSortId>,
+    /// The memoized resolved sort of each map declaration, keyed by [MapId].
+    /// Populated lazily by `query_sort_of_map`.
+    pub(crate) sort_of_map: QueryCache<MapId, ResolvedSortId>,
+    /// The memoized resolved sort of each equation variable, keyed by
+    /// `(EqnSpecId, variable index)`. Populated lazily by
+    /// `query_sort_of_equation_var`.
+    pub(crate) sort_of_equation_var: QueryCache<(EqnSpecId, usize), ResolvedSortId>,
+    /// The signature of the specification, populated by `build_signature`. An
+    /// [Option] because the context is created before the signature is built;
+    /// behind an [Rc] so inference can hold a reference to the signature while
+    /// mutating the rest of the context (e.g. interning binder sorts mid-walk).
     pub(crate) signature: Option<Rc<Signature>>,
     /// The resolved signature of the system-defined specification, computed by
     /// `resolve_system_signature` under the same regime as
     /// [TypeckContext::signature].
     pub(crate) system_signature: Option<Rc<Signature>>,
-    /// The display names of the system-internal sorts (`@NatPair`, ...),
-    /// filled by the same call as [TypeckContext::system_signature]; consulted
-    /// by `display_sort` for debug logging.
-    pub(crate) system_sort_names: Option<SystemSortNames>,
+    /// The sort identifiers from the system specification's `sort_declarations`,
+    /// in declaration order. A system-internal sort with [DefId] `d` has its
+    /// name at index `d - user_spec.sort_declarations.len()`, because
+    /// [resolve_system_signature] assigns DefIds using the declaration's
+    /// position in the system spec.
+    pub(crate) system_sort_decls: Vec<String>,
     /// The memoized results of `query_equation_typing`, keyed by the id of the
     /// enclosing equation specification block and the equation's own id
     /// within it. Failures are stored too, as the cache contract requires.
@@ -51,9 +61,12 @@ impl TypeckContext {
         TypeckContext {
             sorts: SortInterner::new(),
             sort_of_def: QueryCache::new(),
+            sort_of_constructor: QueryCache::new(),
+            sort_of_map: QueryCache::new(),
+            sort_of_equation_var: QueryCache::new(),
             signature: None,
             system_signature: None,
-            system_sort_names: None,
+            system_sort_decls: Vec::new(),
             equation_typing: QueryCache::new(),
         }
     }
@@ -114,6 +127,16 @@ impl<K: Eq + Hash, V> QueryCache<K, V> {
                 entry.insert(QueryEntry::InProgress);
                 Ok(None)
             }
+        }
+    }
+
+    /// Returns the cached value for `key` if it has already been computed,
+    /// or `None` if it is not yet in the cache (or still in progress).
+    /// Use this for read-only access after the pipeline has populated the cache.
+    pub(crate) fn get(&self, key: &K) -> Option<&V> {
+        match self.entries.get(key)? {
+            QueryEntry::Done(v) => Some(v),
+            QueryEntry::InProgress => None,
         }
     }
 

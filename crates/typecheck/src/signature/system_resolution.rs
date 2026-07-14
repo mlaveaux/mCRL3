@@ -14,24 +14,6 @@ use crate::WellTypedError;
 use crate::push_overload;
 use crate::query_sort_of_def;
 
-/// The display names of the system-internal sorts (`@NatPair`, ...), keyed by
-/// the fresh nominal [DefId]s that [resolve_system_signature] assigned to them.
-///
-/// These ids are numbered past the user declarations, so they never collide
-/// with a [DefId] from name resolution — but they index nothing: they exist for
-/// interning and display only, and must never be passed to `query_sort_of_def`.
-#[derive(Debug)]
-pub(crate) struct SystemSortNames {
-    names: HashMap<DefId, String>,
-}
-
-impl SystemSortNames {
-    /// The name of a system-internal sort, or `None` for a user [DefId].
-    pub(crate) fn name(&self, def: DefId) -> Option<&str> {
-        self.names.get(&def).map(String::as_str)
-    }
-}
-
 /// Resolves the constructor and mapping declarations of the *basic-sort* part
 /// of the system-defined specification onto the interned sort lattice, giving
 /// Phase-3 inference the overload sets of the built-in operators (`&&`, `+`,
@@ -46,7 +28,7 @@ impl SystemSortNames {
 /// here as well would misreport ambiguity (a name would have both a concrete
 /// and a polymorphic candidate for the same sort).
 ///
-/// Unlike `query_signature` this runs no well-typedness checks: the system
+/// Unlike `build_signature` this runs no well-typedness checks: the system
 /// specification is trusted content, and legitimately declares things a user
 /// cannot, such as constructors for the basic sorts (`@c0: Nat`).
 pub(crate) fn resolve_system_signature(
@@ -57,9 +39,14 @@ pub(crate) fn resolve_system_signature(
     // The system specification re-declares the basic sorts (`sort Bool;`),
     // which already resolve as primitives; only the remaining declarations
     // denote system-internal nominal sorts.
+    //
+    // Each system-internal sort gets a fresh DefId equal to
+    // `user_spec.sort_declarations.len() + decl_index`, where `decl_index` is
+    // the declaration's position in `system.sort_declarations`. This makes
+    // the DefId a direct index into the system spec: given a DefId `d`, the
+    // name is `system.sort_declarations[d - user_len].identifier`.
     let mut sort_ids: HashMap<String, ResolvedSortId> = HashMap::new();
-    let mut names = HashMap::new();
-    for decl in &system.sort_declarations {
+    for (decl_index, decl) in system.sort_declarations.iter().enumerate() {
         if is_basic_sort_name(&decl.identifier) || sort_ids.contains_key(&decl.identifier) {
             continue;
         }
@@ -69,10 +56,11 @@ pub(crate) fn resolve_system_signature(
             decl.identifier
         );
 
-        let def = DefId::new(user_spec.sort_declarations.len() + names.len());
+        let def = DefId::new(user_spec.sort_declarations.len() + decl_index);
         sort_ids.insert(decl.identifier.clone(), ctx.sorts.def(def));
-        names.insert(def, decl.identifier.clone());
     }
+
+    ctx.system_sort_decls = system.sort_declarations.iter().map(|d| d.identifier.clone()).collect();
 
     let mut signature = Signature {
         constructors: HashMap::new(),
@@ -89,7 +77,6 @@ pub(crate) fn resolve_system_signature(
     }
 
     ctx.system_signature = Some(Rc::new(signature));
-    ctx.system_sort_names = Some(SystemSortNames { names });
     Ok(())
 }
 
@@ -279,7 +266,8 @@ mod tests {
     #[test]
     fn test_system_internal_sort_gets_fresh_def() {
         // `@NatPair` exists only in the system specification; it gets a nominal
-        // id past the user declarations, and its name is kept for display.
+        // DefId past the user declarations, and its name is recoverable via the
+        // declaration index stored in `system_sort_decls`.
         let (spec, ctx) = resolve("sort D; map f: D;");
         let signature = ctx.system_signature.as_ref().unwrap();
 
@@ -290,9 +278,10 @@ mod tests {
         let ResolvedSort::Def(def) = ctx.sorts.get(*range) else {
             panic!("expected a nominal sort");
         };
-        assert!(**def >= spec.data_specification().sort_declarations.len());
-        let names = ctx.system_sort_names.as_ref().unwrap();
-        assert_eq!(names.name(*def), Some("@NatPair"));
+        let user_len = spec.data_specification().sort_declarations.len();
+        assert!(**def >= user_len);
+        let system_index = **def - user_len;
+        assert_eq!(ctx.system_sort_decls[system_index], "@NatPair");
     }
 
     #[test]

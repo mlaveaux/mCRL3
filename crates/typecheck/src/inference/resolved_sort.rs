@@ -122,10 +122,12 @@ pub(crate) fn display_sort(ctx: &TypeckContext, spec: &UntypedDataSpecification,
         ResolvedSort::Def(def) => {
             if let Some(decl) = spec.sort_declarations.get(**def) {
                 decl.identifier.clone()
-            } else if let Some(name) = ctx.system_sort_names.as_ref().and_then(|names| names.name(*def)) {
-                name.to_string()
             } else {
-                format!("@sort_{}", **def)
+                let system_index = **def - spec.sort_declarations.len();
+                ctx.system_sort_decls
+                    .get(system_index)
+                    .cloned()
+                    .unwrap_or_else(|| format!("@sort_{}", **def))
             }
         }
     }

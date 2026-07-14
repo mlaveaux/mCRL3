@@ -19,9 +19,11 @@
 //! (they fail the moment the gap is fixed, forcing the flip into a plain
 //! assertion — see the known-gaps section at the bottom), while divergences
 //! in the *permissive* direction — merc's global constraint solver resolves
-//! typings mCRL2's local algorithm rejects as ambiguous — assert merc's
-//! behavior and cite the mCRL2 verdict in a comment (see "Known divergences"
-//! in docs/typecheck.md §7a).
+//! typings mCRL2's local algorithm rejects as ambiguous — are marked with an
+//! explicit `IMPROVEMENT over mCRL2` comment, assert merc's behavior, and cite
+//! the analogous mCRL2 verdict (see "Known divergences" in docs/typecheck.md
+//! §7a). The `test_improvement_*` block near the end collects *new* showcase
+//! cases built on top of that mechanism.
 
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedProcessSpecification;
@@ -699,7 +701,7 @@ fn test_where_mix_nat_list() {
 
 #[test]
 fn test_where_mix_nat_pos_list_types_globally() {
-    // DIVERGES from mCRL2 (permissive direction): mCRL2 types each binding
+    // IMPROVEMENT over mCRL2 (permissive direction): mCRL2 types each binding
     // at its minimal sort (x = [0, y]: List(Nat), y = [x]: List(Pos)) and
     // then cannot concatenate them; merc's solver types both bindings at
     // List(Nat) — the `[x]` element upcasts Pos <= Nat — which is a coherent
@@ -829,7 +831,7 @@ fn test_proper_use_of_int2pos() {
 }
 
 // === Ranked resolution of overloads mCRL2 reports as ambiguous ===
-// All four DIVERGE from mCRL2 in the permissive direction: mCRL2 collects
+// All four are IMPROVEMENTs over mCRL2 (permissive direction): mCRL2 collects
 // the possible result sorts of the inner `f` and rejects as ambiguous when
 // more than one candidate remains, without ranking; merc's solver ranks the
 // exact match above the upcast (and filters through the equation's expected
@@ -871,6 +873,82 @@ fn test_ambiguous_function_application_recursive4() {
     check_ok(
         "map g: Int -> Bool; f: Pos -> Nat; f: Pos -> Int; g: Nat -> Int; b: Bool; var x: Pos;
          eqn b = g(f(x));",
+    );
+}
+
+// === mCRL2 limitations resolved by merc's constraint solver ===
+//
+// IMPROVEMENT over mCRL2 (permissive direction). Every spec below is rejected
+// by mCRL2's local type checker but accepted by merc. These are *new* showcase
+// cases — not ports of `typecheck_test.cpp` — that exercise the same
+// limitations the ported `test_ambiguous_function_application_recursive*`,
+// `test_where_mix_nat_pos_list` and `test_ambiguous_projection_function` cases
+// pin down, in fresh shapes. mCRL2 collects the candidate result sorts of an
+// inner overloaded call (`NewParList` in `TraverseVarConsTypeDN`,
+// `libraries/data/source/typecheck.cpp`) and rejects as ambiguous when more
+// than one survives, without ranking exact matches above numeric upcasts;
+// merc's global ranked solver keeps the unique best assignment. See "Known
+// divergences" in docs/typecheck.md §7a.
+
+#[test]
+fn test_improvement_ranked_overload_through_list_literal() {
+    // IMPROVEMENT over mCRL2: `f` reaches the `List(Nat)` element either
+    // exactly (`f: Pos -> Nat`) or by upcast (`f: Pos -> Pos`, `Pos <= Nat`).
+    // mCRL2 collects `{Nat, Pos}` for the element and rejects as ambiguous;
+    // merc ranks the exact overload. Same limitation as
+    // test_ambiguous_function_application_recursive, but the disambiguating
+    // context is a container literal rather than a function application.
+    check_ok("map h: List(Nat) -> Bool; f: Pos -> Nat; f: Pos -> Pos; b: Bool; var x: Pos; eqn b = h([f(x)]);");
+}
+
+#[test]
+fn test_improvement_ranked_overload_two_level_nesting() {
+    // IMPROVEMENT over mCRL2: two nested overloaded calls. `bot` is unique,
+    // but `mid` reaches the `Int` domain of `top` exactly (`mid: Nat -> Int`)
+    // or by upcast (`mid: Nat -> Nat`, `Nat <= Int`). mCRL2 rejects `mid` as
+    // ambiguous; merc ranks the exact overload. Deeper nesting than any ported
+    // recursive case.
+    check_ok(
+        "map top: Int -> Bool; mid: Nat -> Int; mid: Nat -> Nat; bot: Pos -> Nat; b: Bool;
+         var x: Pos; eqn b = top(mid(bot(x)));",
+    );
+}
+
+#[test]
+fn test_improvement_where_global_int_list() {
+    // IMPROVEMENT over mCRL2: like test_where_mix_nat_pos_list_types_globally,
+    // but the result is `List(Int)` and a negative literal forces `Int`. mCRL2
+    // types `x = [-1, y]` and `y = [x]` each at its local minimal sort and
+    // then cannot concatenate them; merc solves the whole equation jointly,
+    // upcasting both list elements to `Int`. mCRL2 rejects test_where_mix_nat_pos_list.
+    check_ok("map l: List(Int); var x: Pos; y: Nat; eqn l = x ++ y whr x = [-1, y], y = [x] end;");
+}
+
+#[test]
+fn test_improvement_ambiguous_projection_disambiguated_by_use() {
+    // IMPROVEMENT over mCRL2: a fresh analogue of test_ambiguous_projection_function.
+    // `val` is overloaded across two struct alternatives (`A(val: T)`,
+    // `B(val: S)`), and `use: S -> Bool` in the same conjunct forces the
+    // `T -> S` overload, consistent with `is_B(p)`. mCRL2's current checker
+    // cannot resolve this (its own comment: "should be enabled with a new
+    // typechecker"); merc's constraint solver is that new typechecker.
+    check_ok(
+        "sort S; T = struct A(val: T)?is_A | B(val: S)?is_B | T0;
+         map use: S -> Bool; result: Bool;
+         var p: T; eqn result = use(val(p)) && is_B(p);",
+    );
+}
+
+#[test]
+fn test_improvement_ranked_overload_through_equation_result() {
+    // IMPROVEMENT over mCRL2: the equation's expected sort (`Nat`, from the
+    // `result` mapping) propagates into the overloaded inner `f`, selecting
+    // `f: Pos -> Nat` over `f: Pos -> Pos`. mCRL2 evaluates the argument to
+    // `wrap` under the collected candidate set and reports ambiguity rather
+    // than letting the result sort decide.
+    check_ok(
+        "map wrap: Nat -> Nat; f: Pos -> Nat; f: Pos -> Pos; result: Nat;
+         var x: Pos; eqn result = wrap(f(x));",
     );
 }
 
