@@ -70,25 +70,13 @@ pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, Indexed
 /// The tree can be used to reconstruct a minimal-depth distinguishing formula
 /// for any two states found in different blocks, via
 /// [`PartitionTree::distinguish`].
-pub fn strong_bisim_sigref_naive_with_tree<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition, PartitionTree) {
+pub fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition, PartitionTree) {
     let mut tree = PartitionTree::new(lts.num_of_states());
     let partition = strong_bisim_sigref_naive_impl(&lts, &mut tree, timing);
     (lts, partition, tree)
 }
 
-/// Computes a minimal-depth distinguishing formula for states `s` and `t` of
-/// `lts` under strong bisimulation, or [`None`] when they are bisimilar.
-pub fn strong_bisim_distinguishing_formula<L: LTS>(
-    lts: L,
-    s: StateIndex,
-    t: StateIndex,
-    timing: &Timing,
-) -> Option<DistinguishingFormula<L::Label>> {
-    let (lts, _, tree) = strong_bisim_sigref_naive_with_tree(lts, timing);
-    tree.distinguish(s, t, lts.labels())
-}
-
-/// Implementation shared by [strong_bisim_sigref_naive] and [strong_bisim_sigref_naive_with_tree].
+/// Shared implementation of the actual naive strong bisimulation refinement.
 fn strong_bisim_sigref_naive_impl<L: LTS, R: RefinementForest>(
     lts: &L,
     forest: &mut R,

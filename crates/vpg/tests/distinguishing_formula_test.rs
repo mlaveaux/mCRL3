@@ -41,7 +41,7 @@ fn is_distinguishing_test(dump_name: &str, rng: &mut StdRng) {
 
     let timing = Timing::new();
     let (equal, counter_example) = compare_lts(
-        Equivalence::StrongBisim,
+        Equivalence::StrongBisimNaive,
         lts1.clone(),
         lts2.clone(),
         false,

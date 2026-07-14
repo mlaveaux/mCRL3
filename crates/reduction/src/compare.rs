@@ -11,7 +11,7 @@ use crate::branching_bisim_sigref;
 use crate::branching_bisim_sigref_naive;
 use crate::strong_bisim_sigref;
 use crate::strong_bisim_sigref_naive;
-use crate::strong_bisim_sigref_naive_with_tree;
+use crate::strong_bisim_sigref_naive_with_counterexample;
 use crate::weak_bisim_sigref_inductive_naive;
 use crate::weak_bisim_sigref_naive;
 use crate::weak_bisimulation;
@@ -19,11 +19,11 @@ use crate::weak_bisimulation_parallel;
 
 /// Compares two LTSs for equivalence using the given algorithm.
 ///
-/// When `counter_example` is set and `equivalence` is a strong bisimulation
-/// variant, a `false` result comes with a minimal-depth distinguishing
-/// formula that holds in the left LTS but not in the right one. Other
-/// equivalences do not yet support counter-example construction: the
-/// comparison result is still correct, but no formula is produced.
+/// When `counter_example` is set, a `false` result comes with a minimal-depth
+/// distinguishing formula that holds in the left LTS but not in the right one.
+///
+/// Counter example generation is only supported for naive strong bisimulation
+/// (StrongBisimNaive).
 pub fn compare_lts<L: LTS>(
     equivalence: Equivalence,
     left: L,
@@ -38,7 +38,7 @@ pub fn compare_lts<L: LTS>(
     if counter_example {
         match equivalence {
             Equivalence::StrongBisimNaive => {
-                let (lts, partition, tree) = strong_bisim_sigref_naive_with_tree(merged, timing);
+                let (lts, partition, tree) = strong_bisim_sigref_naive_with_counterexample(merged, timing);
                 let lhs_initial = lts.initial_state_index();
 
                 return if partition.block_number(lhs_initial) == partition.block_number(rhs_initial) {
@@ -52,7 +52,7 @@ pub fn compare_lts<L: LTS>(
             }
             _ => {
                 warn!(
-                    "Counter-example generation is only supported for strong bisimulation; comparing {equivalence:?} without one."
+                    "Counter-example generation is only supported for naive strong bisimulation (StrongBisimNaive); comparing {equivalence:?} without one."
                 );
             }
         }

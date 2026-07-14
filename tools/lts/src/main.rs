@@ -123,7 +123,7 @@ struct CompareArgs {
     right_filename: PathBuf,
 
     /// If set, outputs a distinguishing formula when the LTSs are not
-    /// equivalent. Only supported for (naive) strong bisimulation.
+    /// equivalent. Only supported for naive strong bisimulation.
     #[arg(short = 'c', long)]
     counter_example: Option<PathBuf>,
 
@@ -403,12 +403,7 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
 
 /// Compares two LTSs for equivalence modulo any of the available equivalences.
 fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercError> {
-    if args.counter_example.is_some()
-        && !matches!(
-            args.equivalence,
-            Equivalence::StrongBisimNaive
-        )
-    {
+    if args.counter_example.is_some() && !matches!(args.equivalence, Equivalence::StrongBisimNaive) {
         return Err("Distinguishing formulas are only supported for naive strong bisimulation.".into());
     }
 
