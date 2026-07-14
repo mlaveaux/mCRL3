@@ -49,6 +49,12 @@ impl SymbolicLts {
             .map(|aterm| format!("{}", aterm))
             .collect::<Vec<String>>();
 
+        debug_assert_eq!(
+            parameter_values.len(),
+            process_parameters.len(),
+            "parameter_values must have one entry per process parameter"
+        );
+
         Self {
             data_specification,
             process_parameters,

@@ -37,13 +37,12 @@ use crate::storage::SharedTermProtection;
 use crate::storage::global_aterm_pool::GLOBAL_TERM_POOL;
 
 thread_local! {
-    /// Thread-specific [ThreadTermPool] that manages protection sets for the current thread.
+    /// Thread-specific [ThreadTermPool] that manages protection sets for the
+    /// current thread.
     ///
-    /// Deliberately not wrapped in a `RefCell`: term construction hands out `Return` values
-    /// whose recursive read guard points into this pool, invisibly to a `RefCell` borrow
-    /// counter. Obtaining `&mut ThreadTermPool` (e.g. via `with_borrow_mut`) while such a
-    /// guard is alive would invalidate the guard's reference, so no `&mut` access may exist
-    /// at all; all methods take `&self` and use interior mutability where needed.
+    /// Deliberately not wrapped in a `RefCell`: term construction hands out
+    /// `Return` values whose recursive read guard points into this pool, so it
+    /// cannot be moved or replaced while a term is alive.
     pub static THREAD_TERM_POOL: ThreadTermPool = ThreadTermPool::new();
 }
 
