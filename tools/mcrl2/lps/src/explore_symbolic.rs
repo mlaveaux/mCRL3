@@ -47,15 +47,15 @@ mod tests {
     use merc_io::traced_command;
     use merc_symbolic::ExplorationStrategy;
     use merc_symbolic::ReachabilityOptions;
+    use merc_symbolic::SatCountCache;
     use merc_symbolic::SymbolicLtsBdd;
+    use merc_symbolic::approx_satcount;
     use merc_symbolic::reachability_bdd;
     use merc_symbolic::read_symbolic_lts;
     use merc_symbolic::reachability_with_options;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
     use oxidd::BooleanFunction;
-    use oxidd::util::SatCountCache;
-    use rustc_hash::FxBuildHasher;
 
     use super::explore_lps_symbolic;
 
@@ -170,10 +170,12 @@ mod tests {
             );
             let reach_bdd =
                 reachability_bdd(&bdd_manager, &lts_bdd, false).expect("Failed to run BDD reachability");
-            let sym_bdd_count = reach_bdd.sat_count::<u64, FxBuildHasher>(
+            let sym_bdd_count = approx_satcount(
+                &reach_bdd,
                 lts_bdd.state_variables().len() as u32,
-                &mut SatCountCache::default(),
-            ) as usize;
+                &mut SatCountCache::new(),
+            )
+            .as_f64() as usize;
 
             assert_eq!(
                 lps_ldd_count, sym_ldd_count,

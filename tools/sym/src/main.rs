@@ -20,7 +20,9 @@ use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLPS;
 use merc_symbolic::SymbolicLTS;
+use merc_symbolic::SatCountCache;
 use merc_symbolic::SymbolicLtsBdd;
+use merc_symbolic::approx_satcount;
 use merc_symbolic::convert_symbolic_lts;
 use merc_symbolic::convert_symbolic_lts_bdd;
 use merc_symbolic::guess_format_from_extension;
@@ -42,8 +44,6 @@ use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use oxidd::BooleanFunction;
-use oxidd::util::SatCountCache;
-use rustc_hash::FxBuildHasher;
 use which::which_in;
 
 /// Default node capacity for the Oxidd decision diagram manager.
@@ -381,9 +381,13 @@ fn handle_reachability_bdd(cli: &Cli, args: &ReachabilityBddArgs, timing: &Timin
                 );
             }
 
-            let num_reachable_states_bdd = reachable_states_bdd
-                .sat_count::<u64, FxBuildHasher>(lts_bdd.state_variables().len() as u32, &mut SatCountCache::default())
-                as usize;
+            // Use approx_satcount as the number of state variables can exceed 63,
+            // which would overflow the u64 accumulator used by sat_count.
+            let num_reachable_states_bdd = approx_satcount(
+                &reachable_states_bdd,
+                lts_bdd.state_variables().len() as u32,
+                &mut SatCountCache::new(),
+            );
             Ok(num_reachable_states_bdd)
         })?
     );
