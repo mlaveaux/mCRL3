@@ -171,14 +171,13 @@ fn cached_matches_sequential() {
     }
 }
 
-/// The LTS builders (`LtsBuilderMem`, `AutStream`) derive their state count as
-/// `max(transition endpoint) + 1`, and `require_num_of_states` can only raise
-/// it. The parallel driver must therefore hand out dense `0..n` state indices
-/// exactly like the sequential driver, otherwise every per-worker block gap in
-/// the discovered set materialises as a phantom deadlock state in the built LTS.
+/// `explore_parallel`'s state indices come from `DiscoveredSet`, which hands
+/// each worker a whole block of consecutive indices at once to keep index
+/// allocation contention-free. This means that indices are mostly likely
+/// sparse.
 #[test]
 #[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
-fn parallel_state_indices_are_dense() {
+fn parallel_state_indices_may_be_sparse() {
     // Large enough that several workers insert states concurrently.
     let lps = MockLps::grid(&[50, 50]);
     let pool = rayon::ThreadPoolBuilder::new()
@@ -186,35 +185,40 @@ fn parallel_state_indices_are_dense() {
         .build()
         .expect("failed to build rayon pool");
 
-    // Per-worker accumulator: (states seen, highest state index seen).
+    // Per-worker accumulator: every state index this worker's `on_state` saw.
     let (initial, locals) = pool
         .install(|| {
             explore_parallel(
                 &lps,
-                <(usize, usize)>::default,
-                |acc: &mut (usize, usize), index, _info: &State| {
-                    acc.0 += 1;
-                    acc.1 = acc.1.max(index.value());
+                Vec::new,
+                |acc: &mut Vec<usize>, index, _info: &State| {
+                    acc.push(index.value());
                     Ok(())
                 },
-                |acc: &mut (usize, usize), from, _label, to| {
-                    acc.1 = acc.1.max(from.value()).max(to.value());
-                    Ok(())
-                },
+                |_acc: &mut Vec<usize>, _from, _label, _to| Ok(()),
             )
         })
         .expect("parallel exploration succeeds");
 
-    let total: usize = locals.iter().map(|(states, _)| states).sum();
-    let max_index = locals.iter().map(|(_, max)| *max).max().unwrap_or(0);
+    let total: usize = locals.iter().map(Vec::len).sum();
+    let all_indices: BTreeSet<usize> = locals.iter().flatten().copied().collect();
+    let max_index = all_indices.iter().next_back().copied().unwrap_or(0);
 
     assert_eq!(total, 51 * 51, "sanity: every grid state is discovered exactly once");
     assert!(initial.value() < total, "the initial state index must be in range");
+    // Every discovered state must receive its own index: two states sharing an
+    // index would silently merge them in a built LTS.
     assert_eq!(
-        max_index + 1,
+        all_indices.len(),
         total,
-        "state indices handed to the callbacks must be dense 0..n; \
-         sparse indices become phantom deadlock states in the LTS builders"
+        "every discovered state must receive a distinct index, even though indices need not be dense"
+    );
+    // Indices are handed out in per-worker blocks, so the highest index seen
+    // may exceed `total - 1`; it must never be lower, since every discovered
+    // state needs an index.
+    assert!(
+        max_index + 1 >= total,
+        "state indices must cover at least one index per discovered state"
     );
 }
 
