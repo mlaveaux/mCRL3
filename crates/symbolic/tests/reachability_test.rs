@@ -11,16 +11,15 @@ use std::process::Command;
 
 use merc_io::temp_dir;
 use merc_io::traced_command;
+use merc_symbolic::SatCountCache;
 use merc_symbolic::SymbolicLtsBdd;
+use merc_symbolic::approx_satcount;
 use merc_symbolic::reachability;
 use merc_symbolic::reachability_bdd;
 use merc_symbolic::read_symbolic_lts;
 use merc_syntax::random_lps;
 use merc_utilities::Timing;
 use merc_utilities::random_test;
-use oxidd::BooleanFunction;
-use oxidd::util::SatCountCache;
-use rustc_hash::FxBuildHasher;
 
 /// Reads the symbolic LTS at `sym_path`, runs both LDD and BDD reachability,
 /// and asserts the reachable-state counts agree.
@@ -43,10 +42,12 @@ fn compare_ldd_bdd_reachability(sym_path: &Path) {
     let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&bdd_ldd_storage, &bdd_manager, &lts_for_bdd)
         .expect("BDD conversion failed");
     let reachable = reachability_bdd(&bdd_manager, &lts_bdd, false).expect("BDD reachability failed");
-    let bdd_count = reachable.sat_count::<u64, FxBuildHasher>(
+    let bdd_count = approx_satcount(
+        &reachable,
         lts_bdd.state_variables().len() as u32,
-        &mut SatCountCache::default(),
-    ) as usize;
+        &mut SatCountCache::new(),
+    )
+    .as_f64() as usize;
 
     assert_eq!(
         ldd_count,
