@@ -35,7 +35,7 @@ mod cfg_lps_test;
 mod control_flow;
 mod explore_explicit;
 mod explore_symbolic;
-mod explore_test;
+mod explore_lps_test;
 
 /// Default number of nodes for the Oxidd LDD manager.
 const DEFAULT_OXIDD_NODE_CAPACITY: usize = 1 << 24;

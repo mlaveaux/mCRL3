@@ -173,8 +173,7 @@ fn cached_matches_sequential() {
 
 /// `explore_parallel`'s state indices come from `DiscoveredSet`, which hands
 /// each worker a whole block of consecutive indices at once to keep index
-/// allocation contention-free. This means that indices are mostly likely
-/// sparse.
+/// allocation contention-free. This means that indices are likely sparse.
 #[test]
 #[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
 fn parallel_state_indices_may_be_sparse() {
