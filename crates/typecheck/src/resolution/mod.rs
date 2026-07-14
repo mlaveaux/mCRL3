@@ -5,6 +5,7 @@ mod non_empty;
 mod normalize;
 
 pub(crate) use alias::*;
+#[allow(unused_imports)]
 pub(crate) use is_finite::*;
 pub(crate) use name_resolution::*;
 pub(crate) use non_empty::*;

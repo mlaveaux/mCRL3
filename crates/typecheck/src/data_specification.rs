@@ -4,6 +4,7 @@ use std::rc::Rc;
 use log::debug;
 
 use merc_collections::IndexedSet;
+use merc_data::Mcrl2DataSpecification;
 use merc_syntax::DefId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
@@ -26,6 +27,7 @@ use crate::desugar_structured_sorts;
 use crate::hoist_anonymous_structs;
 use crate::is_well_typed;
 use crate::lower_data_expressions;
+use crate::lower_data_specification;
 use crate::map_sorts_in_spec;
 use crate::normalize_sorts;
 use crate::query_signature;
@@ -47,6 +49,7 @@ pub struct DataSpecification {
     context: TypeckContext,
     declaration_sorts: DeclarationSorts,
     equation_typings: Vec<Vec<Rc<EquationTyping>>>,
+    mcrl2_spec: Mcrl2DataSpecification,
 }
 
 impl DataSpecification {
@@ -196,6 +199,16 @@ impl DataSpecification {
         let equation_typings = check_equations(&mut context, &spec, &declaration_sorts)?;
         debug!("typecheck: inference finished; the specification is well-typed");
 
+        // Phase-4 lowering: assemble the typed Mcrl2DataSpecification. Equations
+        // that still use container literals or binders are silently skipped;
+        // they will be included once lower_equation's coverage is extended.
+        let mcrl2_spec = lower_data_specification(&context, &spec, &system, &declaration_sorts, &equation_typings);
+        debug!(
+            "typecheck: lowered {} equation(s) (of {} user equation(s))",
+            mcrl2_spec.equations().len(),
+            spec.equation_declarations.iter().map(|e| e.equations.len()).sum::<usize>()
+        );
+
         Ok(Self {
             spec,
             sorts,
@@ -203,6 +216,7 @@ impl DataSpecification {
             context,
             declaration_sorts,
             equation_typings,
+            mcrl2_spec,
         })
     }
 
@@ -264,6 +278,18 @@ impl DataSpecification {
     #[allow(dead_code)]
     pub(crate) fn equation_typings(&self) -> &[Vec<Rc<EquationTyping>>] {
         &self.equation_typings
+    }
+
+    /// The fully typed and lowered data specification in the mCRL2 binary
+    /// aterm format, ready for downstream consumption by `merc_sabre` and
+    /// `merc_explore`.
+    ///
+    /// User equations whose expression tree uses a construct not yet covered by
+    /// Phase-4 lowering (container literals, binders) are absent from
+    /// [`Mcrl2DataSpecification::equations`]; system equations are not yet
+    /// included either (see G3 in `docs/typecheck.md`).
+    pub fn mcrl2_data_specification(&self) -> &Mcrl2DataSpecification {
+        &self.mcrl2_spec
     }
 }
 
@@ -350,5 +376,46 @@ mod tests {
         )
         .unwrap();
         assert!(Rc::ptr_eq(&first, &again));
+    }
+
+    #[test]
+    fn test_mcrl2_data_specification_sections_populated() {
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort D; \
+                 sort A = Nat; \
+                 cons c: D; \
+                 map f: D -> Bool; \
+                 var d: D; \
+                 eqn f(d) = true;",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.mcrl2_data_specification();
+
+        // User abstract sort `D` → sorts section.
+        assert!(mcrl2.sorts().iter().any(|s| s.name() == "D"), "D must appear in sorts");
+        // User alias `A = Nat` → aliases section.
+        assert!(mcrl2.aliases().iter().any(|a| a.name().name() == "A"), "A must appear in aliases");
+        // User constructor `c` → constructors section.
+        assert!(mcrl2.constructors().iter().any(|c| c.name() == "c"), "c must appear in constructors");
+        // User mapping `f` → mappings section.
+        assert!(mcrl2.mappings().iter().any(|m| m.name() == "f"), "f must appear in mappings");
+        // User equation `f(d) = true` → equations section.
+        assert!(!mcrl2.equations().is_empty(), "at least one user equation must be lowered");
+        assert_eq!(mcrl2.equations()[0].lhs().to_string(), "f(d)");
+        assert_eq!(mcrl2.equations()[0].rhs().to_string(), "true");
+    }
+
+    #[test]
+    fn test_mcrl2_data_specification_system_constructors_present() {
+        // `Bool` always pulls in its system constructors; at least `true`/`false` must appear.
+        let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
+        let mcrl2 = spec.mcrl2_data_specification();
+        assert!(
+            mcrl2.constructors().iter().any(|c| c.name() == "true"),
+            "system Bool constructor `true` must appear in constructors"
+        );
     }
 }
