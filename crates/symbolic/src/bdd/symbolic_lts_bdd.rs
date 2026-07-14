@@ -3,7 +3,7 @@ use std::ops::Range;
 use itertools::Itertools;
 use log::debug;
 use log::info;
-use merc_data::DataSpecification;
+use merc_data::Mcrl2DataSpecification;
 use merc_data::DataVariable;
 use merc_lts::TransitionLabel;
 use oxidd::BooleanFunction;
@@ -453,7 +453,7 @@ impl<L: TransitionLabel> SymbolicLtsBdd<L> {
         let parameter_values = vec![Vec::new(); process_parameters.len()];
 
         Ok(SymbolicLts::new(
-            DataSpecification::default(),
+            Mcrl2DataSpecification::default(),
             process_parameters,
             states,
             initial_state,

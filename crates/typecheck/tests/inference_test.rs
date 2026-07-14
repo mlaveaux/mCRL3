@@ -24,6 +24,7 @@
 //! in docs/typecheck.md §7a).
 
 use merc_syntax::UntypedDataSpecification;
+use merc_syntax::UntypedProcessSpecification;
 use merc_typecheck::DataSpecification;
 use merc_typecheck::InferenceError;
 use merc_typecheck::WellTypedError;
@@ -929,29 +930,22 @@ fn test_ambiguous_function_application4_with_expected_sort() {
 // `expected` substring pins the panic to the intended assertion.
 
 #[test]
-#[should_panic(expected = "expected the specification to type check")]
-// Known gap: the element sort of an empty container is never constrained, so
-// `#[]` reports UnderdeterminedSort instead of Nat; mCRL2
-// test_empty_list_size accepts it because `#` (List(S) -> Nat) does not need
-// S resolved to compute the result.
+// §7a.4 fixed: free element sort is now defaulted to Bool, matching mCRL2's
+// acceptance. mCRL2: test_empty_list_size.
 fn test_count_of_empty_list_is_nat() {
     check_ok("map n: Nat; eqn n = #[];");
 }
 
 #[test]
-#[should_panic(expected = "expected the specification to type check")]
-// Known gap: same empty-container family as test_count_of_empty_list_is_nat
-// — comparing two empty sets never constrains the shared element sort, so
-// merc reports UnderdeterminedSort where mCRL2 accepts. mCRL2:
-// test_emptyset_complement_subset.
+// §7a.4 fixed: free element sort is now defaulted to Bool, matching mCRL2's
+// acceptance. mCRL2: test_emptyset_complement_subset.
 fn test_emptyset_complement_subset() {
     check_ok("map b: Bool; eqn b = !{} <= {};");
 }
 
 #[test]
-#[should_panic(expected = "expected the specification to type check")]
-// Known gap: the reverse form of test_emptyset_complement_subset. mCRL2:
-// test_emptyset_complement_subset_reverse.
+// §7a.4 fixed: free element sort is now defaulted to Bool, matching mCRL2's
+// acceptance. mCRL2: test_emptyset_complement_subset_reverse.
 fn test_emptyset_complement_subset_reverse() {
     check_ok("map b: Bool; eqn b = {} <= !{};");
 }
@@ -992,4 +986,14 @@ fn test_inline_structs_compare_recogniser_rejected() {
         "map b: (struct t?is_t) # (struct t) -> Bool;
          eqn b = lambda x: struct t?is_t, y: struct t. x == y;",
     );
+}
+
+#[test]
+#[ignore]
+fn test_cellular_automata_timing() {
+    let spec = merc_syntax::UntypedProcessSpecification::parse(
+        include_str!("../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2")
+    ).expect("parses");
+    let result = crate::DataSpecification::from_untyped(spec.data_specification);
+    let _ = result;
 }

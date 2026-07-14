@@ -122,10 +122,6 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
             && id == identifier
         {
             return Ok(Some(result_sort.clone()));
-        if let SortExpression::Reference(id) = expr
-            && id == identifier
-        {
-            return Ok(Some(result_sort.clone()));
         }
 
         Ok(None)
@@ -134,9 +130,8 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
 }
 
 /// Generate a data specification for any sort based on the rules in Appendix `B`.
-pub fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
-    UntypedDataSpecification::parse(&formatdoc! {"
-// Reserved for wiring the comparison/`if` operators of each sort (docs/typecheck.md G3).
+///
+/// Reserved for wiring the comparison/`if` operators of each sort (docs/typecheck.md G3).
 #[allow(dead_code)]
 pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
     UntypedDataSpecification::parse(&formatdoc! {"
@@ -146,7 +141,7 @@ pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercErr
         var x, y: {sort};
             b: Bool;
 
-        eqm x == x = true;
+        eqn x == x = true;
             x != y = !(x == y);
             if(true, x, y)  = x;
             if(false, x, y) = y;
@@ -156,7 +151,6 @@ pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercErr
             x <= x = true;
             x > y  = y < x;
             x >= y = y <= x;
-    "})
     "})
 }
 
