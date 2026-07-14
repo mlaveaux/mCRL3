@@ -60,9 +60,6 @@ pub struct GlobalTermPool {
     /// A stack used to mark terms recursively.
     stack: Vec<ATermIndex>,
 
-    /// Deletion hooks called whenever a term with the given head symbol is deleted.
-    deletion_hooks: Vec<(Symbol, DeletionHook)>,
-
     /// Indicates whether automatic garbage collection is enabled.
     garbage_collection: bool,
 
@@ -200,30 +197,6 @@ impl GlobalTermPool {
         self.len()
     }
 
-    /// Returns a counter for the unique numeric suffix of the given prefix.
-    pub fn register_prefix(&self, prefix: &str) -> Arc<AtomicUsize> {
-        self.symbol_pool.create_prefix(prefix)
-    }
-
-    /// Removes the registration of a prefix from the symbol pool.
-    pub fn remove_prefix(&self, prefix: &str) {
-        self.symbol_pool.remove_prefix(prefix)
-    }
-
-    /// Register a deletion hook that is called whenever a term is deleted with the given symbol.
-    ///
-    /// The hook runs in the middle of garbage collection, when the dying term's arguments may
-    /// already have been deallocated by an earlier pass over a different arity table. Hooks must
-    /// therefore not dereference the term's arguments; they may only use the term's address and
-    /// its head symbol. For the same reason a hook must not create terms or otherwise re-enter the
-    /// pool mutably (e.g. trigger another collection): the sweep holds `&mut self` throughout.
-    pub fn register_deletion_hook<F>(&mut self, symbol: SymbolRef<'static>, hook: F)
-    where
-        F: Fn(&ATermIndex) + Sync + Send + 'static,
-    {
-        self.deletion_hooks.push((symbol.protect(), Box::new(hook)));
-    }
-
     /// Enables or disables automatic garbage collection.
     pub fn automatic_garbage_collection(&mut self, enabled: bool) {
         self.garbage_collection = enabled;
@@ -307,18 +280,6 @@ impl GlobalTermPool {
             self.terms.retain(|term| {
                 if !self.marked_terms.contains(term) {
                     debug_trace!("Dropping term: {:?}", term);
-
-                    // Call the deletion hooks for the term
-                    for (symbol, hook) in &self.deletion_hooks {
-                        // `term` is still resident in `self.terms` during the
-                        // retain predicate, so its pointee is valid to read
-                        // (covered by the enclosing `unsafe` block).
-                        if symbol == term.deref().symbol() {
-                            debug_trace!("Calling deletion hook for term: {:?}", term);
-                            hook(term);
-                        }
-                    }
-
                     return false;
                 }
 
