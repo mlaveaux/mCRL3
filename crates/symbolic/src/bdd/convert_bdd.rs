@@ -161,8 +161,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
     // Avoid reallocations.
     let mut target = vec![OptBool::False; state_variables.len()];
 
-    let mut index = 0usize;
-    for cube in CubeIterAll::with_variables(lts.states(), &state_variables) {
+    for (index, cube) in CubeIterAll::with_variables(lts.states(), &state_variables).enumerate() {
         let cube = cube?;
 
         // Find the index of this state, it was already added before.
@@ -222,7 +221,6 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
         }
 
         progress.print((index, output.num_of_transitions()));
-        index += 1;
 
         // Clear the outgoing set for the next state.
         outgoing.clear();

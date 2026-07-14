@@ -40,7 +40,7 @@ impl DataSpecification {
         is_well_typed(&spec)?;
 
         // Obtain the definitions for all basic sort.
-        let _basic_sort_spec = basic_sort_data_specification().map_err(|e| WellTypedError::Custom(e))?;
+        let _basic_sort_spec = basic_sort_data_specification().map_err(WellTypedError::Custom)?;
 
         // Add all the occurring standard sorts to the specification.
 

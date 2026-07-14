@@ -37,7 +37,7 @@ pub fn has_alias_cycle(spec: &UntypedDataSpecification) -> Result<(), Vec<DefId>
 
     for block in (0..scc_partition.len()).map(BlockIndex::new) {
         if scc_partition.block(block).len() > 1 {
-            return Err(scc_partition.iter_block(block).map(|id| DefId::new(id)).collect());
+            return Err(scc_partition.iter_block(block).map(DefId::new).collect());
         }
     }
     Ok(())

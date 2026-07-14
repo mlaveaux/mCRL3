@@ -570,7 +570,7 @@ fn add_symbol(function_symbol: DataFunctionSymbol, arity: usize, symbols: &mut H
 fn is_supported_term(t: &DataExpression) -> bool {
     for subterm in t.iter() {
         if is_data_application(&subterm) && !is_data_function_symbol(&subterm.arg(0)) {
-            warn!("{} is higher order", &subterm);
+            warn!("{} is higher order", subterm);
             return false;
         }
     }

@@ -141,8 +141,6 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str, check_steps: bool) {
 #[cfg_attr(miri, ignore)]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchexpr10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchexpr10.txt") ; "benchexpr10")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/benchsym10.rec"), include_str!("../../../examples/REC/rec/asfsdfbenchmark.rec")], include_str!("snapshot/result_benchsym10.txt") ; "benchsym10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort10.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort10.txt") ; "bubblesort10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort20.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort20.txt") ; "bubblesort20")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/calls.rec")], include_str!("snapshot/result_calls.txt") ; "calls")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/check1.rec")], include_str!("snapshot/result_check1.txt") ; "check1")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/check2.rec")], include_str!("snapshot/result_check2.txt") ; "check2")]
@@ -154,8 +152,6 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str, check_steps: bool) {
 #[test_case(vec![include_str!("../../../examples/REC/rec/logic3.rec")], include_str!("snapshot/result_logic3.txt") ; "logic3")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/merge.rec")], include_str!("snapshot/result_merge.txt") ; "merge")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/mergesort10.rec"), include_str!("../../../examples/REC/rec/mergesort.rec")], include_str!("snapshot/result_mergesort10.txt") ; "mergesort10")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries2.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries2.txt") ; "missionaries2")]
-#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries3.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries3.txt") ; "missionaries3")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/quicksort10.rec"), include_str!("../../../examples/REC/rec/quicksort.rec")], include_str!("snapshot/result_quicksort10.txt") ; "quicksort10")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/revelt.rec")], include_str!("snapshot/result_revelt.txt") ; "revelt")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/searchinconditions.rec")], include_str!("snapshot/result_searchinconditions.txt") ; "searchinconditions")]
@@ -174,6 +170,10 @@ fn test_rec_specification(rec_files: Vec<&str>, expected_result: &str) {
 #[cfg_attr(miri, ignore)]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tak18.rec"), include_str!("../../../examples/REC/rec/tak.rec")], include_str!("snapshot/result_tak18.txt") ; "tak18")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort10.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort10.txt") ; "bubblesort10")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/bubblesort20.rec"), include_str!("../../../examples/REC/rec/bubblesort.rec")], include_str!("snapshot/result_bubblesort20.txt") ; "bubblesort20")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries2.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries2.txt") ; "missionaries2")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/missionaries3.rec"), include_str!("../../../examples/REC/rec/missionaries.rec")], include_str!("snapshot/result_missionaries3.txt") ; "missionaries3")]
 fn test_rec_specification_duplicating(rec_files: Vec<&str>, expected_result: &str) {
     rec_test(rec_files, expected_result, false);
 }

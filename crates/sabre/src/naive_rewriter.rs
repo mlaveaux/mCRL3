@@ -88,7 +88,8 @@ impl NaiveRewriter {
             let symbol = u.data_function_symbol();
 
             // Get the transition for the label and check if there is a pattern match
-            if let Some(transition) = automaton.get_transition(state_index, symbol.operation_id()) {
+            {
+                let transition = automaton.get_transition(state_index, symbol.operation_id())?;
                 for (announcement, ema) in &transition.announcements {
                     let mut conditions_hold = true;
 
@@ -127,9 +128,6 @@ impl NaiveRewriter {
                 }
 
                 state_index = transition.destinations.first().unwrap().1;
-            } else {
-                // If there is no transition for the symbol, there is no match
-                return None;
             }
         }
     }

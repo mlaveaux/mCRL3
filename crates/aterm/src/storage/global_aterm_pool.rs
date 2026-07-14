@@ -92,7 +92,7 @@ impl GlobalTermPool {
         // SAFETY: the default symbols are marked on every collection (see `collect_garbage`),
         // so these indices stay valid for the lifetime of the pool.
         let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create_reserved("<aterm_int>", 0)) };
-        let list_symbol = unsafe { SymbolRef::from_index(&&symbol_pool.create("<list_constructor>", 2)) };
+        let list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<list_constructor>", 2)) };
         let empty_list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<empty_list>", 0)) };
 
         let pool = GlobalTermPool {

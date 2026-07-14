@@ -449,7 +449,7 @@ fn handle_project_fts(cli: &Cli, args: &ProjectArgs, timing: &mut Timing) -> Res
     let mut feature_diagram_file = File::open(&args.feature_diagram_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature diagram file '{}': {}",
-            &args.feature_diagram_filename.display(),
+            args.feature_diagram_filename.display(),
             e
         ))
     })?;
@@ -555,7 +555,7 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
     let mut lts_file = File::open(&args.labelled_transition_system).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.labelled_transition_system.display(),
+            args.labelled_transition_system.display(),
             e
         ))
     })?;
@@ -565,7 +565,7 @@ fn handle_translate(args: &TranslateArgs) -> Result<(), MercError> {
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open formula file '{}': {}",
-            &args.formula_filename.display(),
+            args.formula_filename.display(),
             e
         ))
     })?)?;
@@ -601,7 +601,7 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let mut feature_diagram_file = File::open(&args.feature_diagram_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature diagram file '{}': {}",
-            &args.feature_diagram_filename.display(),
+            args.feature_diagram_filename.display(),
             e
         ))
     })?;
@@ -611,7 +611,7 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let mut fts_file = File::open(&args.fts_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open feature transition system file '{}': {}",
-            &args.fts_filename.display(),
+            args.fts_filename.display(),
             e
         ))
     })?;
@@ -621,7 +621,7 @@ fn handle_translate_vpg(cli: &Cli, args: &TranslateVpgArgs) -> Result<(), MercEr
     let formula_spec = UntypedStateFrmSpec::parse(&read_to_string(&args.formula_filename).map_err(|e| {
         MercError::from(format!(
             "Could not open formula file '{}': {}",
-            &args.formula_filename.display(),
+            args.formula_filename.display(),
             e
         ))
     })?)?;

@@ -20,8 +20,7 @@ pub fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellTypedErr
             return Err(WellTypedError::ConstructorForBasicSort {
                 constructor: constructor.identifier.clone(),
                 sort: sort.to_string(),
-            }
-            .into());
+            });
         }
 
         // Function sorts are not constructor sorts

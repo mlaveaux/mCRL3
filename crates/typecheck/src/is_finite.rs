@@ -16,7 +16,7 @@ pub fn is_finite(sort: &SortExpression) -> bool {
         SortExpression::Complex(complex_sort, sort_expression) => {
             (*complex_sort == ComplexSort::Set || *complex_sort == ComplexSort::FSet) && is_finite(sort_expression)
         }
-        SortExpression::FlattenedFunction { domain, range: _ } => domain.iter().all(|sort| is_finite(sort)),
+        SortExpression::FlattenedFunction { domain, range: _ } => domain.iter().all(is_finite),
         SortExpression::Reference(_) | SortExpression::Resolved(_, _) => {
             unreachable!("is_finite should not be called on reference sorts")
         }

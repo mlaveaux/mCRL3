@@ -93,10 +93,10 @@ fn replace_sort(spec: &UntypedDataSpecification, identifier: &str, sort: &SortEx
 /// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
 fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort: &SortExpression) -> SortExpression {
     apply_sort_expression(sort.clone(), |expr| -> Result<Option<SortExpression>, Infallible> {
-        if let SortExpression::Reference(id) = expr {
-            if id == identifier {
-                return Ok(Some(result_sort.clone()));
-            }
+        if let SortExpression::Reference(id) = expr
+            && id == identifier
+        {
+            return Ok(Some(result_sort.clone()));
         }
 
         Ok(None)
@@ -106,7 +106,7 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
 
 /// Generate a data specification for any sort based on the rules in Appendix `B`.
 pub fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
-    Ok(UntypedDataSpecification::parse(&formatdoc! {"
+    UntypedDataSpecification::parse(&formatdoc! {"
         map ==, !=, <, <=, >=, >: {sort} # {sort} -> Bool;
             if: Bool # {sort} # {sort} -> {sort};
 
@@ -123,7 +123,7 @@ pub fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
             x <= x = true;
             x > y  = y < x;
             x >= y = y <= x;
-    "})?)
+    "})
 }
 
 /// Generates a data specification for a structured sort, the rules are given in Appendix `B.10`.
