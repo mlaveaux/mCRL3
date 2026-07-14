@@ -82,15 +82,9 @@ impl From<u8> for PacketType {
 fn resolve_read_symbol(name: &str, arity: usize) -> Symbol {
     THREAD_TERM_POOL.with(|tp| {
         let int_symbol = tp.int_symbol();
-        let list_symbol = tp.list_symbol();
-        let empty_list_symbol = tp.empty_list_symbol();
 
         if arity == int_symbol.arity() && name == int_symbol.name() {
             int_symbol.protect()
-        } else if arity == list_symbol.arity() && name == list_symbol.name() {
-            list_symbol.protect()
-        } else if arity == empty_list_symbol.arity() && name == empty_list_symbol.name() {
-            empty_list_symbol.protect()
         } else {
             Symbol::new(name, arity)
         }

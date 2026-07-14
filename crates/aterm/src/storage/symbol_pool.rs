@@ -22,10 +22,8 @@ pub struct SymbolPool {
     /// Unique table of all function symbols
     symbols: StablePointerSet<SharedSymbol, FxBuildHasher, AllocBlock<SharedSymbol, 1024>>,
 
-    /// The pool's own reserved marker symbols (e.g. `<aterm_int>`), created through
-    /// [`create_reserved`](Self::create_reserved). [`create`](Self::create) checks
-    /// every new symbol against this list so that a name/arity supplied through
-    /// the public `Symbol::new` can never alias one of them.
+    /// The pool's own reserved marker symbols, which are created by
+    /// create_reserved and cannot be created by the public Symbol::new.
     reserved: Vec<SymbolIndex>,
 }
 
@@ -43,11 +41,9 @@ impl SymbolPool {
     /// # Panics
     ///
     /// Panics if the name and arity collide with one of the pool's own reserved
-    /// marker symbols (see [`create_reserved`](Self::create_reserved)) — this
-    /// should never happen for a legitimate caller, since those names are
-    /// internal implementation details.
+    /// marker symbols (see [`create_reserved`](Self::create_reserved)).
     ///
-    /// Crate-private: the returned pointer is unprotected, so the caller must protect it
+    /// The returned pointer is unprotected, so the caller must protect it
     /// before the lock it was created under is released.
     pub(crate) fn create<N>(&self, name: N, arity: usize) -> StablePointer<SharedSymbol>
     where
@@ -56,11 +52,10 @@ impl SymbolPool {
         self.create_impl::<false, N>(name, arity)
     }
 
-    /// Creates one of the pool's own reserved marker symbols (e.g. `<aterm_int>`)
-    /// and records it so that [`create`](Self::create) can reject a colliding
-    /// name/arity from the public `Symbol::new`.
+    /// Creates one of the pool's own reserved marker symbols (e.g.
+    /// `<aterm_int>`).
     ///
-    /// Crate-private: the returned pointer is unprotected, so the caller must protect it
+    /// The returned pointer is unprotected, so the caller must protect it
     /// before the lock it was created under is released.
     pub(crate) fn create_reserved<N>(&mut self, name: N, arity: usize) -> StablePointer<SharedSymbol>
     where
@@ -68,8 +63,7 @@ impl SymbolPool {
     {
         let result = self.create_impl::<true, N>(name, arity);
         // SAFETY: `result` points into `self.symbols`, whose entries are never removed
-        // for reserved symbols, so the duplicate stored in `self.reserved` stays valid
-        // for the pool's lifetime just like the pointer returned to the caller.
+        // for reserved symbols.
         self.reserved.push(unsafe { result.copy() });
         result
     }
