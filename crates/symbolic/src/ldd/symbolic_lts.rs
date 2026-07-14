@@ -1,5 +1,6 @@
 use merc_data::DataExpression;
 use merc_data::DataSpecification;
+use merc_data::DataVariable;
 use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
 use oxidd::ldd::LDDFunction;
@@ -11,6 +12,9 @@ use crate::SymbolicLTS;
 /// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
 pub struct SymbolicLts {
     data_specification: DataSpecification,
+
+    /// The process parameters, in the order used to index the LDD vectors.
+    process_parameters: Vec<DataVariable>,
     states: LDDFunction,
 
     /// A singleton LDD representing the initial state.
@@ -33,6 +37,7 @@ impl SymbolicLts {
     /// yet known, or provide the reachable set computed by [crate::reachability]).
     pub fn new(
         data_specification: DataSpecification,
+        process_parameters: Vec<DataVariable>,
         states: LDDFunction,
         initial_state: LDDFunction,
         summand_groups: Vec<SummandGroup>,
@@ -46,6 +51,7 @@ impl SymbolicLts {
 
         Self {
             data_specification,
+            process_parameters,
             states,
             initial_state,
             summand_groups,
@@ -57,6 +63,11 @@ impl SymbolicLts {
     /// Returns the data specification of the LTS.
     pub fn data_specification(&self) -> &DataSpecification {
         &self.data_specification
+    }
+
+    /// Returns the process parameters, in the order used to index the LDD vectors.
+    pub fn process_parameters(&self) -> &[DataVariable] {
+        &self.process_parameters
     }
 
     pub fn parameter_values(&self) -> &[Vec<DataExpression>] {
