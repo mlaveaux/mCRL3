@@ -1,10 +1,6 @@
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
-use dashmap::DashMap;
 use equivalent::Equivalent;
 use log::debug;
 use rustc_hash::FxBuildHasher;
@@ -26,8 +22,11 @@ pub struct SymbolPool {
     /// Unique table of all function symbols
     symbols: StablePointerSet<SharedSymbol, FxBuildHasher, AllocBlock<SharedSymbol, 1024>>,
 
-    /// A map from prefixes to counters that track the next available index for function symbols
-    prefix_to_register_function_map: DashMap<String, Arc<AtomicUsize>, FxBuildHasher>,
+    /// The pool's own reserved marker symbols (e.g. `<aterm_int>`), created through
+    /// [`create_reserved`](Self::create_reserved). [`create`](Self::create) checks
+    /// every new symbol against this list so that a name/arity supplied through
+    /// the public `Symbol::new` can never alias one of them.
+    reserved: Vec<SymbolIndex>,
 }
 
 impl SymbolPool {
@@ -35,11 +34,18 @@ impl SymbolPool {
     pub(crate) fn new() -> Self {
         Self {
             symbols: StablePointerSet::with_hasher_in(FxBuildHasher, AllocBlock::new()),
-            prefix_to_register_function_map: DashMap::with_hasher(FxBuildHasher),
+            reserved: Vec::new(),
         }
     }
 
     /// Creates or retrieves a function symbol with the given name and arity.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the name and arity collide with one of the pool's own reserved
+    /// marker symbols (see [`create_reserved`](Self::create_reserved)) — this
+    /// should never happen for a legitimate caller, since those names are
+    /// internal implementation details.
     ///
     /// Crate-private: the returned pointer is unprotected, so the caller must protect it
     /// before the lock it was created under is released.
@@ -47,16 +53,52 @@ impl SymbolPool {
     where
         N: Into<String> + AsRef<str>,
     {
-        // Get or create symbol index
-        let (shared_symbol, inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { name, arity });
+        self.create_impl::<false, N>(name, arity)
+    }
 
-        if inserted {
-            // If the symbol was newly created, register its prefix.
-            // SAFETY: `shared_symbol` was just inserted and is resident in `self.symbols`.
-            self.update_prefix(unsafe { shared_symbol.deref() }.name());
+    /// Creates one of the pool's own reserved marker symbols (e.g. `<aterm_int>`)
+    /// and records it so that [`create`](Self::create) can reject a colliding
+    /// name/arity from the public `Symbol::new`.
+    ///
+    /// Crate-private: the returned pointer is unprotected, so the caller must protect it
+    /// before the lock it was created under is released.
+    pub(crate) fn create_reserved<N>(&mut self, name: N, arity: usize) -> StablePointer<SharedSymbol>
+    where
+        N: Into<String> + AsRef<str>,
+    {
+        let result = self.create_impl::<true, N>(name, arity);
+        // SAFETY: `result` points into `self.symbols`, whose entries are never removed
+        // for reserved symbols, so the duplicate stored in `self.reserved` stays valid
+        // for the pool's lifetime just like the pointer returned to the caller.
+        self.reserved.push(unsafe { result.copy() });
+        result
+    }
+
+    /// `RESERVED` is a const generic rather than a runtime field so that the
+    /// collision check below (and the field it would otherwise need on every
+    /// [`SharedSymbol`]) is compiled away entirely for `create_reserved`'s call,
+    /// and costs only a handful of pointer comparisons for `create`'s call.
+    fn create_impl<const RESERVED: bool, N>(&self, name: N, arity: usize) -> StablePointer<SharedSymbol>
+    where
+        N: Into<String> + AsRef<str>,
+    {
+        // Get or create symbol index. A colliding name/arity resolves to the
+        // existing reserved entry rather than inserting a new one, since both
+        // paths key on the same `(name, arity)`.
+        let (shared_symbol, _inserted) = self.symbols.insert_equiv(&SharedSymbolLookup { name, arity });
+
+        if !RESERVED && self.reserved.contains(&shared_symbol) {
+            // SAFETY: `shared_symbol` was just returned by `insert_equiv` above, so it
+            // is resident in `self.symbols`.
+            let symbol = unsafe { shared_symbol.deref() };
+            panic!(
+                "cannot create a symbol named \"{}\" with arity {}: \
+                 the name is reserved for internal use by the term pool",
+                symbol.name(),
+                symbol.arity()
+            );
         }
 
-        // Return cloned symbol
         shared_symbol
     }
 

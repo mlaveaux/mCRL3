@@ -71,6 +71,9 @@ fn test_builder_usable_after_error() {
             )
             .expect("the second evaluation should succeed");
 
-        assert_eq!(result, c, "a builder reused after an error must produce the correct term");
+        assert_eq!(
+            result, c,
+            "a builder reused after an error must produce the correct term"
+        );
     });
 }
