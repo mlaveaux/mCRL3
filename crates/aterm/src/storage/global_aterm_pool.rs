@@ -3,7 +3,6 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 
 use log::debug;
@@ -68,13 +67,15 @@ pub struct GlobalTermPool {
 
 impl GlobalTermPool {
     fn new() -> GlobalTermPool {
-        // Insert the default symbols, mirrors the symbols defined in mCRL2.
-        let symbol_pool = SymbolPool::new();
+        // Insert the default symbols, mirrors the symbols defined in mCRL2. These are created
+        // via `create_reserved` rather than `create` so that no name/arity supplied to the
+        // public `Symbol::new` can ever alias one of them.
+        let mut symbol_pool = SymbolPool::new();
         // SAFETY: the default symbols are marked on every collection (see `collect_garbage`),
         // so these indices stay valid for the lifetime of the pool.
-        let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<aterm_int>", 0)) };
-        let list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<list_constructor>", 2)) };
-        let empty_list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create("<empty_list>", 0)) };
+        let int_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create_reserved("<aterm_int>", 0)) };
+        let list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create_reserved("<list_constructor>", 2)) };
+        let empty_list_symbol = unsafe { SymbolRef::from_index(&symbol_pool.create_reserved("<empty_list>", 0)) };
 
         GlobalTermPool {
             terms: ATermStorage::new(),
@@ -84,7 +85,6 @@ impl GlobalTermPool {
             marked_terms: FxHashSet::default(),
             marked_symbols: FxHashSet::default(),
             stack: Vec::new(),
-            deletion_hooks: Vec::new(),
             garbage_collection: true,
             int_symbol,
             list_symbol,
@@ -131,6 +131,12 @@ impl GlobalTermPool {
     /// Create a function symbol
     ///
     /// Crate-private: `protect` receives an unprotected index, see [Self::create_int].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name`/`arity` collide with one of the pool's own reserved
+    /// marker symbols (e.g. `<aterm_int>`) — this should never happen for a
+    /// legitimate caller, since those names are internal implementation details.
     pub(crate) fn create_symbol<P, N>(&self, name: N, arity: usize, protect: P) -> Symbol
     where
         P: FnOnce(SymbolIndex) -> Symbol,

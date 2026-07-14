@@ -5,29 +5,26 @@ use merc_aterm::ATermInt;
 use merc_aterm::Symbol;
 use merc_aterm::is_int_term;
 
-/// `is_int_term` only compares the head symbol against the reserved
-/// `<aterm_int>` symbol, and `Symbol::new("<aterm_int>", 0)` hands out that
-/// reserved symbol because the symbol pool shares symbols by name and arity.
-/// A constant built from it is stored as a regular nullary term without the
-/// annotation field, yet `is_int_term` claims it is an integer term, so the
-/// safe `ATermInt::value` reads past the end of the term's allocation.
+/// `is_int_term` recognizes a term purely by comparing its head symbol against
+/// the pool's reserved `<aterm_int>` marker symbol. Since the symbol pool used
+/// to share symbols by name and arity with no reserved-name guard,
+/// `Symbol::new("<aterm_int>", 0)` used to hand out that very same reserved
+/// symbol, so a constant built from it was indistinguishable from a real
+/// integer term even though it carries no annotation value. `ATermInt::value`
+/// would then read past the end of the term's allocation.
 ///
-/// The postcondition: for every term `t` accepted as an integer term,
-/// `ATermInt::new(t.value())` must be `t` again by maximal sharing.
+/// `Symbol::new` now panics on any name/arity that collides with one of the
+/// pool's reserved marker symbols, so forging one this way is no longer
+/// possible at all.
 #[test]
-fn test_fake_int_term_value_roundtrip() {
-    let fake = ATerm::constant(&Symbol::new("<aterm_int>", 0));
-    assert!(
-        is_int_term(&fake),
-        "the reserved integer symbol is reachable through Symbol::new"
-    );
+#[should_panic(expected = "reserved for internal use")]
+fn test_user_symbol_cannot_forge_reserved_int_symbol() {
+    let _ = Symbol::new("<aterm_int>", 0);
+}
 
-    let fake_int: ATermInt = fake.clone().into();
-    let value = fake_int.value();
-
-    assert_eq!(
-        ATerm::from(ATermInt::new(value)),
-        fake,
-        "an integer term must round-trip through its value"
-    );
+/// A legitimate integer term must still be recognized as one.
+#[test]
+fn test_real_int_term_is_still_recognized() {
+    let real = ATermInt::new(42);
+    assert!(is_int_term(&ATerm::from(real)));
 }
