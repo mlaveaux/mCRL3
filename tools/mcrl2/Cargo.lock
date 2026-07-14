@@ -936,7 +936,6 @@ name = "merc_aterm"
 version = "3.0.0"
 dependencies = [
  "allocator-api2 0.4.0",
- "dashmap",
  "delegate",
  "equivalent",
  "itertools 0.15.0",

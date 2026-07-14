@@ -30,7 +30,6 @@ merc_utilities.workspace = true
 merc_pest_consume.workspace = true
 
 allocator-api2.workspace = true
-dashmap.workspace = true
 delegate.workspace = true
 equivalent.workspace = true
 itertools.workspace = true
