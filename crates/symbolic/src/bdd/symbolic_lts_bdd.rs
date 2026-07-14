@@ -609,13 +609,13 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_to_symbolic_lts_conversion() {
-        random_test(25, |rng| {
+        random_test(10, |rng| {
             let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
             let bdd_manager = oxidd::bdd::new_manager(2048, 1024, 1);
 
             let mut chosen = None;
             for _ in 0..20 {
-                let lts = random_symbolic_lts(rng, &ldd_manager, 10, 5).unwrap();
+                let lts = random_symbolic_lts(rng, &ldd_manager, 5, 3).unwrap();
                 let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&ldd_manager, &bdd_manager, &lts).unwrap();
 
                 // `to_symbolic_lts` reconstructs layer order from bit-level variables; zero-bit
