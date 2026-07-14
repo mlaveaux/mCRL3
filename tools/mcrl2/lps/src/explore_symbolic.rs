@@ -51,8 +51,8 @@ mod tests {
     use merc_symbolic::SymbolicLtsBdd;
     use merc_symbolic::approx_satcount;
     use merc_symbolic::reachability_bdd;
-    use merc_symbolic::read_symbolic_lts;
     use merc_symbolic::reachability_with_options;
+    use merc_symbolic::read_symbolic_lts;
     use merc_utilities::Timing;
     use merc_utilities::random_test;
     use oxidd::BooleanFunction;
@@ -141,16 +141,14 @@ mod tests {
 
             // 1. merc-lps LDD path: explore the .lps directly via merc's symbolic engine.
             let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-            let lps_ldd_count =
-                explore_lps_symbolic(&storage, &lps, ExplorationStrategy::default(), false, &timing)
-                    .expect("Failed to explore LPS symbolically")
-                    .states
-                    .len();
+            let lps_ldd_count = explore_lps_symbolic(&storage, &lps, ExplorationStrategy::default(), false, &timing)
+                .expect("Failed to explore LPS symbolically")
+                .states
+                .len();
 
             // 2. lpsreach .sym, LDD reachability.
-            let mut sym_lts_ldd =
-                read_symbolic_lts(&storage, File::open(&sym_path).expect("Failed to open .sym"))
-                    .expect("Failed to read .sym (LDD path)");
+            let mut sym_lts_ldd = read_symbolic_lts(&storage, File::open(&sym_path).expect("Failed to open .sym"))
+                .expect("Failed to read .sym (LDD path)");
             let sym_ldd_count =
                 reachability_with_options(&storage, &mut sym_lts_ldd, &ReachabilityOptions::default(), &timing)
                     .expect("Failed to run LDD reachability on .sym")
@@ -158,9 +156,8 @@ mod tests {
                     .len();
 
             // 3. lpsreach .sym, BDD reachability (fresh read since reachability_with_options mutates the LTS).
-            let sym_lts_bdd =
-                read_symbolic_lts(&storage, File::open(&sym_path).expect("Failed to open .sym"))
-                    .expect("Failed to read .sym (BDD path)");
+            let sym_lts_bdd = read_symbolic_lts(&storage, File::open(&sym_path).expect("Failed to open .sym"))
+                .expect("Failed to read .sym (BDD path)");
             let bdd_manager = oxidd::bdd::new_manager(1 << 16, 1 << 16, 1);
             let lts_bdd = SymbolicLtsBdd::from_symbolic_lts(&storage, &bdd_manager, &sym_lts_bdd)
                 .expect("Failed to convert .sym to BDD");
@@ -168,8 +165,7 @@ mod tests {
                 lts_bdd.initial_state().satisfiable(),
                 "BDD conversion produced an unsatisfiable initial state"
             );
-            let reach_bdd =
-                reachability_bdd(&bdd_manager, &lts_bdd, false).expect("Failed to run BDD reachability");
+            let reach_bdd = reachability_bdd(&bdd_manager, &lts_bdd, false).expect("Failed to run BDD reachability");
             let sym_bdd_count = approx_satcount(
                 &reach_bdd,
                 lts_bdd.state_variables().len() as u32,

@@ -137,8 +137,7 @@ impl SummandGroup {
         read_pairs.sort_unstable_by_key(|(idx, _)| *idx);
         write_pairs.sort_unstable_by_key(|(idx, _)| *idx);
 
-        let (read_parameter_indices, read_parameters): (Vec<Value>, Vec<DataVariable>) =
-            read_pairs.into_iter().unzip();
+        let (read_parameter_indices, read_parameters): (Vec<Value>, Vec<DataVariable>) = read_pairs.into_iter().unzip();
         let (write_parameter_indices, write_parameters): (Vec<Value>, Vec<DataVariable>) =
             write_pairs.into_iter().unzip();
 

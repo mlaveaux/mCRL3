@@ -9,18 +9,18 @@ use clap::Subcommand;
 use itertools::Itertools;
 use merc_io::LargeFormatter;
 use merc_lts::AutStream;
+use merc_lts::LtsAction;
 use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
+use merc_lts::LtsMultiAction;
 use merc_lts::guess_lts_format_from_extension;
 use merc_lts::write_bcg;
-use merc_lts::LtsAction;
-use merc_lts::LtsMultiAction;
 use merc_symbolic::ExplorationStrategy;
 use merc_symbolic::ReachabilityOptions;
+use merc_symbolic::SatCountCache;
 use merc_symbolic::SymFormat;
 use merc_symbolic::SymbolicLPS;
 use merc_symbolic::SymbolicLTS;
-use merc_symbolic::SatCountCache;
 use merc_symbolic::SymbolicLtsBdd;
 use merc_symbolic::approx_satcount;
 use merc_symbolic::convert_symbolic_lts;
@@ -537,39 +537,41 @@ fn handle_reduce(cli: &Cli, args: &ReduceArgs, timing: &Timing) -> Result<(), Me
         SymbolicLtsBdd::from_symbolic_lts(&storage, &manager_ref, &lts)
     })?;
 
-    let quotient_lts = timing.measure("reduction", || -> Result<Option<SymbolicLtsBdd<LtsMultiAction<LtsAction>>>, MercError> {
-        match args.equivalence {
-            Equivalence::StrongBisimSigref => {
-                let (partition, block_vars, _num_of_blocks) = sigref_symbolic(
-                    &manager_ref,
-                    &lts_bdd,
-                    timing,
-                    args.split_signature,
-                    args.extend_relation,
-                    args.merge_transitions,
-                    args.visualize,
-                )?;
+    let quotient_lts = timing.measure(
+        "reduction",
+        || -> Result<Option<SymbolicLtsBdd<LtsMultiAction<LtsAction>>>, MercError> {
+            match args.equivalence {
+                Equivalence::StrongBisimSigref => {
+                    let (partition, block_vars, _num_of_blocks) = sigref_symbolic(
+                        &manager_ref,
+                        &lts_bdd,
+                        timing,
+                        args.split_signature,
+                        args.extend_relation,
+                        args.merge_transitions,
+                        args.visualize,
+                    )?;
 
-                let quotient = timing.measure("quotient", || {
-                    quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars)
-                })?;
-                Ok(Some(quotient))
+                    let quotient = timing.measure("quotient", || {
+                        quotient_symbolic(&manager_ref, &lts_bdd, &partition, &block_vars)
+                    })?;
+                    Ok(Some(quotient))
+                }
+                Equivalence::StrongBisim => {
+                    let _ = refine_bisimulation(&manager_ref, &lts_bdd)?;
+                    Ok(None)
+                }
             }
-            Equivalence::StrongBisim => {
-                let _ = refine_bisimulation(&manager_ref, &lts_bdd)?;
-                Ok(None)
-            }
-        }
-    })?;
+        },
+    )?;
 
     if let Some(output) = &args.output {
         let quotient_lts =
             quotient_lts.ok_or("Writing the quotient is not yet supported for the selected equivalence")?;
 
         if guess_format_from_extension(output, None) == Some(SymFormat::Sym) {
-            let quotient_ldd = timing.measure("convert_ldd", || {
-                quotient_lts.to_symbolic_lts(&storage, &manager_ref)
-            })?;
+            let quotient_ldd =
+                timing.measure("convert_ldd", || quotient_lts.to_symbolic_lts(&storage, &manager_ref))?;
 
             let mut output_file = File::create(output)?;
             write_symbolic_lts(&storage, &mut output_file, &quotient_ldd)?;
