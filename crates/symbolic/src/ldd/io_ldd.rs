@@ -110,8 +110,11 @@ impl<W: BitStreamWrite + ATermWrite> ATermWrite for BinaryLddWriter<W> {
             fn write_aterm_iter<I>(&mut self, iter: I) -> Result<(), MercError>
             where
                 I: ExactSizeIterator<Item = ATerm>;
-            fn flush(&mut self) -> Result<(), MercError>;
         }
+    }
+
+    fn flush(&mut self) -> Result<(), MercError> {
+        ATermWrite::flush(&mut self.writer)
     }
 }
 

@@ -168,7 +168,8 @@ pub fn write_symbolic_lts<W: Write>(manager: &LDDManagerRef, writer: W, lts: &Sy
 
     lts.data_specification().write(&mut stream)?;
 
-    let process_parameters: ATerm = ATermList::<DataVariable>::from_double_iter(lts.process_parameters().iter().cloned()).into();
+    let process_parameters: ATerm =
+        ATermList::<DataVariable>::from_double_iter(lts.process_parameters().iter().cloned()).into();
     stream.write_aterm(&process_parameters)?;
 
     stream.write_ldd(lts.initial_state())?;
@@ -221,8 +222,6 @@ pub fn write_symbolic_lts<W: Write>(manager: &LDDManagerRef, writer: W, lts: &Sy
     Ok(())
 }
 
-
-
 /// Returns the ATerm mark for symbolic labelled transition systems.
 fn symbolic_labelled_transition_system_mark() -> ATerm {
     ATerm::constant(&Symbol::new("symbolic_labelled_transition_system", 0))
@@ -230,9 +229,16 @@ fn symbolic_labelled_transition_system_mark() -> ATerm {
 
 #[cfg(test)]
 mod tests {
+    use merc_utilities::random_test;
     use merc_utilities::test_logger;
 
-    use super::*;
+    use crate::SymbolicLPS;
+    use crate::SymbolicLTS;
+    use crate::TransitionGroup;
+    use crate::random_symbolic_lts;
+
+    use super::read_symbolic_lts;
+    use super::write_symbolic_lts;
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -242,5 +248,34 @@ mod tests {
 
         let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
         let _lts = read_symbolic_lts(&ldd_manager, &input[..]).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_random_symbolic_lts_io() {
+        random_test(20, |rng| {
+            let ldd_manager = oxidd::ldd::new_manager(2048, 1024, 1);
+            let lts = random_symbolic_lts(rng, &ldd_manager, 5, 3).unwrap();
+
+            let mut buffer: Vec<u8> = Vec::new();
+            write_symbolic_lts(&ldd_manager, &mut buffer, &lts).unwrap();
+
+            let result = read_symbolic_lts(&ldd_manager, &buffer[..]).unwrap();
+
+            assert!(lts.states() == result.states());
+            assert!(lts.initial_state() == result.initial_state());
+            assert_eq!(lts.action_labels(), result.action_labels());
+            assert_eq!(lts.parameter_values().len(), result.parameter_values().len());
+            for (a, b) in lts.parameter_values().iter().zip(result.parameter_values()) {
+                assert_eq!(a, b);
+            }
+
+            assert_eq!(lts.transition_groups().len(), result.transition_groups().len());
+            for (a, b) in lts.transition_groups().iter().zip(result.transition_groups()) {
+                assert!(a.relation() == b.relation());
+                assert_eq!(a.read_parameters(), b.read_parameters());
+                assert_eq!(a.write_parameters(), b.write_parameters());
+            }
+        });
     }
 }
