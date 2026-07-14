@@ -315,6 +315,35 @@ impl Unifier {
         }
     }
 
+    /// Like [`Unifier::resolve`] but substitutes any remaining free variable with
+    /// `default` rather than returning `None`. Used by the solver to accept
+    /// equations whose auxiliary sorts (e.g. the element sort of an empty-list
+    /// literal in `n = #[]`) are never constrained (§7a.4, docs/typecheck.md).
+    pub(crate) fn resolve_or_default(
+        &mut self,
+        interner: &mut SortInterner,
+        id: InferSortId,
+        default: ResolvedSortId,
+    ) -> ResolvedSortId {
+        let id = self.shallow_normalize(id);
+        match self.arena[id].clone() {
+            InferSort::Var(_) => default,
+            InferSort::Resolved(resolved) => resolved,
+            InferSort::Generic { op, subsort } => {
+                let subsort = self.resolve_or_default(interner, subsort, default);
+                interner.generic(op, subsort)
+            }
+            InferSort::Function { domain, range } => {
+                let domain = domain
+                    .iter()
+                    .map(|&arg| self.resolve_or_default(interner, arg, default))
+                    .collect();
+                let range = self.resolve_or_default(interner, range, default);
+                interner.function(domain, range)
+            }
+        }
+    }
+
     /// The strict supersorts of `id` in ascending distance (`Pos` yields
     /// `[Nat, Int, Real]`), or `None` for an unbound variable, whose supersorts
     /// cannot be enumerated. Only the head constructor is widened: `Nat` has

@@ -9,6 +9,7 @@ use rand::seq::IteratorRandom;
 use merc_aterm::ATermString;
 use merc_data::DataExpression;
 use merc_data::DataVariable;
+use merc_data::Mcrl2DataSpecification;
 use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
 use merc_lts::TransitionLabel;

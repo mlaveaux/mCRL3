@@ -2,8 +2,6 @@ use merc_data::DataExpression;
 use merc_data::Mcrl2DataSpecification;
 use merc_data::DataVariable;
 use merc_lts::TransitionLabel;
-use merc_lts::LtsAction;
-use merc_lts::LtsMultiAction;
 use oxidd::ldd::LDDFunction;
 
 use crate::SummandGroup;
