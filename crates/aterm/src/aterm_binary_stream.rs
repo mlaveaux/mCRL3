@@ -4,6 +4,8 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 
+use log::error;
+
 use merc_collections::IndexedSet;
 use merc_io::BitStreamRead;
 use merc_io::BitStreamReader;
@@ -72,6 +74,27 @@ impl From<u8> for PacketType {
             _ => unreachable!("Invalid packet type: {value}"),
         }
     }
+}
+
+/// Resolves a `(name, arity)` pair read from a stream back into a [Symbol].
+///
+/// This is required for the marker symbols.
+fn resolve_read_symbol(name: &str, arity: usize) -> Symbol {
+    THREAD_TERM_POOL.with(|tp| {
+        let int_symbol = tp.int_symbol();
+        let list_symbol = tp.list_symbol();
+        let empty_list_symbol = tp.empty_list_symbol();
+
+        if arity == int_symbol.arity() && name == int_symbol.name() {
+            int_symbol.protect()
+        } else if arity == list_symbol.arity() && name == list_symbol.name() {
+            list_symbol.protect()
+        } else if arity == empty_list_symbol.arity() && name == empty_list_symbol.name() {
+            empty_list_symbol.protect()
+        } else {
+            Symbol::new(name, arity)
+        }
+    })
 }
 
 /// Trait for writing ATerms to a stream.
@@ -172,15 +195,20 @@ impl<W: Write> BinaryATermWriter<W> {
 
     /// \brief Write a function symbol to the output stream.
     fn write_function_symbol(&mut self, symbol: &SymbolRef<'_>) -> Result<usize, MercError> {
-        let (index, inserted) = self.function_symbols.write().insert(symbol.copy());
-
-        if inserted {
-            // Write the function symbol to the stream
-            self.stream.write_bits(PacketType::FunctionSymbol as u64, PACKET_BITS)?;
-            self.stream.write_string(symbol.name())?;
-            self.stream.write_integer(symbol.arity() as u64)?;
-            self.function_symbol_index_width = bits_for_value(self.function_symbols.read().len());
+        if let Some(index) = self.function_symbols.read().index(&symbol.copy()) {
+            return Ok(*index);
         }
+
+        // Write the packet before inserting the symbol, so that a failed write
+        // leaves `function_symbols` and `function_symbol_index_width`
+        // consistent.
+        self.stream.write_bits(PacketType::FunctionSymbol as u64, PACKET_BITS)?;
+        self.stream.write_string(symbol.name())?;
+        self.stream.write_integer(symbol.arity() as u64)?;
+
+        let (index, inserted) = self.function_symbols.write().insert(symbol.copy());
+        debug_assert!(inserted, "the symbol was just confirmed absent");
+        self.function_symbol_index_width = bits_for_value(self.function_symbols.read().len());
 
         Ok(*index)
     }
@@ -310,8 +338,10 @@ impl<W: Write> BitStreamWrite for BinaryATermWriter<W> {
 
 impl<W: Write> Drop for BinaryATermWriter<W> {
     fn drop(&mut self) {
-        if !self.flushed {
-            ATermWrite::flush(self).expect("Panicked while flushing the stream when dropped");
+        // A caller that is already propagating a write error may drop the
+        // writer without having flushed.
+        if !self.flushed && ATermWrite::flush(self).is_err() {
+            error!("Error flushing the stream when dropped!");
         }
 
         self.function_symbols.write().clear();
@@ -424,7 +454,7 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
                 PacketType::FunctionSymbol => {
                     let name = self.stream.read_string()?;
                     let arity = self.stream.read_integer()? as usize;
-                    let symbol = Symbol::new(name, arity);
+                    let symbol = resolve_read_symbol(&name, arity);
                     debug_trace!("Read symbol {symbol}");
 
                     let mut write_symbols = self.function_symbols.write();
@@ -506,10 +536,16 @@ impl<R: Read> ATermRead for BinaryATermReader<R> {
             .into());
         }
 
-        let number_of_elements: ATermInt = self
-            .read_aterm()?
-            .ok_or("Missing number of elements for iterator")?
-            .into();
+        let count_term = self.read_aterm()?.ok_or("Missing number of elements for iterator")?;
+        if !is_int_term(&count_term) {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Expected an integer element count for the iterator, found term {count_term}"),
+            )
+            .into());
+        }
+
+        let number_of_elements: ATermInt = count_term.into();
         Ok(ATermReadIter {
             reader: self,
             remaining: number_of_elements.value(),
@@ -579,10 +615,16 @@ mod tests {
     use merc_utilities::random_test;
 
     use crate::ATerm;
+    use crate::ATermInt;
+    use crate::ATermList;
     use crate::ATermRead;
     use crate::ATermWrite;
     use crate::BinaryATermReader;
     use crate::BinaryATermWriter;
+    use crate::Symbol;
+    use crate::Term;
+    use crate::is_int_term;
+    use crate::is_list_term;
     use crate::random_term;
 
     /// A sink that accepts a fixed number of bytes and then fails, mimicking a
@@ -613,7 +655,9 @@ mod tests {
         // well-formed) file, so it must report an error instead of panicking.
         let mut stream: Vec<u8> = Vec::new();
         let mut output_stream = BinaryATermWriter::new(&mut stream).unwrap();
-        output_stream.write_aterm(&ATerm::from_string("f(a,b)").unwrap()).unwrap();
+        output_stream
+            .write_aterm(&ATerm::from_string("f(a,b)").unwrap())
+            .unwrap();
         ATermWrite::flush(&mut output_stream).unwrap();
         drop(output_stream);
 
@@ -621,6 +665,37 @@ mod tests {
         assert!(
             input_stream.read_aterm_iter().is_err(),
             "a non-integer element count must be reported as a stream error"
+        );
+    }
+
+    #[test]
+    fn test_binary_stream_roundtrips_int_and_list_subterms() {
+        let f = Symbol::new("f_roundtrip_test", 2);
+        let int_term: ATerm = ATermInt::new(42).into();
+        let list_term: ATerm =
+            ATermList::from_double_iter(vec![ATermInt::new(1), ATermInt::new(2)].into_iter()).protect();
+        let term = ATerm::with_args(&f, &[int_term, list_term]).protect();
+
+        let mut stream: Vec<u8> = Vec::new();
+        let mut output_stream = BinaryATermWriter::new(&mut stream).unwrap();
+        output_stream.write_aterm(&term).unwrap();
+        ATermWrite::flush(&mut output_stream).unwrap();
+        drop(output_stream);
+
+        let mut input_stream = BinaryATermReader::new(&stream[..]).unwrap();
+        let read_term = input_stream.read_aterm().unwrap().expect("term must be present");
+
+        assert_eq!(
+            read_term, term,
+            "int/list subterms must round-trip through the binary stream"
+        );
+        assert!(
+            is_int_term(&read_term.arg(0)),
+            "the read int subterm must still be recognized as an integer term"
+        );
+        assert!(
+            is_list_term(&read_term.arg(1)),
+            "the read list subterm must still be recognized as a list term"
         );
     }
 
