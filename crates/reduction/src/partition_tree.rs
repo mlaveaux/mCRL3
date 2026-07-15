@@ -28,10 +28,9 @@ struct TreeNode {
 /// a partition.
 ///
 /// Every node is a block that existed at some refinement level. Internal nodes
-/// are coarser blocks from earlier levels; the leaves ([`Self::final_blocks`])
-/// are the blocks of the final (stable) partition. The forest plus the quotient
-/// edges of the final partition are everything needed to reconstruct a
-/// distinguishing formula.
+/// are coarser blocks from earlier levels; the leaves are the blocks of the
+/// final (stable) partition. The forest plus the quotient edges of the final
+/// partition are everything needed to reconstruct a distinguishing formula.
 ///
 /// The recorded `level` of a block equals the iteration at which it first split
 /// off, so for a level-synchronized refinement it is the minimal modal depth at
