@@ -85,7 +85,7 @@ const ROOT_EMPTY: u64 = (1u64 << (64 - MAX_HEIGHT_BITS)) - 1;
 /// Handles are only meaningful for the forest that produced them and are
 /// invalidated by [`SequenceForest::clear`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct Tree {
+pub(crate) struct Tree {
     /// Bits [63:6] hold the root node index; bits [5:0] hold the height.
     /// When bits [63:6] equal `ROOT_EMPTY` the tree is empty.
     packed: u64,
@@ -93,7 +93,7 @@ pub struct Tree {
 
 impl Tree {
     /// The empty tree, holding no entries.
-    pub const EMPTY: Tree = Tree {
+    pub(crate) const EMPTY: Tree = Tree {
         packed: ROOT_EMPTY << MAX_HEIGHT_BITS,
     };
 
@@ -116,7 +116,7 @@ impl Tree {
     }
 
     /// Returns true if this tree has no entries.
-    pub fn is_empty(self) -> bool {
+    pub(crate) fn is_empty(self) -> bool {
         self.packed >> MAX_HEIGHT_BITS == ROOT_EMPTY
     }
 }
@@ -147,7 +147,7 @@ impl Default for Tree {
 ///
 /// Nodes are never freed individually; the forest is append-only and reclaimed
 /// all at once with [`SequenceForest::clear`].
-pub struct SequenceForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHasher>
+pub(crate) struct SequenceForest<V, const N: usize = DEFAULT_BRANCHING, S = FxBuildHasher>
 where
     V: Copy,
 {
@@ -166,7 +166,7 @@ where
 /// The buffers only hold node indices, so a single context works for any
 /// [`SequenceForest`] regardless of its value type or branching factor.
 #[derive(Debug, Default, Clone)]
-pub struct SequenceForestContext {
+pub(crate) struct SequenceForestContext {
     /// Child indices of the level just built.
     src: Vec<usize>,
     /// Child indices of the level currently being built.
@@ -175,7 +175,7 @@ pub struct SequenceForestContext {
 
 impl SequenceForestContext {
     /// Creates an empty context.
-    pub fn new() -> SequenceForestContext {
+    pub(crate) fn new() -> SequenceForestContext {
         SequenceForestContext::default()
     }
 }
@@ -186,7 +186,7 @@ where
     S: Default,
 {
     /// Creates a new empty forest.
-    pub fn new() -> SequenceForest<V, N, S> {
+    pub(crate) fn new() -> SequenceForest<V, N, S> {
         const { assert!(N >= 2, "branching factor must be at least two") };
         // One interning table per representable height. The height field is
         // `MAX_HEIGHT_BITS` wide, so heights range over `0..(1 << MAX_HEIGHT_BITS)`.
@@ -208,7 +208,7 @@ where
     /// Interns the sequence `values` and returns a handle to its tree, using a
     /// throwaway [`SequenceForestContext`]. Prefer [`SequenceForest::insert_with`] on
     /// hot paths to reuse the scratch buffers.
-    pub fn insert(&self, values: &[V]) -> Tree {
+    pub(crate) fn insert(&self, values: &[V]) -> Tree {
         self.insert_with(values, &mut SequenceForestContext::new())
     }
 
@@ -221,7 +221,7 @@ where
     /// The tree is assembled bottom-up: contiguous chunks of `values` become
     /// leaf-level nodes, then those are grouped into interior nodes, and so on
     /// until a single root remains.
-    pub fn insert_with(&self, values: &[V], context: &mut SequenceForestContext) -> Tree {
+    pub(crate) fn insert_with(&self, values: &[V], context: &mut SequenceForestContext) -> Tree {
         if values.is_empty() {
             return Tree::EMPTY;
         }
@@ -313,7 +313,7 @@ where
 /// `h+1 > usize::BITS / floor(log2(n))` the tree would need more nodes than
 /// a `usize` can index. This ceiling is therefore a tight upper bound on any
 /// reachable depth.
-pub const fn max_depth(n: usize) -> usize {
+pub(crate) const fn max_depth(n: usize) -> usize {
     // floor(log2(n))
     let log2_n = (usize::BITS - n.leading_zeros() - 1) as usize;
     // ceil(usize::BITS / log2_n)
@@ -325,7 +325,7 @@ pub const fn max_depth(n: usize) -> usize {
 /// Leaves sit at height zero, so a tree spanning `max_depth(n)` levels tops out
 /// at one less than that. This is the largest value the packed height field of
 /// a [`Tree`] ever has to hold.
-pub const fn max_height(n: usize) -> usize {
+pub(crate) const fn max_height(n: usize) -> usize {
     max_depth(n) - 1
 }
 
@@ -337,7 +337,7 @@ where
     V: Slot,
 {
     /// Returns an iterator over the values of `tree` in sequence order.
-    pub fn iter(&self, tree: Tree) -> Iter<'_, V, N> {
+    pub(crate) fn iter(&self, tree: Tree) -> Iter<'_, V, N> {
         let mut stack = [([V::EMPTY; N], 0u32, 0u8); MAX_DEPTH];
         let mut depth = 0;
         if !tree.is_empty() {
@@ -363,13 +363,13 @@ where
     /// Returns the number of distinct nodes currently held by the forest. This
     /// is the deduplicated node count, not the total number of entries across
     /// all trees.
-    pub fn node_count(&self) -> usize {
+    pub(crate) fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
     /// Removes every tree from the forest, invalidating all outstanding
     /// [`Tree`] handles.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.nodes.clear();
         for table in &self.tables {
             table.clear();
@@ -393,7 +393,7 @@ where
 /// which keeps reconstruction cheap on hot paths. Each frame caches a copy of
 /// its node's slot array, so a node is fetched from the shared pool at most once
 /// per descent rather than on every value.
-pub struct Iter<'a, V, const N: usize>
+pub(crate) struct Iter<'a, V, const N: usize>
 where
     V: Copy,
 {

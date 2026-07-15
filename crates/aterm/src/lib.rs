@@ -15,24 +15,18 @@ mod transmutable;
 
 pub mod storage;
 
-pub(crate) use aterm::*;
-pub(crate) use aterm_binary_stream::*;
-pub(crate) use aterm_builder::*;
 pub(crate) use aterm_int::*;
 pub(crate) use aterm_list::*;
-pub(crate) use aterm_string::*;
-pub(crate) use markable::*;
 pub(crate) use parse_term::*;
-pub(crate) use protected::*;
+#[cfg(test)]
 pub(crate) use random_term::*;
-pub(crate) use symbol::*;
-pub(crate) use transmutable::*;
 
 // Public API re-exports.
 pub use aterm::ATerm;
 pub use aterm::ATermArgs;
 pub use aterm::ATermIndex;
 pub use aterm::ATermRef;
+pub use aterm::ATermSend;
 pub use aterm::Return;
 pub use aterm::Term;
 pub use aterm::TermIterator;
@@ -61,3 +55,4 @@ pub use symbol::Symbol;
 pub use symbol::SymbolIndex;
 pub use symbol::SymbolRef;
 pub use transmutable::Transmutable;
+pub use aterm_builder::apply;

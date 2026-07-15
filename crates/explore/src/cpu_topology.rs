@@ -17,15 +17,15 @@ use merc_utilities::MercError;
 /// The defaults trade a fraction of a second of startup latency measurement for a topology
 /// that is stable enough to base steal-order/pinning decisions on.
 #[derive(Debug, Clone, Copy)]
-pub struct TopologyDetectionConfig {
+pub(crate) struct TopologyDetectionConfig {
     /// Untimed round trips exchanged before timing starts, to warm up caches and branch predictors.
-    pub warmup_rounds: u64,
+    pub(crate) warmup_rounds: u64,
     /// Timed round trips per sample; the elapsed time divided by this count gives one-way latency.
-    pub timed_rounds: u64,
+    pub(crate) timed_rounds: u64,
     /// Number of samples taken per core pair; the minimum is kept since noise only inflates it.
-    pub samples: usize,
+    pub(crate) samples: usize,
     /// Multiplier on the observed minimum latency used as the clustering threshold.
-    pub cluster_factor: f64,
+    pub(crate) cluster_factor: f64,
 }
 
 impl Default for TopologyDetectionConfig {
@@ -46,7 +46,7 @@ impl Default for TopologyDetectionConfig {
 /// cross-core communication cost on the running machine (SMT siblings, shared
 /// L3/CCX, sockets) without needing to know the underlying topology names.
 #[derive(Debug, Clone)]
-pub struct CpuTopology {
+pub(crate) struct CpuTopology {
     cores: Vec<CoreId>,
     /// Row-major `num_cores() * num_cores()` one-way latency matrix; symmetric, zero diagonal.
     latency_ns: Vec<f64>,
@@ -56,7 +56,7 @@ pub struct CpuTopology {
 
 impl CpuTopology {
     /// Detects the topology of the current machine using the default [`TopologyDetectionConfig`].
-    pub fn detect() -> Result<CpuTopology, MercError> {
+    pub(crate) fn detect() -> Result<CpuTopology, MercError> {
         CpuTopology::detect_with(&TopologyDetectionConfig::default())
     }
 
@@ -65,7 +65,7 @@ impl CpuTopology {
     /// Falls back to a trivial single-core topology if fewer than two cores are available for
     /// pinning. Measurement uses [`quanta::Clock`], which transparently falls back from the TSC
     /// to the OS monotonic clock on VMs without a stable time-stamp counter.
-    pub fn detect_with(config: &TopologyDetectionConfig) -> Result<CpuTopology, MercError> {
+    pub(crate) fn detect_with(config: &TopologyDetectionConfig) -> Result<CpuTopology, MercError> {
         let cores = core_affinity2::get_core_ids().unwrap_or_default();
         if cores.len() < 2 {
             debug!(
@@ -85,7 +85,7 @@ impl CpuTopology {
     /// `latency_ns` must be a row-major `cores.len() * cores.len()` matrix that is symmetric
     /// with a zero diagonal and non-negative entries. Both [`CpuTopology::detect_with`] and
     /// the unit tests funnel through this constructor.
-    pub fn from_latency_matrix(
+    pub(crate) fn from_latency_matrix(
         cores: Vec<CoreId>,
         latency_ns: Vec<f64>,
         cluster_factor: f64,
@@ -101,29 +101,29 @@ impl CpuTopology {
     }
 
     /// Number of cores this topology was measured over.
-    pub fn num_cores(&self) -> usize {
+    pub(crate) fn num_cores(&self) -> usize {
         self.cores.len()
     }
 
     /// The measured cores, in the order used by all core-index accessors.
-    pub fn cores(&self) -> &[CoreId] {
+    pub(crate) fn cores(&self) -> &[CoreId] {
         &self.cores
     }
 
     /// One-way latency, in nanoseconds, between core indices `a` and `b`.
-    pub fn latency_ns(&self, a: usize, b: usize) -> f64 {
+    pub(crate) fn latency_ns(&self, a: usize, b: usize) -> f64 {
         self.latency_ns[a * self.cores.len() + b]
     }
 
     /// Disjoint groups of core indices with mutually low latency.
-    pub fn clusters(&self) -> &[Vec<usize>] {
+    pub(crate) fn clusters(&self) -> &[Vec<usize>] {
         &self.clusters
     }
 
     /// Other core indices ordered nearest-to-farthest from `core`, index order breaking ties.
     ///
     /// This is the victim order a topology-aware work-stealer would use.
-    pub fn cores_by_proximity(&self, core: usize) -> Vec<usize> {
+    pub(crate) fn cores_by_proximity(&self, core: usize) -> Vec<usize> {
         let mut others: Vec<usize> = (0..self.num_cores()).filter(|&index| index != core).collect();
         others.sort_by(|&a, &b| {
             self.latency_ns(core, a)

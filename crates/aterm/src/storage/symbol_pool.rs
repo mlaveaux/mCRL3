@@ -97,29 +97,29 @@ impl SymbolPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
-    pub fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
+    pub(crate) fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
         // SAFETY: `symbol` is a `SymbolRef<'a>`, so its symbol is alive for `'a`.
         unsafe { symbol.shared().deref() }.name()
     }
 
     /// Returns the arity of the function symbol
-    pub fn symbol_arity<'a, 'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> usize {
+    pub(crate) fn symbol_arity<'a, 'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> usize {
         // SAFETY: `symbol` borrows a live symbol for the duration of the call.
         unsafe { symbol.shared().deref() }.arity()
     }
 
     /// Returns the number of symbols in the pool.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.symbols.len()
     }
 
     /// Returns true if the pool is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.symbols.is_empty()
     }
 
     /// Returns the capacity of the pool.
-    pub fn capacity(&self) -> usize {
+    pub(crate) fn capacity(&self) -> usize {
         self.symbols.capacity()
     }
 
@@ -129,7 +129,7 @@ impl SymbolPool {
     ///
     /// Removal invalidates every [`SymbolIndex`] to a removed symbol; the caller must guarantee
     /// that no index to a removed symbol is dereferenced afterwards.
-    pub unsafe fn retain<F>(&mut self, mut f: F)
+    pub(crate) unsafe fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&SymbolIndex) -> bool,
     {

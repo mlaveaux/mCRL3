@@ -11,11 +11,11 @@ use crate::Tree;
 /// sparse rather than a contiguous `0..n`.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct StateRef(usize);
+pub(crate) struct StateRef(usize);
 
 impl StateRef {
     /// Returns the underlying index as a `usize`.
-    pub fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self.0
     }
 }
@@ -25,7 +25,7 @@ impl StateRef {
 ///
 /// The set is thread-safe: states can be inserted and looked up concurrently
 /// through `&self` from multiple threads.
-pub struct DiscoveredSet<T = usize>
+pub(crate) struct DiscoveredSet<T = usize>
 where
     T: Copy,
 {
@@ -41,7 +41,7 @@ where
     T: Slot,
 {
     /// Creates a new empty discovered set.
-    pub fn new() -> DiscoveredSet<T> {
+    pub(crate) fn new() -> DiscoveredSet<T> {
         DiscoveredSet {
             forest: SequenceForest::new(),
             states: ConcurrentIndexedSet::new(),
@@ -50,7 +50,7 @@ where
 
     /// Creates a new empty discovered set with room for at least `capacity`
     /// states before reallocating.
-    pub fn with_capacity(capacity: usize) -> DiscoveredSet<T> {
+    pub(crate) fn with_capacity(capacity: usize) -> DiscoveredSet<T> {
         DiscoveredSet {
             forest: SequenceForest::new(),
             states: ConcurrentIndexedSet::with_capacity(capacity),
@@ -60,13 +60,13 @@ where
     /// Inserts `state` and returns its handle together with a boolean that is
     /// true when the state was newly inserted and false when it was already
     /// present.
-    pub fn insert(&self, state: &[T]) -> (StateRef, bool) {
+    pub(crate) fn insert(&self, state: &[T]) -> (StateRef, bool) {
         self.insert_with(state, &mut SequenceForestContext::new())
     }
 
     /// Inserts `state` like [`DiscoveredSet::insert`], reusing the scratch
     /// buffers in `context`.
-    pub fn insert_with(&self, state: &[T], context: &mut SequenceForestContext) -> (StateRef, bool) {
+    pub(crate) fn insert_with(&self, state: &[T], context: &mut SequenceForestContext) -> (StateRef, bool) {
         let root = self.forest.insert_with(state, context);
         let (index, is_new) = self.states.insert(root);
         (StateRef(index), is_new)
@@ -77,25 +77,25 @@ where
     /// Note this is *not* a read-only operation. To obtain the canonical handle
     /// to compare against, `state` is interned into the backing forest, which
     /// is append-only. As a result, failures also grow the forest.
-    pub fn index(&self, state: &[T]) -> Option<StateRef> {
+    pub(crate) fn index(&self, state: &[T]) -> Option<StateRef> {
         self.index_with(state, &mut SequenceForestContext::new())
     }
 
     /// Looks up `state` like [`DiscoveredSet::index`], reusing the scratch buffers in `context`.
-    pub fn index_with(&self, state: &[T], context: &mut SequenceForestContext) -> Option<StateRef> {
+    pub(crate) fn index_with(&self, state: &[T], context: &mut SequenceForestContext) -> Option<StateRef> {
         let root = self.forest.insert_with(state, context);
         self.states.index(&root).map(StateRef)
     }
 
     /// Returns true if `state` is present in the set. Like
     /// [`DiscoveredSet::index`], this interns `state` into the forest.
-    pub fn contains(&self, state: &[T]) -> bool {
+    pub(crate) fn contains(&self, state: &[T]) -> bool {
         self.index(state).is_some()
     }
 
     /// Reconstructs the state vector for `reference` into the freshly cleared
     /// `out` buffer.
-    pub fn get_into(&self, reference: StateRef, out: &mut Vec<T>) -> bool {
+    pub(crate) fn get_into(&self, reference: StateRef, out: &mut Vec<T>) -> bool {
         out.clear();
         let Some(&tree) = self.states.get_by_index(reference.index()) else {
             return false;
@@ -107,14 +107,14 @@ where
     /// Returns the state vector for `reference`, allocating a fresh [`Vec`].
     ///
     /// Prefer [`DiscoveredSet::get_into`] on hot paths to reuse a buffer.
-    pub fn get(&self, reference: StateRef) -> Option<Vec<T>> {
+    pub(crate) fn get(&self, reference: StateRef) -> Option<Vec<T>> {
         let &tree = self.states.get_by_index(reference.index())?;
         Some(self.forest.iter(tree).collect())
     }
 
     /// Removes all states, invalidating every previously returned
     /// [`StateRef`].
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.forest.clear();
         self.states.clear();
     }
@@ -125,12 +125,12 @@ where
     T: Copy,
 {
     /// Returns the number of distinct states in the set.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.states.len()
     }
 
     /// Returns true if the set is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.states.is_empty()
     }
 }
