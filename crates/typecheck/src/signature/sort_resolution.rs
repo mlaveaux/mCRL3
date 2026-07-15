@@ -1,6 +1,7 @@
 use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
+use merc_syntax::EqnVarId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
@@ -56,7 +57,7 @@ pub(crate) fn query_sort_of_map(
     }
 }
 
-/// Returns the resolved sort of the `var_idx`-th variable in the equation
+/// Returns the resolved sort of the `var_id`-th variable in the equation
 /// block identified by `eqn_spec_id`, memoized on
 /// [TypeckContext::sort_of_equation_var]. Requires both ids to originate from
 /// `assign_declaration_ids` on `spec`.
@@ -67,18 +68,18 @@ pub(crate) fn query_sort_of_equation_var(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
     eqn_spec_id: EqnSpecId,
-    var_idx: usize,
+    var_id: EqnVarId,
 ) -> ResolvedSortId {
     match ctx
         .sort_of_equation_var
-        .get_or_lock((eqn_spec_id, var_idx))
+        .get_or_lock((eqn_spec_id, var_id))
         .expect("equation variable sort has no cyclic dependency")
     {
         Some(&sort) => sort,
         None => {
             let sort =
-                resolve_sort(ctx, spec, &spec.equation_declarations[eqn_spec_id].variables[var_idx].sort);
-            *ctx.sort_of_equation_var.unlock((eqn_spec_id, var_idx), sort)
+                resolve_sort(ctx, spec, &spec.equation_declarations[eqn_spec_id].variables[var_id].sort);
+            *ctx.sort_of_equation_var.unlock((eqn_spec_id, var_id), sort)
         }
     }
 }
@@ -268,8 +269,11 @@ mod tests {
         let eqn_spec_id = spec.data_specification().equation_declarations[0]
             .id
             .expect("assign_declaration_ids ran");
+        let var_id = spec.data_specification().equation_declarations[0].variables[0]
+            .id
+            .expect("assign_declaration_ids ran");
         assert_eq!(
-            spec.sort_of_equation_var(eqn_spec_id, 0),
+            spec.sort_of_equation_var(eqn_spec_id, var_id),
             spec.context().sorts.primitive(Sort::Nat)
         );
     }

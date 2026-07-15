@@ -8,12 +8,12 @@ use crate::Sort;
 use crate::SortExpression;
 
 /// Generates a random boolean data expression from the given variable list.
-pub fn random_boolean_data_expression<R: Rng>(rng: &mut R, variables: &[IdDecl]) -> DataExpr {
-    let integers: Vec<&IdDecl> = variables
+pub fn random_boolean_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDecl<Id>]) -> DataExpr {
+    let integers: Vec<&IdDecl<Id>> = variables
         .iter()
         .filter(|v| matches!(&v.sort, SortExpression::Simple(s) if matches!(s, Sort::Int | Sort::Nat | Sort::Pos)))
         .collect();
-    let booleans: Vec<&IdDecl> = variables
+    let booleans: Vec<&IdDecl<Id>> = variables
         .iter()
         .filter(|v| matches!(&v.sort, SortExpression::Simple(Sort::Bool)))
         .collect();
@@ -58,8 +58,8 @@ pub fn random_boolean_data_expression<R: Rng>(rng: &mut R, variables: &[IdDecl])
 }
 
 /// Generates a random integer data expression from the given variable list.
-pub fn random_integer_data_expression<R: Rng>(rng: &mut R, variables: &[IdDecl]) -> DataExpr {
-    let integers: Vec<&IdDecl> = variables
+pub fn random_integer_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDecl<Id>]) -> DataExpr {
+    let integers: Vec<&IdDecl<Id>> = variables
         .iter()
         .filter(|v| matches!(&v.sort, SortExpression::Simple(s) if matches!(s, Sort::Int | Sort::Nat | Sort::Pos)))
         .collect();
