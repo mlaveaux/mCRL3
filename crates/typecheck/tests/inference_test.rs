@@ -21,9 +21,8 @@
 //! in the *permissive* direction — merc's global constraint solver resolves
 //! typings mCRL2's local algorithm rejects as ambiguous — are marked with an
 //! explicit `IMPROVEMENT over mCRL2` comment, assert merc's behavior, and cite
-//! the analogous mCRL2 verdict (see "Known divergences" in docs/typecheck.md
-//! §7a). The `test_improvement_*` block near the end collects *new* showcase
-//! cases built on top of that mechanism.
+//! the analogous mCRL2 verdict. The `test_improvement_*` block near the end
+//! collects *new* showcase cases built on top of that mechanism.
 
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification;
@@ -190,13 +189,13 @@ fn test_upcast_pos_plus_nat_via_variables() {
 
 #[test]
 fn test_repeated_arithmetic_stays_tractable() {
-    // G5 (docs/typecheck.md): before the `Numeric` constraint replaced the
-    // `+`/`*` overload disjunction with a direct lookup, an equation with
-    // several repeated `2*i+k`-shaped sub-expressions (one of the two costs
-    // that used to keep `cellular_automata.mcrl2` out of the corpus harness)
-    // explored every combination of every occurrence's candidate overloads
-    // and did not terminate in reasonable time. A regression here would show
-    // up as this test taking far longer than the rest of the suite.
+    // Before the `Numeric` constraint replaced the `+`/`*` overload
+    // disjunction with a direct lookup, an equation with several repeated
+    // `2*i+k`-shaped sub-expressions (one of the two costs that used to keep
+    // `cellular_automata.mcrl2` out of the corpus harness) explored every
+    // combination of every occurrence's candidate overloads and did not
+    // terminate in reasonable time. A regression here would show up as this
+    // test taking far longer than the rest of the suite.
     check_ok(
         "map f: Nat -> Bool;
          var i: Nat;
@@ -703,8 +702,7 @@ fn test_where_mix_nat_pos_list_types_globally() {
     // at its minimal sort (x = [0, y]: List(Nat), y = [x]: List(Pos)) and
     // then cannot concatenate them; merc's solver types both bindings at
     // List(Nat) — the `[x]` element upcasts Pos <= Nat — which is a coherent
-    // assignment, so the equation is accepted. See "Known divergences" in
-    // docs/typecheck.md §7a. mCRL2: test_where_mix_nat_pos_list (rejected).
+    // assignment, so the equation is accepted. mCRL2: test_where_mix_nat_pos_list (rejected).
     check_ok("map l: List(Nat); var x: Pos; y: Nat; eqn l = x ++ y whr x = [0, y], y = [x] end;");
 }
 
@@ -833,8 +831,7 @@ fn test_proper_use_of_int2pos() {
 // the possible result sorts of the inner `f` and rejects as ambiguous when
 // more than one candidate remains, without ranking; merc's solver ranks the
 // exact match above the upcast (and filters through the equation's expected
-// sort), leaving a unique best solution. See "Known divergences" in
-// docs/typecheck.md §7a.
+// sort), leaving a unique best solution.
 
 #[test]
 fn test_ambiguous_function_application_recursive() {
@@ -882,11 +879,9 @@ fn test_ambiguous_function_application_recursive4() {
 // limitations the ported `test_ambiguous_function_application_recursive*`,
 // `test_where_mix_nat_pos_list` and `test_ambiguous_projection_function` cases
 // pin down, in fresh shapes. mCRL2 collects the candidate result sorts of an
-// inner overloaded call (`NewParList` in `TraverseVarConsTypeDN`,
-// `libraries/data/source/typecheck.cpp`) and rejects as ambiguous when more
-// than one survives, without ranking exact matches above numeric upcasts;
-// merc's global ranked solver keeps the unique best assignment. See "Known
-// divergences" in docs/typecheck.md §7a.
+// inner overloaded call and rejects as ambiguous when more than one survives,
+// without ranking exact matches above numeric upcasts; merc's global ranked
+// solver keeps the unique best assignment.
 
 #[test]
 fn test_improvement_ranked_overload_through_list_literal() {
@@ -984,8 +979,8 @@ fn test_ambiguous_function_application4_with_expected_sort() {
     // sort to resolve to `Nat # Nat -> S`, i.e. expand-all-arguments
     // semantics. merc's equation entry always has an expected sort, which
     // determines the overload either way; the unknown-expected reading
-    // (lexicographic-nearest would pick `U`, mCRL2 intended `S`) is recorded
-    // under G5 in docs/typecheck.md. mCRL2:
+    // (lexicographic-nearest would pick `U`, mCRL2 intended `S`) is a
+    // known permissive divergence. mCRL2:
     // test_ambiguous_function_application4/4a (disabled).
     check_ok(
         "sort S; T; U; map f: Pos; f: Pos # Nat -> U; f: Nat # Nat -> S; f: Nat # Pos -> T; result: U;
@@ -1006,21 +1001,21 @@ fn test_ambiguous_function_application4_with_expected_sort() {
 // `expected` substring pins the panic to the intended assertion.
 
 #[test]
-// §7a.4 fixed: free element sort is now defaulted to Bool, matching mCRL2's
+// Free element sort is defaulted to Bool, matching mCRL2's
 // acceptance. mCRL2: test_empty_list_size.
 fn test_count_of_empty_list_is_nat() {
     check_ok("map n: Nat; eqn n = #[];");
 }
 
 #[test]
-// §7a.4 fixed: free element sort is now defaulted to Bool, matching mCRL2's
+// Free element sort is defaulted to Bool, matching mCRL2's
 // acceptance. mCRL2: test_emptyset_complement_subset.
 fn test_emptyset_complement_subset() {
     check_ok("map b: Bool; eqn b = !{} <= {};");
 }
 
 #[test]
-// §7a.4 fixed: free element sort is now defaulted to Bool, matching mCRL2's
+// Free element sort is defaulted to Bool, matching mCRL2's
 // acceptance. mCRL2: test_emptyset_complement_subset_reverse.
 fn test_emptyset_complement_subset_reverse() {
     check_ok("map b: Bool; eqn b = {} <= !{};");
@@ -1030,7 +1025,7 @@ fn test_emptyset_complement_subset_reverse() {
 // anonymous structs in map sorts and binder positions. The constructor `t`
 // is therefore never in scope, so `x == t` fails with an undeclared-name
 // error — matching mCRL2's rejection. Anchor flipped from `#[should_panic]`
-// to a plain `check_err` (§7a.3, docs/typecheck.md).
+// to a plain `check_err`.
 
 #[test]
 // mCRL2: test_inline_struct.
@@ -1056,11 +1051,11 @@ fn test_inline_structs_compare_recogniser_rejected() {
 }
 
 #[test]
-// Regression for the cellular_automata blow-up (docs/typecheck.md G5): the
-// `if` join of a finite-set-literal branch with a set-comprehension branch
-// used to bind the result to `FSet` first and then re-explore the whole
-// comprehension body fruitlessly. Computing the branch join as a single
-// lattice least-upper-bound (`Join`) types it in one step. This reduced shape
+// Regression for a former blow-up: the `if` join of a finite-set-literal
+// branch with a set-comprehension branch used to bind the result to `FSet`
+// first and then re-explore the whole comprehension body fruitlessly.
+// Computing the branch join as a single lattice least-upper-bound (`Join`)
+// types it in one step. This reduced shape
 // captures the pattern; the full spec is covered by the example corpus.
 fn test_if_joins_set_literal_and_comprehension() {
     check_ok(

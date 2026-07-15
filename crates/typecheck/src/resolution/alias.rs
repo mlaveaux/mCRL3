@@ -23,16 +23,16 @@ pub(crate) enum AliasError {
     ThroughFunctionSort { sort: DefId },
 }
 
-/// Checks the alias declarations, mirroring mCRL2's `sort_type_checker`:
+/// Checks the alias declarations with two searches:
 ///
-/// - `check_alias_circularity`: an alias may not reach itself through basic
-///   sorts, containers or function sorts. Structured sorts terminate the
-///   search because recursion through a constructor is well-defined, e.g.
+/// - Circularity: an alias may not reach itself through basic sorts,
+///   containers or function sorts. Structured sorts terminate the search
+///   because recursion through a constructor is well-defined, e.g.
 ///   `sort Tree = struct leaf | node(Tree, Tree);`.
-/// - `check_for_sort_alias_loop_through_function_sort`: recursion through a
-///   function sort or a `Set`/`Bag` container is rejected even when it passes
-///   through a structured sort, e.g. `sort S = struct f(S -> Bool);`. A loop
-///   through a `List` (or `FSet`/`FBag`) container is allowed.
+/// - Function-sort loops: recursion through a function sort or a `Set`/`Bag`
+///   container is rejected even when it passes through a structured sort, e.g.
+///   `sort S = struct f(S -> Bool);`. A loop through a `List` (or `FSet`/`FBag`)
+///   container is allowed.
 ///
 /// Requires that all sort names in the specification have been resolved.
 pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), AliasError> {
@@ -58,9 +58,8 @@ pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), Alias
     Ok(())
 }
 
-/// The recursion of mCRL2's `check_alias_circularity`: searches for `lhs`
-/// through aliases, containers and function sorts, stopping at structured
-/// sorts.
+/// The circularity check: searches for `lhs` through aliases, containers and
+/// function sorts, stopping at structured sorts.
 fn check_circularity(
     lhs: DefId,
     rhs: &SortExpression,
@@ -92,10 +91,10 @@ fn check_circularity(
     .map(|_| ())
 }
 
-/// The recursion of mCRL2's `check_for_sort_alias_loop_through_function_sort`:
-/// searches for `lhs` through aliases, containers, function sorts *and*
-/// structured sorts, and reports a loop only when a function sort or a
-/// `Set`/`Bag` container was passed along the way (the `observed` context).
+/// The function-sort-loop check: searches for `lhs` through aliases,
+/// containers, function sorts *and* structured sorts, and reports a loop only
+/// when a function sort or a `Set`/`Bag` container was passed along the way
+/// (the `observed` context).
 fn check_function_sort_loop(
     lhs: DefId,
     rhs: &SortExpression,

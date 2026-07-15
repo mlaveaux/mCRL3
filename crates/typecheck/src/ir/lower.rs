@@ -49,9 +49,8 @@ pub(crate) fn lower_data_expressions(spec: &mut UntypedDataSpecification) {
 ///
 /// Literals (`Number`, `Bool`, and the empty/enumerated set and bag forms) are
 /// kept as dedicated nodes: sort inference treats them specially, constraining
-/// their sort structurally instead of through a declared symbol (G7 in
-/// `docs/typecheck.md`). The result satisfies [is_lowered]; lowering is
-/// idempotent.
+/// their sort structurally instead of through a declared symbol. The result
+/// satisfies [is_lowered]; lowering is idempotent.
 pub(crate) fn lower_data_expr(expr: DataExpr) -> DataExpr {
     map_data_expr(expr, |expr| match expr {
         DataExpr::Binary { op, lhs, rhs } => apply(op.to_string(), vec![*lhs, *rhs]),

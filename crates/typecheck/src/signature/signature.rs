@@ -27,7 +27,7 @@ pub(crate) struct Signature {
 /// signature-layer well-typedness checks of 15.1.7. Idempotent: a second call
 /// is a no-op that returns the already-stored result.
 ///
-/// Runs *before* `normalize_sorts`, so the errors refer to sorts as the user
+/// Runs *before* alias normalization, so the errors refer to sorts as the user
 /// wrote them (`D` rather than its alias expansion `Nat`); the semantic facts
 /// are obtained through the interned sort lattice instead, which expands alias
 /// indirection lazily via `query_sort_of_def`. Requires names to be resolved
@@ -66,13 +66,13 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
         mappings: HashMap::new(),
     };
 
-    // mCRL2's `add_constant` keys zero-arity constructors/mappings by *name*
-    // only, rejecting a second declaration under any different sort — even
-    // across `cons`/`map` and across different structs (two structs each
-    // declaring a nullary `open`, say). A symbol with a function sort is
-    // unaffected: its overloads are disambiguated by argument sort instead
-    // (Phase-3 overload resolution), which is why `signature.constructors`/
-    // `mappings` allow distinct-sort overloads freely.
+    // Zero-arity constructors/mappings are keyed by *name* only, so a second
+    // declaration under any different sort is rejected — even across
+    // `cons`/`map` and across different structs (two structs each declaring a
+    // nullary `open`, say). A symbol with a function sort is unaffected: its
+    // overloads are disambiguated by argument sort instead (Phase-3 overload
+    // resolution), which is why `signature.constructors`/`mappings` allow
+    // distinct-sort overloads freely.
     let mut constants: HashMap<String, ResolvedSortId> = HashMap::new();
 
     for decl in &spec.constructor_declarations {

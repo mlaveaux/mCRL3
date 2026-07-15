@@ -99,7 +99,7 @@ pub(crate) struct UnifierSnapshot {
 }
 
 /// Solves sort equality constraints by structural unification, backed by
-/// `ena`'s union-find table (docs/typecheck.md §4).
+/// `ena`'s union-find table.
 ///
 /// Sorts under inference live in an append-only arena; only the variable
 /// bindings participate in [Unifier::snapshot] / [Unifier::rollback_to], so
@@ -332,7 +332,7 @@ impl Unifier {
     /// Like [`Unifier::resolve`] but substitutes any remaining free variable with
     /// `default` rather than returning `None`. Used by the solver to accept
     /// equations whose auxiliary sorts (e.g. the element sort of an empty-list
-    /// literal in `n = #[]`) are never constrained (§7a.4, docs/typecheck.md).
+    /// literal in `n = #[]`) are never constrained.
     pub(crate) fn resolve_or_default(
         &mut self,
         interner: &mut SortInterner,

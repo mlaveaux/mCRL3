@@ -263,9 +263,8 @@ impl SortInterner {
         &self.arena[*id]
     }
 
-    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9):
-    // rendering the `Unit` sort and the `Int`/`Real` literals of an inserted
-    // cast. Exercised by tests only until then.
+    // Renders the `Unit` sort and the `Int`/`Real` literals of an inserted
+    // cast. Exercised by tests only for now.
     #[allow(dead_code)]
     pub(crate) fn unit_sort(&self) -> ResolvedSortId {
         self.unit_sort
@@ -295,7 +294,7 @@ impl SortInterner {
 
     /// Compares two sorts by the sub-sort ordering. `lowering.rs` uses this to
     /// decide which side of an application argument or equation join a
-    /// coercion belongs on (docs/typecheck.md §9a step 2).
+    /// coercion belongs on.
     pub(crate) fn partial_cmp(&self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<Ordering> {
         if lhs == rhs {
             return Some(Ordering::Equal);
@@ -310,7 +309,7 @@ impl SortInterner {
     /// report errors, it simply returns `None`.
     // Used by Phase-3 inference to resolve the shared free variable of a group
     // of `Sub` constraints (a `Join`; see inference.rs) in one step, and by
-    // Phase-4 coercion materialization (docs/typecheck.md §9).
+    // Phase-4 coercion materialization.
     pub(crate) fn join(&mut self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<ResolvedSortId> {
         if lhs == rhs {
             return Some(lhs);
@@ -352,8 +351,7 @@ impl SortInterner {
 
     /// Finds the greatest common subsort of two sorts, or `None` when they are
     /// incomparable.
-    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9),
-    // the dual of `join`; exercised by tests only until then.
+    // The dual of `join`; exercised by tests only for now.
     #[allow(dead_code)]
     pub(crate) fn meet(&mut self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<ResolvedSortId> {
         if lhs == rhs {

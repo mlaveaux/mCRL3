@@ -20,9 +20,9 @@ use crate::SortInterner;
 ///
 /// It owns the [SortInterner] and one [QueryCache] per query, following the
 /// rustc query model: each semantic fact is a memoized function on this
-/// context, so passes pull their dependencies lazily and results are shared
-/// (see `docs/typecheck.md` §5). The fields are `pub(crate)` so a query can
-/// borrow its own cache and the interner disjointly.
+/// context, so passes pull their dependencies lazily and results are shared.
+/// The fields are `pub(crate)` so a query can borrow its own cache and the
+/// interner disjointly.
 pub(crate) struct TypeckContext {
     pub(crate) sorts: SortInterner,
     pub(crate) sort_of_def: QueryCache<DefId, ResolvedSortId>,

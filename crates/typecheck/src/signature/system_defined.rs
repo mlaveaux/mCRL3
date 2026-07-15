@@ -15,8 +15,7 @@ use crate::standard_sort;
 
 /// Builds the system-defined part of a specification: the Appendix-B
 /// definitions (constructors, mappings and equations) for every basic sort,
-/// container sort and single-argument function sort that occurs in `spec`,
-/// mirroring mCRL2's `initialise_system_defined_functions`.
+/// container sort and single-argument function sort that occurs in `spec`.
 ///
 /// The five basic sorts are always included. A container sort pulls in the
 /// containers it is defined in terms of — a `Set(S)` needs `FSet(S)`, a `Bag(S)`
@@ -64,9 +63,8 @@ pub(crate) fn build_system_defined_specification(
     result
 }
 
-/// mCRL2's `add_function` rejects any user `cons`/`map` declaration whose
-/// name collides with a system-defined function, regardless of the user's
-/// declared sort ("Attempt to redeclare a system function"): the
+/// Any user `cons`/`map` declaration whose name collides with a system-defined
+/// function is rejected, regardless of the user's declared sort: the
 /// always-present basic-sort operators (`basics`), the polymorphic
 /// container operations (`POLYMORPHIC_SIGNATURE`), and the built-in
 /// comparison/`if` schemes. This is a pure name comparison — it does not

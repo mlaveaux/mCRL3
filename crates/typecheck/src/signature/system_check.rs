@@ -11,9 +11,8 @@ use crate::WellTypedError;
 use crate::check_products_within_domains;
 
 /// The polymorphic built-ins of Phase-3 inference (`scheme_instance`): the
-/// comparison operators and `if` exist for every sort and stay undeclared
-/// until `basic_spec` is wired (docs/typecheck.md G3), so the system equations
-/// may use them without a declaration.
+/// comparison operators and `if` exist for every sort and are never declared,
+/// so the system equations may use them without a declaration.
 const BUILTIN_SCHEMES: [&str; 7] = ["==", "!=", "<", "<=", ">", ">=", "if"];
 
 /// Verifies that the generated system-defined specification is internally
@@ -35,7 +34,7 @@ const BUILTIN_SCHEMES: [&str; 7] = ["==", "!=", "<", "<=", ">", ">=", "if"];
 /// - the free variables of an equation's condition and right-hand side occur
 ///   in its left-hand side, so every rule is executable by rewriting.
 ///
-/// Full sort inference over the system equations is not run (G3).
+/// Full sort inference over the system equations is not run.
 pub(crate) fn check_system_specification(
     user_spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,

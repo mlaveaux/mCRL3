@@ -53,7 +53,7 @@ fn primitive_name(sort: Sort) -> &'static str {
 
 /// The merc_data container kind for a [ComplexSort]; the two enums are kept
 /// separate because `merc_data` sits below `merc_syntax` in the dependency
-/// layering (docs/typecheck.md architecture) and cannot name it directly.
+/// layering and cannot name it directly.
 fn container_kind(op: ComplexSort) -> ContainerSortKind {
     match op {
         ComplexSort::List => ContainerSortKind::List,
@@ -65,13 +65,12 @@ fn container_kind(op: ComplexSort) -> ContainerSortKind {
 }
 
 /// Widens `term` one step up the number lattice (`Pos <= Nat <= Int <= Real`),
-/// returning the wrapped term and its new sort. mCRL2's type checker
-/// (`UpCastNumericType`, `typecheck.cpp`) does *not* call a named `Pos2Nat`/…
-/// conversion function — those are rewrite rules that reduce to exactly these
-/// constructor applications (`nat.mcrl2`/`int.mcrl2`/`real.mcrl2`) — it builds
-/// the constructor chain directly, composing steps for a non-adjacent pair
-/// (e.g. `Pos -> Real` becomes `@cReal(@cInt(@cNat(x)), @c1)`, not a single
-/// `Pos2Real` call).
+/// returning the wrapped term and its new sort. The coercion is the explicit
+/// constructor chain, not a named `Pos2Nat`/… conversion function — those are
+/// rewrite rules that reduce to exactly these constructor applications
+/// (`nat.mcrl2`/`int.mcrl2`/`real.mcrl2`). Steps compose for a non-adjacent
+/// pair (e.g. `Pos -> Real` becomes `@cReal(@cInt(@cNat(x)), @c1)`, not a
+/// single `Pos2Real` call).
 fn widen_one_step(term: DataExpression, from: Sort) -> (DataExpression, Sort) {
     match from {
         Sort::Pos => {
@@ -104,11 +103,10 @@ fn numeric_coerce(mut term: DataExpression, from: Sort, to: Sort) -> DataExpress
 }
 
 /// Widens `term`, an `FSet(element)`/`FBag(element)`, to `Set(element)`/
-/// `Bag(element)` via the constructor mCRL2's type checker actually inserts
-/// (`sort_set::constructor`/`sort_bag::constructor`, `typecheck.cpp`):
-/// `@set(@false_, term)` / `@bag(@zero_, term)` — not a call to
-/// `@setfset`/`@bagfbag`, which are rewrite-system-only operators (`set.mcrl2`
-/// itself notes `@setfset` "should not be part of the rewrite system").
+/// `Bag(element)` via the constructor `@set(@false_, term)` /
+/// `@bag(@zero_, term)` — not a call to `@setfset`/`@bagfbag`, which are
+/// rewrite-system-only operators (`set.mcrl2` itself notes `@setfset`
+/// "should not be part of the rewrite system").
 fn container_coerce(term: DataExpression, op: ComplexSort, element: DataSortExpression) -> DataExpression {
     match op {
         ComplexSort::FSet => {
@@ -133,18 +131,16 @@ fn container_coerce(term: DataExpression, op: ComplexSort, element: DataSortExpr
     }
 }
 
-/// Converts an inferred, interned sort into the aterm `SortExpression` mCRL2's
-/// binary format uses (§6a/§9a, docs/typecheck.md): `Primitive`/`Generic`/
-/// `Function` recurse structurally onto `BasicSort`/`SortCons`/`SortArrow`,
-/// and `Def` resolves to its declared name — falling back to a
-/// system-internal sort's display name and finally a bare index, mirroring
-/// [crate::display_sort]'s fallback chain (the two independently converge on
-/// the same name because a nominal sort's identity *is* its declared name for
-/// mCRL2's binary schema).
+/// Converts an inferred, interned sort into the aterm `SortExpression` the
+/// binary format uses: `Primitive`/`Generic`/`Function` recurse structurally
+/// onto `BasicSort`/`SortCons`/`SortArrow`, and `Def` resolves to its declared
+/// name — falling back to a system-internal sort's display name and finally a
+/// bare index, mirroring [crate::display_sort]'s fallback chain (the two
+/// independently converge on the same name because a nominal sort's identity
+/// *is* its declared name for the binary schema).
 ///
 /// `Unit` never reaches this function: it is only used for the sort of an
 /// action, never a data-expression sort.
-// Consumed by the Phase-4 equation re-walk (docs/typecheck.md §9a); exercised by tests only until then.
 #[allow(dead_code)]
 pub(crate) fn lower_sort(
     ctx: &TypeckContext,
@@ -287,9 +283,7 @@ fn real_literal(decimal: &str) -> DataExpression {
 /// Builds the aterm literal for a `DataExpr::Number` node whose *own*
 /// inferred sort is `sort` (`Pos`/`Nat`/`Int`/`Real`) — no coercion is
 /// inserted here, so the caller must have already established that this is
-/// the literal's minimal inferred sort, not a wider one it is later upcast
-/// to (§9a step 2, docs/typecheck.md, is the coercion-insertion pass).
-// Consumed by the Phase-4 equation re-walk; exercised by tests only until then.
+/// the literal's minimal inferred sort, not a wider one it is later upcast to.
 #[allow(dead_code)]
 pub(crate) fn lower_number_literal(decimal: &str, sort: Sort) -> DataExpression {
     match sort {
@@ -302,14 +296,12 @@ pub(crate) fn lower_number_literal(decimal: &str, sort: Sort) -> DataExpression 
 }
 
 /// Builds the aterm literal for a `DataExpr::Bool` node.
-// Consumed by the Phase-4 equation re-walk; exercised by tests only until then.
 #[allow(dead_code)]
 pub(crate) fn lower_bool_literal(value: bool) -> DataExpression {
     bool_literal(value)
 }
 
-/// The result of lowering one equation (§9a step 1, docs/typecheck.md).
-// Consumed by the eventual `DataSpecification` assembly (§9a step 5); exercised by tests only until then.
+/// The result of lowering one equation.
 #[allow(dead_code)]
 pub(crate) struct LoweredEquation {
     pub(crate) condition: Option<DataExpression>,
@@ -323,16 +315,13 @@ pub(crate) struct LoweredEquation {
 /// children, arguments before the applied function), building
 /// `merc_data::DataExpression`s bottom-up.
 ///
-/// Covers the "foundation + non-binder happy path" slice of Phase 4:
-/// variables, declared-op and builtin-op applications (including polymorphic
-/// comparison/`if`/container ops — §9a step 3), numeric/boolean literals, and
-/// the numeric/container coercions widening an application argument or the
-/// equation's own LHS/RHS to a shared sort (§9a step 2). Returns `None` —
-/// not an error — the moment the equation needs anything outside that slice (a
-/// container literal or a binder), which is expected to exclude most
-/// real-world equations for now; concrete-builtin/container recovery and
-/// binder lowering are follow-up work (§9a steps 3–4).
-// Consumed by the eventual `DataSpecification` assembly; exercised by tests only until then.
+/// Lowers variables, declared-op and builtin-op applications (including the
+/// polymorphic comparison/`if` operators), numeric/boolean literals, container
+/// literals, all binders (`lambda`, `forall`/`exists`, set/bag comprehensions,
+/// `where`), and the numeric/container coercions widening an application
+/// argument or the equation's own LHS/RHS to a shared sort. Returns `None` —
+/// not an error — when the typing was `Skipped` (an unsupported binder sort)
+/// or a construct it does not yet cover is reached.
 #[allow(dead_code)]
 pub(crate) fn lower_equation(
     ctx: &TypeckContext,
@@ -418,15 +407,14 @@ impl Lowering<'_> {
         }
     }
 
-    /// Widens `term` from `from` to `to` along the sub-sort lattice (§9a step
-    /// 2), inserting the constructor chain mCRL2's type checker actually
-    /// builds (`@cNat`/`@cInt`/`@cReal` composed for the number lattice,
-    /// `@set(@false_, _)`/`@bag(@zero_, _)` for the container lattice — see
-    /// [numeric_coerce]/[container_coerce]) — or returning `term` unchanged
-    /// when the two sorts already coincide. Returns `None` unless `from` is
-    /// `to` or a strict subsort of it (checked via
-    /// [crate::SortInterner::partial_cmp]); a `Def` sort has no mCRL2
-    /// coercion either way.
+    /// Widens `term` from `from` to `to` along the sub-sort lattice, inserting
+    /// the constructor chain (`@cNat`/`@cInt`/`@cReal` composed for the number
+    /// lattice, `@set(@false_, _)`/`@bag(@zero_, _)` for the container lattice
+    /// — see [numeric_coerce]/[container_coerce]) — or returning `term`
+    /// unchanged when the two sorts already coincide. Returns `None` unless
+    /// `from` is `to` or a strict subsort of it (checked via
+    /// [crate::SortInterner::partial_cmp]); a `Def` sort has no coercion either
+    /// way.
     fn coerce(&self, term: DataExpression, from: ResolvedSortId, to: ResolvedSortId) -> Option<DataExpression> {
         if from == to {
             return Some(term);
@@ -488,9 +476,9 @@ impl Lowering<'_> {
         if domain.len() != argument_sorts.len() {
             return None;
         }
-        // Each argument widens to its domain position if needed (§9a step 2):
-        // the domain is cloned first since `coerce` below needs `self.ctx`
-        // again, which this `match` already borrows through `function_sort`.
+        // Each argument widens to its domain position if needed: the domain
+        // is cloned first since `coerce` below needs `self.ctx` again, which
+        // this `match` already borrows through `function_sort`.
         let domain = domain.clone();
 
         let mut coerced_terms = Vec::with_capacity(argument_terms.len());
@@ -677,7 +665,7 @@ pub(crate) fn lower_syntax_sort(sort: &SortExpression) -> DataSortExpression {
         // A user-declared or struct-representative sort after name resolution,
         // or an unresolved template reference in the system spec (e.g. "S", "T").
         // Both use the string name — the identity of a nominal sort IS its name
-        // in the mCRL2 binary schema (§6a, docs/typecheck.md).
+        // in the binary schema.
         SortExpression::Resolved(name, _) | SortExpression::Reference(name) => BasicSort::new(name.as_str()).into(),
         SortExpression::Struct { .. } | SortExpression::Product { .. } => {
             unreachable!("struct/product sorts are desugared/flattened before lowering")
@@ -945,14 +933,14 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
 // ──────────────────────── lower_data_specification ───────────────────────────
 
 /// Assembles a [`Mcrl2DataSpecification`] from the already-type-checked user
-/// and system specifications (§9a step 5, docs/typecheck.md):
+/// and system specifications:
 ///
 /// - **sorts** — user abstract sorts (those whose declaration has no right-hand
 ///   side after desugaring and normalization).
 /// - **aliases** — user sort aliases (those that do have a right-hand side).
 /// - **constructors / mappings** — user declarations lowered via the interned
 ///   sort lattice, followed by system declarations lowered directly from their
-///   syntax sorts (the system spec is deliberately left unresolved — §G3).
+///   syntax sorts (the system spec is deliberately left unresolved).
 /// - **equations** — user equations whose [`EquationTyping`] is
 ///   [`EquationTyping::Inferred`] and whose expression tree is fully supported
 ///   by [`lower_equation`], followed by system equations that can be lowered
@@ -1209,16 +1197,16 @@ mod tests {
         assert_eq!(equation.rhs.to_string(), "@c0");
     }
 
-    // === lower_equation: coercion insertion (§9a step 2) ===
+    // === lower_equation: coercion insertion ===
 
     #[test]
     fn test_equation_level_coercion_widens_rhs() {
         // `1`'s minimal sort is `Pos`, but `n` is declared `Nat`: the
         // equation itself needs a `Pos -> Nat` coercion, inserted on the
-        // narrower (right-hand) side. mCRL2's type checker builds the
-        // constructor application directly (`@cNat`), not a call to a
-        // `Pos2Nat` conversion function (that name is only a rewrite rule
-        // that reduces to this same term, `nat.mcrl2`).
+        // narrower (right-hand) side. The coercion is the constructor
+        // application (`@cNat`) directly, not a call to a `Pos2Nat` conversion
+        // function (that name is only a rewrite rule that reduces to this same
+        // term, `nat.mcrl2`).
         let equation = lower("map n: Nat; eqn n = 1;").expect("Pos widens to Nat");
         assert_eq!(equation.rhs.to_string(), "@cNat(@c1)");
     }
@@ -1234,8 +1222,8 @@ mod tests {
     #[test]
     fn test_direct_coercion_composes_intermediate_sorts() {
         // A `Pos -> Real` coercion composes every intermediate constructor
-        // mCRL2's `UpCastNumericType` would (`@cReal(@cInt(@cNat(x)), @c1)`),
-        // it does not call a single `Pos2Real` function.
+        // (`@cReal(@cInt(@cNat(x)), @c1)`), it does not call a single
+        // `Pos2Real` function.
         let equation = lower("map r: Real; eqn r = 1;").expect("Pos widens to Real");
         assert_eq!(equation.rhs.to_string(), "@cReal(@cInt(@cNat(@c1)), @c1)");
     }
@@ -1250,8 +1238,7 @@ mod tests {
 
     #[test]
     fn test_fset_argument_widens_to_set() {
-        // mCRL2's type checker inserts the `@set` constructor directly
-        // (`sort_set::constructor`, `typecheck.cpp`), not a call to
+        // The `@set` constructor is inserted directly, not a call to
         // `@setfset` (a rewrite-system-only operator, per `set.mcrl2`'s own
         // comment that it "should not be part of the rewrite system").
         let equation =
@@ -1266,10 +1253,9 @@ mod tests {
         assert_eq!(equation.lhs.to_string(), "s(@bag(@zero_, e))");
     }
 
-    // === lower_equation: §9a step 3 — container literal lowering ===
+    // === lower_equation: container literal lowering ===
 
     #[test]
-    // §9a step 3 fixed: empty list now lowers to the `[]` constant.
     fn test_empty_list_lowers() {
         let equation = lower("map s: List(Nat); eqn s = [];").expect("empty list lowers");
         assert_eq!(equation.rhs.to_string(), "[]");
@@ -1330,7 +1316,6 @@ mod tests {
     }
 
     #[test]
-    // §9a step 4 fixed: lambda now lowers to a Binder(Lambda, ...) aterm.
     fn test_lambda_lowers() {
         let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
         assert!(
@@ -1407,7 +1392,7 @@ mod tests {
         );
     }
 
-    // === lower_equation: §9a step 3 — all NameTarget::Builtin ops use inferred sort ===
+    // === lower_equation: all NameTarget::Builtin ops use inferred sort ===
 
     #[test]
     fn test_builtin_arithmetic_op() {
