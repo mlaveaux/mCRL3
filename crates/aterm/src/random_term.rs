@@ -1,16 +1,23 @@
 #![forbid(unsafe_code)]
 
-use rand::Rng;
-use rustc_hash::FxHashSet;
+#[cfg(test)]
+mod inner {
+    pub use rand::Rng;
+    pub use rustc_hash::FxHashSet;
 
-use crate::ATerm;
-use crate::Symbol;
-use crate::Term;
-use crate::storage::THREAD_TERM_POOL;
+    pub use crate::ATerm;
+    pub use crate::Symbol;
+    pub use crate::Term;
+    pub use crate::storage::THREAD_TERM_POOL;
+}
+
+#[cfg(test)]
+use inner::*;
 
 /// Create a random term consisting of the given symbol and constants. Performs
 /// iterations number of constructions, and uses chance_duplicates to choose the
 /// amount of subterms that are duplicated.
+#[cfg(test)]
 pub(crate) fn random_term<R: Rng>(
     rng: &mut R,
     symbols: &[(String, usize)],

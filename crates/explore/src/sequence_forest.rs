@@ -208,6 +208,7 @@ where
     /// Interns the sequence `values` and returns a handle to its tree, using a
     /// throwaway [`SequenceForestContext`]. Prefer [`SequenceForest::insert_with`] on
     /// hot paths to reuse the scratch buffers.
+    #[allow(dead_code)]
     pub(crate) fn insert(&self, values: &[V]) -> Tree {
         self.insert_with(values, &mut SequenceForestContext::new())
     }
@@ -363,12 +364,14 @@ where
     /// Returns the number of distinct nodes currently held by the forest. This
     /// is the deduplicated node count, not the total number of entries across
     /// all trees.
+    #[allow(dead_code)]
     pub(crate) fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
     /// Removes every tree from the forest, invalidating all outstanding
     /// [`Tree`] handles.
+    #[allow(dead_code)]
     pub(crate) fn clear(&mut self) {
         self.nodes.clear();
         for table in &self.tables {

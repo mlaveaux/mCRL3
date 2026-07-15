@@ -97,28 +97,33 @@ impl SymbolPool {
     }
 
     /// Return the symbol of the SharedTerm for the given ATermRef
+    #[allow(dead_code)]
     pub(crate) fn symbol_name<'a>(&self, symbol: &'a SymbolRef<'a>) -> &'a str {
         // SAFETY: `symbol` is a `SymbolRef<'a>`, so its symbol is alive for `'a`.
         unsafe { symbol.shared().deref() }.name()
     }
 
     /// Returns the arity of the function symbol
+    #[allow(dead_code)]
     pub(crate) fn symbol_arity<'a, 'b, S: Symb<'a, 'b>>(&self, symbol: &'b S) -> usize {
         // SAFETY: `symbol` borrows a live symbol for the duration of the call.
         unsafe { symbol.shared().deref() }.arity()
     }
 
     /// Returns the number of symbols in the pool.
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.symbols.len()
     }
 
     /// Returns true if the pool is empty.
+    #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         self.symbols.is_empty()
     }
 
     /// Returns the capacity of the pool.
+    #[allow(dead_code)]
     pub(crate) fn capacity(&self) -> usize {
         self.symbols.capacity()
     }

@@ -7,14 +7,9 @@ mod lps;
 mod sequence_forest;
 mod thread_affinity;
 
-pub(crate) use cache_lps::*;
-pub(crate) use combine::*;
 pub(crate) use cpu_topology::*;
 pub(crate) use discovered_set::*;
-pub(crate) use explore::*;
-pub(crate) use lps::*;
 pub(crate) use sequence_forest::*;
-pub(crate) use thread_affinity::*;
 
 pub use cache_lps::CacheContext;
 pub use cache_lps::CacheLPS;

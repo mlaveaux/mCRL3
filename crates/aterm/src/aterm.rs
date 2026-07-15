@@ -312,7 +312,7 @@ impl ATerm {
     }
 
     /// Replace this term by the given term in place.
-    pub(crate) fn replace<'a, 'b, T>(&mut self, value: Return<T>)
+    pub fn replace<'a, 'b, T>(&mut self, value: Return<T>)
     where
         T: Term<'a, 'b>,
         'b: 'a,

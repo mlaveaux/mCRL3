@@ -28,7 +28,6 @@ pub(crate) use gc_mutex::*;
 pub(crate) use global_aterm_pool::*;
 pub(crate) use shared_term::*;
 pub(crate) use symbol_pool::*;
-pub(crate) use thread_aterm_pool::*;
 
 // Public API re-exports.
 pub use global_aterm_pool::Marker;

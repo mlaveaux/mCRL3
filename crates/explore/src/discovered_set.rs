@@ -50,6 +50,7 @@ where
 
     /// Creates a new empty discovered set with room for at least `capacity`
     /// states before reallocating.
+    #[allow(dead_code)]
     pub(crate) fn with_capacity(capacity: usize) -> DiscoveredSet<T> {
         DiscoveredSet {
             forest: SequenceForest::new(),
@@ -77,11 +78,13 @@ where
     /// Note this is *not* a read-only operation. To obtain the canonical handle
     /// to compare against, `state` is interned into the backing forest, which
     /// is append-only. As a result, failures also grow the forest.
+    #[allow(dead_code)]
     pub(crate) fn index(&self, state: &[T]) -> Option<StateRef> {
         self.index_with(state, &mut SequenceForestContext::new())
     }
 
     /// Looks up `state` like [`DiscoveredSet::index`], reusing the scratch buffers in `context`.
+    #[allow(dead_code)]
     pub(crate) fn index_with(&self, state: &[T], context: &mut SequenceForestContext) -> Option<StateRef> {
         let root = self.forest.insert_with(state, context);
         self.states.index(&root).map(StateRef)
@@ -89,12 +92,14 @@ where
 
     /// Returns true if `state` is present in the set. Like
     /// [`DiscoveredSet::index`], this interns `state` into the forest.
+    #[allow(dead_code)]
     pub(crate) fn contains(&self, state: &[T]) -> bool {
         self.index(state).is_some()
     }
 
     /// Reconstructs the state vector for `reference` into the freshly cleared
     /// `out` buffer.
+    #[allow(dead_code)]
     pub(crate) fn get_into(&self, reference: StateRef, out: &mut Vec<T>) -> bool {
         out.clear();
         let Some(&tree) = self.states.get_by_index(reference.index()) else {
@@ -107,6 +112,7 @@ where
     /// Returns the state vector for `reference`, allocating a fresh [`Vec`].
     ///
     /// Prefer [`DiscoveredSet::get_into`] on hot paths to reuse a buffer.
+    #[allow(dead_code)]
     pub(crate) fn get(&self, reference: StateRef) -> Option<Vec<T>> {
         let &tree = self.states.get_by_index(reference.index())?;
         Some(self.forest.iter(tree).collect())
@@ -114,6 +120,7 @@ where
 
     /// Removes all states, invalidating every previously returned
     /// [`StateRef`].
+    #[allow(dead_code)]
     pub(crate) fn clear(&mut self) {
         self.forest.clear();
         self.states.clear();
@@ -130,6 +137,7 @@ where
     }
 
     /// Returns true if the set is empty.
+    #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         self.states.is_empty()
     }

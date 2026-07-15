@@ -124,7 +124,8 @@ impl GlobalTermPool {
     }
 
     /// Returns whether the term pool is empty.
-    pub fn is_empty(&self) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
@@ -432,21 +433,6 @@ impl GlobalTermPool {
     /// Returns the metrics of the term pool, can be formatted and written to output.
     pub fn metrics(&self) -> TermPoolMetrics<'_> {
         TermPoolMetrics(self)
-    }
-
-    /// Marks the given term as being reachable.
-    ///
-    /// # Safety
-    ///
-    /// Should only be called during garbage collection.
-    pub unsafe fn mark_term(&mut self, term: &ATermRef<'_>) {
-        // Ensure that the global term pool is locked for writing.
-        let mut marker = Marker {
-            marked_terms: &mut self.marked_terms,
-            marked_symbols: &mut self.marked_symbols,
-            stack: &mut self.stack,
-        };
-        term.mark(&mut marker);
     }
 
     /// Returns integer function symbol.
