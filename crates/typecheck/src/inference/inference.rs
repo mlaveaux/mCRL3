@@ -185,8 +185,9 @@ fn infer_equation(
     // The equation variables shadow constructors and mappings on lookup; their
     // declared sorts are concrete, so all uses of a variable share one node.
     let mut variables = HashMap::new();
-    for (var_idx, var) in eqn_spec.variables.iter().enumerate() {
-        let sort = query_sort_of_equation_var(ctx, spec, eqn_spec_id, var_idx);
+    for var in &eqn_spec.variables {
+        let var_id = var.id.expect("assign_declaration_ids ran before check_equations");
+        let sort = query_sort_of_equation_var(ctx, spec, eqn_spec_id, var_id);
         let node = unifier.resolved_node(sort);
         variables.insert(var.identifier.as_str(), node);
     }
@@ -311,18 +312,19 @@ fn infer_equation(
 
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
-                    for (var_idx, var) in eqn_spec.variables.iter().enumerate() {
+                    for var in &eqn_spec.variables {
+                        let var_id = var.id.expect("assign_declaration_ids ran before check_equations");
                         // The cache was populated in the variables-binding loop above.
-                        let sort = ctx.sort_of_equation_var.get(&(eqn_spec_id, var_idx)).copied()
+                        let sort = ctx.sort_of_equation_var.get(&(eqn_spec_id, var_id)).copied()
                             .expect("equation variable sort was resolved above");
-                        debug!(
+                        trace!(
                             "inference:   variable {}: {}",
                             var.identifier,
                             display_sort(ctx, spec, sort)
                         );
                     }
                     for (&sort, text) in sorts.iter().zip(&expr_texts) {
-                        debug!("inference:   '{text}': {}", display_sort(ctx, spec, sort));
+                        trace!("inference:   '{text}': {}", display_sort(ctx, spec, sort));
                     }
                 }
                 Ok(EquationTyping::Inferred { sorts, names })

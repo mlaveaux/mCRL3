@@ -6,6 +6,7 @@ use std::rc::Rc;
 use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
+use merc_syntax::EqnVarId;
 use merc_syntax::EquationId;
 use merc_syntax::MapId;
 
@@ -32,9 +33,9 @@ pub(crate) struct TypeckContext {
     /// Populated lazily by `query_sort_of_map`.
     pub(crate) sort_of_map: QueryCache<MapId, ResolvedSortId>,
     /// The memoized resolved sort of each equation variable, keyed by
-    /// `(EqnSpecId, variable index)`. Populated lazily by
+    /// `(EqnSpecId, EqnVarId)`. Populated lazily by
     /// `query_sort_of_equation_var`.
-    pub(crate) sort_of_equation_var: QueryCache<(EqnSpecId, usize), ResolvedSortId>,
+    pub(crate) sort_of_equation_var: QueryCache<(EqnSpecId, EqnVarId), ResolvedSortId>,
     /// The signature of the specification, populated by `build_signature`. An
     /// [Option] because the context is created before the signature is built;
     /// behind an [Rc] so inference can hold a reference to the signature while

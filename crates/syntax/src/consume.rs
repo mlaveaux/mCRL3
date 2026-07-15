@@ -25,6 +25,7 @@ use crate::DataExprUpdate;
 use crate::Eq;
 use crate::EqnDecl;
 use crate::EqnSpec;
+use crate::EqnVarId;
 use crate::FixedPointOperator;
 use crate::IdDecl;
 use crate::MapId;
@@ -1418,7 +1419,11 @@ impl Mcrl2Parser {
 
         match_nodes!(spec.into_children();
             [VarSpec(variables), EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables, equations: decls.collect(), id: None });
+                ids.push(EqnSpec {
+                    variables: variables.into_iter().map(|v| v.retag::<EqnVarId>()).collect(),
+                    equations: decls.collect(),
+                    id: None,
+                });
             },
             [EqnDecl(decls)..] => {
                 ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect(), id: None });

@@ -8,6 +8,7 @@ use merc_data::Mcrl2DataSpecification;
 use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
+use merc_syntax::EqnVarId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
@@ -274,15 +275,15 @@ impl DataSpecification {
             .expect("map sorts are all resolved during from_untyped")
     }
 
-    /// The resolved sort of the `var_idx`-th variable in the equation block
+    /// The resolved sort of the `var_id`-th variable in the equation block
     /// identified by `eqn_spec_id`. Requires both ids to be valid from this
     /// specification; panics if called before `from_untyped` has completed.
     // Consumed by Phase-3 inference (docs/typecheck.md §9); exercised by tests only until then.
     #[allow(dead_code)]
-    pub(crate) fn sort_of_equation_var(&self, eqn_spec_id: EqnSpecId, var_idx: usize) -> crate::ResolvedSortId {
+    pub(crate) fn sort_of_equation_var(&self, eqn_spec_id: EqnSpecId, var_id: EqnVarId) -> crate::ResolvedSortId {
         self.context
             .sort_of_equation_var
-            .get(&(eqn_spec_id, var_idx))
+            .get(&(eqn_spec_id, var_id))
             .copied()
             .expect("equation variable sorts are all resolved during from_untyped")
     }

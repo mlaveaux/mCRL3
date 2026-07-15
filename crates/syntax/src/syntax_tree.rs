@@ -35,6 +35,13 @@ pub struct EquationTag;
 /// The index type for a single equation, local to its enclosing `EqnSpec`.
 pub type EquationId = TagIndex<usize, EquationTag>;
 
+/// A unique type for equation variable declarations.
+pub struct EqnVarTag;
+
+/// The index type for a variable in an equation block, local to its enclosing
+/// [EqnSpec]. Assigned during declaration-id resolution.
+pub type EqnVarId = TagIndex<usize, EqnVarTag>;
+
 /// A complete mCRL2 process specification.
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedProcessSpecification {
@@ -253,7 +260,7 @@ impl SortDecl {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EqnSpec {
-    pub variables: Vec<IdDecl>,
+    pub variables: Vec<IdDecl<EqnVarId>>,
     pub equations: Vec<EqnDecl>,
     /// Unique ID assigned to this block during declaration-id resolution.
     pub id: Option<EqnSpecId>,
