@@ -182,7 +182,7 @@ mod inner {
         {
             DATA_SYMBOLS.with_borrow(|ds| DataFunctionSymbol {
                 term: ATerm::with_args(
-                    ds.data_function_symbol.deref(),
+                    ds.data_function_symbol_no_index.deref(),
                     &[Into::<ATerm>::into(name.into()), SortExpression::unknown_sort().into()],
                 )
                 .protect(),
@@ -196,7 +196,7 @@ mod inner {
                 let t = name.into();
                 let args: &[ATermRef<'_>] = &[t.copy().into(), sort.into()];
                 DataFunctionSymbol {
-                    term: ATerm::with_args(ds.data_function_symbol.deref(), args).protect(),
+                    term: ATerm::with_args(ds.data_function_symbol_no_index.deref(), args).protect(),
                 }
             })
         }

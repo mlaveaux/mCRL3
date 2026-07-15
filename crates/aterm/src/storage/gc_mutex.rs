@@ -10,12 +10,11 @@ use crate::storage::THREAD_TERM_POOL;
 /// the [super::GlobalTermPool] for the duration of the guard's lifetime.
 /// Returns a [GcMutexGuard] on access.
 ///
-/// # Safety
+/// # Panics
 ///
 /// The `GcMutex` returns guards that are tied to the thread-local storage of
 /// [crate::storage::THREAD_TERM_POOL]. This means that the guard must be
-/// dropped before this thread-local storage is dropped. Otherwise
-/// use-after-free will occur, which is undefined behaviour.
+/// dropped before this thread-local storage is dropped, or it will panic.
 pub(crate) struct GcMutex<T> {
     inner: UnsafeCell<T>,
 }

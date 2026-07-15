@@ -48,7 +48,7 @@ thread_local! {
     pub(crate) static THREAD_TERM_POOL: RefCell<ThreadTermPool> = RefCell::new(ThreadTermPool::new());
 }
 
-pub struct ThreadTermPool {
+pub(crate) struct ThreadTermPool {
     protection_set: SharedProtectionSet,
     container_protection_set: SharedContainerProtectionSet,
 
