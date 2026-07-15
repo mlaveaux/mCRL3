@@ -16,7 +16,7 @@ use crate::storage::THREAD_TERM_POOL;
 /// [crate::storage::THREAD_TERM_POOL]. This means that the guard must be
 /// dropped before this thread-local storage is dropped. Otherwise
 /// use-after-free will occur, which is undefined behaviour.
-pub struct GcMutex<T> {
+pub(crate) struct GcMutex<T> {
     inner: UnsafeCell<T>,
 }
 
@@ -65,7 +65,7 @@ impl<T> GcMutex<T> {
 
 /// A read-only guard produced by [GcMutex::lock].  Holds a shared read lock on
 /// the global term pool for its lifetime, preventing garbage collection.
-pub struct GcMutexReadGuard<'a, T> {
+pub(crate) struct GcMutexReadGuard<'a, T> {
     mutex: &'a GcMutex<T>,
 
     /// Only used to avoid garbage collection, will be released on drop.
@@ -98,7 +98,7 @@ impl<T> Drop for GcMutexReadGuard<'_, T> {
 /// A read-write guard produced by [GcMutex::lock_mut].  Provides both
 /// [Deref] and [DerefMut].  Because [GcMutex::lock_mut] takes `&mut self`,
 /// the borrow checker guarantees this is the only live guard for its lifetime.
-pub struct GcMutexGuard<'a, T> {
+pub(crate) struct GcMutexGuard<'a, T> {
     mutex: &'a GcMutex<T>,
 
     /// Only used to avoid garbage collection, will be released on drop.

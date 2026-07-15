@@ -31,7 +31,7 @@ use crate::storage::SharedTerm;
 use crate::storage::SymbolPool;
 
 /// This is the global set of protection sets that are managed by the [crate::storage::ThreadTermPool].
-pub static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>> =
+pub(crate) static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>> =
     LazyLock::new(|| GlobalBfSharedMutex::new(GlobalTermPool::new()));
 
 /// Enables aggressive garbage collection, which is used for testing.
@@ -41,7 +41,7 @@ pub(crate) const AGGRESSIVE_GC: bool = false;
 pub(crate) type GlobalTermPoolGuard<'a> = RecursiveLockReadGuard<'a, GlobalTermPool>;
 
 /// The single global (singleton) term pool, accessed via [GLOBAL_TERM_POOL].
-pub struct GlobalTermPool {
+pub(crate) struct GlobalTermPool {
     /// Unique table of all terms with stable pointers for references
     terms: ATermStorage,
     /// The symbol pool for managing function symbols.
@@ -465,7 +465,7 @@ impl GlobalTermPool {
     }
 }
 
-pub struct TermPoolMetrics<'a>(&'a GlobalTermPool);
+pub(crate) struct TermPoolMetrics<'a>(&'a GlobalTermPool);
 
 impl fmt::Display for TermPoolMetrics<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -507,7 +507,7 @@ impl std::ops::DerefMut for ThreadPoolList {
 
 /// A struct that contains the protection sets for a thread, as well as the
 /// index of the thread pool in the global term pool.
-pub struct SharedTermProtection {
+pub(crate) struct SharedTermProtection {
     /// Protection set for terms
     pub term_protection_set: ProtectionSet<ATermIndex>,
     /// Protection set to prevent garbage collection of symbols
@@ -526,7 +526,7 @@ impl SharedTermProtection {
 }
 
 /// A struct that can be used to print the performance of the protection sets.
-pub struct ProtectionMetrics<'a>(&'a SharedTermProtection);
+pub(crate) struct ProtectionMetrics<'a>(&'a SharedTermProtection);
 
 impl fmt::Display for ProtectionMetrics<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

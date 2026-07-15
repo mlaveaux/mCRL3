@@ -11,7 +11,12 @@ use crate::storage::THREAD_TERM_POOL;
 /// Create a random term consisting of the given symbol and constants. Performs
 /// iterations number of constructions, and uses chance_duplicates to choose the
 /// amount of subterms that are duplicated.
-pub fn random_term<R: Rng>(rng: &mut R, symbols: &[(String, usize)], constants: &[String], iterations: usize) -> ATerm {
+pub(crate) fn random_term<R: Rng>(
+    rng: &mut R,
+    symbols: &[(String, usize)],
+    constants: &[String],
+    iterations: usize,
+) -> ATerm {
     use rand::prelude::IteratorRandom;
 
     debug_assert!(!constants.is_empty(), "We need constants to be able to create a term");

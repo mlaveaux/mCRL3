@@ -11,7 +11,7 @@ use crate::Symbol;
 
 #[derive(Parser)]
 #[grammar = "term_grammar.pest"]
-pub struct TermParser;
+pub(crate) struct TermParser;
 
 type ParseResult<T> = std::result::Result<T, Error<Rule>>;
 type ParseNode<'i> = merc_pest_consume::Node<'i, Rule, ()>;

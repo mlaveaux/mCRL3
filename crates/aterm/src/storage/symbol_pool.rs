@@ -18,7 +18,7 @@ use crate::SymbolRef;
 /// with the same name and arity point to the same [SharedSymbol] object.
 /// Returns [crate::Symbol] that can be used to refer to the shared symbol, avoiding
 /// garbage collection of the underlying shared symbol.
-pub struct SymbolPool {
+pub(crate) struct SymbolPool {
     /// Unique table of all function symbols
     symbols: StablePointerSet<SharedSymbol, FxBuildHasher, AllocBlock<SharedSymbol, 1024>>,
 

@@ -12,7 +12,7 @@ pub fn is_int_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
 }
 
 /// Returns true if the given symbol is the special integer symbol used by [ATermInt].
-pub fn is_int_symbol<'a, 'b, S: Symb<'a, 'b>>(f: &'b S) -> bool {
+pub(crate) fn is_int_symbol<'a, 'b, S: Symb<'a, 'b>>(f: &'b S) -> bool {
     THREAD_TERM_POOL.with(|tp| *tp.int_symbol() == f.copy())
 }
 

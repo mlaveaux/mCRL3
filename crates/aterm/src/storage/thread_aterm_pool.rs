@@ -307,7 +307,11 @@ impl ThreadTermPool {
     }
 
     /// Protect the term by adding its index to the protection set
-    pub fn protect_guard(&self, _guard: RecursiveLockReadGuard<'_, GlobalTermPool>, term: &ATermRef<'_>) -> ATerm {
+    pub(crate) fn protect_guard(
+        &self,
+        _guard: RecursiveLockReadGuard<'_, GlobalTermPool>,
+        term: &ATermRef<'_>,
+    ) -> ATerm {
         // Protect the term by adding its index to the protection set
         // SAFETY: If the global term pool is locked, so we can safely access the protection set.
         // Copying the index is justified as in `protect`: `term` is alive for this call and

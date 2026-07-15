@@ -312,7 +312,7 @@ impl ATerm {
     }
 
     /// Replace this term by the given term in place.
-    pub fn replace<'a, 'b, T>(&mut self, value: Return<T>)
+    pub(crate) fn replace<'a, 'b, T>(&mut self, value: Return<T>)
     where
         T: Term<'a, 'b>,
         'b: 'a,
@@ -525,7 +525,7 @@ pub struct Return<T> {
 
 impl<T> Return<T> {
     /// Creates a new return value wrapping the given term.
-    pub fn new(guard: RecursiveLockReadGuard<'static, GlobalTermPool>, term: T) -> Self {
+    pub(crate) fn new(guard: RecursiveLockReadGuard<'static, GlobalTermPool>, term: T) -> Self {
         Return {
             term,
             guard: ManuallyDrop::new(guard),

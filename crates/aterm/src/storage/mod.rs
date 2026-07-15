@@ -24,8 +24,15 @@ mod symbol_pool;
 mod thread_aterm_pool;
 
 pub(crate) use aterm_storage::*;
-pub use gc_mutex::*;
-pub use global_aterm_pool::*;
-pub use shared_term::*;
-pub use symbol_pool::*;
-pub use thread_aterm_pool::*;
+pub(crate) use gc_mutex::*;
+pub(crate) use global_aterm_pool::*;
+pub(crate) use shared_term::*;
+pub(crate) use symbol_pool::*;
+pub(crate) use thread_aterm_pool::*;
+
+// Public API re-exports.
+pub use global_aterm_pool::Marker;
+pub use shared_term::SharedTerm;
+pub use symbol_pool::SharedSymbol;
+pub use thread_aterm_pool::THREAD_TERM_POOL;
+pub use thread_aterm_pool::ThreadTermPool;

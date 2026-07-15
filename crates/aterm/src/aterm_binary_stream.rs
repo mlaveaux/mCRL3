@@ -568,7 +568,7 @@ impl<R: Read> BitStreamRead for BinaryATermReader<R> {
 }
 
 /// A read iterator for ATerms from a binary aterm input stream.
-pub struct ATermReadIter<'a, R: Read> {
+pub(crate) struct ATermReadIter<'a, R: Read> {
     reader: &'a mut BinaryATermReader<R>,
     remaining: usize,
 }

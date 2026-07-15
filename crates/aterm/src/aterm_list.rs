@@ -22,7 +22,7 @@ pub fn is_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
 }
 
 /// Returns true iff the term is an empty [ATermList].
-pub fn is_empty_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
+pub(crate) fn is_empty_list_term<'a, 'b, T: Term<'a, 'b>>(t: &'b T) -> bool {
     THREAD_TERM_POOL.with(|tp| *tp.empty_list_symbol() == t.get_head_symbol())
 }
 
