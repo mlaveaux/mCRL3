@@ -10,15 +10,14 @@ use merc_syntax::apply_sort_expression;
 
 use crate::map_sorts_in_spec;
 
-/// Normalizes every sort in `spec` to a canonical form by expanding aliases,
-/// mirroring mCRL2's `normalize_sorts`.
+/// Normalizes every sort in `spec` to a canonical form by expanding aliases.
 ///
 /// A non-structured alias (`sort D = Nat;`, `sort L = List(D);`) is replaced by
 /// its recursively normalized definition, so an alias and the sort it stands for
 /// become indistinguishable and sort equality is structural. A structured-sort
-/// alias is instead its own representative and keeps its name, because mCRL2
-/// identifies structured sorts by name and because expanding a recursive `struct`
-/// would not terminate.
+/// alias is instead its own representative and keeps its name, because
+/// structured sorts are identified by name and because expanding a recursive
+/// `struct` would not terminate.
 ///
 /// Terminates on every specification that
 /// [`check_aliases`](crate::alias::check_aliases) accepts. The `visited` stack

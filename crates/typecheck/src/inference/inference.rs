@@ -61,14 +61,13 @@ pub(crate) enum NameTarget {
     Builtin,
 }
 
-/// The Phase-3 typing result of a single equation (docs/typecheck.md §9).
+/// The Phase-3 typing result of a single equation.
 #[derive(Debug)]
 pub(crate) enum EquationTyping {
     /// The equation binds a variable through a sort core inference does not
     /// cover yet (an anonymous `struct`, a bare product; see
     /// [is_supported_binder_sort]); it is left untyped rather than rejected.
     Skipped,
-    // Consumed by Phase-4 lowering (docs/typecheck.md §9); exercised by tests only until then.
     #[allow(dead_code)]
     Inferred {
         /// The inferred sort of every expression node, indexed by [ExprId].
@@ -243,7 +242,7 @@ fn infer_equation(
 
     // Merge the `Sub`s that widen into a shared free variable into one `Join`,
     // so their common supersort is computed in one step instead of order-
-    // sensitively (docs/typecheck.md G5).
+    // sensitively.
     let constraints = merge_shared_subs(constraints, &mut unifier);
     trace!(
         "inference: generated {} constraint(s) over {} expression node(s)",
@@ -338,12 +337,12 @@ fn infer_equation(
 }
 
 /// Merges every group of `Sub` constraints that widen into the same free
-/// variable into a single [Join] at the position of the group's last member
-/// (docs/typecheck.md G5). A free variable shared by two or more `Sub` targets
-/// is an eagerly-unified parameter — a scheme operand (`==`/`!=`/`<`/…/`if`), a
-/// set/bag element, or the equation's LHS/RHS join — whose sequential greedy
-/// widening is order-sensitive and can force a fruitless re-exploration. The
-/// join computes their least common supersort in one step instead. A
+/// variable into a single [Join] at the position of the group's last member.
+/// A free variable shared by two or more `Sub` targets is an eagerly-unified
+/// parameter — a scheme operand (`==`/`!=`/`<`/…/`if`), a set/bag element, or
+/// the equation's LHS/RHS join — whose sequential greedy widening is
+/// order-sensitive and can force a fruitless re-exploration. The join computes
+/// their least common supersort in one step instead. A
 /// disjunction overload's parameters are *distinct* fresh variables (the
 /// overload is not committed until solving), so they are never grouped and the
 /// argument-before-callee pruning of [Constraint] is preserved.
@@ -437,11 +436,10 @@ struct Disjunction {
 }
 
 /// The two readings of a set/bag comprehension `{ x: S | e }`: a `Bool` body
-/// denotes a `Set(S)`, a `Nat` or `Pos` body the multiplicities of a `Bag(S)`
-/// (mCRL2's `TraverseVarConsTypeD` on the untyped comprehension binder). Which
-/// reading applies follows from the solved body sort; Phase-4 lowering derives
-/// the binder kind from the node's sort and inserts the `Pos` → `Nat` coercion
-/// on a positive body.
+/// denotes a `Set(S)`, a `Nat` or `Pos` body the multiplicities of a `Bag(S)`.
+/// Which reading applies follows from the solved body sort; Phase-4 lowering
+/// derives the binder kind from the node's sort and inserts the `Pos` → `Nat`
+/// coercion on a positive body.
 struct Comprehension {
     /// The sort node of the predicate (or count) body.
     body: InferSortId,
@@ -452,7 +450,7 @@ struct Comprehension {
 }
 
 /// A name of the arithmetic family (`+`, `-`, `*`, `/`, `div`, `mod`, `exp`,
-/// `max`, `min`) with no user-declared overload (G5, docs/typecheck.md):
+/// `max`, `min`) with no user-declared overload:
 /// solved by an O(1) lookup against the argument sorts, already bound by the
 /// time this constraint is reached (via the `Sub` constraints generated for
 /// the application's arguments), instead of a [Disjunction] over every
@@ -486,11 +484,11 @@ struct Numeric {
 /// by equality, so a finite-container source (a set literal, `FSet`) fixes the
 /// result to `FSet` before another source (a comprehension, `Set`) is typed,
 /// which then cannot satisfy its own `Sub` and forces the whole comprehension
-/// body to be re-explored fruitlessly (the cellular_automata blow-up,
-/// docs/typecheck.md G5). Computing the join directly picks the common
-/// supersort in one step, with no premature commitment, while contributing the
-/// same per-source widening measure as the `Sub`s did — so the ranking is
-/// unchanged. Built by [merge_shared_subs] after constraint generation.
+/// body to be re-explored fruitlessly. Computing the join directly picks the
+/// common supersort in one step, with no premature commitment, while
+/// contributing the same per-source widening measure as the `Sub`s did — so
+/// the ranking is unchanged. Built by [merge_shared_subs] after constraint
+/// generation.
 struct Join {
     /// The branch sort nodes joined into `target`, in generation order.
     sources: Vec<InferSortId>,
@@ -641,8 +639,7 @@ impl<'a> ConstraintGenerator<'a> {
             DataExpr::Set(members) => {
                 // The members share one element node into which each may be
                 // upcast, so the solved element sort is the least common
-                // supersort of the member sorts (mCRL2's `MaximumType` fold
-                // over the enumeration).
+                // supersort of the member sorts.
                 let element = self.unifier.fresh_var();
                 for member in members {
                     let member_sort = self.visit(member)?;
@@ -719,8 +716,7 @@ impl<'a> ConstraintGenerator<'a> {
             }
             DataExpr::Lambda { variables, body } => {
                 // The result is a function from the bound variables' declared
-                // sorts to the body's sort (mCRL2's `UnArrowProd`/rebuild in
-                // `TraverseVarConsTypeD`'s lambda case).
+                // sorts to the body's sort.
                 let function_sort = self.with_binder_scope(variables, |this, sorts| {
                     let body_sort = this.visit(body)?;
                     let parameters = sorts.iter().map(|&sort| this.unifier.resolved_node(sort)).collect();
@@ -746,9 +742,9 @@ impl<'a> ConstraintGenerator<'a> {
             DataExpr::Whr { expr, assignments } => {
                 // Each assignment's right-hand side is typed in the outer
                 // scope — bindings do not see each other, only the body does
-                // (mCRL2 types every `WhereElem` against the original
-                // `DeclaredVars`, only extending the context once, for the
-                // body). So every right-hand side is visited first, and only
+                // (every assignment is typed against the original declared
+                // variables, the context being extended once, for the body).
+                // So every right-hand side is visited first, and only
                 // then are the names shadowed as a batch.
                 // The bound variable's sort is the assignment's own inferred
                 // sort node, so it has no [ExprId] and no declared sort to
@@ -872,8 +868,7 @@ impl<'a> ConstraintGenerator<'a> {
             // meaning either (`+`/`-`/`*` are also Set/Bag union, difference
             // and intersection, via the polymorphic templates below): its
             // concrete promotion is picked by a direct lookup (`Numeric`)
-            // instead of a disjunction over the system-defined overloads
-            // (G5, docs/typecheck.md).
+            // instead of a disjunction over the system-defined overloads.
             self.names.insert(id, NameTarget::Builtin);
             self.constraints.push(Constraint::Numeric(Numeric {
                 sort: node,
@@ -1008,10 +1003,10 @@ struct Candidate {
     typing: Option<(Vec<ResolvedSortId>, HashMap<ExprId, NameTarget>)>,
 }
 
-/// Solves the constraints by ranked backtracking (the nano-crl2 model, but in
-/// generation order rather than kind-grouped): a disjunction tries every
-/// overload, a sub-constraint tries equality first and widening second, a
-/// literal takes its most specific admissible number sort.
+/// Solves the constraints by ranked backtracking, in generation order rather
+/// than kind-grouped: a disjunction tries every overload, a sub-constraint
+/// tries equality first and widening second, a literal takes its most specific
+/// admissible number sort.
 ///
 /// Each sub and literal constraint contributes one component to the measure
 /// (in generation order, earlier constraints most significant — the arguments
@@ -1303,9 +1298,9 @@ impl Solver<'_> {
                 return false;
             };
 
-        // Widenings rank by distance (nano-crl2 ranks them all equally, which
-        // misreports e.g. a `Pos` argument to `mod` as ambiguous between its
-        // `Nat` and `Int` overloads; mCRL2 takes the minimal upcast). The pairs
+        // Widenings rank by distance (ranking them all equally would misreport
+        // e.g. a `Pos` argument to `mod` as ambiguous between its `Nat` and
+        // `Int` overloads; the minimal upcast is taken instead). The pairs
         // are ordered nearest first, so the first success is the best this
         // constraint can contribute and the rest need not be explored.
         for (distance, (lhs, rhs)) in pairs.into_iter().enumerate() {
@@ -1414,9 +1409,8 @@ impl Solver<'_> {
     ///
     /// Any sort variable that is still free after solving (e.g. the element
     /// sort of `#[]` where only the container length is observed, never the
-    /// element) defaults to `Bool` (§7a.4, docs/typecheck.md). This matches
-    /// mCRL2's acceptance of such equations and avoids a spurious
-    /// `UnderdeterminedSort` error.
+    /// element) defaults to `Bool`. This accepts such equations rather than
+    /// raising a spurious `UnderdeterminedSort` error.
     fn extract(&mut self) -> Candidate {
         let bool_sort = self.sorts.bool_sort();
         let sorts: Vec<ResolvedSortId> = self
@@ -1484,10 +1478,9 @@ mod tests {
 
     #[test]
     fn test_lambda_over_anonymous_struct_is_inferred_not_skipped() {
-        // §7a.3 (docs/typecheck.md): before anonymous binder structs were
-        // hoisted, a construct binding one deferred the whole equation to
-        // `EquationTyping::Skipped`; it is now actually typed like any other
-        // equation.
+        // An anonymous binder struct is hoisted, so a construct binding one is
+        // typed like any other equation rather than deferred to
+        // `EquationTyping::Skipped`.
         let spec = typed("map f: (struct t) -> Bool; g: (struct t) -> Bool; eqn g = lambda x: struct t. f(x);");
         assert!(matches!(
             &*spec.equation_typings()[0][0],
@@ -1552,8 +1545,8 @@ mod tests {
     #[test]
     fn test_free_element_sort_defaults_to_bool() {
         // A free element sort (the element of an empty list whose sort is
-        // never constrained by context) defaults to Bool (§7a.4,
-        // docs/typecheck.md) rather than causing UnderdeterminedSort.
+        // never constrained by context) defaults to Bool rather than causing
+        // UnderdeterminedSort.
         let spec = typed("map b: Bool; eqn b = [] == [];");
         // ExprIds: 0 = `b`, 1 = `==([], [])`, 2 = first `[]`, 3 = second
         // `[]`, 4 = `==`. Both empty lists take List(Bool).
@@ -1656,9 +1649,8 @@ mod tests {
         // Every assignment's right-hand side is typed against the outer
         // scope, not against sibling bindings, so `y`'s `x` resolves to the
         // declared `Nat` variable even though this `whr` also rebinds `x` to
-        // a `Bool` (mCRL2's `TraverseVarConsTypeD` types every `WhereElem`
-        // against the original `DeclaredVars`, only extending the context
-        // once, for the body).
+        // a `Bool` (every assignment is typed against the original declared
+        // variables, the context being extended once, for the body).
         let spec = typed("map f: Nat -> Bool; var x: Nat; eqn f(x) = true whr x = false, y = x end;");
 
         // Ids: 0 = `f(x)`, 1 = `x`, 2 = `f`, 3 = the `whr` expression,
@@ -1740,7 +1732,7 @@ mod tests {
     #[test]
     fn test_free_empty_set_defaults_to_bool() {
         // Same as test_free_element_sort_defaults_to_bool: a free element sort
-        // of an empty finite set defaults to Bool (§7a.4).
+        // of an empty finite set defaults to Bool.
         let spec = typed("map b: Bool; eqn b = {} == {};");
         // ExprIds: 0 = `b`, 1 = `==([], [])`, 2 = first `{}`, 3 = second
         // `{}`, 4 = `==`. Both empty sets take FSet(Bool).

@@ -45,12 +45,16 @@ fn check_err(text: &str) -> WellTypedError {
 fn test_struct_with_reused_projection() {
     // A recursive structured sort whose projection `p` is reused across
     // constructors is well-formed.
-    check("sort S = struct c(p: Bool) | d(p: Bool, q: S);\n", true);
+    check("sort S = struct c(p: Bool) | d(p: Bool, q: S);", true);
 }
 
 #[test]
 fn test_duplicate_sort_conflicting() {
-    check("sort S = struct c;\n     S = Nat;\n", false);
+    check(
+        "sort S = struct c;
+         S = Nat;",
+        false,
+    );
 }
 
 #[test]
@@ -59,49 +63,78 @@ fn test_constructor_and_mapping_same_symbol() {
     // mapping. (mCRL2 additionally rejects the different-sort form
     // `cons f: S; map f: T;` — see
     // test_duplicate_constant_different_sort_rejected_cons_map below.)
-    check("sort S;\ncons f: S;\nmap  f: S;\n", false);
+    check(
+        "sort S;
+         cons f: S;
+         map  f: S;",
+        false,
+    );
 }
 
 #[test]
 fn test_constructor_overloaded_by_signature() {
     // `f` as a constant of `S` and as a function `S -> T` is allowed.
-    check("sort S;\n     T;\ncons f: S;\n     f: S -> T;\n", true);
+    check(
+        "sort S;
+              T;
+         cons f: S;
+              f: S -> T;",
+        true,
+    );
 }
 
 #[test]
 fn test_nested_inline_struct() {
-    check("sort S = struct t(struct e(Nat));\n", true);
+    check("sort S = struct t(struct e(Nat));", true);
 }
 
 #[test]
 fn test_cyclic_aliases_direct() {
-    check("sort S = U;\n     U = S;\n", false);
+    check(
+        "sort S = U;
+         U = S;",
+        false,
+    );
 }
 
 #[test]
 fn test_cyclic_aliases_indirect() {
-    check("sort S = U;\n     U = T;\n     T = S;\n", false);
+    check(
+        "sort S = U;
+         U = T;
+         T = S;",
+        false,
+    );
 }
 
 #[test]
 fn test_function_alias() {
     check(
-        "sort Array = Nat -> Nat;\n\
-         map  update: Nat # Nat # Array -> Array;\n\
-         var  i,n: Nat;\n     f: Array;\n\
-         eqn  update(i, n, f)  =  lambda j: Nat. if(i == j, n, f(j));\n",
+        "sort Array = Nat -> Nat;
+         map  update: Nat # Nat # Array -> Array;
+         var  i,n: Nat;
+              f: Array;
+         eqn  update(i, n, f)  =  lambda j: Nat. if(i == j, n, f(j));",
         true,
     );
 }
 
 #[test]
 fn test_recursive_function_sort() {
-    check("sort G;\n     F = F -> G;\n", false);
+    check(
+        "sort G;
+         F = F -> G;",
+        false,
+    );
 }
 
 #[test]
 fn test_recursive_function_sort_reverse() {
-    check("sort G;\n     F = G -> F;\n", false);
+    check(
+        "sort G;
+         F = G -> F;",
+        false,
+    );
 }
 
 // === Alias self-loop table (typecheck_test.cpp:1565-1636, test_sort_aliases) ===
@@ -207,7 +240,10 @@ fn test_sort_name_reused_as_map_and_variable() {
     // non-function variable and the equation is rejected. mCRL2:
     // test_sort_as_variable.
     check(
-        "sort S;\nmap  S: S -> Bool;\nvar  S: S;\neqn  S(S)  =  S == S;\n",
+        "sort S;
+         map  S: S -> Bool;
+         var  S: S;
+         eqn  S(S)  =  S == S;",
         false,
     );
 }
@@ -228,7 +264,11 @@ fn test_recursive_struct_via_function_codomain() {
 fn test_recursive_struct_list_indirect() {
     // Struct recursion through a List alias one level removed. mCRL2:
     // test_recursive_struct_list_indirect.
-    check("sort LP = List(P);\n     P = struct b(x: LP);\n", true);
+    check(
+        "sort LP = List(P);
+         P = struct b(x: LP);",
+        true,
+    );
 }
 
 #[test]
@@ -238,11 +278,19 @@ fn test_duplicate_variables_in_var_block() {
     // merc rejects. mCRL2: test_multiple_variables,
     // test_multiple_variables_reversed (both disabled upstream).
     check(
-        "sort S;\nmap g: Bool;\nvar x: Nat;\n    x: S;\neqn g = (x == x + 1);\n",
+        "sort S;
+         map g: Bool;
+         var x: Nat;
+             x: S;
+         eqn g = (x == x + 1);",
         false,
     );
     check(
-        "sort S;\nmap g: Bool;\nvar x: S;\n    x: Nat;\neqn g = (x == x + 1);\n",
+        "sort S;
+         map g: Bool;
+         var x: S;
+             x: Nat;
+         eqn g = (x == x + 1);",
         false,
     );
 }
@@ -253,14 +301,14 @@ fn test_normalize_sorts_across_equations() {
     // analogue of normalize_sorts_test.cpp's test_normalize_sorts, with the
     // mappings that test adds through the C++ API declared inline instead.
     check(
-        "sort Bit = struct e0 | e1;\n\
-              AbsBit = struct arbitrary;\n\
-         map  inv: Bit -> Bit;\n\
-              h: Bit -> AbsBit;\n\
-              abseq: AbsBit # AbsBit -> Set(Bool);\n\
-              absinv: AbsBit -> Set(AbsBit);\n\
-         eqn  inv(e0) = e1;\n\
-              inv(e1) = e0;\n",
+        "sort Bit = struct e0 | e1;
+              AbsBit = struct arbitrary;
+         map  inv: Bit -> Bit;
+              h: Bit -> AbsBit;
+              abseq: AbsBit # AbsBit -> Set(Bool);
+              absinv: AbsBit -> Set(AbsBit);
+         eqn  inv(e0) = e1;
+              inv(e1) = e0;",
         true,
     );
 }
@@ -296,10 +344,9 @@ fn test_cross_struct_duplicate_constant_name_rejected() {
 }
 
 #[test]
-// mCRL2's add_function rejects any user map/cons whose name collides with a
-// system function, regardless of sort ("Attempt to redeclare a system
-// function"). No direct typecheck_test.cpp case; derived from mCRL2's
-// typecheck.cpp add_function guard.
+// Any user map/cons whose name collides with a system function is rejected,
+// regardless of sort ("Attempt to redeclare a system function"). No direct
+// upstream case; derived from mCRL2's system-function-redeclaration guard.
 fn test_user_declaration_shadowing_system_conversion_rejected() {
     check("map Nat2Pos: Nat -> Pos;", false);
 }
@@ -310,10 +357,10 @@ fn test_many_aliases_to_nat_and_struct() {
     // plus a wide structured sort. mCRL2 used this to catch an exponential
     // normalization; it must stay fast and be accepted here.
     check(
-        "sort A_t = Nat; B_t = Nat; C_t = Nat; D_t = Nat; E_t = Nat; F_t = Nat; G_t = Nat;\n\
-         H_t = Nat; I_t = Nat; J_t = Nat; K_t = Nat; L_t = Nat; M_t = Nat; N_t = Nat; O_t = Nat;\n\
-         S_t = struct s(a: A_t, b: B_t, c: C_t, d: D_t, e: E_t, f: F_t, g: G_t, h: H_t,\n\
-                        i: I_t, j: J_t, k: K_t, l: L_t, m: M_t, n: N_t, o: O_t);\n",
+        "sort A_t = Nat; B_t = Nat; C_t = Nat; D_t = Nat; E_t = Nat; F_t = Nat; G_t = Nat;
+         H_t = Nat; I_t = Nat; J_t = Nat; K_t = Nat; L_t = Nat; M_t = Nat; N_t = Nat; O_t = Nat;
+         S_t = struct s(a: A_t, b: B_t, c: C_t, d: D_t, e: E_t, f: F_t, g: G_t, h: H_t,
+                        i: I_t, j: J_t, k: K_t, l: L_t, m: M_t, n: N_t, o: O_t);",
         true,
     );
 }

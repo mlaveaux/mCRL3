@@ -19,12 +19,6 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/mCRL2/academic/bounded_ricart-agrawala/RA_fixed+reduced/RA_fixed+reduced_spec.mcrl2") ; "ra_fixed+reduced_spec.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/bounded_ricart-agrawala/RA_original/RA_original_spec.mcrl2") ; "ra_original_spec.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/cabp/cabp.mcrl2") ; "cabp.mcrl2")]
-// `cellular_automata.mcrl2` stresses the ranked solver the most: its `T`
-// equation is `if(i==0, { two elements }, { comprehension })`. The join of the
-// finite-set literal branch with the comprehension branch is now a single
-// lattice least-upper-bound (docs/typecheck.md G5, `Join`) instead of two
-// greedy `Sub`s, so the comprehension body is no longer re-explored under the
-// doomed `FSet` binding; the file type checks in well under a second.
 #[test_case(include_str!("../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2") ; "cellular_automata.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/commprot/commprot.mcrl2") ; "commprot.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/academic/dining/dining3.mcrl2") ; "dining3.mcrl2")]

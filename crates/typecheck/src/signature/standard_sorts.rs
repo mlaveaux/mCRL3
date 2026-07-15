@@ -131,7 +131,7 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
 
 /// Generate a data specification for any sort based on the rules in Appendix `B`.
 ///
-/// Reserved for wiring the comparison/`if` operators of each sort (docs/typecheck.md G3).
+/// Reserved for wiring the comparison/`if` operators of each sort.
 #[allow(dead_code)]
 pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
     UntypedDataSpecification::parse(&formatdoc! {"

@@ -14,7 +14,7 @@ use crate::TypeckContext;
 /// `id` to originate from `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
-/// still unresolved content (see G3 in `docs/typecheck.md`).
+/// still unresolved content.
 pub(crate) fn query_sort_of_constructor(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
@@ -38,7 +38,7 @@ pub(crate) fn query_sort_of_constructor(
 /// `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
-/// still unresolved content (see G3 in `docs/typecheck.md`).
+/// still unresolved content.
 pub(crate) fn query_sort_of_map(ctx: &mut TypeckContext, spec: &UntypedDataSpecification, id: MapId) -> ResolvedSortId {
     match ctx
         .sort_of_map
@@ -59,7 +59,7 @@ pub(crate) fn query_sort_of_map(ctx: &mut TypeckContext, spec: &UntypedDataSpeci
 /// `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
-/// still unresolved content (see G3 in `docs/typecheck.md`).
+/// still unresolved content.
 pub(crate) fn query_sort_of_equation_var(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,

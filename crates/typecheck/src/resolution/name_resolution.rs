@@ -23,9 +23,9 @@ use crate::WellTypedError;
 /// indexed set that indicates the mapping from sort identifiers to their
 /// DefIds.
 pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<IndexedSet<String>, WellTypedError> {
-    // mCRL2 silently deduplicates byte-identical sort declarations
-    // (sort_specification::add_alias), so repeated identical declarations are
-    // accepted; conflicting redeclarations still fail below.
+    // Byte-identical sort declarations are silently deduplicated, so repeated
+    // identical declarations are accepted; conflicting redeclarations still
+    // fail below.
     let mut seen = HashSet::new();
     let before = spec.sort_declarations.len();
     spec.sort_declarations
