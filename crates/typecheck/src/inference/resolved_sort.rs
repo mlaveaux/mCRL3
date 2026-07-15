@@ -308,10 +308,9 @@ impl SortInterner {
     ///
     /// This operation is commutative, associative and idempotent. It does not
     /// report errors, it simply returns `None`.
-    // Reserved for Phase-4 coercion materialization (docs/typecheck.md §9);
-    // inference widens via `Unifier::strict_super_sorts` instead of this
-    // lattice join, so it is exercised by tests only until then.
-    #[allow(dead_code)]
+    // Used by Phase-3 inference to resolve the shared free variable of a group
+    // of `Sub` constraints (a `Join`; see inference.rs) in one step, and by
+    // Phase-4 coercion materialization (docs/typecheck.md §9).
     pub(crate) fn join(&mut self, lhs: ResolvedSortId, rhs: ResolvedSortId) -> Option<ResolvedSortId> {
         if lhs == rhs {
             return Some(lhs);

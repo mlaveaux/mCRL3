@@ -26,7 +26,6 @@
 //! cases built on top of that mechanism.
 
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::UntypedProcessSpecification;
 use merc_typecheck::DataSpecification;
 use merc_typecheck::InferenceError;
 use merc_typecheck::WellTypedError;
@@ -193,11 +192,11 @@ fn test_upcast_pos_plus_nat_via_variables() {
 fn test_repeated_arithmetic_stays_tractable() {
     // G5 (docs/typecheck.md): before the `Numeric` constraint replaced the
     // `+`/`*` overload disjunction with a direct lookup, an equation with
-    // several repeated `2*i+k`-shaped sub-expressions (the pattern that
-    // excludes `cellular_automata.mcrl2` from the corpus harness) explored
-    // every combination of every occurrence's candidate overloads and did
-    // not terminate in reasonable time. A regression here would show up as
-    // this test taking far longer than the rest of the suite.
+    // several repeated `2*i+k`-shaped sub-expressions (one of the two costs
+    // that used to keep `cellular_automata.mcrl2` out of the corpus harness)
+    // explored every combination of every occurrence's candidate overloads
+    // and did not terminate in reasonable time. A regression here would show
+    // up as this test taking far longer than the rest of the suite.
     check_ok(
         "map f: Nat -> Bool;
          var i: Nat;
@@ -1057,12 +1056,19 @@ fn test_inline_structs_compare_recogniser_rejected() {
 }
 
 #[test]
-#[ignore]
-fn test_cellular_automata_timing() {
-    let spec = merc_syntax::UntypedProcessSpecification::parse(include_str!(
-        "../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2"
-    ))
-    .expect("parses");
-    let result = crate::DataSpecification::from_untyped(spec.data_specification);
-    let _ = result;
+// Regression for the cellular_automata blow-up (docs/typecheck.md G5): the
+// `if` join of a finite-set-literal branch with a set-comprehension branch
+// used to bind the result to `FSet` first and then re-explore the whole
+// comprehension body fruitlessly. Computing the branch join as a single
+// lattice least-upper-bound (`Join`) types it in one step. This reduced shape
+// captures the pattern; the full spec is covered by the example corpus.
+fn test_if_joins_set_literal_and_comprehension() {
+    check_ok(
+        "sort Transition = struct trans(src: Nat, tar: Nat);
+         map T: Nat -> Set(Transition);
+         var i: Nat;
+         eqn T(i) = if(i == 0,
+                       { trans(0, 0), trans(1, 1) },
+                       { t: Transition | src(t) == 2 * i + 1 });",
+    );
 }
