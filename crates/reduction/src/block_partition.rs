@@ -168,6 +168,7 @@ impl BlockPartition {
 
     /// Split the given block into two separate block based on the splitter
     /// predicate.
+    #[allow(dead_code)]
     pub(crate) fn split_marked<F>(&mut self, block_index: usize, mut splitter: F)
     where
         F: FnMut(StateIndex) -> bool,

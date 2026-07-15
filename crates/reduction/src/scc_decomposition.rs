@@ -7,6 +7,7 @@ use merc_collections::scc_decomposition_iterative;
 use merc_lts::AsGraph;
 use merc_lts::LTS;
 
+#[cfg(test)]
 use crate::sort_topological;
 
 /// Computes the strongly connected tau component partitioning of the given LTS.
@@ -20,6 +21,7 @@ pub(crate) fn tau_scc_decomposition_iterative<L: LTS>(lts: &L) -> IndexedPartiti
 }
 
 /// Returns true iff the labelled transition system has tau-loops.
+#[cfg(test)]
 pub(crate) fn has_tau_loop<L: LTS>(lts: &L) -> bool {
     sort_topological(lts, |label_index, _| lts.is_hidden_label(label_index), false).is_err()
 }

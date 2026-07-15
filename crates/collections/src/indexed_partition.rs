@@ -9,7 +9,7 @@ pub struct BlockTag {}
 pub type BlockIndex = TagIndex<usize, BlockTag>;
 
 /// Special value used for elements that do not occur in the partition.
-pub const NOT_IN_PARTITION: usize = usize::MAX;
+pub(crate) const NOT_IN_PARTITION: usize = usize::MAX;
 
 /// Defines a partition based on an explicit indexing of elements to their block
 /// number.
@@ -122,7 +122,8 @@ impl IndexedPartition {
 }
 
 /// Reorders the blocks of the given partition according to the given permutation.
-pub fn reorder_partition<P>(partition: IndexedPartition, permutation: P) -> IndexedPartition
+#[allow(dead_code)]
+pub(crate) fn reorder_partition<P>(partition: IndexedPartition, permutation: P) -> IndexedPartition
 where
     P: Fn(BlockIndex) -> BlockIndex,
 {

@@ -69,11 +69,13 @@ impl MarkedBlockPartition {
     }
 
     /// Returns an iterator over all blocks in the partition.
+    #[allow(dead_code)]
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Block<bool>> {
         self.partition.iter()
     }
 
     /// Returns an iterator over all blocks in the partition.
+    #[allow(dead_code)]
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Block<bool>> {
         self.partition.iter_mut()
     }
