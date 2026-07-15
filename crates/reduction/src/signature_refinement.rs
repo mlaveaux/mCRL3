@@ -20,7 +20,6 @@ use merc_utilities::Timing;
 
 use crate::BlockPartition;
 use crate::BlockPartitionBuilder;
-use crate::DistinguishingFormula;
 use crate::DivergencePreservingLts;
 use crate::Partition;
 use crate::PartitionTree;
@@ -70,7 +69,10 @@ pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, Indexed
 /// The tree can be used to reconstruct a minimal-depth distinguishing formula
 /// for any two states found in different blocks, via
 /// [`PartitionTree::distinguish`].
-pub fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition, PartitionTree) {
+pub fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(
+    lts: L,
+    timing: &Timing,
+) -> (L, IndexedPartition, PartitionTree) {
     let mut tree = PartitionTree::new(lts.num_of_states());
     let partition = strong_bisim_sigref_naive_impl(&lts, &mut tree, timing);
     (lts, partition, tree)

@@ -642,8 +642,10 @@ mod tests {
                     explicit_from_original,
                     explicit_from_converted,
                     false,
+                    false,
                     &Timing::new()
-                ),
+                )
+                .0,
                 "Original LTS and LTS converted via SymbolicLtsBdd::to_symbolic_lts should be bisimilar"
             );
 
@@ -660,8 +662,10 @@ mod tests {
                     explicit_from_bdd,
                     explicit_from_roundtrip,
                     false,
+                    false,
                     &Timing::new()
-                ),
+                )
+                .0,
                 "Direct BDD conversion and BDD->LDD->explicit conversion should be bisimilar"
             );
         });
