@@ -240,6 +240,11 @@ fn infer_equation(
         constraints,
         ..
     } = generator;
+
+    // Merge the `Sub`s that widen into a shared free variable into one `Join`,
+    // so their common supersort is computed in one step instead of order-
+    // sensitively (docs/typecheck.md G5).
+    let constraints = merge_shared_subs(constraints, &mut unifier);
     trace!(
         "inference: generated {} constraint(s) over {} expression node(s)",
         constraints.len(),
@@ -332,6 +337,74 @@ fn infer_equation(
     }
 }
 
+/// Merges every group of `Sub` constraints that widen into the same free
+/// variable into a single [Join] at the position of the group's last member
+/// (docs/typecheck.md G5). A free variable shared by two or more `Sub` targets
+/// is an eagerly-unified parameter — a scheme operand (`==`/`!=`/`<`/…/`if`), a
+/// set/bag element, or the equation's LHS/RHS join — whose sequential greedy
+/// widening is order-sensitive and can force a fruitless re-exploration. The
+/// join computes their least common supersort in one step instead. A
+/// disjunction overload's parameters are *distinct* fresh variables (the
+/// overload is not committed until solving), so they are never grouped and the
+/// argument-before-callee pruning of [Constraint] is preserved.
+fn merge_shared_subs(constraints: Vec<Constraint>, unifier: &mut Unifier) -> Vec<Constraint> {
+    // Group the `Sub` indices by the union-find root of their free-variable
+    // target. A bound (concrete) target has no root and is never grouped.
+    let mut groups: HashMap<u32, Vec<usize>> = HashMap::new();
+    for (index, constraint) in constraints.iter().enumerate() {
+        if let Constraint::Sub(sub) = constraint
+            && let Some(root) = unifier.free_root(sub.rhs)
+        {
+            groups.entry(root).or_default().push(index);
+        }
+    }
+
+    // Build one `Join` per group of two or more, placed at the last member's
+    // position (by then every source's own sort is determined); the earlier
+    // members are dropped.
+    let mut joins: HashMap<usize, Join> = HashMap::new();
+    let mut dropped = vec![false; constraints.len()];
+    for indices in groups.into_values() {
+        if indices.len() < 2 {
+            continue;
+        }
+        let sources = indices
+            .iter()
+            .map(|&index| match &constraints[index] {
+                Constraint::Sub(sub) => sub.lhs,
+                _ => unreachable!("only Sub indices are grouped"),
+            })
+            .collect();
+        let last = *indices.last().expect("a merged group has at least two members");
+        // Every member's target denotes the same shared class; take one.
+        let target = match &constraints[last] {
+            Constraint::Sub(sub) => sub.rhs,
+            _ => unreachable!("only Sub indices are grouped"),
+        };
+        for &index in &indices {
+            dropped[index] = true;
+        }
+        joins.insert(last, Join { sources, target });
+    }
+
+    if joins.is_empty() {
+        return constraints;
+    }
+
+    // Rebuild in the original order: a grouped `Sub` becomes its group's `Join`
+    // at the last member and vanishes at the earlier members; everything else
+    // is untouched.
+    let mut result = Vec::with_capacity(constraints.len());
+    for (index, constraint) in constraints.into_iter().enumerate() {
+        if let Some(join) = joins.remove(&index) {
+            result.push(Constraint::Join(join));
+        } else if !dropped[index] {
+            result.push(constraint);
+        }
+    }
+    result
+}
+
 /// The kind of a number literal: `0` is natural, every other literal positive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LitKind {
@@ -404,6 +477,27 @@ struct Numeric {
     candidates: Vec<ResolvedSortId>,
 }
 
+/// A least-upper-bound constraint: the `target` sort is the lattice join of
+/// the `sources` (their least common supersort). It replaces a group of
+/// individual `Sub` constraints that all widen into the *same* free variable —
+/// the eagerly-shared parameter of a scheme (`==`/`!=`/`<`/…/`if`), a set or
+/// bag element, or the equation's LHS/RHS join. Sequential `Sub`s are
+/// order-sensitive: whichever source is solved first binds the shared variable
+/// by equality, so a finite-container source (a set literal, `FSet`) fixes the
+/// result to `FSet` before another source (a comprehension, `Set`) is typed,
+/// which then cannot satisfy its own `Sub` and forces the whole comprehension
+/// body to be re-explored fruitlessly (the cellular_automata blow-up,
+/// docs/typecheck.md G5). Computing the join directly picks the common
+/// supersort in one step, with no premature commitment, while contributing the
+/// same per-source widening measure as the `Sub`s did — so the ranking is
+/// unchanged. Built by [merge_shared_subs] after constraint generation.
+struct Join {
+    /// The branch sort nodes joined into `target`, in generation order.
+    sources: Vec<InferSortId>,
+    /// The shared variable the sources widen into (e.g. an `if`'s result).
+    target: InferSortId,
+}
+
 /// One constraint of an equation, solved in generation order. Interleaving the
 /// kinds (rather than deciding all disjunctions first) is what keeps the
 /// search tractable: the arguments of an application are generated before its
@@ -415,6 +509,7 @@ enum Constraint {
     Disjunction(Disjunction),
     Comprehension(Comprehension),
     Numeric(Numeric),
+    Join(Join),
 }
 
 /// Names resolved as arithmetic promotions ([Numeric]) rather than general
@@ -955,6 +1050,7 @@ impl Solver<'_> {
             Constraint::Lit(lit) => self.solve_lit(lit, index),
             Constraint::Comprehension(comprehension) => self.solve_comprehension(comprehension, index),
             Constraint::Numeric(numeric) => self.solve_numeric(numeric, index),
+            Constraint::Join(join) => self.solve_join(join, index),
         }
     }
 
@@ -992,6 +1088,122 @@ impl Solver<'_> {
             let candidate_range = *candidate_range;
             let range_node = self.unifier.resolved_node(candidate_range);
             return self.unifier.unify(self.sorts, range, range_node) && self.solve(index + 1);
+        }
+        false
+    }
+
+    /// Binds the join `target` to the lattice least-upper-bound of the branch
+    /// `sources` and continues solving — the deterministic counterpart of two
+    /// greedy `Sub`s to a shared variable (see [Join]). Every source must be
+    /// ground and pairwise joinable; otherwise it defers to the per-source
+    /// widening of [Self::solve_join_seq], which decides exactly as the
+    /// pre-join two-`Sub` encoding did (so the rare underdetermined branches —
+    /// e.g. two empty containers — are unchanged).
+    fn solve_join(&mut self, join: &Join, index: usize) -> bool {
+        let resolved: Option<Vec<ResolvedSortId>> = join
+            .sources
+            .iter()
+            .map(|&source| self.unifier.resolve(self.sorts, source))
+            .collect();
+        let Some(resolved) = resolved else {
+            return self.solve_join_seq(&join.sources, join.target, 0, index);
+        };
+
+        let mut lub = resolved[0];
+        for &next in &resolved[1..] {
+            match self.sorts.join(lub, next) {
+                Some(joined) => lub = joined,
+                // Not joinable by the simple lattice (e.g. unequal element
+                // sorts): the per-source widening below decides the case the
+                // same way the two `Sub`s used to.
+                None => return self.solve_join_seq(&join.sources, join.target, 0, index),
+            }
+        }
+
+        let lub_node = self.unifier.resolved_node(lub);
+        if !self.unifier.unify(self.sorts, join.target, lub_node) {
+            return false;
+        }
+
+        // One widening-distance measure component per source (0 for an exact
+        // branch, the number of widening steps otherwise), matching the
+        // `solve_sub` convention so the ranking is identical to the two-`Sub`
+        // form.
+        for &source in &resolved {
+            self.measure.push(self.join_distance(source, lub));
+        }
+        let found = self.solve(index + 1);
+        for _ in &resolved {
+            self.measure.pop();
+        }
+        found
+    }
+
+    /// The number of lattice widening steps from `source` up to `target`
+    /// (`source` a subsort of `target`), the measure a `Sub(source, target)`
+    /// would contribute: number-sort generality difference, or one step for a
+    /// finite-to-infinite container widening (`FSet` → `Set`, `FBag` → `Bag`).
+    fn join_distance(&self, source: ResolvedSortId, target: ResolvedSortId) -> u8 {
+        if source == target {
+            return 0;
+        }
+        match (self.sorts.get(source), self.sorts.get(target)) {
+            (ResolvedSort::Primitive(source), ResolvedSort::Primitive(target)) => {
+                match (number_generality(*source), number_generality(*target)) {
+                    (Some(source), Some(target)) if target >= source => (target - source) as u8,
+                    _ => 1,
+                }
+            }
+            // A single container-head step; the element sorts are equal (the
+            // lattice join keeps them so).
+            _ => 1,
+        }
+    }
+
+    /// The fallback of [Self::solve_join] for underdetermined or non-joinable
+    /// branches: widens each source to the shared `target` in turn, exactly as
+    /// the two independent `Sub` constraints did before the join fast path
+    /// (equality first, then widenings in ascending distance).
+    fn solve_join_seq(&mut self, sources: &[InferSortId], target: InferSortId, i: usize, index: usize) -> bool {
+        let Some(&source) = sources.get(i) else {
+            return self.solve(index + 1);
+        };
+
+        // Equality first: it ranks strictly better than any widening.
+        let snapshot = self.unifier.snapshot();
+        let mut found = false;
+        if self.unifier.unify(self.sorts, source, target) {
+            self.measure.push(0);
+            found = self.solve_join_seq(sources, target, i + 1, index);
+            self.measure.pop();
+        }
+        self.unifier.rollback_to(snapshot);
+        if found {
+            return true;
+        }
+
+        // Then the strict widenings, nearest first (a concrete source upcast,
+        // or a concrete target met from below).
+        let pairs: Vec<(InferSortId, InferSortId)> =
+            if let Some(supers) = self.unifier.strict_super_sorts(self.sorts, source) {
+                supers.into_iter().map(|wider| (wider, target)).collect()
+            } else if let Some(subsorts) = self.unifier.strict_sub_sorts(self.sorts, target) {
+                subsorts.into_iter().map(|narrower| (source, narrower)).collect()
+            } else {
+                return false;
+            };
+        for (distance, (lhs, rhs)) in pairs.into_iter().enumerate() {
+            let snapshot = self.unifier.snapshot();
+            let mut found = false;
+            if self.unifier.unify(self.sorts, lhs, rhs) {
+                self.measure.push(1 + distance as u8);
+                found = self.solve_join_seq(sources, target, i + 1, index);
+                self.measure.pop();
+            }
+            self.unifier.rollback_to(snapshot);
+            if found {
+                return true;
+            }
         }
         false
     }
@@ -1169,9 +1381,14 @@ impl Solver<'_> {
             self.measure.len(),
             self.constraints
                 .iter()
-                .filter(|constraint| matches!(constraint, Constraint::Sub(_) | Constraint::Lit(_)))
-                .count(),
-            "every sub and literal constraint contributes exactly one measure component"
+                .map(|constraint| match constraint {
+                    Constraint::Sub(_) | Constraint::Lit(_) => 1,
+                    // A join contributes one widening component per branch.
+                    Constraint::Join(join) => join.sources.len(),
+                    Constraint::Disjunction(_) | Constraint::Comprehension(_) | Constraint::Numeric(_) => 0,
+                })
+                .sum::<usize>(),
+            "every sub, literal and join-branch contributes exactly one measure component"
         );
 
         let ordering = match &self.best {

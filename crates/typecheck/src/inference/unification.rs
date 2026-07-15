@@ -175,6 +175,20 @@ impl Unifier {
         self.arena[id].clone()
     }
 
+    /// The union-find root of `id` when it is still an unbound variable, or
+    /// `None` once it is bound to a concrete sort. Two nodes eagerly unified to
+    /// the same free variable (the shared parameter of a scheme, the two
+    /// operands of a comparison, the branches of `if`, a set/bag element, the
+    /// equation's LHS/RHS join) return the same root, so a caller can group the
+    /// `Sub`s that widen into one join target.
+    pub(crate) fn free_root(&mut self, id: InferSortId) -> Option<u32> {
+        let id = self.shallow_normalize(id);
+        match self.arena[id] {
+            InferSort::Var(var) => Some(self.table.find(var).index()),
+            _ => None,
+        }
+    }
+
     /// Makes `lhs` and `rhs` denote the same sort, binding variables as needed,
     /// and returns whether they are unifiable.
     ///
