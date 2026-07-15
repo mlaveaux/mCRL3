@@ -312,6 +312,9 @@ mod tests {
         let mut ctx = TypeckContext::new();
         let first: *const Signature = build_signature(&mut ctx, spec.data_specification()).unwrap();
         let second: *const Signature = build_signature(&mut ctx, spec.data_specification()).unwrap();
-        assert!(std::ptr::eq(first, second), "the second call must return the already-stored signature");
+        assert!(
+            std::ptr::eq(first, second),
+            "the second call must return the already-stored signature"
+        );
     }
 }

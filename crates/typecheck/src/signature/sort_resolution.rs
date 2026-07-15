@@ -39,11 +39,7 @@ pub(crate) fn query_sort_of_constructor(
 ///
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content (see G3 in `docs/typecheck.md`).
-pub(crate) fn query_sort_of_map(
-    ctx: &mut TypeckContext,
-    spec: &UntypedDataSpecification,
-    id: MapId,
-) -> ResolvedSortId {
+pub(crate) fn query_sort_of_map(ctx: &mut TypeckContext, spec: &UntypedDataSpecification, id: MapId) -> ResolvedSortId {
     match ctx
         .sort_of_map
         .get_or_lock(id)
@@ -77,8 +73,11 @@ pub(crate) fn query_sort_of_equation_var(
     {
         Some(&sort) => sort,
         None => {
-            let sort =
-                resolve_sort(ctx, spec, &spec.equation_declarations[eqn_spec_id].variables[var_id].sort);
+            let sort = resolve_sort(
+                ctx,
+                spec,
+                &spec.equation_declarations[eqn_spec_id].variables[var_id].sort,
+            );
             *ctx.sort_of_equation_var.unlock((eqn_spec_id, var_id), sort)
         }
     }

@@ -48,20 +48,24 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
                     declaration.identifier.clone(),
                 ));
             }
+            // Non-struct sort alias (e.g. `sort A = List(struct t);`): the
+            // anonymous struct occurs inside a sort *declaration*, so it
+            // should still generate its constructors like any other
+            // declaration-position occurrence.
             Some(expr) => *expr = hoister.hoist(expr.clone()),
             None => {}
         }
     }
 
     for constructor in &mut spec.constructor_declarations {
-        constructor.sort = hoister.hoist(constructor.sort.clone());
+        constructor.sort = hoister.hoist_non_decl(constructor.sort.clone());
     }
     for map in &mut spec.map_declarations {
-        map.sort = hoister.hoist(map.sort.clone());
+        map.sort = hoister.hoist_non_decl(map.sort.clone());
     }
     for equation in &mut spec.equation_declarations {
         for variable in &mut equation.variables {
-            variable.sort = hoister.hoist(variable.sort.clone());
+            variable.sort = hoister.hoist_non_decl(variable.sort.clone());
         }
         for eqn in &mut equation.equations {
             if let Some(condition) = &mut eqn.condition {
@@ -92,12 +96,12 @@ fn hoist_binder_sorts(hoister: &mut Hoister, expr: DataExpr) -> DataExpr {
             mut variable,
             predicate,
         } => {
-            variable.sort = hoister.hoist(variable.sort);
+            variable.sort = hoister.hoist_non_decl(variable.sort);
             DataExpr::SetBagComp { variable, predicate }
         }
         DataExpr::Lambda { mut variables, body } => {
             for variable in &mut variables {
-                variable.sort = hoister.hoist(variable.sort.clone());
+                variable.sort = hoister.hoist_non_decl(variable.sort.clone());
             }
             DataExpr::Lambda { variables, body }
         }
@@ -107,7 +111,7 @@ fn hoist_binder_sorts(hoister: &mut Hoister, expr: DataExpr) -> DataExpr {
             body,
         } => {
             for variable in &mut variables {
-                variable.sort = hoister.hoist(variable.sort.clone());
+                variable.sort = hoister.hoist_non_decl(variable.sort.clone());
             }
             DataExpr::Quantifier { op, variables, body }
         }
@@ -125,7 +129,11 @@ struct Hoister {
 
 impl Hoister {
     /// Replaces every anonymous struct in `sort` by a reference to its (fresh
-    /// or reused) named declaration.
+    /// or reused) named declaration.  The named declaration retains the struct
+    /// *body*, so [`desugar_structured_sorts`] will generate its constructors,
+    /// recognisers and projections.  Use only for structs nested inside a
+    /// named sort declaration's constructor arguments (the only positions that
+    /// should expose global constructors).
     fn hoist(&mut self, sort: SortExpression) -> SortExpression {
         apply_sort_expression(sort, |expr| -> Result<Option<SortExpression>, Infallible> {
             if let SortExpression::Struct { inner } = expr {
@@ -148,11 +156,49 @@ impl Hoister {
         .expect("The inner function never fails")
     }
 
+    /// Like `hoist` but generates an **abstract** (body-less) declaration for
+    /// any anonymous struct not already registered from a declaration-position
+    /// `sort X = struct …;`.
+    ///
+    /// This matches mCRL2's behaviour: an anonymous `struct` appearing in a
+    /// map/constructor sort, an equation variable sort, or a binder annotation
+    /// introduces a fresh nominal sort for typing purposes only — it does NOT
+    /// add the struct's constructors/recognisers/projections to the global
+    /// signature.  If the same struct body was already registered by a
+    /// declaration-position occurrence, the existing name (with its full body)
+    /// is reused, preserving the constructor visibility of that declaration.
+    fn hoist_non_decl(&mut self, sort: SortExpression) -> SortExpression {
+        apply_sort_expression(sort, |expr| -> Result<Option<SortExpression>, Infallible> {
+            if let SortExpression::Struct { inner } = expr {
+                let mut inner = inner.clone();
+                for constructor in &mut inner {
+                    for (_, sort) in &mut constructor.args {
+                        *sort = self.hoist_non_decl(sort.clone());
+                    }
+                }
+                return Ok(Some(SortExpression::Reference(
+                    self.name_for_non_decl(SortExpression::Struct { inner }),
+                )));
+            }
+            Ok(None)
+        })
+        .expect("inner never fails")
+    }
+
     /// The name declaring `body`, generating a fresh `@struct<n>` declaration
-    /// when it has not been seen before.
+    /// WITH a body when it has not been seen before (declaration-position).
+    /// If the same struct was previously registered as abstract (by
+    /// `name_for_non_decl`), the body is attached retroactively so
+    /// `desugar_structured_sorts` will generate its constructors.
     fn name_for(&mut self, body: SortExpression) -> String {
         if let Some((_, name)) = self.table.iter().find(|(existing, _)| *existing == body) {
-            return name.clone();
+            let name = name.clone();
+            // Upgrade an existing abstract declaration to one with a body.
+            if let Some(decl) = self.fresh.iter_mut().find(|d| d.identifier == name && d.expr.is_none()) {
+                debug!("desugar: upgraded abstract struct '{name}' to full declaration");
+                decl.expr = Some(body);
+            }
+            return name;
         }
 
         let name = format!("@struct{}", self.fresh.len());
@@ -161,6 +207,28 @@ impl Hoister {
         self.fresh.push(SortDecl {
             identifier: name.clone(),
             expr: Some(body),
+            span: Span::default(),
+            id: None,
+        });
+        name
+    }
+
+    /// The name for `body` in a **non-declaration** context.  If `body` was
+    /// already registered (from a prior declaration-position occurrence), that
+    /// name is returned unchanged.  Otherwise a fresh `@struct<n>` with *no
+    /// body* is registered: `desugar_structured_sorts` will skip it and no
+    /// constructors are generated.
+    fn name_for_non_decl(&mut self, body: SortExpression) -> String {
+        if let Some((_, name)) = self.table.iter().find(|(existing, _)| *existing == body) {
+            return name.clone();
+        }
+        let name = format!("@struct{}", self.fresh.len());
+        trace!("desugar: hoisted anonymous struct '{body}' as abstract sort '{name}' (non-decl position)");
+        self.table.push((body, name.clone()));
+        // No body → desugar_structured_sorts skips constructor generation.
+        self.fresh.push(SortDecl {
+            identifier: name.clone(),
+            expr: None,
             span: Span::default(),
             id: None,
         });
@@ -334,10 +402,17 @@ mod tests {
     #[test]
     fn test_anonymous_struct_in_mapping_is_desugared() {
         // An anonymous struct in a mapping declaration is hoisted to a fresh
-        // named sort, whose constructors are then desugared as usual.
+        // **abstract** sort (no body, no constructors): mCRL2 only generates
+        // constructors for structs in sort-declaration position.
         let (constructors, _) = constructors_and_mappings("map f: struct c | d;");
-        assert!(constructors.contains(&"c".to_string()));
-        assert!(constructors.contains(&"d".to_string()));
+        assert!(
+            !constructors.contains(&"c".to_string()),
+            "c must not be a constructor from a map-position struct"
+        );
+        assert!(
+            !constructors.contains(&"d".to_string()),
+            "d must not be a constructor from a map-position struct"
+        );
     }
 
     #[test]
@@ -351,10 +426,15 @@ mod tests {
 
     #[test]
     fn test_identical_anonymous_structs_share_a_declaration() {
-        // Structurally identical structs are the same sort, so `c` is declared
-        // only once.
+        // Structurally identical structs in map positions share one abstract
+        // sort declaration (deduplication still works), but generate no
+        // constructors (non-decl position).
         let (constructors, _) = constructors_and_mappings("map f: struct c;\n    g: struct c;");
-        assert_eq!(constructors.iter().filter(|name| *name == "c").count(), 1);
+        assert_eq!(
+            constructors.iter().filter(|name| *name == "c").count(),
+            0,
+            "c must not be a constructor from map-position structs"
+        );
     }
 
     #[test]

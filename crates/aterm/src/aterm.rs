@@ -233,7 +233,7 @@ impl fmt::Debug for ATermRef<'_> {
 /// thread exits, because the order in which thread-local destructors are called
 /// is undefined, and as such a term could be destroyed after the thread-local
 /// term pool is destroyed, leading to undefined behavior.
-/// 
+///
 /// For this purpose one can use `ManuallyDrop` to simply never drop thread
 /// local terms, since exiting the thread will clean up the protection sets
 /// anyway.

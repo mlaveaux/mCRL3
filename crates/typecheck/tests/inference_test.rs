@@ -639,15 +639,14 @@ fn test_anonymous_struct_variable_sorts() {
     // compare while a recogniser makes the sorts distinct. mCRL2:
     // test_equal_context, test_not_equal_context.
     check_ok("map b: Bool; var x: struct t?is_t; y: struct t?is_t; eqn b = (x == y);");
-    // `struct t` and `struct t?is_t` hoist to distinct anonymous structs that
-    // both declare a nullary constructor named `t`, so this is now rejected
-    // at the signature stage by the same zero-arity-name guard as
-    // test_cross_struct_duplicate_constant_name_rejected (§7a.1/.2,
-    // docs/typecheck.md), earlier than the `x == y` sort mismatch this test
-    // originally caught at inference time.
+    // With non-decl hoisting, `struct t` and `struct t?is_t` each hoist to
+    // abstract sorts (no constructors), so no duplicate-constant collision
+    // occurs at the signature stage. Instead inference rejects `x == y`
+    // because `x: @struct0` and `y: @struct1` are distinct nominal sorts with
+    // no common supersort. mCRL2: test_not_equal_context.
     let err = check_err("map b: Bool; var x: struct t; y: struct t?is_t; eqn b = (x == y);");
     assert!(
-        matches!(err, WellTypedError::DuplicateConstantDifferentSort { .. }),
+        matches!(err, WellTypedError::Inference(InferenceError::NoTyping { .. })),
         "{err}"
     );
 }
@@ -1028,37 +1027,28 @@ fn test_emptyset_complement_subset_reverse() {
     check_ok("map b: Bool; eqn b = {} <= !{};");
 }
 
-// Known gap behind the next two anchors: hoisting (§7a.3, docs/typecheck.md)
-// made the binder sort itself resolvable — `x: struct t` inside the lambda is
-// structurally identical to the declaration-position `struct t` in `b`'s
-// domain, so both hoist to the *same* `@struct<n>` and `x == t` now type
-// checks. mCRL2 still rejects this: an inline (expression-position) struct's
-// constructor `t` is not usable inside the very body that binds it, a scoping
-// rule hoisting alone does not model. Fix = Phase 4 (G8): lowering needs to
-// know which occurrences of a hoisted constructor came from an inline binder
-// annotation, not a declaration.
+// Non-decl hoisting now generates abstract sorts (no constructors) for
+// anonymous structs in map sorts and binder positions. The constructor `t`
+// is therefore never in scope, so `x == t` fails with an undeclared-name
+// error — matching mCRL2's rejection. Anchor flipped from `#[should_panic]`
+// to a plain `check_err` (§7a.3, docs/typecheck.md).
 
 #[test]
-#[should_panic(expected = "expected the specification to be rejected")]
 // mCRL2: test_inline_struct.
 fn test_inline_struct_rejected() {
     check_err("map b: (struct t) -> Bool; eqn b = lambda x: struct t. x == t;");
 }
 
 #[test]
-#[should_panic(expected = "expected the specification to be rejected")]
 // mCRL2: test_inline_struct_recogniser.
 fn test_inline_struct_recogniser_rejected() {
     check_err("map b: (struct t?is_t) -> Bool; eqn b = lambda x: struct t?is_t. x == t;");
 }
 
 #[test]
-// `struct t?is_t` and `struct t` each hoist to their own anonymous struct
-// (the recogniser makes them structurally distinct), both declaring a
-// nullary constructor named `t` — now rejected by the same zero-arity-name
-// guard as test_cross_struct_duplicate_constant_name_rejected (§7a.1/.2,
-// docs/typecheck.md), independently of the `x == y` sort mismatch mCRL2's
-// own verdict is presumably also about. mCRL2: test_inline_structs_compare_recogniser.
+// `struct t?is_t` and `struct t` each hoist to abstract sorts (different
+// non-decl sorts), so `x: @struct0` and `y: @struct1` have incompatible
+// sorts and `x == y` has no valid typing. mCRL2: test_inline_structs_compare_recogniser.
 fn test_inline_structs_compare_recogniser_rejected() {
     check_err(
         "map b: (struct t?is_t) # (struct t) -> Bool;
@@ -1069,9 +1059,10 @@ fn test_inline_structs_compare_recogniser_rejected() {
 #[test]
 #[ignore]
 fn test_cellular_automata_timing() {
-    let spec = merc_syntax::UntypedProcessSpecification::parse(
-        include_str!("../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2")
-    ).expect("parses");
+    let spec = merc_syntax::UntypedProcessSpecification::parse(include_str!(
+        "../../../examples/mCRL2/academic/cellular_automata/cellular_automata.mcrl2"
+    ))
+    .expect("parses");
     let result = crate::DataSpecification::from_untyped(spec.data_specification);
     let _ = result;
 }
