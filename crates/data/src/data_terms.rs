@@ -9,7 +9,7 @@ use merc_aterm::is_int_term;
 
 thread_local! {
     /// Thread local storage that stores various default terms representing data symbols.
-    pub static DATA_SYMBOLS: RefCell<DataSymbols> = RefCell::new(DataSymbols::new());
+    pub(crate) static DATA_SYMBOLS: RefCell<DataSymbols> = RefCell::new(DataSymbols::new());
 }
 
 /// Defines default symbols and terms for data elements.
@@ -18,7 +18,7 @@ thread_local! {
 ///
 /// All `Symbol` fields are wrapped in `ManuallyDrop` so that their destructors never run at thread
 /// exit.
-pub struct DataSymbols {
+pub(crate) struct DataSymbols {
     // Sorts
     pub basic_sort_symbol: ManuallyDrop<Symbol>,
     pub function_sort_symbol: ManuallyDrop<Symbol>,
@@ -102,7 +102,7 @@ impl DataSymbols {
 
     /// Returns true iff the given term is any of the possible data expressions.
     /// Note that this check is relatively expensive.
-    pub fn is_data_expression<'a, 'b, T: Term<'a, 'b>>(&mut self, term: &'b T) -> bool {
+    pub(crate) fn is_data_expression<'a, 'b, T: Term<'a, 'b>>(&mut self, term: &'b T) -> bool {
         self.is_data_variable(term)
             || self.is_data_function_symbol(term)
             || self.is_data_machine_number(term)
@@ -112,39 +112,39 @@ impl DataSymbols {
     }
 
     /// Returns true iff the given term is a data variable.
-    pub fn is_data_variable<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_variable<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_variable.copy()
     }
 
     /// Returns true iff the given term is a data function symbol.
-    pub fn is_data_function_symbol<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_function_symbol<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_function_symbol.copy()
             || term.get_head_symbol() == self.data_function_symbol_no_index.copy()
     }
 
     /// Returns true iff the given term is a data machine number.
-    pub fn is_data_machine_number<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_machine_number<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         is_int_term(term)
     }
 
     /// Returns true iff the given term is a data where clause.
-    pub fn is_data_where_clause<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_where_clause<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_where_clause.copy()
     }
 
     /// Returns true iff the given term is a data abstraction (binder).
-    pub fn is_data_binder<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_binder<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_binder_symbol.copy()
     }
 
     /// Returns true iff the given term is a data application.
-    pub fn is_data_application<'a, 'b, T: Term<'a, 'b>>(&mut self, term: &'b T) -> bool {
+    pub(crate) fn is_data_application<'a, 'b, T: Term<'a, 'b>>(&mut self, term: &'b T) -> bool {
         let arity = term.get_head_symbol().arity();
         term.get_head_symbol() == *self.get_data_application_symbol(arity)
     }
 
     /// Returns the data application symbol for the given arity, creating it if necessary.
-    pub fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
+    pub(crate) fn get_data_application_symbol(&mut self, arity: usize) -> &SymbolRef<'_> {
         // It can be that data_applications are created without create_data_application in the mcrl2 ffi.
         if self.data_appl.len() <= arity {
             self.data_appl.reserve(arity + 1 - self.data_appl.len());
@@ -159,7 +159,7 @@ impl DataSymbols {
 
     /// Returns true iff the given term is any sort expression (basic, arrow, container, structured,
     /// or untyped).
-    pub fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         let sym = term.get_head_symbol();
         sym == self.basic_sort_symbol.copy()
             || sym == self.function_sort_symbol.copy()
@@ -170,32 +170,32 @@ impl DataSymbols {
     }
 
     /// Returns true iff the given term is a basic sort.
-    pub fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.basic_sort_symbol.copy()
     }
 
     /// Returns true iff the given term is a function (`SortArrow`) sort.
-    pub fn is_function_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_function_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.function_sort_symbol.copy()
     }
 
     /// Returns true iff the given term is a container (`SortCons`) sort.
-    pub fn is_container_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_container_sort<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.container_sort_symbol.copy()
     }
 
     /// Returns true iff the given term is a sort alias (`SortRef`).
-    pub fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.sort_alias_symbol.copy()
     }
 
     /// Returns true iff the given term is a data equation (`DataEqn`).
-    pub fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_equation_symbol.copy()
     }
 
     /// Returns true iff the given term is a where-clause assignment (`WhrDecl`).
-    pub fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
+    pub(crate) fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_whr_decl_symbol.copy()
     }
 }
@@ -203,12 +203,12 @@ impl DataSymbols {
 // Helper functions to access the DATA_SYMBOLS thread local storage.
 
 /// See [DataSymbols::is_sort_expression].
-pub fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+pub(crate) fn is_sort_expression<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_sort_expression(term))
 }
 
 /// See [DataSymbols::is_basic_sort].
-pub fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+pub(crate) fn is_basic_sort<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_basic_sort(term))
 }
 
@@ -228,7 +228,7 @@ pub fn is_data_variable<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
 }
 
 /// See [DataSymbols::is_data_expression].
-pub fn is_data_expression<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+pub(crate) fn is_data_expression<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow_mut(|ds| ds.is_data_expression(term))
 }
 
@@ -258,16 +258,16 @@ pub fn is_data_application<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
 }
 
 /// See [DataSymbols::is_sort_alias].
-pub fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+pub(crate) fn is_sort_alias<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_sort_alias(term))
 }
 
 /// See [DataSymbols::is_data_equation].
-pub fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+pub(crate) fn is_data_equation<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_equation(term))
 }
 
 /// See [DataSymbols::is_data_whr_decl].
-pub fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
+pub(crate) fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     DATA_SYMBOLS.with_borrow(|ds| ds.is_data_whr_decl(term))
 }

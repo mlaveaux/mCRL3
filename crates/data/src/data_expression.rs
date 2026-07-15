@@ -29,12 +29,12 @@ use crate::DATA_SYMBOLS;
 use crate::SortExpression;
 use crate::SortExpressionRef;
 use crate::is_data_application;
+use crate::is_data_binder;
 use crate::is_data_equation;
 use crate::is_data_expression;
 use crate::is_data_function_symbol;
 use crate::is_data_machine_number;
 use crate::is_data_variable;
-use crate::is_data_binder;
 use crate::is_data_where_clause;
 use crate::is_data_whr_decl;
 
