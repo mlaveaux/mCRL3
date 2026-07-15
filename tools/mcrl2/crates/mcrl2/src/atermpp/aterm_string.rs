@@ -4,7 +4,7 @@ use mcrl2_macros::mcrl2_derive_terms;
 
 use crate::ATermRef;
 
-pub fn is_aterm_string(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_aterm_string(term: &ATermRef<'_>) -> bool {
     term.get_head_symbol().arity() == 0
 }
 

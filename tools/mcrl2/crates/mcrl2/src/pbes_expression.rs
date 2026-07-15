@@ -8,7 +8,7 @@ use crate::DataExpression;
 use crate::DataExpressionRef;
 
 /// Returns true iff the given term is a PBES expression.
-pub fn is_pbes_expression(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_expression(term: &ATermRef<'_>) -> bool {
     mcrl2_pbes_is_pbes_expression(term.get())
 }
 
@@ -16,27 +16,27 @@ pub fn is_pbes_propositional_variable_instantiation(term: &ATermRef<'_>) -> bool
     mcrl2_pbes_is_propositional_variable_instantiation(term.get())
 }
 
-pub fn is_pbes_not(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_not(term: &ATermRef<'_>) -> bool {
     mcrl2_pbes_is_not(term.get())
 }
 
-pub fn is_pbes_and(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_and(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_and(term.get())
 }
 
-pub fn is_pbes_or(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_or(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_or(term.get())
 }
 
-pub fn is_pbes_imp(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_imp(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_imp(term.get())
 }
 
-pub fn is_pbes_forall(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_forall(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_forall(term.get())
 }
 
-pub fn is_pbes_exists(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_pbes_exists(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_exists(term.get())
 }
 

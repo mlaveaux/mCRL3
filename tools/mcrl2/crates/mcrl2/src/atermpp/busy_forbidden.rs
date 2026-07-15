@@ -19,7 +19,7 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_unlock_shared;
 /// while holding a lock (read or write) on a `BfTermPool`**. This can result in a
 /// deadlock if the FFI function attempts to acquire a lock that is already held by
 /// the current thread.
-pub struct BfTermPool<T: ?Sized> {
+pub(crate) struct BfTermPool<T: ?Sized> {
     object: UnsafeCell<T>,
 }
 
@@ -87,7 +87,7 @@ impl<'a, T: ?Sized> BfTermPool<T> {
     }
 }
 
-pub struct BfTermPoolRead<'a, T: ?Sized> {
+pub(crate) struct BfTermPoolRead<'a, T: ?Sized> {
     mutex: &'a BfTermPool<T>,
     _marker: PhantomData<&'a ()>,
 }
@@ -109,7 +109,7 @@ impl<T: ?Sized> Drop for BfTermPoolRead<'_, T> {
     }
 }
 
-pub struct BfTermPoolWrite<'a, T: ?Sized> {
+pub(crate) struct BfTermPoolWrite<'a, T: ?Sized> {
     mutex: &'a BfTermPool<T>,
     _marker: PhantomData<&'a ()>,
 }
@@ -138,7 +138,7 @@ impl<T: ?Sized> Drop for BfTermPoolWrite<'_, T> {
     }
 }
 
-pub struct BfTermPoolThreadWrite<'a, T: ?Sized> {
+pub(crate) struct BfTermPoolThreadWrite<'a, T: ?Sized> {
     mutex: &'a BfTermPool<T>,
     locked: bool,
     _marker: PhantomData<&'a ()>,
