@@ -8,6 +8,7 @@ version.workspace = true
 [dependencies]
 mcrl2-macros.workspace = true
 mcrl2-sys.workspace = true
+merc_aterm.workspace = true
 merc_collections.workspace = true
 merc_tools.workspace = true
 merc_unsafety.workspace = true
@@ -18,6 +19,11 @@ log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+merc_data.workspace = true
+merc_syntax.workspace = true
+merc_typecheck.workspace = true
 
 [features]
 # Enables the compiling rewriter option for mCRL2.

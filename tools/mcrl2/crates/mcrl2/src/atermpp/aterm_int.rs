@@ -5,7 +5,7 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_is_int;
 
 use crate::ATermRef;
 
-pub fn is_aterm_int(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_aterm_int(term: &ATermRef<'_>) -> bool {
     mcrl2_aterm_is_int(term.get())
 }
 

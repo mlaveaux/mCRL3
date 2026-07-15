@@ -238,7 +238,7 @@ impl ControlFlowGraphVertex {
 
     /// Construct a new vertex and retrieve its edges as well.
     /// TODO: This should probably be private.
-    pub fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, cfg: usize, vertex: usize) -> Self {
+    pub(crate) fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, cfg: usize, vertex: usize) -> Self {
         let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, cfg);
         let vertex = mcrl2_local_control_flow_graph_vertex(cfg, vertex);
         let outgoing_edges_ffi = mcrl2_local_control_flow_graph_vertex_outgoing_edges(vertex);

@@ -35,7 +35,7 @@ pub fn is_application(term: &ATermRef<'_>) -> bool {
 }
 
 /// Checks if this term is a binding operator, i.e., lambda, forall, or exists.
-pub fn is_binding_operator(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_binding_operator(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     is_lambda_binder(term)
         || is_forall_binder(term)
@@ -45,79 +45,79 @@ pub fn is_binding_operator(term: &ATermRef<'_>) -> bool {
 }
 
 /// Checks if this term is a lambda binder
-pub fn is_lambda_binder(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_lambda_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_lambda(term.get())
 }
 
 /// Checks if this term is a forall binder
-pub fn is_forall_binder(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_forall_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_forall(term.get())
 }
 
 /// Checks if this term is a exists binder
-pub fn is_exists_binder(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_exists_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_exists(term.get())
 }
 
 /// Checks if this term is a set comprehension binder
-pub fn is_set_comprehension_binder(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_set_comprehension_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_set_comp(term.get())
 }
 
 /// Checks if this term is a bag comprehension binder
-pub fn is_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_bag_comp(term.get())
 }
 
 /// Checks if this term is an untyped set or bag comprehension binder
-pub fn is_untyped_set_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_untyped_set_bag_comprehension_binder(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_binder_untyped_set_bag_comp(term.get())
 }
 
 /// Checks if this term is a data abstraction.
-pub fn is_abstraction(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_abstraction(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_abstraction(term.get())
 }
 
 /// Checks if this term is a data function symbol.
-pub fn is_function_symbol(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_function_symbol(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_function_symbol(term.get())
 }
 
 /// Checks if this term is a data where clause.
-pub fn is_where_clause(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_where_clause(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_where_clause(term.get())
 }
 
 /// Checks if this term is a data machine number.
-pub fn is_machine_number(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_machine_number(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_machine_number(term.get())
 }
 
 /// Checks if this term is a data untyped identifier.
-pub fn is_untyped_identifier(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_untyped_identifier(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_untyped_identifier(term.get())
 }
 
 /// Checks if this term is a data expression.
-pub fn is_data_expression(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_data_expression(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_data_expression(term.get())
 }
 
 /// Checks if this term is a sort expression.
-pub fn is_sort_expression(term: &ATermRef<'_>) -> bool {
+pub(crate) fn is_sort_expression(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_is_data_sort_expression(term.get())
 }

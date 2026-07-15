@@ -47,14 +47,16 @@ duct = "1.1"
 mcrl2 = { path = "crates/mcrl2" }
 mcrl2-macros = { path = "crates/mcrl2-macros" }
 mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "ffbff648bce643ca73c447f8c0190484b731d83a" }
+merc_aterm = { path = "../../crates/aterm" }
 merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
 merc_explore = { path = "../../crates/explore", features = ["clap"] }
 merc_io = { path = "../../crates/io" }
 merc_lts = { path = "../../crates/lts", features = ["clap"] }
 merc_reduction = { path = "../../crates/reduction" }
-merc_symbolic = { path = "../../crates/symbolic" }
+merc_symbolic = { path = "../../crates/symbolic", features = ["clap"] }
 merc_tools = { path = "../../crates/tools" }
+merc_typecheck = { path = "../../crates/typecheck" }
 merc_unsafety = { path = "../../crates/unsafety" }
 merc_syntax = { path = "../../crates/syntax" }
 merc_utilities = { path = "../../crates/utilities" }
@@ -63,8 +65,8 @@ merc_vpg = { path = "../../crates/vpg" }
 oxidd = { version = "0.12", features = ["manager-pointer"] }
 
 # Use a local version of mCRL2-sys for development.
-# [patch."https://github.com/MERCorg/mCRL2-sys"]
-# mcrl2-sys = { path = "crates/mCRL2-sys" }
+[patch."https://github.com/MERCorg/mCRL2-sys"]
+mcrl2-sys = { path = "/home/mlaveaux/mCRL2-sys" }
 
 [patch.crates-io]
 oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
