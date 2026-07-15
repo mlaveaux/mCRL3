@@ -1,6 +1,6 @@
 use merc_data::DataExpression;
-use merc_data::Mcrl2DataSpecification;
 use merc_data::DataVariable;
+use merc_data::Mcrl2DataSpecification;
 use merc_lts::TransitionLabel;
 use oxidd::ldd::LDDFunction;
 
@@ -11,7 +11,7 @@ use crate::SymbolicLTS;
 /// Represents a symbolic LTS encoded by a disjunctive transition relation and a set of states.
 pub struct SymbolicLts<L: TransitionLabel> {
     data_specification: Mcrl2DataSpecification,
-    
+
     /// The process parameters, in the order used to index the LDD vectors.
     process_parameters: Vec<DataVariable>,
     states: LDDFunction,

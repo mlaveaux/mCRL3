@@ -1427,6 +1427,7 @@ dependencies = [
  "ena",
  "indoc",
  "log",
+ "merc_aterm",
  "merc_collections",
  "merc_data",
  "merc_syntax",

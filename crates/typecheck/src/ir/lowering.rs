@@ -2,6 +2,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use merc_aterm::ATermList;
+use merc_aterm::Term as ATermTrait;
 use merc_data::BasicSort;
 use merc_data::BinderType;
 use merc_data::ContainerSortKind;
@@ -11,16 +13,17 @@ use merc_data::DataEquation;
 use merc_data::DataExpression;
 use merc_data::DataFunctionSymbol;
 use merc_data::DataVariable;
-use merc_data::DataWhrDecl;
 use merc_data::DataWhereClause;
+use merc_data::DataWhrDecl;
 use merc_data::Mcrl2DataSpecification;
 use merc_data::SortAlias;
 use merc_data::SortArrow;
 use merc_data::SortCons;
 use merc_data::SortExpression as DataSortExpression;
+use merc_data::is_function_sort;
+use merc_syntax::BagElement;
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
-use merc_syntax::BagElement;
 use merc_syntax::Quantifier;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
@@ -161,12 +164,15 @@ pub(crate) fn lower_sort(
             SortArrow::new(&domain, lower_sort(ctx, spec, *range)).into()
         }
         ResolvedSort::Def(def) => {
-            let system_index = **def - spec.sort_declarations.len();
+            let user_len = spec.sort_declarations.len();
             let name = spec
                 .sort_declarations
                 .get(**def)
                 .map(|d| d.identifier.as_str())
-                .or_else(|| ctx.system_sort_decls.get(system_index).map(String::as_str))
+                .or_else(|| {
+                    let system_index = (**def).checked_sub(user_len)?;
+                    ctx.system_sort_decls.get(system_index).map(String::as_str)
+                })
                 .unwrap_or("@sort_unknown");
             BasicSort::new(name).into()
         }
@@ -498,7 +504,10 @@ impl Lowering<'_> {
     /// Builds the empty-container constant for `EmptyList` / `EmptySet` / `EmptyBag`.
     /// The sort for the constant is extracted from the node's own inferred sort.
     fn lower_empty_container(&self, sort: ResolvedSortId, op: ComplexSort) -> DataExpression {
-        let ResolvedSort::Generic { subsort: element_id, .. } = self.ctx.sorts.get(sort) else {
+        let ResolvedSort::Generic {
+            subsort: element_id, ..
+        } = self.ctx.sorts.get(sort)
+        else {
             unreachable!("empty container always infers to a Generic sort")
         };
         let element = lower_sort(self.ctx, self.spec, *element_id);
@@ -514,7 +523,10 @@ impl Lowering<'_> {
 
     /// Lowers `{m1, m2, …}` (parsed as `FSet(S)`) to `@fset_insert(m1, @fset_insert(m2, {}))`.
     fn lower_set(&mut self, sort: ResolvedSortId, members: &[DataExpr]) -> Option<DataExpression> {
-        let ResolvedSort::Generic { subsort: element_id, .. } = self.ctx.sorts.get(sort) else {
+        let ResolvedSort::Generic {
+            subsort: element_id, ..
+        } = self.ctx.sorts.get(sort)
+        else {
             unreachable!("Set literal always infers to FSet(S)")
         };
         let element_id = *element_id;
@@ -540,15 +552,21 @@ impl Lowering<'_> {
     /// Lowers `{e1:m1, e2:m2, …}` (parsed as `FBag(S)`) to
     /// `@fbag_cinsert(e1, m1, @fbag_cinsert(e2, m2, {:}))`.
     fn lower_bag(&mut self, sort: ResolvedSortId, members: &[BagElement]) -> Option<DataExpression> {
-        let ResolvedSort::Generic { subsort: element_id, .. } = self.ctx.sorts.get(sort) else {
+        let ResolvedSort::Generic {
+            subsort: element_id, ..
+        } = self.ctx.sorts.get(sort)
+        else {
             unreachable!("Bag literal always infers to FBag(S)")
         };
         let element_id = *element_id;
         let nat_id = self.ctx.sorts.nat_sort();
         let element = lower_sort(self.ctx, self.spec, element_id);
         let fbag: DataSortExpression = SortCons::new(ContainerSortKind::FBag, element.clone()).into();
-        let fbag_cinsert =
-            function_symbol("@fbag_cinsert", &[element.clone(), nat_sort(), fbag.clone()], fbag.clone());
+        let fbag_cinsert = function_symbol(
+            "@fbag_cinsert",
+            &[element.clone(), nat_sort(), fbag.clone()],
+            fbag.clone(),
+        );
 
         let empty: DataExpression = DataFunctionSymbol::with_sort("{:}", fbag.copy()).into();
         let mut lowered = Vec::with_capacity(members.len());
@@ -610,8 +628,10 @@ impl Lowering<'_> {
             ComplexSort::Bag => BinderType::BagComp,
             _ => unreachable!("SetBagComp infers only to Set or Bag"),
         };
-        let var =
-            DataVariable::with_sort(variable.identifier.as_str(), lower_sort(self.ctx, self.spec, element_id).copy());
+        let var = DataVariable::with_sort(
+            variable.identifier.as_str(),
+            lower_sort(self.ctx, self.spec, element_id).copy(),
+        );
         let body = self.lower(predicate)?;
         Some(DataAbstraction::new(binder_type, &[var], body).into())
     }
@@ -658,9 +678,7 @@ pub(crate) fn lower_syntax_sort(sort: &SortExpression) -> DataSortExpression {
         // or an unresolved template reference in the system spec (e.g. "S", "T").
         // Both use the string name — the identity of a nominal sort IS its name
         // in the mCRL2 binary schema (§6a, docs/typecheck.md).
-        SortExpression::Resolved(name, _) | SortExpression::Reference(name) => {
-            BasicSort::new(name.as_str()).into()
-        }
+        SortExpression::Resolved(name, _) | SortExpression::Reference(name) => BasicSort::new(name.as_str()).into(),
         SortExpression::Struct { .. } | SortExpression::Product { .. } => {
             unreachable!("struct/product sorts are desugared/flattened before lowering")
         }
@@ -677,6 +695,255 @@ fn flatten_product_domain(sort: &SortExpression, domain: &mut Vec<DataSortExpres
     }
 }
 
+// ─────────────────────────── system equation lowering ───────────────────────
+
+/// Extracts the codomain (range sort) of a `SortArrow` term, or `None` if the
+/// sort is not a function sort.  Used by the structural system-equation lowering
+/// to propagate result sorts through curried applications and variable-as-function
+/// calls (e.g. `f(y)` where `f : S -> T`).
+fn sort_arrow_codomain(sort: &DataSortExpression) -> Option<DataSortExpression> {
+    if !is_function_sort(sort) {
+        return None;
+    }
+    // `SortArrow` layout: arg(0) = domain list, arg(1) = codomain.
+    let codomain: DataSortExpression = sort.arg(1).protect().into();
+    Some(codomain)
+}
+
+/// Returns `(full_function_sort, result_sort)` if `decl_sort` (from a system
+/// `cons` or `map` declaration) accepts the supplied `arg_sorts`.  Matching is
+/// by structural equality of the lowered domain sorts against the actual
+/// argument sorts; because the aterm pool maximally shares identical terms,
+/// this is a simple pointer-equality check.
+fn match_overload(
+    decl_sort: &SortExpression,
+    arg_sorts: &[DataSortExpression],
+) -> Option<(DataSortExpression, DataSortExpression)> {
+    let func_sort = lower_syntax_sort(decl_sort);
+    if !is_function_sort(&func_sort) {
+        return None;
+    }
+    let domain_list: ATermList<DataSortExpression> = func_sort.arg(0).into();
+    let domain = domain_list.to_vec();
+    if domain.len() != arg_sorts.len() {
+        return None;
+    }
+    if domain.iter().zip(arg_sorts).any(|(d, a)| d != a) {
+        return None;
+    }
+    let codomain: DataSortExpression = func_sort.arg(1).protect().into();
+    Some((func_sort, codomain))
+}
+
+/// Returns `(full_function_sort, result_sort)` for the polymorphic built-in
+/// operations (`==`, `!=`, `<`, `<=`, `>`, `>=`, `if`) whose concrete sort is
+/// determined solely by the argument sorts.
+///
+/// - `==` / `!=` / `<` / `<=` / `>` / `>=` : `T # T -> Bool`
+/// - `if` : `Bool # T # T -> T`
+fn builtin_sort(name: &str, arg_sorts: &[DataSortExpression]) -> Option<(DataSortExpression, DataSortExpression)> {
+    match name {
+        "==" | "!=" | "<" | "<=" | ">" | ">=" => {
+            if arg_sorts.len() != 2 {
+                return None;
+            }
+            if arg_sorts[1] != arg_sorts[0] {
+                return None;
+            }
+            let t = arg_sorts[0].clone();
+            let func_sort: DataSortExpression = SortArrow::new(&[t.clone(), t.clone()], bool_sort()).into();
+            Some((func_sort, bool_sort()))
+        }
+        "if" => {
+            if arg_sorts.len() != 3 {
+                return None;
+            }
+            if arg_sorts[2] != arg_sorts[1] {
+                return None;
+            }
+            let t = arg_sorts[1].clone();
+            let func_sort: DataSortExpression = SortArrow::new(&[bool_sort(), t.clone(), t.clone()], t.clone()).into();
+            Some((func_sort, t))
+        }
+        _ => None,
+    }
+}
+
+/// Lowers a single expression from a system equation body using structural sort
+/// propagation.  Returns `(lowered_term, its_sort)` on success, or `None` for
+/// constructs that require sort inference to resolve (empty-container literals,
+/// `Number` literals, binders, set/bag enumerations).
+fn lower_system_expr(
+    system: &UntypedDataSpecification,
+    var_map: &HashMap<&str, DataSortExpression>,
+    expr: &DataExpr,
+) -> Option<(DataExpression, DataSortExpression)> {
+    match expr {
+        DataExpr::Id(name) => lower_system_id(system, var_map, name),
+        DataExpr::Bool(v) => Some((lower_bool_literal(*v), bool_sort())),
+        DataExpr::Application { function, arguments } => {
+            // Lower arguments first so their sorts are known for overload
+            // selection in `lower_system_call`.
+            let mut arg_terms = Vec::with_capacity(arguments.len());
+            let mut arg_sorts = Vec::with_capacity(arguments.len());
+            for arg in arguments {
+                let (term, sort) = lower_system_expr(system, var_map, arg)?;
+                arg_terms.push(term);
+                arg_sorts.push(sort);
+            }
+            lower_system_call(system, var_map, function, &arg_terms, &arg_sorts)
+        }
+        // Constructs whose sort cannot be determined without inference.
+        DataExpr::EmptyList | DataExpr::EmptySet | DataExpr::EmptyBag => None,
+        DataExpr::Set(_) | DataExpr::Bag(_) => None,
+        DataExpr::Number(_) => None,
+        DataExpr::Lambda { .. } | DataExpr::Quantifier { .. } | DataExpr::Whr { .. } | DataExpr::SetBagComp { .. } => {
+            None
+        }
+        // `lower_data_expressions` rewrites these before system lowering runs.
+        DataExpr::List(_) | DataExpr::Unary { .. } | DataExpr::Binary { .. } | DataExpr::FunctionUpdate { .. } => {
+            unreachable!("lower.rs already rewrote this expression form before system lowering runs")
+        }
+    }
+}
+
+/// Lowers a bare identifier in a system equation: a variable lookup first,
+/// then a zero-argument constructor or map (a function sort identifier without
+/// arguments is only meaningful as a zero-arg constant here).
+fn lower_system_id(
+    system: &UntypedDataSpecification,
+    var_map: &HashMap<&str, DataSortExpression>,
+    name: &str,
+) -> Option<(DataExpression, DataSortExpression)> {
+    if let Some(sort) = var_map.get(name) {
+        return Some((DataVariable::with_sort(name, sort.copy()).into(), sort.clone()));
+    }
+    // Zero-argument constructor (sort is not a function sort).
+    for decl in &system.constructor_declarations {
+        if decl.identifier == name {
+            let sort = lower_syntax_sort(&decl.sort);
+            if !is_function_sort(&sort) {
+                return Some((DataFunctionSymbol::with_sort(name, sort.copy()).into(), sort));
+            }
+        }
+    }
+    // Zero-argument map.
+    for decl in &system.map_declarations {
+        if decl.identifier == name {
+            let sort = lower_syntax_sort(&decl.sort);
+            if !is_function_sort(&sort) {
+                return Some((DataFunctionSymbol::with_sort(name, sort.copy()).into(), sort));
+            }
+        }
+    }
+    None
+}
+
+/// Lowers a function-application node in a system equation.  `arg_terms` and
+/// `arg_sorts` are already lowered.
+///
+/// - If `function` is a bare `Id`: check builtins, then variable-as-function,
+///   then system cons/map overloads.
+/// - Otherwise (curried application, e.g. `@func_update(f,x,v)(y)`): lower
+///   the function expression recursively and extract its codomain sort.
+fn lower_system_call(
+    system: &UntypedDataSpecification,
+    var_map: &HashMap<&str, DataSortExpression>,
+    function: &DataExpr,
+    arg_terms: &[DataExpression],
+    arg_sorts: &[DataSortExpression],
+) -> Option<(DataExpression, DataSortExpression)> {
+    match function {
+        DataExpr::Id(name) => {
+            let name_str = name.as_str();
+            // Builtin `==` / `!=` / `<` / `<=` / `>` / `>=` / `if`.
+            if let Some((func_sort, result_sort)) = builtin_sort(name_str, arg_sorts) {
+                let func_term: DataExpression = DataFunctionSymbol::with_sort(name_str, func_sort.copy()).into();
+                return Some((DataApplication::with_args(&func_term, arg_terms).into(), result_sort));
+            }
+            // Variable of function type (e.g. `f(y)` where `f : S -> T`).
+            if let Some(func_sort) = var_map.get(name_str) {
+                if let Some(result_sort) = sort_arrow_codomain(func_sort) {
+                    let func_term: DataExpression = DataVariable::with_sort(name_str, func_sort.copy()).into();
+                    return Some((DataApplication::with_args(&func_term, arg_terms).into(), result_sort));
+                }
+            }
+            // System constructor overload matching the argument sorts.
+            for decl in &system.constructor_declarations {
+                if decl.identifier == *name {
+                    if let Some((func_sort, result_sort)) = match_overload(&decl.sort, arg_sorts) {
+                        let func_term: DataExpression =
+                            DataFunctionSymbol::with_sort(name_str, func_sort.copy()).into();
+                        return Some((DataApplication::with_args(&func_term, arg_terms).into(), result_sort));
+                    }
+                }
+            }
+            // System map overload matching the argument sorts.
+            for decl in &system.map_declarations {
+                if decl.identifier == *name {
+                    if let Some((func_sort, result_sort)) = match_overload(&decl.sort, arg_sorts) {
+                        let func_term: DataExpression =
+                            DataFunctionSymbol::with_sort(name_str, func_sort.copy()).into();
+                        return Some((DataApplication::with_args(&func_term, arg_terms).into(), result_sort));
+                    }
+                }
+            }
+            None
+        }
+        // Curried application: the function position is itself an expression
+        // (e.g. `@func_update(f,x,v)`) whose result sort must be a function.
+        _ => {
+            let (fn_value, fn_sort) = lower_system_expr(system, var_map, function)?;
+            let result_sort = sort_arrow_codomain(&fn_sort)?;
+            Some((DataApplication::with_args(&fn_value, arg_terms).into(), result_sort))
+        }
+    }
+}
+
+/// Lowers all equations in `system` that can be resolved structurally and
+/// appends the resulting [`DataEquation`]s to `out`.  Equations whose
+/// condition, left-hand side or right-hand side contain a construct that
+/// requires sort inference (empty container literals, number literals, binders)
+/// are silently skipped; the rest — covering the bulk of the basic-sort,
+/// container-sort and structured-sort Appendix-B equations — are included.
+fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataEquation>) {
+    for eqn_spec in &system.equation_declarations {
+        let var_map: HashMap<&str, DataSortExpression> = eqn_spec
+            .variables
+            .iter()
+            .map(|v| (v.identifier.as_str(), lower_syntax_sort(&v.sort)))
+            .collect();
+
+        let vars: Vec<DataVariable> = eqn_spec
+            .variables
+            .iter()
+            .map(|v| DataVariable::with_sort(v.identifier.as_str(), lower_syntax_sort(&v.sort).copy()))
+            .collect();
+
+        for eqn in &eqn_spec.equations {
+            // Lower condition (if present); skip the whole equation on failure.
+            let condition = match &eqn.condition {
+                Some(c) => match lower_system_expr(system, &var_map, c) {
+                    Some((term, _)) => Some(term),
+                    None => continue,
+                },
+                None => None,
+            };
+
+            let Some((lhs, _)) = lower_system_expr(system, &var_map, &eqn.lhs) else {
+                continue;
+            };
+            let Some((rhs, _)) = lower_system_expr(system, &var_map, &eqn.rhs) else {
+                continue;
+            };
+
+            out.push(DataEquation::new(&vars, condition, lhs, rhs));
+        }
+    }
+}
+
+// ──────────────────────── lower_data_specification ───────────────────────────
+
 /// Assembles a [`Mcrl2DataSpecification`] from the already-type-checked user
 /// and system specifications (§9a step 5, docs/typecheck.md):
 ///
@@ -688,9 +955,9 @@ fn flatten_product_domain(sort: &SortExpression, domain: &mut Vec<DataSortExpres
 ///   syntax sorts (the system spec is deliberately left unresolved — §G3).
 /// - **equations** — user equations whose [`EquationTyping`] is
 ///   [`EquationTyping::Inferred`] and whose expression tree is fully supported
-///   by [`lower_equation`]; unsupported equations (container literals, binders)
-///   are silently skipped and will be added when Phase-4 lowering extends to
-///   cover them. System equations are not yet included (same gap).
+///   by [`lower_equation`], followed by system equations that can be lowered
+///   structurally (empty-container and number-literal equations are silently
+///   skipped; they are the residual gap once user equations are fully covered).
 pub(crate) fn lower_data_specification(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
@@ -709,7 +976,10 @@ pub(crate) fn lower_data_specification(
         .iter()
         .filter_map(|d| {
             let expr = d.expr.as_ref()?;
-            Some(SortAlias::new(BasicSort::new(d.identifier.as_str()), lower_syntax_sort(expr)))
+            Some(SortAlias::new(
+                BasicSort::new(d.identifier.as_str()),
+                lower_syntax_sort(expr),
+            ))
         })
         .collect();
 
@@ -723,7 +993,10 @@ pub(crate) fn lower_data_specification(
         })
         .collect();
     for decl in &system.constructor_declarations {
-        constructors.push(DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_syntax_sort(&decl.sort).copy()));
+        constructors.push(DataFunctionSymbol::with_sort(
+            decl.identifier.as_str(),
+            lower_syntax_sort(&decl.sort).copy(),
+        ));
     }
 
     let mut mappings: Vec<DataFunctionSymbol> = spec
@@ -736,7 +1009,10 @@ pub(crate) fn lower_data_specification(
         })
         .collect();
     for decl in &system.map_declarations {
-        mappings.push(DataFunctionSymbol::with_sort(decl.identifier.as_str(), lower_syntax_sort(&decl.sort).copy()));
+        mappings.push(DataFunctionSymbol::with_sort(
+            decl.identifier.as_str(),
+            lower_syntax_sort(&decl.sort).copy(),
+        ));
     }
 
     let mut equations: Vec<DataEquation> = Vec::new();
@@ -753,6 +1029,7 @@ pub(crate) fn lower_data_specification(
             equations.push(DataEquation::new(&vars, lowered.condition, lowered.lhs, lowered.rhs));
         }
     }
+    lower_system_equations(system, &mut equations);
 
     Mcrl2DataSpecification::new(sorts, aliases, constructors, mappings, equations)
 }
@@ -762,8 +1039,8 @@ mod tests {
     use merc_data::is_container_sort;
     use merc_data::is_data_binder;
     use merc_data::is_data_function_symbol;
-    use merc_data::is_function_sort;
     use merc_data::is_data_where_clause;
+    use merc_data::is_function_sort;
     use merc_syntax::Sort;
     use merc_syntax::UntypedDataSpecification;
 
@@ -1036,7 +1313,11 @@ mod tests {
     fn test_empty_list_sort_is_embedded() {
         // The `[]` constant must carry a container (List) sort as its embedded sort.
         let equation = lower("map s: List(Nat); eqn s = [];").expect("empty list lowers");
-        assert!(is_container_sort(&equation.rhs.data_sort()), "sort should be container: {}", equation.rhs.data_sort());
+        assert!(
+            is_container_sort(&equation.rhs.data_sort()),
+            "sort should be container: {}",
+            equation.rhs.data_sort()
+        );
     }
 
     #[test]
@@ -1052,37 +1333,61 @@ mod tests {
     // §9a step 4 fixed: lambda now lowers to a Binder(Lambda, ...) aterm.
     fn test_lambda_lowers() {
         let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
-        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+        assert!(
+            is_data_binder(&equation.rhs),
+            "rhs should be a binder: {}",
+            equation.rhs
+        );
     }
 
     #[test]
     fn test_forall_lowers() {
         let equation = lower("map b: Bool; eqn b = forall x: Bool. x;").expect("forall lowers");
-        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+        assert!(
+            is_data_binder(&equation.rhs),
+            "rhs should be a binder: {}",
+            equation.rhs
+        );
     }
 
     #[test]
     fn test_exists_lowers() {
         let equation = lower("map b: Bool; eqn b = exists x: Bool. x;").expect("exists lowers");
-        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+        assert!(
+            is_data_binder(&equation.rhs),
+            "rhs should be a binder: {}",
+            equation.rhs
+        );
     }
 
     #[test]
     fn test_setcomp_lowers() {
         let equation = lower("map s: Set(Nat); eqn s = { x: Nat | x == 0 };").expect("set comprehension lowers");
-        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+        assert!(
+            is_data_binder(&equation.rhs),
+            "rhs should be a binder: {}",
+            equation.rhs
+        );
     }
 
     #[test]
     fn test_bagcomp_lowers() {
         let equation = lower("map b: Bag(Nat); eqn b = { x: Nat | x + 0 };").expect("bag comprehension lowers");
-        assert!(is_data_binder(&equation.rhs), "rhs should be a binder: {}", equation.rhs);
+        assert!(
+            is_data_binder(&equation.rhs),
+            "rhs should be a binder: {}",
+            equation.rhs
+        );
     }
 
     #[test]
     fn test_whr_lowers() {
         let equation = lower("map f: Bool; var x: Bool; eqn f = x whr x = true end;").expect("where clause lowers");
-        assert!(is_data_where_clause(&equation.rhs), "rhs should be a where clause: {}", equation.rhs);
+        assert!(
+            is_data_where_clause(&equation.rhs),
+            "rhs should be a where clause: {}",
+            equation.rhs
+        );
     }
 
     #[test]
@@ -1091,8 +1396,15 @@ mod tests {
         let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
         let rhs_str = equation.rhs.to_string();
         // The lowered term must contain a DataVarId encoding for x: Bool.
-        assert!(rhs_str.contains("DataVarId"), "bound variable should be DataVarId in: {rhs_str}");
-        assert!(is_data_function_symbol(&equation.lhs), "lhs should be a function symbol: {}", equation.lhs);
+        assert!(
+            rhs_str.contains("DataVarId"),
+            "bound variable should be DataVarId in: {rhs_str}"
+        );
+        assert!(
+            is_data_function_symbol(&equation.lhs),
+            "lhs should be a function symbol: {}",
+            equation.lhs
+        );
     }
 
     // === lower_equation: §9a step 3 — all NameTarget::Builtin ops use inferred sort ===
@@ -1119,9 +1431,8 @@ mod tests {
     fn test_builtin_func_update() {
         // `@func_update` is lowered by lower.rs to an Application; with the
         // step-3 fix its Builtin target uses the inferred sort directly.
-        let equation =
-            lower("map f: Nat -> Bool; map g: Nat -> Bool; var n: Nat; eqn g = f[n -> true];")
-                .expect("@func_update lowers with step 3 fix");
+        let equation = lower("map f: Nat -> Bool; map g: Nat -> Bool; var n: Nat; eqn g = f[n -> true];")
+            .expect("@func_update lowers with step 3 fix");
         assert_eq!(equation.rhs.to_string(), "@func_update(f, n, true)");
     }
 }

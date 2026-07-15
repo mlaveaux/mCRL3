@@ -151,11 +151,7 @@ pub(crate) fn check_equations(
         let mut spec_typings = Vec::with_capacity(eqn_spec.equations.len());
         for equation in &eqn_spec.equations {
             let equation_id = equation.id.expect("assign_declaration_ids ran before check_equations");
-            spec_typings.push(query_equation_typing(
-                ctx,
-                spec,
-                (eqn_spec_id, equation_id),
-            )?);
+            spec_typings.push(query_equation_typing(ctx, spec, (eqn_spec_id, equation_id))?);
         }
         typings.push(spec_typings);
     }
@@ -315,7 +311,10 @@ fn infer_equation(
                     for var in &eqn_spec.variables {
                         let var_id = var.id.expect("assign_declaration_ids ran before check_equations");
                         // The cache was populated in the variables-binding loop above.
-                        let sort = ctx.sort_of_equation_var.get(&(eqn_spec_id, var_id)).copied()
+                        let sort = ctx
+                            .sort_of_equation_var
+                            .get(&(eqn_spec_id, var_id))
+                            .copied()
                             .expect("equation variable sort was resolved above");
                         trace!(
                             "inference:   variable {}: {}",
