@@ -11,7 +11,7 @@ use crate::DistinguishingFormula;
 use crate::Partition;
 
 /// A stable global identifier for a node in the block-history forest.
-pub type NodeIndex = usize;
+pub(crate) type NodeIndex = usize;
 
 /// A node of the block-history tree. Together with its parent it forms the
 /// immutable forest that is recorded during refinement.
@@ -35,7 +35,7 @@ struct TreeNode {
 /// The recorded `level` of a block equals the iteration at which it first split
 /// off, so for a level-synchronized refinement it is the minimal modal depth at
 /// which its states become distinguishable.
-pub struct PartitionTree {
+pub(crate) struct PartitionTree {
     /// Node `i` stores its creation level and parent. Node `0` is the root.
     nodes: Vec<TreeNode>,
     /// The leaf nodes, i.e. the blocks of the final partition. Filled by
@@ -61,7 +61,7 @@ pub struct PartitionTree {
 /// construction without taking on any cost when none is needed: the no-op `()`
 /// implementation monomorphizes away, so an algorithm can always accept a
 /// `&mut impl RefinementForest` and pass `&mut ()` on the common path.
-pub trait RefinementForest {
+pub(crate) trait RefinementForest {
     /// Records one refinement wave that turned the `previous` partition into the
     /// finer `next` partition. The two partitions must be consecutive: the
     /// `previous` of each call equals the `next` of the prior call.

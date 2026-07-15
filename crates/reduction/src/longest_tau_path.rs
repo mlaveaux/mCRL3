@@ -10,7 +10,7 @@ use merc_lts::StateIndex;
 /// This runs a relaxation fixpoint that re-scans every tau-edge until no length
 /// changes, so it is `O(states * transitions)` in the worst case. A single pass
 /// suffices when the states are topologically sorted on tau-transitions.
-pub fn longest_tau_path<L: LTS>(lts: &L) -> Vec<StateIndex> {
+pub(crate) fn longest_tau_path<L: LTS>(lts: &L) -> Vec<StateIndex> {
     let mut length = vec![0usize; lts.num_of_states()];
     let mut next = vec![None; lts.num_of_states()];
 

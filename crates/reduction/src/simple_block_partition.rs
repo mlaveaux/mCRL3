@@ -14,26 +14,26 @@ use crate::Partition;
 /// the list of elements. Similar to [super::BlockPartition] but without taking
 /// the stability of individual elements into account.
 #[derive(Debug)]
-pub struct MarkedBlockPartition {
+pub(crate) struct MarkedBlockPartition {
     partition: BlockPartition<bool>,
 }
 
 impl MarkedBlockPartition {
     /// Create an initial partition where all the states are in a single block
     /// 0. And all the elements in the block are marked.
-    pub fn new(num_of_elements: usize) -> Self {
+    pub(crate) fn new(num_of_elements: usize) -> Self {
         Self {
             partition: BlockPartition::new(num_of_elements),
         }
     }
 
     /// Marks the given block as stable
-    pub fn mark_block_stable(&mut self, block_index: BlockIndex) {
+    pub(crate) fn mark_block_stable(&mut self, block_index: BlockIndex) {
         *self.partition.block_annotation(block_index) = true;
     }
 
     /// Return a reference to the given block.
-    pub fn block(&self, block_index: BlockIndex) -> &Block<bool> {
+    pub(crate) fn block(&self, block_index: BlockIndex) -> &Block<bool> {
         self.partition.block(block_index)
     }
 
@@ -41,7 +41,7 @@ impl MarkedBlockPartition {
     /// a split occurs both blocks are marked as unstable.
     ///
     /// If the predicate holds for all or none of the elements, no split occurs.
-    pub fn split_block(
+    pub(crate) fn split_block(
         &mut self,
         block_index: BlockIndex,
         predicate: impl Fn(StateIndex) -> bool,
@@ -59,22 +59,22 @@ impl MarkedBlockPartition {
     }
 
     /// Returns the number of blocks in the partition.
-    pub fn num_of_blocks(&self) -> usize {
+    pub(crate) fn num_of_blocks(&self) -> usize {
         self.partition.num_of_blocks()
     }
 
     /// Returns an iterator over the elements of a given block.
-    pub fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
+    pub(crate) fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
         self.partition.iter_block(block_index)
     }
 
     /// Returns an iterator over all blocks in the partition.
-    pub fn iter(&self) -> impl Iterator<Item = &Block<bool>> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Block<bool>> {
         self.partition.iter()
     }
 
     /// Returns an iterator over all blocks in the partition.
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Block<bool>> {
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Block<bool>> {
         self.partition.iter_mut()
     }
 }

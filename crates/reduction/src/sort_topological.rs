@@ -14,7 +14,7 @@ use merc_utilities::is_valid_permutation;
 /// An error is returned if the LTS contains a cycle.
 ///     - filter: Only transitions satisfying the filter are considered part of the graph.
 ///     - reverse: If true, the topological ordering is reversed, i.e. `t` before the state `s`.
-pub fn sort_topological<F, L>(lts: &L, filter: F, reverse: bool) -> Result<Vec<StateIndex>, MercError>
+pub(crate) fn sort_topological<F, L>(lts: &L, filter: F, reverse: bool) -> Result<Vec<StateIndex>, MercError>
 where
     F: Fn(LabelIndex, StateIndex) -> bool,
     L: LTS,

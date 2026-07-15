@@ -15,12 +15,12 @@ pub fn tau_scc_decomposition<L: LTS>(lts: &L) -> IndexedPartition {
 }
 
 /// Computes the strongly connected tau component partitioning of the given LTS using the iterative algorithm.
-pub fn tau_scc_decomposition_iterative<L: LTS>(lts: &L) -> IndexedPartition {
+pub(crate) fn tau_scc_decomposition_iterative<L: LTS>(lts: &L) -> IndexedPartition {
     scc_decomposition_iterative(&AsGraph(lts), |_, label_index, _| lts.is_hidden_label(label_index))
 }
 
 /// Returns true iff the labelled transition system has tau-loops.
-pub fn has_tau_loop<L: LTS>(lts: &L) -> bool {
+pub(crate) fn has_tau_loop<L: LTS>(lts: &L) -> bool {
     sort_topological(lts, |label_index, _| lts.is_hidden_label(label_index), false).is_err()
 }
 

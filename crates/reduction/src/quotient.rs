@@ -73,7 +73,7 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
 /// subsumed by a one-hidden-step alternative.
 ///
 /// If `eliminate_tau_loops` is true then tau self-loops are eliminated.
-pub fn quotient_lts_weak<L: LTS, P: Partition>(
+pub(crate) fn quotient_lts_weak<L: LTS, P: Partition>(
     lts: &L,
     partition: &P,
     eliminate_tau_loops: bool,

@@ -58,7 +58,7 @@ pub fn strong_bisim_sigref<L: LTS>(lts: L, timing: &Timing) -> (L, BlockPartitio
 }
 
 /// Computes a strong bisimulation partitioning using signature refinement
-pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition) {
+pub(crate) fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, IndexedPartition) {
     let partition = strong_bisim_sigref_naive_impl(&lts, &mut (), timing);
     (lts, partition)
 }
@@ -69,7 +69,7 @@ pub fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, Indexed
 /// The tree can be used to reconstruct a minimal-depth distinguishing formula
 /// for any two states found in different blocks, via
 /// [`PartitionTree::distinguish`].
-pub fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(
+pub(crate) fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(
     lts: L,
     timing: &Timing,
 ) -> (L, IndexedPartition, PartitionTree) {
@@ -185,7 +185,7 @@ fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) ->
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS. And if `divergence_preserving` is true, we compute
 /// divergence preserving branching bisimulation instead.
-pub fn branching_bisim_sigref_naive<L: LTS>(
+pub(crate) fn branching_bisim_sigref_naive<L: LTS>(
     lts: L,
     state: StateIndex,
     divergence_preserving: bool,
@@ -244,7 +244,7 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
 ///
 /// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
-pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
+pub(crate) fn weak_bisim_sigref_inductive_naive<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
@@ -268,7 +268,7 @@ pub fn weak_bisim_sigref_inductive_naive<L: LTS>(
 /// Implementation of [weak_bisim_sigref_inductive_naive] that deals with both preprocessed and regular LTSs.
 ///
 /// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
-pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
+pub(crate) fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     lts: L,
     state: StateIndex,
     divergence_preserving: bool,
@@ -290,7 +290,7 @@ pub fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
 /// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
 ///
 /// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
-pub fn weak_bisim_sigref_naive<L: LTS>(
+pub(crate) fn weak_bisim_sigref_naive<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
@@ -816,7 +816,7 @@ where
 }
 
 /// Returns true iff the given partition is a strong bisimulation partition
-pub fn is_valid_refinement<F, P, L>(lts: &L, partition: &P, mut compute_signature: F) -> bool
+pub(crate) fn is_valid_refinement<F, P, L>(lts: &L, partition: &P, mut compute_signature: F) -> bool
 where
     F: FnMut(StateIndex, &P, &mut SignatureBuilder),
     P: Partition,

@@ -28,7 +28,7 @@ pub struct BlockPartition {
 impl BlockPartition {
     /// Create an initial partition where all the states are in a single block
     /// 0. And all the elements in the block are marked.
-    pub fn new(num_of_elements: usize) -> BlockPartition {
+    pub(crate) fn new(num_of_elements: usize) -> BlockPartition {
         debug_assert!(num_of_elements > 0, "Cannot partition the empty set");
 
         let blocks = vec![Block::new(0, num_of_elements)];
@@ -52,7 +52,7 @@ impl BlockPartition {
     /// Returns an iterator over the new block indices, where the first element
     /// is the index of the block that was partitioned. And that block is the
     /// largest block.
-    pub fn partition_marked_with<F>(
+    pub(crate) fn partition_marked_with<F>(
         &mut self,
         block_index: BlockIndex,
         builder: &mut BlockPartitionBuilder,
@@ -168,7 +168,7 @@ impl BlockPartition {
 
     /// Split the given block into two separate block based on the splitter
     /// predicate.
-    pub fn split_marked<F>(&mut self, block_index: usize, mut splitter: F)
+    pub(crate) fn split_marked<F>(&mut self, block_index: usize, mut splitter: F)
     where
         F: FnMut(StateIndex) -> bool,
     {
@@ -226,7 +226,11 @@ impl BlockPartition {
 
     /// Makes the marked elements closed under the silent closure of incoming
     /// tau-transitions within the current block.
-    pub fn mark_backward_closure(&mut self, block_index: BlockIndex, incoming_transitions: &IncomingTransitions) {
+    pub(crate) fn mark_backward_closure(
+        &mut self,
+        block_index: BlockIndex,
+        incoming_transitions: &IncomingTransitions,
+    ) {
         let block = self.blocks[block_index];
         let mut it = block.end - 1;
 
@@ -257,7 +261,7 @@ impl BlockPartition {
     }
 
     /// Swaps the given blocks given by the indices.
-    pub fn swap_blocks(&mut self, left_index: BlockIndex, right_index: BlockIndex) {
+    pub(crate) fn swap_blocks(&mut self, left_index: BlockIndex, right_index: BlockIndex) {
         if left_index == right_index {
             // Nothing to do.
             return;
@@ -277,7 +281,7 @@ impl BlockPartition {
     }
 
     /// Marks the given element, such that it is returned by iter_marked.
-    pub fn mark_element(&mut self, element: StateIndex) {
+    pub(crate) fn mark_element(&mut self, element: StateIndex) {
         let block_index = self.element_to_block[element];
         let offset = self.element_offset[element];
         let marked_split = self.blocks[block_index].marked_split;
@@ -292,7 +296,7 @@ impl BlockPartition {
     }
 
     /// Returns true iff the given element has already been marked.
-    pub fn is_element_marked(&self, element: StateIndex) -> bool {
+    pub(crate) fn is_element_marked(&self, element: StateIndex) -> bool {
         let block_index = self.element_to_block[element];
         let offset = self.element_offset[element];
         let marked_split = self.blocks[block_index].marked_split;
@@ -301,17 +305,17 @@ impl BlockPartition {
     }
 
     /// Return a reference to the given block.
-    pub fn block(&self, block_index: BlockIndex) -> &Block {
+    pub(crate) fn block(&self, block_index: BlockIndex) -> &Block {
         &self.blocks[block_index]
     }
 
     /// Returns the number of blocks in the partition.
-    pub fn num_of_blocks(&self) -> usize {
+    pub(crate) fn num_of_blocks(&self) -> usize {
         self.blocks.len()
     }
 
     /// Returns an iterator over the elements of a given block.
-    pub fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
+    pub(crate) fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
         BlockIter {
             elements: &self.elements,
             index: self.blocks[block_index].begin,
@@ -371,7 +375,7 @@ impl BlockPartition {
 }
 
 #[derive(Default)]
-pub struct BlockPartitionBuilder {
+pub(crate) struct BlockPartitionBuilder {
     // Keeps track of the block index for every element in this block by index.
     index_to_block: Vec<BlockIndex>,
 
@@ -429,7 +433,7 @@ impl fmt::Display for BlockPartition {
 ///
 /// Invariant: `start` <= `middle` <= `end` && `start` < `end`.
 #[derive(Clone, Copy, Debug)]
-pub struct Block {
+pub(crate) struct Block {
     begin: usize,
     marked_split: usize,
     end: usize,
@@ -437,7 +441,7 @@ pub struct Block {
 
 impl Block {
     /// Creates a new block where every element is marked.
-    pub fn new(begin: usize, end: usize) -> Block {
+    pub(crate) fn new(begin: usize, end: usize) -> Block {
         debug_assert!(begin < end, "The range of this block is incorrect");
 
         Block {
@@ -447,7 +451,7 @@ impl Block {
         }
     }
 
-    pub fn new_unmarked(begin: usize, end: usize) -> Block {
+    pub(crate) fn new_unmarked(begin: usize, end: usize) -> Block {
         debug_assert!(begin < end, "The range {begin} to {end} of this block is incorrect");
 
         Block {
@@ -458,7 +462,7 @@ impl Block {
     }
 
     /// Returns an iterator over the elements in this block.
-    pub fn iter<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
+    pub(crate) fn iter<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.begin,
@@ -467,7 +471,7 @@ impl Block {
     }
 
     /// Returns an iterator over the marked elements in this block.
-    pub fn iter_marked<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
+    pub(crate) fn iter_marked<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.marked_split,
@@ -476,7 +480,7 @@ impl Block {
     }
 
     /// Returns an iterator over the unmarked elements in this block.
-    pub fn iter_unmarked<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
+    pub(crate) fn iter_unmarked<'a>(&self, elements: &'a [StateIndex]) -> BlockIter<'a> {
         BlockIter {
             elements,
             index: self.begin,
@@ -485,14 +489,14 @@ impl Block {
     }
 
     /// Returns true iff the block has marked elements.
-    pub fn has_marked(&self) -> bool {
+    pub(crate) fn has_marked(&self) -> bool {
         self.assert_consistent();
 
         self.marked_split < self.end
     }
 
     /// Returns true iff the block has unmarked elements.
-    pub fn has_unmarked(&self) -> bool {
+    pub(crate) fn has_unmarked(&self) -> bool {
         self.assert_consistent();
 
         self.begin < self.marked_split
@@ -503,14 +507,14 @@ impl Block {
     /// A block always satisfies `begin < end`, so it is never empty; there is
     /// deliberately no `is_empty`.
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.assert_consistent();
 
         self.end - self.begin
     }
 
     /// Returns the number of marked elements in the block.
-    pub fn len_marked(&self) -> usize {
+    pub(crate) fn len_marked(&self) -> usize {
         self.assert_consistent();
 
         self.end - self.marked_split
@@ -537,7 +541,7 @@ impl Block {
     }
 }
 
-pub struct BlockIter<'a> {
+pub(crate) struct BlockIter<'a> {
     elements: &'a [StateIndex],
     index: usize,
     end: usize,

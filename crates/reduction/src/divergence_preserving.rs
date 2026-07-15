@@ -15,7 +15,7 @@ use merc_lts::Transition;
 /// This relies on the fact that the original tau label is a specific label. The
 /// special label is added to the end of the label list, and is not used in the
 /// original LTS.
-pub struct DivergencePreservingLts<'a, L: LTS> {
+pub(crate) struct DivergencePreservingLts<'a, L: LTS> {
     /// The special label used to mark tau-self-loops, this should not be used in the original LTS.
     tau_self_loops_label: LabelIndex,
 
@@ -26,7 +26,7 @@ pub struct DivergencePreservingLts<'a, L: LTS> {
 }
 
 impl<'a, L: LTS> DivergencePreservingLts<'a, L> {
-    pub fn new(lts: &'a L) -> Self {
+    pub(crate) fn new(lts: &'a L) -> Self {
         // We add a new label for the tau-self-loops.
         let tau_self_loops = lts.num_of_labels();
         let labels = lts

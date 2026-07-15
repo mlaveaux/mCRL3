@@ -38,7 +38,7 @@ type BitArray = BitVec<u64, Lsb0>;
 ///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS.
-pub fn weak_bisimulation<L: LTS>(
+pub(crate) fn weak_bisimulation<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
@@ -70,7 +70,7 @@ pub fn weak_bisimulation<L: LTS>(
 ///
 /// The `state` is any state for which we return the equivalent state in the
 /// preprocessed LTS.
-pub fn weak_bisimulation_parallel<L: LTS>(
+pub(crate) fn weak_bisimulation_parallel<L: LTS>(
     lts: L,
     state: StateIndex,
     preprocess: bool,
