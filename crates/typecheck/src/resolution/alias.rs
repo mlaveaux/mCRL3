@@ -50,6 +50,7 @@ pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), Alias
             let mut visited = Vec::new();
             check_function_sort_loop(lhs, alias, &mut visited, false, &alias_map)?;
             debug_assert!(visited.is_empty());
+
             check_circularity(lhs, alias, &mut visited, &alias_map)?;
             debug_assert!(visited.is_empty());
         }
@@ -92,17 +93,18 @@ fn check_circularity(
 }
 
 /// The function-sort-loop check: searches for `lhs` through aliases,
-/// containers, function sorts *and* structured sorts, and reports a loop only
-/// when a function sort or a `Set`/`Bag` container was passed along the way
-/// (the `observed` context).
+/// containers, function sorts *and* structured sorts.
+///
+/// Reports a loop only when a function sort or a `Set`/`Bag` container was
+/// passed along the way, indicated by the `is_function_like_sort` parameter.
 fn check_function_sort_loop(
     lhs: DefId,
     rhs: &SortExpression,
     visited: &mut Vec<DefId>,
-    observed: bool,
+    is_function_like_sort: bool,
     alias_map: &HashMap<DefId, &SortExpression>,
 ) -> Result<(), AliasError> {
-    try_visit_sort_expr_with::<AliasError, (), bool, _>(rhs, observed, |expr, observed| match expr {
+    try_visit_sort_expr_with::<AliasError, (), bool, _>(rhs, is_function_like_sort, |expr, observed| match expr {
         SortExpression::Resolved(_, id) => {
             if *id == lhs && observed {
                 return Err(AliasError::ThroughFunctionSort { sort: lhs });
@@ -144,8 +146,8 @@ mod tests {
         match DataSpecification::from_untyped(
             UntypedDataSpecification::parse(
                 "sort S = T;
-            T = U;
-            U = S;",
+                T = U;
+                U = S;",
             )
             .unwrap(),
         ) {

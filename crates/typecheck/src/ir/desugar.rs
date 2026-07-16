@@ -83,8 +83,7 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
 /// comprehension binder sort inside `expr`, in place — the expression-body
 /// counterpart of the declaration-position hoisting above: without this, a
 /// binder over an anonymous `struct` would be left with an unresolvable sort
-/// and its equation deferred to `EquationTyping::Skipped` rather than type
-/// checked.
+/// and its equation rejected rather than type checked.
 fn hoist_binder_sorts_in_place(hoister: &mut Hoister, expr: &mut DataExpr) {
     let owned = std::mem::replace(expr, DataExpr::EmptyList);
     *expr = hoist_binder_sorts(hoister, owned);

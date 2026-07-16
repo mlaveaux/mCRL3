@@ -106,10 +106,8 @@ pub(crate) fn resolve_sort(
             let range = resolve_sort(ctx, spec, range);
             ctx.sorts.function(domain, range)
         }
-        // Unreachable through the pipeline today (it flattens every function
-        // sort before resolution), but kept so the resolver accepts any
-        // well-formed sort expression, such as binder sorts built during
-        // inference.
+        // Kkept so the resolver accepts any well-formed sort expression, such
+        // as binder sorts built during inference.
         SortExpression::Function { domain, range } => {
             let mut resolved_domain = Vec::new();
             resolve_function_domain(ctx, spec, domain, &mut resolved_domain);

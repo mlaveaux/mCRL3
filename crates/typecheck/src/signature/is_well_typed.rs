@@ -212,11 +212,11 @@ fn check_product_spine(sort: &SortExpression) -> Result<(), WellTypedError> {
     }
 }
 
-/// Returns whether a binder sort inside an equation body can be resolved by
-/// the pipeline today. `hoist_anonymous_structs` hoists an anonymous `struct`
-/// on a binder into a named declaration like any other occurrence, so the
-/// only remaining unsupported shape is a bare product sort, which is not a
-/// sort at all — a construct binding one is deferred rather than resolved.
+/// Returns whether a binder sort inside an equation body is a valid variable
+/// sort. `hoist_anonymous_structs` hoists an anonymous `struct` on a binder
+/// into a named declaration like any other occurrence, so the only shape this
+/// rejects is a bare product sort, which is not a sort at all — a construct
+/// binding one is rejected during inference (see `binder_sort`).
 pub(crate) fn is_supported_binder_sort(sort: &SortExpression) -> bool {
     check_products_within_domains(sort).is_ok()
 }

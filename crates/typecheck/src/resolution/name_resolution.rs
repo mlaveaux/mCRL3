@@ -19,20 +19,18 @@ use merc_syntax::try_visit_data_expr_mut;
 
 use crate::WellTypedError;
 
-/// Ensure that all DefIds in the data specification are resolved. Returns an
-/// indexed set that indicates the mapping from sort identifiers to their
-/// DefIds.
-pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<IndexedSet<String>, WellTypedError> {
-    // Byte-identical sort declarations are silently deduplicated, so repeated
-    // identical declarations are accepted; conflicting redeclarations still
-    // fail below.
+/// Assigns unique DefIds to all sort declarations, and then resolves all sort
+/// expressions to their id. Returns an indexed set that indicates the mapping
+/// from sort identifiers to their DefIds.
+pub(crate) fn resolve_sort_ids(spec: &mut UntypedDataSpecification) -> Result<IndexedSet<String>, WellTypedError> {
+    // Byte-identical sort declarations are deduplicated.
     let mut seen = HashSet::new();
     let before = spec.sort_declarations.len();
     spec.sort_declarations
         .retain(|decl| seen.insert((decl.identifier.clone(), decl.expr.clone())));
     if spec.sort_declarations.len() < before {
         debug!(
-            "resolve_names: deduplicated {} identical sort declaration(s)",
+            "resolve_sort_ids: deduplicated {} identical sort declaration(s)",
             before - spec.sort_declarations.len()
         );
     }
@@ -43,7 +41,7 @@ pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<Index
     // Assign unique IDs to all sort declarations
     for (i, sort) in spec.sort_declarations.iter_mut().enumerate() {
         sort.id = Some(DefId::new(i));
-        debug!("resolve_names: sort '{}' declared as id {i}", sort.identifier);
+        debug!("resolve_sort_ids: sort '{}' declared as id {i}", sort.identifier);
 
         if !sorts.insert(sort.identifier.clone()).1 {
             return Err(WellTypedError::DuplicateSortDeclaration {
@@ -53,17 +51,15 @@ pub(crate) fn resolve_names(spec: &mut UntypedDataSpecification) -> Result<Index
     }
 
     // Resolve all sorts.
-    map_sorts_in_spec(spec, |sort| resolve_sort_id(sort, &sorts))?;
+    apply_sorts_in_spec(spec, |sort| resolve_sort_id(sort, &sorts))?;
 
     Ok(sorts)
 }
 
 /// Assigns a unique id to every constructor declaration, map declaration,
-/// equation specification block and equation, mirroring the [DefId] that
-/// [resolve_names] assigns to sort declarations. Unlike sort declarations,
-/// these lists can grow after name resolution (struct desugaring appends
-/// further constructors and mappings), so this must run after
-/// `desugar_structured_sorts` rather than as part of [resolve_names].
+/// equation specification block and equation. These lists can grow after name
+/// resolution by the desugaring of structured sorts, so this must run after
+/// `desugar_structured_sorts`.
 pub(crate) fn assign_declaration_ids(spec: &mut UntypedDataSpecification) {
     for (i, decl) in spec.constructor_declarations.iter_mut().enumerate() {
         decl.id = Some(ConstructorId::new(i));
@@ -83,10 +79,9 @@ pub(crate) fn assign_declaration_ids(spec: &mut UntypedDataSpecification) {
 }
 
 // Apply a mapping function to every sort in the specification, including the
-// binder sorts inside equation expressions, so the sort passes (flattening,
-// name resolution, normalization) treat `{ x: S | .. }` and `lambda x: S. ..`
-// like any declaration-level sort.
-pub(crate) fn map_sorts_in_spec<E, F>(spec: &mut UntypedDataSpecification, mut f: F) -> Result<(), E>
+// binder sorts inside equation expressions, so the sort passes treat `{ x: S |
+// .. }` and `lambda x: S. ..` like any declaration-level sort.
+pub(crate) fn apply_sorts_in_spec<E, F>(spec: &mut UntypedDataSpecification, mut f: F) -> Result<(), E>
 where
     F: FnMut(&SortExpression) -> Result<SortExpression, E>,
 {
@@ -111,10 +106,10 @@ where
         }
         for eqn in &mut equation.equations {
             if let Some(condition) = &mut eqn.condition {
-                map_sorts_in_data_expr(condition, &mut f)?;
+                apply_sorts_in_data_expr(condition, &mut f)?;
             }
-            map_sorts_in_data_expr(&mut eqn.lhs, &mut f)?;
-            map_sorts_in_data_expr(&mut eqn.rhs, &mut f)?;
+            apply_sorts_in_data_expr(&mut eqn.lhs, &mut f)?;
+            apply_sorts_in_data_expr(&mut eqn.rhs, &mut f)?;
         }
     }
 
@@ -123,7 +118,7 @@ where
 
 /// Applies `f` to every binder sort (lambda, quantifier and set/bag
 /// comprehension variables) inside a data expression.
-fn map_sorts_in_data_expr<E, F>(expr: &mut DataExpr, f: &mut F) -> Result<(), E>
+fn apply_sorts_in_data_expr<E, F>(expr: &mut DataExpr, f: &mut F) -> Result<(), E>
 where
     F: FnMut(&SortExpression) -> Result<SortExpression, E>,
 {

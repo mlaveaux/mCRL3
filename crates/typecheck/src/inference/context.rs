@@ -9,6 +9,7 @@ use merc_syntax::EqnSpecId;
 use merc_syntax::EqnVarId;
 use merc_syntax::EquationId;
 use merc_syntax::MapId;
+use merc_syntax::UntypedDataSpecification;
 
 use crate::EquationTyping;
 use crate::InferenceError;
@@ -46,10 +47,8 @@ pub(crate) struct TypeckContext {
     /// [TypeckContext::signature].
     pub(crate) system_signature: Option<Rc<Signature>>,
     /// The sort identifiers from the system specification's `sort_declarations`,
-    /// in declaration order. A system-internal sort with [DefId] `d` has its
-    /// name at index `d - user_spec.sort_declarations.len()`, because
-    /// [resolve_system_signature] assigns DefIds using the declaration's
-    /// position in the system spec.
+    /// in declaration order. Use [TypeckContext::sort_name] to look a name up;
+    /// the index arithmetic that maps a [DefId] into this vector lives there.
     pub(crate) system_sort_decls: Vec<String>,
     /// The memoized results of `query_equation_typing`, keyed by the id of the
     /// enclosing equation specification block and the equation's own id
@@ -70,6 +69,23 @@ impl TypeckContext {
             system_sort_decls: Vec::new(),
             equation_typing: QueryCache::new(),
         }
+    }
+}
+
+impl TypeckContext {
+    /// The declared name of the sort that [DefId] `def` resolves to, whether a
+    /// user sort or a system-internal one (`@NatPair`, …), or `None` when it is
+    /// out of range of both.
+    ///
+    /// This is the single place aware that a system-internal `DefId` indexes
+    /// [system_sort_decls](Self::system_sort_decls) offset by the user sort
+    /// count — the layout `resolve_system_signature` establishes.
+    pub(crate) fn sort_name<'a>(&'a self, spec: &'a UntypedDataSpecification, def: DefId) -> Option<&'a str> {
+        if let Some(decl) = spec.sort_declarations.get(*def) {
+            return Some(&decl.identifier);
+        }
+        let system_index = (*def).checked_sub(spec.sort_declarations.len())?;
+        self.system_sort_decls.get(system_index).map(String::as_str)
     }
 }
 

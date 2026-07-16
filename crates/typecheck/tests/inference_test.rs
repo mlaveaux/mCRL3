@@ -439,14 +439,12 @@ fn test_number_literal_operator_sorts() {
     check_ok("map p: Pos; eqn p = 1 * 2 + 3;");
 }
 
-// === List literals and operations (typecheck_test.cpp test_empty_list..test_head_list_zero_one) ===
+// List literals and empty-list typing
 
 #[test]
 fn test_empty_list_takes_element_sort_from_use() {
-    // mCRL2 accepts the bare `[]` with a free element sort; merc's equation
-    // entry point determines it from the left-hand side (the never-determined
-    // form is the known-gap anchor test_count_of_empty_list_is_nat below). mCRL2:
-    // test_empty_list, test_empty_list_concat.
+    // mCRL2 accepts the bare `[]` with a free element sort, but merc's
+    // constraint solver needs a context to resolve the element sort.
     check_ok("map l: List(Bool); eqn l = [];");
     check_ok("map l: List(Bool); eqn l = [] ++ [];");
 }
@@ -454,7 +452,7 @@ fn test_empty_list_takes_element_sort_from_use() {
 #[test]
 fn test_empty_list_membership() {
     // The member's sort determines the empty list's element sort through the
-    // polymorphic `in` template. mCRL2: test_empty_list_in.
+    // polymorphic `in` template.
     check_ok("map b: Bool; eqn b = true in [];");
 }
 
@@ -619,15 +617,35 @@ fn test_exists_simple() {
 
 #[test]
 fn test_binders_over_anonymous_structs_accepted() {
-    // Anonymous `struct` binder sorts defer the whole equation
-    // (`EquationTyping::Skipped`), so these stay accepted; the variants that
-    // mCRL2 *rejects* are the known-gap anchors below. mCRL2:
+    // Anonymous `struct` binder sorts are hoisted and fully inferred (not
+    // skipped), so these type check like any other equation. The variants
+    // mCRL2 *rejects* — a binder body that uses the inline struct's own
+    // constructor — are the known-gap anchors below. mCRL2:
     // test_inline_structs_compare, test_forall_structs_compare,
     // test_exists_structs_compare, test_lambda_anonymous_struct.
     check_ok("map b: (struct t) # (struct t) -> Bool; eqn b = lambda x,y: struct t. x == y;");
     check_ok("map b: Bool; eqn b = forall x,y: struct t. x == y;");
     check_ok("map b: Bool; eqn b = exists x,y: struct t. x == y;");
     check_ok("map f: (struct t) -> Bool; g: (struct t) -> Bool; eqn g = lambda x: struct t. f(x);");
+}
+
+#[test]
+fn test_product_binder_sort_is_rejected() {
+    // A bare product (`Nat # Bool`) is not a valid variable sort, so a binder
+    // over one is rejected rather than left untyped — the former silent skip
+    // let an ill-typed body under such a binder slip through unchecked.
+    for text in [
+        "map b: Bool; eqn b = forall x: Nat # Bool. true;",
+        "map b: Bool; eqn b = exists x: Nat # Bool. true;",
+        "map b: Bool; eqn b = forall x: Nat # Bool. 1 + true;",
+        "map s: Set(Nat); eqn s = { x: Nat # Nat | true };",
+    ] {
+        let err = check_err(text);
+        assert!(
+            matches!(err, WellTypedError::Inference(InferenceError::InvalidBinderSort { .. })),
+            "{err} for {text}"
+        );
+    }
 }
 
 #[test]

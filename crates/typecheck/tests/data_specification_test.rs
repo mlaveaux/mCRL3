@@ -1,11 +1,4 @@
 //! Data-specification type-checking tests.
-//!
-//! The first group is ported from mCRL2's
-//! `libraries/data/test/typecheck_test.cpp` and `normalize_sorts_test.cpp`:
-//! the specification-level cases (sort, alias, declaration and
-//! well-typedness checks). The equation-level cases live in
-//! `inference_test.rs`. The second group is a randomized property test over
-//! acyclic alias graphs.
 
 use std::collections::HashSet;
 
@@ -31,7 +24,7 @@ fn check(text: &str, expect_ok: bool) {
 }
 
 /// Type checks `text`, returning the error for the caller to match on the
-/// specific variant (never the message text, which may change).
+/// specific variant.
 #[track_caller]
 fn check_err(text: &str) -> WellTypedError {
     let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
@@ -60,9 +53,7 @@ fn test_duplicate_sort_conflicting() {
 #[test]
 fn test_constructor_and_mapping_same_symbol() {
     // The same symbol `f: S` cannot be declared as both a constructor and a
-    // mapping. (mCRL2 additionally rejects the different-sort form
-    // `cons f: S; map f: T;` — see
-    // test_duplicate_constant_different_sort_rejected_cons_map below.)
+    // mapping.
     check(
         "sort S;
          cons f: S;
@@ -137,11 +128,7 @@ fn test_recursive_function_sort_reverse() {
     );
 }
 
-// === Alias self-loop table (typecheck_test.cpp:1565-1636, test_sort_aliases) ===
-// `alias.rs`'s existing tests already cover several rows of this table
-// (direct/indirect cycles, the List self-loop, struct-boxed recursion
-// through List/Set/function-sort, mutual struct recursion); these add the
-// rows that were not yet exercised.
+// Alias analysis
 
 #[test]
 fn test_bare_self_alias_rejected() {
@@ -154,9 +141,7 @@ fn test_bare_self_alias_rejected() {
 
 #[test]
 fn test_bare_fset_fbag_self_alias_rejected() {
-    // Rows A12 = FSet(A12) and A13 = FBag(A13): like the List row these are
-    // plain cycles (`AliasCycle`), not function-sort loops — the *finite*
-    // containers do not set the function-sort flag the way Set/Bag below do.
+    // Plain cycles through structured sorts are allowed.
     match check_err("sort A12 = FSet(A12);") {
         WellTypedError::AliasCycle { sorts } if sorts.contains(&"A12".to_string()) => {}
         other => panic!("unexpected error {other}"),
@@ -169,10 +154,8 @@ fn test_bare_fset_fbag_self_alias_rejected() {
 
 #[test]
 fn test_bare_set_self_alias_rejected() {
-    // A *bare* (non-struct) self-alias through `Set`/`Bag` — unlike `List`,
-    // `FSet` and `FBag`, which surface as `AliasCycle` — is caught by the
-    // function-sort-loop checker instead, because Set/Bag "set the flag" the
-    // same way a function sort does (they are infinite containers).
+    // A bare struct alias cycle, since Set is a function sort, is rejected as a
+    // cycle through a function sort.
     match check_err("sort A3 = Set(A3);") {
         WellTypedError::RecursiveAliasThroughFunctionSort { sort } if sort == "A3" => {}
         other => panic!("unexpected error {other}"),
@@ -189,10 +172,8 @@ fn test_bare_bag_self_alias_rejected() {
 
 #[test]
 fn test_alias_loop_via_list_of_struct() {
-    // `B`'s only reference to itself goes through both `List` (a finite,
-    // inductively-safe container) and a struct constructor, so it is
-    // accepted — a different shape than the existing `struct` wrapping a
-    // `List` of itself.
+    // `B`'s only reference to itself goes through both `List` and a struct
+    // constructor, so it is accepted.
     check("sort B = List(struct f(B)); map g: B; eqn g = [];", true);
 }
 
