@@ -436,9 +436,9 @@ mod inner {
 
         use merc_utilities::random_test;
 
+        use super::read_bcg;
         use crate::LTS;
         use crate::random_lts;
-        use crate::read_bcg;
         use crate::write_bcg;
 
         #[test]
@@ -478,5 +478,5 @@ mod inner {
     }
 }
 
-pub use inner::read_bcg;
+pub(crate) use inner::read_bcg;
 pub use inner::write_bcg;

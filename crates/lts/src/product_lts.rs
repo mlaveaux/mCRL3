@@ -18,7 +18,7 @@ use crate::TransitionLabel;
 ///  If `synchronized_labels` is `None`, then all common labels (except tau) are
 /// considered synchronized. Otherwise, the provided labels are used for
 /// synchronization.
-pub fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
+pub(crate) fn product_lts<L: LTS, R: LTS<Label = L::Label>>(
     left: &L,
     right: &R,
     synchronized_labels: Option<Vec<L::Label>>,
@@ -148,7 +148,7 @@ mod tests {
     use merc_io::DumpFiles;
     use merc_utilities::random_test;
 
-    use crate::product_lts;
+    use super::product_lts;
     use crate::random_lts;
     use crate::write_aut;
 

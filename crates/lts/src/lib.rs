@@ -15,17 +15,47 @@ mod product_lts;
 mod random_lts;
 mod reachability;
 
-pub use incoming_transitions::*;
-pub use io::*;
-pub use io_aut::*;
-pub use io_aut_stream::*;
-pub use io_bcg::*;
-pub use io_lts::*;
-pub use labelled_transition_system::*;
-pub use lts::*;
-pub use lts_builder::*;
-pub use lts_builder_fast::*;
-pub use multi_action::*;
-pub use product_lts::*;
-pub use random_lts::*;
-pub use reachability::*;
+// Explicit pub(crate) re-exports.
+pub(crate) use io_aut::AUT_TAU_LABEL;
+pub(crate) use io_aut::MCRL2_TAU_LABEL;
+pub(crate) use io_bcg::read_bcg;
+#[cfg(test)]
+pub(crate) use labelled_transition_system::check_equivalent;
+#[cfg(test)]
+pub(crate) use reachability::num_reachable_states;
+
+// Public API
+pub use incoming_transitions::FromTransition;
+pub use incoming_transitions::IncomingTransitions;
+pub use io::GenericLts;
+pub use io::LtsFormat;
+pub use io::apply_slice;
+pub use io::guess_lts_format_from_extension;
+pub use io::read_explicit_lts;
+pub use io_aut::read_aut;
+pub use io_aut::read_mcrl2_aut;
+pub use io_aut::write_aut;
+pub use io_aut::write_mcrl2_aut;
+pub use io_aut_stream::AutFormat;
+pub use io_aut_stream::AutStream;
+pub use io_bcg::write_bcg;
+pub use io_lts::read_lts;
+pub use labelled_transition_system::LabelledTransitionSystem;
+pub use lts::AsGraph;
+pub use lts::LTS;
+pub use lts::LabelIndex;
+pub use lts::StateIndex;
+pub use lts::Transition;
+pub use lts::TransitionLabel;
+pub use lts_builder::ConcurrentLtsBuilder;
+pub use lts_builder::LtsBuilder;
+pub use lts_builder::LtsBuilderMem;
+pub use lts_builder::MutexLtsBuilder;
+pub use lts_builder_fast::LtsBuilderFast;
+pub use multi_action::LtsAction;
+pub use multi_action::LtsMultiAction;
+pub use multi_action::SimpleAction;
+pub use random_lts::mutate_lts;
+pub use random_lts::random_lts;
+pub use reachability::reachability;
+pub use reachability::reachable_lts;

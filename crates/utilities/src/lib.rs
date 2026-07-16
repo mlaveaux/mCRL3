@@ -19,18 +19,23 @@ mod tagged_index;
 mod test_logger;
 mod timing;
 
-pub use error::*;
-pub use fixed_cache_policy::*;
-pub use fixed_size_cache::*;
-pub use generational_index::*;
-pub use helper::*;
-pub use permutation::*;
-pub use pest_display_pair::*;
-pub use random_test::*;
-pub use sharded_counter::*;
-pub use tagged_index::*;
-pub use test_logger::*;
-pub use timing::*;
+pub(crate) use fixed_cache_policy::*;
+
+pub use error::MercError;
+pub use generational_index::GenerationCounter;
+pub use generational_index::GenerationalIndex;
+pub use helper::PhantomUnsend;
+pub use helper::PhantomUnsync;
+pub use permutation::is_valid_permutation;
+pub use pest_display_pair::DisplayPair;
+pub use random_test::random_test;
+pub use random_test::random_test_threads;
+pub use sharded_counter::ShardedCounter;
+pub use tagged_index::MercIndex;
+pub use tagged_index::TagIndex;
+pub use test_logger::test_logger;
+pub use test_logger::test_threads;
+pub use timing::Timing;
 
 #[cfg(kani)]
 pub use kani_rng::*;

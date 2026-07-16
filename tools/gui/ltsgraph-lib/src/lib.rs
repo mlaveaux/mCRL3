@@ -10,6 +10,6 @@ mod text_cache;
 mod viewer;
 
 pub use graph_layout::GraphLayout;
-pub use renderer_femtovg::*;
-pub use renderer_skia::*;
-pub use viewer::*;
+pub use renderer_femtovg::FemtovgRenderer;
+pub use renderer_skia::SkiaRenderer;
+pub use viewer::Viewer;

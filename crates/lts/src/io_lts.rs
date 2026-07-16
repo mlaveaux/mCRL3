@@ -155,7 +155,7 @@ pub fn read_lts<R: Read>(
 ///
 /// state_label (index derived from order of appearance):
 ///    `state_label: ATermList::<DataExpression>`
-pub fn write_lts<L, W>(writer: &mut W, lts: &L) -> Result<(), MercError>
+pub(crate) fn write_lts<L, W>(writer: &mut W, lts: &L) -> Result<(), MercError>
 where
     L: LTS<Label = LtsMultiAction<LtsAction>>,
     W: Write,
@@ -236,12 +236,12 @@ fn probabilistic_transition_mark() -> ATerm {
 mod tests {
     use merc_utilities::random_test;
 
+    use super::write_lts;
     use crate::LTS;
     use crate::LtsAction;
     use crate::LtsMultiAction;
     use crate::random_lts;
     use crate::read_lts;
-    use crate::write_lts;
 
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.

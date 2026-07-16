@@ -5,6 +5,6 @@ mod innermost_codegen;
 mod library;
 mod sabre_compiling;
 
-pub use indenter::*;
-pub use innermost_codegen::*;
-pub use sabre_compiling::*;
+pub(crate) use innermost_codegen::*;
+
+pub use sabre_compiling::SabreCompilingRewriter;
