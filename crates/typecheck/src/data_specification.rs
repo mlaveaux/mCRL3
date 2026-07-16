@@ -32,9 +32,9 @@ use crate::hoist_anonymous_structs;
 use crate::is_well_typed;
 use crate::lower_data_expressions;
 use crate::lower_data_specification;
-use crate::map_sorts_in_spec;
+use crate::apply_sorts_in_spec;
 use crate::normalize_sorts;
-use crate::resolve_names;
+use crate::resolve_sort_ids;
 use crate::resolve_system_signature;
 use crate::structured_sort_equations;
 
@@ -72,12 +72,12 @@ impl DataSpecification {
             spec.sort_declarations.len()
         );
 
-        map_sorts_in_spec(&mut spec, |sort| -> Result<_, Infallible> {
+        apply_sorts_in_spec(&mut spec, |sort| -> Result<_, Infallible> {
             Ok(flatten_function_sorts(sort))
         })
         .expect("The inner function never fails");
 
-        let sorts = resolve_names(&mut spec)?;
+        let sorts = resolve_sort_ids(&mut spec)?;
         debug!("typecheck: resolved {} sort name(s)", sorts.len());
 
         check_aliases(&spec).map_err(|err| {
@@ -182,10 +182,10 @@ impl DataSpecification {
         resolve_system_signature(&mut context, &spec, &basics)?;
         debug!("typecheck: resolved the system signature");
 
-        // Phase-3 core inference over the user equations; equations using
-        // constructs it does not cover yet are skipped. Declaration-level sorts
-        // (constructors, maps, equation variables) are resolved lazily on first
-        // use via the query caches in `context`.
+        // Phase-3 core inference over every user equation; an equation binding
+        // a variable through an invalid sort (a bare product) is rejected here.
+        // Declaration-level sorts (constructors, maps, equation variables) are
+        // resolved lazily on first use via the query caches in `context`.
         let equation_typings = check_equations(&mut context, &spec)?;
         debug!("typecheck: inference finished; the specification is well-typed");
 
@@ -312,9 +312,10 @@ impl DataSpecification {
     /// Includes the user sort declarations, aliases, constructors, mappings,
     /// and equations (those whose expression tree is fully supported by
     /// Phase-4 lowering), followed by all system (Appendix-B) declarations and
-    /// the system equations that can be resolved structurally (equations
-    /// involving empty-container or number literals are silently skipped — the
-    /// residual gap while Phase-4 coverage extends).
+    /// the system equations, which are resolved structurally — empty-container
+    /// and `Number` literals are resolved against their context, so only
+    /// equations that still need full inference (binders, set/bag
+    /// enumerations) are skipped.
     ///
     /// Call this once after [`Self::from_untyped`] when the typed specification
     /// is needed; it may be called more than once (results are identical since
@@ -475,5 +476,32 @@ mod tests {
             .iter()
             .any(|e| e.lhs().to_string().contains("!(true)") && e.rhs().to_string() == "false");
         assert!(found, "system Bool equation `!(true) = false` must be present");
+    }
+
+    #[test]
+    fn test_mcrl2_data_specification_empty_container_equations_present() {
+        // A `List(D)` sort pulls in the Appendix-B list equations, several of
+        // which mention the empty-list literal `[]` (`in(d, []) = false`,
+        // `#[] = @c0`). These are now lowered structurally via expected-sort
+        // propagation rather than skipped.
+        let mut spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort D; map f: List(D) -> Bool;").unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        // `in(d, []) = false` — the empty list as a `List(D)` argument.
+        let in_empty = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "in(d, [])" && e.rhs().to_string() == "false");
+        assert!(in_empty, "system list equation `in(d, []) = false` must be present");
+
+        // `#[] = @c0` — the empty list under the length operator.
+        let length_empty = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "#([])" && e.rhs().to_string() == "@c0");
+        assert!(length_empty, "system list equation `#[] = @c0` must be present");
     }
 }

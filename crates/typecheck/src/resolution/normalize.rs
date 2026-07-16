@@ -8,7 +8,7 @@ use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 
-use crate::map_sorts_in_spec;
+use crate::apply_sorts_in_spec;
 
 /// Normalizes every sort in `spec` to a canonical form by expanding aliases.
 ///
@@ -34,7 +34,7 @@ pub(crate) fn normalize_sorts(spec: &mut UntypedDataSpecification) {
         .filter_map(|decl| Some((decl.id.expect("Name must have been resolved"), decl.expr.clone()?)))
         .collect();
 
-    map_sorts_in_spec(spec, |sort| -> Result<_, Infallible> {
+    apply_sorts_in_spec(spec, |sort| -> Result<_, Infallible> {
         let result = normalize_sort(sort, &alias_map, &mut Vec::new());
         if result != *sort {
             debug!("normalize: sort '{sort}' expanded to '{result}'");

@@ -40,11 +40,10 @@ pub(crate) fn resolve_system_signature(
     // which already resolve as primitives; only the remaining declarations
     // denote system-internal nominal sorts.
     //
-    // Each system-internal sort gets a fresh DefId equal to
-    // `user_spec.sort_declarations.len() + decl_index`, where `decl_index` is
-    // the declaration's position in `system.sort_declarations`. This makes
-    // the DefId a direct index into the system spec: given a DefId `d`, the
-    // name is `system.sort_declarations[d - user_len].identifier`.
+    // Each system-internal sort gets a fresh DefId that continues the user
+    // sorts' numbering: `user_spec.sort_declarations.len() + decl_index`. This
+    // is the layout `TypeckContext::sort_name` relies on to map such a DefId
+    // back to its name in `system_sort_decls`.
     let mut sort_ids: HashMap<String, ResolvedSortId> = HashMap::new();
     for (decl_index, decl) in system.sort_declarations.iter().enumerate() {
         if is_basic_sort_name(&decl.identifier) || sort_ids.contains_key(&decl.identifier) {

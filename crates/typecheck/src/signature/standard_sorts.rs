@@ -11,7 +11,7 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
 
-use crate::map_sorts_in_spec;
+use crate::apply_sorts_in_spec;
 
 /// Parses a bundled `spec/*.mcrl2` file. The templates are compiled in, so a
 /// parse failure is a build defect, not a runtime condition — the statics
@@ -107,7 +107,7 @@ pub(crate) fn standard_sort(sort: &SortExpression) -> UntypedDataSpecification {
 fn replace_sort(spec: &UntypedDataSpecification, identifier: &str, sort: &SortExpression) -> UntypedDataSpecification {
     let mut result = spec.clone();
 
-    map_sorts_in_spec(&mut result, |expr| -> Result<_, Infallible> {
+    apply_sorts_in_spec(&mut result, |expr| -> Result<_, Infallible> {
         Ok(replace_sort_expression(expr, identifier, sort))
     })
     .expect("substitution never fails");

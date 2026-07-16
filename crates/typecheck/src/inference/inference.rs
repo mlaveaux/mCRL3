@@ -61,20 +61,16 @@ pub(crate) enum NameTarget {
     Builtin,
 }
 
-/// The Phase-3 typing result of a single equation.
+/// The Phase-3 typing result of a single equation. Every equation that type
+/// checks is fully inferred: a binder over a sort inference cannot model (a
+/// bare product sort, which is not a valid variable sort) is now a hard error
+/// rather than a silently untyped equation.
 #[derive(Debug)]
-pub(crate) enum EquationTyping {
-    /// The equation binds a variable through a sort core inference does not
-    /// cover yet (an anonymous `struct`, a bare product; see
-    /// [is_supported_binder_sort]); it is left untyped rather than rejected.
-    Skipped,
-    #[allow(dead_code)]
-    Inferred {
-        /// The inferred sort of every expression node, indexed by [ExprId].
-        sorts: Vec<ResolvedSortId>,
-        /// The resolution of every name, keyed by the [ExprId] of its `Id` node.
-        names: HashMap<ExprId, NameTarget>,
-    },
+pub(crate) struct EquationTyping {
+    /// The inferred sort of every expression node, indexed by [ExprId].
+    pub(crate) sorts: Vec<ResolvedSortId>,
+    /// The resolution of every name, keyed by the [ExprId] of its `Id` node.
+    pub(crate) names: HashMap<ExprId, NameTarget>,
 }
 
 /// The errors of Phase-3 sort inference. `Clone` so a failure can be stored in
@@ -101,6 +97,9 @@ pub enum InferenceError {
 
     #[error("the sorts in equation '{equation}' are underdetermined")]
     UnderdeterminedSort { equation: String },
+
+    #[error("the binder sort '{sort}' in equation '{equation}' is not a valid variable sort")]
+    InvalidBinderSort { sort: String, equation: String },
 }
 
 /// Returns the typing of one user equation, keyed by the id of its enclosing
@@ -214,12 +213,15 @@ fn infer_equation(
 
     match generator.generate(equation.condition.as_ref(), &equation.lhs, &equation.rhs) {
         Ok(()) => {}
-        Err(GenFailure::Unsupported) => {
+        Err(GenFailure::InvalidBinderSort(sort)) => {
             debug!(
-                "inference: skipped '{}', it uses an unsupported construct",
+                "inference: rejected '{}', its binder sort '{sort}' is not a valid variable sort",
                 equation_text()
             );
-            return Ok(EquationTyping::Skipped);
+            return Err(InferenceError::InvalidBinderSort {
+                sort,
+                equation: equation_text(),
+            });
         }
         Err(GenFailure::Error(error)) => {
             debug!(
@@ -330,7 +332,7 @@ fn infer_equation(
                         trace!("inference:   '{text}': {}", display_sort(ctx, spec, sort));
                     }
                 }
-                Ok(EquationTyping::Inferred { sorts, names })
+                Ok(EquationTyping { sorts, names })
             }
         },
     }
@@ -518,10 +520,10 @@ fn is_numeric_family(name: &str) -> bool {
 
 /// Why constraint generation stopped early.
 enum GenFailure {
-    /// A binder in the equation declares a sort core inference does not cover
-    /// yet (see [is_supported_binder_sort]); the equation is skipped rather
-    /// than rejected.
-    Unsupported,
+    /// A binder in the equation declares a sort that is not a valid variable
+    /// sort (a bare product; see [is_supported_binder_sort]). The equation is
+    /// rejected rather than left untyped. Carries the offending sort's text.
+    InvalidBinderSort(String),
     Error(InferenceError),
 }
 
@@ -782,8 +784,8 @@ impl<'a> ConstraintGenerator<'a> {
         debug_assert!(unified, "a fresh variable unifies with any sort");
     }
 
-    /// Resolves the declared sort of each of `variables` (deferring an
-    /// unsupported binder sort, see [Self::binder_sort]) and shadows it in
+    /// Resolves the declared sort of each of `variables` (rejecting an invalid
+    /// binder sort, see [Self::binder_sort]) and shadows it in
     /// `self.variables` for the scope of `f`, restoring the previous bindings
     /// (or removing them) afterwards — the multi-variable generalization of
     /// the shadowing done inline for a comprehension's single bound variable.
@@ -817,11 +819,11 @@ impl<'a> ConstraintGenerator<'a> {
     }
 
     /// Resolves the declared sort of a comprehension's bound variable onto the
-    /// interned lattice, deferring the sorts the pipeline cannot resolve yet
-    /// (see [is_supported_binder_sort]).
+    /// interned lattice, rejecting a sort that is not a valid variable sort
+    /// (a bare product; see [is_supported_binder_sort]).
     fn binder_sort(&mut self, sort: &SortExpression) -> Result<ResolvedSortId, GenFailure> {
         if !is_supported_binder_sort(sort) {
-            return Err(GenFailure::Unsupported);
+            return Err(GenFailure::InvalidBinderSort(sort.to_string()));
         }
         Ok(resolve_sort(self.ctx, self.spec, sort))
     }
@@ -1466,9 +1468,7 @@ mod tests {
 
         // Ids: 0 = `f(n)`, 1 = `n` (arguments before the function), 2 = `f`,
         // 3 = `true`.
-        let EquationTyping::Inferred { sorts, names } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
         let interner = &spec.context().sorts;
         assert_eq!(sorts[0], interner.bool_sort());
         assert_eq!(sorts[1], interner.nat_sort());
@@ -1477,15 +1477,12 @@ mod tests {
     }
 
     #[test]
-    fn test_lambda_over_anonymous_struct_is_inferred_not_skipped() {
+    fn test_lambda_over_anonymous_struct_is_inferred() {
         // An anonymous binder struct is hoisted, so a construct binding one is
-        // typed like any other equation rather than deferred to
-        // `EquationTyping::Skipped`.
+        // typed like any other equation. (There is no longer a "skipped"
+        // outcome: every equation that type checks is fully inferred.)
         let spec = typed("map f: (struct t) -> Bool; g: (struct t) -> Bool; eqn g = lambda x: struct t. f(x);");
-        assert!(matches!(
-            &*spec.equation_typings()[0][0],
-            EquationTyping::Inferred { .. }
-        ));
+        let EquationTyping { .. } = &*spec.equation_typings()[0][0];
     }
 
     #[test]
@@ -1493,9 +1490,7 @@ mod tests {
         let spec = typed("map p: Pos; eqn p = 1 + 2;");
 
         // Ids: 0 = `p`, 1 = `+(1, 2)`, 2 = `1`, 3 = `2`, 4 = `+`.
-        let EquationTyping::Inferred { sorts, .. } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, .. } = &*spec.equation_typings()[0][0];
         let interner = &spec.context().sorts;
         assert_eq!(sorts[1], interner.pos_sort());
         assert_eq!(sorts[2], interner.pos_sort());
@@ -1508,9 +1503,7 @@ mod tests {
 
         // Ids: 0 = `b`, 1 = `f(1)`, 2 = `1`, 3 = `f`. The literal keeps its
         // minimal sort; Phase-4 lowering inserts the upcast to `Int`.
-        let EquationTyping::Inferred { sorts, .. } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, .. } = &*spec.equation_typings()[0][0];
         let interner = &spec.context().sorts;
         assert_eq!(sorts[1], interner.bool_sort());
         assert_eq!(sorts[2], interner.pos_sort());
@@ -1521,9 +1514,7 @@ mod tests {
         let spec = typed("sort D; cons d: D; map b: Bool; eqn b = d == d;");
 
         // Ids: 0 = `b`, 1 = `==(d, d)`, 2/3 = `d`, 4 = `==`.
-        let EquationTyping::Inferred { sorts, names } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
         assert_eq!(names[&ExprId::new(4)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.bool_sort());
         assert_eq!(sorts[2], spec.sort_of_constructor(merc_syntax::ConstructorId::new(0)));
@@ -1535,9 +1526,7 @@ mod tests {
 
         // Ids: 0 = `n`, 1 = the application, 2 = `true`, 3 = `1`, 4 = `2`,
         // 5 = `if`. The branches stay `Pos`; the join upcasts to `Nat`.
-        let EquationTyping::Inferred { sorts, names } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
         assert_eq!(names[&ExprId::new(5)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.pos_sort());
     }
@@ -1588,9 +1577,7 @@ mod tests {
 
         // Ids: 0 = `f`, 1 = `1`. The literal stays `Pos` and is upcast into
         // the join with the `Nat` left-hand side.
-        let EquationTyping::Inferred { sorts, .. } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, .. } = &*spec.equation_typings()[0][0];
         let interner = &spec.context().sorts;
         assert_eq!(sorts[0], interner.nat_sort());
         assert_eq!(sorts[1], interner.pos_sort());
@@ -1639,9 +1626,7 @@ mod tests {
         // (here upcast to `Nat`, matching `g`'s declared sort), rather than a
         // declared binder sort.
         let spec = typed("map g: Nat; eqn g = (x + 1) whr x = 2 end;");
-        let EquationTyping::Inferred { .. } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { .. } = &*spec.equation_typings()[0][0];
     }
 
     #[test]
@@ -1663,9 +1648,7 @@ mod tests {
 
     /// Extracts the inferred sorts and name targets of the first equation.
     fn typing(spec: &DataSpecification) -> (&[ResolvedSortId], &HashMap<ExprId, NameTarget>) {
-        let EquationTyping::Inferred { sorts, names } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
         (sorts, names)
     }
 
@@ -1837,9 +1820,7 @@ mod tests {
         // and stops shadowing it after the comprehension.
         let spec = typed("map n: Bool; s: Set(Nat); b: Bool; eqn b = ({ n: Nat | n < 3 } == s) && n;");
 
-        let EquationTyping::Inferred { .. } = &*spec.equation_typings()[0][0] else {
-            panic!("expected an inferred typing");
-        };
+        let EquationTyping { .. } = &*spec.equation_typings()[0][0];
     }
 
     #[test]
@@ -1852,11 +1833,12 @@ mod tests {
     }
 
     #[test]
-    fn test_product_binder_sort_is_skipped() {
-        // A bare product is not a sort; the comprehension is deferred rather
-        // than resolved to nonsense.
-        let spec = typed("map s: Set(Nat); eqn s = { x: Nat # Nat | true };");
-        assert!(matches!(&*spec.equation_typings()[0][0], EquationTyping::Skipped));
+    fn test_product_binder_sort_is_rejected() {
+        // A bare product is not a valid variable sort; a binder over one is
+        // now rejected rather than left untyped (which previously let an
+        // ill-typed body slip through unchecked).
+        let err = inference_error("map s: Set(Nat); eqn s = { x: Nat # Nat | true };");
+        assert!(matches!(err, InferenceError::InvalidBinderSort { .. }), "{err}");
     }
 
     #[test]

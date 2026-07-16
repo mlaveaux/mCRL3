@@ -141,9 +141,9 @@ fn collect_system_sorts_in_spec(
 /// operators of both are provided. The element sorts of enumeration literals
 /// (`{1, 2}`) are not syntactically apparent and are not collected.
 ///
-/// Binder sorts the pipeline cannot resolve (see [is_supported_binder_sort])
-/// are skipped: inference defers the constructs that bind them, so their
-/// operators are never looked up.
+/// Binder sorts that are not valid variable sorts (see
+/// [is_supported_binder_sort]) are skipped: inference rejects the constructs
+/// that bind them, so their operators are never looked up.
 fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, include_functions: bool) {
     visit_data_expr::<(), _>(expr, |expr| {
         match expr {

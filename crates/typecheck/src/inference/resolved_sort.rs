@@ -108,8 +108,8 @@ pub(crate) fn number_sort_from_generality(generality: u32) -> Sort {
 }
 
 /// Renders a resolved sort for debug logging. Nominal sorts take their name
-/// from the user declarations, falling back to [TypeckContext::system_sort_names]
-/// for a system-internal sort (`@NatPair`, ...) and finally to a bare index.
+/// from [TypeckContext::sort_name] (a user or system-internal sort such as
+/// `@NatPair`), falling back to a bare index.
 pub(crate) fn display_sort(ctx: &TypeckContext, spec: &UntypedDataSpecification, id: ResolvedSortId) -> String {
     match ctx.sorts.get(id) {
         ResolvedSort::Unit => "@Unit".to_string(),
@@ -119,17 +119,10 @@ pub(crate) fn display_sort(ctx: &TypeckContext, spec: &UntypedDataSpecification,
             let domain: Vec<String> = domain.iter().map(|sort| display_sort(ctx, spec, *sort)).collect();
             format!("{} -> {}", domain.join(" # "), display_sort(ctx, spec, *range))
         }
-        ResolvedSort::Def(def) => {
-            if let Some(decl) = spec.sort_declarations.get(**def) {
-                decl.identifier.clone()
-            } else {
-                let system_index = **def - spec.sort_declarations.len();
-                ctx.system_sort_decls
-                    .get(system_index)
-                    .cloned()
-                    .unwrap_or_else(|| format!("@sort_{}", **def))
-            }
-        }
+        ResolvedSort::Def(def) => ctx
+            .sort_name(spec, *def)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("@sort_{}", **def)),
     }
 }
 
