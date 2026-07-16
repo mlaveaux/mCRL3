@@ -13,7 +13,7 @@ use merc_reduction::DistinguishingFormula;
 use merc_refinement::CounterExample;
 
 /// Generates a formula that characterizes the counter example trace.
-pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {
+pub fn generate_refinement_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {
     match counter_example {
         CounterExample::Trace(trace) => {
             let mut expr = StateFrm::True;
