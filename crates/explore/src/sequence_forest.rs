@@ -12,7 +12,7 @@ const DEFAULT_BRANCHING: usize = 8;
 /// Shards in the per-height interning tables.
 const FOREST_SHARDS: usize = 16;
 
-/// A value that can be stored in a [`SequenceForest`] node slot.
+/// A value that can be stored in a `SequenceForest` node slot.
 ///
 /// Nodes are untyped `[V; N]` arrays with neither a length nor a leaf/inner
 /// discriminant, so the slot type itself must represent three things: a real

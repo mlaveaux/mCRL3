@@ -118,8 +118,8 @@ where
     Ok(StateIndex::new(initial_ref.index()))
 }
 
-/// Explores the state space of `lps` in parallel using continuous, work-stealing
-/// breadth-/depth-first search driven by `rayon`.
+/// Explores the state space of `lps` in parallel using continuous,
+/// work-stealing breadth-/depth-first search driven by `rayon`.
 ///
 /// The interface is similar to [`explore`], but an extra closure is supplied to
 /// produce a fresh per-thread accumulator for each worker.
@@ -133,7 +133,7 @@ where
 /// # State numbering
 ///
 /// The [`StateIndex`] values passed to the closures come from the shared
-/// [`DiscoveredSet`], whose backing store hands each worker a whole block of
+/// discovered set, whose backing store hands each worker a whole block of
 /// consecutive indices at once to keep index allocation contention-free. This
 /// means that the returned state indices are not dense.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(

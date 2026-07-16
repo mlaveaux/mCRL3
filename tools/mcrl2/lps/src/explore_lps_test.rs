@@ -297,7 +297,15 @@ mod tests {
         // so its LTS has extra unreachable deadlock states: compare up to
         // bisimulation rather than on exact state counts.
         assert!(
-            compare_lts(Equivalence::StrongBisim, parallel, sequential, false, false, &Timing::new()).0,
+            compare_lts(
+                Equivalence::StrongBisim,
+                parallel,
+                sequential,
+                false,
+                false,
+                &Timing::new()
+            )
+            .0,
             "Parallel and sequential LTSs are not strongly bisimilar for {}",
             lps_path.display()
         );

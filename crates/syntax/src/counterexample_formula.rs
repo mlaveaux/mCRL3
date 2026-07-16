@@ -94,8 +94,7 @@ pub fn generate_formula<L: TransitionLabel>(counter_example: &CounterExample<L>)
 }
 
 /// Generates a state formula AST for a minimal-depth strong-bisimulation
-/// distinguishing formula (a counter-example produced by
-/// [`merc_reduction::strong_bisim_distinguishing_formula`]).
+/// distinguishing formula.
 ///
 /// The resulting formula holds in one of the two compared states but not the
 /// other, witnessing that they are not strongly bisimilar.
