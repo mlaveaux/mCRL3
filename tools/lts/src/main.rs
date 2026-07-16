@@ -33,7 +33,7 @@ use merc_refinement::ExplorationStrategy;
 use merc_refinement::RefinementType;
 use merc_refinement::refines;
 use merc_syntax::generate_distinguishing_formula;
-use merc_syntax::generate_formula;
+use merc_syntax::generate_refinement_formula;
 use merc_syntax::parse_action_names;
 use merc_syntax::parse_allow_action_names;
 use merc_syntax::parse_comm_expr_set;
@@ -386,7 +386,7 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
                 if let Some(path) = &args.counter_example {
                     // Generate a counterexample formula and output it to the given path.
                     let mut writer = File::create(path)?;
-                    writeln!(&mut writer, "{}", generate_formula(&counter_example))?;
+                    writeln!(&mut writer, "{}", generate_refinement_formula(&counter_example))?;
                 } else {
                     panic!("Counter example path not provided.");
                 }

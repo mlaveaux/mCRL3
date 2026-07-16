@@ -3,7 +3,7 @@
 //! circular dependencies.
 use std::io::Write;
 
-use merc_syntax::generate_formula;
+use merc_syntax::generate_refinement_formula;
 use merc_vpg::PG;
 use rand::rngs::StdRng;
 
@@ -196,7 +196,7 @@ fn is_refinement_test(
 
     if !result {
         if let Some(ce) = counter_example {
-            let formula = generate_formula(&ce);
+            let formula = generate_refinement_formula(&ce);
             println!("Counter example formula: {}", formula);
 
             files
