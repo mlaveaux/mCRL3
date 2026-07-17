@@ -142,9 +142,12 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                         rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, timing)?;
                     }
                     Format::Mcrl2 => {
-                        let spec = UntypedDataSpecification::parse(&std::fs::read_to_string(&args.specification)?)?;
+                        let source = std::fs::read_to_string(&args.specification)?;
+                        let spec = UntypedDataSpecification::parse(&source)?;
 
-                        let _typed_spec = DataSpecification::from_untyped(spec)?;
+                        if let Err(err) = DataSpecification::from_untyped(spec) {
+                            return Err(err.render(&source).into());
+                        }
                     }
                 }
             }
