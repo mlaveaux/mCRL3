@@ -11,6 +11,7 @@ use log::warn;
 use merc_rec_tests::load_rec_from_file;
 use merc_rewrite::Rewriter;
 use merc_rewrite::rewrite_rec;
+use merc_sabre::RewriteSpecification;
 use merc_syntax::UntypedDataSpecification;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
@@ -142,12 +143,29 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                         rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, timing)?;
                     }
                     Format::Mcrl2 => {
-                        let source = std::fs::read_to_string(&args.specification)?;
-                        let spec = UntypedDataSpecification::parse(&source)?;
-
-                        if let Err(err) = DataSpecification::from_untyped(spec) {
-                            return Err(err.render(&source).into());
+                        if args.terms.is_some() {
+                            warn!(
+                                "The --terms option is not yet supported when rewriting mCRL2 specifications; only the rule count is reported."
+                            );
                         }
+
+                        let source = std::fs::read_to_string(&args.specification)?;
+                        let untyped_spec = UntypedDataSpecification::parse(&source)?;
+
+                        let mut data_spec = match DataSpecification::from_untyped(untyped_spec) {
+                            Ok(data_spec) => data_spec,
+                            Err(err) => return Err(err.render(&source).into()),
+                        };
+
+                        let mcrl2_spec = data_spec.lower_data_specification();
+                        let spec = RewriteSpecification::from_data_specification(&mcrl2_spec);
+
+                        if args.output {
+                            warn!(
+                                "The --output option is not yet supported when rewriting mCRL2 specifications; only the rule count is reported."
+                            );
+                        }
+                        println!("Loaded {} rewrite rule(s)", spec.rewrite_rules().len());
                     }
                 }
             }
