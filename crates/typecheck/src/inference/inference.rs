@@ -104,6 +104,25 @@ pub enum InferenceError {
     InvalidBinderSort { sort: String, equation: String, span: Span },
 }
 
+impl InferenceError {
+    /// The span of the offending sub-expression (or, for `NoTyping` /
+    /// `AmbiguousExpression` / `UnderdeterminedSort`, the whole equation, since
+    /// no narrower sub-expression can be blamed for those). Pair with
+    /// [Span::render] to show a source snippet alongside the message.
+    pub fn span(&self) -> &Span {
+        match self {
+            InferenceError::UndeclaredName { span, .. }
+            | InferenceError::NotAFunction { span, .. }
+            | InferenceError::ConditionNotBool { span, .. }
+            | InferenceError::QuantifierNotBool { span, .. }
+            | InferenceError::NoTyping { span, .. }
+            | InferenceError::AmbiguousExpression { span, .. }
+            | InferenceError::UnderdeterminedSort { span, .. }
+            | InferenceError::InvalidBinderSort { span, .. } => span,
+        }
+    }
+}
+
 /// Returns the typing of one user equation, keyed by the id of its enclosing
 /// equation specification block and its own id within that block (assigned by
 /// [assign_declaration_ids](crate::assign_declaration_ids)). Memoized on

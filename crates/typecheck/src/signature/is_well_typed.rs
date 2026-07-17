@@ -150,6 +150,30 @@ pub enum WellTypedError {
     UndefinedSort { sort: String },
 }
 
+impl WellTypedError {
+    /// The span of the offending sub-expression, for the variants that carry
+    /// one (currently only [InferenceError], the Phase-3 sort errors — the
+    /// other variants are declaration-level and have no expression to point
+    /// at yet).
+    pub fn span(&self) -> Option<&merc_syntax::Span> {
+        match self {
+            WellTypedError::Inference(error) => Some(error.span()),
+            _ => None,
+        }
+    }
+
+    /// Renders this error's message, followed by a caret-annotated source
+    /// snippet (see [merc_syntax::Span::render]) when a span is available.
+    /// `source` must be the original specification text the error was raised
+    /// against.
+    pub fn render(&self, source: &str) -> String {
+        match self.span() {
+            Some(span) => format!("{self}\n{}", span.render(source)),
+            None => self.to_string(),
+        }
+    }
+}
+
 /// Checks that no *symbol* — an identifier together with its sort — is declared
 /// as both a constructor and a mapping.
 ///
