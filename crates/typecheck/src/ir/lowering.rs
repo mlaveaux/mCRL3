@@ -1024,6 +1024,15 @@ fn lower_system_call(
 /// context (an operation's domain, a comparison operand, or the opposite side
 /// of the equation); an equation is skipped only when it uses a construct that
 /// still needs full sort inference (a binder or a set/bag enumeration).
+///
+/// KNOWN GAP: this silently drops such equations from the rewrite spec rather
+/// than lowering them some other way — there is no fallback to full Phase-3
+/// inference for the system spec. The bundled Appendix-B templates do contain
+/// `forall`-bodied equations that hit this today (the `Set`/`Bag`
+/// extensionality equations in `crates/syntax/spec/set.mcrl2` and `bag.mcrl2`),
+/// so `Set`/`Bag`-using rewrite specs are currently missing rules. The
+/// `debug_assert` below exists to make this loud in development rather than
+/// silent in production; it does not fix the gap.
 fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataEquation>) {
     for eqn_spec in &system.equation_declarations {
         let var_map: HashMap<&str, DataSortExpression> = eqn_spec
@@ -1044,7 +1053,15 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
             let condition = match &eqn.condition {
                 Some(c) => match lower_system_expr(system, &var_map, c, Some(&bool_sort())) {
                     Some((term, _)) => Some(term),
-                    None => continue,
+                    None => {
+                        debug_assert!(
+                            false,
+                            "system equation '{eqn}' dropped: its condition needs a construct \
+                             lower_system_expr does not support (a binder or set/bag enumeration) \
+                             — see lower_system_equations' doc comment"
+                        );
+                        continue;
+                    }
                 },
                 None => None,
             };
@@ -1066,6 +1083,12 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
                 },
             };
             let Some((lhs, rhs)) = sides else {
+                debug_assert!(
+                    false,
+                    "system equation '{eqn}' dropped: neither side lowers structurally \
+                     (a binder or set/bag enumeration on both sides) \
+                     — see lower_system_equations' doc comment"
+                );
                 continue;
             };
 
@@ -1156,7 +1179,17 @@ pub(crate) fn lower_data_specification(
             .map(|var| DataVariable::with_sort(var.identifier.as_str(), lower_syntax_sort(&var.sort).copy()))
             .collect();
         for (eqn, typing) in eqn_spec.equations.iter().zip(typings.iter()) {
-            let Some(lowered) = lower_equation(ctx, spec, typing, eqn.condition.as_ref(), &eqn.lhs, &eqn.rhs) else {
+            let lowered = lower_equation(ctx, spec, typing, eqn.condition.as_ref(), &eqn.lhs, &eqn.rhs);
+            // Phase-3 inference already accepted this equation (it has a
+            // `typing`), so a `None` here means `Lowering` is missing a
+            // construct Phase-3 supports — an internal bug, not a legitimate
+            // skip. Assert loudly in development rather than silently drop a
+            // user-declared rewrite rule in production.
+            debug_assert!(
+                lowered.is_some(),
+                "user equation '{eqn}' passed Phase-3 inference but failed Phase-4 lowering"
+            );
+            let Some(lowered) = lowered else {
                 continue;
             };
             equations.push(DataEquation::new(&vars, lowered.condition, lowered.lhs, lowered.rhs));

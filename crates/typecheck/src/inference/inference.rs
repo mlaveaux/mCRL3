@@ -158,8 +158,17 @@ pub(crate) fn query_equation_typing(
 }
 
 /// Infers the sorts of every user equation, positionally parallel to
-/// `equation_declarations` (outer) and each equation list (inner). The system
-/// equations are trusted content and are not checked.
+/// `equation_declarations` (outer) and each equation list (inner). Phase-3
+/// (constraint-based) inference does not run over the system-defined
+/// equations — they are checked separately and more cheaply, by
+/// `check_system_specification`'s structural well-formedness pass (debug
+/// builds only) and by `lower_system_equations`'s own per-equation sort
+/// propagation during lowering. Neither of those currently covers every
+/// construct Phase-3 does (see `lower_system_equations`'s doc comment), so a
+/// system equation using an unsupported construct is silently dropped from
+/// the lowered output rather than rejected — this is a known gap, not an
+/// intentional trust boundary, and needs a real fix (extend structural
+/// lowering, or run Phase-3 over the system spec too).
 pub(crate) fn check_equations(
     ctx: &mut TypeckContext,
     spec: &UntypedDataSpecification,
