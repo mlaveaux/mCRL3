@@ -281,3 +281,32 @@ fn test_fbag_spec() {
         }
     }
 }
+
+/// Parses every machine-number (`*64`) specification, ported from the mCRL2
+/// code-generation `.spec` files.
+macro_rules! machine_number_spec_test {
+    ($name:ident, $file:literal) => {
+        #[test]
+        fn $name() {
+            match UntypedDataSpecification::parse(include_str!(concat!("../spec/", $file))) {
+                Ok(result) => {
+                    println!("{}", result);
+                }
+                Err(e) => {
+                    panic!("Failed to parse {}: {}", $file, e);
+                }
+            }
+        }
+    };
+}
+
+machine_number_spec_test!(test_machine_word_spec, "machine_word.mcrl2");
+machine_number_spec_test!(test_pos64_spec, "pos64.mcrl2");
+machine_number_spec_test!(test_nat64_spec, "nat64.mcrl2");
+machine_number_spec_test!(test_int64_spec, "int64.mcrl2");
+machine_number_spec_test!(test_real64_spec, "real64.mcrl2");
+machine_number_spec_test!(test_list64_spec, "list64.mcrl2");
+machine_number_spec_test!(test_set64_spec, "set64.mcrl2");
+machine_number_spec_test!(test_fset64_spec, "fset64.mcrl2");
+machine_number_spec_test!(test_bag64_spec, "bag64.mcrl2");
+machine_number_spec_test!(test_fbag64_spec, "fbag64.mcrl2");

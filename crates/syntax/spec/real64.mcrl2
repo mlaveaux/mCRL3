@@ -1,0 +1,87 @@
+% Author(s): Aad Mathijssen, Jeroen Keiren
+% Copyright: see the accompanying file COPYING or copy at
+% https://github.com/mCRL2org/mCRL2/blob/master/COPYING
+%
+% Distributed under the Boost Software License, Version 1.0.
+% (See accompanying file LICENSE_1_0.txt or copy at
+% http://www.boost.org/LICENSE_1_0.txt)
+%
+% Specification of the Real data sort.
+
+
+sort Real;
+
+map @cReal: Int # Pos -> Real;
+    Pos2Real : Pos -> Real;
+    Nat2Real : Nat -> Real;
+    Int2Real : Int -> Real;
+    Real2Pos : Real -> Pos;
+    Real2Nat : Real -> Nat;
+    Real2Int : Real -> Int;
+    max : Real # Real -> Real;
+    min : Real # Real -> Real;
+    abs : Real -> Real;
+    - : Real -> Real;
+    succ : Real -> Real;
+    pred : Real -> Real;
+    + : Real # Real -> Real;
+    - : Real # Real -> Real;
+    * : Real # Real -> Real;
+    exp : Real # Int -> Real;
+    / : Pos # Pos -> Real;
+    / : Nat # Nat -> Real;
+    / : Int # Int -> Real;
+    / : Real # Real -> Real;
+    floor : Real -> Int;
+    ceil : Real -> Int;
+    round : Real -> Int;
+    @redfrac : Int # Int -> Real;
+    @redfracwhr : Nat # Int # Nat -> Real;
+    @redfrachlp : Real # Int -> Real;
+
+var m:Nat;
+    n:Nat;
+    p:Pos;
+    q:Pos;
+    x:Int;
+    y:Int;
+    r:Real;
+    s:Real;
+
+eqn  (@cReal(x, p) == @cReal(y, q))  =  ((x * @cInt(Pos2Nat(q))) == (y * @cInt(Pos2Nat(p))));
+     (@cReal(x, p) < @cReal(y, q))  =  ((x * @cInt(Pos2Nat(q))) < (y * @cInt(Pos2Nat(p))));
+     (@cReal(x, p) <= @cReal(y, q))  =  ((x * @cInt(Pos2Nat(q))) <= (y * @cInt(Pos2Nat(p))));
+     Int2Real(x)  =  @cReal(x, @c1);
+     Nat2Real(n)  =  @cReal(@cInt(n), @c1);
+     Pos2Real(p)  =  @cReal(@cInt(Pos2Nat(p)), @c1);
+     (p == @c1) -> Real2Int(@cReal(x, p))  =  x;
+     (p == @c1) -> Real2Nat(@cReal(x, p))  =  Int2Nat(x);
+     (p == @c1) -> Real2Pos(@cReal(x, p))  =  Int2Pos(x);
+     min(r, s)  =  if((r < s), r, s);
+     max(r, s)  =  if((r < s), s, r);
+     abs(r)  =  if((r < @cReal(@cInt(@c0), @c1)), -(r), r);
+     -(@cReal(x, p))  =  @cReal(-(x), p);
+     succ(@cReal(x, p))  =  @cReal((x + @cInt(Pos2Nat(p))), p);
+     pred(@cReal(x, p))  =  @cReal((x - @cInt(Pos2Nat(p))), p);
+     (@cReal(x, p) + @cReal(y, q))  =  @redfrac(((x * @cInt(Pos2Nat(q))) + (y * @cInt(Pos2Nat(p)))), @cInt(Pos2Nat((p * q))));
+     (@cReal(x, p) - @cReal(y, q))  =  @redfrac(((x * @cInt(Pos2Nat(q))) - (y * @cInt(Pos2Nat(p)))), @cInt(Pos2Nat((p * q))));
+     (@cReal(x, p) * @cReal(y, q))  =  @redfrac((x * y), @cInt(Pos2Nat((p * q))));
+     @equals_zero(m) -> (r * @cReal(@cInt(m),p)) = @cReal(@cInt(@c0), @c1);
+     @equals_zero(m) -> (@cReal(@cInt(m),p) * r) = @cReal(@cInt(@c0), @c1);
+     (y != @cInt(@c0))  ->  (@cReal(x, p) / @cReal(y, q))  =  @redfrac((x * @cInt(Pos2Nat(q))), (y * @cInt(Pos2Nat(p))));
+     (p / q)  =  @redfrac(@cInt(Pos2Nat(p)), @cInt(Pos2Nat(q)));
+     (n != @c0)  ->  (m / n)  =  @redfrac(@cInt(m), @cInt(n));
+     (y != @cInt(@c0))  ->  (x / y)  =  @redfrac(x, y);
+     exp(@cReal(x, p), @cInt(n))  =  @redfrac(exp(x, n), @cInt(Pos2Nat(exp(p, n))));
+     (x != @cInt(@c0))  ->  exp(@cReal(x, p), @cNeg(q))  =  @redfrac(@cInt(Pos2Nat(exp(p, Pos2Nat(q)))), exp(x, Pos2Nat(q)));
+     floor(@cReal(x, p))  =  div(x, p);
+     ceil(r)  =  -(floor(-(r)));
+     round(r)  =  floor((r + @cReal(@cInt(Pos2Nat(@c1)), (@c1 + @c1))));
+     @redfrac(x, @cNeg(p))  =  @redfrac(-(x), @cInt(Pos2Nat(p)));
+     @redfrac(x, @cInt(n))  =  @redfracwhr(n, div(x, Nat2Pos(n)), mod(x, Nat2Pos(n)));
+
+% OLD     @redfracwhr(n, x, @c0)  =  @cReal(x, @c1);
+% OLD     @redfracwhr(n, x, Pos2Nat(q))  =  @redfrachlp(@redfrac(@cInt(n), @cInt(Pos2Nat(q))), x);
+     @equals_zero(m) -> @redfracwhr(n, x, m)  =  @cReal(x, @c1);
+     @not_equals_zero(m) -> @redfracwhr(n, x, m)  =  @redfrachlp(@redfrac(@cInt(n), @cInt(m)), x);
+     @redfrachlp(@cReal(x, p), y)  =  @cReal((@cInt(Pos2Nat(p)) + (y * x)), Int2Pos(x));
