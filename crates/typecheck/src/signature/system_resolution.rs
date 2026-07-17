@@ -28,9 +28,12 @@ use crate::query_sort_of_def;
 /// here as well would misreport ambiguity (a name would have both a concrete
 /// and a polymorphic candidate for the same sort).
 ///
-/// Unlike `build_signature` this runs no well-typedness checks: the system
-/// specification is trusted content, and legitimately declares things a user
-/// cannot, such as constructors for the basic sorts (`@c0: Nat`).
+/// Unlike `build_signature` this runs no well-typedness checks here — not
+/// because the system specification is trusted, but because `build_signature`'s
+/// checks would misfire on it: it legitimately declares things a user cannot,
+/// such as constructors for the basic sorts (`@c0: Nat`). The system
+/// specification's own well-formedness is instead verified separately and
+/// extensively by `check_system_specification` (debug builds).
 pub(crate) fn resolve_system_signature(
     ctx: &mut TypeckContext,
     user_spec: &UntypedDataSpecification,

@@ -147,7 +147,8 @@ impl DataSpecification {
 
         // The defining equations of each structured sort (Appendix B.10) join
         // the system-defined part: they use the `==`/`<`/`<=` operators that
-        // only exist there, and are trusted content like the rest of it.
+        // only exist there, so they are checked below alongside the rest of
+        // the generated system content (`check_system_specification`).
         for constructors in &structs {
             system.merge(&structured_sort_equations(constructors).map_err(WellTypedError::Custom)?);
         }
