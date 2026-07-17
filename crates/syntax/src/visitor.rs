@@ -5,6 +5,7 @@ use merc_utilities::MercError;
 
 use crate::ActFrm;
 use crate::DataExpr;
+use crate::DataExprKind;
 use crate::RegFrm;
 use crate::SortExpression;
 use crate::StateFrm;
@@ -288,8 +289,8 @@ where
         return Ok(Some(result));
     }
 
-    match expr {
-        DataExpr::Application { function, arguments } => {
+    match &expr.node {
+        DataExprKind::Application { function, arguments } => {
             if let Some(result) = visit_data_expr_rec(function, visitor)? {
                 return Ok(Some(result));
             }
@@ -299,14 +300,14 @@ where
                 }
             }
         }
-        DataExpr::List(elements) | DataExpr::Set(elements) => {
+        DataExprKind::List(elements) | DataExprKind::Set(elements) => {
             for element in elements {
                 if let Some(result) = visit_data_expr_rec(element, visitor)? {
                     return Ok(Some(result));
                 }
             }
         }
-        DataExpr::Bag(elements) => {
+        DataExprKind::Bag(elements) => {
             for element in elements {
                 if let Some(result) = visit_data_expr_rec(&element.expr, visitor)? {
                     return Ok(Some(result));
@@ -316,13 +317,13 @@ where
                 }
             }
         }
-        DataExpr::SetBagComp { variable: _, predicate } => {
+        DataExprKind::SetBagComp { variable: _, predicate } => {
             if let Some(result) = visit_data_expr_rec(predicate, visitor)? {
                 return Ok(Some(result));
             }
         }
-        DataExpr::Lambda { variables: _, body }
-        | DataExpr::Quantifier {
+        DataExprKind::Lambda { variables: _, body }
+        | DataExprKind::Quantifier {
             op: _,
             variables: _,
             body,
@@ -331,12 +332,12 @@ where
                 return Ok(Some(result));
             }
         }
-        DataExpr::Unary { op: _, expr } => {
+        DataExprKind::Unary { op: _, expr } => {
             if let Some(result) = visit_data_expr_rec(expr, visitor)? {
                 return Ok(Some(result));
             }
         }
-        DataExpr::Binary { op: _, lhs, rhs } => {
+        DataExprKind::Binary { op: _, lhs, rhs } => {
             if let Some(result) = visit_data_expr_rec(lhs, visitor)? {
                 return Ok(Some(result));
             }
@@ -344,7 +345,7 @@ where
                 return Ok(Some(result));
             }
         }
-        DataExpr::FunctionUpdate { expr, update } => {
+        DataExprKind::FunctionUpdate { expr, update } => {
             if let Some(result) = visit_data_expr_rec(expr, visitor)? {
                 return Ok(Some(result));
             }
@@ -355,7 +356,7 @@ where
                 return Ok(Some(result));
             }
         }
-        DataExpr::Whr { expr, assignments } => {
+        DataExprKind::Whr { expr, assignments } => {
             if let Some(result) = visit_data_expr_rec(expr, visitor)? {
                 return Ok(Some(result));
             }
@@ -365,12 +366,12 @@ where
                 }
             }
         }
-        DataExpr::Id(_)
-        | DataExpr::Number(_)
-        | DataExpr::Bool(_)
-        | DataExpr::EmptyList
-        | DataExpr::EmptySet
-        | DataExpr::EmptyBag => {}
+        DataExprKind::Id(_)
+        | DataExprKind::Number(_)
+        | DataExprKind::Bool(_)
+        | DataExprKind::EmptyList
+        | DataExprKind::EmptySet
+        | DataExprKind::EmptyBag => {}
     }
 
     // The visitor did not break the traversal.
@@ -387,8 +388,8 @@ where
         return Ok(Some(result));
     }
 
-    match expr {
-        DataExpr::Application { function, arguments } => {
+    match &mut expr.node {
+        DataExprKind::Application { function, arguments } => {
             if let Some(result) = visit_data_expr_mut_rec(function, visitor)? {
                 return Ok(Some(result));
             }
@@ -398,14 +399,14 @@ where
                 }
             }
         }
-        DataExpr::List(elements) | DataExpr::Set(elements) => {
+        DataExprKind::List(elements) | DataExprKind::Set(elements) => {
             for element in elements {
                 if let Some(result) = visit_data_expr_mut_rec(element, visitor)? {
                     return Ok(Some(result));
                 }
             }
         }
-        DataExpr::Bag(elements) => {
+        DataExprKind::Bag(elements) => {
             for element in elements {
                 if let Some(result) = visit_data_expr_mut_rec(&mut element.expr, visitor)? {
                     return Ok(Some(result));
@@ -415,13 +416,13 @@ where
                 }
             }
         }
-        DataExpr::SetBagComp { variable: _, predicate } => {
+        DataExprKind::SetBagComp { variable: _, predicate } => {
             if let Some(result) = visit_data_expr_mut_rec(predicate, visitor)? {
                 return Ok(Some(result));
             }
         }
-        DataExpr::Lambda { variables: _, body }
-        | DataExpr::Quantifier {
+        DataExprKind::Lambda { variables: _, body }
+        | DataExprKind::Quantifier {
             op: _,
             variables: _,
             body,
@@ -430,12 +431,12 @@ where
                 return Ok(Some(result));
             }
         }
-        DataExpr::Unary { op: _, expr } => {
+        DataExprKind::Unary { op: _, expr } => {
             if let Some(result) = visit_data_expr_mut_rec(expr, visitor)? {
                 return Ok(Some(result));
             }
         }
-        DataExpr::Binary { op: _, lhs, rhs } => {
+        DataExprKind::Binary { op: _, lhs, rhs } => {
             if let Some(result) = visit_data_expr_mut_rec(lhs, visitor)? {
                 return Ok(Some(result));
             }
@@ -443,7 +444,7 @@ where
                 return Ok(Some(result));
             }
         }
-        DataExpr::FunctionUpdate { expr, update } => {
+        DataExprKind::FunctionUpdate { expr, update } => {
             if let Some(result) = visit_data_expr_mut_rec(expr, visitor)? {
                 return Ok(Some(result));
             }
@@ -454,7 +455,7 @@ where
                 return Ok(Some(result));
             }
         }
-        DataExpr::Whr { expr, assignments } => {
+        DataExprKind::Whr { expr, assignments } => {
             if let Some(result) = visit_data_expr_mut_rec(expr, visitor)? {
                 return Ok(Some(result));
             }
@@ -464,12 +465,12 @@ where
                 }
             }
         }
-        DataExpr::Id(_)
-        | DataExpr::Number(_)
-        | DataExpr::Bool(_)
-        | DataExpr::EmptyList
-        | DataExpr::EmptySet
-        | DataExpr::EmptyBag => {}
+        DataExprKind::Id(_)
+        | DataExprKind::Number(_)
+        | DataExprKind::Bool(_)
+        | DataExprKind::EmptyList
+        | DataExprKind::EmptySet
+        | DataExprKind::EmptyBag => {}
     }
 
     // The visitor did not break the traversal.
@@ -581,6 +582,7 @@ mod tests {
     use std::ops::ControlFlow;
 
     use crate::DataExpr;
+    use crate::DataExprKind;
     use crate::Sort;
     use crate::SortExpression;
 
@@ -617,8 +619,8 @@ mod tests {
         let expr = DataExpr::parse("f(v) whr v = { e: m } end").unwrap();
 
         for name in ["v", "e", "m"] {
-            let found = visit_data_expr(&expr, |expr| match expr {
-                DataExpr::Id(id) if id == name => ControlFlow::Break(()),
+            let found = visit_data_expr(&expr, |expr| match &expr.node {
+                DataExprKind::Id(id) if id == name => ControlFlow::Break(()),
                 _ => ControlFlow::Continue(()),
             });
             assert_eq!(found, Some(()), "identifier {name} was not visited");
@@ -630,7 +632,7 @@ mod tests {
         let mut expr = DataExpr::parse("x + f(x)").unwrap();
 
         let result: Option<Infallible> = try_visit_data_expr_mut(&mut expr, |expr| {
-            if let DataExpr::Id(name) = expr
+            if let DataExprKind::Id(name) = &mut expr.node
                 && name == "x"
             {
                 *name = "y".to_string();

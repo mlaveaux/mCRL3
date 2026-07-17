@@ -25,6 +25,7 @@ use merc_data::is_function_sort;
 use merc_syntax::BagElement;
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::Quantifier;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
@@ -375,21 +376,24 @@ impl Lowering<'_> {
         self.next_id += 1;
         let sort = self.sorts[*id];
 
-        match expr {
-            DataExpr::Id(name) => self.lower_id(id, name, sort),
-            DataExpr::Number(value) => self.lower_number(sort, value),
-            DataExpr::Bool(value) => Some(lower_bool_literal(*value)),
-            DataExpr::Application { function, arguments } => self.lower_application(sort, function, arguments),
-            DataExpr::EmptyList => Some(self.lower_empty_container(sort, ComplexSort::List)),
-            DataExpr::EmptySet => Some(self.lower_empty_container(sort, ComplexSort::FSet)),
-            DataExpr::EmptyBag => Some(self.lower_empty_container(sort, ComplexSort::FBag)),
-            DataExpr::Set(members) => self.lower_set(sort, members),
-            DataExpr::Bag(members) => self.lower_bag(sort, members),
-            DataExpr::SetBagComp { variable, predicate } => self.lower_setbagcomp(sort, variable, predicate),
-            DataExpr::Lambda { variables, body } => self.lower_lambda(variables, body),
-            DataExpr::Quantifier { op, variables, body } => self.lower_quantifier(op.clone(), variables, body),
-            DataExpr::Whr { expr, assignments } => self.lower_whr(expr, assignments),
-            DataExpr::List(_) | DataExpr::Unary { .. } | DataExpr::Binary { .. } | DataExpr::FunctionUpdate { .. } => {
+        match &expr.node {
+            DataExprKind::Id(name) => self.lower_id(id, name, sort),
+            DataExprKind::Number(value) => self.lower_number(sort, value),
+            DataExprKind::Bool(value) => Some(lower_bool_literal(*value)),
+            DataExprKind::Application { function, arguments } => self.lower_application(sort, function, arguments),
+            DataExprKind::EmptyList => Some(self.lower_empty_container(sort, ComplexSort::List)),
+            DataExprKind::EmptySet => Some(self.lower_empty_container(sort, ComplexSort::FSet)),
+            DataExprKind::EmptyBag => Some(self.lower_empty_container(sort, ComplexSort::FBag)),
+            DataExprKind::Set(members) => self.lower_set(sort, members),
+            DataExprKind::Bag(members) => self.lower_bag(sort, members),
+            DataExprKind::SetBagComp { variable, predicate } => self.lower_setbagcomp(sort, variable, predicate),
+            DataExprKind::Lambda { variables, body } => self.lower_lambda(variables, body),
+            DataExprKind::Quantifier { op, variables, body } => self.lower_quantifier(op.clone(), variables, body),
+            DataExprKind::Whr { expr, assignments } => self.lower_whr(expr, assignments),
+            DataExprKind::List(_)
+            | DataExprKind::Unary { .. }
+            | DataExprKind::Binary { .. }
+            | DataExprKind::FunctionUpdate { .. } => {
                 unreachable!("lower.rs already rewrote this expression form before inference ran")
             }
         }
@@ -871,10 +875,10 @@ fn lower_system_expr(
     expr: &DataExpr,
     expected: Option<&DataSortExpression>,
 ) -> Option<(DataExpression, DataSortExpression)> {
-    match expr {
-        DataExpr::Id(name) => lower_system_id(system, var_map, name),
-        DataExpr::Bool(v) => Some((lower_bool_literal(*v), bool_sort())),
-        DataExpr::Application { function, arguments } => {
+    match &expr.node {
+        DataExprKind::Id(name) => lower_system_id(system, var_map, name),
+        DataExprKind::Bool(v) => Some((lower_bool_literal(*v), bool_sort())),
+        DataExprKind::Application { function, arguments } => {
             // Lower each argument bottom-up; the ones whose sort cannot be
             // determined on their own (empty-container / `Number` literals) are
             // deferred until `lower_system_call` fixes the operation's domain.
@@ -888,11 +892,11 @@ fn lower_system_expr(
             lower_system_call(system, var_map, function, slots)
         }
         // Empty-container literals: resolved against the expected container sort.
-        DataExpr::EmptyList => lower_system_empty_container(ComplexSort::List, expected?),
-        DataExpr::EmptySet => lower_system_empty_container(ComplexSort::FSet, expected?),
-        DataExpr::EmptyBag => lower_system_empty_container(ComplexSort::FBag, expected?),
+        DataExprKind::EmptyList => lower_system_empty_container(ComplexSort::List, expected?),
+        DataExprKind::EmptySet => lower_system_empty_container(ComplexSort::FSet, expected?),
+        DataExprKind::EmptyBag => lower_system_empty_container(ComplexSort::FBag, expected?),
         // A `Number` literal is lowered at the numeric sort its context expects.
-        DataExpr::Number(value) => {
+        DataExprKind::Number(value) => {
             let sort = expected?;
             match primitive_sort_of(sort)? {
                 Sort::Bool => None,
@@ -900,12 +904,16 @@ fn lower_system_expr(
             }
         }
         // Constructs whose sort cannot be determined without full inference.
-        DataExpr::Set(_) | DataExpr::Bag(_) => None,
-        DataExpr::Lambda { .. } | DataExpr::Quantifier { .. } | DataExpr::Whr { .. } | DataExpr::SetBagComp { .. } => {
-            None
-        }
+        DataExprKind::Set(_) | DataExprKind::Bag(_) => None,
+        DataExprKind::Lambda { .. }
+        | DataExprKind::Quantifier { .. }
+        | DataExprKind::Whr { .. }
+        | DataExprKind::SetBagComp { .. } => None,
         // `lower_data_expressions` rewrites these before system lowering runs.
-        DataExpr::List(_) | DataExpr::Unary { .. } | DataExpr::Binary { .. } | DataExpr::FunctionUpdate { .. } => {
+        DataExprKind::List(_)
+        | DataExprKind::Unary { .. }
+        | DataExprKind::Binary { .. }
+        | DataExprKind::FunctionUpdate { .. } => {
             unreachable!("lower.rs already rewrote this expression form before system lowering runs")
         }
     }
@@ -958,8 +966,8 @@ fn lower_system_call(
     function: &DataExpr,
     slots: Vec<ArgSlot>,
 ) -> Option<(DataExpression, DataSortExpression)> {
-    match function {
-        DataExpr::Id(name) => {
+    match &function.node {
+        DataExprKind::Id(name) => {
             let name_str = name.as_str();
             // Builtin `==` / `!=` / `<` / `<=` / `>` / `>=` / `if`.
             if let Some((func_sort, domain, result_sort)) = builtin_sort(name_str, &slots) {

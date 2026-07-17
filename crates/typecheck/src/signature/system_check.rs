@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::ops::ControlFlow;
 
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
@@ -159,8 +160,8 @@ impl Checker<'_> {
         scope: &mut Vec<&'e str>,
         used: &mut HashSet<&'e str>,
     ) -> Result<(), WellTypedError> {
-        match expr {
-            DataExpr::Id(name) => {
+        match &expr.node {
+            DataExprKind::Id(name) => {
                 if scope.iter().any(|bound| bound == name) {
                     Ok(())
                 } else if variables.contains(name.as_str()) {
@@ -174,49 +175,51 @@ impl Checker<'_> {
                     )))
                 }
             }
-            DataExpr::Number(_) | DataExpr::Bool(_) | DataExpr::EmptyList | DataExpr::EmptySet | DataExpr::EmptyBag => {
-                Ok(())
-            }
-            DataExpr::Application { function, arguments } => {
+            DataExprKind::Number(_)
+            | DataExprKind::Bool(_)
+            | DataExprKind::EmptyList
+            | DataExprKind::EmptySet
+            | DataExprKind::EmptyBag => Ok(()),
+            DataExprKind::Application { function, arguments } => {
                 self.check_expr(function, variables, scope, used)?;
                 for argument in arguments {
                     self.check_expr(argument, variables, scope, used)?;
                 }
                 Ok(())
             }
-            DataExpr::List(elements) | DataExpr::Set(elements) => {
+            DataExprKind::List(elements) | DataExprKind::Set(elements) => {
                 for element in elements {
                     self.check_expr(element, variables, scope, used)?;
                 }
                 Ok(())
             }
-            DataExpr::Bag(elements) => {
+            DataExprKind::Bag(elements) => {
                 for element in elements {
                     self.check_expr(&element.expr, variables, scope, used)?;
                     self.check_expr(&element.multiplicity, variables, scope, used)?;
                 }
                 Ok(())
             }
-            DataExpr::SetBagComp { variable, predicate } => {
+            DataExprKind::SetBagComp { variable, predicate } => {
                 self.check_binder(std::slice::from_ref(variable), predicate, variables, scope, used)
             }
-            DataExpr::Lambda { variables: bound, body }
-            | DataExpr::Quantifier {
+            DataExprKind::Lambda { variables: bound, body }
+            | DataExprKind::Quantifier {
                 op: _,
                 variables: bound,
                 body,
             } => self.check_binder(bound, body, variables, scope, used),
-            DataExpr::Unary { op: _, expr } => self.check_expr(expr, variables, scope, used),
-            DataExpr::Binary { op: _, lhs, rhs } => {
+            DataExprKind::Unary { op: _, expr } => self.check_expr(expr, variables, scope, used),
+            DataExprKind::Binary { op: _, lhs, rhs } => {
                 self.check_expr(lhs, variables, scope, used)?;
                 self.check_expr(rhs, variables, scope, used)
             }
-            DataExpr::FunctionUpdate { expr, update } => {
+            DataExprKind::FunctionUpdate { expr, update } => {
                 self.check_expr(expr, variables, scope, used)?;
                 self.check_expr(&update.expr, variables, scope, used)?;
                 self.check_expr(&update.update, variables, scope, used)
             }
-            DataExpr::Whr { expr, assignments } => {
+            DataExprKind::Whr { expr, assignments } => {
                 // An assignment's right-hand side is evaluated outside the
                 // `whr`; only the body sees the bound names.
                 for assignment in assignments {

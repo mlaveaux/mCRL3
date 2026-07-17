@@ -594,11 +594,19 @@ fn test_lambda_aliasing() {
 fn test_lambda_variable_aliasing() {
     // The lambda's `x: S` shadows the declared `x: S -> T`, so `x(x)`
     // applies a non-function. mCRL2: test_lambda_variable_aliasing.
-    let err = check_err("sort S; T; map h: S -> Bool; var x: S -> T; eqn h = lambda x: S. x(x);");
-    assert!(
-        matches!(err, WellTypedError::Inference(InferenceError::NotAFunction { .. })),
-        "{err}"
-    );
+    let text = "sort S; T; map h: S -> Bool; var x: S -> T; eqn h = lambda x: S. x(x);";
+    let err = check_err(text);
+    match &err {
+        WellTypedError::Inference(InferenceError::NotAFunction { expr, span }) => {
+            assert_eq!(expr, "x");
+            // The span points at the applied `x` (bound by the lambda, sort
+            // `S`), not the earlier `var x: S -> T` declaration.
+            let callee = text.find("x(x)").expect("the application is present");
+            assert_eq!(span.start, callee);
+            assert_eq!(&text[span.start..span.end], "x");
+        }
+        other => panic!("expected NotAFunction, got {other}"),
+    }
 }
 
 #[test]

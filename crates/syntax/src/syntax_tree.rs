@@ -2,6 +2,9 @@ use std::hash::Hash;
 
 use merc_utilities::TagIndex;
 
+use crate::Span;
+use crate::Spanned;
+
 /// A unique type for sort declarations.
 pub struct DefTag;
 
@@ -326,9 +329,11 @@ pub enum DataExprBinaryOp {
     At,
 }
 
-/// Data expression
+/// The kind of a [DataExpr] node, without its source span. Every recursive
+/// child is a [DataExpr] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
-pub enum DataExpr {
+pub enum DataExprKind {
     Id(String),
     Number(String), // Is string because the number can be any size.
     Bool(bool),
@@ -372,6 +377,26 @@ pub enum DataExpr {
         expr: Box<DataExpr>,
         assignments: Vec<Assignment>,
     },
+}
+
+/// A data expression: a [DataExprKind] paired with the source [Span] it was
+/// parsed from. Synthetic expressions built by later passes use
+/// [Span::default].
+pub type DataExpr = Spanned<DataExprKind>;
+
+impl DataExprKind {
+    /// Wraps this kind together with a source `span` into a [DataExpr].
+    pub fn spanned(self, span: Span) -> DataExpr {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<DataExprKind> for DataExpr {
+    /// Wraps a kind into a [DataExpr] with a default (empty) span, for
+    /// synthetic expressions that have no source location.
+    fn from(kind: DataExprKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
@@ -836,20 +861,4 @@ pub enum ActionRHS {
     Tau,
     Delta,
     Action(Action),
-}
-
-/// Source location information, spanning from start to end in the source text.
-#[derive(Clone, Default, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl From<pest::Span<'_>> for Span {
-    fn from(span: pest::Span) -> Self {
-        Span {
-            start: span.start(),
-            end: span.end(),
-        }
-    }
 }

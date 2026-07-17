@@ -5,8 +5,8 @@ use rand::seq::IndexedRandom;
 use crate::ActDecl;
 use crate::Assignment;
 use crate::CommExpr;
-use crate::DataExpr;
 use crate::DataExprBinaryOp;
+use crate::DataExprKind;
 use crate::IdDecl;
 use crate::MultiActionLabel;
 use crate::ProcDecl;
@@ -53,11 +53,12 @@ pub fn random_lps<R: Rng>(
         for act in &action_names {
             if rng.random_bool(transition_prob) {
                 let to = rng.random_range(0..num_states);
-                let condition = DataExpr::Binary {
+                let condition = DataExprKind::Binary {
                     op: DataExprBinaryOp::Equal,
-                    lhs: Box::new(DataExpr::Id("s".to_string())),
-                    rhs: Box::new(DataExpr::Number(from.to_string())),
-                };
+                    lhs: Box::new(DataExprKind::Id("s".to_string()).into()),
+                    rhs: Box::new(DataExprKind::Number(from.to_string()).into()),
+                }
+                .into();
                 let seq = ProcessExpr::Binary {
                     op: ProcExprBinaryOp::Sequence,
                     lhs: Box::new(ProcessExpr::Action(act.clone(), Vec::new())),
@@ -65,7 +66,7 @@ pub fn random_lps<R: Rng>(
                         "P".to_string(),
                         vec![Assignment {
                             identifier: "s".to_string(),
-                            expr: DataExpr::Number(to.to_string()),
+                            expr: DataExprKind::Number(to.to_string()).into(),
                         }],
                     )),
                 };
@@ -104,7 +105,7 @@ pub fn random_lps<R: Rng>(
         "P".to_string(),
         vec![Assignment {
             identifier: "s".to_string(),
-            expr: DataExpr::Number(init_state.to_string()),
+            expr: DataExprKind::Number(init_state.to_string()).into(),
         }],
     );
 
@@ -430,9 +431,9 @@ pub fn make_process_specification<R: Rng>(
                 .iter()
                 .map(|p| {
                     let expr = if is_bool(p) {
-                        DataExpr::Bool(rng.random_bool(0.5))
+                        DataExprKind::Bool(rng.random_bool(0.5)).into()
                     } else {
-                        DataExpr::Number(rng.random_range(0..=2u32).to_string())
+                        DataExprKind::Number(rng.random_range(0..=2u32).to_string()).into()
                     };
                     Assignment {
                         identifier: p.identifier.clone(),

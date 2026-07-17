@@ -4,6 +4,7 @@ use rand::seq::IndexedRandom;
 
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
+use crate::DataExprKind;
 use crate::FixedPointOperator;
 use crate::IdDecl;
 use crate::PbesEquation;
@@ -81,9 +82,9 @@ pub fn random_pbes<R: Rng>(
         .iter()
         .map(|p| {
             if is_bool_var(p) {
-                DataExpr::Bool(true)
+                DataExprKind::Bool(true).into()
             } else {
-                DataExpr::Number("0".to_string())
+                DataExprKind::Number("0".to_string()).into()
             }
         })
         .collect();
@@ -221,11 +222,14 @@ fn random_quantifier<R: Rng>(
     let body = random_pbes_expr(rng, depth, &new_freevars, config, negated);
 
     // Bound the quantifier variable to ensure termination: forall t. t < 3 => body  /  exists t. t < 3 && body
-    let bound = PbesExpr::DataValExpr(DataExpr::Binary {
-        op: DataExprBinaryOp::LessThan,
-        lhs: Box::new(DataExpr::Id(var_name)),
-        rhs: Box::new(DataExpr::Number("3".to_string())),
-    });
+    let bound = PbesExpr::DataValExpr(
+        DataExprKind::Binary {
+            op: DataExprBinaryOp::LessThan,
+            lhs: Box::new(DataExprKind::Id(var_name).into()),
+            rhs: Box::new(DataExprKind::Number("3".to_string()).into()),
+        }
+        .into(),
+    );
     let bounded_body = match quantifier {
         Quantifier::Forall => PbesExpr::Binary {
             op: PbesExprBinaryOp::Implies,

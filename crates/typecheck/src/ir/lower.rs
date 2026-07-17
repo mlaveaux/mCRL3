@@ -4,6 +4,8 @@ use log::trace;
 
 use merc_syntax::DataExpr;
 use merc_syntax::DataExprBinaryOp;
+use merc_syntax::DataExprKind;
+use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::map_data_expr;
 use merc_syntax::visit_data_expr;
@@ -52,17 +54,24 @@ pub(crate) fn lower_data_expressions(spec: &mut UntypedDataSpecification) {
 /// their sort structurally instead of through a declared symbol. The result
 /// satisfies [is_lowered]; lowering is idempotent.
 pub(crate) fn lower_data_expr(expr: DataExpr) -> DataExpr {
-    map_data_expr(expr, |expr| match expr {
-        DataExpr::Binary { op, lhs, rhs } => apply(op.to_string(), vec![*lhs, *rhs]),
-        DataExpr::Unary { op, expr } => apply(op.to_string(), vec![*expr]),
-        DataExpr::List(elements) => elements.into_iter().rev().fold(DataExpr::EmptyList, |tail, head| {
-            apply(DataExprBinaryOp::Cons.to_string(), vec![head, tail])
-        }),
-        DataExpr::FunctionUpdate { expr, update } => apply(
-            FUNCTION_UPDATE_NAME.to_string(),
-            vec![*expr, update.expr, update.update],
-        ),
-        expr => expr,
+    map_data_expr(expr, |expr| {
+        let DataExpr { node, span } = expr;
+        match node {
+            DataExprKind::Binary { op, lhs, rhs } => apply(op.to_string(), vec![*lhs, *rhs], span),
+            DataExprKind::Unary { op, expr } => apply(op.to_string(), vec![*expr], span),
+            DataExprKind::List(elements) => elements
+                .into_iter()
+                .rev()
+                .fold(DataExprKind::EmptyList.spanned(span.clone()), |tail, head| {
+                    apply(DataExprBinaryOp::Cons.to_string(), vec![head, tail], span.clone())
+                }),
+            DataExprKind::FunctionUpdate { expr, update } => apply(
+                FUNCTION_UPDATE_NAME.to_string(),
+                vec![*expr, update.expr, update.update],
+                span,
+            ),
+            node => node.spanned(span),
+        }
     })
 }
 
@@ -70,24 +79,26 @@ pub(crate) fn lower_data_expr(expr: DataExpr) -> DataExpr {
 /// [lower_data_expr] rewrites; the postcondition of lowering and the
 /// precondition of Phase-3 sort inference.
 pub(crate) fn is_lowered(expr: &DataExpr) -> bool {
-    visit_data_expr(expr, |expr| match expr {
-        DataExpr::Binary { .. } | DataExpr::Unary { .. } | DataExpr::List(_) | DataExpr::FunctionUpdate { .. } => {
-            ControlFlow::Break(())
-        }
+    visit_data_expr(expr, |expr| match &expr.node {
+        DataExprKind::Binary { .. }
+        | DataExprKind::Unary { .. }
+        | DataExprKind::List(_)
+        | DataExprKind::FunctionUpdate { .. } => ControlFlow::Break(()),
         _ => ControlFlow::Continue(()),
     })
     .is_none()
 }
 
-fn apply(name: String, arguments: Vec<DataExpr>) -> DataExpr {
-    DataExpr::Application {
-        function: Box::new(DataExpr::Id(name)),
+fn apply(name: String, arguments: Vec<DataExpr>, span: Span) -> DataExpr {
+    DataExprKind::Application {
+        function: Box::new(DataExprKind::Id(name).spanned(span.clone())),
         arguments,
     }
+    .spanned(span)
 }
 
 fn lower_in_place(expr: &mut DataExpr) {
-    let owned = std::mem::replace(expr, DataExpr::EmptyList);
+    let owned = std::mem::replace(expr, DataExprKind::EmptyList.into());
     // The original text is only rendered when trace logging is enabled.
     let original = log::log_enabled!(log::Level::Trace).then(|| owned.to_string());
     *expr = lower_data_expr(owned);
@@ -105,6 +116,7 @@ mod tests {
     use test_case::test_case;
 
     use merc_syntax::DataExpr;
+    use merc_syntax::DataExprKind;
     use merc_syntax::UntypedDataSpecification;
     use merc_syntax::random_boolean_data_expression;
     use merc_syntax::random_integer_data_expression;
@@ -191,7 +203,7 @@ mod tests {
     }
 
     /// Literals stay dedicated nodes (inference constrains them structurally),
-    /// and `true` remains a [DataExpr::Bool], not an identifier.
+    /// and `true` remains a [DataExprKind::Bool], not an identifier.
     #[test_case("true"; "boolean literal")]
     #[test_case("5"; "number literal")]
     #[test_case("{}"; "empty set")]
@@ -202,7 +214,10 @@ mod tests {
 
     #[test]
     fn test_boolean_literal_is_not_an_identifier() {
-        assert!(matches!(lower_data_expr(parse_expr("true")), DataExpr::Bool(true)));
+        assert!(matches!(
+            lower_data_expr(parse_expr("true")).node,
+            DataExprKind::Bool(true)
+        ));
     }
 
     #[test]
