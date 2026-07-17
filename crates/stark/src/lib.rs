@@ -3,7 +3,7 @@ mod consume;
 mod parse;
 mod precedence;
 
-pub use ast::*;
-pub use consume::*;
-pub use parse::*;
-pub use precedence::*;
+pub(crate) use ast::*;
+pub(crate) use consume::*;
+pub(crate) use parse::*;
+pub(crate) use precedence::*;

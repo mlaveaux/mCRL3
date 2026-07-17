@@ -41,7 +41,7 @@ component vehicle {
     int timer_V range [0,TIMER] = 0;
   }
   controller {
-    state Ctrl {
+    aiState Ctrl {
       if (s_speed > 0) {
         if (gap > 0) {
           accel' = A;
@@ -64,21 +64,21 @@ component vehicle {
         }
       }
     }
-    state Accelerate {
+    aiState Accelerate {
       if (timer_V > 0) {
         step Accelerate;
       } else {
         exec Ctrl;
       }
     }
-    state Decelerate {
+    aiState Decelerate {
       if (timer_V > 0) {
         step Decelerate;
       } else {
         exec Ctrl;
       }
     }
-    state Stop {
+    aiState Stop {
       if (timer_V > 0) {
         step Stop;
       } else {
@@ -104,6 +104,6 @@ environment{
     p_distance' = p_distance - travel;
     if (timer_V - 1 == 0) {
       braking_distance' = eval_bd(new_sens_speed);
-      gap = p_distance - travel - eval_bd(new_sens_speed);
+      gap' = p_distance - travel - eval_bd(new_sens_speed);
     }
 }
