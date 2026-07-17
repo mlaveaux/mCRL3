@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::SortExpression;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_data_expr;
@@ -146,8 +147,8 @@ fn collect_system_sorts_in_spec(
 /// that bind them, so their operators are never looked up.
 fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, include_functions: bool) {
     visit_data_expr::<(), _>(expr, |expr| {
-        match expr {
-            DataExpr::SetBagComp { variable, predicate: _ } => {
+        match &expr.node {
+            DataExprKind::SetBagComp { variable, predicate: _ } => {
                 if is_supported_binder_sort(&variable.sort) {
                     collect_system_sorts(&variable.sort, out, include_functions);
                     out.push(SortExpression::Complex(
@@ -160,8 +161,8 @@ fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, 
                     ));
                 }
             }
-            DataExpr::Lambda { variables, body: _ }
-            | DataExpr::Quantifier {
+            DataExprKind::Lambda { variables, body: _ }
+            | DataExprKind::Quantifier {
                 op: _,
                 variables,
                 body: _,

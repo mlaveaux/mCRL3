@@ -13,6 +13,7 @@ use crate::ActFrmBinaryOp;
 use crate::Bound;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
+use crate::DataExprKind;
 use crate::DataExprUnaryOp;
 use crate::FixedPointOperator;
 use crate::Mcrl2Parser;
@@ -28,6 +29,7 @@ use crate::Quantifier;
 use crate::RegFrm;
 use crate::Rule;
 use crate::Sort;
+use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmOp;
 use crate::StateFrmUnaryOp;
@@ -124,32 +126,35 @@ pub static DATAEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(||
 #[allow(clippy::result_large_err)]
 pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
     DATAEXPR_PRATT_PARSER
-        .map_primary(|primary| match primary.as_rule() {
-            Rule::DataExprTrue => Ok(DataExpr::Bool(true)),
-            Rule::DataExprFalse => Ok(DataExpr::Bool(false)),
-            Rule::DataExprEmptyList => Ok(DataExpr::EmptyList),
-            Rule::DataExprEmptySet => Ok(DataExpr::EmptySet),
-            Rule::DataExprEmptyBag => Ok(DataExpr::EmptyBag),
-            Rule::DataExprListEnum => Mcrl2Parser::DataExprListEnum(Node::new(primary)),
-            Rule::DataExprBagEnum => Mcrl2Parser::DataExprBagEnum(Node::new(primary)),
-            Rule::DataExprSetBagComp => Mcrl2Parser::DataExprSetBagComp(Node::new(primary)),
-            Rule::DataExprSetEnum => Mcrl2Parser::DataExprSetEnum(Node::new(primary)),
-            Rule::Number => Mcrl2Parser::Number(Node::new(primary)),
-            Rule::IdAt => Ok(DataExpr::Id(Mcrl2Parser::IdAt(Node::new(primary))?)),
+        .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
+            match primary.as_rule() {
+                Rule::DataExprTrue => Ok(DataExprKind::Bool(true).spanned(span)),
+                Rule::DataExprFalse => Ok(DataExprKind::Bool(false).spanned(span)),
+                Rule::DataExprEmptyList => Ok(DataExprKind::EmptyList.spanned(span)),
+                Rule::DataExprEmptySet => Ok(DataExprKind::EmptySet.spanned(span)),
+                Rule::DataExprEmptyBag => Ok(DataExprKind::EmptyBag.spanned(span)),
+                Rule::DataExprListEnum => Mcrl2Parser::DataExprListEnum(Node::new(primary)),
+                Rule::DataExprBagEnum => Mcrl2Parser::DataExprBagEnum(Node::new(primary)),
+                Rule::DataExprSetBagComp => Mcrl2Parser::DataExprSetBagComp(Node::new(primary)),
+                Rule::DataExprSetEnum => Mcrl2Parser::DataExprSetEnum(Node::new(primary)),
+                Rule::Number => Mcrl2Parser::Number(Node::new(primary)),
+                Rule::IdAt => Ok(DataExprKind::Id(Mcrl2Parser::IdAt(Node::new(primary))?).spanned(span)),
 
-            Rule::DataExprBrackets => {
-                // Handle parentheses by recursively parsing the inner expression
-                let inner = primary
-                    .into_inner()
-                    .next()
-                    .expect("Expected inner expression in brackets");
-                parse_dataexpr(inner.into_inner())
+                Rule::DataExprBrackets => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
+                    parse_dataexpr(inner.into_inner())
+                }
+
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
-
-            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
         })
         .map_infix(|lhs, op, rhs| {
-            let op = match op.as_rule() {
+            let op_kind = match op.as_rule() {
                 Rule::DataExprConj => DataExprBinaryOp::Conj,
                 Rule::DataExprDisj => DataExprBinaryOp::Disj,
                 Rule::DataExprEq => DataExprBinaryOp::Equal,
@@ -173,55 +178,87 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
                 _ => unimplemented!("Unexpected binary operator rule: {:?}", op.as_rule()),
             };
 
-            Ok(DataExpr::Binary {
-                op,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            })
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            Ok(DataExprKind::Binary {
+                op: op_kind,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .spanned(span))
         })
-        .map_postfix(|expr, postfix| match postfix.as_rule() {
-            Rule::DataExprUpdate => Ok(DataExpr::FunctionUpdate {
-                expr: Box::new(expr?),
-                update: Box::new(Mcrl2Parser::DataExprUpdate(Node::new(postfix))?),
-            }),
-            Rule::DataExprApplication => Ok(DataExpr::Application {
-                function: Box::new(expr?),
-                arguments: Mcrl2Parser::DataExprApplication(Node::new(postfix))?,
-            }),
-            Rule::DataExprWhr => Ok(DataExpr::Whr {
-                expr: Box::new(expr?),
-                assignments: Mcrl2Parser::DataExprWhr(Node::new(postfix))?,
-            }),
-            _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
+        .map_postfix(|expr, postfix| {
+            let expr = expr?;
+            let end = postfix.as_span().end();
+            let span = Span {
+                start: expr.span.start,
+                end,
+            };
+            match postfix.as_rule() {
+                Rule::DataExprUpdate => Ok(DataExprKind::FunctionUpdate {
+                    expr: Box::new(expr),
+                    update: Box::new(Mcrl2Parser::DataExprUpdate(Node::new(postfix))?),
+                }
+                .spanned(span)),
+                Rule::DataExprApplication => Ok(DataExprKind::Application {
+                    function: Box::new(expr),
+                    arguments: Mcrl2Parser::DataExprApplication(Node::new(postfix))?,
+                }
+                .spanned(span)),
+                Rule::DataExprWhr => Ok(DataExprKind::Whr {
+                    expr: Box::new(expr),
+                    assignments: Mcrl2Parser::DataExprWhr(Node::new(postfix))?,
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
+            }
         })
-        .map_prefix(|prefix, expr| match prefix.as_rule() {
-            Rule::DataExprForall => Ok(DataExpr::Quantifier {
-                op: Quantifier::Forall,
-                variables: Mcrl2Parser::DataExprForall(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::DataExprExists => Ok(DataExpr::Quantifier {
-                op: Quantifier::Exists,
-                variables: Mcrl2Parser::DataExprExists(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::DataExprLambda => Ok(DataExpr::Lambda {
-                variables: Mcrl2Parser::DataExprLambda(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::DataExprNegation => Ok(DataExpr::Unary {
-                op: DataExprUnaryOp::Negation,
-                expr: Box::new(expr?),
-            }),
-            Rule::DataExprMinus => Ok(DataExpr::Unary {
-                op: DataExprUnaryOp::Minus,
-                expr: Box::new(expr?),
-            }),
-            Rule::DataExprSize => Ok(DataExpr::Unary {
-                op: DataExprUnaryOp::Size,
-                expr: Box::new(expr?),
-            }),
-            _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+        .map_prefix(|prefix, expr| {
+            let start = prefix.as_span().start();
+            let expr = expr?;
+            let span = Span {
+                start,
+                end: expr.span.end,
+            };
+            match prefix.as_rule() {
+                Rule::DataExprForall => Ok(DataExprKind::Quantifier {
+                    op: Quantifier::Forall,
+                    variables: Mcrl2Parser::DataExprForall(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::DataExprExists => Ok(DataExprKind::Quantifier {
+                    op: Quantifier::Exists,
+                    variables: Mcrl2Parser::DataExprExists(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::DataExprLambda => Ok(DataExprKind::Lambda {
+                    variables: Mcrl2Parser::DataExprLambda(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::DataExprNegation => Ok(DataExprKind::Unary {
+                    op: DataExprUnaryOp::Negation,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::DataExprMinus => Ok(DataExprKind::Unary {
+                    op: DataExprUnaryOp::Minus,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::DataExprSize => Ok(DataExprKind::Unary {
+                    op: DataExprUnaryOp::Size,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+            }
         })
         .parse(pairs)
 }

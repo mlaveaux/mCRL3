@@ -3,6 +3,7 @@ use merc_utilities::MercError;
 use crate::Assignment;
 use crate::BagElement;
 use crate::DataExpr;
+use crate::DataExprKind;
 use crate::DataExprUpdate;
 use crate::RegFrm;
 use crate::SortExpression;
@@ -185,27 +186,28 @@ fn map_data_expr_rec<F>(expr: DataExpr, apply: &mut F) -> DataExpr
 where
     F: FnMut(DataExpr) -> DataExpr,
 {
-    let expr = match expr {
-        DataExpr::Application { function, arguments } => DataExpr::Application {
+    let DataExpr { node, span } = expr;
+    let kind = match node {
+        DataExprKind::Application { function, arguments } => DataExprKind::Application {
             function: Box::new(map_data_expr_rec(*function, apply)),
             arguments: arguments
                 .into_iter()
                 .map(|argument| map_data_expr_rec(argument, apply))
                 .collect(),
         },
-        DataExpr::List(elements) => DataExpr::List(
+        DataExprKind::List(elements) => DataExprKind::List(
             elements
                 .into_iter()
                 .map(|element| map_data_expr_rec(element, apply))
                 .collect(),
         ),
-        DataExpr::Set(elements) => DataExpr::Set(
+        DataExprKind::Set(elements) => DataExprKind::Set(
             elements
                 .into_iter()
                 .map(|element| map_data_expr_rec(element, apply))
                 .collect(),
         ),
-        DataExpr::Bag(elements) => DataExpr::Bag(
+        DataExprKind::Bag(elements) => DataExprKind::Bag(
             elements
                 .into_iter()
                 .map(|element| BagElement {
@@ -214,36 +216,36 @@ where
                 })
                 .collect(),
         ),
-        DataExpr::SetBagComp { variable, predicate } => DataExpr::SetBagComp {
+        DataExprKind::SetBagComp { variable, predicate } => DataExprKind::SetBagComp {
             variable,
             predicate: Box::new(map_data_expr_rec(*predicate, apply)),
         },
-        DataExpr::Lambda { variables, body } => DataExpr::Lambda {
+        DataExprKind::Lambda { variables, body } => DataExprKind::Lambda {
             variables,
             body: Box::new(map_data_expr_rec(*body, apply)),
         },
-        DataExpr::Quantifier { op, variables, body } => DataExpr::Quantifier {
+        DataExprKind::Quantifier { op, variables, body } => DataExprKind::Quantifier {
             op,
             variables,
             body: Box::new(map_data_expr_rec(*body, apply)),
         },
-        DataExpr::Unary { op, expr } => DataExpr::Unary {
+        DataExprKind::Unary { op, expr } => DataExprKind::Unary {
             op,
             expr: Box::new(map_data_expr_rec(*expr, apply)),
         },
-        DataExpr::Binary { op, lhs, rhs } => DataExpr::Binary {
+        DataExprKind::Binary { op, lhs, rhs } => DataExprKind::Binary {
             op,
             lhs: Box::new(map_data_expr_rec(*lhs, apply)),
             rhs: Box::new(map_data_expr_rec(*rhs, apply)),
         },
-        DataExpr::FunctionUpdate { expr, update } => DataExpr::FunctionUpdate {
+        DataExprKind::FunctionUpdate { expr, update } => DataExprKind::FunctionUpdate {
             expr: Box::new(map_data_expr_rec(*expr, apply)),
             update: Box::new(DataExprUpdate {
                 expr: map_data_expr_rec(update.expr, apply),
                 update: map_data_expr_rec(update.update, apply),
             }),
         },
-        DataExpr::Whr { expr, assignments } => DataExpr::Whr {
+        DataExprKind::Whr { expr, assignments } => DataExprKind::Whr {
             expr: Box::new(map_data_expr_rec(*expr, apply)),
             assignments: assignments
                 .into_iter()
@@ -253,15 +255,15 @@ where
                 })
                 .collect(),
         },
-        DataExpr::Id(_)
-        | DataExpr::Number(_)
-        | DataExpr::Bool(_)
-        | DataExpr::EmptyList
-        | DataExpr::EmptySet
-        | DataExpr::EmptyBag => expr,
+        leaf @ (DataExprKind::Id(_)
+        | DataExprKind::Number(_)
+        | DataExprKind::Bool(_)
+        | DataExprKind::EmptyList
+        | DataExprKind::EmptySet
+        | DataExprKind::EmptyBag) => leaf,
     };
 
-    apply(expr)
+    apply(kind.spanned(span))
 }
 
 /// See [`apply_sort_expression`].
@@ -328,6 +330,7 @@ mod tests {
 
     use crate::DataExpr;
     use crate::DataExprBinaryOp;
+    use crate::DataExprKind;
     use crate::StateFrm;
     use crate::UntypedStateFrmSpec;
 
@@ -357,16 +360,19 @@ mod tests {
     fn test_map_data_expr_maps_bottom_up() {
         let expr = DataExpr::parse("x + z").unwrap();
 
-        let mapped = map_data_expr(expr, |expr| match expr {
-            DataExpr::Id(name) if name == "x" => DataExpr::Number("1".to_string()),
-            DataExpr::Binary {
-                op: DataExprBinaryOp::Add,
-                lhs,
-                rhs: _,
-            } => *lhs,
-            expr => expr,
+        let mapped = map_data_expr(expr, |expr| {
+            let DataExpr { node, span } = expr;
+            match node {
+                DataExprKind::Id(name) if name == "x" => DataExprKind::Number("1".to_string()).into(),
+                DataExprKind::Binary {
+                    op: DataExprBinaryOp::Add,
+                    lhs,
+                    rhs: _,
+                } => *lhs,
+                other => other.spanned(span),
+            }
         });
 
-        assert_eq!(mapped, DataExpr::Number("1".to_string()));
+        assert_eq!(mapped, DataExprKind::Number("1".to_string()).into());
     }
 }

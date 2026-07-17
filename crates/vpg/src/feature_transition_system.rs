@@ -22,6 +22,7 @@ use merc_lts::TransitionLabel;
 use merc_lts::read_aut;
 use merc_symbolic::FormatConfigSet;
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::MultiAction;
 use merc_utilities::MercError;
 
@@ -101,11 +102,11 @@ fn data_expr_to_bdd(
     variables: &HashMap<String, BDDFunction>,
     expr: &DataExpr,
 ) -> Result<BDDFunction, MercError> {
-    match expr {
-        DataExpr::Application { function, arguments } => {
-            match function.as_ref() {
+    match &expr.node {
+        DataExprKind::Application { function, arguments } => {
+            match &function.node {
                 // A node must be of the shape 'node(var, true_branch, false_branch)'
-                DataExpr::Id(name) => {
+                DataExprKind::Id(name) => {
                     if name == "node" {
                         let variable = format!("{}", arguments[0]);
                         let then_branch = data_expr_to_bdd(manager_ref, variables, &arguments[1])?;
@@ -121,7 +122,7 @@ fn data_expr_to_bdd(
                 _ => unimplemented!("Conversion of data expression to BDD not implemented for this function"),
             }
         }
-        DataExpr::Id(name) => {
+        DataExprKind::Id(name) => {
             // Deal with the base cases.
             match name.as_str() {
                 "tt" => Ok(manager_ref.with_manager_shared(|manager| BDDFunction::t(manager))),

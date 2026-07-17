@@ -7,6 +7,7 @@ use log::debug;
 use merc_collections::IndexedSet;
 use merc_syntax::ConstructorId;
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
 use merc_syntax::EqnVarId;
@@ -123,9 +124,9 @@ where
     F: FnMut(&SortExpression) -> Result<SortExpression, E>,
 {
     let _: Option<Infallible> = try_visit_data_expr_mut(expr, |expr| {
-        match expr {
-            DataExpr::Lambda { variables, body: _ }
-            | DataExpr::Quantifier {
+        match &mut expr.node {
+            DataExprKind::Lambda { variables, body: _ }
+            | DataExprKind::Quantifier {
                 op: _,
                 variables,
                 body: _,
@@ -134,7 +135,7 @@ where
                     variable.sort = f(&variable.sort)?;
                 }
             }
-            DataExpr::SetBagComp { variable, predicate: _ } => {
+            DataExprKind::SetBagComp { variable, predicate: _ } => {
                 variable.sort = f(&variable.sort)?;
             }
             _ => {}
@@ -164,7 +165,7 @@ fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Resu
 #[cfg(test)]
 mod tests {
     use merc_syntax::ConstructorId;
-    use merc_syntax::DataExpr;
+    use merc_syntax::DataExprKind;
     use merc_syntax::EqnSpecId;
     use merc_syntax::EquationId;
     use merc_syntax::MapId;
@@ -226,7 +227,7 @@ mod tests {
         assert!(matches!(equation.variables[0].sort, SortExpression::Resolved(_, _)));
 
         // The quantifier binder `y: D` in the body is resolved as well.
-        let DataExpr::Quantifier { variables, .. } = &equation.equations[0].rhs else {
+        let DataExprKind::Quantifier { variables, .. } = &equation.equations[0].rhs.node else {
             panic!("expected a quantifier body, got {:?}", equation.equations[0].rhs);
         };
         assert!(matches!(variables[0].sort, SortExpression::Resolved(_, _)));

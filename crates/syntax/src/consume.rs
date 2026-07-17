@@ -20,6 +20,7 @@ use crate::Condition;
 use crate::ConstructorDecl;
 use crate::ConstructorId;
 use crate::DataExpr;
+use crate::DataExprKind;
 use crate::DataExprUnaryOp;
 use crate::DataExprUpdate;
 use crate::Eq;
@@ -45,6 +46,7 @@ use crate::Rename;
 use crate::Rule;
 use crate::SortDecl;
 use crate::SortExpression;
+use crate::Span;
 use crate::StateFrm;
 use crate::StateVarAssignment;
 use crate::StateVarDecl;
@@ -704,9 +706,10 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn DataExprSize(expr: ParseNode) -> ParseResult<DataExpr> {
+        let span: Span = expr.as_span().into();
         match_nodes!(expr.into_children();
             [DataExpr(expr)] => {
-                Ok(DataExpr::Unary { op: DataExprUnaryOp::Size, expr: Box::new(expr) })
+                Ok(DataExprKind::Unary { op: DataExprUnaryOp::Size, expr: Box::new(expr) }.spanned(span))
             },
         )
     }
@@ -874,17 +877,19 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn DataExprListEnum(input: ParseNode) -> ParseResult<DataExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [DataExprList(expressions)] => {
-                Ok(DataExpr::List(expressions))
+                Ok(DataExprKind::List(expressions).spanned(span))
             },
         )
     }
 
     pub(crate) fn DataExprBagEnum(input: ParseNode) -> ParseResult<DataExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [BagEnumEltList(elements)] => {
-                Ok(DataExpr::Bag(elements))
+                Ok(DataExprKind::Bag(elements).spanned(span))
             },
         )
     }
@@ -906,23 +911,26 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn DataExprSetEnum(input: ParseNode) -> ParseResult<DataExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [DataExprList(expressions)] => {
-                Ok(DataExpr::Set(expressions))
+                Ok(DataExprKind::Set(expressions).spanned(span))
             },
         )
     }
 
     pub(crate) fn DataExprSetBagComp(input: ParseNode) -> ParseResult<DataExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [VarDecl(variable), DataExpr(predicate)] => {
-                Ok(DataExpr::SetBagComp { variable, predicate: Box::new(predicate) })
+                Ok(DataExprKind::SetBagComp { variable, predicate: Box::new(predicate) }.spanned(span))
             },
         )
     }
 
     pub(crate) fn Number(input: ParseNode) -> ParseResult<DataExpr> {
-        Ok(DataExpr::Number(input.as_str().into()))
+        let span: Span = input.as_span().into();
+        Ok(DataExprKind::Number(input.as_str().into()).spanned(span))
     }
 
     fn VarDecl(decl: ParseNode) -> ParseResult<IdDecl> {

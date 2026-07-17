@@ -6,6 +6,7 @@ use log::trace;
 use merc_syntax::ConstructorDecl;
 use merc_syntax::ConstructorId;
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
 use merc_syntax::MapId;
 use merc_syntax::Sort;
@@ -85,36 +86,39 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
 /// binder over an anonymous `struct` would be left with an unresolvable sort
 /// and its equation rejected rather than type checked.
 fn hoist_binder_sorts_in_place(hoister: &mut Hoister, expr: &mut DataExpr) {
-    let owned = std::mem::replace(expr, DataExpr::EmptyList);
+    let owned = std::mem::replace(expr, DataExprKind::EmptyList.into());
     *expr = hoist_binder_sorts(hoister, owned);
 }
 
 fn hoist_binder_sorts(hoister: &mut Hoister, expr: DataExpr) -> DataExpr {
-    map_data_expr(expr, |node| match node {
-        DataExpr::SetBagComp {
-            mut variable,
-            predicate,
-        } => {
-            variable.sort = hoister.hoist_non_decl(variable.sort);
-            DataExpr::SetBagComp { variable, predicate }
-        }
-        DataExpr::Lambda { mut variables, body } => {
-            for variable in &mut variables {
-                variable.sort = hoister.hoist_non_decl(variable.sort.clone());
+    map_data_expr(expr, |expr| {
+        let DataExpr { node, span } = expr;
+        match node {
+            DataExprKind::SetBagComp {
+                mut variable,
+                predicate,
+            } => {
+                variable.sort = hoister.hoist_non_decl(variable.sort);
+                DataExprKind::SetBagComp { variable, predicate }.spanned(span)
             }
-            DataExpr::Lambda { variables, body }
-        }
-        DataExpr::Quantifier {
-            op,
-            mut variables,
-            body,
-        } => {
-            for variable in &mut variables {
-                variable.sort = hoister.hoist_non_decl(variable.sort.clone());
+            DataExprKind::Lambda { mut variables, body } => {
+                for variable in &mut variables {
+                    variable.sort = hoister.hoist_non_decl(variable.sort.clone());
+                }
+                DataExprKind::Lambda { variables, body }.spanned(span)
             }
-            DataExpr::Quantifier { op, variables, body }
+            DataExprKind::Quantifier {
+                op,
+                mut variables,
+                body,
+            } => {
+                for variable in &mut variables {
+                    variable.sort = hoister.hoist_non_decl(variable.sort.clone());
+                }
+                DataExprKind::Quantifier { op, variables, body }.spanned(span)
+            }
+            node => node.spanned(span),
         }
-        node => node,
     })
 }
 

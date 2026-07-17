@@ -13,6 +13,7 @@ use crate::ComplexSort;
 use crate::ConstructorDecl;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
+use crate::DataExprKind;
 use crate::DataExprUnaryOp;
 use crate::DataExprUpdate;
 use crate::EqnDecl;
@@ -304,38 +305,42 @@ impl fmt::Display for DataExprUnaryOp {
 
 impl fmt::Display for DataExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            DataExpr::EmptyList => write!(f, "[]"),
-            DataExpr::EmptyBag => write!(f, "{{:}}"),
-            DataExpr::EmptySet => write!(f, "{{}}"),
-            DataExpr::List(expressions) => write!(f, "[{}]", expressions.iter().format(", ")),
-            DataExpr::Bag(expressions) => write!(
+        match &self.node {
+            DataExprKind::EmptyList => write!(f, "[]"),
+            DataExprKind::EmptyBag => write!(f, "{{:}}"),
+            DataExprKind::EmptySet => write!(f, "{{}}"),
+            DataExprKind::List(expressions) => write!(f, "[{}]", expressions.iter().format(", ")),
+            DataExprKind::Bag(expressions) => write!(
                 f,
                 "{{ {} }}",
                 expressions
                     .iter()
                     .format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))
             ),
-            DataExpr::Set(expressions) => write!(f, "{{ {} }}", expressions.iter().format(", ")),
-            DataExpr::Id(identifier) => write!(f, "{identifier}"),
-            DataExpr::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            DataExpr::Unary { op, expr } => write!(f, "({op} {expr})"),
-            DataExpr::Bool(value) => write!(f, "{value}"),
-            DataExpr::Quantifier { op, variables, body } => {
+            DataExprKind::Set(expressions) => write!(f, "{{ {} }}", expressions.iter().format(", ")),
+            DataExprKind::Id(identifier) => write!(f, "{identifier}"),
+            DataExprKind::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            DataExprKind::Unary { op, expr } => write!(f, "({op} {expr})"),
+            DataExprKind::Bool(value) => write!(f, "{value}"),
+            DataExprKind::Quantifier { op, variables, body } => {
                 write!(f, "({} {} . {})", op, variables.iter().format(", "), body)
             }
-            DataExpr::Lambda { variables, body } => write!(f, "(lambda {} . {})", variables.iter().format(", "), body),
-            DataExpr::Application { function, arguments } => {
+            DataExprKind::Lambda { variables, body } => {
+                write!(f, "(lambda {} . {})", variables.iter().format(", "), body)
+            }
+            DataExprKind::Application { function, arguments } => {
                 if arguments.is_empty() {
                     write!(f, "{function}")
                 } else {
                     write!(f, "{}({})", function, arguments.iter().format(", "))
                 }
             }
-            DataExpr::Number(value) => write!(f, "{value}"),
-            DataExpr::FunctionUpdate { expr, update } => write!(f, "{expr}[{update}]"),
-            DataExpr::SetBagComp { variable, predicate } => write!(f, "{{ {variable} | {predicate} }}"),
-            DataExpr::Whr { expr, assignments } => write!(f, "{} whr {} end", expr, assignments.iter().format(", ")),
+            DataExprKind::Number(value) => write!(f, "{value}"),
+            DataExprKind::FunctionUpdate { expr, update } => write!(f, "{expr}[{update}]"),
+            DataExprKind::SetBagComp { variable, predicate } => write!(f, "{{ {variable} | {predicate} }}"),
+            DataExprKind::Whr { expr, assignments } => {
+                write!(f, "{} whr {} end", expr, assignments.iter().format(", "))
+            }
         }
     }
 }

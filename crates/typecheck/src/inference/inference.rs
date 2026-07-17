@@ -7,11 +7,13 @@ use log::trace;
 
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::EqnSpecId;
 use merc_syntax::EquationId;
 use merc_syntax::IdDecl;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
+use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_utilities::TagIndex;
 
@@ -78,28 +80,28 @@ pub(crate) struct EquationTyping {
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum InferenceError {
     #[error("the name '{name}' is not declared")]
-    UndeclaredName { name: String },
+    UndeclaredName { name: String, span: Span },
 
     #[error("'{expr}' is applied to arguments, but cannot have a function sort")]
-    NotAFunction { expr: String },
+    NotAFunction { expr: String, span: Span },
 
     #[error("the condition '{condition}' cannot have sort Bool")]
-    ConditionNotBool { condition: String },
+    ConditionNotBool { condition: String, span: Span },
 
     #[error("the body '{body}' of a forall/exists must have sort Bool")]
-    QuantifierNotBool { body: String },
+    QuantifierNotBool { body: String, span: Span },
 
     #[error("the equation '{equation}' has no valid sort assignment")]
-    NoTyping { equation: String },
+    NoTyping { equation: String, span: Span },
 
     #[error("the sorts in equation '{equation}' are ambiguous")]
-    AmbiguousExpression { equation: String },
+    AmbiguousExpression { equation: String, span: Span },
 
     #[error("the sorts in equation '{equation}' are underdetermined")]
-    UnderdeterminedSort { equation: String },
+    UnderdeterminedSort { equation: String, span: Span },
 
     #[error("the binder sort '{sort}' in equation '{equation}' is not a valid variable sort")]
-    InvalidBinderSort { sort: String, equation: String },
+    InvalidBinderSort { sort: String, equation: String, span: Span },
 }
 
 /// Returns the typing of one user equation, keyed by the id of its enclosing
@@ -213,7 +215,7 @@ fn infer_equation(
 
     match generator.generate(equation.condition.as_ref(), &equation.lhs, &equation.rhs) {
         Ok(()) => {}
-        Err(GenFailure::InvalidBinderSort(sort)) => {
+        Err(GenFailure::InvalidBinderSort(sort, span)) => {
             debug!(
                 "inference: rejected '{}', its binder sort '{sort}' is not a valid variable sort",
                 equation_text()
@@ -221,6 +223,7 @@ fn infer_equation(
             return Err(InferenceError::InvalidBinderSort {
                 sort,
                 equation: equation_text(),
+                span,
             });
         }
         Err(GenFailure::Error(error)) => {
@@ -277,6 +280,7 @@ fn infer_equation(
             debug!("inference: no valid sort assignment for '{}'", equation_text());
             Err(InferenceError::NoTyping {
                 equation: equation_text(),
+                span: equation.span.clone(),
             })
         }
         Some(best) if best.duplicate => {
@@ -287,6 +291,7 @@ fn infer_equation(
             );
             Err(InferenceError::AmbiguousExpression {
                 equation: equation_text(),
+                span: equation.span.clone(),
             })
         }
         Some(best) => match best.typing {
@@ -297,6 +302,7 @@ fn infer_equation(
                 );
                 Err(InferenceError::UnderdeterminedSort {
                     equation: equation_text(),
+                    span: equation.span.clone(),
                 })
             }
             Some((sorts, names)) => {
@@ -522,8 +528,9 @@ fn is_numeric_family(name: &str) -> bool {
 enum GenFailure {
     /// A binder in the equation declares a sort that is not a valid variable
     /// sort (a bare product; see [is_supported_binder_sort]). The equation is
-    /// rejected rather than left untyped. Carries the offending sort's text.
-    InvalidBinderSort(String),
+    /// rejected rather than left untyped. Carries the offending sort's text
+    /// and the span of the binder that declares it.
+    InvalidBinderSort(String, Span),
     Error(InferenceError),
 }
 
@@ -576,6 +583,7 @@ impl<'a> ConstraintGenerator<'a> {
             if !self.unifier.unify(&self.ctx.sorts, sort, bool_node) {
                 return Err(GenFailure::Error(InferenceError::ConditionNotBool {
                     condition: condition.to_string(),
+                    span: condition.span.clone(),
                 }));
             }
         }
@@ -604,9 +612,9 @@ impl<'a> ConstraintGenerator<'a> {
             self.expr_texts.push(expr.to_string());
         }
 
-        match expr {
-            DataExpr::Id(name) => self.gen_name(id, node, name)?,
-            DataExpr::Number(value) => {
+        match &expr.node {
+            DataExprKind::Id(name) => self.gen_name(id, node, name, &expr.span)?,
+            DataExprKind::Number(value) => {
                 let kind = if value == "0" {
                     LitKind::Natural
                 } else {
@@ -615,11 +623,11 @@ impl<'a> ConstraintGenerator<'a> {
                 self.constraints
                     .push(Constraint::Lit(LitConstraint { sort: node, kind }));
             }
-            DataExpr::Bool(_) => {
+            DataExprKind::Bool(_) => {
                 let bool_node = self.unifier.resolved_node(self.ctx.sorts.bool_sort());
                 self.bind_fresh(node, bool_node);
             }
-            DataExpr::EmptyList => {
+            DataExprKind::EmptyList => {
                 let element = self.unifier.fresh_var();
                 let list = self.unifier.generic(ComplexSort::List, element);
                 self.bind_fresh(node, list);
@@ -628,17 +636,17 @@ impl<'a> ConstraintGenerator<'a> {
             // container sort; where a `Set`/`Bag` is expected, the sub-sort
             // constraints widen `FSet(S) <= Set(S)` (`FBag(S) <= Bag(S)`) at
             // the point of use, matching mCRL2's upcast of an enumeration.
-            DataExpr::EmptySet => {
+            DataExprKind::EmptySet => {
                 let element = self.unifier.fresh_var();
                 let set = self.unifier.generic(ComplexSort::FSet, element);
                 self.bind_fresh(node, set);
             }
-            DataExpr::EmptyBag => {
+            DataExprKind::EmptyBag => {
                 let element = self.unifier.fresh_var();
                 let bag = self.unifier.generic(ComplexSort::FBag, element);
                 self.bind_fresh(node, bag);
             }
-            DataExpr::Set(members) => {
+            DataExprKind::Set(members) => {
                 // The members share one element node into which each may be
                 // upcast, so the solved element sort is the least common
                 // supersort of the member sorts.
@@ -653,7 +661,7 @@ impl<'a> ConstraintGenerator<'a> {
                 let set = self.unifier.generic(ComplexSort::FSet, element);
                 self.bind_fresh(node, set);
             }
-            DataExpr::Bag(members) => {
+            DataExprKind::Bag(members) => {
                 let element = self.unifier.fresh_var();
                 let nat = self.unifier.resolved_node(self.ctx.sorts.nat_sort());
                 for member in members {
@@ -673,8 +681,8 @@ impl<'a> ConstraintGenerator<'a> {
                 let bag = self.unifier.generic(ComplexSort::FBag, element);
                 self.bind_fresh(node, bag);
             }
-            DataExpr::SetBagComp { variable, predicate } => {
-                let element = self.binder_sort(&variable.sort)?;
+            DataExprKind::SetBagComp { variable, predicate } => {
+                let element = self.binder_sort(&variable.sort, &variable.span)?;
                 let element_node = self.unifier.resolved_node(element);
 
                 // The bound variable shadows an equation variable of the same
@@ -691,7 +699,7 @@ impl<'a> ConstraintGenerator<'a> {
                 self.constraints
                     .push(Constraint::Comprehension(Comprehension { body, node, element }));
             }
-            DataExpr::Application { function, arguments } => {
+            DataExprKind::Application { function, arguments } => {
                 // The arguments are visited (and hence constrained) before the
                 // applied function, so the function's overload disjunction is
                 // solved against already-bound argument sorts.
@@ -713,10 +721,11 @@ impl<'a> ConstraintGenerator<'a> {
                 if !self.unifier.unify(&self.ctx.sorts, function_sort, expected) {
                     return Err(GenFailure::Error(InferenceError::NotAFunction {
                         expr: function.to_string(),
+                        span: function.span.clone(),
                     }));
                 }
             }
-            DataExpr::Lambda { variables, body } => {
+            DataExprKind::Lambda { variables, body } => {
                 // The result is a function from the bound variables' declared
                 // sorts to the body's sort.
                 let function_sort = self.with_binder_scope(variables, |this, sorts| {
@@ -726,7 +735,7 @@ impl<'a> ConstraintGenerator<'a> {
                 })?;
                 self.bind_fresh(node, function_sort);
             }
-            DataExpr::Quantifier { op: _, variables, body } => {
+            DataExprKind::Quantifier { op: _, variables, body } => {
                 // A `forall`/`exists` is `Bool`, and requires its body to be
                 // `Bool` too (mCRL2 checks both with `TypeMatchA(Bool, ..)`).
                 let bool_node = self.unifier.resolved_node(self.ctx.sorts.bool_sort());
@@ -735,13 +744,14 @@ impl<'a> ConstraintGenerator<'a> {
                     if !this.unifier.unify(&this.ctx.sorts, body_sort, bool_node) {
                         return Err(GenFailure::Error(InferenceError::QuantifierNotBool {
                             body: body.to_string(),
+                            span: body.span.clone(),
                         }));
                     }
                     Ok(())
                 })?;
                 self.bind_fresh(node, bool_node);
             }
-            DataExpr::Whr { expr, assignments } => {
+            DataExprKind::Whr { expr, assignments } => {
                 // Each assignment's right-hand side is typed in the outer
                 // scope — bindings do not see each other, only the body does
                 // (every assignment is typed against the original declared
@@ -769,7 +779,10 @@ impl<'a> ConstraintGenerator<'a> {
                 }
                 self.bind_fresh(node, body_sort);
             }
-            DataExpr::List(_) | DataExpr::Unary { .. } | DataExpr::Binary { .. } | DataExpr::FunctionUpdate { .. } => {
+            DataExprKind::List(_)
+            | DataExprKind::Unary { .. }
+            | DataExprKind::Binary { .. }
+            | DataExprKind::FunctionUpdate { .. } => {
                 unreachable!("lowering rewrote this expression form")
             }
         }
@@ -799,7 +812,7 @@ impl<'a> ConstraintGenerator<'a> {
         let mut sorts = Vec::with_capacity(variables.len());
         let mut shadowed = Vec::with_capacity(variables.len());
         for variable in variables {
-            let sort = self.binder_sort(&variable.sort)?;
+            let sort = self.binder_sort(&variable.sort, &variable.span)?;
             let node = self.unifier.resolved_node(sort);
             let name = variable.identifier.as_str();
             shadowed.push((name, self.variables.insert(name, node)));
@@ -820,10 +833,11 @@ impl<'a> ConstraintGenerator<'a> {
 
     /// Resolves the declared sort of a comprehension's bound variable onto the
     /// interned lattice, rejecting a sort that is not a valid variable sort
-    /// (a bare product; see [is_supported_binder_sort]).
-    fn binder_sort(&mut self, sort: &SortExpression) -> Result<ResolvedSortId, GenFailure> {
+    /// (a bare product; see [is_supported_binder_sort]). `span` is the
+    /// binder's declaration span, reported on rejection.
+    fn binder_sort(&mut self, sort: &SortExpression, span: &Span) -> Result<ResolvedSortId, GenFailure> {
         if !is_supported_binder_sort(sort) {
-            return Err(GenFailure::InvalidBinderSort(sort.to_string()));
+            return Err(GenFailure::InvalidBinderSort(sort.to_string(), span.clone()));
         }
         Ok(resolve_sort(self.ctx, self.spec, sort))
     }
@@ -832,7 +846,7 @@ impl<'a> ConstraintGenerator<'a> {
     /// everything, then the user overloads joined by either the built-in
     /// scheme (for the polymorphic comparison operators and `if`) or the
     /// system-defined overloads.
-    fn gen_name(&mut self, id: ExprId, node: InferSortId, name: &'a str) -> Result<(), GenFailure> {
+    fn gen_name(&mut self, id: ExprId, node: InferSortId, name: &'a str, span: &Span) -> Result<(), GenFailure> {
         if let Some(&sort) = self.variables.get(name) {
             self.names.insert(id, NameTarget::Variable);
             self.bind_fresh(node, sort);
@@ -895,6 +909,7 @@ impl<'a> ConstraintGenerator<'a> {
         match disjuncts.as_slice() {
             [] => Err(GenFailure::Error(InferenceError::UndeclaredName {
                 name: name.to_string(),
+                span: span.clone(),
             })),
             [(target, sort)] => {
                 self.names.insert(id, *target);
@@ -1552,23 +1567,46 @@ mod tests {
 
     #[test]
     fn test_undeclared_name() {
-        let error = inference_error("map b: Bool; eqn b = undeclared;");
-        assert!(
-            matches!(&error, InferenceError::UndeclaredName { name } if name == "undeclared"),
-            "{error}"
-        );
+        let text = "map b: Bool; eqn b = undeclared;";
+        let error = inference_error(text);
+        match &error {
+            InferenceError::UndeclaredName { name, span } => {
+                assert_eq!(name, "undeclared");
+                assert_eq!(&text[span.start..span.end], "undeclared");
+            }
+            other => panic!("expected UndeclaredName, got {other}"),
+        }
     }
 
     #[test]
     fn test_incompatible_sides_have_no_typing() {
-        let error = inference_error("map f: Bool; eqn f = 1;");
-        assert!(matches!(error, InferenceError::NoTyping { .. }), "{error}");
+        let text = "map f: Bool; eqn f = 1;";
+        let error = inference_error(text);
+        match &error {
+            InferenceError::NoTyping { equation, span } => {
+                // The whole equation (including its trailing `;`) is the
+                // offending unit; nothing narrower pins down a sort to blame.
+                assert_eq!(&text[span.start..span.end], "f = 1;");
+                assert_eq!(equation, "f = 1");
+            }
+            other => panic!("expected NoTyping, got {other}"),
+        }
     }
 
     #[test]
     fn test_non_boolean_condition() {
-        let error = inference_error("map f: Nat -> Bool; var n: Nat; eqn n -> f(n) = true;");
-        assert!(matches!(error, InferenceError::ConditionNotBool { .. }), "{error}");
+        let text = "map f: Nat -> Bool; var n: Nat; eqn n -> f(n) = true;";
+        let error = inference_error(text);
+        match &error {
+            InferenceError::ConditionNotBool { condition, span } => {
+                assert_eq!(condition, "n");
+                // The span points at the condition `n`, not the variable
+                // declaration earlier in the text.
+                assert_eq!(&text[span.start..span.end], "n");
+                assert_eq!(span.start, text.rfind("n ->").expect("condition is present"));
+            }
+            other => panic!("expected ConditionNotBool, got {other}"),
+        }
     }
 
     #[test]
@@ -1616,8 +1654,18 @@ mod tests {
 
     #[test]
     fn test_quantifier_requires_boolean_body() {
-        let error = inference_error("map b: Bool; eqn b = forall n: Nat. n;");
-        assert!(matches!(error, InferenceError::QuantifierNotBool { .. }), "{error}");
+        let text = "map b: Bool; eqn b = forall n: Nat. n;";
+        let error = inference_error(text);
+        match &error {
+            InferenceError::QuantifierNotBool { body, span } => {
+                assert_eq!(body, "n");
+                // The span points at the body `n`, not the bound variable
+                // declaration `n: Nat` just before it.
+                assert_eq!(&text[span.start..span.end], "n");
+                assert_eq!(span.start, text.len() - 2, "the body is the last token before ';'");
+            }
+            other => panic!("expected QuantifierNotBool, got {other}"),
+        }
     }
 
     #[test]
@@ -1837,8 +1885,19 @@ mod tests {
         // A bare product is not a valid variable sort; a binder over one is
         // now rejected rather than left untyped (which previously let an
         // ill-typed body slip through unchecked).
-        let err = inference_error("map s: Set(Nat); eqn s = { x: Nat # Nat | true };");
-        assert!(matches!(err, InferenceError::InvalidBinderSort { .. }), "{err}");
+        let text = "map s: Set(Nat); eqn s = { x: Nat # Nat | true };";
+        let err = inference_error(text);
+        match &err {
+            InferenceError::InvalidBinderSort { sort, span, .. } => {
+                // `Display` parenthesizes the product sort; the span still
+                // points at the unparenthesized source text.
+                assert_eq!(sort, "(Nat # Nat)");
+                // The span covers the whole binder declaration `x: Nat # Nat`
+                // (with the trailing whitespace up to the `|`).
+                assert_eq!(&text[span.start..span.end], "x: Nat # Nat ");
+            }
+            other => panic!("expected InvalidBinderSort, got {other}"),
+        }
     }
 
     #[test]
