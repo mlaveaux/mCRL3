@@ -12,7 +12,7 @@ function eval_bd(real speed) {
 }
 
 function new_speed (real speed, real acc) {
-  if (accel == N) {
+  if (acc == N) {
       return max(0.0, speed - A);
     } else {
       return min(MAX_SPEED, max(0.0, speed + acc));
@@ -28,7 +28,7 @@ function new_s_speed (real speed, real acc, real token) {
 }
 
 global variables {
-  real p_speed range [0,MAX_SPEED] = INIT_SPEED_V1;
+  real p_speed range [0,MAX_SPEED] = INIT_SPEED;
   real p_distance range [0,INIT_DISTANCE] = INIT_DISTANCE;
   real braking_distance range [0, INIT_DISTANCE] = eval_bd(INIT_SPEED);
   real gap range [0, INIT_DISTANCE] = INIT_DISTANCE - eval_bd(INIT_SPEED);
@@ -60,7 +60,7 @@ component vehicle {
         } else {
           accel' = N;
           timer_V' = TIMER;
-          step Stop_V1;
+          step Stop;
         }
       }
     }
@@ -97,7 +97,7 @@ environment{
     token = R[0,1]
   and
     new_sens_speed = new_s_speed(p_speed, accel, token)
-  in
+  in {
     timer_V' = timer_V - 1;
     p_speed' = new_speed(p_speed, accel);
     s_speed' = new_sens_speed;
@@ -106,4 +106,5 @@ environment{
       braking_distance' = eval_bd(new_sens_speed);
       gap' = p_distance - travel - eval_bd(new_sens_speed);
     }
+  }
 }

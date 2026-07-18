@@ -131,7 +131,7 @@ component Engine{
 environment {
   let
     deltaTemp = temperatureUpdateInOneStep(cool, speed)
-  in
+  in {
     temp' = temp + deltaTemp;
     ch_temp' = ch_temp + deltaTemp;
     p1' = temp;
@@ -143,6 +143,7 @@ environment {
     if (isStressed(p1,p2,p3,p4,p5,p6) > 3) {
       stress' = stress + STRESS_INCR;
     }
+  }
 }
 
 
@@ -151,7 +152,7 @@ penalty rho_temperature = pen_temp(temp,ch_temp)
 
 penalty rho_warning = pen_wrn(ch_wrn)
 
-penalty rho_stress = pen_stress(stress)
+penalty rho_stress = get_stress(stress)
 
 
 

@@ -50,7 +50,7 @@ function slow_speed(real speed, real offs){
   return max(0.0, speed - offs);
 }
 
-function IDS_guard(boolean dist, boolean acc1, boolean acc2, boolean speed){
+function IDS_guard(bool dist, bool acc1, bool acc2, bool speed){
   return dist && (acc1 || (acc2 && speed));
 }
 
