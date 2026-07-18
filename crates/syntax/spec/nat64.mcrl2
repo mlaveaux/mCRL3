@@ -84,7 +84,7 @@ map  @most_significant_digitNat: @word -> Nat;
      @sqrt_pair_whr1: @word # @word # @word # Nat -> @NatNatPair;
      @sqrt_pair_whr2: @word # @word # @word # @word # Nat -> @NatNatPair;
      @sqrt_pair_whr3: @word # @word # @NatNatPair -> @NatNatPair;
-     @sqrt_pair_whr4: Nat # @word # @NatNatPair # Nat # Nat # Nat -> @NatNatPair;
+     @sqrt_pair_whr4: @word # @word # @NatNatPair # Nat # Nat # Nat -> @NatNatPair;
      @sqrt_pair_whr5: @NatNatPair # Nat # Nat # Nat # Nat -> @NatNatPair;
      @sqrt_pair_whr6: Nat # Nat # Nat -> @NatNatPair;
 % functions for pairs.
@@ -109,7 +109,11 @@ var  b:Bool;
      diff:Nat;
      shift_n1:Nat;
      solution:Nat;
-     pq:Nat;
+% NOTE (merc): upstream mCRL2 declares `pq:Nat` here, but every occurrence uses
+% it as a pair — `@first(pq)` / `@last(pq)` take `@NatNatPair`, and it is passed
+% as the `@NatNatPair` argument of `@sqrt_pair_whr3/4/5`. Another declaration
+% that mCRL2 never type checks; merc's lowering requires the correct sort.
+     pq:@NatNatPair;
      y:Nat;
      y_guess:Nat;
      pair_:@NatNatPair;

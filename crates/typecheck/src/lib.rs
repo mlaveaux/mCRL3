@@ -1,6 +1,7 @@
 mod data_specification;
 mod inference;
 mod ir;
+mod number_encoding;
 mod resolution;
 mod signature;
 
@@ -17,4 +18,5 @@ pub(crate) use signature::*;
 
 pub use data_specification::DataSpecification;
 pub use inference::InferenceError;
+pub use number_encoding::NumberEncoding;
 pub use signature::WellTypedError;
