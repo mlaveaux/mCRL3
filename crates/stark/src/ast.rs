@@ -34,8 +34,13 @@ pub struct LocalTag;
 /// The index type assigned to a local binding during name resolution.
 pub type LocalId = TagIndex<usize, LocalTag>;
 
-/// An `Expression` together with the source span it was parsed from.
-pub type SpannedExpression = Spanned<Expression>;
+/// An expression node together with the source span it was parsed from.
+///
+/// Mirrors rustc's `Expr`/`ExprKind` split: [Expression] is the spanned node
+/// that appears everywhere in the tree, and [ExpressionKind] is the bare
+/// variant data. Sub-expressions recurse through `Box<Expression>` (not
+/// `Box<ExpressionKind>`), so every level of nesting carries its own span.
+pub type Expression = Spanned<ExpressionKind>;
 
 /// A reference to a top-level declaration (variable, constant, parameter,
 /// function, penalty, distance, perturbation, formula or component),
@@ -108,7 +113,7 @@ impl UntypedStarkSpecification {
 pub struct Constant {
     pub id: Option<DefId>,
     pub name: Identifier,
-    pub value: SpannedExpression,
+    pub value: Expression,
 }
 
 /// `param name = value;`
@@ -116,7 +121,7 @@ pub struct Constant {
 pub struct Parameter {
     pub id: Option<DefId>,
     pub name: Identifier,
-    pub value: SpannedExpression,
+    pub value: Expression,
 }
 
 /// A single variable in a (`global`) `variables { ... }` block, or in a
@@ -128,7 +133,7 @@ pub struct Variable {
     pub ty: Ty,
     pub name: Identifier,
     pub range: Option<Range>,
-    pub initial_value: SpannedExpression,
+    pub initial_value: Expression,
 }
 
 /// `type name = A | B | C;`
@@ -144,7 +149,7 @@ pub struct TypeDeclaration {
 pub struct Penalty {
     pub id: Option<DefId>,
     pub name: Identifier,
-    pub value: SpannedExpression,
+    pub value: Expression,
 }
 
 /// `function name(args) { body }`
@@ -165,16 +170,16 @@ pub struct FunctionArgument {
 
 #[derive(Clone, Debug)]
 pub enum FunctionStatement {
-    Return(SpannedExpression),
+    Return(Expression),
     IfThenElse {
-        guard: SpannedExpression,
+        guard: Expression,
         then_branch: Box<FunctionStatement>,
         else_branch: Option<Box<FunctionStatement>>,
     },
     Let {
         id: Option<LocalId>,
         name: Identifier,
-        value: SpannedExpression,
+        value: Expression,
         body: Box<FunctionStatement>,
     },
     Block(Box<FunctionStatement>),
@@ -195,7 +200,7 @@ pub struct Component {
     pub init: Vec<StateRef>,
 }
 
-/// `aiState name { .. }`
+/// `state name { .. }`
 #[derive(Clone, Debug)]
 pub struct ControllerState {
     pub id: Option<StateId>,
@@ -207,7 +212,7 @@ pub struct ControllerState {
 pub enum ControllerCommand {
     /// `[steps #] step target;`
     Step {
-        steps: Option<SpannedExpression>,
+        steps: Option<Expression>,
         target: StateRef,
     },
     /// `exec target;`
@@ -216,14 +221,14 @@ pub enum ControllerCommand {
     Let {
         id: Option<LocalId>,
         name: Identifier,
-        value: SpannedExpression,
+        value: Expression,
         body: Vec<ControllerCommand>,
     },
     /// `[when guard] target' = value;`
     Assignment(Update),
     /// `if (guard) { .. } else { .. }`
     IfThenElse {
-        guard: SpannedExpression,
+        guard: Expression,
         then_branch: Vec<ControllerCommand>,
         else_branch: Option<Vec<ControllerCommand>>,
     },
@@ -247,7 +252,7 @@ pub enum EnvironmentCommand {
     Assignment(Update),
     /// `if (guard) cmd [else cmd]`
     IfThenElse {
-        guard: SpannedExpression,
+        guard: Expression,
         then_branch: Box<EnvironmentCommand>,
         else_branch: Option<Box<EnvironmentCommand>>,
     },
@@ -264,7 +269,7 @@ pub enum EnvironmentCommand {
 pub struct LocalVariable {
     pub id: Option<LocalId>,
     pub name: Identifier,
-    pub value: SpannedExpression,
+    pub value: Expression,
 }
 
 /// A `[when guard] target' = value;` assignment shared by controllers and the
@@ -272,9 +277,9 @@ pub struct LocalVariable {
 /// `'`), resolved to the [DefId] of the variable it updates.
 #[derive(Clone, Debug)]
 pub struct Update {
-    pub guard: Option<SpannedExpression>,
+    pub guard: Option<Expression>,
     pub target: DefRef,
-    pub value: SpannedExpression,
+    pub value: Expression,
 }
 
 // ---------------------------------------------------------------------------
@@ -296,21 +301,21 @@ pub enum PerturbationExpression {
     /// `[ v1 <- e1, v2 <- e2 ] @ time`
     Atomic {
         assignments: Vec<PerturbationAssignment>,
-        time: SpannedExpression,
+        time: Expression,
     },
     /// `left ; right`
     Sequence(Box<PerturbationExpression>, Box<PerturbationExpression>),
     /// `argument ^ iterations`
     Iteration {
         argument: Box<PerturbationExpression>,
-        iterations: SpannedExpression,
+        iterations: Expression,
     },
 }
 
 #[derive(Clone, Debug)]
 pub struct PerturbationAssignment {
     pub target: DefRef,
-    pub value: SpannedExpression,
+    pub value: Expression,
 }
 
 /// `distance name = expr;`
@@ -331,20 +336,20 @@ pub enum DistanceExpression {
     AtomicRight(DefRef),
     /// `\F[from,to] argument`
     Eventually {
-        from: SpannedExpression,
-        to: SpannedExpression,
+        from: Expression,
+        to: Expression,
         argument: Box<DistanceExpression>,
     },
     /// `\G[from,to] argument`
     Globally {
-        from: SpannedExpression,
-        to: SpannedExpression,
+        from: Expression,
+        to: Expression,
         argument: Box<DistanceExpression>,
     },
     /// `left \U[from,to] right`
     Until {
-        from: SpannedExpression,
-        to: SpannedExpression,
+        from: Expression,
+        to: Expression,
         left: Box<DistanceExpression>,
         right: Box<DistanceExpression>,
     },
@@ -352,12 +357,12 @@ pub enum DistanceExpression {
     Threshold {
         op: ComparisonOp,
         left: Box<DistanceExpression>,
-        threshold: SpannedExpression,
+        threshold: Expression,
     },
     Min(Box<DistanceExpression>, Box<DistanceExpression>),
     Max(Box<DistanceExpression>, Box<DistanceExpression>),
     /// `w1 * d1 + w2 * d2 + ...`
-    LinearCombination(Vec<(SpannedExpression, DistanceExpression)>),
+    LinearCombination(Vec<(Expression, DistanceExpression)>),
 }
 
 /// `formula name = formula;`
@@ -379,24 +384,24 @@ pub enum RobtlFormula {
         distance: DefRef,
         perturbation: DefRef,
         op: ComparisonOp,
-        value: SpannedExpression,
+        value: Expression,
     },
     Not(Box<RobtlFormula>),
     Globally {
-        from: SpannedExpression,
-        to: SpannedExpression,
+        from: Expression,
+        to: Expression,
         argument: Box<RobtlFormula>,
     },
     Eventually {
-        from: SpannedExpression,
-        to: SpannedExpression,
+        from: Expression,
+        to: Expression,
         argument: Box<RobtlFormula>,
     },
     And(Box<RobtlFormula>, Box<RobtlFormula>),
     Or(Box<RobtlFormula>, Box<RobtlFormula>),
     Until {
-        from: SpannedExpression,
-        to: SpannedExpression,
+        from: Expression,
+        to: Expression,
         left: Box<RobtlFormula>,
         right: Box<RobtlFormula>,
     },
@@ -407,7 +412,7 @@ pub enum RobtlFormula {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub enum Expression {
+pub enum ExpressionKind {
     // Literals
     False,
     True,
@@ -425,43 +430,43 @@ pub enum Expression {
 
     // Distributions / random values
     Normal {
-        mean: Box<SpannedExpression>,
-        std_dev: Box<SpannedExpression>,
+        mean: Box<Expression>,
+        std_dev: Box<Expression>,
     },
     Uniform {
-        values: Vec<SpannedExpression>,
+        values: Vec<Expression>,
     },
     /// `R` or `R[min,max]`.
     Range {
-        min: Option<Box<SpannedExpression>>,
-        max: Option<Box<SpannedExpression>>,
+        min: Option<Box<Expression>>,
+        max: Option<Box<Expression>>,
     },
 
     // Prefix operators
-    Not(Box<SpannedExpression>),
-    UnaryPlus(Box<SpannedExpression>),
-    UnaryMinus(Box<SpannedExpression>),
+    Not(Box<Expression>),
+    UnaryPlus(Box<Expression>),
+    UnaryMinus(Box<Expression>),
 
     // Binary operators
-    Binary(BinaryOp, Box<SpannedExpression>, Box<SpannedExpression>),
+    Binary(BinaryOp, Box<Expression>, Box<Expression>),
 
     // `guard ? then : else`
     Ternary {
-        guard: Box<SpannedExpression>,
-        then_branch: Box<SpannedExpression>,
-        else_branch: Box<SpannedExpression>,
+        guard: Box<Expression>,
+        then_branch: Box<Expression>,
+        else_branch: Box<Expression>,
     },
 
     /// A user-defined function application `name(args)`.
     Call {
         function: DefRef,
-        arguments: Vec<SpannedExpression>,
+        arguments: Vec<Expression>,
     },
 
     /// A built-in math function application, e.g. `abs(x)`, `max(a, b)`.
     MathCall {
         function: MathFunction,
-        arguments: Vec<SpannedExpression>,
+        arguments: Vec<Expression>,
     },
 }
 
@@ -534,8 +539,8 @@ pub enum MathFunction {
 /// A `range [min, max]` bound on a variable declaration.
 #[derive(Clone, Debug)]
 pub struct Range {
-    pub min: SpannedExpression,
-    pub max: SpannedExpression,
+    pub min: Expression,
+    pub max: Expression,
 }
 
 #[derive(Clone, Debug)]

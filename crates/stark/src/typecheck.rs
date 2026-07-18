@@ -249,6 +249,18 @@ impl Checker<'_> {
                 }
             }
         }
+        // `resolve.rs` makes state variables visible everywhere, so their
+        // types have to be known before any body that might read one. The
+        // declared type comes straight from the annotation, so this needs no
+        // expression checking and can run ahead of everything else.
+        for variable in &spec.variables {
+            self.set_variable_type(variable);
+        }
+        for component in &spec.components {
+            for variable in &component.variables {
+                self.set_variable_type(variable);
+            }
+        }
         for function in &spec.functions {
             self.check_function(function);
         }
@@ -283,8 +295,22 @@ impl Checker<'_> {
         }
     }
 
-    fn check_variable(&mut self, variable: &Variable) {
+    /// Records a variable's declared type from its annotation alone. Split
+    /// out from [Self::check_variable] so every variable's type is known
+    /// before any body that reads one is checked.
+    fn set_variable_type(&mut self, variable: &Variable) {
         let declared = self.ty_of_annotation(&variable.ty, &variable.name.span);
+        if let Some(id) = variable.id {
+            self.set_def_type(id, declared);
+        }
+    }
+
+    /// Checks a variable's range and initializer against its declared type.
+    /// That type is read back from [Self::set_variable_type] rather than
+    /// re-derived from the annotation, so an unknown type name is reported
+    /// once rather than once per pass.
+    fn check_variable(&mut self, variable: &Variable) {
+        let declared = variable.id.map_or(StarkType::Error, |id| self.def_type(id));
         if let Some(range) = &variable.range {
             let min = self.check_expression(&range.min, false);
             self.expect_numerical(min, &range.min.span);
@@ -293,9 +319,6 @@ impl Checker<'_> {
         }
         let initial = self.check_expression(&variable.initial_value, false);
         self.expect(&declared, initial, &variable.initial_value.span);
-        if let Some(id) = variable.id {
-            self.set_def_type(id, declared);
-        }
     }
 
     fn check_function(&mut self, function: &Function) {
@@ -534,7 +557,7 @@ impl Checker<'_> {
         }
     }
 
-    fn check_interval(&mut self, from: &SpannedExpression, to: &SpannedExpression) {
+    fn check_interval(&mut self, from: &Expression, to: &Expression) {
         let from_ty = self.check_expression(from, false);
         self.expect_numerical(from_ty, &from.span);
         let to_ty = self.check_expression(to, false);
@@ -546,12 +569,7 @@ impl Checker<'_> {
     /// `combineToRealType` in the Java source: always widens to `real`
     /// (`2 ^ 3` and `atan2(1,2)` are both `real`, never `int`), propagating
     /// randomness from either operand.
-    fn combine_to_real(
-        &mut self,
-        left: &SpannedExpression,
-        right: &SpannedExpression,
-        random_allowed: bool,
-    ) -> StarkType {
+    fn combine_to_real(&mut self, left: &Expression, right: &Expression, random_allowed: bool) -> StarkType {
         let left_ty = self.check_expression(left, random_allowed);
         let left_ty = self.expect_numerical(left_ty, &left.span);
         let right_ty = self.check_expression(right, random_allowed);
@@ -563,21 +581,21 @@ impl Checker<'_> {
         }
     }
 
-    fn check_expression(&mut self, expr: &SpannedExpression, random_allowed: bool) -> StarkType {
+    fn check_expression(&mut self, expr: &Expression, random_allowed: bool) -> StarkType {
         match &expr.node {
-            Expression::False | Expression::True => StarkType::Boolean,
-            Expression::Integer(_) => StarkType::Integer,
-            Expression::Real(_) => StarkType::Real,
+            ExpressionKind::False | ExpressionKind::True => StarkType::Boolean,
+            ExpressionKind::Integer(_) => StarkType::Integer,
+            ExpressionKind::Real(_) => StarkType::Real,
             // Only used inside aggregate/lambda contexts, none of which are
             // reachable from the current grammar (see `ast.rs`); typed as
             // `Error` rather than given a made-up type.
-            Expression::Iterator => StarkType::Error,
-            Expression::Reference { binding, .. } => match binding {
+            ExpressionKind::Iterator => StarkType::Error,
+            ExpressionKind::Reference { binding, .. } => match binding {
                 Some(Binding::Def(id)) => self.def_type(*id),
                 Some(Binding::Local(id)) => self.local_type(*id),
                 None => StarkType::Error,
             },
-            Expression::Normal { mean, std_dev } => {
+            ExpressionKind::Normal { mean, std_dev } => {
                 if !random_allowed {
                     self.diagnostics
                         .error(expr.span.clone(), DiagnosticKind::RandomNotAllowed);
@@ -593,7 +611,7 @@ impl Checker<'_> {
                     StarkType::random(StarkType::Real)
                 }
             }
-            Expression::Uniform { values } => {
+            ExpressionKind::Uniform { values } => {
                 if !random_allowed {
                     self.diagnostics
                         .error(expr.span.clone(), DiagnosticKind::RandomNotAllowed);
@@ -615,7 +633,7 @@ impl Checker<'_> {
                     _ => StarkType::Error,
                 }
             }
-            Expression::Range { min, max } => {
+            ExpressionKind::Range { min, max } => {
                 if !random_allowed {
                     self.diagnostics
                         .error(expr.span.clone(), DiagnosticKind::RandomNotAllowed);
@@ -636,16 +654,16 @@ impl Checker<'_> {
                     _ => StarkType::random(StarkType::Real),
                 }
             }
-            Expression::Not(inner) => {
+            ExpressionKind::Not(inner) => {
                 let ty = self.check_expression(inner, random_allowed);
                 self.expect(&StarkType::Boolean, ty, &inner.span)
             }
-            Expression::UnaryPlus(inner) | Expression::UnaryMinus(inner) => {
+            ExpressionKind::UnaryPlus(inner) | ExpressionKind::UnaryMinus(inner) => {
                 let ty = self.check_expression(inner, random_allowed);
                 self.expect_numerical(ty, &inner.span)
             }
-            Expression::Binary(op, left, right) => self.check_binary(*op, left, right, random_allowed),
-            Expression::Ternary {
+            ExpressionKind::Binary(op, left, right) => self.check_binary(*op, left, right, random_allowed),
+            ExpressionKind::Ternary {
                 guard,
                 then_branch,
                 else_branch,
@@ -662,18 +680,14 @@ impl Checker<'_> {
                     merged
                 }
             }
-            Expression::Call { function, arguments } => self.check_call(function, arguments, random_allowed),
-            Expression::MathCall { function, arguments } => self.check_math_call(*function, arguments, random_allowed),
+            ExpressionKind::Call { function, arguments } => self.check_call(function, arguments, random_allowed),
+            ExpressionKind::MathCall { function, arguments } => {
+                self.check_math_call(*function, arguments, random_allowed)
+            }
         }
     }
 
-    fn check_binary(
-        &mut self,
-        op: BinaryOp,
-        left: &SpannedExpression,
-        right: &SpannedExpression,
-        random_allowed: bool,
-    ) -> StarkType {
+    fn check_binary(&mut self, op: BinaryOp, left: &Expression, right: &Expression, random_allowed: bool) -> StarkType {
         match op {
             BinaryOp::Pow => self.combine_to_real(left, right, random_allowed),
             BinaryOp::Mult | BinaryOp::Div | BinaryOp::IntDiv | BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Mod => {
@@ -707,7 +721,7 @@ impl Checker<'_> {
         }
     }
 
-    fn check_call(&mut self, function: &DefRef, arguments: &[SpannedExpression], random_allowed: bool) -> StarkType {
+    fn check_call(&mut self, function: &DefRef, arguments: &[Expression], random_allowed: bool) -> StarkType {
         let Some(id) = function.id else {
             // Already diagnosed by resolve.rs; still check the arguments so
             // unrelated mistakes in them are still reported.
@@ -744,12 +758,7 @@ impl Checker<'_> {
         signature.return_type
     }
 
-    fn check_math_call(
-        &mut self,
-        function: MathFunction,
-        arguments: &[SpannedExpression],
-        random_allowed: bool,
-    ) -> StarkType {
+    fn check_math_call(&mut self, function: MathFunction, arguments: &[Expression], random_allowed: bool) -> StarkType {
         match function {
             MathFunction::Atan2 | MathFunction::Hypot | MathFunction::Max | MathFunction::Min | MathFunction::Pow => {
                 // Unlike user-defined calls, a math call's arity is fixed by

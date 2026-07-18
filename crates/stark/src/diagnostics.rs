@@ -47,7 +47,7 @@ pub enum DiagnosticKind {
     #[error("duplicate definition of `{name}`")]
     DuplicateDefinition { name: String, first: Span },
 
-    /// Two `aiState`s in the same component share a name.
+    /// Two `state`s in the same component share a name.
     #[error("duplicate controller state `{name}`")]
     DuplicateControllerState { name: String, first: Span },
 
@@ -75,6 +75,17 @@ pub enum DiagnosticKind {
     /// registered yet at the point the general duplicate check would run.
     #[error("type `{name}` cannot declare an element with the same name")]
     TypeElementSharesTypeName { name: String },
+
+    /// A state variable was read from an expression evaluated once at load
+    /// time, before any variable store exists: a `const`/`param` value, or a
+    /// variable's own range or initializer. `via` names the function through
+    /// which the variable is reached, when the read is not direct.
+    #[error("`{context}` cannot read state variable `{name}`{}", .via.as_ref().map(|f| format!(" (via function `{f}`)")).unwrap_or_default())]
+    StateVariableInStaticExpression {
+        name: String,
+        context: &'static str,
+        via: Option<String>,
+    },
 
     // -- Type checking (`typecheck.rs`) ---------------------------------
     /// A `Ty::Named` annotation that names no declared `type`.
@@ -106,6 +117,14 @@ pub enum DiagnosticKind {
         expected: usize,
         found: usize,
     },
+
+    // -- Lowering (`lower.rs`) -------------------------------------------
+    /// A construct that resolves and type-checks but has no IR
+    /// representation yet (see `MISSING_GRAMMAR_FEATURES.md`). Reported
+    /// rather than panicked on, so a partially-supported spec fails
+    /// gracefully instead of crashing lowering.
+    #[error("{construct} is not yet supported by lowering")]
+    NotYetSupported { construct: &'static str },
 }
 
 impl DiagnosticKind {

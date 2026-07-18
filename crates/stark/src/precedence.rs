@@ -5,7 +5,7 @@
 //! the priority/associativity-resolved AST defined in `ast.rs`.
 //!
 //! Every `Expression` node built here carries the [Span] of the source text it
-//! was parsed from (see [SpannedExpression]); the perturbation / distance /
+//! was parsed from (see [Expression]); the perturbation / distance /
 //! ROBTL sub-language nodes do not carry their own spans, but the `Expression`s
 //! nested inside them do.
 
@@ -27,12 +27,12 @@ use crate::ast::ComparisonOp;
 use crate::ast::DefRef;
 use crate::ast::DistanceExpression;
 use crate::ast::Expression;
+use crate::ast::ExpressionKind;
 use crate::ast::Identifier;
 use crate::ast::MathFunction;
 use crate::ast::PerturbationAssignment;
 use crate::ast::PerturbationExpression;
 use crate::ast::RobtlFormula;
-use crate::ast::SpannedExpression;
 use crate::consume::ParseResult;
 use crate::parse::Rule;
 
@@ -58,7 +58,7 @@ fn error<T>(pair: &Pair<'_, Rule>, message: impl Into<String>) -> ParseResult<T>
 /// comment above `Expression`), so it lives here, outside the Pratt chain,
 /// as a wrapper around it rather than as one more postfix operator.
 #[allow(clippy::result_large_err)]
-pub(crate) fn parse_expression_node(pair: Pair<'_, Rule>) -> ParseResult<SpannedExpression> {
+pub(crate) fn parse_expression_node(pair: Pair<'_, Rule>) -> ParseResult<Expression> {
     let span: Span = pair.as_span().into();
     let mut children = pair.into_inner();
     let guard = parse_expression(
@@ -78,7 +78,7 @@ pub(crate) fn parse_expression_node(pair: Pair<'_, Rule>) -> ParseResult<Spanned
                 branches.next().expect("ternary requires an else branch"),
             )?);
             Ok(Spanned::new(
-                Expression::Ternary {
+                ExpressionKind::Ternary {
                     guard: Box::new(guard),
                     then_branch,
                     else_branch,
@@ -91,7 +91,7 @@ pub(crate) fn parse_expression_node(pair: Pair<'_, Rule>) -> ParseResult<Spanned
 
 /// Collect the `Expression` children of a node and parse each.
 #[allow(clippy::result_large_err)]
-fn expression_arguments(pair: Pair<'_, Rule>) -> ParseResult<Vec<SpannedExpression>> {
+fn expression_arguments(pair: Pair<'_, Rule>) -> ParseResult<Vec<Expression>> {
     pair.into_inner()
         .filter(|p| p.as_rule() == Rule::Expression)
         .map(parse_expression_node)
@@ -176,7 +176,7 @@ pub static EXPRESSION_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(
 });
 
 #[allow(clippy::result_large_err)]
-fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<SpannedExpression> {
+fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<Expression> {
     // A parenthesized sub-expression: `primary` here already *is* the inner
     // `Expression` node, so just recurse and reuse its own span.
     if primary.as_rule() == Rule::Expression {
@@ -186,7 +186,7 @@ fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<SpannedExpre
     let span: Span = primary.as_span().into();
     let expr = match primary.as_rule() {
         Rule::INTEGER => match primary.as_str().parse::<i64>() {
-            Ok(value) => Expression::Integer(value),
+            Ok(value) => ExpressionKind::Integer(value),
             Err(_) => {
                 return error(
                     &primary,
@@ -198,29 +198,29 @@ fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<SpannedExpre
             }
         },
         Rule::REAL => match primary.as_str().parse::<f64>() {
-            Ok(value) => Expression::Real(value),
+            Ok(value) => ExpressionKind::Real(value),
             Err(_) => return error(&primary, format!("invalid real literal `{}`", primary.as_str())),
         },
-        Rule::ID => Expression::Reference {
+        Rule::ID => ExpressionKind::Reference {
             name: primary.as_str().to_string(),
             binding: None,
         },
-        Rule::ExpressionTrue => Expression::True,
-        Rule::ExpressionFalse => Expression::False,
-        Rule::ExpressionIterator => Expression::Iterator,
+        Rule::ExpressionTrue => ExpressionKind::True,
+        Rule::ExpressionFalse => ExpressionKind::False,
+        Rule::ExpressionIterator => ExpressionKind::Iterator,
         Rule::ExpressionNormal => {
             let mut args = expression_arguments(primary)?.into_iter();
-            Expression::Normal {
+            ExpressionKind::Normal {
                 mean: Box::new(args.next().expect("normal distribution requires a mean")),
                 std_dev: Box::new(args.next().expect("normal distribution requires a std dev")),
             }
         }
-        Rule::ExpressionUniform => Expression::Uniform {
+        Rule::ExpressionUniform => ExpressionKind::Uniform {
             values: expression_arguments(primary)?,
         },
         Rule::ExpressionRandom => {
             let mut args = expression_arguments(primary)?.into_iter();
-            Expression::Range {
+            ExpressionKind::Range {
                 min: args.next().map(Box::new),
                 max: args.next().map(Box::new),
             }
@@ -237,7 +237,7 @@ fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<SpannedExpre
                 .filter(|p| p.as_rule() == Rule::Expression)
                 .map(parse_expression_node)
                 .collect::<ParseResult<Vec<_>>>()?;
-            Expression::MathCall { function, arguments }
+            ExpressionKind::MathCall { function, arguments }
         }
         rule => unreachable!("unexpected expression primary: {rule:?}"),
     };
@@ -245,16 +245,16 @@ fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<SpannedExpre
 }
 
 #[allow(clippy::result_large_err)]
-pub fn parse_expression(pairs: Pairs<Rule>) -> ParseResult<SpannedExpression> {
+pub fn parse_expression(pairs: Pairs<Rule>) -> ParseResult<Expression> {
     EXPRESSION_PRATT_PARSER
         .map_primary(parse_expression_primary)
         .map_prefix(|op, rhs| {
             let rhs = rhs?;
             let span = cover(&op.as_span().into(), &rhs.span);
             let expr = match op.as_rule() {
-                Rule::ExpressionNot => Expression::Not(Box::new(rhs)),
-                Rule::ExpressionUnaryPlus => Expression::UnaryPlus(Box::new(rhs)),
-                Rule::ExpressionUnaryMinus => Expression::UnaryMinus(Box::new(rhs)),
+                Rule::ExpressionNot => ExpressionKind::Not(Box::new(rhs)),
+                Rule::ExpressionUnaryPlus => ExpressionKind::UnaryPlus(Box::new(rhs)),
+                Rule::ExpressionUnaryMinus => ExpressionKind::UnaryMinus(Box::new(rhs)),
                 rule => unreachable!("unexpected expression prefix operator: {rule:?}"),
             };
             Ok(Spanned::new(expr, span))
@@ -282,7 +282,10 @@ pub fn parse_expression(pairs: Pairs<Rule>) -> ParseResult<SpannedExpression> {
                 Rule::ExpressionOr => BinaryOp::Or,
                 rule => unreachable!("unexpected expression binary operator: {rule:?}"),
             };
-            Ok(Spanned::new(Expression::Binary(op, Box::new(lhs), Box::new(rhs)), span))
+            Ok(Spanned::new(
+                ExpressionKind::Binary(op, Box::new(lhs), Box::new(rhs)),
+                span,
+            ))
         })
         .map_postfix(|target, postfix| {
             let target = target?;
@@ -290,12 +293,12 @@ pub fn parse_expression(pairs: Pairs<Rule>) -> ParseResult<SpannedExpression> {
             match postfix.as_rule() {
                 Rule::ExpressionCall => {
                     let name = match &target.node {
-                        Expression::Reference { name, .. } => name.clone(),
+                        ExpressionKind::Reference { name, .. } => name.clone(),
                         _ => return error(&postfix, "only a plain function name can be called"),
                     };
                     let function = DefRef::new(Identifier::new(name, target.span.clone()));
                     let arguments = expression_arguments(postfix)?;
-                    Ok(Spanned::new(Expression::Call { function, arguments }, span))
+                    Ok(Spanned::new(ExpressionKind::Call { function, arguments }, span))
                 }
                 rule => unreachable!("unexpected expression postfix operator: {rule:?}"),
             }
@@ -382,7 +385,7 @@ pub static DISTANCE_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(||
 
 /// Parse the two `Expression` children (`from`, `to`) of an interval operator.
 #[allow(clippy::result_large_err)]
-fn parse_interval(pair: Pair<'_, Rule>) -> ParseResult<(SpannedExpression, SpannedExpression)> {
+fn parse_interval(pair: Pair<'_, Rule>) -> ParseResult<(Expression, Expression)> {
     let mut args = expression_arguments(pair)?.into_iter();
     Ok((
         args.next().expect("interval requires a lower bound"),
@@ -555,7 +558,7 @@ pub fn parse_robtl_formula(pairs: Pairs<Rule>) -> ParseResult<RobtlFormula> {
 mod tests {
     use crate::ast::BinaryOp;
     use crate::ast::DistanceExpression;
-    use crate::ast::Expression;
+    use crate::ast::ExpressionKind;
     use crate::ast::MathFunction;
     use crate::ast::PerturbationExpression;
     use crate::ast::RobtlFormula;
@@ -563,7 +566,7 @@ mod tests {
     use crate::ast::UntypedStarkSpecification;
 
     /// Parse `const c = <src>;` and return the parsed expression (span discarded).
-    fn expr(src: &str) -> Expression {
+    fn expr(src: &str) -> ExpressionKind {
         let spec = UntypedStarkSpecification::parse(&format!("const c = {src};")).expect("should parse");
         spec.constants.into_iter().next().expect("one constant").value.node
     }
@@ -572,9 +575,9 @@ mod tests {
     fn arithmetic_precedence() {
         // `1 + 2 * 3` must group as `1 + (2 * 3)`.
         match expr("1 + 2 * 3") {
-            Expression::Binary(BinaryOp::Add, lhs, rhs) => {
-                assert!(matches!(lhs.node, Expression::Integer(1)));
-                assert!(matches!(rhs.node, Expression::Binary(BinaryOp::Mult, _, _)));
+            ExpressionKind::Binary(BinaryOp::Add, lhs, rhs) => {
+                assert!(matches!(lhs.node, ExpressionKind::Integer(1)));
+                assert!(matches!(rhs.node, ExpressionKind::Binary(BinaryOp::Mult, _, _)));
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -584,9 +587,9 @@ mod tests {
     fn power_is_right_associative() {
         // `2 ^ 3 ^ 2` must group as `2 ^ (3 ^ 2)`.
         match expr("2 ^ 3 ^ 2") {
-            Expression::Binary(BinaryOp::Pow, lhs, rhs) => {
-                assert!(matches!(lhs.node, Expression::Integer(2)));
-                assert!(matches!(rhs.node, Expression::Binary(BinaryOp::Pow, _, _)));
+            ExpressionKind::Binary(BinaryOp::Pow, lhs, rhs) => {
+                assert!(matches!(lhs.node, ExpressionKind::Integer(2)));
+                assert!(matches!(rhs.node, ExpressionKind::Binary(BinaryOp::Pow, _, _)));
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -596,8 +599,8 @@ mod tests {
     fn comparison_binds_looser_than_bitand() {
         // `a > b & c` must group as `(a > b) & c` (relations tighter than `&`).
         match expr("a > b & c") {
-            Expression::Binary(BinaryOp::BitAnd, lhs, _) => {
-                assert!(matches!(lhs.node, Expression::Binary(BinaryOp::Greater, _, _)));
+            ExpressionKind::Binary(BinaryOp::BitAnd, lhs, _) => {
+                assert!(matches!(lhs.node, ExpressionKind::Binary(BinaryOp::Greater, _, _)));
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -605,21 +608,21 @@ mod tests {
 
     #[test]
     fn unary_minus_and_not() {
-        assert!(matches!(expr("-x"), Expression::UnaryMinus(_)));
-        assert!(matches!(expr("!x"), Expression::Not(_)));
+        assert!(matches!(expr("-x"), ExpressionKind::UnaryMinus(_)));
+        assert!(matches!(expr("!x"), ExpressionKind::Not(_)));
     }
 
     #[test]
     fn math_calls_and_user_calls() {
         match expr("max(1, 2)") {
-            Expression::MathCall {
+            ExpressionKind::MathCall {
                 function: MathFunction::Max,
                 arguments,
             } => assert_eq!(arguments.len(), 2),
             other => panic!("unexpected: {other:?}"),
         }
         match expr("abs(x)") {
-            Expression::MathCall {
+            ExpressionKind::MathCall {
                 function: MathFunction::Abs,
                 arguments,
             } => assert_eq!(arguments.len(), 1),
@@ -628,7 +631,7 @@ mod tests {
         // A non-builtin name is a user call, not a math call; the callee is
         // unresolved (`id: None`) until name resolution runs.
         match expr("eval_bd(x)") {
-            Expression::Call { function, arguments } => {
+            ExpressionKind::Call { function, arguments } => {
                 assert_eq!(function.name.name, "eval_bd");
                 assert!(function.id.is_none());
                 assert_eq!(arguments.len(), 1);
@@ -648,36 +651,36 @@ mod tests {
         // `italic`/`Rate` must be identifiers, not `it` / `R` followed by junk.
         assert!(matches!(
             expr("italic"),
-            Expression::Reference { name, .. } if name == "italic"
+            ExpressionKind::Reference { name, .. } if name == "italic"
         ));
         assert!(matches!(
             expr("Rate"),
-            Expression::Reference { name, .. } if name == "Rate"
+            ExpressionKind::Reference { name, .. } if name == "Rate"
         ));
     }
 
     #[test]
     fn unresolved_reference_has_no_binding() {
-        assert!(matches!(expr("x"), Expression::Reference { binding: None, .. }));
+        assert!(matches!(expr("x"), ExpressionKind::Reference { binding: None, .. }));
     }
 
     #[test]
     fn ternary() {
-        assert!(matches!(expr("a ? b : c"), Expression::Ternary { .. }));
+        assert!(matches!(expr("a ? b : c"), ExpressionKind::Ternary { .. }));
     }
 
     #[test]
     fn distributions() {
-        assert!(matches!(expr("N[0, 1]"), Expression::Normal { .. }));
-        assert!(matches!(expr("U[1, 2, 3]"), Expression::Uniform { values } if values.len() == 3));
+        assert!(matches!(expr("N[0, 1]"), ExpressionKind::Normal { .. }));
+        assert!(matches!(expr("U[1, 2, 3]"), ExpressionKind::Uniform { values } if values.len() == 3));
         assert!(matches!(
             expr("R[0, 1]"),
-            Expression::Range {
+            ExpressionKind::Range {
                 min: Some(_),
                 max: Some(_)
             }
         ));
-        assert!(matches!(expr("R"), Expression::Range { min: None, max: None }));
+        assert!(matches!(expr("R"), ExpressionKind::Range { min: None, max: None }));
     }
 
     #[test]

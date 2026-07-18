@@ -12,6 +12,7 @@ use crate::ast::DefRef;
 use crate::ast::Distance;
 use crate::ast::Environment;
 use crate::ast::EnvironmentCommand;
+use crate::ast::Expression;
 use crate::ast::Formula;
 use crate::ast::Function;
 use crate::ast::FunctionArgument;
@@ -22,7 +23,6 @@ use crate::ast::Parameter;
 use crate::ast::Penalty;
 use crate::ast::Perturbation;
 use crate::ast::Range;
-use crate::ast::SpannedExpression;
 use crate::ast::StateRef;
 use crate::ast::Ty;
 use crate::ast::TypeDeclaration;
@@ -153,11 +153,11 @@ impl StarkParser {
         })
     }
 
-    pub(crate) fn Expression(input: ParseNode) -> ParseResult<SpannedExpression> {
+    pub(crate) fn Expression(input: ParseNode) -> ParseResult<Expression> {
         parse_expression_node(input.into_pair())
     }
 
-    fn WhenGuard(input: ParseNode) -> ParseResult<SpannedExpression> {
+    fn WhenGuard(input: ParseNode) -> ParseResult<Expression> {
         match_nodes!(input.into_children();
             [Expression(guard)] => Ok(guard)
         )
