@@ -12,9 +12,10 @@ use crate::MultiActionLabel;
 use crate::ProcDecl;
 use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
+use crate::ProcessExprKind;
 use crate::Rename;
 use crate::Sort;
-use crate::SortExpression;
+use crate::SortExpressionKind;
 use crate::Span;
 use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
@@ -46,7 +47,7 @@ pub fn random_lps<R: Rng>(
         })
         .collect();
 
-    let s_param = IdDecl::new("s".to_string(), SortExpression::Simple(Sort::Nat), Span::default());
+    let s_param = IdDecl::new("s".to_string(), SortExpressionKind::Simple(Sort::Nat).into(), Span::default());
 
     let mut summands: Vec<ProcessExpr> = Vec::new();
     for from in 0..num_states {
@@ -59,37 +60,47 @@ pub fn random_lps<R: Rng>(
                     rhs: Box::new(DataExprKind::Number(from.to_string()).into()),
                 }
                 .into();
-                let seq = ProcessExpr::Binary {
+                let seq = ProcessExprKind::Binary {
                     op: ProcExprBinaryOp::Sequence,
-                    lhs: Box::new(ProcessExpr::Action(act.clone(), Vec::new())),
-                    rhs: Box::new(ProcessExpr::Id(
-                        "P".to_string(),
-                        vec![Assignment {
-                            identifier: "s".to_string(),
-                            expr: DataExprKind::Number(to.to_string()).into(),
-                        }],
-                    )),
-                };
-                summands.push(ProcessExpr::Condition {
-                    condition,
-                    then: Box::new(seq),
-                    else_: None,
-                });
+                    lhs: Box::new(ProcessExprKind::Action(act.clone(), Vec::new()).into()),
+                    rhs: Box::new(
+                        ProcessExprKind::Id(
+                            "P".to_string(),
+                            vec![Assignment {
+                                identifier: "s".to_string(),
+                                expr: DataExprKind::Number(to.to_string()).into(),
+                            }],
+                        )
+                        .into(),
+                    ),
+                }
+                .into();
+                summands.push(
+                    ProcessExprKind::Condition {
+                        condition,
+                        then: Box::new(seq),
+                        else_: None,
+                    }
+                    .into(),
+                );
             }
         }
     }
 
     // Keep the spec syntactically valid when no transitions are generated.
     if summands.is_empty() {
-        summands.push(ProcessExpr::Delta);
+        summands.push(ProcessExprKind::Delta.into());
     }
 
     let body = summands
         .into_iter()
-        .reduce(|acc, s| ProcessExpr::Binary {
-            op: ProcExprBinaryOp::Choice,
-            lhs: Box::new(acc),
-            rhs: Box::new(s),
+        .reduce(|acc, s| {
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Choice,
+                lhs: Box::new(acc),
+                rhs: Box::new(s),
+            }
+            .into()
         })
         .expect("summands is non-empty");
 
@@ -101,13 +112,14 @@ pub fn random_lps<R: Rng>(
     }];
 
     let init_state = rng.random_range(0..num_states);
-    let init = ProcessExpr::Id(
+    let init = ProcessExprKind::Id(
         "P".to_string(),
         vec![Assignment {
             identifier: "s".to_string(),
             expr: DataExprKind::Number(init_state.to_string()).into(),
         }],
-    );
+    )
+    .into();
 
     UntypedProcessSpecification {
         data_specification: UntypedDataSpecification::default(),
@@ -125,11 +137,11 @@ const PROC_NAMES: &[&str] = &["P", "Q", "R"];
 const SUM_VARS: &[&str] = &["s1", "s2", "s3"];
 
 fn id_decl(name: &str, sort: Sort) -> IdDecl {
-    IdDecl::new(name.to_string(), SortExpression::Simple(sort), Span::default())
+    IdDecl::new(name.to_string(), SortExpressionKind::Simple(sort).into(), Span::default())
 }
 
 fn is_bool(decl: &IdDecl) -> bool {
-    matches!(&decl.sort, SortExpression::Simple(Sort::Bool))
+    matches!(&decl.sort.node, SortExpressionKind::Simple(Sort::Bool))
 }
 
 struct ProcVar {
@@ -174,7 +186,7 @@ fn random_process_instance<R: Rng>(rng: &mut R, pv: &ProcVar, freevars: &[IdDecl
             }
         })
         .collect();
-    ProcessExpr::Id(pv.name.clone(), assignments)
+    ProcessExprKind::Id(pv.name.clone(), assignments).into()
 }
 
 fn random_leaf<R: Rng>(
@@ -195,12 +207,13 @@ fn random_leaf<R: Rng>(
     }
 
     match *table.choose(rng).expect("table always contains at least Delta and Tau") {
-        0 => ProcessExpr::Delta,
-        1 => ProcessExpr::Tau,
-        2 => ProcessExpr::Action(
+        0 => ProcessExprKind::Delta.into(),
+        1 => ProcessExprKind::Tau.into(),
+        2 => ProcessExprKind::Action(
             (*actions.choose(rng).expect("actions is non-empty")).to_string(),
             Vec::new(),
-        ),
+        )
+        .into(),
         3 => {
             let pv = proc_vars.choose(rng).expect("proc_vars is non-empty");
             random_process_instance(rng, pv, freevars)
@@ -240,10 +253,11 @@ fn random_process_expr<R: Rng>(
                     let mut new_vars = freevars.to_vec();
                     new_vars.push(var.clone());
                     let body = random_process_expr(rng, depth - 1, &new_vars, actions, proc_vars, is_guarded);
-                    ProcessExpr::Sum {
+                    ProcessExprKind::Sum {
                         variables: vec![var],
                         operand: Box::new(body),
                     }
+                    .into()
                 }
             }
         }
@@ -251,44 +265,48 @@ fn random_process_expr<R: Rng>(
             // IfThen: condition -> body
             let cond = random_boolean_data_expression(rng, freevars);
             let body = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, is_guarded);
-            ProcessExpr::Condition {
+            ProcessExprKind::Condition {
                 condition: cond,
                 then: Box::new(body),
                 else_: None,
             }
+            .into()
         }
         3 => {
             // IfThenElse: condition -> x <> y
             let cond = random_boolean_data_expression(rng, freevars);
             let then = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, is_guarded);
             let else_ = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, is_guarded);
-            ProcessExpr::Condition {
+            ProcessExprKind::Condition {
                 condition: cond,
                 then: Box::new(then),
                 else_: Some(Box::new(else_)),
             }
+            .into()
         }
         4 => {
             // Choice: lhs + rhs (each branch must independently satisfy guardedness)
             let lhs = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, is_guarded);
             let rhs = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, is_guarded);
-            ProcessExpr::Binary {
+            ProcessExprKind::Binary {
                 op: ProcExprBinaryOp::Choice,
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             }
+            .into()
         }
         5 => {
             // Seq: emit an action first, then an (unguarded) continuation.
             // The explicit action satisfies the guard, so the rhs may reference proc instances.
             let action = (*actions.choose(rng).expect("actions is non-empty")).to_string();
-            let lhs = ProcessExpr::Action(action, Vec::new());
+            let lhs = ProcessExprKind::Action(action, Vec::new()).into();
             let rhs = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, false);
-            ProcessExpr::Binary {
+            ProcessExprKind::Binary {
                 op: ProcExprBinaryOp::Sequence,
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             }
+            .into()
         }
         _ => unreachable!(),
     }
@@ -298,17 +316,19 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
     match rng.random_range(0..5usize) {
         0 => {
             let a = (*actions.choose(rng).expect("actions is non-empty")).to_string();
-            ProcessExpr::Hide {
+            ProcessExprKind::Hide {
                 actions: vec![a],
                 operand: Box::new(expr),
             }
+            .into()
         }
         1 => {
             let a = (*actions.choose(rng).expect("actions is non-empty")).to_string();
-            ProcessExpr::Block {
+            ProcessExprKind::Block {
                 actions: vec![a],
                 operand: Box::new(expr),
             }
+            .into()
         }
         2 if actions.len() >= 2 => {
             let mut pool = actions.to_vec();
@@ -318,10 +338,11 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
                 .choose(rng)
                 .expect("pool has at least one element after removing from"))
             .to_string();
-            ProcessExpr::Rename {
+            ProcessExprKind::Rename {
                 renames: vec![Rename { from, to }],
                 operand: Box::new(expr),
             }
+            .into()
         }
         3 if actions.len() >= 3 => {
             // Comm: a | b -> c  (mCRL2 synchronisation mapping)
@@ -334,10 +355,11 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
                 .choose(rng)
                 .expect("pool has at least one element after removing a and b")
                 .clone();
-            ProcessExpr::Comm {
+            ProcessExprKind::Comm {
                 comm: vec![CommExpr::new(MultiActionLabel::new(vec![a, b]), c)],
                 operand: Box::new(expr),
             }
+            .into()
         }
         4 => {
             let mut labels: Vec<MultiActionLabel> = (0..5)
@@ -353,10 +375,11 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
                 .collect();
             labels.sort();
             labels.dedup();
-            ProcessExpr::Allow {
+            ProcessExprKind::Allow {
                 actions: labels,
                 operand: Box::new(expr),
             }
+            .into()
         }
         _ => expr, // guard failures from arms 2/3 fall here
     }
@@ -374,11 +397,14 @@ fn random_parallel_init<R: Rng>(
         let j = rng.random_range(1..n);
         let p = procs.remove(j);
         let q = procs.remove(0);
-        procs.push(ProcessExpr::Binary {
-            op: ProcExprBinaryOp::Parallel,
-            lhs: Box::new(q),
-            rhs: Box::new(p),
-        });
+        procs.push(
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Parallel,
+                lhs: Box::new(q),
+                rhs: Box::new(p),
+            }
+            .into(),
+        );
     }
     let mut result = procs.remove(0);
     for _ in 0..wrapper_count {
@@ -441,12 +467,12 @@ pub fn make_process_specification<R: Rng>(
                     }
                 })
                 .collect();
-            ProcessExpr::Id(pv.name.clone(), assignments)
+            ProcessExprKind::Id(pv.name.clone(), assignments).into()
         })
         .collect();
 
     let init = if instances.is_empty() {
-        ProcessExpr::Delta
+        ProcessExprKind::Delta.into()
     } else {
         let wrapper_count = rng.random_range(0..=5usize);
         random_parallel_init(rng, ACTIONS, instances, wrapper_count)

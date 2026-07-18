@@ -4,6 +4,7 @@ use merc_syntax::EqnSpecId;
 use merc_syntax::EqnVarId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::ResolvedSortId;
@@ -95,29 +96,29 @@ pub(crate) fn resolve_sort(
     spec: &UntypedDataSpecification,
     sort: &SortExpression,
 ) -> ResolvedSortId {
-    match sort {
-        SortExpression::Simple(sort) => ctx.sorts.primitive(*sort),
-        SortExpression::Complex(op, subsort) => {
+    match &sort.node {
+        SortExpressionKind::Simple(sort) => ctx.sorts.primitive(*sort),
+        SortExpressionKind::Complex(op, subsort) => {
             let subsort = resolve_sort(ctx, spec, subsort);
             ctx.sorts.generic(*op, subsort)
         }
-        SortExpression::FlattenedFunction { domain, range } => {
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             let domain = domain.iter().map(|sort| resolve_sort(ctx, spec, sort)).collect();
             let range = resolve_sort(ctx, spec, range);
             ctx.sorts.function(domain, range)
         }
         // Kkept so the resolver accepts any well-formed sort expression, such
         // as binder sorts built during inference.
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             let mut resolved_domain = Vec::new();
             resolve_function_domain(ctx, spec, domain, &mut resolved_domain);
             let range = resolve_sort(ctx, spec, range);
             ctx.sorts.function(resolved_domain, range)
         }
-        SortExpression::Resolved(_, id) => query_sort_of_def(ctx, spec, *id),
-        SortExpression::Reference(_) => unreachable!("Names must have been resolved"),
-        SortExpression::Struct { .. } => unreachable!("Structured sorts must have been desugared"),
-        SortExpression::Product { .. } => {
+        SortExpressionKind::Resolved(_, id) => query_sort_of_def(ctx, spec, *id),
+        SortExpressionKind::Reference(_) => unreachable!("Names must have been resolved"),
+        SortExpressionKind::Struct { .. } => unreachable!("Structured sorts must have been desugared"),
+        SortExpressionKind::Product { .. } => {
             unreachable!("product sorts outside a function domain were rejected before resolution")
         }
     }
@@ -131,8 +132,8 @@ fn resolve_function_domain(
     sort: &SortExpression,
     domain: &mut Vec<ResolvedSortId>,
 ) {
-    match sort {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             resolve_function_domain(ctx, spec, lhs, domain);
             resolve_function_domain(ctx, spec, rhs, domain);
         }

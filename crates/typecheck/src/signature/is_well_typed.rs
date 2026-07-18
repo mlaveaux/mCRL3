@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::try_visit_sort_expr_with;
 use merc_utilities::MercError;
@@ -68,8 +69,8 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
         // because flattening rewrites `Function` into `FlattenedFunction`, so
         // after the pipeline's early passes only the latter occurs here.
         if matches!(
-            sort,
-            SortExpression::Function { .. } | SortExpression::FlattenedFunction { .. }
+            sort.node,
+            SortExpressionKind::Function { .. } | SortExpressionKind::FlattenedFunction { .. }
         ) {
             return Err(WellTypedError::ConstructorForFunctionSort {
                 constructor: constructor.identifier.clone(),
@@ -200,7 +201,7 @@ fn are_constructors_and_mappings_disjoint(spec: &UntypedDataSpecification) -> Re
 
 /// The set of basic sorts `BS` are exactly the sorts Bool, Pos, Int, Nat, and Real. Definition 15.1.2.
 fn is_basic_sort(sort: &SortExpression) -> bool {
-    matches!(sort, SortExpression::Simple(_))
+    matches!(sort.node, SortExpressionKind::Simple(_))
 }
 
 /// Checks that every product sort occurs as (part of the spine of) a function
@@ -210,11 +211,11 @@ fn is_basic_sort(sort: &SortExpression) -> bool {
 /// visitor context cannot express (all children receive the same context), so
 /// that case is handled manually and pruned.
 pub(crate) fn check_products_within_domains(sort: &SortExpression) -> Result<(), WellTypedError> {
-    try_visit_sort_expr_with::<WellTypedError, (), (), _>(sort, (), |expr, ()| match expr {
-        SortExpression::Product { .. } => {
+    try_visit_sort_expr_with::<WellTypedError, (), (), _>(sort, (), |expr, ()| match &expr.node {
+        SortExpressionKind::Product { .. } => {
             Err(WellTypedError::ProductSortOutsideFunctionDomain { sort: expr.to_string() })
         }
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             check_product_spine(domain)?;
             check_products_within_domains(range)?;
             Ok(ControlFlow::Continue(SortDescend::Prune))
@@ -227,8 +228,8 @@ pub(crate) fn check_products_within_domains(sort: &SortExpression) -> Result<(),
 /// Walks the `Product` spine of a function domain, where products are the
 /// domain separator, and checks the leaf sorts.
 fn check_product_spine(sort: &SortExpression) -> Result<(), WellTypedError> {
-    match sort {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             check_product_spine(lhs)?;
             check_product_spine(rhs)
         }

@@ -29,6 +29,7 @@ use merc_syntax::DataExprKind;
 use merc_syntax::Quantifier;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::EquationTyping;
@@ -641,14 +642,14 @@ impl Lowering<'_> {
 /// `Reference` → `BasicSort` by name. `Struct` and a bare `Product` are
 /// unreachable at this point.
 pub(crate) fn lower_syntax_sort(sort: &SortExpression) -> DataSortExpression {
-    match sort {
-        SortExpression::Simple(s) => BasicSort::new(primitive_name(*s)).into(),
-        SortExpression::Complex(op, sub) => SortCons::new(container_kind(*op), lower_syntax_sort(sub)).into(),
-        SortExpression::FlattenedFunction { domain, range } => {
+    match &sort.node {
+        SortExpressionKind::Simple(s) => BasicSort::new(primitive_name(*s)).into(),
+        SortExpressionKind::Complex(op, sub) => SortCons::new(container_kind(*op), lower_syntax_sort(sub)).into(),
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             let domain: Vec<DataSortExpression> = domain.iter().map(lower_syntax_sort).collect();
             SortArrow::new(&domain, lower_syntax_sort(range)).into()
         }
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             // The system spec is not flattened; flatten the Product spine here.
             let mut flat = Vec::new();
             flatten_product_domain(domain, &mut flat);
@@ -658,16 +659,16 @@ pub(crate) fn lower_syntax_sort(sort: &SortExpression) -> DataSortExpression {
         // or an unresolved template reference in the system spec (e.g. "S", "T").
         // Both use the string name — the identity of a nominal sort IS its name
         // in the binary schema.
-        SortExpression::Resolved(name, _) | SortExpression::Reference(name) => BasicSort::new(name.as_str()).into(),
-        SortExpression::Struct { .. } | SortExpression::Product { .. } => {
+        SortExpressionKind::Resolved(name, _) | SortExpressionKind::Reference(name) => BasicSort::new(name.as_str()).into(),
+        SortExpressionKind::Struct { .. } | SortExpressionKind::Product { .. } => {
             unreachable!("struct/product sorts are desugared/flattened before lowering")
         }
     }
 }
 
 fn flatten_product_domain(sort: &SortExpression, domain: &mut Vec<DataSortExpression>) {
-    match sort {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             flatten_product_domain(lhs, domain);
             flatten_product_domain(rhs, domain);
         }

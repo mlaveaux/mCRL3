@@ -1,11 +1,13 @@
-use crate::ActFrm;
+use crate::ActFrmKind;
 use crate::Action;
 use crate::FixedPointOperator;
 use crate::ModalityOperator;
 use crate::MultiAction;
 use crate::RegFrm;
+use crate::RegFrmKind;
 use crate::Span;
 use crate::StateFrm;
+use crate::StateFrmKind;
 use crate::StateFrmOp;
 use crate::StateVarDecl;
 use merc_lts::TransitionLabel;
@@ -16,58 +18,72 @@ use merc_refinement::CounterExample;
 pub fn generate_refinement_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {
     match counter_example {
         CounterExample::Trace(trace) => {
-            let mut expr = StateFrm::True;
+            let mut expr: StateFrm = StateFrmKind::True.into();
 
             // We build the formula bottom up.
             for label in trace.iter().rev() {
-                expr = StateFrm::Modality {
+                expr = StateFrmKind::Modality {
                     operator: ModalityOperator::Diamond,
-                    formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
+                    formula: RegFrmKind::Action(ActFrmKind::MultAct(label_to_multi_action(label)).into()).into(),
                     expr: Box::new(expr),
                 }
+                .into()
             }
 
             expr
         }
-        CounterExample::WeakTrace(trace) => weaktrace_formula(trace, StateFrm::True, ModalityOperator::Diamond),
+        CounterExample::WeakTrace(trace) => {
+            weaktrace_formula(trace, StateFrmKind::True.into(), ModalityOperator::Diamond)
+        }
         CounterExample::Divergence(trace) => weaktrace_formula(
             trace,
             // For the divergence we use `nu X. <tau>X` to require an infinite tau path.
-            StateFrm::FixedPoint {
+            StateFrmKind::FixedPoint {
                 operator: FixedPointOperator::Greatest,
                 variable: StateVarDecl {
                     identifier: "X".to_string(),
                     arguments: Vec::new(),
                     span: Span::default(),
                 },
-                body: Box::new(StateFrm::Modality {
-                    operator: ModalityOperator::Diamond,
-                    formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),
-                    expr: Box::new(StateFrm::Id("X".to_string(), Vec::new())),
-                }),
-            },
+                body: Box::new(
+                    StateFrmKind::Modality {
+                        operator: ModalityOperator::Diamond,
+                        formula: RegFrmKind::Action(ActFrmKind::MultAct(MultiAction::tau()).into()).into(),
+                        expr: Box::new(StateFrmKind::Id("X".to_string(), Vec::new()).into()),
+                    }
+                    .into(),
+                ),
+            }
+            .into(),
             ModalityOperator::Diamond,
         ),
         CounterExample::StableFailures(trace, refusals) => {
             // Refused actions are characterized by box-false modalities.
             let inner = refusals
                 .iter()
-                .map(|l| StateFrm::Modality {
-                    operator: ModalityOperator::Box,
-                    formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(l))),
-                    expr: Box::new(StateFrm::False),
+                .map(|l| {
+                    StateFrmKind::Modality {
+                        operator: ModalityOperator::Box,
+                        formula: RegFrmKind::Action(ActFrmKind::MultAct(label_to_multi_action(l)).into()).into(),
+                        expr: Box::new(StateFrmKind::False.into()),
+                    }
+                    .into()
                 })
                 .fold(
                     // Stable failures are only observed in stable states, so tau is refused.
-                    StateFrm::Modality {
+                    StateFrmKind::Modality {
                         operator: ModalityOperator::Box,
-                        formula: RegFrm::Action(ActFrm::MultAct(MultiAction::tau())),
-                        expr: Box::new(StateFrm::False),
-                    },
-                    |acc, expr| StateFrm::Binary {
-                        op: StateFrmOp::Conjunction,
-                        lhs: Box::new(acc),
-                        rhs: Box::new(expr),
+                        formula: RegFrmKind::Action(ActFrmKind::MultAct(MultiAction::tau()).into()).into(),
+                        expr: Box::new(StateFrmKind::False.into()),
+                    }
+                    .into(),
+                    |acc, expr| {
+                        StateFrmKind::Binary {
+                            op: StateFrmOp::Conjunction,
+                            lhs: Box::new(acc),
+                            rhs: Box::new(expr),
+                        }
+                        .into()
                     },
                 );
 
@@ -76,17 +92,18 @@ pub fn generate_refinement_formula<L: TransitionLabel>(counter_example: &Counter
         CounterExample::ImpossibleFutures(trace, futures) => {
             let expressions = futures
                 .iter()
-                .map(|future| weaktrace_formula(future, StateFrm::False, ModalityOperator::Box))
+                .map(|future| weaktrace_formula(future, StateFrmKind::False.into(), ModalityOperator::Box))
                 .collect::<Vec<_>>();
 
             // Generate a conjunction of the expressions for each future.
-            let expr = expressions
-                .into_iter()
-                .fold(StateFrm::True, |acc, expr| StateFrm::Binary {
+            let expr = expressions.into_iter().fold(StateFrmKind::True.into(), |acc, expr| {
+                StateFrmKind::Binary {
                     op: StateFrmOp::Conjunction,
                     lhs: Box::new(acc),
                     rhs: Box::new(expr),
-                });
+                }
+                .into()
+            });
 
             weaktrace_formula(trace, expr, ModalityOperator::Diamond)
         }
@@ -107,34 +124,38 @@ pub fn generate_distinguishing_formula<L: TransitionLabel>(formula: &Distinguish
 ///
 /// Negation is pushed inward through the modalities via the modal De Morgan
 /// laws (`!<a>phi == [a]!phi`, dually for `[a]`, distributing over the
-/// conjuncts), rather than emitted as a bare [`StateFrm::Unary`] negation:
+/// conjuncts), rather than emitted as a bare [`StateFrmKind::Unary`] negation:
 /// consumers such as `merc_vpg`'s parity-game translation only accept
 /// formulas without free negation.
 fn distinguishing_to_statefrm<L: TransitionLabel>(formula: &DistinguishingFormula<L>, negated: bool) -> StateFrm {
     match formula {
         DistinguishingFormula::Negate(inner) => distinguishing_to_statefrm(inner, !negated),
         DistinguishingFormula::Diamond { label, conjuncts } => {
-            let (operator, op, unit) = if negated {
-                (ModalityOperator::Box, StateFrmOp::Disjunction, StateFrm::False)
+            let (operator, op, unit): (_, _, StateFrm) = if negated {
+                (ModalityOperator::Box, StateFrmOp::Disjunction, StateFrmKind::False.into())
             } else {
-                (ModalityOperator::Diamond, StateFrmOp::Conjunction, StateFrm::True)
+                (ModalityOperator::Diamond, StateFrmOp::Conjunction, StateFrmKind::True.into())
             };
 
             let expr = conjuncts
                 .iter()
                 .map(|conjunct| distinguishing_to_statefrm(conjunct, negated))
-                .reduce(|lhs, rhs| StateFrm::Binary {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
+                .reduce(|lhs, rhs| {
+                    StateFrmKind::Binary {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    }
+                    .into()
                 })
                 .unwrap_or(unit);
 
-            StateFrm::Modality {
+            StateFrmKind::Modality {
                 operator,
-                formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
+                formula: RegFrmKind::Action(ActFrmKind::MultAct(label_to_multi_action(label)).into()).into(),
                 expr: Box::new(expr),
             }
+            .into()
         }
     }
 }
@@ -146,25 +167,31 @@ fn distinguishing_to_statefrm<L: TransitionLabel>(formula: &DistinguishingFormul
 /// it is a valid weaktrace formula.
 fn weaktrace_formula<L: TransitionLabel>(trace: &[L], expr: StateFrm, modality: ModalityOperator) -> StateFrm {
     // Build the formula tau*
-    let tau_star = RegFrm::Iteration(Box::new(RegFrm::Action(ActFrm::MultAct(MultiAction::tau()))));
+    let tau_star: RegFrm =
+        RegFrmKind::Iteration(Box::new(RegFrmKind::Action(ActFrmKind::MultAct(MultiAction::tau()).into()).into())).into();
 
     // We build the formula bottom up: tau* . label . ... . tau*
-    let mut result = StateFrm::Modality {
+    let mut result: StateFrm = StateFrmKind::Modality {
         operator: modality,
         formula: tau_star.clone(),
         expr: Box::new(expr),
-    };
+    }
+    .into();
 
     for label in trace.iter().rev().filter(|l| !l.is_tau_label()) {
-        result = StateFrm::Modality {
+        result = StateFrmKind::Modality {
             operator: modality,
             formula: tau_star.clone(),
-            expr: Box::new(StateFrm::Modality {
-                operator: modality,
-                formula: RegFrm::Action(ActFrm::MultAct(label_to_multi_action(label))),
-                expr: Box::new(result),
-            }),
+            expr: Box::new(
+                StateFrmKind::Modality {
+                    operator: modality,
+                    formula: RegFrmKind::Action(ActFrmKind::MultAct(label_to_multi_action(label)).into()).into(),
+                    expr: Box::new(result),
+                }
+                .into(),
+            ),
         }
+        .into()
     }
 
     result

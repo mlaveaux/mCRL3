@@ -5,6 +5,7 @@ use merc_syntax::ComplexSort;
 use merc_syntax::DefId;
 use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::try_visit_sort_expr_with;
 
@@ -67,8 +68,8 @@ fn check_circularity(
     visited: &mut Vec<DefId>,
     alias_map: &HashMap<DefId, &SortExpression>,
 ) -> Result<(), AliasError> {
-    try_visit_sort_expr_with::<AliasError, (), (), _>(rhs, (), |expr, ()| match expr {
-        SortExpression::Resolved(_, id) => {
+    try_visit_sort_expr_with::<AliasError, (), (), _>(rhs, (), |expr, ()| match &expr.node {
+        SortExpressionKind::Resolved(_, id) => {
             if *id == lhs {
                 let mut cycle = vec![lhs];
                 cycle.extend(visited.iter().copied());
@@ -85,8 +86,8 @@ fn check_circularity(
         }
         // Recursion through a structured sort is well-defined, so the search
         // deliberately stops here.
-        SortExpression::Struct { .. } => Ok(ControlFlow::Continue(SortDescend::Prune)),
-        SortExpression::Reference(_) => unreachable!("Names must have been resolved"),
+        SortExpressionKind::Struct { .. } => Ok(ControlFlow::Continue(SortDescend::Prune)),
+        SortExpressionKind::Reference(_) => unreachable!("Names must have been resolved"),
         _ => Ok(ControlFlow::Continue(SortDescend::Descend(()))),
     })
     .map(|_| ())
@@ -104,8 +105,8 @@ fn check_function_sort_loop(
     is_function_like_sort: bool,
     alias_map: &HashMap<DefId, &SortExpression>,
 ) -> Result<(), AliasError> {
-    try_visit_sort_expr_with::<AliasError, (), bool, _>(rhs, is_function_like_sort, |expr, observed| match expr {
-        SortExpression::Resolved(_, id) => {
+    try_visit_sort_expr_with::<AliasError, (), bool, _>(rhs, is_function_like_sort, |expr, observed| match &expr.node {
+        SortExpressionKind::Resolved(_, id) => {
             if *id == lhs && observed {
                 return Err(AliasError::ThroughFunctionSort { sort: lhs });
             }
@@ -121,14 +122,14 @@ fn check_function_sort_loop(
         // The container kind *replaces* the flag, as in mCRL2: passing through
         // a List (or FSet/FBag) resets an earlier function-sort observation, so
         // `struct f(Bool -> List(S))` is accepted.
-        SortExpression::Complex(op, _) => Ok(ControlFlow::Continue(SortDescend::Descend(matches!(
+        SortExpressionKind::Complex(op, _) => Ok(ControlFlow::Continue(SortDescend::Descend(matches!(
             op,
             ComplexSort::Set | ComplexSort::Bag
         )))),
-        SortExpression::Function { .. } | SortExpression::FlattenedFunction { .. } => {
+        SortExpressionKind::Function { .. } | SortExpressionKind::FlattenedFunction { .. } => {
             Ok(ControlFlow::Continue(SortDescend::Descend(true)))
         }
-        SortExpression::Reference(_) => unreachable!("Names must have been resolved"),
+        SortExpressionKind::Reference(_) => unreachable!("Names must have been resolved"),
         _ => Ok(ControlFlow::Continue(SortDescend::Descend(observed))),
     })
     .map(|_| ())

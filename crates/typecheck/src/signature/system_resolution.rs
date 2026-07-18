@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 
 use merc_syntax::DefId;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::CONTAINER_TEMPLATES;
@@ -135,13 +136,13 @@ fn resolve_system_sort(
     sort_ids: &HashMap<String, ResolvedSortId>,
     sort: &SortExpression,
 ) -> Result<ResolvedSortId, WellTypedError> {
-    match sort {
-        SortExpression::Simple(sort) => Ok(ctx.sorts.primitive(*sort)),
-        SortExpression::Complex(op, subsort) => {
+    match &sort.node {
+        SortExpressionKind::Simple(sort) => Ok(ctx.sorts.primitive(*sort)),
+        SortExpressionKind::Complex(op, subsort) => {
             let subsort = resolve_system_sort(ctx, user_spec, sort_ids, subsort)?;
             Ok(ctx.sorts.generic(*op, subsort))
         }
-        SortExpression::FlattenedFunction { domain, range } => {
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             let domain = domain
                 .iter()
                 .map(|sort| resolve_system_sort(ctx, user_spec, sort_ids, sort))
@@ -151,7 +152,7 @@ fn resolve_system_sort(
         }
         // The system specification is parsed directly and never flattened, so
         // function sorts appear with a `Product` domain spine.
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             let mut resolved_domain = Vec::new();
             resolve_system_function_domain(ctx, user_spec, sort_ids, domain, &mut resolved_domain)?;
             let range = resolve_system_sort(ctx, user_spec, sort_ids, range)?;
@@ -159,15 +160,15 @@ fn resolve_system_sort(
         }
         // A sort substituted into an Appendix-B template comes from the
         // normalized user specification, so its `DefId` indexes `user_spec`.
-        SortExpression::Resolved(_, id) => Ok(query_sort_of_def(ctx, user_spec, *id)),
-        SortExpression::Reference(name) => match sort_ids.get(name) {
+        SortExpressionKind::Resolved(_, id) => Ok(query_sort_of_def(ctx, user_spec, *id)),
+        SortExpressionKind::Reference(name) => match sort_ids.get(name) {
             Some(id) => Ok(*id),
             None => Err(WellTypedError::Custom(
                 format!("the system-defined specification references the undeclared sort '{name}'").into(),
             )),
         },
-        SortExpression::Struct { .. } => unreachable!("the system-defined specification has no structured sorts"),
-        SortExpression::Product { .. } => {
+        SortExpressionKind::Struct { .. } => unreachable!("the system-defined specification has no structured sorts"),
+        SortExpressionKind::Product { .. } => {
             unreachable!("product sorts cannot occur outside a function domain")
         }
     }
@@ -181,8 +182,8 @@ fn resolve_system_function_domain(
     sort: &SortExpression,
     domain: &mut Vec<ResolvedSortId>,
 ) -> Result<(), WellTypedError> {
-    match sort {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             resolve_system_function_domain(ctx, user_spec, sort_ids, lhs, domain)?;
             resolve_system_function_domain(ctx, user_spec, sort_ids, rhs, domain)?;
         }

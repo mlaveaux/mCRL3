@@ -11,6 +11,7 @@ use merc_syntax::EqnSpecId;
 use merc_syntax::EqnVarId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 
@@ -330,11 +331,11 @@ impl DataSpecification {
 /// sort, or the sort itself if it is not a function sort.
 pub(crate) fn target_sort(sort: &SortExpression) -> &SortExpression {
     debug_assert!(
-        !matches!(sort, SortExpression::Function { .. }),
+        !matches!(sort.node, SortExpressionKind::Function { .. }),
         "target_sort should only be called on non-function sorts or flattened function sorts"
     );
 
-    if let SortExpression::FlattenedFunction { domain: _, range } = sort {
+    if let SortExpressionKind::FlattenedFunction { domain: _, range } = &sort.node {
         range
     } else {
         sort
@@ -345,7 +346,7 @@ pub(crate) fn target_sort(sort: &SortExpression) -> &SortExpression {
 /// for a non-function sort — such as the target sort of a constant constructor
 /// like `cons c: S;`, which takes no arguments.
 pub(crate) fn argument_sorts(sort: &SortExpression) -> &[SortExpression] {
-    if let SortExpression::FlattenedFunction { domain, range: _ } = sort {
+    if let SortExpressionKind::FlattenedFunction { domain, range: _ } = &sort.node {
         domain
     } else {
         &[]
@@ -356,14 +357,17 @@ pub(crate) fn argument_sorts(sort: &SortExpression) -> &[SortExpression] {
 /// domain is the flattened `Product` spine (`(A#B)->C` becomes `A#B->C`).
 fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
     apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible> {
-        if let SortExpression::Function { domain, range } = expr {
+        if let SortExpressionKind::Function { domain, range } = &expr.node {
             let mut flattened_domain = Vec::new();
             flatten_function_domain_rec(domain, &mut flattened_domain);
 
-            return Ok(Some(SortExpression::FlattenedFunction {
-                domain: flattened_domain,
-                range: range.clone(),
-            }));
+            return Ok(Some(
+                SortExpressionKind::FlattenedFunction {
+                    domain: flattened_domain,
+                    range: range.clone(),
+                }
+                .into(),
+            ));
         }
 
         Ok(None)
@@ -375,8 +379,8 @@ fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
 /// sort of the form A_0 # A_1 # ... # A_n -> B, where B is the original range
 /// of the function.
 fn flatten_function_domain_rec(sort: &SortExpression, domain: &mut Vec<SortExpression>) {
-    match sort {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             flatten_function_domain_rec(lhs, domain);
             flatten_function_domain_rec(rhs, domain);
         }

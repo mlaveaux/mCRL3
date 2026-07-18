@@ -37,8 +37,10 @@ use crate::PbesEquation;
 use crate::PbesExpr;
 use crate::PresEquation;
 use crate::PresExpr;
+use crate::PresExprKind;
 use crate::ProcDecl;
 use crate::ProcessExpr;
+use crate::ProcessExprKind;
 use crate::PropVarDecl;
 use crate::PropVarInst;
 use crate::RegFrm;
@@ -46,8 +48,10 @@ use crate::Rename;
 use crate::Rule;
 use crate::SortDecl;
 use crate::SortExpression;
+use crate::SortExpressionKind;
 use crate::Span;
 use crate::StateFrm;
+use crate::StateFrmKind;
 use crate::StateVarAssignment;
 use crate::StateVarDecl;
 use crate::UntypedActionRenameSpec;
@@ -502,12 +506,13 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn StateFrmId(id: ParseNode) -> ParseResult<StateFrm> {
+        let span: Span = id.as_span().into();
         match_nodes!(id.into_children();
             [Id(identifier)] => {
-                Ok(StateFrm::Id(identifier, Vec::new()))
+                Ok(StateFrmKind::Id(identifier, Vec::new()).spanned(span))
             },
             [Id(identifier), DataExprList(expressions)] => {
-                Ok(StateFrm::Id(identifier, expressions))
+                Ok(StateFrmKind::Id(identifier, expressions).spanned(span))
             },
         )
     }
@@ -790,44 +795,55 @@ impl Mcrl2Parser {
 
     // Complex sorts
     pub(crate) fn SortExprList(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(
+        let span: Span = inner.as_span().into();
+        Ok(SortExpressionKind::Complex(
             ComplexSort::List,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
-        ))
+        )
+        .spanned(span))
     }
 
     pub(crate) fn SortExprSet(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(
+        let span: Span = inner.as_span().into();
+        Ok(SortExpressionKind::Complex(
             ComplexSort::Set,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
-        ))
+        )
+        .spanned(span))
     }
 
     pub(crate) fn SortExprBag(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(
+        let span: Span = inner.as_span().into();
+        Ok(SortExpressionKind::Complex(
             ComplexSort::Bag,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
-        ))
+        )
+        .spanned(span))
     }
 
     pub(crate) fn SortExprFSet(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(
+        let span: Span = inner.as_span().into();
+        Ok(SortExpressionKind::Complex(
             ComplexSort::FSet,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
-        ))
+        )
+        .spanned(span))
     }
 
     pub(crate) fn SortExprFBag(inner: ParseNode) -> ParseResult<SortExpression> {
-        Ok(SortExpression::Complex(
+        let span: Span = inner.as_span().into();
+        Ok(SortExpressionKind::Complex(
             ComplexSort::FBag,
             Box::new(parse_sortexpr(inner.children().as_pairs().clone())?),
-        ))
+        )
+        .spanned(span))
     }
 
     pub(crate) fn SortExprStruct(inner: ParseNode) -> ParseResult<SortExpression> {
+        let span: Span = inner.as_span().into();
         match_nodes!(inner.into_children();
             [ConstrDeclList(inner)] => {
-                Ok(SortExpression::Struct { inner })
+                Ok(SortExpressionKind::Struct { inner }.spanned(span))
             },
         )
     }
@@ -1011,23 +1027,25 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn ProcExprId(input: ParseNode) -> ParseResult<ProcessExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [Id(identifier)] => {
-                Ok(ProcessExpr::Id(identifier, Vec::new()))
+                Ok(ProcessExprKind::Id(identifier, Vec::new()).spanned(span))
             },
             [Id(identifier), AssignmentList(assignments)] => {
-                Ok(ProcessExpr::Id(identifier, assignments))
+                Ok(ProcessExprKind::Id(identifier, assignments).spanned(span))
             },
         )
     }
 
     pub(crate) fn ProcExprBlock(input: ParseNode) -> ParseResult<ProcessExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [ActIdSet(actions), ProcExpr(expr)] => {
-                Ok(ProcessExpr::Block {
+                Ok(ProcessExprKind::Block {
                     actions,
                     operand: Box::new(expr),
-                })
+                }.spanned(span))
             },
         )
     }
@@ -1049,23 +1067,25 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn ProcExprAllow(input: ParseNode) -> ParseResult<ProcessExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [MultActIdSet(actions), ProcExpr(expr)] => {
-                Ok(ProcessExpr::Allow {
+                Ok(ProcessExprKind::Allow {
                     actions,
                     operand: Box::new(expr),
-                })
+                }.spanned(span))
             },
         )
     }
 
     pub(crate) fn ProcExprHide(input: ParseNode) -> ParseResult<ProcessExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [ActIdSet(actions), ProcExpr(expr)] => {
-                Ok(ProcessExpr::Hide {
+                Ok(ProcessExprKind::Hide {
                     actions,
                     operand: Box::new(expr),
-                })
+                }.spanned(span))
             },
         )
     }
@@ -1128,23 +1148,25 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn ProcExprRename(input: ParseNode) -> ParseResult<ProcessExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [RenExprSet(renames), ProcExpr(expr)] => {
-                Ok(ProcessExpr::Rename {
+                Ok(ProcessExprKind::Rename {
                     renames,
                     operand: Box::new(expr),
-                })
+                }.spanned(span))
             },
         )
     }
 
     pub(crate) fn ProcExprComm(input: ParseNode) -> ParseResult<ProcessExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [CommExprSet(comm), ProcExpr(expr)] => {
-                Ok(ProcessExpr::Comm {
+                Ok(ProcessExprKind::Comm {
                     comm,
                     operand: Box::new(expr),
-                })
+                }.spanned(span))
             },
         )
     }
@@ -1201,25 +1223,28 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn StateFrmDelay(input: ParseNode) -> ParseResult<StateFrm> {
+        let span: Span = input.as_span().into();
         // The `@`-time argument is optional, so there may be zero or one child.
         match input.into_children().next() {
-            Some(child) => Ok(StateFrm::Delay(Some(Mcrl2Parser::DataExpr(child)?))),
-            None => Ok(StateFrm::Delay(None)),
+            Some(child) => Ok(StateFrmKind::Delay(Some(Mcrl2Parser::DataExpr(child)?)).spanned(span)),
+            None => Ok(StateFrmKind::Delay(None).spanned(span)),
         }
     }
 
     pub(crate) fn StateFrmYaled(input: ParseNode) -> ParseResult<StateFrm> {
+        let span: Span = input.as_span().into();
         // The `@`-time argument is optional, so there may be zero or one child.
         match input.into_children().next() {
-            Some(child) => Ok(StateFrm::Yaled(Some(Mcrl2Parser::DataExpr(child)?))),
-            None => Ok(StateFrm::Yaled(None)),
+            Some(child) => Ok(StateFrmKind::Yaled(Some(Mcrl2Parser::DataExpr(child)?)).spanned(span)),
+            None => Ok(StateFrmKind::Yaled(None).spanned(span)),
         }
     }
 
     pub(crate) fn StateFrmNegation(input: ParseNode) -> ParseResult<StateFrm> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [StateFrm(state)] => {
-                Ok(StateFrm::Unary { op: crate::StateFrmUnaryOp::Negation, expr: Box::new(state) })
+                Ok(StateFrmKind::Unary { op: crate::StateFrmUnaryOp::Negation, expr: Box::new(state) }.spanned(span))
             },
         )
     }
@@ -1362,49 +1387,53 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn PresExprEqinf(input: ParseNode) -> ParseResult<PresExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [PresExpr(body)] => {
-                Ok(PresExpr::Equal {
+                Ok(PresExprKind::Equal {
                     eq: Eq::EqInf,
                     body: Box::new(body),
-                })
+                }.spanned(span))
             },
         )
     }
 
     pub(crate) fn PresExprEqninf(input: ParseNode) -> ParseResult<PresExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [PresExpr(body)] => {
-                Ok(PresExpr::Equal {
+                Ok(PresExprKind::Equal {
                     eq: Eq::EqnInf,
                     body: Box::new(body),
-                })
+                }.spanned(span))
             },
         )
     }
 
     pub(crate) fn PresExprCondsm(input: ParseNode) -> ParseResult<PresExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [PresExpr(expr), PresExpr(then), PresExpr(else_)] => {
-                Ok(PresExpr::Condition{
+                Ok(PresExprKind::Condition{
                     condition: Condition::Condsm,
                     lhs: Box::new(expr),
                     then: Box::new(then),
                     else_: Box::new(else_),
-                })
+                }.spanned(span))
             },
         )
     }
 
     pub(crate) fn PresExprCondeq(input: ParseNode) -> ParseResult<PresExpr> {
+        let span: Span = input.as_span().into();
         match_nodes!(input.into_children();
             [PresExpr(expr), PresExpr(then), PresExpr(else_)] => {
-                Ok(PresExpr::Condition{
+                Ok(PresExprKind::Condition{
                     condition: Condition::Condeq,
                     lhs: Box::new(expr),
                     then: Box::new(then),
                     else_: Box::new(else_),
-                })
+                }.spanned(span))
             },
         )
     }

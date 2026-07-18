@@ -5,6 +5,7 @@ use itertools::Itertools;
 use crate::ActDecl;
 use crate::ActFrm;
 use crate::ActFrmBinaryOp;
+use crate::ActFrmKind;
 use crate::Action;
 use crate::Assignment;
 use crate::Bound;
@@ -26,19 +27,24 @@ use crate::MultiActionLabel;
 use crate::PbesEquation;
 use crate::PbesExpr;
 use crate::PbesExprBinaryOp;
+use crate::PbesExprKind;
 use crate::ProcDecl;
 use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
+use crate::ProcessExprKind;
 use crate::PropVarDecl;
 use crate::PropVarInst;
 use crate::Quantifier;
 use crate::RegFrm;
+use crate::RegFrmKind;
 use crate::Rename;
 use crate::Sort;
 use crate::SortDecl;
 use crate::SortExpression;
+use crate::SortExpressionKind;
 use crate::Span;
 use crate::StateFrm;
+use crate::StateFrmKind;
 use crate::StateFrmOp;
 use crate::StateFrmUnaryOp;
 use crate::StateVarAssignment;
@@ -215,18 +221,18 @@ impl fmt::Display for PropVarDecl {
 
 impl fmt::Display for PbesExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            PbesExpr::True => write!(f, "true"),
-            PbesExpr::False => write!(f, "false"),
-            PbesExpr::PropVarInst(instance) => write!(f, "{instance}"),
-            PbesExpr::Negation(expr) => write!(f, "(! {expr})"),
-            PbesExpr::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            PbesExpr::Quantifier {
+        match &self.node {
+            PbesExprKind::True => write!(f, "true"),
+            PbesExprKind::False => write!(f, "false"),
+            PbesExprKind::PropVarInst(instance) => write!(f, "{instance}"),
+            PbesExprKind::Negation(expr) => write!(f, "(! {expr})"),
+            PbesExprKind::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            PbesExprKind::Quantifier {
                 quantifier,
                 variables,
                 body,
             } => write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body),
-            PbesExpr::DataValExpr(data_expr) => write!(f, "val({data_expr})"),
+            PbesExprKind::DataValExpr(data_expr) => write!(f, "val({data_expr})"),
         }
     }
 }
@@ -359,18 +365,18 @@ impl fmt::Display for DataExprUpdate {
 
 impl fmt::Display for SortExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SortExpression::Product { lhs, rhs } => write!(f, "({lhs} # {rhs})"),
-            SortExpression::Function { domain, range } => write!(f, "({domain} -> {range})"),
-            SortExpression::Reference(name) => write!(f, "{name}"),
-            SortExpression::Simple(sort) => write!(f, "{sort}"),
-            SortExpression::Complex(complex, inner) => write!(f, "{complex}({inner})"),
-            SortExpression::Struct { inner } => {
+        match &self.node {
+            SortExpressionKind::Product { lhs, rhs } => write!(f, "({lhs} # {rhs})"),
+            SortExpressionKind::Function { domain, range } => write!(f, "({domain} -> {range})"),
+            SortExpressionKind::Reference(name) => write!(f, "{name}"),
+            SortExpressionKind::Simple(sort) => write!(f, "{sort}"),
+            SortExpressionKind::Complex(complex, inner) => write!(f, "{complex}({inner})"),
+            SortExpressionKind::Struct { inner } => {
                 write!(f, "struct ")?;
                 write!(f, "{}", inner.iter().format(" | "))
             }
-            SortExpression::Resolved(name, _id) => write!(f, "{name}"),
-            SortExpression::FlattenedFunction { domain, range } => {
+            SortExpressionKind::Resolved(name, _id) => write!(f, "{name}"),
+            SortExpressionKind::FlattenedFunction { domain, range } => {
                 let domain = domain.iter().format(" # ");
                 write!(f, "({domain} -> {range})")
             }
@@ -408,19 +414,19 @@ impl fmt::Display for FixedPointOperator {
 
 impl fmt::Display for StateFrm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            StateFrm::True => write!(f, "true"),
-            StateFrm::False => write!(f, "false"),
-            StateFrm::DataValExpr(expr) => write!(f, "val({expr})"),
-            StateFrm::Id(identifier, args) => {
+        match &self.node {
+            StateFrmKind::True => write!(f, "true"),
+            StateFrmKind::False => write!(f, "false"),
+            StateFrmKind::DataValExpr(expr) => write!(f, "val({expr})"),
+            StateFrmKind::Id(identifier, args) => {
                 if args.is_empty() {
                     write!(f, "{identifier}")
                 } else {
                     write!(f, "{}({})", identifier, args.iter().format(", "))
                 }
             }
-            StateFrm::Unary { op, expr } => write!(f, "({op} {expr})"),
-            StateFrm::Modality {
+            StateFrmKind::Unary { op, expr } => write!(f, "({op} {expr})"),
+            StateFrmKind::Modality {
                 operator,
                 formula,
                 expr,
@@ -428,36 +434,36 @@ impl fmt::Display for StateFrm {
                 ModalityOperator::Box => write!(f, "[{formula}]{expr}"),
                 ModalityOperator::Diamond => write!(f, "<{formula}>{expr}"),
             },
-            StateFrm::Quantifier {
+            StateFrmKind::Quantifier {
                 quantifier,
                 variables,
                 body,
             } => {
                 write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body)
             }
-            StateFrm::Bound {
+            StateFrmKind::Bound {
                 bound: quantifier,
                 variables,
                 body,
             } => {
                 write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body)
             }
-            StateFrm::Binary { op, lhs, rhs } => {
+            StateFrmKind::Binary { op, lhs, rhs } => {
                 write!(f, "({lhs} {op} {rhs})")
             }
-            StateFrm::FixedPoint {
+            StateFrmKind::FixedPoint {
                 operator,
                 variable,
                 body,
             } => {
                 write!(f, "({operator} {variable} . {body})")
             }
-            StateFrm::Delay(Some(expr)) => write!(f, "delay@({expr})"),
-            StateFrm::Delay(None) => write!(f, "delay"),
-            StateFrm::Yaled(Some(expr)) => write!(f, "yaled@({expr})"),
-            StateFrm::Yaled(None) => write!(f, "yaled"),
-            StateFrm::DataValExprLeftMult(value, expr) => write!(f, "(val({value}) * {expr})"),
-            StateFrm::DataValExprRightMult(expr, value) => write!(f, "({expr} * val({value}))"),
+            StateFrmKind::Delay(Some(expr)) => write!(f, "delay@({expr})"),
+            StateFrmKind::Delay(None) => write!(f, "delay"),
+            StateFrmKind::Yaled(Some(expr)) => write!(f, "yaled@({expr})"),
+            StateFrmKind::Yaled(None) => write!(f, "yaled"),
+            StateFrmKind::DataValExprLeftMult(value, expr) => write!(f, "(val({value}) * {expr})"),
+            StateFrmKind::DataValExprRightMult(expr, value) => write!(f, "({expr} * val({value}))"),
         }
     }
 }
@@ -491,12 +497,12 @@ impl fmt::Display for StateFrmOp {
 
 impl fmt::Display for RegFrm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RegFrm::Action(action) => write!(f, "{action}"),
-            RegFrm::Iteration(body) => write!(f, "({body})*"),
-            RegFrm::Plus(body) => write!(f, "({body})+"),
-            RegFrm::Choice { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
-            RegFrm::Sequence { lhs, rhs } => write!(f, "({lhs} . {rhs})"),
+        match &self.node {
+            RegFrmKind::Action(action) => write!(f, "{action}"),
+            RegFrmKind::Iteration(body) => write!(f, "({body})*"),
+            RegFrmKind::Plus(body) => write!(f, "({body})+"),
+            RegFrmKind::Choice { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
+            RegFrmKind::Sequence { lhs, rhs } => write!(f, "({lhs} . {rhs})"),
         }
     }
 }
@@ -530,22 +536,22 @@ impl fmt::Display for DataExprBinaryOp {
 
 impl fmt::Display for ActFrm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ActFrm::False => write!(f, "false"),
-            ActFrm::True => write!(f, "true"),
-            ActFrm::MultAct(action) => write!(f, "{action}"),
-            ActFrm::Binary { op, lhs, rhs } => {
+        match &self.node {
+            ActFrmKind::False => write!(f, "false"),
+            ActFrmKind::True => write!(f, "true"),
+            ActFrmKind::MultAct(action) => write!(f, "{action}"),
+            ActFrmKind::Binary { op, lhs, rhs } => {
                 // Wrap the whole expression (not just the operands) so that a
                 // surrounding tighter operator such as `!` cannot re-associate.
                 write!(f, "({lhs} {op} {rhs})")
             }
-            ActFrm::DataExprVal(expr) => write!(f, "val({expr})"),
-            ActFrm::Quantifier {
+            ActFrmKind::DataExprVal(expr) => write!(f, "val({expr})"),
+            ActFrmKind::Quantifier {
                 quantifier,
                 variables,
                 body,
             } => write!(f, "({} {} . {})", quantifier, variables.iter().format(", "), body),
-            ActFrm::Negation(expr) => write!(f, "(!{expr})"),
+            ActFrmKind::Negation(expr) => write!(f, "(!{expr})"),
         }
     }
 }
@@ -656,68 +662,68 @@ impl fmt::Display for ProcExprBinaryOp {
 
 impl fmt::Display for ProcessExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ProcessExpr::Id(identifier, assignments) => {
+        match &self.node {
+            ProcessExprKind::Id(identifier, assignments) => {
                 if assignments.is_empty() {
                     write!(f, "{identifier}")
                 } else {
                     write!(f, "{}({})", identifier, assignments.iter().format(", "))
                 }
             }
-            ProcessExpr::Action(identifier, data_exprs) => {
+            ProcessExprKind::Action(identifier, data_exprs) => {
                 if data_exprs.is_empty() {
                     write!(f, "{identifier}")
                 } else {
                     write!(f, "{}({})", identifier, data_exprs.iter().format(", "))
                 }
             }
-            ProcessExpr::Delta => write!(f, "delta"),
-            ProcessExpr::Tau => write!(f, "tau"),
-            ProcessExpr::Sum { variables, operand } => {
+            ProcessExprKind::Delta => write!(f, "delta"),
+            ProcessExprKind::Tau => write!(f, "tau"),
+            ProcessExprKind::Sum { variables, operand } => {
                 write!(f, "(sum {} . {})", variables.iter().format(", "), operand)
             }
-            ProcessExpr::Dist {
+            ProcessExprKind::Dist {
                 variables,
                 expr,
                 operand,
             } => write!(f, "(dist {} [{}] . {})", variables.iter().format(", "), expr, operand),
-            ProcessExpr::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            ProcessExpr::Hide { actions, operand } => {
+            ProcessExprKind::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            ProcessExprKind::Hide { actions, operand } => {
                 if !actions.is_empty() {
                     write!(f, "hide({{{}}}, {})", actions.iter().format(", "), operand)
                 } else {
                     Ok(())
                 }
             }
-            ProcessExpr::Rename { renames, operand } => {
+            ProcessExprKind::Rename { renames, operand } => {
                 if !renames.is_empty() {
                     write!(f, "rename({{{}}}, {})", renames.iter().format(", "), operand)
                 } else {
                     Ok(())
                 }
             }
-            ProcessExpr::Allow { actions, operand } => {
+            ProcessExprKind::Allow { actions, operand } => {
                 if !actions.is_empty() {
                     write!(f, "allow({{{}}}, {})", actions.iter().format(", "), operand)
                 } else {
                     Ok(())
                 }
             }
-            ProcessExpr::Block { actions, operand } => {
+            ProcessExprKind::Block { actions, operand } => {
                 if !actions.is_empty() {
                     write!(f, "block({{{}}}, {})", actions.iter().format(", "), operand)
                 } else {
                     Ok(())
                 }
             }
-            ProcessExpr::Comm { comm, operand } => {
+            ProcessExprKind::Comm { comm, operand } => {
                 if !comm.is_empty() {
                     write!(f, "comm({{{}}}, {})", comm.iter().format(", "), operand)
                 } else {
                     Ok(())
                 }
             }
-            ProcessExpr::Condition { condition, then, else_ } => {
+            ProcessExprKind::Condition { condition, then, else_ } => {
                 // Wrap the whole conditional so it stays a single unit when it is
                 // an operand of a higher-precedence operator such as sequence.
                 if let Some(else_) = else_ {
@@ -726,7 +732,7 @@ impl fmt::Display for ProcessExpr {
                     write!(f, "(({condition}) -> ({then}))")
                 }
             }
-            ProcessExpr::At { expr, operand } => write!(f, "({expr})@({operand})"),
+            ProcessExprKind::At { expr, operand } => write!(f, "({expr})@({operand})"),
         }
     }
 }

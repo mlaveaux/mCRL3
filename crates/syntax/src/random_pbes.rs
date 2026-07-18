@@ -10,11 +10,12 @@ use crate::IdDecl;
 use crate::PbesEquation;
 use crate::PbesExpr;
 use crate::PbesExprBinaryOp;
+use crate::PbesExprKind;
 use crate::PropVarDecl;
 use crate::PropVarInst;
 use crate::Quantifier;
 use crate::Sort;
-use crate::SortExpression;
+use crate::SortExpressionKind;
 use crate::Span;
 use crate::UntypedPbes;
 use crate::random_boolean_data_expression;
@@ -114,12 +115,12 @@ fn random_leaf<R: Rng>(rng: &mut R, freevars: &[IdDecl], config: &PbesGenConfig,
             .collect();
         let inst = PropVarInst::new(pv.name.clone(), args);
         if negated {
-            PbesExpr::Negation(Box::new(PbesExpr::PropVarInst(inst)))
+            PbesExprKind::Negation(Box::new(PbesExprKind::PropVarInst(inst).into())).into()
         } else {
-            PbesExpr::PropVarInst(inst)
+            PbesExprKind::PropVarInst(inst).into()
         }
     } else {
-        PbesExpr::DataValExpr(random_boolean_data_expression(rng, freevars))
+        PbesExprKind::DataValExpr(random_boolean_data_expression(rng, freevars)).into()
     }
 }
 
@@ -153,35 +154,38 @@ fn random_pbes_expr<R: Rng>(
     match op {
         0 => {
             let inner = random_pbes_expr(rng, depth - 1, freevars, config, !negated);
-            PbesExpr::Negation(Box::new(inner))
+            PbesExprKind::Negation(Box::new(inner)).into()
         }
         1 => {
             let l = random_pbes_expr(rng, depth - 1, freevars, config, negated);
             let r = random_pbes_expr(rng, depth - 1, freevars, config, negated);
-            PbesExpr::Binary {
+            PbesExprKind::Binary {
                 op: PbesExprBinaryOp::Conjunction,
                 lhs: Box::new(l),
                 rhs: Box::new(r),
             }
+            .into()
         }
         2 => {
             let l = random_pbes_expr(rng, depth - 1, freevars, config, negated);
             let r = random_pbes_expr(rng, depth - 1, freevars, config, negated);
-            PbesExpr::Binary {
+            PbesExprKind::Binary {
                 op: PbesExprBinaryOp::Disjunction,
                 lhs: Box::new(l),
                 rhs: Box::new(r),
             }
+            .into()
         }
         3 => {
             // Antecedent flips polarity for monotonicity.
             let l = random_pbes_expr(rng, depth - 1, freevars, config, !negated);
             let r = random_pbes_expr(rng, depth - 1, freevars, config, negated);
-            PbesExpr::Binary {
+            PbesExprKind::Binary {
                 op: PbesExprBinaryOp::Implies,
                 lhs: Box::new(l),
                 rhs: Box::new(r),
             }
+            .into()
         }
         4 => random_quantifier(rng, Quantifier::Forall, depth - 1, freevars, config, negated),
         5 => random_quantifier(rng, Quantifier::Exists, depth - 1, freevars, config, negated),
@@ -214,7 +218,7 @@ fn random_quantifier<R: Rng>(
     }
 
     let var_name = (*available.choose(rng).expect("available is non-empty")).to_string();
-    let var_decl = IdDecl::new(var_name.clone(), SortExpression::Simple(Sort::Nat), Span::default());
+    let var_decl = IdDecl::new(var_name.clone(), SortExpressionKind::Simple(Sort::Nat).into(), Span::default());
 
     let mut new_freevars = freevars.to_vec();
     new_freevars.push(as_expr_decl(&var_name));
@@ -222,32 +226,36 @@ fn random_quantifier<R: Rng>(
     let body = random_pbes_expr(rng, depth, &new_freevars, config, negated);
 
     // Bound the quantifier variable to ensure termination: forall t. t < 3 => body  /  exists t. t < 3 && body
-    let bound = PbesExpr::DataValExpr(
+    let bound = PbesExprKind::DataValExpr(
         DataExprKind::Binary {
             op: DataExprBinaryOp::LessThan,
             lhs: Box::new(DataExprKind::Id(var_name).into()),
             rhs: Box::new(DataExprKind::Number("3".to_string()).into()),
         }
         .into(),
-    );
+    )
+    .into();
     let bounded_body = match quantifier {
-        Quantifier::Forall => PbesExpr::Binary {
+        Quantifier::Forall => PbesExprKind::Binary {
             op: PbesExprBinaryOp::Implies,
             lhs: Box::new(bound),
             rhs: Box::new(body),
-        },
-        Quantifier::Exists => PbesExpr::Binary {
+        }
+        .into(),
+        Quantifier::Exists => PbesExprKind::Binary {
             op: PbesExprBinaryOp::Conjunction,
             lhs: Box::new(bound),
             rhs: Box::new(body),
-        },
+        }
+        .into(),
     };
 
-    PbesExpr::Quantifier {
+    PbesExprKind::Quantifier {
         quantifier,
         variables: vec![var_decl],
         body: Box::new(bounded_body),
     }
+    .into()
 }
 
 fn is_bool_var(name: &str) -> bool {
@@ -256,7 +264,7 @@ fn is_bool_var(name: &str) -> bool {
 
 fn as_expr_decl(name: &str) -> IdDecl {
     let sort = if is_bool_var(name) { Sort::Bool } else { Sort::Nat };
-    IdDecl::new(name.to_string(), SortExpression::Simple(sort), Span::default())
+    IdDecl::new(name.to_string(), SortExpressionKind::Simple(sort).into(), Span::default())
 }
 
 struct PredVar {
@@ -271,7 +279,7 @@ impl PredVar {
             .iter()
             .map(|p| {
                 let sort = if is_bool_var(p) { Sort::Bool } else { Sort::Nat };
-                IdDecl::new(p.clone(), SortExpression::Simple(sort), Span::default())
+                IdDecl::new(p.clone(), SortExpressionKind::Simple(sort).into(), Span::default())
             })
             .collect();
         PropVarDecl::new(self.name.clone(), params)

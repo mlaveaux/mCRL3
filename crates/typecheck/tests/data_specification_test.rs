@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification;
 use merc_typecheck::WellTypedError;
@@ -379,31 +380,31 @@ fn random_sort(rng: &mut impl Rng, earlier: &[String], depth: u32) -> String {
 
 /// Collects the names of every resolved (nominal) sort in `sort`.
 fn collect_resolved_names(sort: &SortExpression, out: &mut Vec<String>) {
-    match sort {
-        SortExpression::Resolved(name, _) => out.push(name.clone()),
-        SortExpression::Complex(_, subsort) => collect_resolved_names(subsort, out),
-        SortExpression::Function { domain, range } => {
+    match &sort.node {
+        SortExpressionKind::Resolved(name, _) => out.push(name.clone()),
+        SortExpressionKind::Complex(_, subsort) => collect_resolved_names(subsort, out),
+        SortExpressionKind::Function { domain, range } => {
             collect_resolved_names(domain, out);
             collect_resolved_names(range, out);
         }
-        SortExpression::FlattenedFunction { domain, range } => {
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             for sort in domain {
                 collect_resolved_names(sort, out);
             }
             collect_resolved_names(range, out);
         }
-        SortExpression::Product { lhs, rhs } => {
+        SortExpressionKind::Product { lhs, rhs } => {
             collect_resolved_names(lhs, out);
             collect_resolved_names(rhs, out);
         }
-        SortExpression::Struct { inner } => {
+        SortExpressionKind::Struct { inner } => {
             for constructor in inner {
                 for (_, sort) in &constructor.args {
                     collect_resolved_names(sort, out);
                 }
             }
         }
-        SortExpression::Simple(_) | SortExpression::Reference(_) => {}
+        SortExpressionKind::Simple(_) | SortExpressionKind::Reference(_) => {}
     }
 }
 

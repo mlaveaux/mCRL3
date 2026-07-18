@@ -6,11 +6,11 @@ use std::ops::ControlFlow;
 use rand::RngExt;
 
 use merc_syntax::Bound;
-use merc_syntax::PbesExpr;
+use merc_syntax::PbesExprKind;
 use merc_syntax::ProcExprBinaryOp;
-use merc_syntax::ProcessExpr;
+use merc_syntax::ProcessExprKind;
 use merc_syntax::Span;
-use merc_syntax::StateFrm;
+use merc_syntax::StateFrmKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedPres;
@@ -34,7 +34,7 @@ fn pbes_quantifiers_parse() {
 
     let formula = &pbes.equations[0].formula;
     assert!(
-        matches!(formula, PbesExpr::Quantifier { .. } | PbesExpr::Binary { .. }),
+        matches!(formula.node, PbesExprKind::Quantifier { .. } | PbesExprKind::Binary { .. }),
         "unexpected formula: {formula:?}"
     );
 }
@@ -48,8 +48,8 @@ fn state_formula_bounds_are_distinct() {
         ("sup n: Nat . val(n < 3)", Bound::Sup),
     ] {
         let spec = UntypedStateFrmSpec::parse(input).expect("state formula should parse");
-        match spec.formula {
-            StateFrm::Bound { bound, .. } => assert_eq!(bound, expected, "for input {input:?}"),
+        match spec.formula.node {
+            StateFrmKind::Bound { bound, .. } => assert_eq!(bound, expected, "for input {input:?}"),
             other => panic!("expected a Bound for {input:?}, got {other:?}"),
         }
     }
@@ -59,8 +59,8 @@ fn state_formula_bounds_are_distinct() {
 #[test]
 fn process_until_operator_parses() {
     let spec = UntypedProcessSpecification::parse("init a << b;").expect("`<<` should parse");
-    match spec.init.expect("init present") {
-        ProcessExpr::Binary { op, .. } => assert_eq!(op, ProcExprBinaryOp::Until),
+    match spec.init.expect("init present").node {
+        ProcessExprKind::Binary { op, .. } => assert_eq!(op, ProcExprBinaryOp::Until),
         other => panic!("expected a binary Until, got {other:?}"),
     }
 }
@@ -69,16 +69,16 @@ fn process_until_operator_parses() {
 #[test]
 fn bare_delay_and_yaled_parse() {
     assert!(matches!(
-        UntypedStateFrmSpec::parse("delay").unwrap().formula,
-        StateFrm::Delay(None)
+        UntypedStateFrmSpec::parse("delay").unwrap().formula.node,
+        StateFrmKind::Delay(None)
     ));
     assert!(matches!(
-        UntypedStateFrmSpec::parse("yaled").unwrap().formula,
-        StateFrm::Yaled(None)
+        UntypedStateFrmSpec::parse("yaled").unwrap().formula.node,
+        StateFrmKind::Yaled(None)
     ));
     assert!(matches!(
-        UntypedStateFrmSpec::parse("delay@(3)").unwrap().formula,
-        StateFrm::Delay(Some(_))
+        UntypedStateFrmSpec::parse("delay@(3)").unwrap().formula.node,
+        StateFrmKind::Delay(Some(_))
     ));
 }
 
@@ -111,7 +111,7 @@ fn visitor_breaks_from_nested_node() {
     let spec = UntypedStateFrmSpec::parse("true && (mu X. (X && Y))").unwrap();
 
     let found = visit_statefrm(&spec.formula, |frm| {
-        if let StateFrm::Id(name, _) = frm
+        if let StateFrmKind::Id(name, _) = &frm.node
             && name == "Y"
         {
             return Ok(ControlFlow::Break(name.clone()));
