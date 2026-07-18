@@ -41,9 +41,12 @@
 
 use std::collections::HashMap;
 
+use log::debug;
+use log::trace;
 use merc_utilities::Span;
 
 use crate::ast::*;
+use crate::diagnostics::DiagnosticKind;
 use crate::diagnostics::Diagnostics;
 
 /// What kind of thing a top-level [DefId] names.
@@ -51,12 +54,18 @@ use crate::diagnostics::Diagnostics;
 pub enum DefKind {
     Constant,
     Parameter,
-    Variable { global: bool },
-    Function { argument_count: usize },
+    Variable {
+        global: bool,
+    },
+    Function {
+        argument_count: usize,
+    },
     Penalty,
     Component,
     /// An element of a custom `type X = A | B | C;` declaration.
-    TypeElement { type_name: String },
+    TypeElement {
+        type_name: String,
+    },
     Type,
     Perturbation,
     Distance,
@@ -174,6 +183,37 @@ pub fn resolve(spec: &mut UntypedStarkSpecification) -> (SymbolTable, Diagnostic
         diagnostics: Diagnostics::new(),
     };
     resolver.resolve_specification(spec);
+
+    // Every scope opened during the walk must have been closed again.
+    debug_assert!(
+        resolver.scopes.is_empty(),
+        "{} local scope(s) left open after resolution",
+        resolver.scopes.len()
+    );
+    // `declare` always pushes a `DefEntry` and inserts into `names` together.
+    debug_assert_eq!(
+        resolver.table.defs.len(),
+        resolver.table.names.len(),
+        "symbol table's `defs` and `names` disagree on how many names were declared"
+    );
+
+    debug!(
+        "resolved {} definition(s), {} controller state(s), {} local binding(s); {} diagnostic(s)",
+        resolver.table.defs.len(),
+        resolver.table.states.len(),
+        resolver.table.locals.len(),
+        resolver.diagnostics.items().len()
+    );
+
+    // The contract every later pass relies on: a specification that resolved
+    // cleanly has *no* `None` ids left anywhere. Checking it here means a
+    // resolver bug surfaces as a failure in this pass rather than as a
+    // confusing `unwrap` far downstream in lowering.
+    #[cfg(debug_assertions)]
+    if !resolver.diagnostics.has_errors() {
+        assert_fully_resolved(spec);
+    }
+
     (resolver.table, resolver.diagnostics)
 }
 
@@ -194,39 +234,52 @@ impl Resolver {
     /// `None`.
     fn declare(&mut self, name: &Identifier, kind: DefKind) -> Option<DefId> {
         if let Some(&existing) = self.table.names.get(&name.name) {
-            let first_span = self.table.def(existing).span.clone();
+            let first = self.table.def(existing).span.clone();
             self.diagnostics.error(
                 name.span.clone(),
-                format!(
-                    "duplicate definition of `{}` (first defined at {}..{})",
-                    name.name, first_span.start, first_span.end
-                ),
+                DiagnosticKind::DuplicateDefinition {
+                    name: name.name.clone(),
+                    first,
+                },
             );
             return None;
         }
         let id = DefId::new(self.table.defs.len());
+        trace!("declaring {} `{}` as {id:?}", kind.describe(), name.name);
         self.table.defs.push(DefEntry {
             kind,
             name: name.name.clone(),
             span: name.span.clone(),
         });
         self.table.names.insert(name.name.clone(), id);
+        debug_assert_eq!(
+            self.table.def(id).name,
+            name.name,
+            "`{}` was filed under the wrong id",
+            name.name
+        );
         Some(id)
     }
 
-    fn declare_state(&mut self, name: &Identifier, component: DefId, states: &mut HashMap<String, StateId>) -> Option<StateId> {
+    fn declare_state(
+        &mut self,
+        name: &Identifier,
+        component: DefId,
+        states: &mut HashMap<String, StateId>,
+    ) -> Option<StateId> {
         if let Some(&existing) = states.get(&name.name) {
-            let first_span = self.table.state(existing).span.clone();
+            let first = self.table.state(existing).span.clone();
             self.diagnostics.error(
                 name.span.clone(),
-                format!(
-                    "duplicate controller state `{}` (first defined at {}..{})",
-                    name.name, first_span.start, first_span.end
-                ),
+                DiagnosticKind::DuplicateControllerState {
+                    name: name.name.clone(),
+                    first,
+                },
             );
             return None;
         }
         let id = StateId::new(self.table.states.len());
+        trace!("declaring controller state `{}` as {id:?}", name.name);
         self.table.states.push(StateEntry {
             name: name.name.clone(),
             span: name.span.clone(),
@@ -247,18 +300,19 @@ impl Resolver {
         let mut ids = Vec::with_capacity(bindings.len());
         for name in bindings {
             if let Some(&existing) = frame.get(&name.name) {
-                let first_span = self.table.local(existing).span.clone();
+                let first = self.table.local(existing).span.clone();
                 self.diagnostics.error(
                     name.span.clone(),
-                    format!(
-                        "duplicate binding `{}` (first defined at {}..{})",
-                        name.name, first_span.start, first_span.end
-                    ),
+                    DiagnosticKind::DuplicateBinding {
+                        name: name.name.clone(),
+                        first,
+                    },
                 );
                 ids.push(None);
                 continue;
             }
             let id = LocalId::new(self.table.locals.len());
+            trace!("binding local `{}` as {id:?} at depth {}", name.name, self.scopes.len());
             self.table.locals.push(LocalEntry {
                 name: name.name.clone(),
                 span: name.span.clone(),
@@ -267,10 +321,16 @@ impl Resolver {
             ids.push(Some(id));
         }
         self.scopes.push(frame);
+        debug_assert_eq!(
+            ids.len(),
+            bindings.len(),
+            "push_scope must return one id slot per binding"
+        );
         ids
     }
 
     fn pop_scope(&mut self) {
+        debug_assert!(!self.scopes.is_empty(), "pop_scope without a matching push_scope");
         self.scopes.pop();
     }
 
@@ -281,12 +341,22 @@ impl Resolver {
     }
 
     fn unknown_symbol(&mut self, name: &Identifier) {
-        self.diagnostics.error(name.span.clone(), format!("unknown symbol `{}`", name.name));
+        self.diagnostics.error(
+            name.span.clone(),
+            DiagnosticKind::UnknownSymbol {
+                name: name.name.clone(),
+            },
+        );
     }
 
     /// Resolves a [DefRef] against the top-level namespace, requiring the
     /// resolved declaration's kind to satisfy `expected`.
-    fn resolve_def_ref(&mut self, reference: &mut DefRef, expected: impl Fn(&DefKind) -> bool, expected_desc: &str) {
+    fn resolve_def_ref(
+        &mut self,
+        reference: &mut DefRef,
+        expected: impl Fn(&DefKind) -> bool,
+        expected_desc: &'static str,
+    ) {
         let Some(id) = self.table.names.get(&reference.name.name).copied() else {
             self.unknown_symbol(&reference.name);
             return;
@@ -297,7 +367,11 @@ impl Resolver {
             let kind = self.table.def(id).kind.clone();
             self.diagnostics.error(
                 reference.name.span.clone(),
-                format!("`{}` is {}, expected {}", reference.name.name, kind.describe(), expected_desc),
+                DiagnosticKind::IllegalUseOfName {
+                    name: reference.name.name.clone(),
+                    found: kind.describe(),
+                    expected: expected_desc,
+                },
             );
         }
     }
@@ -306,8 +380,12 @@ impl Resolver {
         match states.get(&reference.name.name) {
             Some(&id) => reference.id = Some(id),
             None => {
-                self.diagnostics
-                    .error(reference.name.span.clone(), format!("unknown controller state `{}`", reference.name.name));
+                self.diagnostics.error(
+                    reference.name.span.clone(),
+                    DiagnosticKind::UnknownControllerState {
+                        name: reference.name.name.clone(),
+                    },
+                );
             }
         }
     }
@@ -319,7 +397,8 @@ impl Resolver {
             return Some(Binding::Local(id));
         }
         let Some(id) = self.table.names.get(name).copied() else {
-            self.diagnostics.error(span.clone(), format!("unknown symbol `{name}`"));
+            self.diagnostics
+                .error(span.clone(), DiagnosticKind::UnknownSymbol { name: name.to_string() });
             return None;
         };
         if self.table.def(id).kind.is_referenceable_value() {
@@ -328,10 +407,11 @@ impl Resolver {
             let kind = self.table.def(id).kind.clone();
             self.diagnostics.error(
                 span.clone(),
-                format!(
-                    "`{name}` is {}, expected a constant, parameter, variable or type element",
-                    kind.describe()
-                ),
+                DiagnosticKind::IllegalUseOfName {
+                    name: name.to_string(),
+                    found: kind.describe(),
+                    expected: "a constant, parameter, variable or type element",
+                },
             );
             None
         }
@@ -340,6 +420,20 @@ impl Resolver {
     // -- Top-level walk -----------------------------------------------------
 
     fn resolve_specification(&mut self, spec: &mut UntypedStarkSpecification) {
+        debug!(
+            "resolving specification: {} constant(s), {} parameter(s), {} type(s), {} function(s), \
+             {} variable(s), {} component(s), {} penalty/-ies, {} perturbation(s), {} distance(s), {} formula(s)",
+            spec.constants.len(),
+            spec.parameters.len(),
+            spec.types.len(),
+            spec.functions.len(),
+            spec.variables.len(),
+            spec.components.len(),
+            spec.penalties.len(),
+            spec.perturbations.len(),
+            spec.distances.len(),
+            spec.formulas.len()
+        );
         for constant in &mut spec.constants {
             self.resolve_expression(&mut constant.value);
             constant.id = self.declare(&constant.name, DefKind::Constant);
@@ -387,7 +481,12 @@ impl Resolver {
             self.resolve_expression(&mut range.max);
         }
         self.resolve_expression(&mut variable.initial_value);
-        variable.id = self.declare(&variable.name, DefKind::Variable { global: variable.global });
+        variable.id = self.declare(
+            &variable.name,
+            DefKind::Variable {
+                global: variable.global,
+            },
+        );
     }
 
     fn resolve_type_declaration(&mut self, ty: &mut TypeDeclaration) {
@@ -397,7 +496,9 @@ impl Resolver {
         if ty.elements.iter().any(|e| e.name == ty.name.name) {
             self.diagnostics.error(
                 ty.name.span.clone(),
-                format!("type `{}` cannot declare an element with the same name", ty.name.name),
+                DiagnosticKind::TypeElementSharesTypeName {
+                    name: ty.name.name.clone(),
+                },
             );
         } else {
             ty.id = self.declare(&ty.name, DefKind::Type);
@@ -413,6 +514,11 @@ impl Resolver {
     }
 
     fn resolve_function(&mut self, function: &mut Function) {
+        trace!(
+            "resolving function `{}` with {} argument(s)",
+            function.name.name,
+            function.arguments.len()
+        );
         let bindings: Vec<&Identifier> = function.arguments.iter().map(|arg| &arg.name).collect();
         let ids = self.push_scope(&bindings);
         for (argument, id) in function.arguments.iter_mut().zip(ids) {
@@ -457,6 +563,12 @@ impl Resolver {
     }
 
     fn resolve_component(&mut self, component: &mut Component) {
+        trace!(
+            "resolving component `{}` with {} variable(s) and {} state(s)",
+            component.name.name,
+            component.variables.len(),
+            component.states.len()
+        );
         for variable in &mut component.variables {
             self.resolve_variable(variable);
         }
@@ -596,7 +708,8 @@ impl Resolver {
             DistanceExpression::AtomicLeft(reference) | DistanceExpression::AtomicRight(reference) => {
                 self.resolve_def_ref(reference, DefKind::is_penalty_kind, "a penalty")
             }
-            DistanceExpression::Eventually { from, to, argument } | DistanceExpression::Globally { from, to, argument } => {
+            DistanceExpression::Eventually { from, to, argument }
+            | DistanceExpression::Globally { from, to, argument } => {
                 self.resolve_expression(from);
                 self.resolve_expression(to);
                 self.resolve_distance(argument);
@@ -627,7 +740,9 @@ impl Resolver {
     fn resolve_robtl(&mut self, formula: &mut RobtlFormula) {
         match formula {
             RobtlFormula::True | RobtlFormula::False => {}
-            RobtlFormula::Reference(reference) => self.resolve_def_ref(reference, DefKind::is_formula_kind, "a formula"),
+            RobtlFormula::Reference(reference) => {
+                self.resolve_def_ref(reference, DefKind::is_formula_kind, "a formula")
+            }
             RobtlFormula::Distance {
                 distance,
                 perturbation,
@@ -715,12 +830,394 @@ impl Resolver {
     }
 }
 
+/// Asserts the post-condition of a clean resolution: no `id`/`binding` slot
+/// anywhere in `spec` is still `None`.
+///
+/// This is the invariant every later pass is entitled to assume — `typecheck.rs`
+/// treats `None` as "already diagnosed", and the planned lowering pass indexes
+/// through these ids unconditionally. If resolution reports no diagnostics but
+/// leaves a slot empty, that is a resolver bug, and it is much cheaper to catch
+/// it here than as an `unwrap` three passes later. Debug builds only.
+#[cfg(debug_assertions)]
+fn assert_fully_resolved(spec: &UntypedStarkSpecification) {
+    fn check_expression(expr: &SpannedExpression) {
+        match &expr.node {
+            Expression::False
+            | Expression::True
+            | Expression::Integer(_)
+            | Expression::Real(_)
+            | Expression::Iterator => {}
+            Expression::Reference { name, binding } => {
+                assert!(
+                    binding.is_some(),
+                    "reference `{name}` left unbound by a clean resolution"
+                );
+            }
+            Expression::Normal { mean, std_dev } => {
+                check_expression(mean);
+                check_expression(std_dev);
+            }
+            Expression::Uniform { values } => values.iter().for_each(check_expression),
+            Expression::Range { min, max } => {
+                min.iter().for_each(|e| check_expression(e));
+                max.iter().for_each(|e| check_expression(e));
+            }
+            Expression::Not(inner) | Expression::UnaryPlus(inner) | Expression::UnaryMinus(inner) => {
+                check_expression(inner)
+            }
+            Expression::Binary(_, left, right) => {
+                check_expression(left);
+                check_expression(right);
+            }
+            Expression::Ternary {
+                guard,
+                then_branch,
+                else_branch,
+            } => {
+                check_expression(guard);
+                check_expression(then_branch);
+                check_expression(else_branch);
+            }
+            Expression::Call { function, arguments } => {
+                assert!(
+                    function.id.is_some(),
+                    "call to `{}` left unresolved",
+                    function.name.name
+                );
+                arguments.iter().for_each(check_expression);
+            }
+            Expression::MathCall { arguments, .. } => arguments.iter().for_each(check_expression),
+        }
+    }
+
+    fn check_variable(variable: &Variable) {
+        assert!(
+            variable.id.is_some(),
+            "variable `{}` left undeclared",
+            variable.name.name
+        );
+        if let Some(range) = &variable.range {
+            check_expression(&range.min);
+            check_expression(&range.max);
+        }
+        check_expression(&variable.initial_value);
+    }
+
+    fn check_update(update: &Update) {
+        update.guard.iter().for_each(check_expression);
+        check_expression(&update.value);
+        assert!(
+            update.target.id.is_some(),
+            "assignment target `{}` left unresolved",
+            update.target.name.name
+        );
+    }
+
+    fn check_function_statement(statement: &FunctionStatement) {
+        match statement {
+            FunctionStatement::Return(value) => check_expression(value),
+            FunctionStatement::IfThenElse {
+                guard,
+                then_branch,
+                else_branch,
+            } => {
+                check_expression(guard);
+                check_function_statement(then_branch);
+                else_branch.iter().for_each(|s| check_function_statement(s));
+            }
+            FunctionStatement::Let { id, name, value, body } => {
+                check_expression(value);
+                assert!(id.is_some(), "let binding `{}` left unbound", name.name);
+                check_function_statement(body);
+            }
+            FunctionStatement::Block(inner) => check_function_statement(inner),
+        }
+    }
+
+    fn check_controller_commands(commands: &[ControllerCommand]) {
+        for command in commands {
+            match command {
+                ControllerCommand::Step { steps, target } => {
+                    steps.iter().for_each(check_expression);
+                    assert!(
+                        target.id.is_some(),
+                        "step target `{}` left unresolved",
+                        target.name.name
+                    );
+                }
+                ControllerCommand::Exec(target) => {
+                    assert!(
+                        target.id.is_some(),
+                        "exec target `{}` left unresolved",
+                        target.name.name
+                    );
+                }
+                ControllerCommand::Let { id, name, value, body } => {
+                    check_expression(value);
+                    assert!(id.is_some(), "let binding `{}` left unbound", name.name);
+                    check_controller_commands(body);
+                }
+                ControllerCommand::Assignment(update) => check_update(update),
+                ControllerCommand::IfThenElse {
+                    guard,
+                    then_branch,
+                    else_branch,
+                } => {
+                    check_expression(guard);
+                    check_controller_commands(then_branch);
+                    else_branch.iter().for_each(|b| check_controller_commands(b));
+                }
+                ControllerCommand::Block(inner) => check_controller_commands(inner),
+            }
+        }
+    }
+
+    fn check_environment_command(command: &EnvironmentCommand) {
+        match command {
+            EnvironmentCommand::Assignment(update) => check_update(update),
+            EnvironmentCommand::IfThenElse {
+                guard,
+                then_branch,
+                else_branch,
+            } => {
+                check_expression(guard);
+                check_environment_command(then_branch);
+                else_branch.iter().for_each(|c| check_environment_command(c));
+            }
+            EnvironmentCommand::Let { bindings, body } => {
+                for binding in bindings {
+                    check_expression(&binding.value);
+                    assert!(binding.id.is_some(), "let binding `{}` left unbound", binding.name.name);
+                }
+                check_environment_command(body);
+            }
+            EnvironmentCommand::Block(inner) => inner.iter().for_each(check_environment_command),
+        }
+    }
+
+    fn check_perturbation(perturbation: &PerturbationExpression) {
+        match perturbation {
+            PerturbationExpression::Nil => {}
+            PerturbationExpression::Reference(reference) => {
+                assert!(
+                    reference.id.is_some(),
+                    "perturbation `{}` left unresolved",
+                    reference.name.name
+                );
+            }
+            PerturbationExpression::Atomic { assignments, time } => {
+                for assignment in assignments {
+                    check_expression(&assignment.value);
+                    assert!(
+                        assignment.target.id.is_some(),
+                        "perturbation target `{}` left unresolved",
+                        assignment.target.name.name
+                    );
+                }
+                check_expression(time);
+            }
+            PerturbationExpression::Sequence(left, right) => {
+                check_perturbation(left);
+                check_perturbation(right);
+            }
+            PerturbationExpression::Iteration { argument, iterations } => {
+                check_perturbation(argument);
+                check_expression(iterations);
+            }
+        }
+    }
+
+    fn check_distance(distance: &DistanceExpression) {
+        match distance {
+            DistanceExpression::Reference(reference)
+            | DistanceExpression::AtomicLeft(reference)
+            | DistanceExpression::AtomicRight(reference) => {
+                assert!(reference.id.is_some(), "`{}` left unresolved", reference.name.name);
+            }
+            DistanceExpression::Eventually { from, to, argument }
+            | DistanceExpression::Globally { from, to, argument } => {
+                check_expression(from);
+                check_expression(to);
+                check_distance(argument);
+            }
+            DistanceExpression::Until { from, to, left, right } => {
+                check_expression(from);
+                check_expression(to);
+                check_distance(left);
+                check_distance(right);
+            }
+            DistanceExpression::Threshold { left, threshold, .. } => {
+                check_distance(left);
+                check_expression(threshold);
+            }
+            DistanceExpression::Min(left, right) | DistanceExpression::Max(left, right) => {
+                check_distance(left);
+                check_distance(right);
+            }
+            DistanceExpression::LinearCombination(terms) => {
+                for (weight, distance) in terms {
+                    check_expression(weight);
+                    check_distance(distance);
+                }
+            }
+        }
+    }
+
+    fn check_robtl(formula: &RobtlFormula) {
+        match formula {
+            RobtlFormula::True | RobtlFormula::False => {}
+            RobtlFormula::Reference(reference) => {
+                assert!(
+                    reference.id.is_some(),
+                    "formula `{}` left unresolved",
+                    reference.name.name
+                );
+            }
+            RobtlFormula::Distance {
+                distance,
+                perturbation,
+                value,
+                ..
+            } => {
+                assert!(
+                    distance.id.is_some(),
+                    "distance `{}` left unresolved",
+                    distance.name.name
+                );
+                assert!(
+                    perturbation.id.is_some(),
+                    "perturbation `{}` left unresolved",
+                    perturbation.name.name
+                );
+                check_expression(value);
+            }
+            RobtlFormula::Not(inner) => check_robtl(inner),
+            RobtlFormula::Globally { from, to, argument } | RobtlFormula::Eventually { from, to, argument } => {
+                check_expression(from);
+                check_expression(to);
+                check_robtl(argument);
+            }
+            RobtlFormula::And(left, right) | RobtlFormula::Or(left, right) => {
+                check_robtl(left);
+                check_robtl(right);
+            }
+            RobtlFormula::Until { from, to, left, right } => {
+                check_expression(from);
+                check_expression(to);
+                check_robtl(left);
+                check_robtl(right);
+            }
+        }
+    }
+
+    for constant in &spec.constants {
+        assert!(
+            constant.id.is_some(),
+            "constant `{}` left undeclared",
+            constant.name.name
+        );
+        check_expression(&constant.value);
+    }
+    for parameter in &spec.parameters {
+        assert!(
+            parameter.id.is_some(),
+            "parameter `{}` left undeclared",
+            parameter.name.name
+        );
+        check_expression(&parameter.value);
+    }
+    for ty in &spec.types {
+        assert!(ty.id.is_some(), "type `{}` left undeclared", ty.name.name);
+    }
+    for function in &spec.functions {
+        assert!(
+            function.id.is_some(),
+            "function `{}` left undeclared",
+            function.name.name
+        );
+        for argument in &function.arguments {
+            assert!(
+                argument.id.is_some(),
+                "argument `{}` of `{}` left unbound",
+                argument.name.name,
+                function.name.name
+            );
+        }
+        check_function_statement(&function.body);
+    }
+    for variable in &spec.variables {
+        check_variable(variable);
+    }
+    for component in &spec.components {
+        assert!(
+            component.id.is_some(),
+            "component `{}` left undeclared",
+            component.name.name
+        );
+        component.variables.iter().for_each(check_variable);
+        for state in &component.states {
+            assert!(
+                state.id.is_some(),
+                "controller state `{}` left undeclared",
+                state.name.name
+            );
+            check_controller_commands(&state.body);
+        }
+        for target in &component.init {
+            assert!(
+                target.id.is_some(),
+                "init target `{}` left unresolved",
+                target.name.name
+            );
+        }
+    }
+    if let Some(environment) = &spec.environment {
+        environment.commands.iter().for_each(check_environment_command);
+    }
+    for penalty in &spec.penalties {
+        assert!(penalty.id.is_some(), "penalty `{}` left undeclared", penalty.name.name);
+        check_expression(&penalty.value);
+    }
+    for perturbation in &spec.perturbations {
+        assert!(
+            perturbation.id.is_some(),
+            "perturbation `{}` left undeclared",
+            perturbation.name.name
+        );
+        check_perturbation(&perturbation.value);
+    }
+    for distance in &spec.distances {
+        assert!(
+            distance.id.is_some(),
+            "distance `{}` left undeclared",
+            distance.name.name
+        );
+        check_distance(&distance.value);
+    }
+    for formula in &spec.formulas {
+        assert!(formula.id.is_some(), "formula `{}` left undeclared", formula.name.name);
+        check_robtl(&formula.value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::resolve;
-    use crate::ast::{Binding, Expression, UntypedStarkSpecification};
+    use crate::ast::Binding;
+    use crate::ast::Expression;
+    use crate::ast::UntypedStarkSpecification;
+    use crate::diagnostics::DiagnosticKind;
+    // Overrides the built-in `#[test]` so `RUST_LOG=merc_stark=trace cargo test`
+    // shows this pass's `debug!`/`trace!` output.
+    use test_log::test;
 
-    fn resolve_source(src: &str) -> (UntypedStarkSpecification, super::SymbolTable, crate::diagnostics::Diagnostics) {
+    fn resolve_source(
+        src: &str,
+    ) -> (
+        UntypedStarkSpecification,
+        super::SymbolTable,
+        crate::diagnostics::Diagnostics,
+    ) {
         let mut spec = UntypedStarkSpecification::parse(src).expect("should parse");
         let (table, diagnostics) = resolve(&mut spec);
         (spec, table, diagnostics)
@@ -732,7 +1229,13 @@ mod tests {
         assert!(!diagnostics.has_errors(), "{diagnostics}");
         match &spec.constants[1].value.node {
             Expression::Binary(_, lhs, _) => {
-                assert!(matches!(lhs.node, Expression::Reference { binding: Some(Binding::Def(_)), .. }));
+                assert!(matches!(
+                    lhs.node,
+                    Expression::Reference {
+                        binding: Some(Binding::Def(_)),
+                        ..
+                    }
+                ));
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -741,40 +1244,69 @@ mod tests {
     #[test]
     fn forward_reference_is_unknown_symbol() {
         let (_spec, _table, diagnostics) = resolve_source("const a = b + 1;\nconst b = 1;");
-        assert!(diagnostics.has_errors());
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownSymbol { name } if name == "b")),
+            "{diagnostics}"
+        );
     }
 
     #[test]
     fn duplicate_top_level_name_is_an_error() {
         let (_spec, _table, diagnostics) = resolve_source("const a = 1;\nconst a = 2;");
-        assert!(diagnostics.has_errors());
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::DuplicateDefinition { name, .. } if name == "a")),
+            "{diagnostics}"
+        );
     }
 
     #[test]
     fn calling_a_variable_is_illegal_use_of_name() {
         let (_spec, _table, diagnostics) =
-            resolve_source("global variables { int x = 0; }\nconst c = x(1);");
-        assert!(diagnostics.has_errors());
+            // In a `const` this would only report "unknown symbol": constants
+            // resolve before variables in the fixed kind order (see the module
+            // doc comment), so `x` isn't declared yet there. A `penalty`
+            // resolves after both, so the name *is* found — and rejected for
+            // being the wrong kind, which is what this test is about.
+            resolve_source("global variables { int x = 0; }\npenalty p = x(1)");
+        assert!(
+            diagnostics.any(|kind| matches!(
+                kind,
+                DiagnosticKind::IllegalUseOfName { name, found, expected }
+                    if name == "x" && *found == "a variable" && *expected == "a function"
+            )),
+            "{diagnostics}"
+        );
     }
 
     #[test]
     fn referencing_a_function_as_a_value_is_illegal_use_of_name() {
         let (_spec, _table, diagnostics) =
-            resolve_source("function f(int x) { return x; }\nconst c = f;");
-        assert!(diagnostics.has_errors());
+            // Likewise: a `penalty` resolves after functions, so `f` is found
+            // and then rejected as a non-value, rather than being reported as
+            // an unknown symbol.
+            resolve_source("function f(int x) { return x; }\npenalty p = f");
+        assert!(
+            diagnostics.any(|kind| matches!(
+                kind,
+                DiagnosticKind::IllegalUseOfName { name, found, .. } if name == "f" && *found == "a function"
+            )),
+            "{diagnostics}"
+        );
     }
 
     #[test]
     fn function_cannot_call_itself() {
         let (_spec, _table, diagnostics) = resolve_source("function f(int x) { return f(x); }");
-        assert!(diagnostics.has_errors());
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownSymbol { name } if name == "f")),
+            "{diagnostics}"
+        );
     }
 
     #[test]
     fn let_binding_shadows_outer_constant() {
-        let (spec, _table, diagnostics) = resolve_source(
-            "const x = 1;\nfunction f(int y) { let x = 2 in return x + y; }",
-        );
+        let (spec, _table, diagnostics) =
+            resolve_source("const x = 1;\nfunction f(int y) { let x = 2 in return x + y; }");
         assert!(!diagnostics.has_errors(), "{diagnostics}");
         // Both `x` (the let) and `y` (the argument) resolve locally.
         let crate::ast::FunctionStatement::Block(inner) = &spec.functions[0].body else {
@@ -788,8 +1320,20 @@ mod tests {
         };
         match &value.node {
             Expression::Binary(_, lhs, rhs) => {
-                assert!(matches!(lhs.node, Expression::Reference { binding: Some(Binding::Local(_)), .. }));
-                assert!(matches!(rhs.node, Expression::Reference { binding: Some(Binding::Local(_)), .. }));
+                assert!(matches!(
+                    lhs.node,
+                    Expression::Reference {
+                        binding: Some(Binding::Local(_)),
+                        ..
+                    }
+                ));
+                assert!(matches!(
+                    rhs.node,
+                    Expression::Reference {
+                        binding: Some(Binding::Local(_)),
+                        ..
+                    }
+                ));
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -798,7 +1342,10 @@ mod tests {
     #[test]
     fn duplicate_function_argument_is_an_error() {
         let (_spec, _table, diagnostics) = resolve_source("function f(int x, int x) { return x; }");
-        assert!(diagnostics.has_errors());
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::DuplicateBinding { name, .. } if name == "x")),
+            "{diagnostics}"
+        );
     }
 
     #[test]
@@ -814,7 +1361,10 @@ mod tests {
         let (_spec, _table, diagnostics) = resolve_source(
             "component C1 {\n  variables { }\n  controller {\n    aiState A { step B; }\n  }\n  init A\n}\ncomponent C2 {\n  variables { }\n  controller {\n    aiState B { exec B; }\n  }\n  init B\n}",
         );
-        assert!(diagnostics.has_errors());
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownControllerState { name } if name == "B")),
+            "{diagnostics}"
+        );
     }
 
     #[test]
@@ -823,27 +1373,38 @@ mod tests {
         // fixed kind order (see the module doc comment), so referencing a
         // type element from a penalty value exercises the forward-visibility
         // that types grant to everything processed after them.
-        let (spec, _table, diagnostics) =
-            resolve_source("type Color = Red | Green | Blue;\npenalty p = Red");
+        let (spec, _table, diagnostics) = resolve_source("type Color = Red | Green | Blue;\npenalty p = Red");
         assert!(!diagnostics.has_errors(), "{diagnostics}");
         assert!(matches!(
             spec.penalties[0].value.node,
-            Expression::Reference { binding: Some(Binding::Def(_)), .. }
+            Expression::Reference {
+                binding: Some(Binding::Def(_)),
+                ..
+            }
         ));
     }
 
     #[test]
     fn type_element_cannot_share_the_types_own_name() {
         let (_spec, _table, diagnostics) = resolve_source("type Color = Color | Blue;\nconst c = 1;");
-        assert!(diagnostics.has_errors());
+        assert!(
+            diagnostics
+                .any(|kind| matches!(kind, DiagnosticKind::TypeElementSharesTypeName { name } if name == "Color")),
+            "{diagnostics}"
+        );
     }
 
     #[test]
     fn assignment_target_must_be_a_variable() {
-        let (_spec, _table, diagnostics) = resolve_source(
-            "const k = 1;\nenvironment { k' = 1; }",
+        let (_spec, _table, diagnostics) = resolve_source("const k = 1;\nenvironment { k' = 1; }");
+        assert!(
+            diagnostics.any(|kind| matches!(
+                kind,
+                DiagnosticKind::IllegalUseOfName { name, found, expected }
+                    if name == "k" && *found == "a constant" && *expected == "a variable"
+            )),
+            "{diagnostics}"
         );
-        assert!(diagnostics.has_errors());
     }
 
     #[test]
@@ -851,13 +1412,30 @@ mod tests {
         for (name, source) in [
             ("engine", include_str!("../../../examples/stark/engine.stark")),
             ("random_walk", include_str!("../../../examples/stark/random_walk.stark")),
-            ("single_vehicle", include_str!("../../../examples/stark/single_vehicle.stark")),
+            (
+                "single_vehicle",
+                include_str!("../../../examples/stark/single_vehicle.stark"),
+            ),
             ("toll", include_str!("../../../examples/stark/toll.stark")),
-            ("two_vehicles", include_str!("../../../examples/stark/two_vehicles.stark")),
+            (
+                "two_vehicles",
+                include_str!("../../../examples/stark/two_vehicles.stark"),
+            ),
+            ("monitoring", include_str!("../../../examples/stark/monitoring.stark")),
+            (
+                "agriculturalDT",
+                include_str!("../../../examples/stark/agriculturalDT.stark"),
+            ),
+            ("tollbooth", include_str!("../../../examples/stark/tollbooth.stark")),
         ] {
-            let mut spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
+            let mut spec =
+                UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
             let (_table, diagnostics) = resolve(&mut spec);
-            assert!(!diagnostics.has_errors(), "{name} failed to resolve:\n{}", diagnostics.render(source));
+            assert!(
+                !diagnostics.has_errors(),
+                "{name} failed to resolve:\n{}",
+                diagnostics.render(source)
+            );
         }
     }
 }

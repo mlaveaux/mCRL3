@@ -71,8 +71,12 @@ pub(crate) fn parse_expression_node(pair: Pair<'_, Rule>) -> ParseResult<Spanned
         None => Ok(guard),
         Some(ternary) => {
             let mut branches = ternary.into_inner();
-            let then_branch = Box::new(parse_expression_node(branches.next().expect("ternary requires a then branch"))?);
-            let else_branch = Box::new(parse_expression_node(branches.next().expect("ternary requires an else branch"))?);
+            let then_branch = Box::new(parse_expression_node(
+                branches.next().expect("ternary requires a then branch"),
+            )?);
+            let else_branch = Box::new(parse_expression_node(
+                branches.next().expect("ternary requires an else branch"),
+            )?);
             Ok(Spanned::new(
                 Expression::Ternary {
                     guard: Box::new(guard),
@@ -186,7 +190,10 @@ fn parse_expression_primary(primary: Pair<'_, Rule>) -> ParseResult<SpannedExpre
             Err(_) => {
                 return error(
                     &primary,
-                    format!("integer literal `{}` does not fit in a 64-bit integer", primary.as_str()),
+                    format!(
+                        "integer literal `{}` does not fit in a 64-bit integer",
+                        primary.as_str()
+                    ),
                 );
             }
         },
@@ -420,9 +427,7 @@ fn parse_distance_primary(primary: Pair<'_, Rule>) -> ParseResult<DistanceExpres
 /// Parse the two `DistanceExpression` children of `min(..)` / `max(..)`.
 #[allow(clippy::result_large_err)]
 fn parse_distance_pair(pair: Pair<'_, Rule>) -> ParseResult<(DistanceExpression, DistanceExpression)> {
-    let mut children = pair
-        .into_inner()
-        .filter(|p| p.as_rule() == Rule::DistanceExpression);
+    let mut children = pair.into_inner().filter(|p| p.as_rule() == Rule::DistanceExpression);
     let left = parse_distance_expression(children.next().expect("first argument").into_inner())?;
     let right = parse_distance_expression(children.next().expect("second argument").into_inner())?;
     Ok((left, right))
@@ -478,9 +483,7 @@ pub static ROBTL_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::RobtlOr, Assoc::Left))
         .op(Op::infix(Rule::RobtlAnd, Assoc::Left))
         .op(Op::infix(Rule::RobtlUntil, Assoc::Left))
-        .op(Op::prefix(Rule::RobtlNot)
-            | Op::prefix(Rule::RobtlGlobally)
-            | Op::prefix(Rule::RobtlEventually))
+        .op(Op::prefix(Rule::RobtlNot) | Op::prefix(Rule::RobtlGlobally) | Op::prefix(Rule::RobtlEventually))
 });
 
 #[allow(clippy::result_large_err)]
@@ -550,10 +553,14 @@ pub fn parse_robtl_formula(pairs: Pairs<Rule>) -> ParseResult<RobtlFormula> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{
-        BinaryOp, DistanceExpression, Expression, MathFunction, PerturbationExpression, RobtlFormula,
-        UntypedStarkSpecification, Ty,
-    };
+    use crate::ast::BinaryOp;
+    use crate::ast::DistanceExpression;
+    use crate::ast::Expression;
+    use crate::ast::MathFunction;
+    use crate::ast::PerturbationExpression;
+    use crate::ast::RobtlFormula;
+    use crate::ast::Ty;
+    use crate::ast::UntypedStarkSpecification;
 
     /// Parse `const c = <src>;` and return the parsed expression (span discarded).
     fn expr(src: &str) -> Expression {
@@ -651,10 +658,7 @@ mod tests {
 
     #[test]
     fn unresolved_reference_has_no_binding() {
-        assert!(matches!(
-            expr("x"),
-            Expression::Reference { binding: None, .. }
-        ));
+        assert!(matches!(expr("x"), Expression::Reference { binding: None, .. }));
     }
 
     #[test]
@@ -704,10 +708,8 @@ mod tests {
 
     #[test]
     fn perturbation_sequence_and_iteration() {
-        let spec = UntypedStarkSpecification::parse(
-            "perturbation p = ([x <- 1]@0); ([y <- 2]@0)^3;",
-        )
-        .expect("should parse");
+        let spec =
+            UntypedStarkSpecification::parse("perturbation p = ([x <- 1]@0); ([y <- 2]@0)^3;").expect("should parse");
         // `a ; b^3` groups as `a ; (b^3)`.
         match &spec.perturbations[0].value {
             PerturbationExpression::Sequence(_, right) => {
@@ -719,16 +721,12 @@ mod tests {
 
     #[test]
     fn distance_and_formula() {
-        let spec = UntypedStarkSpecification::parse(
-            "distance d = \\G[0, 10] < rho;\nformula f = \\D[d, p] <= 5;",
-        )
-        .expect("should parse");
+        let spec = UntypedStarkSpecification::parse("distance d = \\G[0, 10] < rho;\nformula f = \\D[d, p] <= 5;")
+            .expect("should parse");
         assert!(matches!(spec.distances[0].value, DistanceExpression::Globally { .. }));
         match &spec.formulas[0].value {
             RobtlFormula::Distance {
-                distance,
-                perturbation,
-                ..
+                distance, perturbation, ..
             } => {
                 assert_eq!(distance.name.name, "d");
                 assert_eq!(perturbation.name.name, "p");
