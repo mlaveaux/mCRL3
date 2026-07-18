@@ -1061,6 +1061,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "merc-stark"
+version = "2.0.0"
+dependencies = [
+ "clap",
+ "env_logger",
+ "log",
+ "merc_stark",
+ "merc_tools",
+ "merc_utilities",
+]
+
+[[package]]
 name = "merc-sym"
 version = "2.0.0"
 dependencies = [

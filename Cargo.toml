@@ -51,6 +51,7 @@ members = [
     "crates/xtask",
     "tools/lts",
     "tools/rewrite",
+    "tools/stark",
     "tools/sym",
     "tools/vpg",
 ]
@@ -154,6 +155,7 @@ merc_sabre = { version = "3.0", path = "crates/sabre" }
 merc_sabre-compiling = { path = "crates/sabre_compiling" }
 merc_sabre-ffi = { path = "crates/sabre_compiling/sabre_ffi" }
 merc_sharedmutex = { version = "3.0", path = "crates/sharedmutex" }
+merc_stark = { version = "1.0", path = "crates/stark" }
 merc_symbolic = { version = "3.0",path = "crates/symbolic", features = ["clap"] }
 merc_syntax = { version = "3.0", path = "crates/syntax" }
 merc_tools = { path = "crates/tools" }

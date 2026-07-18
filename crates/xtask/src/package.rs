@@ -41,7 +41,7 @@ pub(crate) fn package() -> Result<(), Box<dyn Error>> {
     let workspace_binaries = [
         (
             workspace_root.clone(),
-            vec!["merc-lts", "merc-rewrite", "merc-vpg", "merc-sym"],
+            vec!["merc-lts", "merc-rewrite", "merc-stark", "merc-vpg", "merc-sym"],
         ),
         (workspace_root.join("tools/gui"), vec!["merc-ltsgraph"]),
         (workspace_root.join("tools/mcrl2"), vec!["merc-pbes", "merc-lps"]),

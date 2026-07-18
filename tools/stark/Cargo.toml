@@ -1,0 +1,15 @@
+[package]
+name = "merc-stark"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+merc_stark.workspace = true
+merc_tools.workspace = true
+merc_utilities.workspace = true
+
+clap.workspace = true
+env_logger.workspace = true
+log.workspace = true
