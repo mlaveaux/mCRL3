@@ -1397,10 +1397,14 @@ dependencies = [
 name = "merc_stark"
 version = "1.0.0"
 dependencies = [
+ "log",
  "merc_pest_consume",
  "merc_utilities",
  "pest",
  "pest_derive",
+ "test-case",
+ "test-log",
+ "thiserror",
 ]
 
 [[package]]
