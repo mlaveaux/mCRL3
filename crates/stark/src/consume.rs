@@ -4,34 +4,15 @@ use merc_pest_consume::Error;
 use merc_pest_consume::match_nodes;
 
 use crate::StarkParser;
-use crate::ast::Component;
-use crate::ast::Constant;
-use crate::ast::ControllerCommand;
-use crate::ast::ControllerState;
-use crate::ast::Distance;
-use crate::ast::Environment;
-use crate::ast::EnvironmentCommand;
-use crate::ast::Expression;
-use crate::ast::Formula;
-use crate::ast::Function;
-use crate::ast::FunctionArgument;
-use crate::ast::FunctionStatement;
-use crate::ast::Identifier;
-use crate::ast::LocalVariable;
-use crate::ast::Parameter;
-use crate::ast::Penalty;
-use crate::ast::Perturbation;
-use crate::ast::Range;
-use crate::ast::StarkSpecification;
-use crate::ast::Ty;
-use crate::ast::TypeDeclaration;
-use crate::ast::Update;
-use crate::ast::Variable;
+use crate::ast::{
+    Component, Constant, ControllerCommand, ControllerState, DefRef, Distance, Environment, EnvironmentCommand,
+    Formula, Function, FunctionArgument, FunctionStatement, Identifier, LocalVariable, Parameter, Penalty,
+    Perturbation, Range, SpannedExpression, UntypedStarkSpecification, StateRef, Ty, TypeDeclaration, Update, Variable,
+};
 use crate::parse::Rule;
-use crate::precedence::parse_distance_expression;
-use crate::precedence::parse_expression;
-use crate::precedence::parse_perturbation_expression;
-use crate::precedence::parse_robtl_formula;
+use crate::precedence::{
+    parse_distance_expression, parse_expression_node, parse_perturbation_expression, parse_robtl_formula,
+};
 
 /// Type alias for Errors resulting from parsing.
 pub(crate) type ParseResult<T> = std::result::Result<T, Error<Rule>>;
@@ -87,7 +68,7 @@ fn assignment_update(node: ParseNode) -> ParseResult<Update> {
     for child in node.into_children() {
         match child.as_rule() {
             Rule::WhenGuard => guard = Some(StarkParser::WhenGuard(child)?),
-            Rule::NEXT_ID => target = Some(StarkParser::NEXT_ID(child)?),
+            Rule::NEXT_ID => target = Some(DefRef::new(StarkParser::NEXT_ID(child)?)),
             Rule::Expression => value = Some(StarkParser::Expression(child)?),
             rule => unreachable!("unexpected assignment child: {rule:?}"),
         }
@@ -102,8 +83,8 @@ fn assignment_update(node: ParseNode) -> ParseResult<Update> {
 
 #[merc_pest_consume::parser]
 impl StarkParser {
-    pub fn StarkSpecification(input: ParseNode) -> ParseResult<StarkSpecification> {
-        let mut spec = StarkSpecification::new();
+    pub fn UntypedStarkSpecification(input: ParseNode) -> ParseResult<UntypedStarkSpecification> {
+        let mut spec = UntypedStarkSpecification::new();
 
         for child in input.into_children() {
             match child.as_rule() {
@@ -151,11 +132,11 @@ impl StarkParser {
         })
     }
 
-    pub(crate) fn Expression(input: ParseNode) -> ParseResult<Expression> {
-        parse_expression(input.children().as_pairs().clone())
+    pub(crate) fn Expression(input: ParseNode) -> ParseResult<SpannedExpression> {
+        parse_expression_node(input.into_pair())
     }
 
-    fn WhenGuard(input: ParseNode) -> ParseResult<Expression> {
+    fn WhenGuard(input: ParseNode) -> ParseResult<SpannedExpression> {
         match_nodes!(input.into_children();
             [Expression(guard)] => Ok(guard)
         )
@@ -165,25 +146,25 @@ impl StarkParser {
 
     fn DeclarationConstant(input: ParseNode) -> ParseResult<Constant> {
         match_nodes!(input.into_children();
-            [ID(id), Expression(value)] => Ok(Constant { id, value })
+            [ID(name), Expression(value)] => Ok(Constant { id: None, name, value })
         )
     }
 
     fn DeclarationParameter(input: ParseNode) -> ParseResult<Parameter> {
         match_nodes!(input.into_children();
-            [ID(id), Expression(value)] => Ok(Parameter { id, value })
+            [ID(name), Expression(value)] => Ok(Parameter { id: None, name, value })
         )
     }
 
     fn DeclarationPenalty(input: ParseNode) -> ParseResult<Penalty> {
         match_nodes!(input.into_children();
-            [ID(id), Expression(value)] => Ok(Penalty { id, value })
+            [ID(name), Expression(value)] => Ok(Penalty { id: None, name, value })
         )
     }
 
     fn DeclarationType(input: ParseNode) -> ParseResult<TypeDeclaration> {
         match_nodes!(input.into_children();
-            [ID(id), TypeElement(elements)..] => Ok(TypeDeclaration { id, elements: elements.collect() })
+            [ID(name), TypeElement(elements)..] => Ok(TypeDeclaration { id: None, name, elements: elements.collect() })
         )
     }
 
@@ -216,11 +197,11 @@ impl StarkParser {
 
     fn VariableDeclaration(input: ParseNode) -> ParseResult<Variable> {
         match_nodes!(input.into_children();
-            [Ty(ty), ID(id), VariableRange(range), Expression(initial_value)] => {
-                Ok(Variable { global: false, ty, id, range: Some(range), initial_value })
+            [Ty(ty), ID(name), VariableRange(range), Expression(initial_value)] => {
+                Ok(Variable { id: None, global: false, ty, name, range: Some(range), initial_value })
             },
-            [Ty(ty), ID(id), Expression(initial_value)] => {
-                Ok(Variable { global: false, ty, id, range: None, initial_value })
+            [Ty(ty), ID(name), Expression(initial_value)] => {
+                Ok(Variable { id: None, global: false, ty, name, range: None, initial_value })
             }
         )
     }
@@ -234,13 +215,13 @@ impl StarkParser {
     // --- Functions ---------------------------------------------------------
 
     fn DeclarationFunction(input: ParseNode) -> ParseResult<Function> {
-        let mut id = None;
+        let mut name = None;
         let mut arguments = Vec::new();
         let mut body = None;
 
         for child in input.into_children() {
             match child.as_rule() {
-                Rule::ID => id = Some(Self::ID(child)?),
+                Rule::ID => name = Some(Self::ID(child)?),
                 Rule::FunctionArgument => arguments.push(Self::FunctionArgument(child)?),
                 Rule::FunctionBlock => body = Some(Self::FunctionBlock(child)?),
                 rule => unreachable!("unexpected function child: {rule:?}"),
@@ -248,7 +229,8 @@ impl StarkParser {
         }
 
         Ok(Function {
-            id: id.expect("function requires a name"),
+            id: None,
+            name: name.expect("function requires a name"),
             arguments,
             body: body.expect("function requires a body"),
         })
@@ -256,7 +238,7 @@ impl StarkParser {
 
     fn FunctionArgument(input: ParseNode) -> ParseResult<FunctionArgument> {
         match_nodes!(input.into_children();
-            [Ty(ty), ID(id)] => Ok(FunctionArgument { ty, id })
+            [Ty(ty), ID(name)] => Ok(FunctionArgument { id: None, ty, name })
         )
     }
 
@@ -268,11 +250,12 @@ impl StarkParser {
 
     fn FunctionLet(input: ParseNode) -> ParseResult<FunctionStatement> {
         let mut children = input.into_children();
-        let id = Self::ID(children.next().expect("let name"))?;
+        let name = Self::ID(children.next().expect("let name"))?;
         let value = Self::Expression(children.next().expect("let value"))?;
         let body = function_statement(children.next().expect("let body"))?;
         Ok(FunctionStatement::Let {
-            id,
+            id: None,
+            name,
             value,
             body: Box::new(body),
         })
@@ -299,14 +282,14 @@ impl StarkParser {
     // --- Components and controllers ---------------------------------------
 
     fn DeclarationComponent(input: ParseNode) -> ParseResult<Component> {
-        let mut id = None;
+        let mut name = None;
         let mut variables = Vec::new();
         let mut states = Vec::new();
         let mut init = Vec::new();
 
         for child in input.into_children() {
             match child.as_rule() {
-                Rule::ID => id = Some(Self::ID(child)?),
+                Rule::ID => name = Some(Self::ID(child)?),
                 Rule::VariableDeclaration => variables.push(Self::VariableDeclaration(child)?),
                 Rule::ControllerState => states.push(Self::ControllerState(child)?),
                 Rule::ControllerExpression => init = Self::ControllerExpression(child)?,
@@ -315,24 +298,25 @@ impl StarkParser {
         }
 
         Ok(Component {
-            id: id.expect("component requires a name"),
+            id: None,
+            name: name.expect("component requires a name"),
             variables,
             states,
             init,
         })
     }
 
-    fn ControllerExpression(input: ParseNode) -> ParseResult<Vec<Identifier>> {
+    fn ControllerExpression(input: ParseNode) -> ParseResult<Vec<StateRef>> {
         match_nodes!(input.into_children();
-            [ID(states)..] => Ok(states.collect())
+            [ID(states)..] => Ok(states.map(StateRef::new).collect())
         )
     }
 
     fn ControllerState(input: ParseNode) -> ParseResult<ControllerState> {
         let mut children = input.into_children();
-        let id = Self::ID(children.next().expect("state name"))?;
+        let name = Self::ID(children.next().expect("state name"))?;
         let body = Self::ControllerBlock(children.next().expect("state body"))?;
-        Ok(ControllerState { id, body })
+        Ok(ControllerState { id: None, name, body })
     }
 
     fn ControllerBlock(input: ParseNode) -> ParseResult<Vec<ControllerCommand>> {
@@ -345,7 +329,7 @@ impl StarkParser {
         for child in input.into_children() {
             match child.as_rule() {
                 Rule::Expression => steps = Some(Self::Expression(child)?),
-                Rule::ID => target = Some(Self::ID(child)?),
+                Rule::ID => target = Some(StateRef::new(Self::ID(child)?)),
                 rule => unreachable!("unexpected step child: {rule:?}"),
             }
         }
@@ -357,16 +341,21 @@ impl StarkParser {
 
     fn ControllerExec(input: ParseNode) -> ParseResult<ControllerCommand> {
         match_nodes!(input.into_children();
-            [ID(target)] => Ok(ControllerCommand::Exec(target))
+            [ID(target)] => Ok(ControllerCommand::Exec(StateRef::new(target)))
         )
     }
 
     fn ControllerLet(input: ParseNode) -> ParseResult<ControllerCommand> {
         let mut children = input.into_children();
-        let id = Self::ID(children.next().expect("let name"))?;
+        let name = Self::ID(children.next().expect("let name"))?;
         let value = Self::Expression(children.next().expect("let value"))?;
         let body = Self::ControllerBlock(children.next().expect("let body"))?;
-        Ok(ControllerCommand::Let { id, value, body })
+        Ok(ControllerCommand::Let {
+            id: None,
+            name,
+            value,
+            body,
+        })
     }
 
     fn ControllerAssignment(input: ParseNode) -> ParseResult<ControllerCommand> {
@@ -430,7 +419,7 @@ impl StarkParser {
 
     fn LocalVariable(input: ParseNode) -> ParseResult<LocalVariable> {
         match_nodes!(input.into_children();
-            [ID(id), Expression(value)] => Ok(LocalVariable { id, value })
+            [ID(name), Expression(value)] => Ok(LocalVariable { id: None, name, value })
         )
     }
 
@@ -438,9 +427,9 @@ impl StarkParser {
 
     fn DeclarationPerturbation(input: ParseNode) -> ParseResult<Perturbation> {
         let mut children = input.into_children();
-        let id = Self::ID(children.next().expect("perturbation name"))?;
+        let name = Self::ID(children.next().expect("perturbation name"))?;
         let value = Self::PerturbationExpression(children.next().expect("perturbation value"))?;
-        Ok(Perturbation { id, value })
+        Ok(Perturbation { id: None, name, value })
     }
 
     fn PerturbationExpression(input: ParseNode) -> ParseResult<crate::ast::PerturbationExpression> {
@@ -449,9 +438,9 @@ impl StarkParser {
 
     fn DeclarationDistance(input: ParseNode) -> ParseResult<Distance> {
         let mut children = input.into_children();
-        let id = Self::ID(children.next().expect("distance name"))?;
+        let name = Self::ID(children.next().expect("distance name"))?;
         let value = Self::DistanceExpression(children.next().expect("distance value"))?;
-        Ok(Distance { id, value })
+        Ok(Distance { id: None, name, value })
     }
 
     fn DistanceExpression(input: ParseNode) -> ParseResult<crate::ast::DistanceExpression> {
@@ -460,9 +449,9 @@ impl StarkParser {
 
     fn DeclarationFormula(input: ParseNode) -> ParseResult<Formula> {
         let mut children = input.into_children();
-        let id = Self::ID(children.next().expect("formula name"))?;
+        let name = Self::ID(children.next().expect("formula name"))?;
         let value = Self::RobtlFormula(children.next().expect("formula value"))?;
-        Ok(Formula { id, value })
+        Ok(Formula { id: None, name, value })
     }
 
     fn RobtlFormula(input: ParseNode) -> ParseResult<crate::ast::RobtlFormula> {
