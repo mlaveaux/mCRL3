@@ -56,6 +56,7 @@ mod inner {
 
     use std::iter;
 
+    use merc_aterm::ATermInt;
     use merc_aterm::ATermIntRef;
     use merc_aterm::ATermStringRef;
     use merc_utilities::MercError;
@@ -363,11 +364,23 @@ mod inner {
     }
 
     #[merc_term(is_data_machine_number)]
-    struct MachineNumber {
+    pub struct MachineNumber {
         pub term: ATerm,
     }
 
     impl MachineNumber {
+        /// Builds a machine number data expression wrapping `value`.
+        ///
+        /// A machine number is stored as a raw [`merc_aterm::ATermInt`]; the
+        /// `u64` value is reinterpreted as the platform integer bit pattern,
+        /// the inverse of [`MachineNumber::value`].
+        #[merc_ignore]
+        pub fn new(value: u64) -> MachineNumber {
+            MachineNumber {
+                term: ATermInt::new(value as usize).into(),
+            }
+        }
+
         /// Obtain the underlying value of a machine number.
         ///
         /// Assumes the term is an integer term, which is guaranteed by the constructor
@@ -572,6 +585,13 @@ mod inner {
     #[merc_ignore]
     impl From<DataVariable> for DataExpression {
         fn from(value: DataVariable) -> Self {
+            value.term.into()
+        }
+    }
+
+    #[merc_ignore]
+    impl From<MachineNumber> for DataExpression {
+        fn from(value: MachineNumber) -> Self {
             value.term.into()
         }
     }
