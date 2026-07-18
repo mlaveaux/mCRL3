@@ -4,11 +4,82 @@
 //! (`StarkSpecificationLanguage.g4`). The tree is produced by `consume.rs`
 //! (structural declarations) together with the Pratt parsers in `precedence.rs`
 //! (expressions and the perturbation / distance / ROBTL sub-languages).
+//!
+//! Declarations carry an `id: Option<DefId>` (or `Option<StateId>` for
+//! controller states) that is `None` after parsing and filled in by name
+//! resolution (`resolve.rs`). Every place a declared name is *referenced*
+//! (rather than declared) uses [DefRef], [StateRef] or, inside expressions,
+//! [Binding] — all `None`/absent until resolution runs.
+
+pub use merc_utilities::Span;
+pub use merc_utilities::Spanned;
+use merc_utilities::TagIndex;
+
+/// A unique tag for top-level declarations: constants, parameters, variables,
+/// functions, penalties, components, custom types, perturbations, distances
+/// and formulas all share this single namespace, mirroring the original
+/// STARK `SymbolTable`'s single `symbols` map.
+pub struct DefTag;
+/// The index type assigned to a top-level declaration during name resolution.
+pub type DefId = TagIndex<usize, DefTag>;
+
+/// A unique tag for controller states, which are scoped to their component.
+pub struct StateTag;
+/// The index type assigned to a controller state during name resolution.
+pub type StateId = TagIndex<usize, StateTag>;
+
+/// A unique tag for local bindings: function arguments, `let` bindings, and
+/// the `it` iterator parameter.
+pub struct LocalTag;
+/// The index type assigned to a local binding during name resolution.
+pub type LocalId = TagIndex<usize, LocalTag>;
+
+/// An `Expression` together with the source span it was parsed from.
+pub type SpannedExpression = Spanned<Expression>;
+
+/// A reference to a top-level declaration (variable, constant, parameter,
+/// function, penalty, distance, perturbation, formula or component),
+/// resolved to a [DefId] by name resolution. `id` is `None` until then.
+#[derive(Clone, Debug)]
+pub struct DefRef {
+    pub id: Option<DefId>,
+    pub name: Identifier,
+}
+
+impl DefRef {
+    pub fn new(name: Identifier) -> Self {
+        DefRef { id: None, name }
+    }
+}
+
+/// A reference to a controller state (`step`/`exec` target, or a component's
+/// `init` expression), resolved to a [StateId] within its enclosing
+/// component. `id` is `None` until then.
+#[derive(Clone, Debug)]
+pub struct StateRef {
+    pub id: Option<StateId>,
+    pub name: Identifier,
+}
+
+impl StateRef {
+    pub fn new(name: Identifier) -> Self {
+        StateRef { id: None, name }
+    }
+}
+
+/// What an expression-level name reference resolves to: either a top-level
+/// declaration or a local binding (function argument, `let` binding, or the
+/// `it` iterator parameter).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Binding {
+    Def(DefId),
+    Local(LocalId),
+}
 
 /// A complete parsed STARK specification: the ordered list of every top-level
 /// declaration in the source.
 #[derive(Clone, Debug, Default)]
-pub struct StarkSpecification {
+pub struct UntypedStarkSpecification {
     pub constants: Vec<Constant>,
     pub parameters: Vec<Parameter>,
     pub variables: Vec<Variable>,
@@ -22,7 +93,7 @@ pub struct StarkSpecification {
     pub formulas: Vec<Formula>,
 }
 
-impl StarkSpecification {
+impl UntypedStarkSpecification {
     pub fn new() -> Self {
         Self::default()
     }
@@ -35,67 +106,75 @@ impl StarkSpecification {
 /// `const name = value;`
 #[derive(Clone, Debug)]
 pub struct Constant {
-    pub id: Identifier,
-    pub value: Expression,
+    pub id: Option<DefId>,
+    pub name: Identifier,
+    pub value: SpannedExpression,
 }
 
 /// `param name = value;`
 #[derive(Clone, Debug)]
 pub struct Parameter {
-    pub id: Identifier,
-    pub value: Expression,
+    pub id: Option<DefId>,
+    pub name: Identifier,
+    pub value: SpannedExpression,
 }
 
 /// A single variable in a (`global`) `variables { ... }` block, or in a
 /// component's local `variables { ... }` block.
 #[derive(Clone, Debug)]
 pub struct Variable {
+    pub id: Option<DefId>,
     pub global: bool,
     pub ty: Ty,
-    pub id: Identifier,
+    pub name: Identifier,
     pub range: Option<Range>,
-    pub initial_value: Expression,
+    pub initial_value: SpannedExpression,
 }
 
 /// `type name = A | B | C;`
 #[derive(Clone, Debug)]
 pub struct TypeDeclaration {
-    pub id: Identifier,
+    pub id: Option<DefId>,
+    pub name: Identifier,
     pub elements: Vec<Identifier>,
 }
 
 /// `penalty name = expr`
 #[derive(Clone, Debug)]
 pub struct Penalty {
-    pub id: Identifier,
-    pub value: Expression,
+    pub id: Option<DefId>,
+    pub name: Identifier,
+    pub value: SpannedExpression,
 }
 
 /// `function name(args) { body }`
 #[derive(Clone, Debug)]
 pub struct Function {
-    pub id: Identifier,
+    pub id: Option<DefId>,
+    pub name: Identifier,
     pub arguments: Vec<FunctionArgument>,
     pub body: FunctionStatement,
 }
 
 #[derive(Clone, Debug)]
 pub struct FunctionArgument {
+    pub id: Option<LocalId>,
     pub ty: Ty,
-    pub id: Identifier,
+    pub name: Identifier,
 }
 
 #[derive(Clone, Debug)]
 pub enum FunctionStatement {
-    Return(Expression),
+    Return(SpannedExpression),
     IfThenElse {
-        guard: Expression,
+        guard: SpannedExpression,
         then_branch: Box<FunctionStatement>,
         else_branch: Option<Box<FunctionStatement>>,
     },
     Let {
-        id: Identifier,
-        value: Expression,
+        id: Option<LocalId>,
+        name: Identifier,
+        value: SpannedExpression,
         body: Box<FunctionStatement>,
     },
     Block(Box<FunctionStatement>),
@@ -108,17 +187,19 @@ pub enum FunctionStatement {
 /// `component name { variables { .. } controller { .. } init .. }`
 #[derive(Clone, Debug)]
 pub struct Component {
-    pub id: Identifier,
+    pub id: Option<DefId>,
+    pub name: Identifier,
     pub variables: Vec<Variable>,
     pub states: Vec<ControllerState>,
     /// The `init` expression: the parallel composition of state references.
-    pub init: Vec<Identifier>,
+    pub init: Vec<StateRef>,
 }
 
 /// `aiState name { .. }`
 #[derive(Clone, Debug)]
 pub struct ControllerState {
-    pub id: Identifier,
+    pub id: Option<StateId>,
+    pub name: Identifier,
     pub body: Vec<ControllerCommand>,
 }
 
@@ -126,22 +207,23 @@ pub struct ControllerState {
 pub enum ControllerCommand {
     /// `[steps #] step target;`
     Step {
-        steps: Option<Expression>,
-        target: Identifier,
+        steps: Option<SpannedExpression>,
+        target: StateRef,
     },
     /// `exec target;`
-    Exec(Identifier),
+    Exec(StateRef),
     /// `let id = value in body`
     Let {
-        id: Identifier,
-        value: Expression,
+        id: Option<LocalId>,
+        name: Identifier,
+        value: SpannedExpression,
         body: Vec<ControllerCommand>,
     },
     /// `[when guard] target' = value;`
     Assignment(Update),
     /// `if (guard) { .. } else { .. }`
     IfThenElse {
-        guard: Expression,
+        guard: SpannedExpression,
         then_branch: Vec<ControllerCommand>,
         else_branch: Option<Vec<ControllerCommand>>,
     },
@@ -165,7 +247,7 @@ pub enum EnvironmentCommand {
     Assignment(Update),
     /// `if (guard) cmd [else cmd]`
     IfThenElse {
-        guard: Expression,
+        guard: SpannedExpression,
         then_branch: Box<EnvironmentCommand>,
         else_branch: Option<Box<EnvironmentCommand>>,
     },
@@ -180,17 +262,19 @@ pub enum EnvironmentCommand {
 
 #[derive(Clone, Debug)]
 pub struct LocalVariable {
-    pub id: Identifier,
-    pub value: Expression,
+    pub id: Option<LocalId>,
+    pub name: Identifier,
+    pub value: SpannedExpression,
 }
 
 /// A `[when guard] target' = value;` assignment shared by controllers and the
-/// environment. `target` is the primed variable name (without the trailing `'`).
+/// environment. `target` is the primed variable name (without the trailing
+/// `'`), resolved to the [DefId] of the variable it updates.
 #[derive(Clone, Debug)]
 pub struct Update {
-    pub guard: Option<Expression>,
-    pub target: Identifier,
-    pub value: Expression,
+    pub guard: Option<SpannedExpression>,
+    pub target: DefRef,
+    pub value: SpannedExpression,
 }
 
 // ---------------------------------------------------------------------------
@@ -200,64 +284,67 @@ pub struct Update {
 /// `perturbation name = expr;`
 #[derive(Clone, Debug)]
 pub struct Perturbation {
-    pub id: Identifier,
+    pub id: Option<DefId>,
+    pub name: Identifier,
     pub value: PerturbationExpression,
 }
 
 #[derive(Clone, Debug)]
 pub enum PerturbationExpression {
     Nil,
-    Reference(Identifier),
+    Reference(DefRef),
     /// `[ v1 <- e1, v2 <- e2 ] @ time`
     Atomic {
         assignments: Vec<PerturbationAssignment>,
-        time: Expression,
+        time: SpannedExpression,
     },
     /// `left ; right`
     Sequence(Box<PerturbationExpression>, Box<PerturbationExpression>),
     /// `argument ^ iterations`
     Iteration {
         argument: Box<PerturbationExpression>,
-        iterations: Expression,
+        iterations: SpannedExpression,
     },
 }
 
 #[derive(Clone, Debug)]
 pub struct PerturbationAssignment {
-    pub id: Identifier,
-    pub value: Expression,
+    pub target: DefRef,
+    pub value: SpannedExpression,
 }
 
 /// `distance name = expr;`
 #[derive(Clone, Debug)]
 pub struct Distance {
-    pub id: Identifier,
+    pub id: Option<DefId>,
+    pub name: Identifier,
     pub value: DistanceExpression,
 }
 
 #[derive(Clone, Debug)]
 pub enum DistanceExpression {
-    Reference(Identifier),
+    /// A reference to another named `distance` declaration.
+    Reference(DefRef),
     /// `< penalty`
-    AtomicLeft(Identifier),
+    AtomicLeft(DefRef),
     /// `> penalty`
-    AtomicRight(Identifier),
+    AtomicRight(DefRef),
     /// `\F[from,to] argument`
     Eventually {
-        from: Expression,
-        to: Expression,
+        from: SpannedExpression,
+        to: SpannedExpression,
         argument: Box<DistanceExpression>,
     },
     /// `\G[from,to] argument`
     Globally {
-        from: Expression,
-        to: Expression,
+        from: SpannedExpression,
+        to: SpannedExpression,
         argument: Box<DistanceExpression>,
     },
     /// `left \U[from,to] right`
     Until {
-        from: Expression,
-        to: Expression,
+        from: SpannedExpression,
+        to: SpannedExpression,
         left: Box<DistanceExpression>,
         right: Box<DistanceExpression>,
     },
@@ -265,18 +352,19 @@ pub enum DistanceExpression {
     Threshold {
         op: ComparisonOp,
         left: Box<DistanceExpression>,
-        threshold: Expression,
+        threshold: SpannedExpression,
     },
     Min(Box<DistanceExpression>, Box<DistanceExpression>),
     Max(Box<DistanceExpression>, Box<DistanceExpression>),
     /// `w1 * d1 + w2 * d2 + ...`
-    LinearCombination(Vec<(Expression, DistanceExpression)>),
+    LinearCombination(Vec<(SpannedExpression, DistanceExpression)>),
 }
 
 /// `formula name = formula;`
 #[derive(Clone, Debug)]
 pub struct Formula {
-    pub id: Identifier,
+    pub id: Option<DefId>,
+    pub name: Identifier,
     pub value: RobtlFormula,
 }
 
@@ -284,30 +372,31 @@ pub struct Formula {
 pub enum RobtlFormula {
     True,
     False,
-    Reference(Identifier),
+    /// A reference to another named `formula` declaration.
+    Reference(DefRef),
     /// `\D[distance, perturbation] op value`
     Distance {
-        distance: Identifier,
-        perturbation: Identifier,
+        distance: DefRef,
+        perturbation: DefRef,
         op: ComparisonOp,
-        value: Expression,
+        value: SpannedExpression,
     },
     Not(Box<RobtlFormula>),
     Globally {
-        from: Expression,
-        to: Expression,
+        from: SpannedExpression,
+        to: SpannedExpression,
         argument: Box<RobtlFormula>,
     },
     Eventually {
-        from: Expression,
-        to: Expression,
+        from: SpannedExpression,
+        to: SpannedExpression,
         argument: Box<RobtlFormula>,
     },
     And(Box<RobtlFormula>, Box<RobtlFormula>),
     Or(Box<RobtlFormula>, Box<RobtlFormula>),
     Until {
-        from: Expression,
-        to: Expression,
+        from: SpannedExpression,
+        to: SpannedExpression,
         left: Box<RobtlFormula>,
         right: Box<RobtlFormula>,
     },
@@ -324,49 +413,52 @@ pub enum Expression {
     True,
     Integer(i64),
     Real(f64),
-    Identifier(String),
+    /// A name reference: a constant/parameter/variable, a local binding
+    /// (function argument, `let` binding, `it`), or (before resolution)
+    /// unresolved. `binding` is filled in by `resolve.rs`.
+    Reference { name: String, binding: Option<Binding> },
     /// The `it` lambda parameter used inside aggregate/perturbation contexts.
     Iterator,
 
     // Distributions / random values
     Normal {
-        mean: Box<Expression>,
-        std_dev: Box<Expression>,
+        mean: Box<SpannedExpression>,
+        std_dev: Box<SpannedExpression>,
     },
     Uniform {
-        values: Vec<Expression>,
+        values: Vec<SpannedExpression>,
     },
     /// `R` or `R[min,max]`.
     Range {
-        min: Option<Box<Expression>>,
-        max: Option<Box<Expression>>,
+        min: Option<Box<SpannedExpression>>,
+        max: Option<Box<SpannedExpression>>,
     },
 
     // Prefix operators
-    Not(Box<Expression>),
-    UnaryPlus(Box<Expression>),
-    UnaryMinus(Box<Expression>),
+    Not(Box<SpannedExpression>),
+    UnaryPlus(Box<SpannedExpression>),
+    UnaryMinus(Box<SpannedExpression>),
 
     // Binary operators
-    Binary(BinaryOp, Box<Expression>, Box<Expression>),
+    Binary(BinaryOp, Box<SpannedExpression>, Box<SpannedExpression>),
 
     // `guard ? then : else`
     Ternary {
-        guard: Box<Expression>,
-        then_branch: Box<Expression>,
-        else_branch: Box<Expression>,
+        guard: Box<SpannedExpression>,
+        then_branch: Box<SpannedExpression>,
+        else_branch: Box<SpannedExpression>,
     },
 
     /// A user-defined function application `name(args)`.
     Call {
-        function: Box<Expression>,
-        arguments: Vec<Expression>,
+        function: DefRef,
+        arguments: Vec<SpannedExpression>,
     },
 
     /// A built-in math function application, e.g. `abs(x)`, `max(a, b)`.
     MathCall {
         function: MathFunction,
-        arguments: Vec<Expression>,
+        arguments: Vec<SpannedExpression>,
     },
 }
 
@@ -439,8 +531,8 @@ pub enum MathFunction {
 /// A `range [min, max]` bound on a variable declaration.
 #[derive(Clone, Debug)]
 pub struct Range {
-    pub min: Expression,
-    pub max: Expression,
+    pub min: SpannedExpression,
+    pub max: SpannedExpression,
 }
 
 #[derive(Clone, Debug)]
@@ -462,21 +554,5 @@ pub struct Identifier {
 impl Identifier {
     pub fn new(name: String, span: Span) -> Self {
         Identifier { name, span }
-    }
-}
-
-/// Source location information, spanning from start to end in the source text.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl From<pest::Span<'_>> for Span {
-    fn from(span: pest::Span) -> Self {
-        Span {
-            start: span.start(),
-            end: span.end(),
-        }
     }
 }
