@@ -218,7 +218,11 @@ fn random_quantifier<R: Rng>(
     }
 
     let var_name = (*available.choose(rng).expect("available is non-empty")).to_string();
-    let var_decl = IdDecl::new(var_name.clone(), SortExpressionKind::Simple(Sort::Nat).into(), Span::default());
+    let var_decl = IdDecl::new(
+        var_name.clone(),
+        SortExpressionKind::Simple(Sort::Nat).into(),
+        Span::default(),
+    );
 
     let mut new_freevars = freevars.to_vec();
     new_freevars.push(as_expr_decl(&var_name));
@@ -264,7 +268,11 @@ fn is_bool_var(name: &str) -> bool {
 
 fn as_expr_decl(name: &str) -> IdDecl {
     let sort = if is_bool_var(name) { Sort::Bool } else { Sort::Nat };
-    IdDecl::new(name.to_string(), SortExpressionKind::Simple(sort).into(), Span::default())
+    IdDecl::new(
+        name.to_string(),
+        SortExpressionKind::Simple(sort).into(),
+        Span::default(),
+    )
 }
 
 struct PredVar {

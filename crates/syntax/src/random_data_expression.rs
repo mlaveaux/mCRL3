@@ -32,7 +32,9 @@ fn binary(op: DataExprBinaryOp, lhs: DataExpr, rhs: DataExpr) -> DataExpr {
 pub fn random_boolean_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDecl<Id>]) -> DataExpr {
     let integers: Vec<&IdDecl<Id>> = variables
         .iter()
-        .filter(|v| matches!(&v.sort.node, SortExpressionKind::Simple(s) if matches!(s, Sort::Int | Sort::Nat | Sort::Pos)))
+        .filter(
+            |v| matches!(&v.sort.node, SortExpressionKind::Simple(s) if matches!(s, Sort::Int | Sort::Nat | Sort::Pos)),
+        )
         .collect();
     let booleans: Vec<&IdDecl<Id>> = variables
         .iter()
@@ -62,7 +64,9 @@ pub fn random_boolean_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDe
 pub fn random_integer_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDecl<Id>]) -> DataExpr {
     let integers: Vec<&IdDecl<Id>> = variables
         .iter()
-        .filter(|v| matches!(&v.sort.node, SortExpressionKind::Simple(s) if matches!(s, Sort::Int | Sort::Nat | Sort::Pos)))
+        .filter(
+            |v| matches!(&v.sort.node, SortExpressionKind::Simple(s) if matches!(s, Sort::Int | Sort::Nat | Sort::Pos)),
+        )
         .collect();
 
     let extras = [number("1"), number("2")];

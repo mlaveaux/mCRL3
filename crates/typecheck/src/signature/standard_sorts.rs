@@ -112,21 +112,32 @@ fn container_templates(encoding: NumberEncoding) -> &'static ContainerTemplates 
     }
 }
 
-/// The defining equations of the polymorphic `if` operator at `sort`
-/// (Appendix B): `if(true, x, y) = x` and `if(false, x, y) = y`.
+/// The Appendix-B equations of the built-in operator *schemes* at `sort`: the
+/// conditional `if`, and the reflexive/derived cases of the comparison
+/// operators.
 ///
-/// `if` is a built-in scheme rather than a per-sort declaration, so no bundled
-/// template defines it; without these equations a conditional never reduces.
-/// The numeric templates rely on this heavily — `nat64.mcrl2` alone applies `if`
-/// in 91 equations — so the machine-word encoding cannot rewrite at all without
-/// them.
-pub(crate) fn if_equations(sort: &str) -> UntypedDataSpecification {
-    // The variable names are local to the generated equation block, so they
-    // cannot collide with the user's or another sort's declarations.
+/// These operators are built-in schemes rather than per-sort declarations, so no
+/// bundled template defines them, and without these equations they never reduce
+/// (`10 == 10` would get stuck as `==(@c1, @c1)`, and every `if` would remain
+/// unevaluated). The numeric templates rely on `if` heavily — `nat64.mcrl2`
+/// alone applies it in 91 equations — so the machine-word encoding cannot
+/// rewrite at all without them.
+///
+/// Only the generic cases are generated here; the sort-specific cases (such as
+/// `@c0 == @cNat(p) = false`) come from the templates themselves.
+pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification {
+    // The variable names are qualified by sort so that merging the blocks of
+    // several sorts cannot collide, here or with a user declaration.
     parse_template(&formatdoc! {"
-        var x_if_{sort}, y_if_{sort}: {sort};
-        eqn if(true, x_if_{sort}, y_if_{sort}) = x_if_{sort};
-            if(false, x_if_{sort}, y_if_{sort}) = y_if_{sort};
+        var x_{sort}, y_{sort}: {sort};
+        eqn x_{sort} == x_{sort} = true;
+            x_{sort} != y_{sort} = !(x_{sort} == y_{sort});
+            x_{sort} < x_{sort} = false;
+            x_{sort} <= x_{sort} = true;
+            x_{sort} > y_{sort} = y_{sort} < x_{sort};
+            x_{sort} >= y_{sort} = y_{sort} <= x_{sort};
+            if(true, x_{sort}, y_{sort}) = x_{sort};
+            if(false, x_{sort}, y_{sort}) = y_{sort};
     "})
 }
 
@@ -142,7 +153,7 @@ pub(crate) fn basic_sort_data_specification(encoding: NumberEncoding) -> Untyped
     };
 
     for sort in BASIC_SORT_NAMES {
-        result.merge(&if_equations(sort));
+        result.merge(&builtin_operator_equations(sort));
     }
     result
 }
@@ -387,9 +398,9 @@ mod tests {
     use merc_syntax::SortExpressionKind;
 
     use super::UntypedDataSpecification;
-    use crate::NumberEncoding;
     use super::standard_sort;
     use super::structured_sort_equations;
+    use crate::NumberEncoding;
 
     #[test]
     fn test_standard_sort_substitutes_binder_sorts() {

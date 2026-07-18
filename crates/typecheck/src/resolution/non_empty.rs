@@ -45,10 +45,13 @@ pub(crate) fn nonempty_sorts(spec: &UntypedDataSpecification) -> HashSet<DefId> 
                 continue;
             }
 
-            let all_arguments_nonempty = argument_sorts(&constructor.sort).iter().all(|argument| match &argument.node {
-                SortExpressionKind::Resolved(_, id) => nonempty.contains(id),
-                _ => true,
-            });
+            let all_arguments_nonempty =
+                argument_sorts(&constructor.sort)
+                    .iter()
+                    .all(|argument| match &argument.node {
+                        SortExpressionKind::Resolved(_, id) => nonempty.contains(id),
+                        _ => true,
+                    });
 
             if all_arguments_nonempty {
                 nonempty.insert(*target);

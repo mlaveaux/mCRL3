@@ -750,7 +750,9 @@ pub(crate) fn lower_syntax_sort(sort: &SortExpression) -> DataSortExpression {
         // or an unresolved template reference in the system spec (e.g. "S", "T").
         // Both use the string name — the identity of a nominal sort IS its name
         // in the binary schema.
-        SortExpressionKind::Resolved(name, _) | SortExpressionKind::Reference(name) => BasicSort::new(name.as_str()).into(),
+        SortExpressionKind::Resolved(name, _) | SortExpressionKind::Reference(name) => {
+            BasicSort::new(name.as_str()).into()
+        }
         SortExpressionKind::Struct { .. } | SortExpressionKind::Product { .. } => {
             unreachable!("struct/product sorts are desugared/flattened before lowering")
         }
@@ -1171,9 +1173,8 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
                     lower_system_expr(system, &var_map, &eqn.rhs, Some(&lhs_sort), encoding).map(|(rhs, _)| (lhs, rhs))
                 }
                 None => match lower_system_expr(system, &var_map, &eqn.rhs, None, encoding) {
-                    Some((rhs, rhs_sort)) => {
-                        lower_system_expr(system, &var_map, &eqn.lhs, Some(&rhs_sort), encoding).map(|(lhs, _)| (lhs, rhs))
-                    }
+                    Some((rhs, rhs_sort)) => lower_system_expr(system, &var_map, &eqn.lhs, Some(&rhs_sort), encoding)
+                        .map(|(lhs, _)| (lhs, rhs)),
                     None => None,
                 },
             };
@@ -1307,9 +1308,9 @@ mod tests {
     use merc_syntax::UntypedDataSpecification;
 
     use super::LoweredEquation;
+    use super::NumberEncoding;
     use super::lower_bool_literal;
     use super::lower_equation;
-    use super::NumberEncoding;
     use super::lower_number_literal;
     use super::lower_sort;
     use crate::DataSpecification;
@@ -1382,9 +1383,18 @@ mod tests {
 
     #[test]
     fn test_pos_literals() {
-        assert_eq!(lower_number_literal("1", Sort::Pos, NumberEncoding::Binary).to_string(), "@c1");
-        assert_eq!(lower_number_literal("2", Sort::Pos, NumberEncoding::Binary).to_string(), "@cDub(false, @c1)");
-        assert_eq!(lower_number_literal("3", Sort::Pos, NumberEncoding::Binary).to_string(), "@cDub(true, @c1)");
+        assert_eq!(
+            lower_number_literal("1", Sort::Pos, NumberEncoding::Binary).to_string(),
+            "@c1"
+        );
+        assert_eq!(
+            lower_number_literal("2", Sort::Pos, NumberEncoding::Binary).to_string(),
+            "@cDub(false, @c1)"
+        );
+        assert_eq!(
+            lower_number_literal("3", Sort::Pos, NumberEncoding::Binary).to_string(),
+            "@cDub(true, @c1)"
+        );
         assert_eq!(
             lower_number_literal("5", Sort::Pos, NumberEncoding::Binary).to_string(),
             "@cDub(true, @cDub(false, @c1))"
@@ -1400,7 +1410,10 @@ mod tests {
 
     #[test]
     fn test_nat_literals() {
-        assert_eq!(lower_number_literal("0", Sort::Nat, NumberEncoding::Binary).to_string(), "@c0");
+        assert_eq!(
+            lower_number_literal("0", Sort::Nat, NumberEncoding::Binary).to_string(),
+            "@c0"
+        );
         assert_eq!(
             lower_number_literal("2", Sort::Nat, NumberEncoding::Binary).to_string(),
             "@cNat(@cDub(false, @c1))"
@@ -1409,7 +1422,10 @@ mod tests {
 
     #[test]
     fn test_int_literal() {
-        assert_eq!(lower_number_literal("0", Sort::Int, NumberEncoding::Binary).to_string(), "@cInt(@c0)");
+        assert_eq!(
+            lower_number_literal("0", Sort::Int, NumberEncoding::Binary).to_string(),
+            "@cInt(@c0)"
+        );
     }
 
     #[test]
@@ -1697,4 +1713,3 @@ mod tests {
         assert_eq!(equation.rhs.to_string(), "@func_update(f, n, true)");
     }
 }
-

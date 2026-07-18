@@ -47,7 +47,11 @@ pub fn random_lps<R: Rng>(
         })
         .collect();
 
-    let s_param = IdDecl::new("s".to_string(), SortExpressionKind::Simple(Sort::Nat).into(), Span::default());
+    let s_param = IdDecl::new(
+        "s".to_string(),
+        SortExpressionKind::Simple(Sort::Nat).into(),
+        Span::default(),
+    );
 
     let mut summands: Vec<ProcessExpr> = Vec::new();
     for from in 0..num_states {
@@ -137,7 +141,11 @@ const PROC_NAMES: &[&str] = &["P", "Q", "R"];
 const SUM_VARS: &[&str] = &["s1", "s2", "s3"];
 
 fn id_decl(name: &str, sort: Sort) -> IdDecl {
-    IdDecl::new(name.to_string(), SortExpressionKind::Simple(sort).into(), Span::default())
+    IdDecl::new(
+        name.to_string(),
+        SortExpressionKind::Simple(sort).into(),
+        Span::default(),
+    )
 }
 
 fn is_bool(decl: &IdDecl) -> bool {

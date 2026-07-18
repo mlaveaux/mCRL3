@@ -132,9 +132,17 @@ fn distinguishing_to_statefrm<L: TransitionLabel>(formula: &DistinguishingFormul
         DistinguishingFormula::Negate(inner) => distinguishing_to_statefrm(inner, !negated),
         DistinguishingFormula::Diamond { label, conjuncts } => {
             let (operator, op, unit): (_, _, StateFrm) = if negated {
-                (ModalityOperator::Box, StateFrmOp::Disjunction, StateFrmKind::False.into())
+                (
+                    ModalityOperator::Box,
+                    StateFrmOp::Disjunction,
+                    StateFrmKind::False.into(),
+                )
             } else {
-                (ModalityOperator::Diamond, StateFrmOp::Conjunction, StateFrmKind::True.into())
+                (
+                    ModalityOperator::Diamond,
+                    StateFrmOp::Conjunction,
+                    StateFrmKind::True.into(),
+                )
             };
 
             let expr = conjuncts
@@ -167,8 +175,10 @@ fn distinguishing_to_statefrm<L: TransitionLabel>(formula: &DistinguishingFormul
 /// it is a valid weaktrace formula.
 fn weaktrace_formula<L: TransitionLabel>(trace: &[L], expr: StateFrm, modality: ModalityOperator) -> StateFrm {
     // Build the formula tau*
-    let tau_star: RegFrm =
-        RegFrmKind::Iteration(Box::new(RegFrmKind::Action(ActFrmKind::MultAct(MultiAction::tau()).into()).into())).into();
+    let tau_star: RegFrm = RegFrmKind::Iteration(Box::new(
+        RegFrmKind::Action(ActFrmKind::MultAct(MultiAction::tau()).into()).into(),
+    ))
+    .into();
 
     // We build the formula bottom up: tau* . label . ... . tau*
     let mut result: StateFrm = StateFrmKind::Modality {

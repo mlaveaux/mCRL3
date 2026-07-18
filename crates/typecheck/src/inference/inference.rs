@@ -992,7 +992,9 @@ impl<'a> ConstraintGenerator<'a> {
             SortExpressionKind::Reference(name) => *variables
                 .entry(name.clone())
                 .or_insert_with(|| self.unifier.fresh_var()),
-            SortExpressionKind::Resolved(_, _) | SortExpressionKind::Struct { .. } | SortExpressionKind::Product { .. } => {
+            SortExpressionKind::Resolved(_, _)
+            | SortExpressionKind::Struct { .. }
+            | SortExpressionKind::Product { .. } => {
                 unreachable!("the templates declare only primitive, container, function and variable sorts")
             }
         }
