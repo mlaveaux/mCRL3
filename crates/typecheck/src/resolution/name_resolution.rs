@@ -225,7 +225,10 @@ mod tests {
         let equation = &spec.data_specification().equation_declarations[0];
 
         // The declaration-level variable `x: D` is resolved.
-        assert!(matches!(equation.variables[0].sort.node, SortExpressionKind::Resolved(_, _)));
+        assert!(matches!(
+            equation.variables[0].sort.node,
+            SortExpressionKind::Resolved(_, _)
+        ));
 
         // The quantifier binder `y: D` in the body is resolved as well.
         let DataExprKind::Quantifier { variables, .. } = &equation.equations[0].rhs.node else {

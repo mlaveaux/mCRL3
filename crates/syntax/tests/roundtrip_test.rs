@@ -34,7 +34,10 @@ fn pbes_quantifiers_parse() {
 
     let formula = &pbes.equations[0].formula;
     assert!(
-        matches!(formula.node, PbesExprKind::Quantifier { .. } | PbesExprKind::Binary { .. }),
+        matches!(
+            formula.node,
+            PbesExprKind::Quantifier { .. } | PbesExprKind::Binary { .. }
+        ),
         "unexpected formula: {formula:?}"
     );
 }

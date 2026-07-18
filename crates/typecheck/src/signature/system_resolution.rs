@@ -200,10 +200,10 @@ mod tests {
     use merc_syntax::UntypedDataSpecification;
 
     use crate::DataSpecification;
+    use crate::NumberEncoding;
     use crate::ResolvedSort;
     use crate::TypeckContext;
     use crate::WellTypedError;
-    use crate::NumberEncoding;
     use crate::basic_sort_data_specification;
     use crate::resolve_system_signature;
 

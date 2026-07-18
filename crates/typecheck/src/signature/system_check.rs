@@ -133,9 +133,9 @@ impl Checker<'_> {
     /// sorts, and places products only in function domains.
     fn check_sort(&self, sort: &SortExpression) -> Result<(), WellTypedError> {
         let error = visit_sort_expr(sort, |expr| match &expr.node {
-            SortExpressionKind::Reference(name) if !self.sort_names.contains(name.as_str()) => ControlFlow::Break(format!(
-                "the system-defined specification references the undeclared sort '{name}'"
-            )),
+            SortExpressionKind::Reference(name) if !self.sort_names.contains(name.as_str()) => ControlFlow::Break(
+                format!("the system-defined specification references the undeclared sort '{name}'"),
+            ),
             SortExpressionKind::Resolved(name, id) if **id >= self.user_sort_count => ControlFlow::Break(format!(
                 "the resolved sort '{name}' does not index a user sort declaration"
             )),
