@@ -1,0 +1,160 @@
+/*
+ * Ported from ~/STARK/examples/agriculturalDT/src/main/java/agriculturalDT/Main.java:
+ * a tractor driving toward a fixed waypoint (FINAL_POSX, FINAL_POSY) under a
+ * heading/speed control law, sensing its own speed with noise.
+ *
+ * `evaluateDeltaZero` in the original returns both the speed and steering
+ * updates as a two-element array (computed together); STARK functions return
+ * a single value, so it's split into `eval_speed_zero`/`eval_steer_zero`
+ * below, each recomputing the shared terms — mirroring how the original
+ * itself calls `evaluateDeltaZero(...)` twice (once per `DataStateUpdate`)
+ * rather than reusing one computed array.
+ *
+ * `dirAngleNoise`/`steerAngleNoise`/`speedNoise` are declared as state slots
+ * in the original but never read or assigned anywhere, so they're omitted
+ * here. Likewise `MIN_ACC`/`MAX_ACC`/`INIT_ACC` and an `acc` variable exist
+ * only in commented-out code in the original and are omitted.
+ *
+ * The asymmetric `centre` formula (the `if (eTheta>0)` branches differ only
+ * in whether the last denominator uses `sin(eTheta)` or `sin(eRT)`) is
+ * preserved exactly as written in the original — it reads like deliberate
+ * numerical-stability shaping from the control law's derivation, not a
+ * copy-paste mistake, so it isn't "fixed" here.
+ */
+
+param L = 1.85;
+param MAX_STEER_ANGLE = 0.3490658503988659; /* pi/9 */
+param MIN_SPEED = 0.0;
+param MAX_SPEED = 3.0;
+param TIME_OUT = 1;
+param DIST_EPS = 0.1;
+param DIR_EPS = 0.0;
+
+param INIT_POSX = 0.0;
+param INIT_POSY = 0.0;
+param INIT_DIRANGLE = 1.5707963267948966; /* pi/2 */
+param INIT_STEERANGLE = 0.0;
+param INIT_SPEED = 0.0;
+param FINAL_POSX = 30.0;
+param FINAL_POSY = 42.0;
+param INIT_DIST = sqrt((FINAL_POSX-INIT_POSX)*(FINAL_POSX-INIT_POSX) + (FINAL_POSY-INIT_POSY)*(FINAL_POSY-INIT_POSY));
+param FINAL_DIRANGLE = 1.0471975511965976; /* pi/3 */
+param FINAL_SPEED = 0.0;
+
+param Kx = 0.15;
+param Kd = 1/INIT_DIST;
+param Kl = 1.8;
+param Ko = 8;
+param Kt = 0.01;
+param KRT = 0.6;
+
+function get_theta_rt(real x, real y, real dist) {
+  if (dist > DIST_EPS) {
+    return atan((FINAL_POSY - y) / (FINAL_POSX - x));
+  } else {
+    return FINAL_DIRANGLE;
+  }
+}
+
+function eval_speed_zero(real x, real y, real theta, real dist) {
+  let kd = (dist > DIST_EPS ? 1/dist : Kd) in
+  let ex = cos(theta)*(FINAL_POSX-x) + sin(theta)*(FINAL_POSY-y) in
+  let ey = -sin(theta)*(FINAL_POSX-x) + cos(theta)*(FINAL_POSY-y) in
+  let eTheta = FINAL_DIRANGLE - theta in
+  let thetaRT = get_theta_rt(x, y, dist) in
+  let eRT = FINAL_DIRANGLE - thetaRT in
+  let centre = (eTheta > 0
+    ? Kt*tan(eTheta) + (kd*ey - Kl*dist*sin(eRT)*cos(eTheta))/(Ko*cos(eTheta)) + (KRT*sin(eRT)*sin(eRT)/(sin(eTheta)*cos(eTheta)))
+    : Kt*tan(eTheta) + (kd*ey - Kl*dist*sin(eRT)*cos(eTheta))/(Ko*cos(eTheta)) + (KRT*sin(eRT)*sin(eRT)/(sin(eRT)*cos(eTheta)))
+  ) in
+  return min(MAX_SPEED, max(MIN_SPEED, Kx * (kd*ex + Kl*dist*sin(eRT)*sin(eTheta) + Ko*sin(eTheta)*centre)));
+}
+
+function eval_steer_zero(real x, real y, real theta, real dist) {
+  let kd = (dist > DIST_EPS ? 1/dist : Kd) in
+  let ey = -sin(theta)*(FINAL_POSX-x) + cos(theta)*(FINAL_POSY-y) in
+  let eTheta = FINAL_DIRANGLE - theta in
+  let thetaRT = get_theta_rt(x, y, dist) in
+  let eRT = FINAL_DIRANGLE - thetaRT in
+  let centre = (eTheta > 0
+    ? Kt*tan(eTheta) + (kd*ey - Kl*dist*sin(eRT)*cos(eTheta))/(Ko*cos(eTheta)) + (KRT*sin(eRT)*sin(eRT)/(sin(eTheta)*cos(eTheta)))
+    : Kt*tan(eTheta) + (kd*ey - Kl*dist*sin(eRT)*cos(eTheta))/(Ko*cos(eTheta)) + (KRT*sin(eRT)*sin(eRT)/(sin(eRT)*cos(eTheta)))
+  ) in
+  return min(MAX_STEER_ANGLE, max(-MAX_STEER_ANGLE, atan(L*centre)));
+}
+
+global variables {
+  real posX = INIT_POSX;
+  real posY = INIT_POSY;
+  real dirAngle = INIT_DIRANGLE;
+  real steerAngle = INIT_STEERANGLE;
+  real speed = INIT_SPEED;
+  real sensedSpeed = INIT_SPEED;
+  real dist_to_target = sqrt((FINAL_POSX-INIT_POSX)*(FINAL_POSX-INIT_POSX) + (FINAL_POSY-INIT_POSY)*(FINAL_POSY-INIT_POSY));
+  real diffAngle = abs(FINAL_DIRANGLE - INIT_DIRANGLE);
+  int timer = 0;
+}
+
+component Tractor {
+  variables { }
+  controller {
+    aiState Ctrl {
+      if (dist_to_target > DIST_EPS || diffAngle > DIR_EPS) {
+        speed' = eval_speed_zero(posX, posY, dirAngle, dist_to_target);
+        steerAngle' = eval_steer_zero(posX, posY, dirAngle, dist_to_target);
+        timer' = TIME_OUT;
+        step Idle;
+      } else {
+        speed' = eval_speed_zero(posX, posY, dirAngle, dist_to_target);
+        steerAngle' = eval_steer_zero(posX, posY, dirAngle, dist_to_target);
+        timer' = TIME_OUT;
+        step Stop;
+      }
+    }
+    aiState Idle {
+      if (timer > 0) {
+        step Idle;
+      } else {
+        step Ctrl;
+      }
+    }
+    aiState Stop {
+      if (timer > 0) {
+        step Stop;
+      } else {
+        if (dist_to_target > DIST_EPS || diffAngle > DIR_EPS) {
+          speed' = eval_speed_zero(posX, posY, dirAngle, dist_to_target);
+          steerAngle' = eval_steer_zero(posX, posY, dirAngle, dist_to_target);
+          timer' = TIME_OUT;
+          step Idle;
+        } else {
+          speed' = 0;
+          steerAngle' = 0;
+          timer' = TIME_OUT;
+          step Stop;
+        }
+      }
+    }
+  }
+  init Ctrl
+}
+
+environment {
+  let
+    newX = posX + speed * cos(dirAngle)
+  and
+    newY = posY + speed * sin(dirAngle)
+  and
+    newTheta = dirAngle + tan(steerAngle) * speed / L
+  and
+    newDist = sqrt((FINAL_POSX-newX)*(FINAL_POSX-newX) + (FINAL_POSY-newY)*(FINAL_POSY-newY))
+  in {
+    posX' = newX;
+    posY' = newY;
+    dirAngle' = newTheta;
+    sensedSpeed' = min(MAX_SPEED, max(MIN_SPEED, speed + R[0,1] * 0.25 - 0.125));
+    dist_to_target' = newDist;
+    diffAngle' = abs(FINAL_DIRANGLE - newTheta);
+    timer' = timer - 1;
+  }
+}

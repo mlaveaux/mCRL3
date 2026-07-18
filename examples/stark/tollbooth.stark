@@ -1,0 +1,120 @@
+/*
+ * Ported from ~/STARK/examples/tollbooth/src/main/java/tollbooth/Main.java.
+ *
+ * The vehicle dynamics here (variables, controller states, environment
+ * update) are the same model already ported in `toll.stark`/`two_vehicles.stark`
+ * — this is the same scenario under a different name upstream, just with the
+ * parameters spelled out (`ACCELERATION`/`BRAKE`/`NEUTRAL`) instead of
+ * `toll.stark`'s shorthand (`A`/`B`/`N`).
+ *
+ * What's specific to this example are the four `penalty` declarations
+ * (`rho_100`..`rho_350`, each just `p_distance` scaled by a different
+ * constant) — those map directly to this grammar's `penalty` declarations.
+ * What's built on top of them (`IterativePenalty`/`SequentialPenalty` from
+ * `stark.penalty`, and the `AlwaysDisTLFormula`/`EventuallyDisTLFormula`/
+ * `TargetDisTLFormula` robustness properties from `stark.distl`) is the same
+ * online-monitoring formalism discussed in `monitoring.stark` — a different
+ * verification approach from this grammar's `distance`/`perturbation`/
+ * `formula` (ROBTL) declarations, with no textual-STARK equivalent, so it
+ * isn't ported.
+ */
+
+param ACCELERATION = 0.25;
+param BRAKE = 2.0;
+param NEUTRAL = 0.0;
+param TIMER = 1;
+param INIT_SPEED = 25.0;
+param MAX_SPEED = 40.0;
+param INIT_DISTANCE = 10000.0;
+param H = 350;
+
+global variables {
+  real p_speed = INIT_SPEED;
+  real s_speed = INIT_SPEED;
+  real p_distance = INIT_DISTANCE;
+  real accel = NEUTRAL;
+  int timer_V = 0;
+  real braking_distance = (INIT_SPEED * INIT_SPEED + (ACCELERATION + BRAKE) * (ACCELERATION * TIMER * TIMER + 2 * INIT_SPEED * TIMER)) / (2 * BRAKE);
+  real gap = INIT_DISTANCE - (INIT_SPEED * INIT_SPEED + (ACCELERATION + BRAKE) * (ACCELERATION * TIMER * TIMER + 2 * INIT_SPEED * TIMER)) / (2 * BRAKE);
+}
+
+component Vehicle {
+  variables { }
+  controller {
+    aiState Ctrl {
+      if (s_speed > 0) {
+        if (gap > 0) {
+          accel' = ACCELERATION;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = -BRAKE;
+          timer_V' = TIMER;
+          step Decelerate;
+        }
+      } else {
+        if (gap > 0) {
+          accel' = ACCELERATION;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = NEUTRAL;
+          timer_V' = TIMER;
+          step Stop;
+        }
+      }
+    }
+    aiState Accelerate {
+      if (timer_V > 0) {
+        step Accelerate;
+      } else {
+        step Ctrl;
+      }
+    }
+    aiState Decelerate {
+      if (timer_V > 0) {
+        step Decelerate;
+      } else {
+        step Ctrl;
+      }
+    }
+    aiState Stop {
+      if (timer_V > 0) {
+        step Stop;
+      } else {
+        timer_V' = TIMER;
+        step Stop;
+      }
+    }
+  }
+  init Ctrl
+}
+
+environment {
+  let
+    travel = max(accel/2 + p_speed, 0.0)
+  and
+    new_p_speed = (accel == NEUTRAL ? max(0.0, p_speed - ACCELERATION) : min(MAX_SPEED, max(0.0, p_speed + accel)))
+  and
+    token = R[0,1]
+  and
+    new_s_speed = (token < 0.5 ? new_p_speed + R[0,1] * 0.5 : new_p_speed - R[0,1] * 0.5)
+  in {
+    timer_V' = timer_V - 1;
+    p_speed' = new_p_speed;
+    p_distance' = p_distance - travel;
+    if (timer_V - 1 == 0) {
+      s_speed' = new_s_speed;
+      braking_distance' = (new_s_speed * new_s_speed + (ACCELERATION + BRAKE) * (ACCELERATION * TIMER * TIMER + 2 * new_s_speed * TIMER)) / (2 * BRAKE);
+      gap' = (p_distance - travel) - (new_s_speed * new_s_speed + (ACCELERATION + BRAKE) * (ACCELERATION * TIMER * TIMER + 2 * new_s_speed * TIMER)) / (2 * BRAKE);
+    }
+  }
+}
+
+penalty rho_100 = p_distance / INIT_DISTANCE;
+
+penalty rho_200 = p_distance / 7000;
+
+penalty rho_275 = p_distance / 2500;
+
+penalty rho_350 = p_distance / 10;

@@ -1,0 +1,39 @@
+/*
+ * Ported from ~/STARK/examples/monitoring/basic/src/main/java/monitoring/Main.java.
+ *
+ * The original demonstrates STARK's *online monitoring* framework (the
+ * `stark.udistl`/`stark.distl`/`stark.monitors` Java packages): it builds a
+ * uDisTL formula ("eventually the observed x gets within 0 of a moving
+ * target") and evaluates it directly against sampled observations of a
+ * single running system. That is a different verification approach from
+ * this grammar's `formula`/`distance`/`perturbation` (ROBTL) declarations,
+ * which compare a *nominal* evolution sequence against a *perturbed* one via
+ * a distance metric — there is no textual-STARK equivalent for a uDisTL
+ * monitor, so only the underlying stochastic process model is ported here.
+ *
+ * The original also draws x's initial value randomly
+ * (`myGaussian.apply(rg)`); STARK variable initializers can't be random (no
+ * example in this grammar's own corpus needs that either), so `x` starts at
+ * the distribution's mean (0.5) instead.
+ */
+
+global variables {
+  real t = 0;
+  real x = 0.5;
+}
+
+component Monitor {
+  variables { }
+  controller {
+    aiState Ctrl {
+      step Ctrl;
+    }
+  }
+  init Ctrl
+}
+
+environment {
+  t' = t + 1;
+  /* myGaussian = rg.nextGaussian()/3 + 0.5, i.e. N(mean=0.5, variance=(1/3)^2). */
+  x' = N[0.5, (1.0/3.0)^2] + (1 - 1/(t+1));
+}
