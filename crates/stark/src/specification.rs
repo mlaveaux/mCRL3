@@ -56,6 +56,15 @@ impl UntypedStarkSpecification {
         let (types, type_diagnostics) = typecheck(&self, &symbols);
         diagnostics.extend(type_diagnostics);
 
+        if diagnostics.has_errors() {
+            log::debug!(
+                "specification rejected with {} diagnostic(s)",
+                diagnostics.items().len()
+            );
+        } else {
+            log::debug!("specification checked successfully");
+        }
+
         diagnostics.into_result(StarkSpecification {
             ast: self,
             symbols,
@@ -67,12 +76,16 @@ impl UntypedStarkSpecification {
 #[cfg(test)]
 mod tests {
     use crate::ast::UntypedStarkSpecification;
+    use test_log::test;
 
     #[test]
     fn checks_every_example_specification() {
         for (name, source) in [
             ("engine.stark", include_str!("../../../examples/stark/engine.stark")),
-            ("random_walk.stark", include_str!("../../../examples/stark/random_walk.stark")),
+            (
+                "random_walk.stark",
+                include_str!("../../../examples/stark/random_walk.stark"),
+            ),
             (
                 "single_vehicle.stark",
                 include_str!("../../../examples/stark/single_vehicle.stark"),
@@ -82,10 +95,41 @@ mod tests {
                 "two_vehicles.stark",
                 include_str!("../../../examples/stark/two_vehicles.stark"),
             ),
-            ("monitoring.stark", include_str!("../../../examples/stark/monitoring.stark")),
-            ("agriculturalDT.stark", include_str!("../../../examples/stark/agriculturalDT.stark")),
+            (
+                "monitoring.stark",
+                include_str!("../../../examples/stark/monitoring.stark"),
+            ),
+            (
+                "agriculturalDT.stark",
+                include_str!("../../../examples/stark/agriculturalDT.stark"),
+            ),
+            (
+                "tollbooth.stark",
+                include_str!("../../../examples/stark/tollbooth.stark"),
+            ),
+            (
+                "engine_full.stark",
+                include_str!("../../../examples/stark/engine_full.stark"),
+            ),
+            (
+                "isocitrate.stark",
+                include_str!("../../../examples/stark/isocitrate.stark"),
+            ),
+            ("envzompr.stark", include_str!("../../../examples/stark/envzompr.stark")),
+            (
+                "vehicle_full.stark",
+                include_str!("../../../examples/stark/vehicle_full.stark"),
+            ),
+            (
+                "multiscler.stark",
+                include_str!("../../../examples/stark/multiscler.stark"),
+            ),
+            ("lotka.stark", include_str!("../../../examples/stark/lotka.stark")),
+            ("polistil.stark", include_str!("../../../examples/stark/polistil.stark")),
+            ("turtle.stark", include_str!("../../../examples/stark/turtle.stark")),
         ] {
-            let spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
+            let spec =
+                UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
 
             if let Err(diagnostics) = spec.check() {
                 panic!("{name} failed to check:\n{}", diagnostics.render(source));

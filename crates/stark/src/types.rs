@@ -213,7 +213,10 @@ mod tests {
     #[test]
     fn merge_never_wraps_error_in_random() {
         // Incompatible kinds stay a bare Error even when random.
-        assert_eq!(random(StarkType::Boolean).merge(&random(StarkType::Integer)), StarkType::Error);
+        assert_eq!(
+            random(StarkType::Boolean).merge(&random(StarkType::Integer)),
+            StarkType::Error
+        );
     }
 
     #[test]
@@ -287,7 +290,11 @@ mod tests {
                 // Integer
                 (StarkType::Integer, StarkType::Integer, StarkType::Integer),
                 (StarkType::Integer, StarkType::Real, StarkType::Real),
-                (StarkType::Integer, random(StarkType::Integer), random(StarkType::Integer)),
+                (
+                    StarkType::Integer,
+                    random(StarkType::Integer),
+                    random(StarkType::Integer),
+                ),
                 (StarkType::Integer, random(StarkType::Real), random(StarkType::Real)),
                 // Real
                 (StarkType::Real, StarkType::Integer, StarkType::Real),
@@ -296,23 +303,47 @@ mod tests {
                 (StarkType::Real, random(StarkType::Real), random(StarkType::Real)),
                 // Boolean
                 (StarkType::Boolean, StarkType::Boolean, StarkType::Boolean),
-                (StarkType::Boolean, random(StarkType::Boolean), random(StarkType::Boolean)),
+                (
+                    StarkType::Boolean,
+                    random(StarkType::Boolean),
+                    random(StarkType::Boolean),
+                ),
                 // Random[Integer]
-                (random(StarkType::Integer), StarkType::Integer, random(StarkType::Integer)),
+                (
+                    random(StarkType::Integer),
+                    StarkType::Integer,
+                    random(StarkType::Integer),
+                ),
                 (random(StarkType::Integer), StarkType::Real, random(StarkType::Real)),
                 (
                     random(StarkType::Integer),
                     random(StarkType::Integer),
                     random(StarkType::Integer),
                 ),
-                (random(StarkType::Integer), random(StarkType::Real), random(StarkType::Real)),
+                (
+                    random(StarkType::Integer),
+                    random(StarkType::Real),
+                    random(StarkType::Real),
+                ),
                 // Random[Real]
                 (random(StarkType::Real), StarkType::Integer, random(StarkType::Real)),
                 (random(StarkType::Real), StarkType::Real, random(StarkType::Real)),
-                (random(StarkType::Real), random(StarkType::Integer), random(StarkType::Real)),
-                (random(StarkType::Real), random(StarkType::Real), random(StarkType::Real)),
+                (
+                    random(StarkType::Real),
+                    random(StarkType::Integer),
+                    random(StarkType::Real),
+                ),
+                (
+                    random(StarkType::Real),
+                    random(StarkType::Real),
+                    random(StarkType::Real),
+                ),
                 // Random[Boolean]
-                (random(StarkType::Boolean), StarkType::Boolean, random(StarkType::Boolean)),
+                (
+                    random(StarkType::Boolean),
+                    StarkType::Boolean,
+                    random(StarkType::Boolean),
+                ),
                 (
                     random(StarkType::Boolean),
                     random(StarkType::Boolean),
@@ -390,7 +421,10 @@ mod tests {
         #[test]
         fn subtyping() {
             for (expected, actual) in compatible_types() {
-                assert!(expected.is_compatible_with(&actual), "{expected}.is_compatible_with({actual})");
+                assert!(
+                    expected.is_compatible_with(&actual),
+                    "{expected}.is_compatible_with({actual})"
+                );
             }
         }
     }

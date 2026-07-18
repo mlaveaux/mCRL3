@@ -218,7 +218,10 @@ mod tests {
         let start = source.find('x').unwrap();
         // A span spuriously extending past the end of the line is still
         // underlined only up to that line's end.
-        let span = Span { start, end: source.len() };
+        let span = Span {
+            start,
+            end: source.len(),
+        };
         assert_eq!(span.render(source), " --> 1:9\n  |\n1 | eqn f = x\n  |         ^");
     }
 

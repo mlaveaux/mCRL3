@@ -27,7 +27,11 @@
 //! `ExpressionTypeInferenceTest` exercises either edge case, so this
 //! doesn't contradict anything being ported.
 
+use log::debug;
+use log::trace;
+
 use crate::ast::*;
+use crate::diagnostics::DiagnosticKind;
 use crate::diagnostics::Diagnostics;
 use crate::resolve::DefKind;
 use crate::resolve::SymbolTable;
@@ -46,6 +50,7 @@ pub struct FunctionSignature {
 /// (constants, parameters, variables, type elements — `None` for kinds that
 /// don't carry a single expression type, like components or functions), and
 /// the signature of every function.
+#[derive(Clone, Debug)]
 pub struct TypeTable {
     def_types: Vec<Option<StarkType>>,
     signatures: Vec<Option<FunctionSignature>>,
@@ -53,10 +58,20 @@ pub struct TypeTable {
 
 impl TypeTable {
     pub fn type_of(&self, id: DefId) -> Option<&StarkType> {
+        debug_assert!(
+            id.value() < self.def_types.len(),
+            "{id:?} is out of range for a table of {} definition(s) — mismatched SymbolTable?",
+            self.def_types.len()
+        );
         self.def_types[id.value()].as_ref()
     }
 
     pub fn signature_of(&self, id: DefId) -> Option<&FunctionSignature> {
+        debug_assert!(
+            id.value() < self.signatures.len(),
+            "{id:?} is out of range for a table of {} definition(s) — mismatched SymbolTable?",
+            self.signatures.len()
+        );
         self.signatures[id.value()].as_ref()
     }
 }
@@ -73,6 +88,26 @@ pub fn typecheck(spec: &UntypedStarkSpecification, symbols: &SymbolTable) -> (Ty
         diagnostics: Diagnostics::new(),
     };
     checker.check_specification(spec);
+
+    debug_assert_eq!(
+        checker.def_types.len(),
+        symbols.defs.len(),
+        "the type table must stay indexable by every DefId the symbol table knows"
+    );
+    debug_assert_eq!(
+        checker.locals.len(),
+        symbols.locals.len(),
+        "the local type table must stay indexable by every LocalId the symbol table knows"
+    );
+
+    let typed = checker.def_types.iter().filter(|t| t.is_some()).count();
+    let signatures = checker.signatures.iter().filter(|s| s.is_some()).count();
+    debug!(
+        "type-checked {typed}/{} definition(s) and {signatures} function signature(s); {} diagnostic(s)",
+        symbols.defs.len(),
+        checker.diagnostics.items().len()
+    );
+
     (
         TypeTable {
             def_types: checker.def_types,
@@ -94,6 +129,16 @@ impl Checker<'_> {
     // -- Small helpers ---------------------------------------------------
 
     fn set_def_type(&mut self, id: DefId, ty: StarkType) {
+        // Each declaration is visited exactly once, so its type is written
+        // exactly once. A second write means the same `DefId` was handed to
+        // two declarations, which would silently corrupt every later lookup.
+        debug_assert!(
+            self.def_types[id.value()].is_none(),
+            "{id:?} (`{}`) already has type {:?}, cannot also be {ty:?}",
+            self.symbols.def(id).name,
+            self.def_types[id.value()]
+        );
+        trace!("{id:?} (`{}`) : {ty}", self.symbols.def(id).name);
         self.def_types[id.value()] = Some(ty);
     }
 
@@ -102,6 +147,17 @@ impl Checker<'_> {
     }
 
     fn set_local_type(&mut self, id: LocalId, ty: StarkType) {
+        // `resolve.rs` assigns every binding site its own `LocalId`, never
+        // reusing one across scopes — that is exactly what lets this pass get
+        // away with a flat vector instead of a scope stack, so it is worth
+        // checking rather than assuming.
+        debug_assert!(
+            self.locals[id.value()].is_none(),
+            "{id:?} (`{}`) already has type {:?}, cannot also be {ty:?}",
+            self.symbols.local(id).name,
+            self.locals[id.value()]
+        );
+        trace!("{id:?} (`{}`) : {ty}", self.symbols.local(id).name);
         self.locals[id.value()] = Some(ty);
     }
 
@@ -117,7 +173,8 @@ impl Checker<'_> {
             Ty::Named(name) => match self.symbols.by_name(name) {
                 Some(id) if matches!(self.symbols.def(id).kind, DefKind::Type) => StarkType::Custom(name.clone()),
                 _ => {
-                    self.diagnostics.error(span.clone(), format!("unknown type `{name}`"));
+                    self.diagnostics
+                        .error(span.clone(), DiagnosticKind::UnknownType { name: name.clone() });
                     StarkType::Error
                 }
             },
@@ -132,8 +189,13 @@ impl Checker<'_> {
         if expected.is_compatible_with(&actual) {
             actual
         } else {
-            self.diagnostics
-                .error(span.clone(), format!("expected {expected}, found {actual}"));
+            self.diagnostics.error(
+                span.clone(),
+                DiagnosticKind::TypeMismatch {
+                    expected: expected.clone(),
+                    found: actual,
+                },
+            );
             StarkType::Error
         }
     }
@@ -142,15 +204,21 @@ impl Checker<'_> {
         if actual.is_numerical() {
             actual
         } else {
-            self.diagnostics.error(span.clone(), format!("expected a numerical type, found {actual}"));
+            self.diagnostics
+                .error(span.clone(), DiagnosticKind::NotNumerical { found: actual });
             StarkType::Error
         }
     }
 
     fn expect_mergeable(&mut self, left: &StarkType, right: &StarkType, span: &Span) {
         if !left.can_be_merged_with(right) {
-            self.diagnostics
-                .error(span.clone(), format!("expected {left}, found {right}"));
+            self.diagnostics.error(
+                span.clone(),
+                DiagnosticKind::IncompatibleTypes {
+                    left: left.clone(),
+                    right: right.clone(),
+                },
+            );
         }
     }
 
@@ -231,6 +299,7 @@ impl Checker<'_> {
     }
 
     fn check_function(&mut self, function: &Function) {
+        trace!("checking function `{}`", function.name.name);
         let mut arguments = Vec::with_capacity(function.arguments.len());
         for argument in &function.arguments {
             let ty = self.ty_of_annotation(&argument.ty, &argument.name.span);
@@ -244,6 +313,12 @@ impl Checker<'_> {
         // `return R[...]`).
         let return_type = self.check_function_statement(&function.body, true);
         if let Some(id) = function.id {
+            debug_assert!(
+                self.signatures[id.value()].is_none(),
+                "function `{}` ({id:?}) already has a signature",
+                function.name.name
+            );
+            trace!("`{}` : ({arguments:?}) -> {return_type}", function.name.name);
             self.signatures[id.value()] = Some(FunctionSignature { arguments, return_type });
         }
     }
@@ -285,8 +360,13 @@ impl Checker<'_> {
     fn check_controller_commands(&mut self, commands: &[ControllerCommand]) {
         for command in commands {
             match command {
-                // Deterministic policy under test: no randomness here (see
-                // the module doc comment / plan for the justification).
+                // The branch a controller takes is deterministic given the
+                // state (the guard and the step count aren't random), but an
+                // assignment's *value* may be — `multiscler.stark`'s
+                // controller injects a randomly-sized therapeutic dose
+                // (`Rr' = Rr + 1000 + R[-10,10]`), which is exactly the
+                // counterexample that overturned this pass's original
+                // "controllers are fully deterministic" assumption.
                 ControllerCommand::Step { steps, .. } => {
                     if let Some(steps) = steps {
                         let ty = self.check_expression(steps, false);
@@ -295,13 +375,13 @@ impl Checker<'_> {
                 }
                 ControllerCommand::Exec(_) => {}
                 ControllerCommand::Let { id, value, body, .. } => {
-                    let value_ty = self.check_expression(value, false);
+                    let value_ty = self.check_expression(value, true);
                     if let Some(id) = id {
                         self.set_local_type(*id, value_ty);
                     }
                     self.check_controller_commands(body);
                 }
-                ControllerCommand::Assignment(update) => self.check_update(update, false),
+                ControllerCommand::Assignment(update) => self.check_update(update, true),
                 ControllerCommand::IfThenElse {
                     guard,
                     then_branch,
@@ -398,8 +478,11 @@ impl Checker<'_> {
 
     fn check_distance(&mut self, distance: &DistanceExpression) {
         match distance {
-            DistanceExpression::Reference(_) | DistanceExpression::AtomicLeft(_) | DistanceExpression::AtomicRight(_) => {}
-            DistanceExpression::Eventually { from, to, argument } | DistanceExpression::Globally { from, to, argument } => {
+            DistanceExpression::Reference(_)
+            | DistanceExpression::AtomicLeft(_)
+            | DistanceExpression::AtomicRight(_) => {}
+            DistanceExpression::Eventually { from, to, argument }
+            | DistanceExpression::Globally { from, to, argument } => {
                 self.check_interval(from, to);
                 self.check_distance(argument);
             }
@@ -463,7 +546,12 @@ impl Checker<'_> {
     /// `combineToRealType` in the Java source: always widens to `real`
     /// (`2 ^ 3` and `atan2(1,2)` are both `real`, never `int`), propagating
     /// randomness from either operand.
-    fn combine_to_real(&mut self, left: &SpannedExpression, right: &SpannedExpression, random_allowed: bool) -> StarkType {
+    fn combine_to_real(
+        &mut self,
+        left: &SpannedExpression,
+        right: &SpannedExpression,
+        random_allowed: bool,
+    ) -> StarkType {
         let left_ty = self.check_expression(left, random_allowed);
         let left_ty = self.expect_numerical(left_ty, &left.span);
         let right_ty = self.check_expression(right, random_allowed);
@@ -492,7 +580,7 @@ impl Checker<'_> {
             Expression::Normal { mean, std_dev } => {
                 if !random_allowed {
                     self.diagnostics
-                        .error(expr.span.clone(), "random expressions are not allowed here".to_string());
+                        .error(expr.span.clone(), DiagnosticKind::RandomNotAllowed);
                     return StarkType::Error;
                 }
                 let mean_ty = self.check_expression(mean, random_allowed);
@@ -508,7 +596,7 @@ impl Checker<'_> {
             Expression::Uniform { values } => {
                 if !random_allowed {
                     self.diagnostics
-                        .error(expr.span.clone(), "random expressions are not allowed here".to_string());
+                        .error(expr.span.clone(), DiagnosticKind::RandomNotAllowed);
                     return StarkType::Error;
                 }
                 let mut merged: Option<StarkType> = None;
@@ -530,7 +618,7 @@ impl Checker<'_> {
             Expression::Range { min, max } => {
                 if !random_allowed {
                     self.diagnostics
-                        .error(expr.span.clone(), "random expressions are not allowed here".to_string());
+                        .error(expr.span.clone(), DiagnosticKind::RandomNotAllowed);
                     return StarkType::Error;
                 }
                 match (min, max) {
@@ -579,7 +667,13 @@ impl Checker<'_> {
         }
     }
 
-    fn check_binary(&mut self, op: BinaryOp, left: &SpannedExpression, right: &SpannedExpression, random_allowed: bool) -> StarkType {
+    fn check_binary(
+        &mut self,
+        op: BinaryOp,
+        left: &SpannedExpression,
+        right: &SpannedExpression,
+        random_allowed: bool,
+    ) -> StarkType {
         match op {
             BinaryOp::Pow => self.combine_to_real(left, right, random_allowed),
             BinaryOp::Mult | BinaryOp::Div | BinaryOp::IntDiv | BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Mod => {
@@ -632,12 +726,11 @@ impl Checker<'_> {
         if signature.arguments.len() != arguments.len() {
             self.diagnostics.error(
                 function.name.span.clone(),
-                format!(
-                    "`{}` expects {} argument(s), found {}",
-                    function.name.name,
-                    signature.arguments.len(),
-                    arguments.len()
-                ),
+                DiagnosticKind::ArityMismatch {
+                    name: function.name.name.clone(),
+                    expected: signature.arguments.len(),
+                    found: arguments.len(),
+                },
             );
             for argument in arguments {
                 self.check_expression(argument, random_allowed);
@@ -651,12 +744,34 @@ impl Checker<'_> {
         signature.return_type
     }
 
-    fn check_math_call(&mut self, function: MathFunction, arguments: &[SpannedExpression], random_allowed: bool) -> StarkType {
+    fn check_math_call(
+        &mut self,
+        function: MathFunction,
+        arguments: &[SpannedExpression],
+        random_allowed: bool,
+    ) -> StarkType {
         match function {
             MathFunction::Atan2 | MathFunction::Hypot | MathFunction::Max | MathFunction::Min | MathFunction::Pow => {
+                // Unlike user-defined calls, a math call's arity is fixed by
+                // the grammar (`BinaryMathFunction ~ "(" ~ Expression ~ ","
+                // ~ Expression ~ ")"`), so a mismatch here is a parser bug
+                // rather than a user error — and the indexing below would
+                // otherwise panic without saying why.
+                debug_assert_eq!(
+                    arguments.len(),
+                    2,
+                    "binary math function {function:?} parsed with {} argument(s)",
+                    arguments.len()
+                );
                 self.combine_to_real(&arguments[0], &arguments[1], random_allowed)
             }
             _ => {
+                debug_assert_eq!(
+                    arguments.len(),
+                    1,
+                    "unary math function {function:?} parsed with {} argument(s)",
+                    arguments.len()
+                );
                 let ty = self.check_expression(&arguments[0], random_allowed);
                 let ty = self.expect_numerical(ty, &arguments[0].span);
                 if ty.is_random() {
@@ -673,18 +788,135 @@ impl Checker<'_> {
 mod tests {
     use super::typecheck;
     use crate::ast::UntypedStarkSpecification;
+    use crate::diagnostics::DiagnosticKind;
     use crate::resolve::resolve;
+    use crate::types::StarkType;
+    use test_log::test;
+
+    /// Resolves `src` (asserting resolution itself succeeds, since these
+    /// tests are only interested in typecheck-time diagnostics) and returns
+    /// the diagnostics from `typecheck`.
+    fn typecheck_source(src: &str) -> crate::diagnostics::Diagnostics {
+        let mut spec = UntypedStarkSpecification::parse(src).unwrap_or_else(|e| panic!("failed to parse: {e}"));
+        let (symbols, resolve_diagnostics) = resolve(&mut spec);
+        assert!(
+            !resolve_diagnostics.has_errors(),
+            "failed to resolve:\n{}",
+            resolve_diagnostics.render(src)
+        );
+        typecheck(&spec, &symbols).1
+    }
+
+    #[test]
+    fn call_with_wrong_argument_count_is_an_error() {
+        // Constants are resolved before functions (kind-processing order —
+        // see `resolve.rs`), so the call has to live somewhere later in that
+        // order, e.g. a variable's initial value.
+        let diagnostics = typecheck_source("function f(int x) { return x; }\nvariables { int c = f(1, 2); }");
+        assert!(
+            diagnostics.any(|kind| matches!(
+                kind,
+                DiagnosticKind::ArityMismatch {
+                    expected: 1,
+                    found: 2,
+                    ..
+                }
+            )),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn non_boolean_if_guard_is_an_error() {
+        let diagnostics = typecheck_source("function f() { if (1) return 1; else return 2; }");
+        assert!(
+            diagnostics.any(|kind| matches!(
+                kind,
+                DiagnosticKind::TypeMismatch {
+                    expected: StarkType::Boolean,
+                    found: StarkType::Integer,
+                }
+            )),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn incompatible_assignment_is_an_error() {
+        let diagnostics = typecheck_source("variables { bool flag range[0,1] = true; }\nenvironment { flag' = 1; }");
+        assert!(
+            diagnostics.any(|kind| matches!(
+                kind,
+                DiagnosticKind::TypeMismatch {
+                    expected: StarkType::Boolean,
+                    found: StarkType::Integer,
+                }
+            )),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn random_expression_in_a_disallowed_context_is_an_error() {
+        // Variable range bounds are one of the contexts `random_allowed` is
+        // deliberately `false` for (see the module doc comment / plan).
+        let diagnostics = typecheck_source("variables { real x range[0, R] = 0.; }");
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::RandomNotAllowed)),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn ternary_branch_mismatch_is_an_error() {
+        let diagnostics = typecheck_source("function f() { return true ? 1 : false; }");
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::IncompatibleTypes { .. })),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn function_return_type_merge_failure_is_an_error() {
+        let diagnostics = typecheck_source("function f(bool b) { if (b) return 1; else return true; }");
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::IncompatibleTypes { .. })),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn unknown_type_annotation_is_an_error() {
+        let diagnostics = typecheck_source("variables { Missing x = 0; }");
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownType { name } if name == "Missing")),
+            "{diagnostics}"
+        );
+    }
 
     #[test]
     fn typechecks_every_example_specification_without_errors() {
         for (name, source) in [
             ("engine", include_str!("../../../examples/stark/engine.stark")),
             ("random_walk", include_str!("../../../examples/stark/random_walk.stark")),
-            ("single_vehicle", include_str!("../../../examples/stark/single_vehicle.stark")),
+            (
+                "single_vehicle",
+                include_str!("../../../examples/stark/single_vehicle.stark"),
+            ),
             ("toll", include_str!("../../../examples/stark/toll.stark")),
-            ("two_vehicles", include_str!("../../../examples/stark/two_vehicles.stark")),
+            (
+                "two_vehicles",
+                include_str!("../../../examples/stark/two_vehicles.stark"),
+            ),
+            ("monitoring", include_str!("../../../examples/stark/monitoring.stark")),
+            (
+                "agriculturalDT",
+                include_str!("../../../examples/stark/agriculturalDT.stark"),
+            ),
+            ("tollbooth", include_str!("../../../examples/stark/tollbooth.stark")),
         ] {
-            let mut spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
+            let mut spec =
+                UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
             let (symbols, resolve_diagnostics) = resolve(&mut spec);
             assert!(
                 !resolve_diagnostics.has_errors(),
@@ -692,7 +924,11 @@ mod tests {
                 resolve_diagnostics.render(source)
             );
             let (_types, diagnostics) = typecheck(&spec, &symbols);
-            assert!(!diagnostics.has_errors(), "{name} failed to typecheck:\n{}", diagnostics.render(source));
+            assert!(
+                !diagnostics.has_errors(),
+                "{name} failed to typecheck:\n{}",
+                diagnostics.render(source)
+            );
         }
     }
 
@@ -716,7 +952,8 @@ mod tests {
 
         fn infer_in_function_body(expr: &str) -> StarkType {
             let source = format!("function f() {{ return {expr}; }}");
-            let mut spec = UntypedStarkSpecification::parse(&source).unwrap_or_else(|e| panic!("failed to parse `{expr}`: {e}"));
+            let mut spec =
+                UntypedStarkSpecification::parse(&source).unwrap_or_else(|e| panic!("failed to parse `{expr}`: {e}"));
             let (symbols, resolve_diagnostics) = resolve(&mut spec);
             assert!(
                 !resolve_diagnostics.has_errors(),
@@ -724,14 +961,23 @@ mod tests {
                 resolve_diagnostics.render(&source)
             );
             let (types, diagnostics) = typecheck(&spec, &symbols);
-            assert!(!diagnostics.has_errors(), "failed to typecheck `{expr}`:\n{}", diagnostics.render(&source));
+            assert!(
+                !diagnostics.has_errors(),
+                "failed to typecheck `{expr}`:\n{}",
+                diagnostics.render(&source)
+            );
             let id = spec.functions[0].id.expect("function should resolve");
-            types.signature_of(id).expect("function should have a signature").return_type.clone()
+            types
+                .signature_of(id)
+                .expect("function should have a signature")
+                .return_type
+                .clone()
         }
 
         fn infer_in_function_body_with_argument(arg_ty: &str, expr: &str) -> StarkType {
             let source = format!("function f({arg_ty} x) {{ return {expr}; }}");
-            let mut spec = UntypedStarkSpecification::parse(&source).unwrap_or_else(|e| panic!("failed to parse `{expr}`: {e}"));
+            let mut spec =
+                UntypedStarkSpecification::parse(&source).unwrap_or_else(|e| panic!("failed to parse `{expr}`: {e}"));
             let (symbols, resolve_diagnostics) = resolve(&mut spec);
             assert!(
                 !resolve_diagnostics.has_errors(),
@@ -739,14 +985,23 @@ mod tests {
                 resolve_diagnostics.render(&source)
             );
             let (types, diagnostics) = typecheck(&spec, &symbols);
-            assert!(!diagnostics.has_errors(), "failed to typecheck `{expr}`:\n{}", diagnostics.render(&source));
+            assert!(
+                !diagnostics.has_errors(),
+                "failed to typecheck `{expr}`:\n{}",
+                diagnostics.render(&source)
+            );
             let id = spec.functions[0].id.expect("function should resolve");
-            types.signature_of(id).expect("function should have a signature").return_type.clone()
+            types
+                .signature_of(id)
+                .expect("function should have a signature")
+                .return_type
+                .clone()
         }
 
         fn infer_as_constant(expr: &str) -> StarkType {
             let source = format!("const c = {expr};");
-            let mut spec = UntypedStarkSpecification::parse(&source).unwrap_or_else(|e| panic!("failed to parse `{expr}`: {e}"));
+            let mut spec =
+                UntypedStarkSpecification::parse(&source).unwrap_or_else(|e| panic!("failed to parse `{expr}`: {e}"));
             let (symbols, resolve_diagnostics) = resolve(&mut spec);
             assert!(
                 !resolve_diagnostics.has_errors(),
@@ -754,7 +1009,11 @@ mod tests {
                 resolve_diagnostics.render(&source)
             );
             let (types, diagnostics) = typecheck(&spec, &symbols);
-            assert!(!diagnostics.has_errors(), "failed to typecheck `{expr}`:\n{}", diagnostics.render(&source));
+            assert!(
+                !diagnostics.has_errors(),
+                "failed to typecheck `{expr}`:\n{}",
+                diagnostics.render(&source)
+            );
             let id = spec.constants[0].id.expect("constant should resolve");
             types.type_of(id).expect("constant should have a type").clone()
         }
