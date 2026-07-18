@@ -12,10 +12,18 @@
 //! is sufficient: by the time a name is used, everything it could legally
 //! refer to has already been registered.
 //!
-//! The one exception is controller states: `step`/`exec` inside a state may
-//! target a *later* state in the same component (state machines are
-//! naturally mutually recursive), so each component's states are registered
-//! in a first pass before any state body is resolved.
+//! There are two exceptions, both handled by registering names in a first
+//! pass before any body is resolved:
+//!
+//! * Controller states: `step`/`exec` inside a state may target a *later*
+//!   state in the same component (state machines are naturally mutually
+//!   recursive), so each component's states are registered up front.
+//! * State variables: every `variables`/`global variables` block and every
+//!   component's variable block is declared before anything else in the
+//!   specification, so a function body, environment block or component may
+//!   read a state variable regardless of where it is declared. This mirrors
+//!   the original Java implementation, whose `StarkGlobalVariableCollector`
+//!   pass collects exactly these names ahead of `StarkModelGenerator`.
 //!
 //! Caveat: [UntypedStarkSpecification] buckets declarations by kind (all
 //! constants, then all parameters, then all variables, …) rather than
@@ -33,6 +41,16 @@
 //! reference to a global instead of a same-named parameter, an
 //! under-scoped `let` — are fixed; see the fixed-up `examples/stark/*.stark`
 //! files).
+//!
+//! Because variables are pre-declared, their names also resolve inside
+//! expressions that are evaluated once at load time, before any variable
+//! store exists — a `const`/`param` value, or a variable's own range or
+//! initializer, including a self-reference like `real X = X;`. Resolution
+//! order no longer rules those out, so a post-pass
+//! ([Resolver::check_static_expressions]) rejects them explicitly, including
+//! reads reached indirectly through a function call. The original Java
+//! implementation accepts all of these and evaluates them to `ERROR_VALUE`
+//! at runtime with no diagnostic.
 //!
 //! This pass only binds names — it does not compute or check types (see
 //! `typecheck.rs`). A reference that fails to resolve is left with its `id`
@@ -73,7 +91,7 @@ pub enum DefKind {
 }
 
 impl DefKind {
-    /// Whether a plain `Expression::Reference` may resolve to this kind:
+    /// Whether a plain `ExpressionKind::Reference` may resolve to this kind:
     /// whether it names a *value*, as opposed to a function, penalty,
     /// component, perturbation, distance, formula or type, each of which is
     /// only referenceable from its own dedicated syntax (a call, a `\D[...]`,
@@ -181,6 +199,7 @@ pub fn resolve(spec: &mut UntypedStarkSpecification) -> (SymbolTable, Diagnostic
         table: SymbolTable::default(),
         scopes: Vec::new(),
         diagnostics: Diagnostics::new(),
+        functions_reading_variables: HashMap::new(),
     };
     resolver.resolve_specification(spec);
 
@@ -222,6 +241,10 @@ struct Resolver {
     /// Local scopes (function arguments, `let` bindings), innermost last.
     scopes: Vec<HashMap<String, LocalId>>,
     diagnostics: Diagnostics,
+    /// Functions that read a state variable, mapped to the name of one such
+    /// variable (for the diagnostic). Populated by
+    /// [Resolver::check_static_expressions]; empty before then.
+    functions_reading_variables: HashMap<DefId, String>,
 }
 
 impl Resolver {
@@ -434,6 +457,16 @@ impl Resolver {
             spec.distances.len(),
             spec.formulas.len()
         );
+        // State variables are visible everywhere, not just after their own
+        // declaration, so register them all before resolving any body.
+        for variable in &mut spec.variables {
+            self.declare_variable(variable);
+        }
+        for component in &mut spec.components {
+            for variable in &mut component.variables {
+                self.declare_variable(variable);
+            }
+        }
         for constant in &mut spec.constants {
             self.resolve_expression(&mut constant.value);
             constant.id = self.declare(&constant.name, DefKind::Constant);
@@ -473,20 +506,125 @@ impl Resolver {
             self.resolve_robtl(&mut formula.value);
             formula.id = self.declare(&formula.name, DefKind::Formula);
         }
+        self.check_static_expressions(spec);
     }
 
-    fn resolve_variable(&mut self, variable: &mut Variable) {
-        if let Some(range) = &mut variable.range {
-            self.resolve_expression(&mut range.min);
-            self.resolve_expression(&mut range.max);
+    /// Reports state variables read from expressions that are evaluated once
+    /// at load time, before any variable store exists. Pre-declaring
+    /// variables makes those names resolve everywhere, so this is what keeps
+    /// `const a = X;` and `real X = X;` from being silently accepted — the
+    /// original Java implementation has this hole, evaluating such reads to
+    /// `ERROR_VALUE` at runtime with no diagnostic.
+    ///
+    /// Runs as a post-pass so every function is resolved and its
+    /// [Self::function_reads_variable] entry is known.
+    fn check_static_expressions(&mut self, spec: &UntypedStarkSpecification) {
+        // A function body may legitimately read a variable — it is called
+        // from controllers and environment blocks, where the store exists.
+        // Calling one from a static expression is what makes it a problem,
+        // so the offending functions have to be identified first.
+        //
+        // `spec.functions` is a valid topological order: a function can only
+        // call one declared before it (its own `DefId` is registered after
+        // its body resolves, so there is no recursion), which means each
+        // callee's entry is already final when its caller is visited.
+        for function in &spec.functions {
+            let reads = self.statement_reads_variable(&function.body);
+            if let (Some(id), Some(name)) = (function.id, reads) {
+                self.functions_reading_variables.insert(id, name);
+            }
         }
-        self.resolve_expression(&mut variable.initial_value);
+
+        for constant in &spec.constants {
+            self.reject_state_variables(&constant.value, "const");
+        }
+        for parameter in &spec.parameters {
+            self.reject_state_variables(&parameter.value, "param");
+        }
+        let variables = spec
+            .variables
+            .iter()
+            .chain(spec.components.iter().flat_map(|c| c.variables.iter()));
+        for variable in variables {
+            if let Some(range) = &variable.range {
+                self.reject_state_variables(&range.min, "variable range");
+                self.reject_state_variables(&range.max, "variable range");
+            }
+            self.reject_state_variables(&variable.initial_value, "variable initializer");
+        }
+    }
+
+    /// Records a diagnostic for every state variable `expr` reads, whether
+    /// directly or through a function call. `context` names the kind of
+    /// static expression, for the message.
+    fn reject_state_variables(&mut self, expr: &Expression, context: &'static str) {
+        for_each_subexpression(expr, &mut |expr| {
+            let offender = match &expr.node {
+                ExpressionKind::Reference {
+                    binding: Some(Binding::Def(id)),
+                    name,
+                } if DefKind::is_variable_kind(&self.table.def(*id).kind) => Some((name.clone(), None)),
+                ExpressionKind::Call { function, .. } => function
+                    .id
+                    .and_then(|id| self.functions_reading_variables.get(&id))
+                    .map(|variable| (variable.clone(), Some(function.name.name.clone()))),
+                _ => None,
+            };
+            if let Some((name, via)) = offender {
+                self.diagnostics.error(
+                    expr.span.clone(),
+                    DiagnosticKind::StateVariableInStaticExpression { name, context, via },
+                );
+            }
+        });
+    }
+
+    /// The name of some state variable `statement` reads, directly or
+    /// through a call, if there is one.
+    fn statement_reads_variable(&self, statement: &FunctionStatement) -> Option<String> {
+        let mut found = None;
+        let mut visit_expression = |expr: &Expression| {
+            for_each_subexpression(expr, &mut |expr| {
+                if found.is_some() {
+                    return;
+                }
+                found = match &expr.node {
+                    ExpressionKind::Reference {
+                        binding: Some(Binding::Def(id)),
+                        name,
+                    } if DefKind::is_variable_kind(&self.table.def(*id).kind) => Some(name.clone()),
+                    ExpressionKind::Call { function, .. } => function
+                        .id
+                        .and_then(|id| self.functions_reading_variables.get(&id))
+                        .cloned(),
+                    _ => None,
+                };
+            });
+        };
+        for_each_statement_expression(statement, &mut visit_expression);
+        found
+    }
+
+    /// Registers a variable's name. Split out from [Self::resolve_variable]
+    /// so every variable in the specification can be declared in one pass up
+    /// front; the initializer and range are resolved later.
+    fn declare_variable(&mut self, variable: &mut Variable) {
         variable.id = self.declare(
             &variable.name,
             DefKind::Variable {
                 global: variable.global,
             },
         );
+    }
+
+    /// Resolves the parts of a variable that reference other names. The name
+    /// itself is already registered by [Self::declare_variable].
+    fn resolve_variable(&mut self, variable: &mut Variable) {
+        if let Some(range) = &mut variable.range {
+            self.resolve_expression(&mut range.min);
+            self.resolve_expression(&mut range.max);
+        }
+        self.resolve_expression(&mut variable.initial_value);
     }
 
     fn resolve_type_declaration(&mut self, ty: &mut TypeDeclaration) {
@@ -772,26 +910,26 @@ impl Resolver {
         }
     }
 
-    fn resolve_expression(&mut self, expr: &mut SpannedExpression) {
+    fn resolve_expression(&mut self, expr: &mut Expression) {
         match &mut expr.node {
-            Expression::False
-            | Expression::True
-            | Expression::Integer(_)
-            | Expression::Real(_)
-            | Expression::Iterator => {}
-            Expression::Reference { name, binding } => {
+            ExpressionKind::False
+            | ExpressionKind::True
+            | ExpressionKind::Integer(_)
+            | ExpressionKind::Real(_)
+            | ExpressionKind::Iterator => {}
+            ExpressionKind::Reference { name, binding } => {
                 *binding = self.resolve_reference(name, &expr.span);
             }
-            Expression::Normal { mean, std_dev } => {
+            ExpressionKind::Normal { mean, std_dev } => {
                 self.resolve_expression(mean);
                 self.resolve_expression(std_dev);
             }
-            Expression::Uniform { values } => {
+            ExpressionKind::Uniform { values } => {
                 for value in values {
                     self.resolve_expression(value);
                 }
             }
-            Expression::Range { min, max } => {
+            ExpressionKind::Range { min, max } => {
                 if let Some(min) = min {
                     self.resolve_expression(min);
                 }
@@ -799,14 +937,14 @@ impl Resolver {
                     self.resolve_expression(max);
                 }
             }
-            Expression::Not(inner) | Expression::UnaryPlus(inner) | Expression::UnaryMinus(inner) => {
+            ExpressionKind::Not(inner) | ExpressionKind::UnaryPlus(inner) | ExpressionKind::UnaryMinus(inner) => {
                 self.resolve_expression(inner);
             }
-            Expression::Binary(_, left, right) => {
+            ExpressionKind::Binary(_, left, right) => {
                 self.resolve_expression(left);
                 self.resolve_expression(right);
             }
-            Expression::Ternary {
+            ExpressionKind::Ternary {
                 guard,
                 then_branch,
                 else_branch,
@@ -815,18 +953,89 @@ impl Resolver {
                 self.resolve_expression(then_branch);
                 self.resolve_expression(else_branch);
             }
-            Expression::Call { function, arguments } => {
+            ExpressionKind::Call { function, arguments } => {
                 for argument in arguments.iter_mut() {
                     self.resolve_expression(argument);
                 }
                 self.resolve_def_ref(function, DefKind::is_function_kind, "a function");
             }
-            Expression::MathCall { arguments, .. } => {
+            ExpressionKind::MathCall { arguments, .. } => {
                 for argument in arguments {
                     self.resolve_expression(argument);
                 }
             }
         }
+    }
+}
+
+/// Applies `visit` to `expr` and every subexpression of it, outermost first.
+fn for_each_subexpression(expr: &Expression, visit: &mut impl FnMut(&Expression)) {
+    visit(expr);
+    match &expr.node {
+        ExpressionKind::False
+        | ExpressionKind::True
+        | ExpressionKind::Integer(_)
+        | ExpressionKind::Real(_)
+        | ExpressionKind::Iterator
+        | ExpressionKind::Reference { .. } => {}
+        ExpressionKind::Normal { mean, std_dev } => {
+            for_each_subexpression(mean, visit);
+            for_each_subexpression(std_dev, visit);
+        }
+        ExpressionKind::Uniform { values } => {
+            for value in values {
+                for_each_subexpression(value, visit);
+            }
+        }
+        ExpressionKind::Range { min, max } => {
+            for bound in [min, max].into_iter().flatten() {
+                for_each_subexpression(bound, visit);
+            }
+        }
+        ExpressionKind::Not(inner) | ExpressionKind::UnaryPlus(inner) | ExpressionKind::UnaryMinus(inner) => {
+            for_each_subexpression(inner, visit);
+        }
+        ExpressionKind::Binary(_, left, right) => {
+            for_each_subexpression(left, visit);
+            for_each_subexpression(right, visit);
+        }
+        ExpressionKind::Ternary {
+            guard,
+            then_branch,
+            else_branch,
+        } => {
+            for_each_subexpression(guard, visit);
+            for_each_subexpression(then_branch, visit);
+            for_each_subexpression(else_branch, visit);
+        }
+        ExpressionKind::Call { arguments, .. } | ExpressionKind::MathCall { arguments, .. } => {
+            for argument in arguments {
+                for_each_subexpression(argument, visit);
+            }
+        }
+    }
+}
+
+/// Applies `visit` to every expression appearing anywhere in `statement`.
+fn for_each_statement_expression(statement: &FunctionStatement, visit: &mut impl FnMut(&Expression)) {
+    match statement {
+        FunctionStatement::Return(value) => visit(value),
+        FunctionStatement::IfThenElse {
+            guard,
+            then_branch,
+            else_branch,
+        } => {
+            visit(guard);
+            for_each_statement_expression(then_branch, visit);
+            if let Some(else_branch) = else_branch {
+                for_each_statement_expression(else_branch, visit);
+            }
+        }
+        FunctionStatement::Let { value, body, .. } => {
+            visit(value);
+            for_each_statement_expression(body, visit);
+        }
+        FunctionStatement::Block(inner) => for_each_statement_expression(inner, visit),
     }
 }
 
@@ -840,36 +1049,36 @@ impl Resolver {
 /// it here than as an `unwrap` three passes later. Debug builds only.
 #[cfg(debug_assertions)]
 fn assert_fully_resolved(spec: &UntypedStarkSpecification) {
-    fn check_expression(expr: &SpannedExpression) {
+    fn check_expression(expr: &Expression) {
         match &expr.node {
-            Expression::False
-            | Expression::True
-            | Expression::Integer(_)
-            | Expression::Real(_)
-            | Expression::Iterator => {}
-            Expression::Reference { name, binding } => {
+            ExpressionKind::False
+            | ExpressionKind::True
+            | ExpressionKind::Integer(_)
+            | ExpressionKind::Real(_)
+            | ExpressionKind::Iterator => {}
+            ExpressionKind::Reference { name, binding } => {
                 assert!(
                     binding.is_some(),
                     "reference `{name}` left unbound by a clean resolution"
                 );
             }
-            Expression::Normal { mean, std_dev } => {
+            ExpressionKind::Normal { mean, std_dev } => {
                 check_expression(mean);
                 check_expression(std_dev);
             }
-            Expression::Uniform { values } => values.iter().for_each(check_expression),
-            Expression::Range { min, max } => {
+            ExpressionKind::Uniform { values } => values.iter().for_each(check_expression),
+            ExpressionKind::Range { min, max } => {
                 min.iter().for_each(|e| check_expression(e));
                 max.iter().for_each(|e| check_expression(e));
             }
-            Expression::Not(inner) | Expression::UnaryPlus(inner) | Expression::UnaryMinus(inner) => {
+            ExpressionKind::Not(inner) | ExpressionKind::UnaryPlus(inner) | ExpressionKind::UnaryMinus(inner) => {
                 check_expression(inner)
             }
-            Expression::Binary(_, left, right) => {
+            ExpressionKind::Binary(_, left, right) => {
                 check_expression(left);
                 check_expression(right);
             }
-            Expression::Ternary {
+            ExpressionKind::Ternary {
                 guard,
                 then_branch,
                 else_branch,
@@ -878,7 +1087,7 @@ fn assert_fully_resolved(spec: &UntypedStarkSpecification) {
                 check_expression(then_branch);
                 check_expression(else_branch);
             }
-            Expression::Call { function, arguments } => {
+            ExpressionKind::Call { function, arguments } => {
                 assert!(
                     function.id.is_some(),
                     "call to `{}` left unresolved",
@@ -886,7 +1095,7 @@ fn assert_fully_resolved(spec: &UntypedStarkSpecification) {
                 );
                 arguments.iter().for_each(check_expression);
             }
-            Expression::MathCall { arguments, .. } => arguments.iter().for_each(check_expression),
+            ExpressionKind::MathCall { arguments, .. } => arguments.iter().for_each(check_expression),
         }
     }
 
@@ -1204,7 +1413,7 @@ fn assert_fully_resolved(spec: &UntypedStarkSpecification) {
 mod tests {
     use super::resolve;
     use crate::ast::Binding;
-    use crate::ast::Expression;
+    use crate::ast::ExpressionKind;
     use crate::ast::UntypedStarkSpecification;
     use crate::diagnostics::DiagnosticKind;
     // Overrides the built-in `#[test]` so `RUST_LOG=merc_stark=trace cargo test`
@@ -1228,10 +1437,10 @@ mod tests {
         let (spec, _table, diagnostics) = resolve_source("const a = 1;\nconst b = a + 1;");
         assert!(!diagnostics.has_errors(), "{diagnostics}");
         match &spec.constants[1].value.node {
-            Expression::Binary(_, lhs, _) => {
+            ExpressionKind::Binary(_, lhs, _) => {
                 assert!(matches!(
                     lhs.node,
-                    Expression::Reference {
+                    ExpressionKind::Reference {
                         binding: Some(Binding::Def(_)),
                         ..
                     }
@@ -1246,6 +1455,79 @@ mod tests {
         let (_spec, _table, diagnostics) = resolve_source("const a = b + 1;\nconst b = 1;");
         assert!(
             diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownSymbol { name } if name == "b")),
+            "{diagnostics}"
+        );
+    }
+
+    #[test]
+    fn a_function_may_read_a_state_variable_declared_later() {
+        // Variables are pre-declared, so this resolves even though the
+        // `variables` block comes after the function that reads it — and
+        // even though variables are otherwise resolved after functions.
+        let (_spec, _table, diagnostics) =
+            resolve_source("function f() {\n  return X * 2.0;\n}\nglobal variables {\n  real X = 1.0;\n}");
+        assert!(!diagnostics.has_errors(), "{diagnostics}");
+    }
+
+    #[test]
+    fn a_component_variable_is_visible_before_its_component() {
+        let source = "function f() {\n  return v * 2.0;\n}\n\
+             component C {\n  variables {\n    real v = 1.0;\n  }\n  \
+             controller {\n    state Idle {\n      step Idle;\n    }\n  }\n  init Idle\n}";
+        let (_spec, _table, diagnostics) = resolve_source(source);
+        assert!(!diagnostics.has_errors(), "{diagnostics}");
+    }
+
+    /// The name of the state variable reported by the first
+    /// `StateVariableInStaticExpression` diagnostic, if any.
+    fn static_violation(diagnostics: &crate::diagnostics::Diagnostics) -> Option<String> {
+        diagnostics.items().iter().find_map(|item| match &item.kind {
+            DiagnosticKind::StateVariableInStaticExpression { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_constant_cannot_read_a_state_variable() {
+        // Pre-declaring variables makes `X` resolve here, so without the
+        // static check this would be silently accepted.
+        let (_spec, _table, diagnostics) = resolve_source("global variables {\n  real X = 1.0;\n}\nconst a = X;");
+        assert_eq!(static_violation(&diagnostics).as_deref(), Some("X"), "{diagnostics}");
+    }
+
+    #[test]
+    fn a_variable_initializer_cannot_read_itself() {
+        let (_spec, _table, diagnostics) = resolve_source("global variables {\n  real X = X;\n}");
+        assert_eq!(static_violation(&diagnostics).as_deref(), Some("X"), "{diagnostics}");
+    }
+
+    #[test]
+    fn a_variable_initializer_cannot_read_a_variable_through_a_function() {
+        let (_spec, _table, diagnostics) = resolve_source(
+            "function f() {\n  return X * 2.0;\n}\nglobal variables {\n  real X = 1.0;\n  real Y = f();\n}",
+        );
+        assert_eq!(static_violation(&diagnostics).as_deref(), Some("X"), "{diagnostics}");
+    }
+
+    #[test]
+    fn a_function_reading_a_variable_is_fine_when_no_static_expression_calls_it() {
+        let (_spec, _table, diagnostics) =
+            resolve_source("function f() {\n  return X * 2.0;\n}\nglobal variables {\n  real X = 1.0;\n}");
+        assert!(!diagnostics.has_errors(), "{diagnostics}");
+    }
+
+    #[test]
+    fn a_variable_range_may_still_use_a_constant() {
+        let (_spec, _table, diagnostics) =
+            resolve_source("const M = 5.0;\nglobal variables {\n  real X range [0,M] = 1.0;\n}");
+        assert!(!diagnostics.has_errors(), "{diagnostics}");
+    }
+
+    #[test]
+    fn duplicate_variable_names_are_still_caught_by_the_pre_pass() {
+        let (_spec, _table, diagnostics) = resolve_source("global variables {\n  real X = 1.0;\n  real X = 2.0;\n}");
+        assert!(
+            diagnostics.any(|kind| matches!(kind, DiagnosticKind::DuplicateDefinition { name, .. } if name == "X")),
             "{diagnostics}"
         );
     }
@@ -1319,17 +1601,17 @@ mod tests {
             panic!("expected a return statement");
         };
         match &value.node {
-            Expression::Binary(_, lhs, rhs) => {
+            ExpressionKind::Binary(_, lhs, rhs) => {
                 assert!(matches!(
                     lhs.node,
-                    Expression::Reference {
+                    ExpressionKind::Reference {
                         binding: Some(Binding::Local(_)),
                         ..
                     }
                 ));
                 assert!(matches!(
                     rhs.node,
-                    Expression::Reference {
+                    ExpressionKind::Reference {
                         binding: Some(Binding::Local(_)),
                         ..
                     }
@@ -1351,7 +1633,7 @@ mod tests {
     #[test]
     fn controller_state_can_forward_reference_a_sibling_state() {
         let (_spec, _table, diagnostics) = resolve_source(
-            "component C {\n  variables { }\n  controller {\n    aiState A { step B; }\n    aiState B { step A; }\n  }\n  init A\n}",
+            "component C {\n  variables { }\n  controller {\n    state A { step B; }\n    state B { step A; }\n  }\n  init A\n}",
         );
         assert!(!diagnostics.has_errors(), "{diagnostics}");
     }
@@ -1359,7 +1641,7 @@ mod tests {
     #[test]
     fn controller_state_cannot_target_another_components_state() {
         let (_spec, _table, diagnostics) = resolve_source(
-            "component C1 {\n  variables { }\n  controller {\n    aiState A { step B; }\n  }\n  init A\n}\ncomponent C2 {\n  variables { }\n  controller {\n    aiState B { exec B; }\n  }\n  init B\n}",
+            "component C1 {\n  variables { }\n  controller {\n    state A { step B; }\n  }\n  init A\n}\ncomponent C2 {\n  variables { }\n  controller {\n    state B { exec B; }\n  }\n  init B\n}",
         );
         assert!(
             diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownControllerState { name } if name == "B")),
@@ -1377,7 +1659,7 @@ mod tests {
         assert!(!diagnostics.has_errors(), "{diagnostics}");
         assert!(matches!(
             spec.penalties[0].value.node,
-            Expression::Reference {
+            ExpressionKind::Reference {
                 binding: Some(Binding::Def(_)),
                 ..
             }
