@@ -7,6 +7,7 @@ use clap::Parser;
 use clap::Subcommand;
 use log::info;
 
+use log::trace;
 use merc_stark::DefKind;
 use merc_stark::StarkSpecification;
 use merc_stark::UntypedStarkSpecification;
@@ -100,9 +101,11 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
 /// propagated as a plain error, since a bare `Diagnostics` has no way to show
 /// the offending lines — the whole point of the spans it carries.
 fn load_specification(path: &Path, timing: &Timing) -> Result<StarkSpecification, MercError> {
-    let source = read_to_string(path).map_err(|err| MercError::from(format!("cannot read {}: {err}", path.display())))?;
+    let source =
+        read_to_string(path).map_err(|err| MercError::from(format!("cannot read {}: {err}", path.display())))?;
 
     let untyped = timing.measure("parsing", || UntypedStarkSpecification::parse(&source))?;
+    trace!("AST: {:#?}", untyped);
 
     timing
         .measure("resolving and type checking", || untyped.check())
