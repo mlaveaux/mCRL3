@@ -12,6 +12,8 @@ use merc_syntax::MapId;
 use merc_syntax::Sort;
 use merc_syntax::SortDecl;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
+use merc_syntax::Spanned;
 use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
@@ -38,14 +40,17 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
         match &mut declaration.expr {
             // A top-level struct is the named struct itself and stays; only
             // structs nested inside its constructor arguments are hoisted.
-            Some(SortExpression::Struct { inner }) => {
+            Some(Spanned {
+                node: SortExpressionKind::Struct { inner },
+                ..
+            }) => {
                 for constructor in inner.iter_mut() {
                     for (_, sort) in &mut constructor.args {
                         *sort = hoister.hoist(sort.clone());
                     }
                 }
                 hoister.table.push((
-                    SortExpression::Struct { inner: inner.clone() },
+                    SortExpressionKind::Struct { inner: inner.clone() }.into(),
                     declaration.identifier.clone(),
                 ));
             }
@@ -139,7 +144,7 @@ impl Hoister {
     /// should expose global constructors).
     fn hoist(&mut self, sort: SortExpression) -> SortExpression {
         apply_sort_expression(sort, |expr| -> Result<Option<SortExpression>, Infallible> {
-            if let SortExpression::Struct { inner } = expr {
+            if let SortExpressionKind::Struct { inner } = &expr.node {
                 // Hoist the constructor arguments first, so identical structs
                 // have identical bodies regardless of nesting.
                 let mut inner = inner.clone();
@@ -149,9 +154,9 @@ impl Hoister {
                     }
                 }
 
-                return Ok(Some(SortExpression::Reference(
-                    self.name_for(SortExpression::Struct { inner }),
-                )));
+                return Ok(Some(
+                    SortExpressionKind::Reference(self.name_for(SortExpressionKind::Struct { inner }.into())).into(),
+                ));
             }
 
             Ok(None)
@@ -172,16 +177,17 @@ impl Hoister {
     /// is reused, preserving the constructor visibility of that declaration.
     fn hoist_non_decl(&mut self, sort: SortExpression) -> SortExpression {
         apply_sort_expression(sort, |expr| -> Result<Option<SortExpression>, Infallible> {
-            if let SortExpression::Struct { inner } = expr {
+            if let SortExpressionKind::Struct { inner } = &expr.node {
                 let mut inner = inner.clone();
                 for constructor in &mut inner {
                     for (_, sort) in &mut constructor.args {
                         *sort = self.hoist_non_decl(sort.clone());
                     }
                 }
-                return Ok(Some(SortExpression::Reference(
-                    self.name_for_non_decl(SortExpression::Struct { inner }),
-                )));
+                return Ok(Some(
+                    SortExpressionKind::Reference(self.name_for_non_decl(SortExpressionKind::Struct { inner }.into()))
+                        .into(),
+                ));
             }
             Ok(None)
         })
@@ -266,12 +272,15 @@ pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> V
 
     for declaration in &mut spec.sort_declarations {
         let inner = match &declaration.expr {
-            Some(SortExpression::Struct { inner }) => inner.clone(),
+            Some(Spanned {
+                node: SortExpressionKind::Struct { inner },
+                ..
+            }) => inner.clone(),
             _ => continue,
         };
 
         let id = declaration.id.expect("Name must have been resolved");
-        let sort = SortExpression::Resolved(declaration.identifier.clone(), id);
+        let sort: SortExpression = SortExpressionKind::Resolved(declaration.identifier.clone(), id).into();
         // The structured sort becomes an abstract sort carrying its constructors.
         declaration.expr = None;
         debug!(
@@ -289,7 +298,7 @@ pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> V
 
             // map is_c: D -> Bool  (recogniser), when one is declared.
             if let Some(recogniser) = &constructor.projection {
-                let recogniser_sort = function_sort(vec![sort.clone()], SortExpression::Simple(Sort::Bool));
+                let recogniser_sort = function_sort(vec![sort.clone()], SortExpressionKind::Simple(Sort::Bool).into());
                 push_unique(
                     &mut mappings,
                     IdDecl::new(recogniser.clone(), recogniser_sort, Span::default()),
@@ -323,10 +332,11 @@ fn function_sort(domain: Vec<SortExpression>, range: SortExpression) -> SortExpr
     if domain.is_empty() {
         range
     } else {
-        SortExpression::FlattenedFunction {
+        SortExpressionKind::FlattenedFunction {
             domain,
             range: Box::new(range),
         }
+        .into()
     }
 }
 

@@ -6,6 +6,7 @@ use log::debug;
 
 use merc_syntax::FixedPointOperator;
 use merc_syntax::StateFrm;
+use merc_syntax::StateFrmKind;
 use merc_syntax::StateVarDecl;
 use merc_syntax::apply_statefrm;
 use merc_syntax::visit_statefrm;
@@ -45,11 +46,12 @@ impl Equation {
 
 impl From<Equation> for StateFrm {
     fn from(val: Equation) -> Self {
-        StateFrm::FixedPoint {
+        StateFrmKind::FixedPoint {
             operator: val.operator,
             variable: val.variable,
             body: Box::new(val.rhs),
         }
+        .into()
     }
 }
 
@@ -128,8 +130,8 @@ impl ModalEquationSystem {
     fn alternation_depth_rec(&self, i: usize, formula: &StateFrm, identifier: &String) -> usize {
         let equation = &self.equations[i];
 
-        match formula {
-            StateFrm::Id(id, _) => {
+        match &formula.node {
+            StateFrmKind::Id(id, _) => {
                 if id == identifier {
                     1
                 } else {
@@ -150,11 +152,11 @@ impl ModalEquationSystem {
                     }
                 }
             }
-            StateFrm::Binary { lhs, rhs, .. } => self
+            StateFrmKind::Binary { lhs, rhs, .. } => self
                 .alternation_depth_rec(i, lhs, identifier)
                 .max(self.alternation_depth_rec(i, rhs, identifier)),
-            StateFrm::Modality { expr, .. } => self.alternation_depth_rec(i, expr, identifier),
-            StateFrm::True | StateFrm::False => 0,
+            StateFrmKind::Modality { expr, .. } => self.alternation_depth_rec(i, expr, identifier),
+            StateFrmKind::True | StateFrmKind::False => 0,
             _ => {
                 unimplemented!("Cannot determine alternation depth of formula {}", formula)
             }
@@ -165,16 +167,17 @@ impl ModalEquationSystem {
 /// If the given formula has no outermost fixpoint operator, adds a placeholder
 /// fixpoint operator around it.
 fn add_placeholder_operator(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
-    if matches!(formula, StateFrm::FixedPoint { .. }) {
+    if matches!(formula.node, StateFrmKind::FixedPoint { .. }) {
         // The outer operator is already a fixpoint
         formula
     } else {
         // Introduce a placeholder.
-        StateFrm::FixedPoint {
+        StateFrmKind::FixedPoint {
             operator: FixedPointOperator::Least,
             variable: StateVarDecl::new(identifier_generator.generate("X"), Vec::new()),
             body: Box::new(formula),
         }
+        .into()
     }
 }
 
@@ -186,8 +189,8 @@ fn add_placeholder_operator(formula: StateFrm, identifier_generator: &mut FreshS
 fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
     debug!("Applying E to formula: {}", formula);
 
-    visit_statefrm::<(), _>(formula, |formula| match formula {
-        StateFrm::FixedPoint {
+    visit_statefrm::<(), _>(formula, |formula| match &formula.node {
+        StateFrmKind::FixedPoint {
             operator,
             variable,
             body,
@@ -219,12 +222,15 @@ fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
 /// RHS(mu X. f) = X(args)
 /// RHS(nu X. f) = X(args)
 fn rhs(formula: &StateFrm) -> StateFrm {
-    apply_statefrm(formula.clone(), |formula| match formula {
+    apply_statefrm(formula.clone(), |formula| match &formula.node {
         // RHS(mu X. phi) = X(args)
-        StateFrm::FixedPoint { variable, .. } => Ok(Some(StateFrm::Id(
-            variable.identifier.clone(),
-            variable.arguments.iter().map(|arg| arg.expr.clone()).collect(),
-        ))),
+        StateFrmKind::FixedPoint { variable, .. } => Ok(Some(
+            StateFrmKind::Id(
+                variable.identifier.clone(),
+                variable.arguments.iter().map(|arg| arg.expr.clone()).collect(),
+            )
+            .into(),
+        )),
         _ => Ok(None),
     })
     .expect("No error expected during RHS extraction")
@@ -244,7 +250,7 @@ impl FreshStateVarGenerator {
     pub fn new(formula: &StateFrm) -> Self {
         let mut used = HashSet::new();
         visit_statefrm::<(), _>(formula, |subformula| {
-            if let StateFrm::FixedPoint { variable, .. } = subformula {
+            if let StateFrmKind::FixedPoint { variable, .. } = &subformula.node {
                 used.insert(variable.identifier.clone());
             }
 

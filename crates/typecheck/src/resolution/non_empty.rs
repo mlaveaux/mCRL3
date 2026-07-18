@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use merc_syntax::DefId;
-use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::argument_sorts;
@@ -20,8 +20,8 @@ pub(crate) fn nonempty_sorts(spec: &UntypedDataSpecification) -> HashSet<DefId> 
     let constructor_sorts: HashSet<DefId> = spec
         .constructor_declarations
         .iter()
-        .filter_map(|constructor| match target_sort(&constructor.sort) {
-            SortExpression::Resolved(_, id) => Some(*id),
+        .filter_map(|constructor| match &target_sort(&constructor.sort).node {
+            SortExpressionKind::Resolved(_, id) => Some(*id),
             _ => None,
         })
         .collect();
@@ -37,7 +37,7 @@ pub(crate) fn nonempty_sorts(spec: &UntypedDataSpecification) -> HashSet<DefId> 
     while changed {
         changed = false;
         for constructor in &spec.constructor_declarations {
-            let SortExpression::Resolved(_, target) = target_sort(&constructor.sort) else {
+            let SortExpressionKind::Resolved(_, target) = &target_sort(&constructor.sort).node else {
                 unreachable!("The target sort of a constructor should be a resolved sort");
             };
 
@@ -45,8 +45,8 @@ pub(crate) fn nonempty_sorts(spec: &UntypedDataSpecification) -> HashSet<DefId> 
                 continue;
             }
 
-            let all_arguments_nonempty = argument_sorts(&constructor.sort).iter().all(|argument| match argument {
-                SortExpression::Resolved(_, id) => nonempty.contains(id),
+            let all_arguments_nonempty = argument_sorts(&constructor.sort).iter().all(|argument| match &argument.node {
+                SortExpressionKind::Resolved(_, id) => nonempty.contains(id),
                 _ => true,
             });
 

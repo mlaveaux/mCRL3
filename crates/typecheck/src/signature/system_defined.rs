@@ -5,6 +5,7 @@ use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
 use merc_syntax::DataExprKind;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_data_expr;
 use merc_syntax::visit_sort_expr;
@@ -151,14 +152,8 @@ fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, 
             DataExprKind::SetBagComp { variable, predicate: _ } => {
                 if is_supported_binder_sort(&variable.sort) {
                     collect_system_sorts(&variable.sort, out, include_functions);
-                    out.push(SortExpression::Complex(
-                        ComplexSort::Set,
-                        Box::new(variable.sort.clone()),
-                    ));
-                    out.push(SortExpression::Complex(
-                        ComplexSort::Bag,
-                        Box::new(variable.sort.clone()),
-                    ));
+                    out.push(SortExpressionKind::Complex(ComplexSort::Set, Box::new(variable.sort.clone())).into());
+                    out.push(SortExpressionKind::Complex(ComplexSort::Bag, Box::new(variable.sort.clone())).into());
                 }
             }
             DataExprKind::Lambda { variables, body: _ }
@@ -190,22 +185,25 @@ fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, 
 /// declaration.
 fn collect_system_sorts(sort: &SortExpression, out: &mut Vec<SortExpression>, include_functions: bool) {
     visit_sort_expr::<(), _>(sort, |expr| {
-        match expr {
-            SortExpression::Complex(_, _) => out.push(expr.clone()),
+        match &expr.node {
+            SortExpressionKind::Complex(_, _) => out.push(expr.clone()),
             // A user specification carries flattened function sorts; the
             // generated Appendix-B specifications carry the un-flattened
             // `Function` form.
-            SortExpression::Function { domain, .. } => {
-                if include_functions && !matches!(**domain, SortExpression::Product { .. }) {
+            SortExpressionKind::Function { domain, .. } => {
+                if include_functions && !matches!(domain.node, SortExpressionKind::Product { .. }) {
                     out.push(expr.clone());
                 }
             }
-            SortExpression::FlattenedFunction { domain, range } => {
+            SortExpressionKind::FlattenedFunction { domain, range } => {
                 if include_functions && let [single] = domain.as_slice() {
-                    out.push(SortExpression::Function {
-                        domain: Box::new(single.clone()),
-                        range: range.clone(),
-                    });
+                    out.push(
+                        SortExpressionKind::Function {
+                            domain: Box::new(single.clone()),
+                            range: range.clone(),
+                        }
+                        .into(),
+                    );
                 }
             }
             _ => {}
@@ -217,7 +215,7 @@ fn collect_system_sorts(sort: &SortExpression, out: &mut Vec<SortExpression>, in
 #[cfg(test)]
 mod tests {
     use merc_syntax::ComplexSort;
-    use merc_syntax::SortExpression;
+    use merc_syntax::SortExpressionKind;
     use merc_syntax::UntypedDataSpecification;
 
     use super::build_system_defined_specification;
@@ -231,8 +229,8 @@ mod tests {
         collect_system_sorts_in_spec(spec, &mut sorts, true);
         let mut ops: Vec<ComplexSort> = sorts
             .into_iter()
-            .filter_map(|sort| match sort {
-                SortExpression::Complex(op, _) => Some(op),
+            .filter_map(|sort| match sort.node {
+                SortExpressionKind::Complex(op, _) => Some(op),
                 _ => None,
             })
             .collect();

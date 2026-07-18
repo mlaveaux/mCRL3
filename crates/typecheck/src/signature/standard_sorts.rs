@@ -7,6 +7,7 @@ use indoc::formatdoc;
 use merc_syntax::ComplexSort;
 use merc_syntax::ConstructorDecl;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
@@ -75,7 +76,7 @@ pub(crate) fn basic_sort_data_specification() -> UntypedDataSpecification {
 
 /// Constructs a data specification for a standard sort;
 pub(crate) fn standard_sort(sort: &SortExpression) -> UntypedDataSpecification {
-    if let SortExpression::Complex(complex, sort) = sort {
+    if let SortExpressionKind::Complex(complex, sort) = &sort.node {
         let template = match complex {
             ComplexSort::List => &CONTAINER_TEMPLATES.list,
             ComplexSort::Set => &CONTAINER_TEMPLATES.set,
@@ -85,7 +86,7 @@ pub(crate) fn standard_sort(sort: &SortExpression) -> UntypedDataSpecification {
         };
 
         replace_sort(template, "S", sort)
-    } else if let SortExpression::Function { domain, range } = sort {
+    } else if let SortExpressionKind::Function { domain, range } = &sort.node {
         // In the specification we define the function S -> T.
         let spec = replace_sort(&CONTAINER_TEMPLATES.function_update, "S", domain);
         replace_sort(&spec, "T", range)
@@ -118,7 +119,7 @@ fn replace_sort(spec: &UntypedDataSpecification, identifier: &str, sort: &SortEx
 /// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
 fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort: &SortExpression) -> SortExpression {
     apply_sort_expression(sort.clone(), |expr| -> Result<Option<SortExpression>, Infallible> {
-        if let SortExpression::Reference(id) = expr
+        if let SortExpressionKind::Reference(id) = &expr.node
             && id == identifier
         {
             return Ok(Some(result_sort.clone()));
@@ -308,8 +309,8 @@ pub(crate) fn structured_sort_equations(
 #[cfg(test)]
 mod tests {
     use merc_syntax::ConstructorDecl;
+    use merc_syntax::SortExpressionKind;
 
-    use super::SortExpression;
     use super::UntypedDataSpecification;
     use super::standard_sort;
     use super::structured_sort_equations;
@@ -343,7 +344,7 @@ mod tests {
             .into_iter()
             .find_map(|decl| decl.expr)
             .expect("expected a sort alias with a structured sort");
-        let SortExpression::Struct { inner } = expr else {
+        let SortExpressionKind::Struct { inner } = expr.node else {
             panic!("expected a structured sort");
         };
         inner

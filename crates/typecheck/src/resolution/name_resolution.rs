@@ -14,6 +14,7 @@ use merc_syntax::EqnVarId;
 use merc_syntax::EquationId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_syntax::try_visit_data_expr_mut;
@@ -150,9 +151,9 @@ where
 /// the sort-name index built by [resolve_names], or fails on an undeclared name.
 fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Result<SortExpression, WellTypedError> {
     apply_sort_expression(sort.clone(), |expr| {
-        if let SortExpression::Reference(name) = expr {
+        if let SortExpressionKind::Reference(name) = &expr.node {
             if let Some(id) = resolved.index(name) {
-                return Ok(Some(SortExpression::Resolved(name.clone(), DefId::new(*id))));
+                return Ok(Some(SortExpressionKind::Resolved(name.clone(), DefId::new(*id)).into()));
             }
 
             return Err(WellTypedError::UndefinedSort { sort: name.clone() });
@@ -169,7 +170,7 @@ mod tests {
     use merc_syntax::EqnSpecId;
     use merc_syntax::EquationId;
     use merc_syntax::MapId;
-    use merc_syntax::SortExpression;
+    use merc_syntax::SortExpressionKind;
     use merc_syntax::UntypedDataSpecification;
 
     use crate::DataSpecification;
@@ -224,13 +225,13 @@ mod tests {
         let equation = &spec.data_specification().equation_declarations[0];
 
         // The declaration-level variable `x: D` is resolved.
-        assert!(matches!(equation.variables[0].sort, SortExpression::Resolved(_, _)));
+        assert!(matches!(equation.variables[0].sort.node, SortExpressionKind::Resolved(_, _)));
 
         // The quantifier binder `y: D` in the body is resolved as well.
         let DataExprKind::Quantifier { variables, .. } = &equation.equations[0].rhs.node else {
             panic!("expected a quantifier body, got {:?}", equation.equations[0].rhs);
         };
-        assert!(matches!(variables[0].sort, SortExpression::Resolved(_, _)));
+        assert!(matches!(variables[0].sort.node, SortExpressionKind::Resolved(_, _)));
     }
 
     /// An undeclared sort on a binder inside an equation body is rejected like

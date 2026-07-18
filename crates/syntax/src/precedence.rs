@@ -10,6 +10,7 @@ use merc_pest_consume::Node;
 
 use crate::ActFrm;
 use crate::ActFrmBinaryOp;
+use crate::ActFrmKind;
 use crate::Bound;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
@@ -21,19 +22,25 @@ use crate::ModalityOperator;
 use crate::ParseResult;
 use crate::PbesExpr;
 use crate::PbesExprBinaryOp;
+use crate::PbesExprKind;
 use crate::PresExpr;
 use crate::PresExprBinaryOp;
+use crate::PresExprKind;
 use crate::ProcExprBinaryOp;
 use crate::ProcessExpr;
+use crate::ProcessExprKind;
 use crate::Quantifier;
 use crate::RegFrm;
+use crate::RegFrmKind;
 use crate::Rule;
 use crate::Sort;
 use crate::Span;
 use crate::StateFrm;
+use crate::StateFrmKind;
 use crate::StateFrmOp;
 use crate::StateFrmUnaryOp;
 use crate::syntax_tree::SortExpression;
+use crate::syntax_tree::SortExpressionKind;
 
 pub static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     // Precedence is defined lowest to highest
@@ -45,15 +52,16 @@ pub static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 
 #[allow(clippy::result_large_err)]
 pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpression> {
+    let span: Span = primary.as_span().into();
     match primary.as_rule() {
-        Rule::IdAt => Ok(SortExpression::Reference(Mcrl2Parser::IdAt(Node::new(primary))?)),
+        Rule::IdAt => Ok(SortExpressionKind::Reference(Mcrl2Parser::IdAt(Node::new(primary))?).spanned(span)),
         Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)),
 
-        Rule::SortExprBool => Ok(SortExpression::Simple(Sort::Bool)),
-        Rule::SortExprInt => Ok(SortExpression::Simple(Sort::Int)),
-        Rule::SortExprPos => Ok(SortExpression::Simple(Sort::Pos)),
-        Rule::SortExprNat => Ok(SortExpression::Simple(Sort::Nat)),
-        Rule::SortExprReal => Ok(SortExpression::Simple(Sort::Real)),
+        Rule::SortExprBool => Ok(SortExpressionKind::Simple(Sort::Bool).spanned(span)),
+        Rule::SortExprInt => Ok(SortExpressionKind::Simple(Sort::Int).spanned(span)),
+        Rule::SortExprPos => Ok(SortExpressionKind::Simple(Sort::Pos).spanned(span)),
+        Rule::SortExprNat => Ok(SortExpressionKind::Simple(Sort::Nat).spanned(span)),
+        Rule::SortExprReal => Ok(SortExpressionKind::Simple(Sort::Real).spanned(span)),
 
         Rule::SortExprList => Mcrl2Parser::SortExprList(Node::new(primary)),
         Rule::SortExprSet => Mcrl2Parser::SortExprSet(Node::new(primary)),
@@ -80,16 +88,26 @@ pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpres
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> ParseResult<SortExpression> {
     SORT_PRATT_PARSER
         .map_primary(|primary| parse_sortexpr_primary(primary))
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::SortExprFunction => Ok(SortExpression::Function {
-                domain: Box::new(lhs?),
-                range: Box::new(rhs?),
-            }),
-            Rule::SortExprProduct => Ok(SortExpression::Product {
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            match op.as_rule() {
+                Rule::SortExprFunction => Ok(SortExpressionKind::Function {
+                    domain: Box::new(lhs),
+                    range: Box::new(rhs),
+                }
+                .spanned(span)),
+                Rule::SortExprProduct => Ok(SortExpressionKind::Product {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+            }
         })
         .parse(pairs)
 }
@@ -281,103 +299,116 @@ pub static PROCEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(||
 #[allow(clippy::result_large_err)]
 pub fn parse_process_expr(pairs: Pairs<Rule>) -> ParseResult<ProcessExpr> {
     PROCEXPR_PRATT_PARSER
-        .map_primary(|primary| match primary.as_rule() {
-            Rule::ProcExprId => Ok(Mcrl2Parser::ProcExprId(Node::new(primary))?),
-            Rule::ProcExprDelta => Ok(ProcessExpr::Delta),
-            Rule::ProcExprTau => Ok(ProcessExpr::Tau),
-            Rule::ProcExprBlock => Ok(Mcrl2Parser::ProcExprBlock(Node::new(primary))?),
-            Rule::ProcExprAllow => Ok(Mcrl2Parser::ProcExprAllow(Node::new(primary))?),
-            Rule::ProcExprHide => Ok(Mcrl2Parser::ProcExprHide(Node::new(primary))?),
-            Rule::ProcExprRename => Ok(Mcrl2Parser::ProcExprRename(Node::new(primary))?),
-            Rule::ProcExprComm => Ok(Mcrl2Parser::ProcExprComm(Node::new(primary))?),
-            Rule::Action => {
-                let action = Mcrl2Parser::Action(Node::new(primary))?;
+        .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
+            match primary.as_rule() {
+                Rule::ProcExprId => Ok(Mcrl2Parser::ProcExprId(Node::new(primary))?),
+                Rule::ProcExprDelta => Ok(ProcessExprKind::Delta.spanned(span)),
+                Rule::ProcExprTau => Ok(ProcessExprKind::Tau.spanned(span)),
+                Rule::ProcExprBlock => Ok(Mcrl2Parser::ProcExprBlock(Node::new(primary))?),
+                Rule::ProcExprAllow => Ok(Mcrl2Parser::ProcExprAllow(Node::new(primary))?),
+                Rule::ProcExprHide => Ok(Mcrl2Parser::ProcExprHide(Node::new(primary))?),
+                Rule::ProcExprRename => Ok(Mcrl2Parser::ProcExprRename(Node::new(primary))?),
+                Rule::ProcExprComm => Ok(Mcrl2Parser::ProcExprComm(Node::new(primary))?),
+                Rule::Action => {
+                    let action = Mcrl2Parser::Action(Node::new(primary))?;
 
-                Ok(ProcessExpr::Action(action.id, action.args))
+                    Ok(ProcessExprKind::Action(action.id, action.args).spanned(span))
+                }
+                Rule::ProcExprBrackets => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
+                    parse_process_expr(inner.into_inner())
+                }
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
-            Rule::ProcExprBrackets => {
-                // Handle parentheses by recursively parsing the inner expression
-                let inner = primary
-                    .into_inner()
-                    .next()
-                    .expect("Expected inner expression in brackets");
-                parse_process_expr(inner.into_inner())
-            }
-            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
         })
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::ProcExprChoice => Ok(ProcessExpr::Binary {
-                op: ProcExprBinaryOp::Choice,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ProcExprParallel => Ok(ProcessExpr::Binary {
-                op: ProcExprBinaryOp::Parallel,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ProcExprLeftMerge => Ok(ProcessExpr::Binary {
-                op: ProcExprBinaryOp::LeftMerge,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ProcExprSeq => Ok(ProcessExpr::Binary {
-                op: ProcExprBinaryOp::Sequence,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ProcExprSync => Ok(ProcessExpr::Binary {
-                op: ProcExprBinaryOp::CommMerge,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ProcExprUntil => Ok(ProcessExpr::Binary {
-                op: ProcExprBinaryOp::Until,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            let op = match op.as_rule() {
+                Rule::ProcExprChoice => ProcExprBinaryOp::Choice,
+                Rule::ProcExprParallel => ProcExprBinaryOp::Parallel,
+                Rule::ProcExprLeftMerge => ProcExprBinaryOp::LeftMerge,
+                Rule::ProcExprSeq => ProcExprBinaryOp::Sequence,
+                Rule::ProcExprSync => ProcExprBinaryOp::CommMerge,
+                Rule::ProcExprUntil => ProcExprBinaryOp::Until,
+                _ => unimplemented!("Unexpected rule: {:?}", op.as_rule()),
+            };
+            Ok(ProcessExprKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .spanned(span))
         })
-        .map_prefix(|prefix, expr| match prefix.as_rule() {
-            Rule::ProcExprSum => Ok(ProcessExpr::Sum {
-                variables: Mcrl2Parser::ProcExprSum(Node::new(prefix))?,
-                operand: Box::new(expr?),
-            }),
-            Rule::ProcExprDist => {
-                let (variables, data_expr) = Mcrl2Parser::ProcExprDist(Node::new(prefix))?;
+        .map_prefix(|prefix, expr| {
+            let start = prefix.as_span().start();
+            let expr = expr?;
+            let span = Span {
+                start,
+                end: expr.span.end,
+            };
+            match prefix.as_rule() {
+                Rule::ProcExprSum => Ok(ProcessExprKind::Sum {
+                    variables: Mcrl2Parser::ProcExprSum(Node::new(prefix))?,
+                    operand: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::ProcExprDist => {
+                    let (variables, data_expr) = Mcrl2Parser::ProcExprDist(Node::new(prefix))?;
 
-                Ok(ProcessExpr::Dist {
-                    variables,
-                    expr: data_expr,
-                    operand: Box::new(expr?),
-                })
-            }
-            Rule::ProcExprIf => {
-                let condition = Mcrl2Parser::ProcExprIf(Node::new(prefix))?;
+                    Ok(ProcessExprKind::Dist {
+                        variables,
+                        expr: data_expr,
+                        operand: Box::new(expr),
+                    }
+                    .spanned(span))
+                }
+                Rule::ProcExprIf => {
+                    let condition = Mcrl2Parser::ProcExprIf(Node::new(prefix))?;
 
-                Ok(ProcessExpr::Condition {
-                    condition,
-                    then: Box::new(expr?),
-                    else_: None,
-                })
-            }
-            Rule::ProcExprIfThen => {
-                let (condition, then) = Mcrl2Parser::ProcExprIfThen(Node::new(prefix))?;
+                    Ok(ProcessExprKind::Condition {
+                        condition,
+                        then: Box::new(expr),
+                        else_: None,
+                    }
+                    .spanned(span))
+                }
+                Rule::ProcExprIfThen => {
+                    let (condition, then) = Mcrl2Parser::ProcExprIfThen(Node::new(prefix))?;
 
-                Ok(ProcessExpr::Condition {
-                    condition,
-                    then: Box::new(then),
-                    else_: Some(Box::new(expr?)),
-                })
+                    Ok(ProcessExprKind::Condition {
+                        condition,
+                        then: Box::new(then),
+                        else_: Some(Box::new(expr)),
+                    }
+                    .spanned(span))
+                }
+                _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
             }
-            _ => unimplemented!("Unexpected rule: {:?}", prefix.as_rule()),
         })
-        .map_postfix(|expr, postfix| match postfix.as_rule() {
-            Rule::ProcExprAt => Ok(ProcessExpr::At {
-                expr: Box::new(expr?),
-                operand: Mcrl2Parser::ProcExprAt(Node::new(postfix))?,
-            }),
-            _ => unimplemented!("Unexpected postfix rule: {:?}", postfix.as_rule()),
+        .map_postfix(|expr, postfix| {
+            let expr = expr?;
+            let span = Span {
+                start: expr.span.start,
+                end: postfix.as_span().end(),
+            };
+            match postfix.as_rule() {
+                Rule::ProcExprAt => Ok(ProcessExprKind::At {
+                    expr: Box::new(expr),
+                    operand: Mcrl2Parser::ProcExprAt(Node::new(postfix))?,
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected postfix rule: {:?}", postfix.as_rule()),
+            }
         })
         .parse(pairs)
 }
@@ -399,11 +430,14 @@ pub static ACTFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
     ACTFRM_PRATT_PARSER
         .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
             match primary.as_rule() {
-                Rule::ActFrmTrue => Ok(ActFrm::True),
-                Rule::ActFrmFalse => Ok(ActFrm::False),
-                Rule::MultAct => Ok(ActFrm::MultAct(Mcrl2Parser::MultAct(Node::new(primary))?)),
-                Rule::DataValExpr => Ok(ActFrm::DataExprVal(Mcrl2Parser::DataValExpr(Node::new(primary))?)),
+                Rule::ActFrmTrue => Ok(ActFrmKind::True.spanned(span)),
+                Rule::ActFrmFalse => Ok(ActFrmKind::False.spanned(span)),
+                Rule::MultAct => Ok(ActFrmKind::MultAct(Mcrl2Parser::MultAct(Node::new(primary))?).spanned(span)),
+                Rule::DataValExpr => {
+                    Ok(ActFrmKind::DataExprVal(Mcrl2Parser::DataValExpr(Node::new(primary))?).spanned(span))
+                }
                 Rule::ActFrmBrackets => {
                     // Handle parentheses by recursively parsing the inner expression
                     let inner = primary
@@ -415,37 +449,49 @@ pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
         })
-        .map_prefix(|prefix, expr| match prefix.as_rule() {
-            Rule::ActFrmExists => Ok(ActFrm::Quantifier {
-                quantifier: Quantifier::Exists,
-                variables: Mcrl2Parser::ActFrmExists(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::ActFrmForall => Ok(ActFrm::Quantifier {
-                quantifier: Quantifier::Forall,
-                variables: Mcrl2Parser::ActFrmForall(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::ActFrmNegation => Ok(ActFrm::Negation(Box::new(expr?))),
-            _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+        .map_prefix(|prefix, expr| {
+            let start = prefix.as_span().start();
+            let expr = expr?;
+            let span = Span {
+                start,
+                end: expr.span.end,
+            };
+            match prefix.as_rule() {
+                Rule::ActFrmExists => Ok(ActFrmKind::Quantifier {
+                    quantifier: Quantifier::Exists,
+                    variables: Mcrl2Parser::ActFrmExists(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::ActFrmForall => Ok(ActFrmKind::Quantifier {
+                    quantifier: Quantifier::Forall,
+                    variables: Mcrl2Parser::ActFrmForall(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::ActFrmNegation => Ok(ActFrmKind::Negation(Box::new(expr)).spanned(span)),
+                _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+            }
         })
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::ActFrmUnion => Ok(ActFrm::Binary {
-                op: ActFrmBinaryOp::Union,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ActFrmIntersect => Ok(ActFrm::Binary {
-                op: ActFrmBinaryOp::Intersect,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::ActFrmImplies => Ok(ActFrm::Binary {
-                op: ActFrmBinaryOp::Implies,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            let op = match op.as_rule() {
+                Rule::ActFrmUnion => ActFrmBinaryOp::Union,
+                Rule::ActFrmIntersect => ActFrmBinaryOp::Intersect,
+                Rule::ActFrmImplies => ActFrmBinaryOp::Implies,
+                _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+            };
+            Ok(ActFrmKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .spanned(span))
         })
         .parse(pairs)
 }
@@ -463,33 +509,53 @@ pub static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 #[allow(clippy::result_large_err)]
 pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
     REGFRM_PRATT_PARSER
-        .map_primary(|primary| match primary.as_rule() {
-            Rule::ActFrm => Ok(RegFrm::Action(Mcrl2Parser::ActFrm(Node::new(primary))?)),
-            Rule::RegFrmBackets => {
-                // Handle parentheses by recursively parsing the inner expression
-                let inner = primary
-                    .into_inner()
-                    .next()
-                    .expect("Expected inner expression in brackets");
-                parse_regfrm(inner.into_inner())
+        .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
+            match primary.as_rule() {
+                Rule::ActFrm => Ok(RegFrmKind::Action(Mcrl2Parser::ActFrm(Node::new(primary))?).spanned(span)),
+                Rule::RegFrmBackets => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
+                    parse_regfrm(inner.into_inner())
+                }
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
-            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
         })
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::RegFrmAlternative => Ok(RegFrm::Choice {
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::RegFrmComposition => Ok(RegFrm::Sequence {
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            match op.as_rule() {
+                Rule::RegFrmAlternative => Ok(RegFrmKind::Choice {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                }
+                .spanned(span)),
+                Rule::RegFrmComposition => Ok(RegFrmKind::Sequence {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+            }
         })
-        .map_postfix(|expr, postfix| match postfix.as_rule() {
-            Rule::RegFrmIteration => Ok(RegFrm::Iteration(Box::new(expr?))),
-            Rule::RegFrmPlus => Ok(RegFrm::Plus(Box::new(expr?))),
-            _ => unimplemented!("Unexpected rule: {:?}", postfix.as_rule()),
+        .map_postfix(|expr, postfix| {
+            let expr = expr?;
+            let span = Span {
+                start: expr.span.start,
+                end: postfix.as_span().end(),
+            };
+            match postfix.as_rule() {
+                Rule::RegFrmIteration => Ok(RegFrmKind::Iteration(Box::new(expr)).spanned(span)),
+                Rule::RegFrmPlus => Ok(RegFrmKind::Plus(Box::new(expr)).spanned(span)),
+                _ => unimplemented!("Unexpected rule: {:?}", postfix.as_rule()),
+            }
         })
         .parse(pairs)
 }
@@ -517,14 +583,17 @@ static STATEFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
     STATEFRM_PRATT_PARSER
         .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
             match primary.as_rule() {
                 Rule::StateFrmId => Mcrl2Parser::StateFrmId(Node::new(primary)),
-                Rule::StateFrmTrue => Ok(StateFrm::True),
-                Rule::StateFrmFalse => Ok(StateFrm::False),
+                Rule::StateFrmTrue => Ok(StateFrmKind::True.spanned(span)),
+                Rule::StateFrmFalse => Ok(StateFrmKind::False.spanned(span)),
                 Rule::StateFrmDelay => Mcrl2Parser::StateFrmDelay(Node::new(primary)),
                 Rule::StateFrmYaled => Mcrl2Parser::StateFrmYaled(Node::new(primary)),
                 Rule::StateFrmNegation => Mcrl2Parser::StateFrmNegation(Node::new(primary)),
-                Rule::StateFrmDataValExpr => Ok(StateFrm::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?)),
+                Rule::StateFrmDataValExpr => {
+                    Ok(StateFrmKind::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?).spanned(span))
+                }
                 Rule::StateFrmBrackets => {
                     // Handle parentheses by recursively parsing the inner expression
                     let inner = primary
@@ -536,91 +605,116 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
         })
-        .map_prefix(|prefix, expr| match prefix.as_rule() {
-            Rule::StateFrmLeftConstantMultiply => Ok(StateFrm::DataValExprLeftMult(
-                Mcrl2Parser::StateFrmLeftConstantMultiply(Node::new(prefix))?,
-                Box::new(expr?),
-            )),
-            Rule::StateFrmDiamond => Ok(StateFrm::Modality {
-                operator: ModalityOperator::Diamond,
-                formula: Mcrl2Parser::StateFrmDiamond(Node::new(prefix))?,
-                expr: Box::new(expr?),
-            }),
-            Rule::StateFrmBox => Ok(StateFrm::Modality {
-                operator: ModalityOperator::Box,
-                formula: Mcrl2Parser::StateFrmBox(Node::new(prefix))?,
-                expr: Box::new(expr?),
-            }),
-            Rule::StateFrmExists => Ok(StateFrm::Quantifier {
-                quantifier: Quantifier::Exists,
-                variables: Mcrl2Parser::StateFrmExists(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::StateFrmForall => Ok(StateFrm::Quantifier {
-                quantifier: Quantifier::Forall,
-                variables: Mcrl2Parser::StateFrmForall(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::StateFrmMu => Ok(StateFrm::FixedPoint {
-                operator: FixedPointOperator::Least,
-                variable: Mcrl2Parser::StateFrmMu(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::StateFrmNu => Ok(StateFrm::FixedPoint {
-                operator: FixedPointOperator::Greatest,
-                variable: Mcrl2Parser::StateFrmNu(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::StateFrmNegation => Ok(StateFrm::Unary {
-                op: StateFrmUnaryOp::Negation,
-                expr: Box::new(expr?),
-            }),
-            Rule::StateFrmSup => Ok(StateFrm::Bound {
-                bound: Bound::Sup,
-                variables: Mcrl2Parser::StateFrmSup(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::StateFrmSum => Ok(StateFrm::Bound {
-                bound: Bound::Sum,
-                variables: Mcrl2Parser::StateFrmSum(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            Rule::StateFrmInf => Ok(StateFrm::Bound {
-                bound: Bound::Inf,
-                variables: Mcrl2Parser::StateFrmInf(Node::new(prefix))?,
-                body: Box::new(expr?),
-            }),
-            _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+        .map_prefix(|prefix, expr| {
+            let start = prefix.as_span().start();
+            let expr = expr?;
+            let span = Span {
+                start,
+                end: expr.span.end,
+            };
+            match prefix.as_rule() {
+                Rule::StateFrmLeftConstantMultiply => Ok(StateFrmKind::DataValExprLeftMult(
+                    Mcrl2Parser::StateFrmLeftConstantMultiply(Node::new(prefix))?,
+                    Box::new(expr),
+                )
+                .spanned(span)),
+                Rule::StateFrmDiamond => Ok(StateFrmKind::Modality {
+                    operator: ModalityOperator::Diamond,
+                    formula: Mcrl2Parser::StateFrmDiamond(Node::new(prefix))?,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmBox => Ok(StateFrmKind::Modality {
+                    operator: ModalityOperator::Box,
+                    formula: Mcrl2Parser::StateFrmBox(Node::new(prefix))?,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmExists => Ok(StateFrmKind::Quantifier {
+                    quantifier: Quantifier::Exists,
+                    variables: Mcrl2Parser::StateFrmExists(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmForall => Ok(StateFrmKind::Quantifier {
+                    quantifier: Quantifier::Forall,
+                    variables: Mcrl2Parser::StateFrmForall(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmMu => Ok(StateFrmKind::FixedPoint {
+                    operator: FixedPointOperator::Least,
+                    variable: Mcrl2Parser::StateFrmMu(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmNu => Ok(StateFrmKind::FixedPoint {
+                    operator: FixedPointOperator::Greatest,
+                    variable: Mcrl2Parser::StateFrmNu(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmNegation => Ok(StateFrmKind::Unary {
+                    op: StateFrmUnaryOp::Negation,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmSup => Ok(StateFrmKind::Bound {
+                    bound: Bound::Sup,
+                    variables: Mcrl2Parser::StateFrmSup(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmSum => Ok(StateFrmKind::Bound {
+                    bound: Bound::Sum,
+                    variables: Mcrl2Parser::StateFrmSum(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::StateFrmInf => Ok(StateFrmKind::Bound {
+                    bound: Bound::Inf,
+                    variables: Mcrl2Parser::StateFrmInf(Node::new(prefix))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected prefix operator: {:?}", prefix.as_rule()),
+            }
         })
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::StateFrmAddition => Ok(StateFrm::Binary {
-                op: StateFrmOp::Addition,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::StateFrmImplication => Ok(StateFrm::Binary {
-                op: StateFrmOp::Implies,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::StateFrmDisjunction => Ok(StateFrm::Binary {
-                op: StateFrmOp::Disjunction,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::StateFrmConjunction => Ok(StateFrm::Binary {
-                op: StateFrmOp::Conjunction,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            let op = match op.as_rule() {
+                Rule::StateFrmAddition => StateFrmOp::Addition,
+                Rule::StateFrmImplication => StateFrmOp::Implies,
+                Rule::StateFrmDisjunction => StateFrmOp::Disjunction,
+                Rule::StateFrmConjunction => StateFrmOp::Conjunction,
+                _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+            };
+            Ok(StateFrmKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .spanned(span))
         })
-        .map_postfix(|expr, postfix| match postfix.as_rule() {
-            Rule::StateFrmRightConstantMultiply => Ok(StateFrm::DataValExprRightMult(
-                Box::new(expr?),
-                Mcrl2Parser::StateFrmRightConstantMultiply(Node::new(postfix))?,
-            )),
-            _ => unimplemented!("Unexpected binary operator: {:?}", postfix.as_rule()),
+        .map_postfix(|expr, postfix| {
+            let expr = expr?;
+            let span = Span {
+                start: expr.span.start,
+                end: postfix.as_span().end(),
+            };
+            match postfix.as_rule() {
+                Rule::StateFrmRightConstantMultiply => Ok(StateFrmKind::DataValExprRightMult(
+                    Box::new(expr),
+                    Mcrl2Parser::StateFrmRightConstantMultiply(Node::new(postfix))?,
+                )
+                .spanned(span)),
+                _ => unimplemented!("Unexpected binary operator: {:?}", postfix.as_rule()),
+            }
         })
         .parse(pairs)
 }
@@ -639,8 +733,11 @@ static PBESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 pub fn parse_pbesexpr(pairs: Pairs<Rule>) -> ParseResult<PbesExpr> {
     PBESEXPR_PRATT_PARSER
         .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
             match primary.as_rule() {
-                Rule::DataValExpr => Ok(PbesExpr::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?)),
+                Rule::DataValExpr => {
+                    Ok(PbesExprKind::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?).spanned(span))
+                }
                 Rule::PbesExprParens => {
                     // Handle parentheses by recursively parsing the inner expression
                     let inner = primary
@@ -649,43 +746,57 @@ pub fn parse_pbesexpr(pairs: Pairs<Rule>) -> ParseResult<PbesExpr> {
                         .expect("Expected inner expression in brackets");
                     parse_pbesexpr(inner.into_inner())
                 }
-                Rule::PbesExprTrue => Ok(PbesExpr::True),
-                Rule::PbesExprFalse => Ok(PbesExpr::False),
-                Rule::PropVarInst => Ok(PbesExpr::PropVarInst(Mcrl2Parser::PropVarInst(Node::new(primary))?)),
+                Rule::PbesExprTrue => Ok(PbesExprKind::True.spanned(span)),
+                Rule::PbesExprFalse => Ok(PbesExprKind::False.spanned(span)),
+                Rule::PropVarInst => {
+                    Ok(PbesExprKind::PropVarInst(Mcrl2Parser::PropVarInst(Node::new(primary))?).spanned(span))
+                }
                 _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
         })
-        .map_prefix(|op, expr| match op.as_rule() {
-            Rule::PbesExprNegation => Ok(PbesExpr::Negation(Box::new(expr?))),
-            Rule::PbesExprExists => Ok(PbesExpr::Quantifier {
-                quantifier: Quantifier::Exists,
-                variables: Mcrl2Parser::PbesExprExists(Node::new(op))?,
-                body: Box::new(expr?),
-            }),
-            Rule::PbesExprForall => Ok(PbesExpr::Quantifier {
-                quantifier: Quantifier::Forall,
-                variables: Mcrl2Parser::PbesExprForall(Node::new(op))?,
-                body: Box::new(expr?),
-            }),
-            _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
+        .map_prefix(|op, expr| {
+            let start = op.as_span().start();
+            let expr = expr?;
+            let span = Span {
+                start,
+                end: expr.span.end,
+            };
+            match op.as_rule() {
+                Rule::PbesExprNegation => Ok(PbesExprKind::Negation(Box::new(expr)).spanned(span)),
+                Rule::PbesExprExists => Ok(PbesExprKind::Quantifier {
+                    quantifier: Quantifier::Exists,
+                    variables: Mcrl2Parser::PbesExprExists(Node::new(op))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                Rule::PbesExprForall => Ok(PbesExprKind::Quantifier {
+                    quantifier: Quantifier::Forall,
+                    variables: Mcrl2Parser::PbesExprForall(Node::new(op))?,
+                    body: Box::new(expr),
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
+            }
         })
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::PbesExprConj => Ok(PbesExpr::Binary {
-                op: PbesExprBinaryOp::Conjunction,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::PbesExprDisj => Ok(PbesExpr::Binary {
-                op: PbesExprBinaryOp::Disjunction,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::PbesExprImplies => Ok(PbesExpr::Binary {
-                op: PbesExprBinaryOp::Implies,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            let op = match op.as_rule() {
+                Rule::PbesExprConj => PbesExprBinaryOp::Conjunction,
+                Rule::PbesExprDisj => PbesExprBinaryOp::Disjunction,
+                Rule::PbesExprImplies => PbesExprBinaryOp::Implies,
+                _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+            };
+            Ok(PbesExprKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .spanned(span))
         })
         .parse(pairs)
 }
@@ -705,77 +816,102 @@ static PRESEXPR_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 #[allow(clippy::result_large_err)]
 pub fn parse_presexpr(pairs: Pairs<Rule>) -> ParseResult<PresExpr> {
     PRESEXPR_PRATT_PARSER
-        .map_primary(|primary| match primary.as_rule() {
-            Rule::DataValExpr => Ok(PresExpr::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?)),
-            Rule::PresExprParens => {
-                // Handle parentheses by recursively parsing the inner expression
-                let inner = primary
-                    .into_inner()
-                    .next()
-                    .expect("Expected inner expression in brackets");
-                parse_presexpr(inner.into_inner())
+        .map_primary(|primary| {
+            let span: Span = primary.as_span().into();
+            match primary.as_rule() {
+                Rule::DataValExpr => {
+                    Ok(PresExprKind::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?).spanned(span))
+                }
+                Rule::PresExprParens => {
+                    // Handle parentheses by recursively parsing the inner expression
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("Expected inner expression in brackets");
+                    parse_presexpr(inner.into_inner())
+                }
+                Rule::PbesExprTrue => Ok(PresExprKind::True.spanned(span)),
+                Rule::PbesExprFalse => Ok(PresExprKind::False.spanned(span)),
+                Rule::PropVarInst => {
+                    Ok(PresExprKind::PropVarInst(Mcrl2Parser::PropVarInst(Node::new(primary))?).spanned(span))
+                }
+                Rule::PresExprEqinf => Ok(Mcrl2Parser::PresExprEqinf(Node::new(primary))?),
+                Rule::PresExprEqninf => Ok(Mcrl2Parser::PresExprEqninf(Node::new(primary))?),
+                Rule::PresExprCondsm => Ok(Mcrl2Parser::PresExprCondsm(Node::new(primary))?),
+                Rule::PresExprCondeq => Ok(Mcrl2Parser::PresExprCondeq(Node::new(primary))?),
+                _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
             }
-            Rule::PbesExprTrue => Ok(PresExpr::True),
-            Rule::PbesExprFalse => Ok(PresExpr::False),
-            Rule::PropVarInst => Ok(PresExpr::PropVarInst(Mcrl2Parser::PropVarInst(Node::new(primary))?)),
-            Rule::PresExprEqinf => Ok(Mcrl2Parser::PresExprEqinf(Node::new(primary))?),
-            Rule::PresExprEqninf => Ok(Mcrl2Parser::PresExprEqninf(Node::new(primary))?),
-            Rule::PresExprCondsm => Ok(Mcrl2Parser::PresExprCondsm(Node::new(primary))?),
-            Rule::PresExprCondeq => Ok(Mcrl2Parser::PresExprCondeq(Node::new(primary))?),
-            _ => unimplemented!("Unexpected rule: {:?}", primary.as_rule()),
         })
-        .map_prefix(|op, expr| match op.as_rule() {
-            Rule::PbesExprNegation => Ok(PresExpr::Negation(Box::new(expr?))),
-            Rule::PresExprInf => Ok(PresExpr::Bound {
-                op: Bound::Inf,
-                expr: Box::new(expr?),
-                variables: Mcrl2Parser::PresExprInf(Node::new(op))?,
-            }),
-            Rule::PresExprSup => Ok(PresExpr::Bound {
-                op: Bound::Sup,
-                expr: Box::new(expr?),
-                variables: Mcrl2Parser::PresExprSup(Node::new(op))?,
-            }),
-            Rule::PresExprSum => Ok(PresExpr::Bound {
-                op: Bound::Sum,
-                expr: Box::new(expr?),
-                variables: Mcrl2Parser::PresExprSum(Node::new(op))?,
-            }),
-            Rule::PresExprLeftConstantMultiply => Ok(PresExpr::LeftConstantMultiply {
-                constant: Mcrl2Parser::PresExprLeftConstantMultiply(Node::new(op))?,
-                expr: Box::new(expr?),
-            }),
-            _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
+        .map_prefix(|op, expr| {
+            let start = op.as_span().start();
+            let expr = expr?;
+            let span = Span {
+                start,
+                end: expr.span.end,
+            };
+            match op.as_rule() {
+                Rule::PbesExprNegation => Ok(PresExprKind::Negation(Box::new(expr)).spanned(span)),
+                Rule::PresExprInf => Ok(PresExprKind::Bound {
+                    op: Bound::Inf,
+                    expr: Box::new(expr),
+                    variables: Mcrl2Parser::PresExprInf(Node::new(op))?,
+                }
+                .spanned(span)),
+                Rule::PresExprSup => Ok(PresExprKind::Bound {
+                    op: Bound::Sup,
+                    expr: Box::new(expr),
+                    variables: Mcrl2Parser::PresExprSup(Node::new(op))?,
+                }
+                .spanned(span)),
+                Rule::PresExprSum => Ok(PresExprKind::Bound {
+                    op: Bound::Sum,
+                    expr: Box::new(expr),
+                    variables: Mcrl2Parser::PresExprSum(Node::new(op))?,
+                }
+                .spanned(span)),
+                Rule::PresExprLeftConstantMultiply => Ok(PresExprKind::LeftConstantMultiply {
+                    constant: Mcrl2Parser::PresExprLeftConstantMultiply(Node::new(op))?,
+                    expr: Box::new(expr),
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected prefix operator: {:?}", op.as_rule()),
+            }
         })
-        .map_infix(|lhs, op, rhs| match op.as_rule() {
-            Rule::PbesExprImplies => Ok(PresExpr::Binary {
-                op: PresExprBinaryOp::Implies,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::PbesExprDisj => Ok(PresExpr::Binary {
-                op: PresExprBinaryOp::Disjunction,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::PbesExprConj => Ok(PresExpr::Binary {
-                op: PresExprBinaryOp::Conjunction,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            Rule::PresExprAdd => Ok(PresExpr::Binary {
-                op: PresExprBinaryOp::Add,
-                lhs: Box::new(lhs?),
-                rhs: Box::new(rhs?),
-            }),
-            _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+        .map_infix(|lhs, op, rhs| {
+            let lhs = lhs?;
+            let rhs = rhs?;
+            let span = Span {
+                start: lhs.span.start,
+                end: rhs.span.end,
+            };
+            let op = match op.as_rule() {
+                Rule::PbesExprImplies => PresExprBinaryOp::Implies,
+                Rule::PbesExprDisj => PresExprBinaryOp::Disjunction,
+                Rule::PbesExprConj => PresExprBinaryOp::Conjunction,
+                Rule::PresExprAdd => PresExprBinaryOp::Add,
+                _ => unimplemented!("Unexpected binary operator: {:?}", op.as_rule()),
+            };
+            Ok(PresExprKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .spanned(span))
         })
-        .map_postfix(|expr, postfix| match postfix.as_rule() {
-            Rule::PresExprRightConstMultiply => Ok(PresExpr::RightConstantMultiply {
-                expr: Box::new(expr?),
-                constant: Mcrl2Parser::PresExprRightConstMultiply(Node::new(postfix))?,
-            }),
-            _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
+        .map_postfix(|expr, postfix| {
+            let expr = expr?;
+            let span = Span {
+                start: expr.span.start,
+                end: postfix.as_span().end(),
+            };
+            match postfix.as_rule() {
+                Rule::PresExprRightConstMultiply => Ok(PresExprKind::RightConstantMultiply {
+                    expr: Box::new(expr),
+                    constant: Mcrl2Parser::PresExprRightConstMultiply(Node::new(postfix))?,
+                }
+                .spanned(span)),
+                _ => unimplemented!("Unexpected postfix operator: {:?}", postfix.as_rule()),
+            }
         })
         .parse(pairs)
 }

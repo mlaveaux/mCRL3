@@ -177,9 +177,11 @@ impl<Id> IdDecl<Id> {
     }
 }
 
-/// Expression representing a sort (type).
+/// The kind of a [SortExpression] node, without its source span. Every
+/// recursive child is a [SortExpression], so each node
+/// carries its own location.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
-pub enum SortExpression {
+pub enum SortExpressionKind {
     /// Product of two sorts (A # B)
     Product {
         lhs: Box<SortExpression>,
@@ -193,7 +195,7 @@ pub enum SortExpression {
     Struct {
         inner: Vec<ConstructorDecl>,
     },
-    /// Reference to a named sort    
+    /// Reference to a named sort
     Reference(String),
     /// Built-in simple sort
     Simple(Sort),
@@ -206,6 +208,26 @@ pub enum SortExpression {
         domain: Vec<SortExpression>,
         range: Box<SortExpression>,
     },
+}
+
+/// A sort expression: a [SortExpressionKind] paired with the source [Span] it
+/// was parsed from. Synthetic expressions built by later passes use
+/// [Span::default].
+pub type SortExpression = Spanned<SortExpressionKind>;
+
+impl SortExpressionKind {
+    /// Wraps this kind together with a source `span` into a [SortExpression].
+    pub fn spanned(self, span: Span) -> SortExpression {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<SortExpressionKind> for SortExpression {
+    /// Wraps a kind into a [SortExpression] with a default (empty) span, for
+    /// synthetic expressions that have no source location.
+    fn from(kind: SortExpressionKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 /// Constructor declaration
@@ -427,9 +449,11 @@ pub enum ProcExprBinaryOp {
     Until,
 }
 
-/// Process expression
+/// The kind of a [ProcessExpr] node, without its source span. Every recursive
+/// child is a [ProcessExpr] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub enum ProcessExpr {
+pub enum ProcessExprKind {
     Id(String, Vec<Assignment>),
     Action(String, Vec<DataExpr>),
     Delta,
@@ -477,6 +501,26 @@ pub enum ProcessExpr {
         expr: Box<ProcessExpr>,
         operand: DataExpr,
     },
+}
+
+/// A process expression: a [ProcessExprKind] paired with the source [Span] it
+/// was parsed from. Synthetic expressions built by later passes use
+/// [Span::default].
+pub type ProcessExpr = Spanned<ProcessExprKind>;
+
+impl ProcessExprKind {
+    /// Wraps this kind together with a source `span` into a [ProcessExpr].
+    pub fn spanned(self, span: Span) -> ProcessExpr {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<ProcessExprKind> for ProcessExpr {
+    /// Wraps a kind into a [ProcessExpr] with a default (empty) span, for
+    /// synthetic expressions that have no source location.
+    fn from(kind: ProcessExprKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -537,8 +581,11 @@ pub enum ModalityOperator {
     Box,
 }
 
+/// The kind of a [StateFrm] node, without its source span. Every recursive
+/// child is a [StateFrm] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum StateFrm {
+pub enum StateFrmKind {
     True,
     False,
     /// `delay` or `delay@t`; the optional time is `None` for a bare `delay`.
@@ -578,6 +625,25 @@ pub enum StateFrm {
         variable: StateVarDecl,
         body: Box<StateFrm>,
     },
+}
+
+/// A state formula: a [StateFrmKind] paired with the source [Span] it was
+/// parsed from. Synthetic formulas built by later passes use [Span::default].
+pub type StateFrm = Spanned<StateFrmKind>;
+
+impl StateFrmKind {
+    /// Wraps this kind together with a source `span` into a [StateFrm].
+    pub fn spanned(self, span: Span) -> StateFrm {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<StateFrmKind> for StateFrm {
+    /// Wraps a kind into a [StateFrm] with a default (empty) span, for
+    /// synthetic formulas that have no source location.
+    fn from(kind: StateFrmKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 /// Represents a multi action label `a | b | c ...`.
@@ -670,8 +736,11 @@ pub enum ActFrmBinaryOp {
     Intersect,
 }
 
+/// The kind of an [ActFrm] node, without its source span. Every recursive
+/// child is an [ActFrm] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ActFrm {
+pub enum ActFrmKind {
     True,
     False,
     MultAct(MultiAction),
@@ -689,8 +758,30 @@ pub enum ActFrm {
     },
 }
 
+/// An action formula: an [ActFrmKind] paired with the source [Span] it was
+/// parsed from. Synthetic formulas built by later passes use [Span::default].
+pub type ActFrm = Spanned<ActFrmKind>;
+
+impl ActFrmKind {
+    /// Wraps this kind together with a source `span` into an [ActFrm].
+    pub fn spanned(self, span: Span) -> ActFrm {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<ActFrmKind> for ActFrm {
+    /// Wraps a kind into an [ActFrm] with a default (empty) span, for
+    /// synthetic formulas that have no source location.
+    fn from(kind: ActFrmKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
+}
+
+/// The kind of a [PbesExpr] node, without its source span. Every recursive
+/// child is a [PbesExpr] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub enum PbesExpr {
+pub enum PbesExprKind {
     DataValExpr(DataExpr),
     PropVarInst(PropVarInst),
     Quantifier {
@@ -706,6 +797,26 @@ pub enum PbesExpr {
     },
     True,
     False,
+}
+
+/// A PBES expression: a [PbesExprKind] paired with the source [Span] it was
+/// parsed from. Synthetic expressions built by later passes use
+/// [Span::default].
+pub type PbesExpr = Spanned<PbesExprKind>;
+
+impl PbesExprKind {
+    /// Wraps this kind together with a source `span` into a [PbesExpr].
+    pub fn spanned(self, span: Span) -> PbesExpr {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<PbesExprKind> for PbesExpr {
+    /// Wraps a kind into a [PbesExpr] with a default (empty) span, for
+    /// synthetic expressions that have no source location.
+    fn from(kind: PbesExprKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -736,8 +847,11 @@ pub enum PresExprBinaryOp {
     Add,
 }
 
+/// The kind of a [PresExpr] node, without its source span. Every recursive
+/// child is a [PresExpr] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub enum PresExpr {
+pub enum PresExprKind {
     DataValExpr(DataExpr),
     PropVarInst(PropVarInst),
     RightConstantMultiply {
@@ -771,6 +885,26 @@ pub enum PresExpr {
     },
     True,
     False,
+}
+
+/// A PRES expression: a [PresExprKind] paired with the source [Span] it was
+/// parsed from. Synthetic expressions built by later passes use
+/// [Span::default].
+pub type PresExpr = Spanned<PresExprKind>;
+
+impl PresExprKind {
+    /// Wraps this kind together with a source `span` into a [PresExpr].
+    pub fn spanned(self, span: Span) -> PresExpr {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<PresExprKind> for PresExpr {
+    /// Wraps a kind into a [PresExpr] with a default (empty) span, for
+    /// synthetic expressions that have no source location.
+    fn from(kind: PresExprKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -808,13 +942,35 @@ pub struct PresEquation {
     pub span: Span,
 }
 
+/// The kind of a [RegFrm] node, without its source span. Every recursive
+/// child is a [RegFrm] (a [Spanned] wrapper), so each node carries its own
+/// location.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum RegFrm {
+pub enum RegFrmKind {
     Action(ActFrm),
     Iteration(Box<RegFrm>),
     Plus(Box<RegFrm>),
     Sequence { lhs: Box<RegFrm>, rhs: Box<RegFrm> },
     Choice { lhs: Box<RegFrm>, rhs: Box<RegFrm> },
+}
+
+/// A regular formula: a [RegFrmKind] paired with the source [Span] it was
+/// parsed from. Synthetic formulas built by later passes use [Span::default].
+pub type RegFrm = Spanned<RegFrmKind>;
+
+impl RegFrmKind {
+    /// Wraps this kind together with a source `span` into a [RegFrm].
+    pub fn spanned(self, span: Span) -> RegFrm {
+        Spanned::new(self, span)
+    }
+}
+
+impl From<RegFrmKind> for RegFrm {
+    /// Wraps a kind into a [RegFrm] with a default (empty) span, for
+    /// synthetic formulas that have no source location.
+    fn from(kind: RegFrmKind) -> Self {
+        Spanned::new(kind, Span::default())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]

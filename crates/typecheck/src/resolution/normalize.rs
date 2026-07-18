@@ -5,6 +5,8 @@ use log::debug;
 
 use merc_syntax::DefId;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
+use merc_syntax::Spanned;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 
@@ -53,7 +55,7 @@ fn normalize_sort(
     visited: &mut Vec<DefId>,
 ) -> SortExpression {
     apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible> {
-        let SortExpression::Resolved(_, id) = expr else {
+        let SortExpressionKind::Resolved(_, id) = &expr.node else {
             return Ok(None);
         };
 
@@ -64,7 +66,11 @@ fn normalize_sort(
             return Ok(None);
         }
         match alias_map.get(id) {
-            Some(SortExpression::Struct { .. }) | None => Ok(None),
+            Some(Spanned {
+                node: SortExpressionKind::Struct { .. },
+                ..
+            })
+            | None => Ok(None),
             Some(alias) => {
                 visited.push(*id);
                 let result = normalize_sort(alias, alias_map, visited);
@@ -80,6 +86,7 @@ fn normalize_sort(
 mod tests {
     use merc_syntax::Sort;
     use merc_syntax::SortExpression;
+    use merc_syntax::SortExpressionKind;
     use merc_syntax::UntypedDataSpecification;
 
     use crate::DataSpecification;
@@ -100,24 +107,24 @@ mod tests {
     fn test_alias_to_basic_sort_is_expanded() {
         // `D` aliases `Nat`, so `f: D` normalizes to the built-in `Nat` sort.
         let sort = map_sort("sort D = Nat; map f: D;", "f");
-        assert_eq!(sort, SortExpression::Simple(Sort::Nat));
+        assert_eq!(sort.node, SortExpressionKind::Simple(Sort::Nat));
     }
 
     #[test]
     fn test_alias_chain_is_expanded() {
         let sort = map_sort("sort D = Nat; E = D; map f: E;", "f");
-        assert_eq!(sort, SortExpression::Simple(Sort::Nat));
+        assert_eq!(sort.node, SortExpressionKind::Simple(Sort::Nat));
     }
 
     #[test]
     fn test_alias_inside_container_is_expanded() {
         // `f: List(D)` with `D = Nat` normalizes to `List(Nat)`.
         let sort = map_sort("sort D = Nat; map f: List(D);", "f");
-        let SortExpression::Complex(op, subsort) = sort else {
-            panic!("expected a container sort, got {sort:?}");
+        let SortExpressionKind::Complex(op, subsort) = sort.node else {
+            panic!("expected a container sort");
         };
         assert_eq!(op, merc_syntax::ComplexSort::List);
-        assert_eq!(*subsort, SortExpression::Simple(Sort::Nat));
+        assert_eq!(subsort.node, SortExpressionKind::Simple(Sort::Nat));
     }
 
     #[test]
@@ -125,8 +132,8 @@ mod tests {
         // A structured sort is its own representative, so `f: D` stays `D`
         // rather than being replaced by the (recursive) struct body.
         let sort = map_sort("sort D = struct a | b; map f: D;", "f");
-        let SortExpression::Resolved(name, _) = sort else {
-            panic!("expected a resolved nominal sort, got {sort:?}");
+        let SortExpressionKind::Resolved(name, _) = sort.node else {
+            panic!("expected a resolved nominal sort");
         };
         assert_eq!(name, "D");
     }
@@ -139,8 +146,8 @@ mod tests {
         let a = map_sort(text, "f");
         let b = map_sort(text, "g");
         assert_eq!(a, b);
-        let SortExpression::Resolved(name, _) = a else {
-            panic!("expected a resolved nominal sort, got {a:?}");
+        let SortExpressionKind::Resolved(name, _) = a.node else {
+            panic!("expected a resolved nominal sort");
         };
         assert_eq!(name, "B");
     }
@@ -151,8 +158,8 @@ mod tests {
         // check_aliases permits (it stops at every struct); normalization must
         // keep the back-reference named rather than unfold it forever.
         let sort = map_sort("sort D = List(struct f(D)); map g: D;", "g");
-        let SortExpression::Complex(op, _) = sort else {
-            panic!("expected a List container, got {sort:?}");
+        let SortExpressionKind::Complex(op, _) = sort.node else {
+            panic!("expected a List container");
         };
         assert_eq!(op, merc_syntax::ComplexSort::List);
     }

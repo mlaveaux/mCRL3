@@ -13,6 +13,7 @@ use merc_syntax::EquationId;
 use merc_syntax::IdDecl;
 use merc_syntax::Sort;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_utilities::TagIndex;
@@ -965,22 +966,22 @@ impl<'a> ConstraintGenerator<'a> {
     }
 
     fn template_node(&mut self, sort: &SortExpression, variables: &mut HashMap<String, InferSortId>) -> InferSortId {
-        match sort {
-            SortExpression::Simple(sort) => {
+        match &sort.node {
+            SortExpressionKind::Simple(sort) => {
                 let resolved = self.ctx.sorts.primitive(*sort);
                 self.unifier.resolved_node(resolved)
             }
-            SortExpression::Complex(op, subsort) => {
+            SortExpressionKind::Complex(op, subsort) => {
                 let subsort = self.template_node(subsort, variables);
                 self.unifier.generic(*op, subsort)
             }
-            SortExpression::Function { domain, range } => {
+            SortExpressionKind::Function { domain, range } => {
                 let mut parameters = Vec::new();
                 self.template_domain(domain, variables, &mut parameters);
                 let range = self.template_node(range, variables);
                 self.unifier.function(parameters, range)
             }
-            SortExpression::FlattenedFunction { domain, range } => {
+            SortExpressionKind::FlattenedFunction { domain, range } => {
                 let parameters = domain
                     .iter()
                     .map(|parameter| self.template_node(parameter, variables))
@@ -988,10 +989,10 @@ impl<'a> ConstraintGenerator<'a> {
                 let range = self.template_node(range, variables);
                 self.unifier.function(parameters, range)
             }
-            SortExpression::Reference(name) => *variables
+            SortExpressionKind::Reference(name) => *variables
                 .entry(name.clone())
                 .or_insert_with(|| self.unifier.fresh_var()),
-            SortExpression::Resolved(_, _) | SortExpression::Struct { .. } | SortExpression::Product { .. } => {
+            SortExpressionKind::Resolved(_, _) | SortExpressionKind::Struct { .. } | SortExpressionKind::Product { .. } => {
                 unreachable!("the templates declare only primitive, container, function and variable sorts")
             }
         }
@@ -1005,8 +1006,8 @@ impl<'a> ConstraintGenerator<'a> {
         variables: &mut HashMap<String, InferSortId>,
         domain: &mut Vec<InferSortId>,
     ) {
-        match sort {
-            SortExpression::Product { lhs, rhs } => {
+        match &sort.node {
+            SortExpressionKind::Product { lhs, rhs } => {
                 self.template_domain(lhs, variables, domain);
                 self.template_domain(rhs, variables, domain);
             }

@@ -4,11 +4,15 @@ use std::ops::ControlFlow;
 use merc_utilities::MercError;
 
 use crate::ActFrm;
+use crate::ActFrmKind;
 use crate::DataExpr;
 use crate::DataExprKind;
 use crate::RegFrm;
+use crate::RegFrmKind;
 use crate::SortExpression;
+use crate::SortExpressionKind;
 use crate::StateFrm;
+use crate::StateFrmKind;
 
 /// Visits the state formula and calls the given function on each subformula.
 ///
@@ -108,8 +112,8 @@ where
         ControlFlow::Continue(SortDescend::Descend(ctx)) => ctx,
     };
 
-    match sort_expr {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort_expr.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             if let Some(result) = visit_sort_expr_with_rec(lhs, ctx, visitor)? {
                 return Ok(Some(result));
             }
@@ -117,7 +121,7 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             if let Some(result) = visit_sort_expr_with_rec(domain, ctx, visitor)? {
                 return Ok(Some(result));
             }
@@ -125,7 +129,7 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Struct { inner } => {
+        SortExpressionKind::Struct { inner } => {
             for constructor in inner {
                 for (_name, sort) in &constructor.args {
                     if let Some(result) = visit_sort_expr_with_rec(sort, ctx, visitor)? {
@@ -134,12 +138,12 @@ where
                 }
             }
         }
-        SortExpression::Complex(_complex_sort, sort_expression) => {
+        SortExpressionKind::Complex(_complex_sort, sort_expression) => {
             if let Some(result) = visit_sort_expr_with_rec(sort_expression, ctx, visitor)? {
                 return Ok(Some(result));
             }
         }
-        SortExpression::FlattenedFunction { domain, range } => {
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             for domain_sort in domain {
                 if let Some(result) = visit_sort_expr_with_rec(domain_sort, ctx, visitor)? {
                     return Ok(Some(result));
@@ -149,7 +153,7 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {}
+        SortExpressionKind::Reference(_) | SortExpressionKind::Simple(_) | SortExpressionKind::Resolved(_, _) => {}
     }
 
     Ok(None)
@@ -165,8 +169,8 @@ where
         return Ok(Some(result));
     }
 
-    match formula {
-        StateFrm::Binary { lhs, rhs, .. } => {
+    match &formula.node {
+        StateFrmKind::Binary { lhs, rhs, .. } => {
             if let Some(result) = visit_statefrm_rec(lhs, function)? {
                 return Ok(Some(result));
             }
@@ -174,47 +178,47 @@ where
                 return Ok(Some(result));
             }
         }
-        StateFrm::FixedPoint { body, .. } => {
+        StateFrmKind::FixedPoint { body, .. } => {
             if let Some(result) = visit_statefrm_rec(body, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::Bound { body, .. } => {
+        StateFrmKind::Bound { body, .. } => {
             if let Some(result) = visit_statefrm_rec(body, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::Modality { expr, .. } => {
+        StateFrmKind::Modality { expr, .. } => {
             if let Some(result) = visit_statefrm_rec(expr, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::Quantifier { body, .. } => {
+        StateFrmKind::Quantifier { body, .. } => {
             if let Some(result) = visit_statefrm_rec(body, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::DataValExprRightMult(expr, _data_val) => {
+        StateFrmKind::DataValExprRightMult(expr, _data_val) => {
             if let Some(result) = visit_statefrm_rec(expr, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::DataValExprLeftMult(_data_val, expr) => {
+        StateFrmKind::DataValExprLeftMult(_data_val, expr) => {
             if let Some(result) = visit_statefrm_rec(expr, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::Unary { expr, .. } => {
+        StateFrmKind::Unary { expr, .. } => {
             if let Some(result) = visit_statefrm_rec(expr, function)? {
                 return Ok(Some(result));
             }
         }
-        StateFrm::Id(_, _)
-        | StateFrm::True
-        | StateFrm::False
-        | StateFrm::Delay(_)
-        | StateFrm::Yaled(_)
-        | StateFrm::DataValExpr(_) => {}
+        StateFrmKind::Id(_, _)
+        | StateFrmKind::True
+        | StateFrmKind::False
+        | StateFrmKind::Delay(_)
+        | StateFrmKind::Yaled(_)
+        | StateFrmKind::DataValExpr(_) => {}
     }
 
     // The visitor did not break the traversal.
@@ -231,8 +235,8 @@ where
         return Ok(Some(result));
     }
 
-    match sort_expr {
-        SortExpression::Product { lhs, rhs } => {
+    match &sort_expr.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             if let Some(result) = visit_sort_expr_rec(lhs, function)? {
                 return Ok(Some(result));
             }
@@ -240,7 +244,7 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             if let Some(result) = visit_sort_expr_rec(domain, function)? {
                 return Ok(Some(result));
             }
@@ -248,7 +252,7 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Struct { inner } => {
+        SortExpressionKind::Struct { inner } => {
             for constructors in inner {
                 for (_name, sort) in &constructors.args {
                     if let Some(result) = visit_sort_expr_rec(sort, function)? {
@@ -257,12 +261,12 @@ where
                 }
             }
         }
-        SortExpression::Complex(_complex_sort, sort_expression) => {
+        SortExpressionKind::Complex(_complex_sort, sort_expression) => {
             if let Some(result) = visit_sort_expr_rec(sort_expression, function)? {
                 return Ok(Some(result));
             }
         }
-        SortExpression::FlattenedFunction { domain, range } => {
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             for domain_sort in domain {
                 if let Some(result) = visit_sort_expr_rec(domain_sort, function)? {
                     return Ok(Some(result));
@@ -272,7 +276,7 @@ where
                 return Ok(Some(result));
             }
         }
-        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {}
+        SortExpressionKind::Reference(_) | SortExpressionKind::Simple(_) | SortExpressionKind::Resolved(_, _) => {}
     }
 
     // The visitor did not break the traversal.
@@ -495,18 +499,18 @@ where
         return Ok(Some(result));
     }
 
-    match formula {
-        RegFrm::Iteration(reg_frm) => {
+    match &formula.node {
+        RegFrmKind::Iteration(reg_frm) => {
             if let Some(result) = visit_regular_formula_rec(reg_frm, visit)? {
                 return Ok(Some(result));
             }
         }
-        RegFrm::Plus(reg_frm) => {
+        RegFrmKind::Plus(reg_frm) => {
             if let Some(result) = visit_regular_formula_rec(reg_frm, visit)? {
                 return Ok(Some(result));
             }
         }
-        RegFrm::Sequence { lhs, rhs } => {
+        RegFrmKind::Sequence { lhs, rhs } => {
             if let Some(result) = visit_regular_formula_rec(lhs, visit)? {
                 return Ok(Some(result));
             }
@@ -514,7 +518,7 @@ where
                 return Ok(Some(result));
             }
         }
-        RegFrm::Choice { lhs, rhs } => {
+        RegFrmKind::Choice { lhs, rhs } => {
             if let Some(result) = visit_regular_formula_rec(lhs, visit)? {
                 return Ok(Some(result));
             }
@@ -546,13 +550,13 @@ where
         return Ok(Some(result));
     }
 
-    match formula {
-        ActFrm::Negation(act_frm) => {
+    match &formula.node {
+        ActFrmKind::Negation(act_frm) => {
             if let Some(result) = visit_action_formula_rec(act_frm, visitor)? {
                 return Ok(Some(result));
             }
         }
-        ActFrm::Quantifier {
+        ActFrmKind::Quantifier {
             quantifier: _,
             variables: _,
             body,
@@ -561,7 +565,7 @@ where
                 return Ok(Some(result));
             }
         }
-        ActFrm::Binary { op: _, lhs, rhs } => {
+        ActFrmKind::Binary { op: _, lhs, rhs } => {
             if let Some(result) = visit_action_formula_rec(lhs, visitor)? {
                 return Ok(Some(result));
             }
@@ -569,7 +573,7 @@ where
                 return Ok(Some(result));
             }
         }
-        ActFrm::True | ActFrm::False | ActFrm::MultAct(_) | ActFrm::DataExprVal(_) => {}
+        ActFrmKind::True | ActFrmKind::False | ActFrmKind::MultAct(_) | ActFrmKind::DataExprVal(_) => {}
     }
 
     // The visitor did not break the traversal.
@@ -584,7 +588,7 @@ mod tests {
     use crate::DataExpr;
     use crate::DataExprKind;
     use crate::Sort;
-    use crate::SortExpression;
+    use crate::SortExpressionKind;
 
     use super::try_visit_data_expr_mut;
     use super::visit_data_expr;
@@ -594,19 +598,20 @@ mod tests {
     /// results from both the domain sorts and the range.
     #[test]
     fn test_visit_sort_expr_breaks_inside_flattened_function() {
-        let sort = SortExpression::FlattenedFunction {
-            domain: vec![SortExpression::Simple(Sort::Nat)],
-            range: Box::new(SortExpression::Simple(Sort::Bool)),
-        };
+        let sort = SortExpressionKind::FlattenedFunction {
+            domain: vec![SortExpressionKind::Simple(Sort::Nat).into()],
+            range: Box::new(SortExpressionKind::Simple(Sort::Bool).into()),
+        }
+        .into();
 
-        let found = visit_sort_expr(&sort, |expr| match expr {
-            SortExpression::Simple(Sort::Nat) => ControlFlow::Break("domain"),
+        let found = visit_sort_expr(&sort, |expr| match &expr.node {
+            SortExpressionKind::Simple(Sort::Nat) => ControlFlow::Break("domain"),
             _ => ControlFlow::Continue(()),
         });
         assert_eq!(found, Some("domain"));
 
-        let found = visit_sort_expr(&sort, |expr| match expr {
-            SortExpression::Simple(Sort::Bool) => ControlFlow::Break("range"),
+        let found = visit_sort_expr(&sort, |expr| match &expr.node {
+            SortExpressionKind::Simple(Sort::Bool) => ControlFlow::Break("range"),
             _ => ControlFlow::Continue(()),
         });
         assert_eq!(found, Some("range"));

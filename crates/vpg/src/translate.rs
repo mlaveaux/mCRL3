@@ -15,11 +15,14 @@ use merc_lts::Transition;
 use merc_lts::TransitionLabel;
 use merc_syntax::ActFrm;
 use merc_syntax::ActFrmBinaryOp;
+use merc_syntax::ActFrmKind;
 use merc_syntax::FixedPointOperator;
 use merc_syntax::ModalityOperator;
 use merc_syntax::MultiAction;
 use merc_syntax::RegFrm;
+use merc_syntax::RegFrmKind;
 use merc_syntax::StateFrm;
+use merc_syntax::StateFrmKind;
 use merc_syntax::StateFrmOp;
 use merc_syntax::StateVarDecl;
 use merc_syntax::apply_statefrm;
@@ -90,11 +93,11 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
 /// Produces a warning for each label that is used in the formula but does not correspond to any label in the LTS.
 pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
     visit_statefrm::<(), _>(formula, |statefrm| {
-        if let StateFrm::Modality { formula, .. } = statefrm {
+        if let StateFrmKind::Modality { formula, .. } = &statefrm.node {
             visit_regular_formula::<(), _>(formula, |regfrm| {
-                if let RegFrm::Action(act_frm) = regfrm {
+                if let RegFrmKind::Action(act_frm) = &regfrm.node {
                     visit_action_formula::<(), _>(act_frm, |act_frm| {
-                        if let ActFrm::MultAct(action) = act_frm
+                        if let ActFrmKind::MultAct(action) = &act_frm.node
                             && !labels.contains(action)
                         {
                             warn!(
@@ -136,15 +139,15 @@ pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
 /// ```
 pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
     apply_statefrm(formula, |subformula| {
-        if let StateFrm::Modality {
+        if let StateFrmKind::Modality {
             operator,
             formula,
             expr,
-        } = subformula
+        } = &subformula.node
         {
-            return match formula {
-                merc_syntax::RegFrm::Action(_action_frm) => Ok(None),
-                merc_syntax::RegFrm::Iteration(reg_frm) => {
+            return match &formula.node {
+                merc_syntax::RegFrmKind::Action(_action_frm) => Ok(None),
+                merc_syntax::RegFrmKind::Iteration(reg_frm) => {
                     // Generate the I equation and replace the regular formula with it.
                     let iteration_var = identifier_generator.generate("I");
                     Ok(Some(translate_regular_formulas(
@@ -152,44 +155,58 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
                         identifier_generator,
                     )))
                 }
-                merc_syntax::RegFrm::Plus(reg_frm) => {
+                merc_syntax::RegFrmKind::Plus(reg_frm) => {
                     // Generate the I equation and replace the regular formula with it.
                     let iteration_var = identifier_generator.generate("I");
-                    Ok(Some(StateFrm::Modality {
-                        operator: *operator,
-                        formula: *reg_frm.clone(),
-                        expr: Box::new(translate_regular_formulas(
-                            convert_regular_iteration(*operator, reg_frm, iteration_var, operator, expr),
-                            identifier_generator,
-                        )),
-                    }))
+                    Ok(Some(
+                        StateFrmKind::Modality {
+                            operator: *operator,
+                            formula: *reg_frm.clone(),
+                            expr: Box::new(translate_regular_formulas(
+                                convert_regular_iteration(*operator, reg_frm, iteration_var, operator, expr),
+                                identifier_generator,
+                            )),
+                        }
+                        .into(),
+                    ))
                 }
-                merc_syntax::RegFrm::Sequence { lhs, rhs } => Ok(Some(translate_regular_formulas(
-                    StateFrm::Modality {
+                merc_syntax::RegFrmKind::Sequence { lhs, rhs } => Ok(Some(translate_regular_formulas(
+                    StateFrmKind::Modality {
                         operator: *operator,
                         formula: *lhs.clone(),
-                        expr: Box::new(StateFrm::Modality {
-                            operator: *operator,
-                            formula: *rhs.clone(),
-                            expr: expr.clone(),
-                        }),
-                    },
+                        expr: Box::new(
+                            StateFrmKind::Modality {
+                                operator: *operator,
+                                formula: *rhs.clone(),
+                                expr: expr.clone(),
+                            }
+                            .into(),
+                        ),
+                    }
+                    .into(),
                     identifier_generator,
                 ))),
-                merc_syntax::RegFrm::Choice { lhs, rhs } => Ok(Some(translate_regular_formulas(
-                    StateFrm::Binary {
+                merc_syntax::RegFrmKind::Choice { lhs, rhs } => Ok(Some(translate_regular_formulas(
+                    StateFrmKind::Binary {
                         op: StateFrmOp::Disjunction,
-                        lhs: Box::new(StateFrm::Modality {
-                            operator: *operator,
-                            formula: *lhs.clone(),
-                            expr: expr.clone(),
-                        }),
-                        rhs: Box::new(StateFrm::Modality {
-                            operator: *operator,
-                            formula: *rhs.clone(),
-                            expr: expr.clone(),
-                        }),
-                    },
+                        lhs: Box::new(
+                            StateFrmKind::Modality {
+                                operator: *operator,
+                                formula: *lhs.clone(),
+                                expr: expr.clone(),
+                            }
+                            .into(),
+                        ),
+                        rhs: Box::new(
+                            StateFrmKind::Modality {
+                                operator: *operator,
+                                formula: *rhs.clone(),
+                                expr: expr.clone(),
+                            }
+                            .into(),
+                        ),
+                    }
+                    .into(),
                     identifier_generator,
                 ))),
             };
@@ -212,27 +229,34 @@ fn convert_regular_iteration(
     operator: &ModalityOperator,
     expr: &StateFrm,
 ) -> StateFrm {
-    StateFrm::FixedPoint {
+    StateFrmKind::FixedPoint {
         operator: if modality == ModalityOperator::Box {
             FixedPointOperator::Greatest
         } else {
             FixedPointOperator::Least
         },
         variable: StateVarDecl::new(iteration_var.clone(), Vec::new()),
-        body: Box::new(StateFrm::Binary {
-            op: if modality == ModalityOperator::Box {
-                StateFrmOp::Conjunction
-            } else {
-                StateFrmOp::Disjunction
-            },
-            lhs: Box::new(StateFrm::Modality {
-                operator: *operator,
-                formula: reg_frm.clone(),
-                expr: Box::new(StateFrm::Id(iteration_var, Vec::new())),
-            }),
-            rhs: Box::new(expr.clone()),
-        }),
+        body: Box::new(
+            StateFrmKind::Binary {
+                op: if modality == ModalityOperator::Box {
+                    StateFrmOp::Conjunction
+                } else {
+                    StateFrmOp::Disjunction
+                },
+                lhs: Box::new(
+                    StateFrmKind::Modality {
+                        operator: *operator,
+                        formula: reg_frm.clone(),
+                        expr: Box::new(StateFrmKind::Id(iteration_var, Vec::new()).into()),
+                    }
+                    .into(),
+                ),
+                rhs: Box::new(expr.clone()),
+            }
+            .into(),
+        ),
     }
+    .into()
 }
 
 /// Is used to distinguish between StateFrm and Equation vertices in the vertex map.
@@ -388,16 +412,16 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         F: Fn(Option<Transition>) -> E,
         C: Fn(&mut E, E) -> Result<(), MercError>,
     {
-        match formula {
-            StateFrm::True => {
+        match &formula.node {
+            StateFrmKind::True => {
                 // (s, true) → odd, 0
                 self.set_vertex(vertex_index, Player::Odd, Priority::new(0));
             }
-            StateFrm::False => {
+            StateFrmKind::False => {
                 // (s, false) → even, 0
                 self.set_vertex(vertex_index, Player::Even, Priority::new(0));
             }
-            StateFrm::Binary { op, lhs, rhs } => {
+            StateFrmKind::Binary { op, lhs, rhs } => {
                 match op {
                     StateFrmOp::Conjunction => {
                         // (s, Ψ_1 ∧ Ψ_2) →_P odd, (s, Ψ_1) and (s, Ψ_2), 0
@@ -422,7 +446,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                     }
                 }
             }
-            StateFrm::Id(identifier, _args) => {
+            StateFrmKind::Id(identifier, _args) => {
                 let (i, _equation) = self
                     .equation_system
                     .find_equation_by_identifier(identifier)
@@ -432,7 +456,7 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
                 let equation_vertex = self.queue_vertex(s, Formula::Equation(i));
                 self.edges.push((vertex_index, labelling(None), equation_vertex));
             }
-            StateFrm::Modality {
+            StateFrmKind::Modality {
                 operator,
                 formula,
                 expr,
@@ -562,9 +586,9 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
 
 /// Returns true iff the given action matches the regular formula.
 fn match_regular_formula(formula: &RegFrm, action: &MultiAction) -> bool {
-    match formula {
-        RegFrm::Action(action_formula) => match_action_formula(action_formula, action),
-        RegFrm::Choice { lhs, rhs } => match_regular_formula(lhs, action) || match_regular_formula(rhs, action),
+    match &formula.node {
+        RegFrmKind::Action(action_formula) => match_action_formula(action_formula, action),
+        RegFrmKind::Choice { lhs, rhs } => match_regular_formula(lhs, action) || match_regular_formula(rhs, action),
         _ => {
             unimplemented!("Cannot translate regular formula {}", formula);
         }
@@ -573,18 +597,18 @@ fn match_regular_formula(formula: &RegFrm, action: &MultiAction) -> bool {
 
 /// Returns true iff the given action matches the action formula.
 fn match_action_formula(formula: &ActFrm, action: &MultiAction) -> bool {
-    match formula {
-        ActFrm::True => true,
-        ActFrm::False => false,
-        ActFrm::MultAct(expected_action) => match_multi_action(expected_action, action),
-        ActFrm::Binary { op, lhs, rhs } => match op {
+    match &formula.node {
+        ActFrmKind::True => true,
+        ActFrmKind::False => false,
+        ActFrmKind::MultAct(expected_action) => match_multi_action(expected_action, action),
+        ActFrmKind::Binary { op, lhs, rhs } => match op {
             ActFrmBinaryOp::Union => match_action_formula(lhs, action) || match_action_formula(rhs, action),
             ActFrmBinaryOp::Intersect => match_action_formula(lhs, action) && match_action_formula(rhs, action),
             _ => {
                 unimplemented!("Cannot translate binary operator {}", formula);
             }
         },
-        ActFrm::Negation(expr) => !match_action_formula(expr, action),
+        ActFrmKind::Negation(expr) => !match_action_formula(expr, action),
         _ => {
             unimplemented!("Cannot translate action formula {}", formula);
         }

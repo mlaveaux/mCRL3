@@ -6,8 +6,11 @@ use crate::DataExpr;
 use crate::DataExprKind;
 use crate::DataExprUpdate;
 use crate::RegFrm;
+use crate::RegFrmKind;
 use crate::SortExpression;
+use crate::SortExpressionKind;
 use crate::StateFrm;
+use crate::StateFrmKind;
 
 /// Applies the given function recursively to the state formula.
 ///
@@ -64,32 +67,35 @@ where
         return Ok(formula);
     }
 
-    match formula {
-        RegFrm::Iteration(reg_frm) => {
+    let span = formula.span.clone();
+    match formula.node {
+        RegFrmKind::Iteration(reg_frm) => {
             let new_reg_frm = apply_regular_formula_rec(*reg_frm, apply)?;
-            Ok(RegFrm::Iteration(Box::new(new_reg_frm)))
+            Ok(RegFrmKind::Iteration(Box::new(new_reg_frm)).spanned(span))
         }
-        RegFrm::Plus(reg_frm) => {
+        RegFrmKind::Plus(reg_frm) => {
             let new_reg_frm = apply_regular_formula_rec(*reg_frm, apply)?;
-            Ok(RegFrm::Plus(Box::new(new_reg_frm)))
+            Ok(RegFrmKind::Plus(Box::new(new_reg_frm)).spanned(span))
         }
-        RegFrm::Sequence { lhs, rhs } => {
+        RegFrmKind::Sequence { lhs, rhs } => {
             let new_lhs = apply_regular_formula_rec(*lhs, apply)?;
             let new_rhs = apply_regular_formula_rec(*rhs, apply)?;
-            Ok(RegFrm::Sequence {
+            Ok(RegFrmKind::Sequence {
                 lhs: Box::new(new_lhs),
                 rhs: Box::new(new_rhs),
-            })
+            }
+            .spanned(span))
         }
-        RegFrm::Choice { lhs, rhs } => {
+        RegFrmKind::Choice { lhs, rhs } => {
             let new_lhs = apply_regular_formula_rec(*lhs, apply)?;
             let new_rhs = apply_regular_formula_rec(*rhs, apply)?;
-            Ok(RegFrm::Choice {
+            Ok(RegFrmKind::Choice {
                 lhs: Box::new(new_lhs),
                 rhs: Box::new(new_rhs),
-            })
+            }
+            .spanned(span))
         }
-        _ => Ok(formula),
+        other => Ok(other.spanned(span)),
     }
 }
 
@@ -103,81 +109,88 @@ where
         return Ok(formula);
     }
 
-    match formula {
-        StateFrm::Binary { op, lhs, rhs } => {
+    let span = formula.span.clone();
+    match formula.node {
+        StateFrmKind::Binary { op, lhs, rhs } => {
             let new_lhs = apply_statefrm_rec(*lhs, apply)?;
             let new_rhs = apply_statefrm_rec(*rhs, apply)?;
-            Ok(StateFrm::Binary {
+            Ok(StateFrmKind::Binary {
                 op,
                 lhs: Box::new(new_lhs),
                 rhs: Box::new(new_rhs),
-            })
+            }
+            .spanned(span))
         }
-        StateFrm::FixedPoint {
+        StateFrmKind::FixedPoint {
             operator,
             variable,
             body,
         } => {
             let new_body = apply_statefrm_rec(*body, apply)?;
-            Ok(StateFrm::FixedPoint {
+            Ok(StateFrmKind::FixedPoint {
                 operator,
                 variable,
                 body: Box::new(new_body),
-            })
+            }
+            .spanned(span))
         }
-        StateFrm::Bound { bound, variables, body } => {
+        StateFrmKind::Bound { bound, variables, body } => {
             let new_body = apply_statefrm_rec(*body, apply)?;
-            Ok(StateFrm::Bound {
+            Ok(StateFrmKind::Bound {
                 bound,
                 variables,
                 body: Box::new(new_body),
-            })
+            }
+            .spanned(span))
         }
-        StateFrm::Modality {
+        StateFrmKind::Modality {
             operator,
             formula,
             expr,
         } => {
             let expr = apply_statefrm_rec(*expr, apply)?;
-            Ok(StateFrm::Modality {
+            Ok(StateFrmKind::Modality {
                 operator,
                 formula,
                 expr: Box::new(expr),
-            })
+            }
+            .spanned(span))
         }
-        StateFrm::Quantifier {
+        StateFrmKind::Quantifier {
             quantifier,
             variables,
             body,
         } => {
             let new_body = apply_statefrm_rec(*body, apply)?;
-            Ok(StateFrm::Quantifier {
+            Ok(StateFrmKind::Quantifier {
                 quantifier,
                 variables,
                 body: Box::new(new_body),
-            })
+            }
+            .spanned(span))
         }
-        StateFrm::DataValExprRightMult(expr, data_val) => {
+        StateFrmKind::DataValExprRightMult(expr, data_val) => {
             let new_expr = apply_statefrm_rec(*expr, apply)?;
-            Ok(StateFrm::DataValExprRightMult(Box::new(new_expr), data_val))
+            Ok(StateFrmKind::DataValExprRightMult(Box::new(new_expr), data_val).spanned(span))
         }
-        StateFrm::DataValExprLeftMult(data_val, expr) => {
+        StateFrmKind::DataValExprLeftMult(data_val, expr) => {
             let new_expr = apply_statefrm_rec(*expr, apply)?;
-            Ok(StateFrm::DataValExprLeftMult(data_val, Box::new(new_expr)))
+            Ok(StateFrmKind::DataValExprLeftMult(data_val, Box::new(new_expr)).spanned(span))
         }
-        StateFrm::Unary { op, expr } => {
+        StateFrmKind::Unary { op, expr } => {
             let new_expr = apply_statefrm_rec(*expr, apply)?;
-            Ok(StateFrm::Unary {
+            Ok(StateFrmKind::Unary {
                 op,
                 expr: Box::new(new_expr),
-            })
+            }
+            .spanned(span))
         }
-        StateFrm::Id(_, _)
-        | StateFrm::True
-        | StateFrm::False
-        | StateFrm::Delay(_)
-        | StateFrm::Yaled(_)
-        | StateFrm::DataValExpr(_) => Ok(formula),
+        other @ (StateFrmKind::Id(_, _)
+        | StateFrmKind::True
+        | StateFrmKind::False
+        | StateFrmKind::Delay(_)
+        | StateFrmKind::Yaled(_)
+        | StateFrmKind::DataValExpr(_)) => Ok(other.spanned(span)),
     }
 }
 
@@ -276,50 +289,56 @@ where
         return Ok(sort_expr);
     }
 
-    match sort_expr {
-        SortExpression::Product { lhs, rhs } => {
+    let span = sort_expr.span.clone();
+    match sort_expr.node {
+        SortExpressionKind::Product { lhs, rhs } => {
             let lhs = apply_sort_expression_rec(*lhs, apply)?;
             let rhs = apply_sort_expression_rec(*rhs, apply)?;
-            Ok(SortExpression::Product {
+            Ok(SortExpressionKind::Product {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
-            })
+            }
+            .spanned(span))
         }
-        SortExpression::Function { domain, range } => {
+        SortExpressionKind::Function { domain, range } => {
             let domain = apply_sort_expression_rec(*domain, apply)?;
             let range = apply_sort_expression_rec(*range, apply)?;
-            Ok(SortExpression::Function {
+            Ok(SortExpressionKind::Function {
                 domain: Box::new(domain),
                 range: Box::new(range),
-            })
+            }
+            .spanned(span))
         }
-        SortExpression::Struct { mut inner } => {
+        SortExpressionKind::Struct { mut inner } => {
             for decl in &mut inner {
                 for (_, sort) in &mut decl.args {
                     *sort = apply_sort_expression_rec(sort.clone(), apply)?;
                 }
             }
 
-            Ok(SortExpression::Struct { inner })
+            Ok(SortExpressionKind::Struct { inner }.spanned(span))
         }
-        SortExpression::Complex(complex_sort, sort_expression) => {
+        SortExpressionKind::Complex(complex_sort, sort_expression) => {
             let inner = apply_sort_expression_rec(*sort_expression, apply)?;
-            Ok(SortExpression::Complex(complex_sort, Box::new(inner)))
+            Ok(SortExpressionKind::Complex(complex_sort, Box::new(inner)).spanned(span))
         }
-        SortExpression::FlattenedFunction { domain, range } => {
+        SortExpressionKind::FlattenedFunction { domain, range } => {
             let domain = domain
                 .into_iter()
                 .map(|sort| apply_sort_expression_rec(sort, apply))
                 .collect::<Result<Vec<SortExpression>, _>>()?;
             let range = apply_sort_expression_rec(*range, apply)?;
-            Ok(SortExpression::FlattenedFunction {
+            Ok(SortExpressionKind::FlattenedFunction {
                 domain,
                 range: Box::new(range),
-            })
+            }
+            .spanned(span))
         }
-        SortExpression::Reference(_) | SortExpression::Simple(_) | SortExpression::Resolved(_, _) => {
+        other @ (SortExpressionKind::Reference(_)
+        | SortExpressionKind::Simple(_)
+        | SortExpressionKind::Resolved(_, _)) => {
             // Ignored
-            Ok(sort_expr)
+            Ok(other.spanned(span))
         }
     }
 }
@@ -331,7 +350,7 @@ mod tests {
     use crate::DataExpr;
     use crate::DataExprBinaryOp;
     use crate::DataExprKind;
-    use crate::StateFrm;
+    use crate::StateFrmKind;
     use crate::UntypedStateFrmSpec;
 
     use super::apply_statefrm;
@@ -343,7 +362,7 @@ mod tests {
 
         let mut variables = vec![];
         apply_statefrm(input.formula, |frm| {
-            if let StateFrm::Id(name, _) = frm {
+            if let StateFrmKind::Id(name, _) = &frm.node {
                 variables.push(name.clone());
             }
 

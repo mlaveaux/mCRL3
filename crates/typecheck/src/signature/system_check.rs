@@ -5,6 +5,7 @@ use merc_syntax::DataExpr;
 use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
 use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_sort_expr;
 
@@ -131,14 +132,14 @@ impl Checker<'_> {
     /// Checks that a sort of the system specification references only declared
     /// sorts, and places products only in function domains.
     fn check_sort(&self, sort: &SortExpression) -> Result<(), WellTypedError> {
-        let error = visit_sort_expr(sort, |expr| match expr {
-            SortExpression::Reference(name) if !self.sort_names.contains(name.as_str()) => ControlFlow::Break(format!(
+        let error = visit_sort_expr(sort, |expr| match &expr.node {
+            SortExpressionKind::Reference(name) if !self.sort_names.contains(name.as_str()) => ControlFlow::Break(format!(
                 "the system-defined specification references the undeclared sort '{name}'"
             )),
-            SortExpression::Resolved(name, id) if **id >= self.user_sort_count => ControlFlow::Break(format!(
+            SortExpressionKind::Resolved(name, id) if **id >= self.user_sort_count => ControlFlow::Break(format!(
                 "the resolved sort '{name}' does not index a user sort declaration"
             )),
-            SortExpression::Struct { .. } => ControlFlow::Break(format!(
+            SortExpressionKind::Struct { .. } => ControlFlow::Break(format!(
                 "the system-defined specification contains the structured sort '{expr}'"
             )),
             _ => ControlFlow::Continue(()),
