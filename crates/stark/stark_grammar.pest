@@ -20,7 +20,7 @@ LETTER = _{ 'a'..'z' | 'A'..'Z' | "_" }
 KEYWORD = @{
     ( "const" | "param" | "global" | "variables" | "type" | "environment"
     | "penalty" | "function" | "component" | "perturbation" | "distance"
-    | "formula" | "controller" | "aiState" | "init" | "when" | "step" | "exec"
+    | "formula" | "controller" | "state" | "init" | "when" | "step" | "exec"
     | "let" | "in" | "and" | "if" | "else" | "return" | "range"
     | "int" | "real" | "bool" | "true" | "false" | "nil" )
     ~ !(LETTER | DIGIT)
@@ -98,7 +98,7 @@ DeclarationComponent = {
     "}"
 }
 
-ControllerState = { "aiState" ~ ID ~ ControllerBlock }
+ControllerState = { "state" ~ ID ~ ControllerBlock }
 ControllerBlock = { "{" ~ ControllerCommand* ~ "}" }
 
 ControllerCommand = _{
