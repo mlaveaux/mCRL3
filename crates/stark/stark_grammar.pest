@@ -32,7 +32,7 @@ INTEGER = @{ DIGIT+ }
 REAL    = @{ ((DIGIT* ~ "." ~ DIGIT+) | (DIGIT+ ~ ".")) ~ (("E" | "e") ~ "-"? ~ DIGIT+)? }
 
 // Entry point
-StarkSpecification = { SOI ~ Element* ~ EOI }
+UntypedStarkSpecification = { SOI ~ Element* ~ EOI }
 
 Element = _{
       DeclarationConstant
@@ -137,8 +137,18 @@ EnvironmentIfThenElse = { "if" ~ "(" ~ Expression ~ ")" ~ EnvironmentCommand ~ (
 EnvironmentLet        = { "let" ~ LocalVariable ~ ("and" ~ LocalVariable)* ~ "in" ~ EnvironmentCommand }
 LocalVariable         = { ID ~ "=" ~ Expression }
 
-// Expressions: a flat prefix* primary postfix* (infix ...)* stream for the Pratt parser.
-Expression = { ExpressionPrefix* ~ ExpressionPrimary ~ ExpressionPostfix* ~ (ExpressionInfix ~ ExpressionPrefix* ~ ExpressionPrimary ~ ExpressionPostfix*)* }
+// Expressions. `?:` binds looser than every other operator (matching C/Java/JS
+// convention, and required for `2<3?1.0:2.0` to parse as `(2<3) ? 1.0 : 2.0`
+// rather than `2 < (3?1.0:2.0)`), so it can't be one more postfix operator in
+// the Pratt token stream below — a postfix operator always binds to the
+// nearest preceding primary in that flat stream, regardless of any precedence
+// declared on the Pratt parser side. Instead `Expression` wraps a plain
+// (ternary-free) Pratt chain with an optional trailing `?:`.
+Expression = { PrattExpression ~ ExpressionTernary? }
+    ExpressionTernary = { "?" ~ Expression ~ ":" ~ Expression }
+
+// A flat prefix* primary postfix* (infix ...)* stream for the Pratt parser.
+PrattExpression = { ExpressionPrefix* ~ ExpressionPrimary ~ ExpressionPostfix* ~ (ExpressionInfix ~ ExpressionPrefix* ~ ExpressionPrimary ~ ExpressionPostfix*)* }
 
 // Prefix operators
 ExpressionPrefix = _{ ExpressionNot | ExpressionUnaryPlus | ExpressionUnaryMinus }
@@ -183,9 +193,8 @@ ExpressionInfix = _{
     ExpressionBitOr    = { "|" }
 
 // Postfix operators
-ExpressionPostfix = _{ ExpressionCall | ExpressionTernary }
-    ExpressionCall    = { "(" ~ (Expression ~ ("," ~ Expression)*)? ~ ")" }
-    ExpressionTernary = { "?" ~ Expression ~ ":" ~ Expression }
+ExpressionPostfix = _{ ExpressionCall }
+    ExpressionCall = { "(" ~ (Expression ~ ("," ~ Expression)*)? ~ ")" }
 
 ExpressionPrimary = _{
       "(" ~ Expression ~ ")"
