@@ -21,6 +21,7 @@ pub use data_expression::DataVariable;
 pub use data_expression::DataVariableRef;
 pub use data_expression::DataWhereClause;
 pub use data_expression::DataWhrDecl;
+pub use data_expression::MachineNumber;
 pub use data_expression::to_untyped_data_expression;
 pub use data_terms::is_container_sort;
 pub use data_terms::is_data_application;
