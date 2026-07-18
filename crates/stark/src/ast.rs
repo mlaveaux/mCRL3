@@ -416,7 +416,10 @@ pub enum Expression {
     /// A name reference: a constant/parameter/variable, a local binding
     /// (function argument, `let` binding, `it`), or (before resolution)
     /// unresolved. `binding` is filled in by `resolve.rs`.
-    Reference { name: String, binding: Option<Binding> },
+    Reference {
+        name: String,
+        binding: Option<Binding>,
+    },
     /// The `it` lambda parameter used inside aggregate/perturbation contexts.
     Iterator,
 

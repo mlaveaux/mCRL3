@@ -4,15 +4,36 @@ use merc_pest_consume::Error;
 use merc_pest_consume::match_nodes;
 
 use crate::StarkParser;
-use crate::ast::{
-    Component, Constant, ControllerCommand, ControllerState, DefRef, Distance, Environment, EnvironmentCommand,
-    Formula, Function, FunctionArgument, FunctionStatement, Identifier, LocalVariable, Parameter, Penalty,
-    Perturbation, Range, SpannedExpression, UntypedStarkSpecification, StateRef, Ty, TypeDeclaration, Update, Variable,
-};
+use crate::ast::Component;
+use crate::ast::Constant;
+use crate::ast::ControllerCommand;
+use crate::ast::ControllerState;
+use crate::ast::DefRef;
+use crate::ast::Distance;
+use crate::ast::Environment;
+use crate::ast::EnvironmentCommand;
+use crate::ast::Formula;
+use crate::ast::Function;
+use crate::ast::FunctionArgument;
+use crate::ast::FunctionStatement;
+use crate::ast::Identifier;
+use crate::ast::LocalVariable;
+use crate::ast::Parameter;
+use crate::ast::Penalty;
+use crate::ast::Perturbation;
+use crate::ast::Range;
+use crate::ast::SpannedExpression;
+use crate::ast::StateRef;
+use crate::ast::Ty;
+use crate::ast::TypeDeclaration;
+use crate::ast::UntypedStarkSpecification;
+use crate::ast::Update;
+use crate::ast::Variable;
 use crate::parse::Rule;
-use crate::precedence::{
-    parse_distance_expression, parse_expression_node, parse_perturbation_expression, parse_robtl_formula,
-};
+use crate::precedence::parse_distance_expression;
+use crate::precedence::parse_expression_node;
+use crate::precedence::parse_perturbation_expression;
+use crate::precedence::parse_robtl_formula;
 
 /// Type alias for Errors resulting from parsing.
 pub(crate) type ParseResult<T> = std::result::Result<T, Error<Rule>>;

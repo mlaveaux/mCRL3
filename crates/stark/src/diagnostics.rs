@@ -4,38 +4,166 @@
 //! first problem, `resolve.rs` and `typecheck.rs` record every diagnostic
 //! they find into one [Diagnostics] and only fail at the end, so a single
 //! `UntypedStarkSpecification` check reports everything wrong with it in one pass.
+//!
+//! Every diagnostic is a concrete [DiagnosticKind] variant rather than a
+//! pre-formatted string, so the message is written once (in the `#[error]`
+//! attribute) and callers can still match on *what* went wrong — which the
+//! tests do, instead of asserting on message substrings. Each variant carries
+//! the data the message interpolates, and the few that reference a second
+//! location (a duplicate's original declaration) carry that [Span] too, so
+//! [Diagnostic::render] can point at both.
 
 use std::error::Error;
 use std::fmt;
 
 use merc_utilities::Span;
+use thiserror::Error as ThisError;
+
+use crate::types::StarkType;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Severity {
     Error,
 }
 
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Severity::Error => write!(f, "error"),
+        }
+    }
+}
+
+/// Everything `resolve.rs` and `typecheck.rs` can complain about.
+///
+/// The `#[error]` messages are the single source of truth for the wording;
+/// nothing else in the crate formats a diagnostic message.
+#[derive(Clone, Debug, ThisError)]
+pub enum DiagnosticKind {
+    // -- Name resolution (`resolve.rs`) ---------------------------------
+    /// Two top-level declarations share a name. STARK has a single flat
+    /// namespace, so this covers a constant clashing with a function just as
+    /// much as two constants clashing.
+    #[error("duplicate definition of `{name}`")]
+    DuplicateDefinition { name: String, first: Span },
+
+    /// Two `aiState`s in the same component share a name.
+    #[error("duplicate controller state `{name}`")]
+    DuplicateControllerState { name: String, first: Span },
+
+    /// Two bindings in the *same* `let`/argument frame share a name.
+    /// Shadowing an outer scope is legal and never reported.
+    #[error("duplicate binding `{name}`")]
+    DuplicateBinding { name: String, first: Span },
+
+    #[error("unknown symbol `{name}`")]
+    UnknownSymbol { name: String },
+
+    #[error("unknown controller state `{name}`")]
+    UnknownControllerState { name: String },
+
+    /// The name resolves, but to the wrong kind of thing — calling a
+    /// variable, referencing a function as a value, assigning to a constant.
+    #[error("`{name}` is {found}, expected {expected}")]
+    IllegalUseOfName {
+        name: String,
+        found: &'static str,
+        expected: &'static str,
+    },
+
+    /// `type X = X | Y;`. Needs its own variant because neither name is
+    /// registered yet at the point the general duplicate check would run.
+    #[error("type `{name}` cannot declare an element with the same name")]
+    TypeElementSharesTypeName { name: String },
+
+    // -- Type checking (`typecheck.rs`) ---------------------------------
+    /// A `Ty::Named` annotation that names no declared `type`.
+    #[error("unknown type `{name}`")]
+    UnknownType { name: String },
+
+    /// `expected.is_compatible_with(actual)` failed. Note this relation is
+    /// asymmetric: `real` accepts `int`, but `int` does not accept `real`.
+    #[error("expected {expected}, found {found}")]
+    TypeMismatch { expected: StarkType, found: StarkType },
+
+    #[error("expected a numerical type, found {found}")]
+    NotNumerical { found: StarkType },
+
+    /// Two types that have to meet at a join point (ternary branches, the
+    /// two sides of a comparison, a function's several `return`s) have no
+    /// common supertype.
+    #[error("cannot merge {left} with {right}")]
+    IncompatibleTypes { left: StarkType, right: StarkType },
+
+    /// `R`/`N[..]`/`U[..]` used somewhere randomness is not permitted — a
+    /// constant's value, a variable's range bound, an interval bound.
+    #[error("random expressions are not allowed here")]
+    RandomNotAllowed,
+
+    #[error("`{name}` expects {expected} argument(s), found {found}")]
+    ArityMismatch {
+        name: String,
+        expected: usize,
+        found: usize,
+    },
+}
+
+impl DiagnosticKind {
+    /// A second source location worth showing alongside the primary one,
+    /// with the label to introduce it by. `None` for the majority of kinds,
+    /// which are fully explained by where they point.
+    pub fn related(&self) -> Option<(&Span, &'static str)> {
+        match self {
+            DiagnosticKind::DuplicateDefinition { first, .. }
+            | DiagnosticKind::DuplicateControllerState { first, .. } => Some((first, "first defined here")),
+            DiagnosticKind::DuplicateBinding { first, .. } => Some((first, "first bound here")),
+            _ => None,
+        }
+    }
+}
+
 /// A single diagnostic anchored to a source [Span].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ThisError)]
+#[error("{kind}")]
 pub struct Diagnostic {
     pub span: Span,
     pub severity: Severity,
-    pub message: String,
+    #[source]
+    pub kind: DiagnosticKind,
 }
 
 impl Diagnostic {
-    pub fn error(span: Span, message: impl Into<String>) -> Self {
+    pub fn error(span: Span, kind: DiagnosticKind) -> Self {
         Diagnostic {
             span,
             severity: Severity::Error,
-            message: message.into(),
+            kind,
         }
     }
 
     /// Renders this diagnostic against its `source` text, in the same
-    /// `-->`/`|`/`^^^` style parser errors use (see [Span::render]).
+    /// `-->`/`|`/`^^^` style parser errors use (see [Span::render]), followed
+    /// by a second annotated snippet when [DiagnosticKind::related] gives
+    /// one:
+    ///
+    /// ```text
+    /// error: duplicate definition of `a`
+    ///  --> 2:7
+    ///   |
+    /// 2 | const a = 2;
+    ///   |       ^
+    /// note: first defined here
+    ///  --> 1:7
+    ///   |
+    /// 1 | const a = 1;
+    ///   |       ^
+    /// ```
     pub fn render(&self, source: &str) -> String {
-        format!("{}\n{}", self.message, self.span.render(source))
+        let mut rendered = format!("{}: {}\n{}", self.severity, self.kind, self.span.render(source));
+        if let Some((span, label)) = self.kind.related() {
+            rendered.push_str(&format!("\nnote: {label}\n{}", span.render(source)));
+        }
+        rendered
     }
 }
 
@@ -52,8 +180,9 @@ impl Diagnostics {
     }
 
     /// Records an error diagnostic at `span`.
-    pub fn error(&mut self, span: Span, message: impl Into<String>) {
-        self.items.push(Diagnostic::error(span, message));
+    pub fn error(&mut self, span: Span, kind: DiagnosticKind) {
+        log::trace!("diagnostic at {}..{}: {}", span.start, span.end, kind);
+        self.items.push(Diagnostic::error(span, kind));
     }
 
     pub fn has_errors(&self) -> bool {
@@ -66,6 +195,12 @@ impl Diagnostics {
 
     pub fn items(&self) -> &[Diagnostic] {
         &self.items
+    }
+
+    /// Whether any recorded diagnostic matches `predicate` — the way tests
+    /// assert on *which* problem was found without depending on wording.
+    pub fn any(&self, predicate: impl Fn(&DiagnosticKind) -> bool) -> bool {
+        self.items.iter().any(|d| predicate(&d.kind))
     }
 
     /// Merges another collector's diagnostics into this one.
@@ -82,17 +217,24 @@ impl Diagnostics {
 
     /// Renders every diagnostic against `source`, separated by blank lines.
     pub fn render(&self, source: &str) -> String {
-        self.items.iter().map(|d| d.render(source)).collect::<Vec<_>>().join("\n\n")
+        self.items
+            .iter()
+            .map(|d| d.render(source))
+            .collect::<Vec<_>>()
+            .join("\n\n")
     }
 }
 
 impl fmt::Display for Diagnostics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Without the source text there is nothing to underline, so this
+        // prints messages only. Prefer `render(source)` wherever the source
+        // is still in hand.
         for (index, item) in self.items.iter().enumerate() {
             if index > 0 {
                 writeln!(f)?;
             }
-            writeln!(f, "{}", item.message)?;
+            writeln!(f, "{}: {}", item.severity, item.kind)?;
         }
         Ok(())
     }
@@ -104,8 +246,13 @@ impl Error for Diagnostics {}
 
 #[cfg(test)]
 mod tests {
+    use super::DiagnosticKind;
     use super::Diagnostics;
     use merc_utilities::Span;
+
+    fn unknown(name: &str) -> DiagnosticKind {
+        DiagnosticKind::UnknownSymbol { name: name.to_string() }
+    }
 
     #[test]
     fn empty_collector_has_no_errors() {
@@ -117,7 +264,7 @@ mod tests {
     #[test]
     fn recorded_error_fails_into_result() {
         let mut diagnostics = Diagnostics::new();
-        diagnostics.error(Span { start: 0, end: 1 }, "boom");
+        diagnostics.error(Span { start: 0, end: 1 }, unknown("boom"));
         assert!(diagnostics.has_errors());
         assert!(diagnostics.into_result(()).is_err());
     }
@@ -125,17 +272,47 @@ mod tests {
     #[test]
     fn collects_every_error_not_just_the_first() {
         let mut diagnostics = Diagnostics::new();
-        diagnostics.error(Span { start: 0, end: 1 }, "first");
-        diagnostics.error(Span { start: 2, end: 3 }, "second");
+        diagnostics.error(Span { start: 0, end: 1 }, unknown("first"));
+        diagnostics.error(Span { start: 2, end: 3 }, unknown("second"));
         assert_eq!(diagnostics.items().len(), 2);
     }
 
     #[test]
     fn render_includes_message_and_caret() {
         let mut diagnostics = Diagnostics::new();
-        diagnostics.error(Span { start: 4, end: 5 }, "unexpected x");
+        diagnostics.error(Span { start: 4, end: 5 }, unknown("x"));
         let rendered = diagnostics.render("eqn f = x;");
-        assert!(rendered.contains("unexpected x"));
+        assert!(rendered.contains("unknown symbol `x`"));
         assert!(rendered.contains("^"));
+    }
+
+    #[test]
+    fn render_includes_the_related_span_for_duplicates() {
+        let source = "const a = 1;\nconst a = 2;";
+        let first = Span { start: 6, end: 7 };
+        let second = Span { start: 19, end: 20 };
+        let mut diagnostics = Diagnostics::new();
+        diagnostics.error(
+            second,
+            DiagnosticKind::DuplicateDefinition {
+                name: "a".to_string(),
+                first,
+            },
+        );
+
+        let rendered = diagnostics.render(source);
+        assert!(rendered.contains("duplicate definition of `a`"), "{rendered}");
+        assert!(rendered.contains("note: first defined here"), "{rendered}");
+        // Both the offending line (2) and the original one (1) are shown.
+        assert!(rendered.contains("--> 2:7"), "{rendered}");
+        assert!(rendered.contains("--> 1:7"), "{rendered}");
+    }
+
+    #[test]
+    fn any_matches_on_the_kind_not_the_message() {
+        let mut diagnostics = Diagnostics::new();
+        diagnostics.error(Span { start: 0, end: 1 }, DiagnosticKind::RandomNotAllowed);
+        assert!(diagnostics.any(|kind| matches!(kind, DiagnosticKind::RandomNotAllowed)));
+        assert!(!diagnostics.any(|kind| matches!(kind, DiagnosticKind::UnknownSymbol { .. })));
     }
 }
