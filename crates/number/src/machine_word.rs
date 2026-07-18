@@ -242,7 +242,10 @@ mod tests {
 
     #[test]
     fn test_constants_and_predicates() {
-        assert_eq!((zero_word(), one_word(), two_word(), three_word(), four_word()), (0, 1, 2, 3, 4));
+        assert_eq!(
+            (zero_word(), one_word(), two_word(), three_word(), four_word()),
+            (0, 1, 2, 3, 4)
+        );
         assert_eq!(max_word(), MAX);
         assert!(equals_zero_word(0) && !equals_zero_word(1));
         assert!(not_equals_zero_word(1) && !not_equals_zero_word(0));
@@ -313,11 +316,17 @@ mod tests {
         let value = big_from_digits(&[MAX, MAX, MAX, MAX]);
         let root = value.sqrt();
         assert_eq!(sqrt_quadrupleword(MAX, MAX, MAX, MAX), truncate_u64(&root));
-        assert_eq!(sqrt_quadrupleword_overflow(MAX, MAX, MAX, MAX), truncate_u64(&(root >> 64)));
+        assert_eq!(
+            sqrt_quadrupleword_overflow(MAX, MAX, MAX, MAX),
+            truncate_u64(&(root >> 64))
+        );
         let triple = big_from_digits(&[MAX, MAX, MAX]);
         let triple_root = triple.sqrt();
         assert_eq!(sqrt_tripleword(MAX, MAX, MAX), truncate_u64(&triple_root));
-        assert_eq!(sqrt_tripleword_overflow(MAX, MAX, MAX), truncate_u64(&(triple_root >> 64)));
+        assert_eq!(
+            sqrt_tripleword_overflow(MAX, MAX, MAX),
+            truncate_u64(&(triple_root >> 64))
+        );
     }
 
     // === Randomised cross-checks against the binary number encoding ===
@@ -434,12 +443,21 @@ mod tests {
 
             let num_dd = big_from_digits(&[n1, n2]);
             let den_dd = big_from_digits(&[n3, denom_hi.max(1)]);
-            assert_eq!(div_double_doubleword(n1, n2, n3, denom_hi.max(1)), truncate_u64(&(&num_dd / &den_dd)));
-            assert_eq!(mod_double_doubleword(n1, n2, n3, denom_hi.max(1)), truncate_u64(&(&num_dd % &den_dd)));
+            assert_eq!(
+                div_double_doubleword(n1, n2, n3, denom_hi.max(1)),
+                truncate_u64(&(&num_dd / &den_dd))
+            );
+            assert_eq!(
+                mod_double_doubleword(n1, n2, n3, denom_hi.max(1)),
+                truncate_u64(&(&num_dd % &den_dd))
+            );
 
             let num_td = big_from_digits(&[n1, n2, n3]);
             let den_td = big_from_digits(&[denom_hi, denom_lo]);
-            assert_eq!(div_triple_doubleword(n1, n2, n3, denom_hi, denom_lo), truncate_u64(&(&num_td / &den_td)));
+            assert_eq!(
+                div_triple_doubleword(n1, n2, n3, denom_hi, denom_lo),
+                truncate_u64(&(&num_td / &den_td))
+            );
         });
     }
 
@@ -457,8 +475,7 @@ mod tests {
 
         random_test(5_000, |rng| {
             let base = base();
-            let (n1, n2, n3, n4): (u64, u64, u64, u64) =
-                (rng.random(), rng.random(), rng.random(), rng.random());
+            let (n1, n2, n3, n4): (u64, u64, u64, u64) = (rng.random(), rng.random(), rng.random(), rng.random());
 
             // Single word.
             let root = big(sqrt_word(n1));

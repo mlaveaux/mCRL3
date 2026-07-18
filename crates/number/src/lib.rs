@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod bits_for_value;
+pub mod machine_word;
 mod power_of_two;
 mod u64_variablelength;
 

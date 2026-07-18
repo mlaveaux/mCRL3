@@ -12,6 +12,7 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
 
+use crate::NumberEncoding;
 use crate::apply_sorts_in_spec;
 
 /// Parses a bundled `spec/*.mcrl2` file. The templates are compiled in, so a
@@ -21,15 +22,31 @@ fn parse_template(text: &str) -> UntypedDataSpecification {
     UntypedDataSpecification::parse(text).expect("the bundled templates parse")
 }
 
-/// The merged specifications of the five basic sorts (Appendix B.1–B.7),
-/// parsed once like the Pratt parsers of `merc_syntax`.
-static BASIC_SORTS: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
+/// The merged specifications of the five basic sorts (Appendix B.1–B.7) in the
+/// recursive binary encoding, parsed once like the Pratt parsers of
+/// `merc_syntax`.
+static BASIC_SORTS_BINARY: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
     let mut result = UntypedDataSpecification::default();
     result.merge(&parse_template(include_str!("../../../syntax/spec/bool.mcrl2")));
     result.merge(&parse_template(include_str!("../../../syntax/spec/pos.mcrl2")));
     result.merge(&parse_template(include_str!("../../../syntax/spec/int.mcrl2")));
     result.merge(&parse_template(include_str!("../../../syntax/spec/nat.mcrl2")));
     result.merge(&parse_template(include_str!("../../../syntax/spec/real.mcrl2")));
+    result
+});
+
+/// The same five basic sorts in the 64-bit machine-word encoding. `Bool` is
+/// shared with the binary encoding; the numeric sorts come from the `*64`
+/// templates, which are defined in terms of the `@word` sort that
+/// `machine_word.mcrl2` declares.
+static BASIC_SORTS_MACHINE_WORD: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
+    let mut result = UntypedDataSpecification::default();
+    result.merge(&parse_template(include_str!("../../../syntax/spec/bool.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/machine_word.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/pos64.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/int64.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/nat64.mcrl2")));
+    result.merge(&parse_template(include_str!("../../../syntax/spec/real64.mcrl2")));
     result
 });
 
@@ -60,6 +77,12 @@ impl ContainerTemplates {
     }
 }
 
+/// The container templates in the recursive binary encoding.
+///
+/// This is also the set the polymorphic signature is built from: the `*64`
+/// templates declare exactly the same operations with the same sorts (they
+/// differ only in their defining equations), so the *signature* of the container
+/// operations does not depend on the number encoding.
 pub(crate) static CONTAINER_TEMPLATES: LazyLock<ContainerTemplates> = LazyLock::new(|| ContainerTemplates {
     list: parse_template(include_str!("../../../syntax/spec/list.mcrl2")),
     set: parse_template(include_str!("../../../syntax/spec/set.mcrl2")),
@@ -69,26 +92,78 @@ pub(crate) static CONTAINER_TEMPLATES: LazyLock<ContainerTemplates> = LazyLock::
     function_update: parse_template(include_str!("../../../syntax/spec/function_update.mcrl2")),
 });
 
-/// Returns a standard data specification containing the standard sorts and their associated constructors, mappings, and equations.
-pub(crate) fn basic_sort_data_specification() -> UntypedDataSpecification {
-    BASIC_SORTS.clone()
+/// The container templates whose equations are expressed in terms of the
+/// machine-word numeric sorts. `function_update.mcrl2` mentions no numbers, so
+/// it is shared with the binary encoding.
+static CONTAINER_TEMPLATES_MACHINE_WORD: LazyLock<ContainerTemplates> = LazyLock::new(|| ContainerTemplates {
+    list: parse_template(include_str!("../../../syntax/spec/list64.mcrl2")),
+    set: parse_template(include_str!("../../../syntax/spec/set64.mcrl2")),
+    fset: parse_template(include_str!("../../../syntax/spec/fset64.mcrl2")),
+    bag: parse_template(include_str!("../../../syntax/spec/bag64.mcrl2")),
+    fbag: parse_template(include_str!("../../../syntax/spec/fbag64.mcrl2")),
+    function_update: parse_template(include_str!("../../../syntax/spec/function_update.mcrl2")),
+});
+
+/// The container templates to instantiate for `encoding`.
+fn container_templates(encoding: NumberEncoding) -> &'static ContainerTemplates {
+    match encoding {
+        NumberEncoding::Binary => &CONTAINER_TEMPLATES,
+        NumberEncoding::MachineWord => &CONTAINER_TEMPLATES_MACHINE_WORD,
+    }
 }
 
-/// Constructs a data specification for a standard sort;
-pub(crate) fn standard_sort(sort: &SortExpression) -> UntypedDataSpecification {
+/// The defining equations of the polymorphic `if` operator at `sort`
+/// (Appendix B): `if(true, x, y) = x` and `if(false, x, y) = y`.
+///
+/// `if` is a built-in scheme rather than a per-sort declaration, so no bundled
+/// template defines it; without these equations a conditional never reduces.
+/// The numeric templates rely on this heavily — `nat64.mcrl2` alone applies `if`
+/// in 91 equations — so the machine-word encoding cannot rewrite at all without
+/// them.
+pub(crate) fn if_equations(sort: &str) -> UntypedDataSpecification {
+    // The variable names are local to the generated equation block, so they
+    // cannot collide with the user's or another sort's declarations.
+    parse_template(&formatdoc! {"
+        var x_if_{sort}, y_if_{sort}: {sort};
+        eqn if(true, x_if_{sort}, y_if_{sort}) = x_if_{sort};
+            if(false, x_if_{sort}, y_if_{sort}) = y_if_{sort};
+    "})
+}
+
+/// The basic sorts each encoding defines `if` for.
+const BASIC_SORT_NAMES: [&str; 5] = ["Bool", "Pos", "Nat", "Int", "Real"];
+
+/// Returns a standard data specification containing the standard sorts and their
+/// associated constructors, mappings, and equations, in the given `encoding`.
+pub(crate) fn basic_sort_data_specification(encoding: NumberEncoding) -> UntypedDataSpecification {
+    let mut result = match encoding {
+        NumberEncoding::Binary => BASIC_SORTS_BINARY.clone(),
+        NumberEncoding::MachineWord => BASIC_SORTS_MACHINE_WORD.clone(),
+    };
+
+    for sort in BASIC_SORT_NAMES {
+        result.merge(&if_equations(sort));
+    }
+    result
+}
+
+/// Constructs a data specification for a standard sort, in the given `encoding`.
+pub(crate) fn standard_sort(sort: &SortExpression, encoding: NumberEncoding) -> UntypedDataSpecification {
+    let templates = container_templates(encoding);
+
     if let SortExpressionKind::Complex(complex, sort) = &sort.node {
         let template = match complex {
-            ComplexSort::List => &CONTAINER_TEMPLATES.list,
-            ComplexSort::Set => &CONTAINER_TEMPLATES.set,
-            ComplexSort::FSet => &CONTAINER_TEMPLATES.fset,
-            ComplexSort::Bag => &CONTAINER_TEMPLATES.bag,
-            ComplexSort::FBag => &CONTAINER_TEMPLATES.fbag,
+            ComplexSort::List => &templates.list,
+            ComplexSort::Set => &templates.set,
+            ComplexSort::FSet => &templates.fset,
+            ComplexSort::Bag => &templates.bag,
+            ComplexSort::FBag => &templates.fbag,
         };
 
         replace_sort(template, "S", sort)
     } else if let SortExpressionKind::Function { domain, range } = &sort.node {
         // In the specification we define the function S -> T.
-        let spec = replace_sort(&CONTAINER_TEMPLATES.function_update, "S", domain);
+        let spec = replace_sort(&templates.function_update, "S", domain);
         replace_sort(&spec, "T", range)
     } else {
         unreachable!("The given sort {} is not a standard sort", sort);
@@ -312,6 +387,7 @@ mod tests {
     use merc_syntax::SortExpressionKind;
 
     use super::UntypedDataSpecification;
+    use crate::NumberEncoding;
     use super::standard_sort;
     use super::structured_sort_equations;
 
@@ -322,7 +398,7 @@ mod tests {
         // declaration sort, or the generated equation would reference the
         // undeclared `S`.
         let spec = UntypedDataSpecification::parse("map f: Set(Nat);").unwrap();
-        let generated = standard_sort(&spec.map_declarations[0].sort);
+        let generated = standard_sort(&spec.map_declarations[0].sort, NumberEncoding::Binary);
 
         let equations: Vec<String> = generated
             .equation_declarations

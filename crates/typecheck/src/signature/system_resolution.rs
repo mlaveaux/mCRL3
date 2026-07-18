@@ -203,6 +203,7 @@ mod tests {
     use crate::ResolvedSort;
     use crate::TypeckContext;
     use crate::WellTypedError;
+    use crate::NumberEncoding;
     use crate::basic_sort_data_specification;
     use crate::resolve_system_signature;
 
@@ -211,7 +212,7 @@ mod tests {
     fn resolve(text: &str) -> (DataSpecification, TypeckContext) {
         let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse(text).unwrap()).unwrap();
         let mut ctx = TypeckContext::new();
-        let basics = basic_sort_data_specification();
+        let basics = basic_sort_data_specification(NumberEncoding::Binary);
         resolve_system_signature(&mut ctx, spec.data_specification(), &basics).unwrap();
         (spec, ctx)
     }

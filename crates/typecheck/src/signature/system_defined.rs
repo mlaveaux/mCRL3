@@ -10,6 +10,7 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_data_expr;
 use merc_syntax::visit_sort_expr;
 
+use crate::NumberEncoding;
 use crate::POLYMORPHIC_SIGNATURE;
 use crate::WellTypedError;
 use crate::is_supported_binder_sort;
@@ -39,6 +40,7 @@ use crate::standard_sort;
 pub(crate) fn build_system_defined_specification(
     spec: &UntypedDataSpecification,
     basics: UntypedDataSpecification,
+    encoding: NumberEncoding,
 ) -> UntypedDataSpecification {
     let mut result = basics;
 
@@ -52,7 +54,7 @@ pub(crate) fn build_system_defined_specification(
             continue;
         }
 
-        let generated = standard_sort(&sort);
+        let generated = standard_sort(&sort, encoding);
         // A container is defined in terms of other containers, so re-scan the
         // generated specification for those. Function sorts are collected from
         // the user specification only: the function-update operators introduce
@@ -221,6 +223,7 @@ mod tests {
     use super::build_system_defined_specification;
     use super::collect_system_sorts_in_spec;
     use crate::DataSpecification;
+    use crate::NumberEncoding;
     use crate::basic_sort_data_specification;
 
     /// The distinct container constructors that occur in a specification.
@@ -240,8 +243,12 @@ mod tests {
     }
 
     fn system_spec(text: &str) -> UntypedDataSpecification {
-        let basics = basic_sort_data_specification();
-        build_system_defined_specification(&UntypedDataSpecification::parse(text).unwrap(), basics)
+        let basics = basic_sort_data_specification(NumberEncoding::Binary);
+        build_system_defined_specification(
+            &UntypedDataSpecification::parse(text).unwrap(),
+            basics,
+            NumberEncoding::Binary,
+        )
     }
 
     #[test]

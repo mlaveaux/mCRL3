@@ -17,6 +17,7 @@ use merc_syntax::apply_sort_expression;
 
 use crate::AliasError;
 use crate::EquationTyping;
+use crate::NumberEncoding;
 use crate::Signature;
 use crate::TypeckContext;
 use crate::WellTypedError;
@@ -51,11 +52,27 @@ pub struct DataSpecification {
     system: UntypedDataSpecification,
     context: TypeckContext,
     equation_typings: Vec<Vec<Rc<EquationTyping>>>,
+    encoding: NumberEncoding,
 }
 
 impl DataSpecification {
-    /// Create a completed well-typed data specification from an untyped data specification.
-    pub fn from_untyped(mut spec: UntypedDataSpecification) -> Result<Self, WellTypedError> {
+    /// Create a completed well-typed data specification from an untyped data
+    /// specification, using the default ([`NumberEncoding::Binary`]) number
+    /// encoding.
+    pub fn from_untyped(spec: UntypedDataSpecification) -> Result<Self, WellTypedError> {
+        Self::from_untyped_with(spec, NumberEncoding::default())
+    }
+
+    /// Create a completed well-typed data specification from an untyped data
+    /// specification, representing `Pos`/`Nat`/`Int`/`Real` with `encoding`.
+    ///
+    /// The encoding selects both the system specification pulled in for the
+    /// basic and container sorts and the form numeric literals are lowered to by
+    /// [`Self::lower_data_specification`]; see [`NumberEncoding`].
+    pub fn from_untyped_with(
+        mut spec: UntypedDataSpecification,
+        encoding: NumberEncoding,
+    ) -> Result<Self, WellTypedError> {
         debug!(
             "typecheck: starting on {} sort, {} constructor, {} map and {} equation declaration(s)",
             spec.sort_declarations.len(),
@@ -140,11 +157,11 @@ impl DataSpecification {
         // Collect the Appendix-B definitions for the basic and container sorts
         // that the specification uses. The basic-sort part is kept aside: it
         // is also the input of the system signature below.
-        let basics = basic_sort_data_specification();
+        let basics = basic_sort_data_specification(encoding);
         check_no_system_function_redeclaration(&spec, &basics)?;
         debug!("typecheck: no user declaration redeclares a system function");
 
-        let mut system = build_system_defined_specification(&spec, basics.clone());
+        let mut system = build_system_defined_specification(&spec, basics.clone(), encoding);
 
         // The defining equations of each structured sort (Appendix B.10) join
         // the system-defined part: they use the `==`/`<`/`<=` operators that
@@ -212,7 +229,13 @@ impl DataSpecification {
             system,
             context,
             equation_typings,
+            encoding,
         })
+    }
+
+    /// The number encoding this specification was built with.
+    pub fn number_encoding(&self) -> NumberEncoding {
+        self.encoding
     }
 
     /// The resolved data specification. Every sort — on `sort`, `cons`, `map`
@@ -323,7 +346,13 @@ impl DataSpecification {
     /// is needed; it may be called more than once (results are identical since
     /// the underlying caches are warm after the first call).
     pub fn lower_data_specification(&mut self) -> Mcrl2DataSpecification {
-        lower_data_specification(&mut self.context, &self.spec, &self.system, &self.equation_typings)
+        lower_data_specification(
+            &mut self.context,
+            &self.spec,
+            &self.system,
+            &self.equation_typings,
+            self.encoding,
+        )
     }
 }
 

@@ -15,6 +15,7 @@ use merc_data::DataFunctionSymbol;
 use merc_data::DataVariable;
 use merc_data::DataWhereClause;
 use merc_data::DataWhrDecl;
+use merc_data::MachineNumber;
 use merc_data::Mcrl2DataSpecification;
 use merc_data::SortAlias;
 use merc_data::SortArrow;
@@ -35,6 +36,7 @@ use merc_syntax::UntypedDataSpecification;
 use crate::EquationTyping;
 use crate::ExprId;
 use crate::NameTarget;
+use crate::NumberEncoding;
 use crate::ResolvedSort;
 use crate::ResolvedSortId;
 use crate::TypeckContext;
@@ -74,11 +76,19 @@ fn container_kind(op: ComplexSort) -> ContainerSortKind {
 /// (`nat.mcrl2`/`int.mcrl2`/`real.mcrl2`). Steps compose for a non-adjacent
 /// pair (e.g. `Pos -> Real` becomes `@cReal(@cInt(@cNat(x)), @c1)`, not a
 /// single `Pos2Real` call).
-fn widen_one_step(term: DataExpression, from: Sort) -> (DataExpression, Sort) {
+fn widen_one_step(term: DataExpression, from: Sort, encoding: NumberEncoding) -> (DataExpression, Sort) {
     match from {
         Sort::Pos => {
-            let cnat = function_symbol("@cNat", &[pos_sort()], nat_sort());
-            (DataApplication::with_args(&cnat, &[term]).into(), Sort::Nat)
+            // The binary encoding embeds a `Pos` into `Nat` with the `@cNat`
+            // constructor. The machine-word encoding has no such constructor —
+            // a `Nat` digit chain is headed by `@most_significant_digitNat` —
+            // so it uses the `Pos2Nat` mapping, whose equations in
+            // `nat64.mcrl2` rewrite it onto the corresponding digit chain.
+            let convert = match encoding {
+                NumberEncoding::Binary => function_symbol("@cNat", &[pos_sort()], nat_sort()),
+                NumberEncoding::MachineWord => function_symbol("Pos2Nat", &[pos_sort()], nat_sort()),
+            };
+            (DataApplication::with_args(&convert, &[term]).into(), Sort::Nat)
         }
         Sort::Nat => {
             let cint = function_symbol("@cInt", &[nat_sort()], int_sort());
@@ -87,7 +97,7 @@ fn widen_one_step(term: DataExpression, from: Sort) -> (DataExpression, Sort) {
         Sort::Int => {
             let creal = function_symbol("@cReal", &[int_sort(), pos_sort()], real_sort());
             (
-                DataApplication::with_args(&creal, &[term, pos_literal("1")]).into(),
+                DataApplication::with_args(&creal, &[term, pos_literal("1", encoding)]).into(),
                 Sort::Real,
             )
         }
@@ -97,10 +107,10 @@ fn widen_one_step(term: DataExpression, from: Sort) -> (DataExpression, Sort) {
 
 /// Widens `term` from `from` to `to` in the number lattice, composing
 /// [widen_one_step] as many times as needed.
-fn numeric_coerce(mut term: DataExpression, from: Sort, to: Sort) -> DataExpression {
+fn numeric_coerce(mut term: DataExpression, from: Sort, to: Sort, encoding: NumberEncoding) -> DataExpression {
     let mut current = from;
     while current != to {
-        (term, current) = widen_one_step(term, current);
+        (term, current) = widen_one_step(term, current, encoding);
     }
     term
 }
@@ -189,6 +199,20 @@ fn bool_sort() -> DataSortExpression {
     BasicSort::new("Bool").into()
 }
 
+/// The sort of a machine word, the digit sort of [`NumberEncoding::MachineWord`]
+/// (declared by `crates/syntax/spec/machine_word.mcrl2`).
+fn word_sort() -> DataSortExpression {
+    BasicSort::new("@word").into()
+}
+
+/// Number of bits in one machine-word digit; the digit base is `2^WORD_BITS`.
+const WORD_BITS: usize = 64;
+
+/// Builds the machine-number term for a single `@word` digit.
+fn machine_number(value: u64) -> DataExpression {
+    MachineNumber::new(value).into()
+}
+
 /// The binary digits of a non-negative decimal literal, least-significant
 /// first, computed by repeated long division by two on the decimal digits
 /// (so arbitrarily large literals need no fixed-width integer type). The
@@ -232,7 +256,7 @@ fn function_symbol(name: &str, domain: &[DataSortExpression], range: DataSortExp
 /// `crates/syntax/spec/pos.mcrl2` declares: `@cDub(b, p)` denotes `2*p + b`,
 /// so the least-significant bit is the *outermost* `@cDub`, built up from the
 /// leading (most-significant) bit's `@c1` inward.
-fn pos_literal(decimal: &str) -> DataExpression {
+fn pos_literal_binary(decimal: &str) -> DataExpression {
     let bits = decimal_bits_lsb_first(decimal);
     debug_assert!(
         *bits.last().expect("a Pos literal has at least one bit"),
@@ -247,31 +271,94 @@ fn pos_literal(decimal: &str) -> DataExpression {
     term
 }
 
-/// Builds the `Nat` term for a decimal literal: `@c0` for `"0"`, otherwise
-/// `@cNat` wrapping the `Pos` term.
-fn nat_literal(decimal: &str) -> DataExpression {
-    if decimal == "0" {
-        constant("@c0", nat_sort()).into()
-    } else {
-        let cnat = function_symbol("@cNat", &[pos_sort()], nat_sort());
-        DataApplication::with_args(&cnat, &[pos_literal(decimal)]).into()
+/// The base-`2^64` digits of a non-negative decimal literal, least-significant
+/// digit first, packed from its binary expansion. Always yields at least one
+/// digit, so `"0"` becomes `[0]`.
+fn decimal_words_lsb_first(decimal: &str) -> Vec<u64> {
+    let bits = decimal_bits_lsb_first(decimal);
+
+    let mut words: Vec<u64> = bits
+        .chunks(WORD_BITS)
+        .map(|chunk| {
+            let mut word = 0u64;
+            for (i, &bit) in chunk.iter().enumerate() {
+                if bit {
+                    word |= 1u64 << i;
+                }
+            }
+            word
+        })
+        .collect();
+
+    if words.is_empty() {
+        words.push(0);
+    }
+    words
+}
+
+/// Folds the base-`2^64` digits of `decimal` into a digit chain, starting from
+/// `most_significant` applied to the leading digit and wrapping each successively
+/// less significant digit in `@concat_digit`, which denotes `2^64 * p + w`.
+///
+/// This mirrors mCRL2's `sort_pos::pos` / `sort_nat::nat` construction in
+/// `standard_numbers_utility.h` when `MCRL2_ENABLE_MACHINENUMBERS` is set.
+fn digit_chain_literal(decimal: &str, most_significant: &str, sort: DataSortExpression) -> DataExpression {
+    let words = decimal_words_lsb_first(decimal);
+
+    let leading = function_symbol(most_significant, &[word_sort()], sort.clone());
+    let concat = function_symbol("@concat_digit", &[sort.clone(), word_sort()], sort);
+
+    let mut digits = words.iter().rev();
+    let most = *digits.next().expect("there is always at least one digit");
+    let mut term: DataExpression = DataApplication::with_args(&leading, &[machine_number(most)]).into();
+    for &word in digits {
+        term = DataApplication::with_args(&concat, &[term, machine_number(word)]).into();
+    }
+    term
+}
+
+/// Builds the `Pos` term for a positive decimal literal (`"0"` is not valid
+/// input; `Pos` has no zero).
+fn pos_literal(decimal: &str, encoding: NumberEncoding) -> DataExpression {
+    match encoding {
+        NumberEncoding::Binary => pos_literal_binary(decimal),
+        NumberEncoding::MachineWord => digit_chain_literal(decimal, "@most_significant_digit", pos_sort()),
+    }
+}
+
+/// Builds the `Nat` term for a decimal literal. In the binary encoding this is
+/// `@c0` for `"0"` and otherwise `@cNat` wrapping the `Pos` term; in the
+/// machine-word encoding it is a digit chain, with zero represented as the
+/// single digit `@most_significant_digitNat(0)` rather than `@c0`.
+fn nat_literal(decimal: &str, encoding: NumberEncoding) -> DataExpression {
+    match encoding {
+        NumberEncoding::Binary => {
+            if decimal == "0" {
+                constant("@c0", nat_sort()).into()
+            } else {
+                let cnat = function_symbol("@cNat", &[pos_sort()], nat_sort());
+                DataApplication::with_args(&cnat, &[pos_literal_binary(decimal)]).into()
+            }
+        }
+        NumberEncoding::MachineWord => digit_chain_literal(decimal, "@most_significant_digitNat", nat_sort()),
     }
 }
 
 /// Builds the `Int` term for a decimal literal. A `Number` node is always a
 /// non-negative decimal string (mCRL2 has no negative numeral syntax;
 /// negation is the unary `-` operator applied afterwards), so this is always
-/// `@cInt`, never `@cNeg`.
-fn int_literal(decimal: &str) -> DataExpression {
+/// `@cInt`, never `@cNeg`. Both encodings share the `@cInt` constructor.
+fn int_literal(decimal: &str, encoding: NumberEncoding) -> DataExpression {
     let cint = function_symbol("@cInt", &[nat_sort()], int_sort());
-    DataApplication::with_args(&cint, &[nat_literal(decimal)]).into()
+    DataApplication::with_args(&cint, &[nat_literal(decimal, encoding)]).into()
 }
 
 /// Builds the `Real` term for a decimal literal: `@cReal(n, 1)`, matching
-/// `Int2Real`'s equation in `crates/syntax/spec/real.mcrl2`.
-fn real_literal(decimal: &str) -> DataExpression {
+/// `Int2Real`'s equation in `crates/syntax/spec/real.mcrl2` (and `real64.mcrl2`,
+/// which declares `@cReal` identically).
+fn real_literal(decimal: &str, encoding: NumberEncoding) -> DataExpression {
     let creal = function_symbol("@cReal", &[int_sort(), pos_sort()], real_sort());
-    DataApplication::with_args(&creal, &[int_literal(decimal), pos_literal("1")]).into()
+    DataApplication::with_args(&creal, &[int_literal(decimal, encoding), pos_literal("1", encoding)]).into()
 }
 
 /// Builds the aterm literal for a `DataExpr::Number` node whose *own*
@@ -279,12 +366,12 @@ fn real_literal(decimal: &str) -> DataExpression {
 /// inserted here, so the caller must have already established that this is
 /// the literal's minimal inferred sort, not a wider one it is later upcast to.
 #[allow(dead_code)]
-pub(crate) fn lower_number_literal(decimal: &str, sort: Sort) -> DataExpression {
+pub(crate) fn lower_number_literal(decimal: &str, sort: Sort, encoding: NumberEncoding) -> DataExpression {
     match sort {
-        Sort::Pos => pos_literal(decimal),
-        Sort::Nat => nat_literal(decimal),
-        Sort::Int => int_literal(decimal),
-        Sort::Real => real_literal(decimal),
+        Sort::Pos => pos_literal(decimal, encoding),
+        Sort::Nat => nat_literal(decimal, encoding),
+        Sort::Int => int_literal(decimal, encoding),
+        Sort::Real => real_literal(decimal, encoding),
         Sort::Bool => unreachable!("a Number literal never infers to Bool"),
     }
 }
@@ -323,6 +410,7 @@ pub(crate) fn lower_equation(
     condition: Option<&DataExpr>,
     lhs: &DataExpr,
     rhs: &DataExpr,
+    encoding: NumberEncoding,
 ) -> Option<LoweredEquation> {
     let EquationTyping { sorts, names } = typing;
 
@@ -332,6 +420,7 @@ pub(crate) fn lower_equation(
         sorts,
         names,
         next_id: 0,
+        encoding,
     };
     let condition = match condition {
         Some(condition) => Some(walker.lower(condition)?),
@@ -366,6 +455,8 @@ struct Lowering<'a> {
     /// The `ExprId` the next node visited will be assigned, mirroring
     /// `ConstraintGenerator::visit`'s `id = ExprId::new(self.expr_sorts.len())`.
     next_id: usize,
+    /// How numeric literals and numeric coercions are represented.
+    encoding: NumberEncoding,
 }
 
 impl Lowering<'_> {
@@ -418,7 +509,7 @@ impl Lowering<'_> {
 
         match (self.ctx.sorts.get(from), self.ctx.sorts.get(to)) {
             (ResolvedSort::Primitive(from_sort), ResolvedSort::Primitive(to_sort)) => {
-                Some(numeric_coerce(term, *from_sort, *to_sort))
+                Some(numeric_coerce(term, *from_sort, *to_sort, self.encoding))
             }
             (ResolvedSort::Generic { op, subsort }, ResolvedSort::Generic { .. }) => {
                 let element = lower_sort(self.ctx, self.spec, *subsort);
@@ -443,7 +534,7 @@ impl Lowering<'_> {
         let ResolvedSort::Primitive(sort) = self.ctx.sorts.get(sort) else {
             unreachable!("a Number literal always infers to a primitive numeric sort")
         };
-        Some(lower_number_literal(value, *sort))
+        Some(lower_number_literal(value, *sort, self.encoding))
     }
 
     fn lower_application(
@@ -747,6 +838,7 @@ fn materialize_system_args(
     var_map: &HashMap<&str, DataSortExpression>,
     slots: Vec<ArgSlot>,
     domain: &[DataSortExpression],
+    encoding: NumberEncoding,
 ) -> Option<Vec<DataExpression>> {
     if slots.len() != domain.len() {
         return None;
@@ -756,7 +848,7 @@ fn materialize_system_args(
         match slot {
             ArgSlot::Known(term, _) => terms.push(term),
             ArgSlot::Deferred(expr) => {
-                let (term, _) = lower_system_expr(system, var_map, expr, Some(expected))?;
+                let (term, _) = lower_system_expr(system, var_map, expr, Some(expected), encoding)?;
                 terms.push(term);
             }
         }
@@ -875,6 +967,7 @@ fn lower_system_expr(
     var_map: &HashMap<&str, DataSortExpression>,
     expr: &DataExpr,
     expected: Option<&DataSortExpression>,
+    encoding: NumberEncoding,
 ) -> Option<(DataExpression, DataSortExpression)> {
     match &expr.node {
         DataExprKind::Id(name) => lower_system_id(system, var_map, name),
@@ -885,12 +978,12 @@ fn lower_system_expr(
             // deferred until `lower_system_call` fixes the operation's domain.
             let mut slots = Vec::with_capacity(arguments.len());
             for arg in arguments {
-                match lower_system_expr(system, var_map, arg, None) {
+                match lower_system_expr(system, var_map, arg, None, encoding) {
                     Some((term, sort)) => slots.push(ArgSlot::Known(term, sort)),
                     None => slots.push(ArgSlot::Deferred(arg)),
                 }
             }
-            lower_system_call(system, var_map, function, slots)
+            lower_system_call(system, var_map, function, slots, encoding)
         }
         // Empty-container literals: resolved against the expected container sort.
         DataExprKind::EmptyList => lower_system_empty_container(ComplexSort::List, expected?),
@@ -901,7 +994,7 @@ fn lower_system_expr(
             let sort = expected?;
             match primitive_sort_of(sort)? {
                 Sort::Bool => None,
-                prim => Some((lower_number_literal(value, prim), sort.clone())),
+                prim => Some((lower_number_literal(value, prim, encoding), sort.clone())),
             }
         }
         // Constructs whose sort cannot be determined without full inference.
@@ -966,13 +1059,14 @@ fn lower_system_call(
     var_map: &HashMap<&str, DataSortExpression>,
     function: &DataExpr,
     slots: Vec<ArgSlot>,
+    encoding: NumberEncoding,
 ) -> Option<(DataExpression, DataSortExpression)> {
     match &function.node {
         DataExprKind::Id(name) => {
             let name_str = name.as_str();
             // Builtin `==` / `!=` / `<` / `<=` / `>` / `>=` / `if`.
             if let Some((func_sort, domain, result_sort)) = builtin_sort(name_str, &slots) {
-                let args = materialize_system_args(system, var_map, slots, &domain)?;
+                let args = materialize_system_args(system, var_map, slots, &domain, encoding)?;
                 let func_term: DataExpression = DataFunctionSymbol::with_sort(name_str, func_sort.copy()).into();
                 return Some((DataApplication::with_args(&func_term, &args).into(), result_sort));
             }
@@ -981,7 +1075,7 @@ fn lower_system_call(
                 && let Some(result_sort) = sort_arrow_codomain(func_sort)
             {
                 let domain = function_domain(func_sort);
-                let args = materialize_system_args(system, var_map, slots, &domain)?;
+                let args = materialize_system_args(system, var_map, slots, &domain, encoding)?;
                 let func_term: DataExpression = DataVariable::with_sort(name_str, func_sort.copy()).into();
                 return Some((DataApplication::with_args(&func_term, &args).into(), result_sort));
             }
@@ -990,7 +1084,7 @@ fn lower_system_call(
                 if decl.identifier == *name
                     && let Some((func_sort, domain, result_sort)) = match_overload(&decl.sort, &slots)
                 {
-                    let args = materialize_system_args(system, var_map, slots, &domain)?;
+                    let args = materialize_system_args(system, var_map, slots, &domain, encoding)?;
                     let func_term: DataExpression = DataFunctionSymbol::with_sort(name_str, func_sort.copy()).into();
                     return Some((DataApplication::with_args(&func_term, &args).into(), result_sort));
                 }
@@ -1000,7 +1094,7 @@ fn lower_system_call(
                 if decl.identifier == *name
                     && let Some((func_sort, domain, result_sort)) = match_overload(&decl.sort, &slots)
                 {
-                    let args = materialize_system_args(system, var_map, slots, &domain)?;
+                    let args = materialize_system_args(system, var_map, slots, &domain, encoding)?;
                     let func_term: DataExpression = DataFunctionSymbol::with_sort(name_str, func_sort.copy()).into();
                     return Some((DataApplication::with_args(&func_term, &args).into(), result_sort));
                 }
@@ -1010,10 +1104,10 @@ fn lower_system_call(
         // Curried application: the function position is itself an expression
         // (e.g. `@func_update(f,x,v)`) whose result sort must be a function.
         _ => {
-            let (fn_value, fn_sort) = lower_system_expr(system, var_map, function, None)?;
+            let (fn_value, fn_sort) = lower_system_expr(system, var_map, function, None, encoding)?;
             let result_sort = sort_arrow_codomain(&fn_sort)?;
             let domain = function_domain(&fn_sort);
-            let args = materialize_system_args(system, var_map, slots, &domain)?;
+            let args = materialize_system_args(system, var_map, slots, &domain, encoding)?;
             Some((DataApplication::with_args(&fn_value, &args).into(), result_sort))
         }
     }
@@ -1034,7 +1128,7 @@ fn lower_system_call(
 /// so `Set`/`Bag`-using rewrite specs are currently missing rules. The
 /// `debug_assert` below exists to make this loud in development rather than
 /// silent in production; it does not fix the gap.
-fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataEquation>) {
+fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataEquation>, encoding: NumberEncoding) {
     for eqn_spec in &system.equation_declarations {
         let var_map: HashMap<&str, DataSortExpression> = eqn_spec
             .variables
@@ -1052,7 +1146,7 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
             // A condition is always `Bool`; the expected sort resolves a bare
             // literal there (unusual, but free to support).
             let condition = match &eqn.condition {
-                Some(c) => match lower_system_expr(system, &var_map, c, Some(&bool_sort())) {
+                Some(c) => match lower_system_expr(system, &var_map, c, Some(&bool_sort()), encoding) {
                     Some((term, _)) => Some(term),
                     None => {
                         debug_assert!(
@@ -1072,13 +1166,13 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
             // `#[] = @c0`) is resolved by its partner. Try the left first, and
             // fall back to lowering the right first when the left is itself a
             // bare literal.
-            let sides = match lower_system_expr(system, &var_map, &eqn.lhs, None) {
+            let sides = match lower_system_expr(system, &var_map, &eqn.lhs, None, encoding) {
                 Some((lhs, lhs_sort)) => {
-                    lower_system_expr(system, &var_map, &eqn.rhs, Some(&lhs_sort)).map(|(rhs, _)| (lhs, rhs))
+                    lower_system_expr(system, &var_map, &eqn.rhs, Some(&lhs_sort), encoding).map(|(rhs, _)| (lhs, rhs))
                 }
-                None => match lower_system_expr(system, &var_map, &eqn.rhs, None) {
+                None => match lower_system_expr(system, &var_map, &eqn.rhs, None, encoding) {
                     Some((rhs, rhs_sort)) => {
-                        lower_system_expr(system, &var_map, &eqn.lhs, Some(&rhs_sort)).map(|(lhs, _)| (lhs, rhs))
+                        lower_system_expr(system, &var_map, &eqn.lhs, Some(&rhs_sort), encoding).map(|(lhs, _)| (lhs, rhs))
                     }
                     None => None,
                 },
@@ -1120,6 +1214,7 @@ pub(crate) fn lower_data_specification(
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
     equation_typings: &[Vec<Rc<EquationTyping>>],
+    encoding: NumberEncoding,
 ) -> Mcrl2DataSpecification {
     let sorts: Vec<BasicSort> = spec
         .sort_declarations
@@ -1180,7 +1275,7 @@ pub(crate) fn lower_data_specification(
             .map(|var| DataVariable::with_sort(var.identifier.as_str(), lower_syntax_sort(&var.sort).copy()))
             .collect();
         for (eqn, typing) in eqn_spec.equations.iter().zip(typings.iter()) {
-            let lowered = lower_equation(ctx, spec, typing, eqn.condition.as_ref(), &eqn.lhs, &eqn.rhs);
+            let lowered = lower_equation(ctx, spec, typing, eqn.condition.as_ref(), &eqn.lhs, &eqn.rhs, encoding);
             // Phase-3 inference already accepted this equation (it has a
             // `typing`), so a `None` here means `Lowering` is missing a
             // construct Phase-3 supports — an internal bug, not a legitimate
@@ -1196,7 +1291,7 @@ pub(crate) fn lower_data_specification(
             equations.push(DataEquation::new(&vars, lowered.condition, lowered.lhs, lowered.rhs));
         }
     }
-    lower_system_equations(system, &mut equations);
+    lower_system_equations(system, &mut equations, encoding);
 
     Mcrl2DataSpecification::new(sorts, aliases, constructors, mappings, equations)
 }
@@ -1214,6 +1309,7 @@ mod tests {
     use super::LoweredEquation;
     use super::lower_bool_literal;
     use super::lower_equation;
+    use super::NumberEncoding;
     use super::lower_number_literal;
     use super::lower_sort;
     use crate::DataSpecification;
@@ -1236,6 +1332,7 @@ mod tests {
             eqn.condition.as_ref(),
             &eqn.lhs,
             &eqn.rhs,
+            spec.number_encoding(),
         )
     }
 
@@ -1285,17 +1382,17 @@ mod tests {
 
     #[test]
     fn test_pos_literals() {
-        assert_eq!(lower_number_literal("1", Sort::Pos).to_string(), "@c1");
-        assert_eq!(lower_number_literal("2", Sort::Pos).to_string(), "@cDub(false, @c1)");
-        assert_eq!(lower_number_literal("3", Sort::Pos).to_string(), "@cDub(true, @c1)");
+        assert_eq!(lower_number_literal("1", Sort::Pos, NumberEncoding::Binary).to_string(), "@c1");
+        assert_eq!(lower_number_literal("2", Sort::Pos, NumberEncoding::Binary).to_string(), "@cDub(false, @c1)");
+        assert_eq!(lower_number_literal("3", Sort::Pos, NumberEncoding::Binary).to_string(), "@cDub(true, @c1)");
         assert_eq!(
-            lower_number_literal("5", Sort::Pos).to_string(),
+            lower_number_literal("5", Sort::Pos, NumberEncoding::Binary).to_string(),
             "@cDub(true, @cDub(false, @c1))"
         );
         // 255 = 0b11111111 (all-ones): a `Pos` literal built from a decimal
         // string too large for a machine word exercises the
         // arbitrary-precision long-division encoding, not just a lookup.
-        let text = lower_number_literal("255", Sort::Pos).to_string();
+        let text = lower_number_literal("255", Sort::Pos, NumberEncoding::Binary).to_string();
         assert_eq!(text.matches("@cDub(true, ").count(), 7, "{text}");
         assert!(text.contains("@c1)"), "{text}");
         assert_eq!(text.matches(')').count(), 7, "{text}");
@@ -1303,26 +1400,26 @@ mod tests {
 
     #[test]
     fn test_nat_literals() {
-        assert_eq!(lower_number_literal("0", Sort::Nat).to_string(), "@c0");
+        assert_eq!(lower_number_literal("0", Sort::Nat, NumberEncoding::Binary).to_string(), "@c0");
         assert_eq!(
-            lower_number_literal("2", Sort::Nat).to_string(),
+            lower_number_literal("2", Sort::Nat, NumberEncoding::Binary).to_string(),
             "@cNat(@cDub(false, @c1))"
         );
     }
 
     #[test]
     fn test_int_literal() {
-        assert_eq!(lower_number_literal("0", Sort::Int).to_string(), "@cInt(@c0)");
+        assert_eq!(lower_number_literal("0", Sort::Int, NumberEncoding::Binary).to_string(), "@cInt(@c0)");
     }
 
     #[test]
     fn test_real_literal() {
         assert_eq!(
-            lower_number_literal("0", Sort::Real).to_string(),
+            lower_number_literal("0", Sort::Real, NumberEncoding::Binary).to_string(),
             "@cReal(@cInt(@c0), @c1)"
         );
         assert_eq!(
-            lower_number_literal("1", Sort::Real).to_string(),
+            lower_number_literal("1", Sort::Real, NumberEncoding::Binary).to_string(),
             "@cReal(@cInt(@cNat(@c1)), @c1)"
         );
     }
@@ -1336,7 +1433,7 @@ mod tests {
     #[test]
     fn test_literal_sort_is_embedded() {
         // The `@cDub` `OpId` embeds its own (function) sort, `Bool # Pos -> Pos`.
-        let cdub = lower_number_literal("2", Sort::Pos);
+        let cdub = lower_number_literal("2", Sort::Pos, NumberEncoding::Binary);
         assert!(is_function_sort(&cdub.data_function_symbol().sort()));
     }
 
@@ -1600,3 +1697,4 @@ mod tests {
         assert_eq!(equation.rhs.to_string(), "@func_update(f, n, true)");
     }
 }
+
