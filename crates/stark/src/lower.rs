@@ -1,11 +1,10 @@
 //! Lowers a checked [StarkSpecification] to an [IrProgram]. See
-//! `IR_LOWERING_PLAN.md` for the full design; this implements its Steps 0-3
-//! (crate infra, `Value`, the IR arena, and expression/function/global/
-//! variable/penalty lowering).
+//! `IR_LOWERING_PLAN.md` for the full design; this implements its Steps 0-4
+//! (crate infra, `Value`, the IR arena, expression/function/global/variable/
+//! penalty lowering, and controller/environment lowering).
 //!
-//! Components' controller states, the environment block, perturbations,
-//! distances and formulas (`IR_LOWERING_PLAN.md`'s Steps 4-5) have no IR
-//! representation yet — [lower] reports each as a
+//! Perturbations, distances and formulas (`IR_LOWERING_PLAN.md`'s Step 5)
+//! have no IR representation yet — [lower] reports each as a
 //! [DiagnosticKind::NotYetSupported] diagnostic (with a span) rather than
 //! panicking, so a spec using them fails gracefully instead of crashing.
 //!
@@ -539,7 +538,10 @@ impl<'a> Lowerer<'a> {
         let Some(environment) = &self.spec.ast().environment else {
             return;
         };
-        trace!("lowering the environment block with {} command(s)", environment.commands.len());
+        trace!(
+            "lowering the environment block with {} command(s)",
+            environment.commands.len()
+        );
         self.environment = self.lower_environment_commands(&environment.commands);
     }
 
@@ -573,7 +575,9 @@ impl<'a> Lowerer<'a> {
             } => {
                 let guard = self.lower_expression(guard);
                 let then_branch = self.lower_environment_command(then_branch);
-                let else_branch = else_branch.as_ref().and_then(|branch| self.lower_environment_command(branch));
+                let else_branch = else_branch
+                    .as_ref()
+                    .and_then(|branch| self.lower_environment_command(branch));
                 Some(self.push_command(CommandNode::IfThenElse {
                     guard,
                     then_branch,
@@ -589,7 +593,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_environment_let(&mut self, bindings: &[ast::LocalVariable], body: &ast::EnvironmentCommand) -> Option<CommandRef> {
+    fn lower_environment_let(
+        &mut self,
+        bindings: &[ast::LocalVariable],
+        body: &ast::EnvironmentCommand,
+    ) -> Option<CommandRef> {
         let Some((first, rest)) = bindings.split_first() else {
             return self.lower_environment_command(body);
         };
@@ -1229,7 +1237,8 @@ mod tests {
 
     #[test]
     fn lowers_a_component_with_a_self_looping_state() {
-        let program = lower_source("component C {\n  variables { }\n  controller {\n    state A { step A; }\n  }\n  init A\n}");
+        let program =
+            lower_source("component C {\n  variables { }\n  controller {\n    state A { step A; }\n  }\n  init A\n}");
         assert_eq!(program.components().len(), 1);
         let component = &program.components()[0];
         assert_eq!(component.name, "C");
@@ -1249,8 +1258,9 @@ mod tests {
     fn step_to_a_later_sibling_state_resolves() {
         // `A` targets `B`, declared afterwards — states are pre-allocated
         // before any body is lowered so this forward reference resolves.
-        let program =
-            lower_source("component C {\n  variables { }\n  controller {\n    state A { step B; }\n    state B { step B; }\n  }\n  init A\n}");
+        let program = lower_source(
+            "component C {\n  variables { }\n  controller {\n    state A { step B; }\n    state B { step B; }\n  }\n  init A\n}",
+        );
         let component = &program.components()[0];
         let (a, b) = (component.states[0], component.states[1]);
         let CommandNode::Step { target, .. } = program.command(program.state(a).body.unwrap()) else {
@@ -1304,14 +1314,16 @@ mod tests {
 
     #[test]
     fn environment_let_bindings_chain_and_see_each_other() {
-        let program = lower_source(
-            "global variables { int x = 1; }\nenvironment { let a = x and b = a + 1 in { x' = b; } }",
-        );
+        let program =
+            lower_source("global variables { int x = 1; }\nenvironment { let a = x and b = a + 1 in { x' = b; } }");
         let environment = program.environment().expect("environment block lowered");
         let CommandNode::Let { slot: a_slot, body, .. } = program.command(environment) else {
             panic!("expected the outer `let a = ..`");
         };
-        let CommandNode::Let { value: b_value, body, .. } = program.command(body.expect("non-empty body")) else {
+        let CommandNode::Let {
+            value: b_value, body, ..
+        } = program.command(body.expect("non-empty body"))
+        else {
             panic!("expected the nested `let b = ..`");
         };
         // `b`'s value (`a + 1`) reads the slot the outer `let` just bound.
@@ -1321,13 +1333,17 @@ mod tests {
         assert!(matches!(program.expr(*left), ExprNode::Load(slot) if slot == a_slot));
         // The `b`-let's own body is the innermost `{ x' = b; }` block — a
         // plain assignment, not another `let`.
-        assert!(matches!(program.command(body.expect("non-empty body")), CommandNode::Assign(_)));
+        assert!(matches!(
+            program.command(body.expect("non-empty body")),
+            CommandNode::Assign(_)
+        ));
         program.validate().unwrap();
     }
 
     #[test]
     fn environment_if_with_no_else_lowers_with_no_else_branch() {
-        let program = lower_source("global variables { bool flag = true; int x = 0; }\nenvironment { if (flag) { x' = 1; } }");
+        let program =
+            lower_source("global variables { bool flag = true; int x = 0; }\nenvironment { if (flag) { x' = 1; } }");
         let environment = program.environment().expect("environment block lowered");
         let CommandNode::IfThenElse { else_branch, .. } = program.command(environment) else {
             panic!("expected an if-then-else");

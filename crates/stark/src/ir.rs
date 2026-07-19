@@ -336,7 +336,10 @@ pub enum CommandNode {
     Sequence(CommandRef, CommandRef),
     /// `[steps #] step target;` — controller-only. `steps` (if present) is
     /// evaluated once per step, matching Java's `Controller.doTick(k-1, ..)`.
-    Step { steps: Option<ExprRef>, target: IrStateId },
+    Step {
+        steps: Option<ExprRef>,
+        target: IrStateId,
+    },
     /// `exec target;` — controller-only.
     Exec(IrStateId),
 }
