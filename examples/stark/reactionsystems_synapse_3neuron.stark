@@ -1,0 +1,144 @@
+/*
+ * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/Main.java:
+ * the same synaptic-signalling reaction system as
+ * `reactionsystems_synapse.stark` (calcium influx, calcium-ligand binding,
+ * vesicle exocytosis, neuroreceptor opening/closing), scaled from 2 to 3
+ * neurons — but the topology is genuinely richer, not a plain copy: neuron 3
+ * receives synaptic input from *both* neuron 1 and neuron 2 (two separate
+ * receptor pairs, `c31`/`o31` and `c32`/`o32`, each gated by its own
+ * effectiveness `e31`/`e32`), while neurons 1 and 2 each unconditionally
+ * receive neuron 3's neurotransmitter `T3` back (no effectiveness gating on
+ * `c1`/`o1`/`c2`/`o2`, unlike neuron 3's receptors).
+ *
+ * This version also has *no* multi-step neurotransmitter delay line: `T1`,
+ * `T2`, `T3` all become available and decay in a single step (unlike
+ * `reactionsystems_synapse.stark`'s `T10`/`T11`/`T12` 3-step delay for
+ * neuron 1's output) — a genuine structural difference from the 2-neuron
+ * file, not just a bigger copy of the same model.
+ *
+ * The original's `upd_e31_e32` sets *both* `e31` and `e32` from `e31`'s old
+ * value (`state.get(e31) + x` for both updates — `e32`'s own old value is
+ * never read), which looks like a copy-paste slip; it's harmless in
+ * practice since `e31`/`e32` start equal and are always bumped identically,
+ * so they stay numerically identical throughout — ported as written
+ * (`e31_new`/`e32_new` below are the same expression), matching this
+ * session's convention of preserving benign original quirks rather than
+ * silently "fixing" behaviour that was never actually observably wrong.
+ */
+
+param ED = 0.01;
+
+global variables {
+  /* first neuron */
+  real Ca1 = 1.0;
+  real X1 = 10.0;
+  real XStar1 = 0.0;
+  real Ve1 = 5.0;
+  real VeStar1 = 0.0;
+  real T1 = 0.0;
+  real c1 = 1.0;
+  real o1 = 0.0;
+
+  /* second neuron */
+  real Ca2 = 0.0;
+  real X2 = 10.0;
+  real XStar2 = 0.0;
+  real Ve2 = 5.0;
+  real VeStar2 = 0.0;
+  real T2 = 0.0;
+  real c2 = 1.0;
+  real o2 = 0.0;
+
+  /* third neuron, receiving from both neuron 1 and neuron 2 */
+  real Ca3 = 0.0;
+  real X3 = 10.0;
+  real XStar3 = 0.0;
+  real Ve3 = 5.0;
+  real VeStar3 = 0.0;
+  real T3 = 0.0;
+  real c31 = 1.0;
+  real o31 = 0.0;
+  real c32 = 1.0;
+  real o32 = 0.0;
+
+  /* effectiveness of neuron 3's two neuroreceptors (from neurons 1 and 2), in [0,1] */
+  real e31 = 1.0;
+  real e32 = 1.0;
+}
+
+environment {
+  let
+    w31 = (R[0,1] < e31)
+  and
+    w32 = (R[0,1] < e32)
+  in {
+    /* Ca1: postsynaptic activity (receptor open) sets it to 1; otherwise
+       presynaptic activity doubles it until the threshold 10, then it decays. */
+    Ca1' = (o1 == 1 ? 1 : (Ca1 > 0 && Ca1 < 10 ? Ca1 * 2 : 0));
+    Ca2' = (o2 == 1 ? 1 : (Ca2 > 0 && Ca2 < 10 ? Ca2 * 2 : 0));
+    /* Ca3: both receptors open -> 4; exactly one open -> 1; else presynaptic doubling/decay. */
+    Ca3' = (o31 == 1 && o32 == 1 ? 4
+             : ((o31 == 1 || o32 == 1) ? 1
+                : (Ca3 > 0 && Ca3 < 10 ? Ca3 * 2 : 0)));
+
+    /* calcium ligand: persists once bound, until enough calcium forms the complex */
+    X1' = (XStar1 == 10 && Ve1 > 0 ? 10 : (X1 > 0 && XStar1 == 0 ? X1 : 0));
+    X2' = (XStar2 == 10 && Ve2 > 0 ? 10 : (X2 > 0 && XStar2 == 0 ? X2 : 0));
+    X3' = (XStar3 == 10 && Ve3 > 0 ? 10 : (X3 > 0 && XStar3 == 0 ? X3 : 0));
+
+    /* vesicles before exocytosis: persist, or are replenished once emptied */
+    Ve1' = (Ve1 > 0 && VeStar1 == 0 ? Ve1 : (VeStar1 > 0 ? VeStar1 : 0));
+    Ve2' = (Ve2 > 0 && VeStar2 == 0 ? Ve2 : (VeStar2 > 0 ? VeStar2 : 0));
+    Ve3' = (Ve3 > 0 && VeStar3 == 0 ? Ve3 : (VeStar3 > 0 ? VeStar3 : 0));
+
+    /* calcium-ligand complex forms once enough calcium and ligand are present */
+    XStar1' = (Ca1 >= 10 && X1 >= 10 ? X1 : 0);
+    XStar2' = (Ca2 >= 10 && X2 >= 10 ? X2 : 0);
+    XStar3' = (Ca3 >= 10 && X3 >= 10 ? X3 : 0);
+
+    /* vesicles release their neurotransmitter once the complex has formed */
+    VeStar1' = (XStar1 == 10 && Ve1 > 0 ? Ve1 : 0);
+    VeStar2' = (XStar2 == 10 && Ve2 > 0 ? Ve2 : 0);
+    VeStar3' = (XStar3 == 10 && Ve3 > 0 ? Ve3 : 0);
+
+    /* neurotransmitter: available immediately for one step, no delay line here */
+    T1' = (VeStar1 > 0 ? 1 : 0);
+    T2' = (VeStar2 > 0 ? 1 : 0);
+    T3' = (VeStar3 > 0 ? 1 : 0);
+
+    /* neuroreceptors of neurons 1 and 2: open when neuron 3's neurotransmitter
+       is present, closed otherwise or once open. No effectiveness gating. */
+    c1' = ((c1 > 0 && T3 == 0) || o1 > 0 ? 1 : 0);
+    o1' = (T3 > 0 ? 1 : 0);
+    c2' = ((c2 > 0 && T3 == 0) || o2 > 0 ? 1 : 0);
+    o2' = (T3 > 0 ? 1 : 0);
+
+    /* neuron 3's receptor from neuron 1: opens (with probability e31, via the
+       shared draw w31) when T1 is present, closes otherwise or once open. */
+    c31' = ((c31 > 0 && T1 == 0) || (c31 > 0 && T1 == 1 && !w31) || o31 == 1 ? 1 : 0);
+    o31' = (T1 > 0 && w31 ? 1 : 0);
+
+    /* neuron 3's receptor from neuron 2: same shape, gated by e32/w32. */
+    c32' = ((c32 > 0 && T2 == 0) || (c32 > 0 && T2 == 1 && !w32) || o32 == 1 ? 1 : 0);
+    o32' = (T2 > 0 && w32 ? 1 : 0);
+  }
+}
+
+penalty rho_ca1 = Ca1 / 20
+penalty rho_ca2 = Ca2 / 20
+penalty rho_ca3 = Ca3 / 20
+
+distance atomic_ca1 = < rho_ca1;
+distance atomic_ca2 = < rho_ca2;
+distance atomic_ca3 = < rho_ca3;
+distance max_ca12 = max(atomic_ca1, atomic_ca2);
+distance max_ca123 = max(max_ca12, atomic_ca3);
+distance max_interval_ca123 = \G[0,1000] max_ca123;
+
+/* Reduces e31 and e32 (identically, see file header) by ED for 50 steps,
+   then restores them for 50 steps, repeated 5 times. */
+perturbation p_e31_e32 =
+  ([e31 <- max(0.0, e31 - ED), e32 <- max(0.0, e31 - ED)]@50
+   ; [e31 <- max(0.0, e31 + ED), e32 <- max(0.0, e31 + ED)]@50)^5;
+
+formula robust_synapse = \D[max_interval_ca123, p_e31_e32] <= 0.15;

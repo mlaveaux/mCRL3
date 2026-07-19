@@ -25,7 +25,7 @@ global variables {
 component Monitor {
   variables { }
   controller {
-    aiState Ctrl {
+    state Ctrl {
       step Ctrl;
     }
   }

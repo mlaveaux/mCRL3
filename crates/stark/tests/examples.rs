@@ -22,6 +22,7 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/stark/lotka.stark") ; "lotka.stark")]
 #[test_case(include_str!("../../../examples/stark/polistil.stark") ; "polistil.stark")]
 #[test_case(include_str!("../../../examples/stark/turtle.stark") ; "turtle.stark")]
+#[test_case(include_str!("../../../examples/stark/turtle_hospital.stark") ; "turtle_hospital.stark")]
 #[test_case(include_str!("../../../examples/stark/repressilator.stark") ; "repressilator.stark")]
 #[test_case(include_str!("../../../examples/stark/reactionsystems_running.stark") ; "reactionsystems_running.stark")]
 #[test_case(include_str!("../../../examples/stark/reactionsystems_lacoperon.stark") ; "reactionsystems_lacoperon.stark")]
@@ -29,6 +30,7 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/stark/reactionsystems_synapse_3neuron.stark") ; "reactionsystems_synapse_3neuron.stark")]
 #[test_case(include_str!("../../../examples/stark/abz2025_single_lane_two_cars.stark") ; "abz2025_single_lane_two_cars.stark")]
 #[test_case(include_str!("../../../examples/stark/abz2025_one_lane_three_cars.stark") ; "abz2025_one_lane_three_cars.stark")]
+#[test_case(include_str!("../../../examples/stark/abz2025_two_lanes_two_cars.stark") ; "abz2025_two_lanes_two_cars.stark")]
 #[test_case(include_str!("../../../examples/stark/polistil_race.stark") ; "polistil_race.stark")]
 #[test_case(include_str!("../../../examples/stark/ventilator.stark") ; "ventilator.stark")]
 fn checks_example_specification(source: &str) {

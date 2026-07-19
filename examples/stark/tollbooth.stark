@@ -41,7 +41,7 @@ global variables {
 component Vehicle {
   variables { }
   controller {
-    aiState Ctrl {
+    state Ctrl {
       if (s_speed > 0) {
         if (gap > 0) {
           accel' = ACCELERATION;
@@ -64,21 +64,30 @@ component Vehicle {
         }
       }
     }
-    aiState Accelerate {
+    state Accelerate {
       if (timer_V > 0) {
         step Accelerate;
       } else {
-        step Ctrl;
+        /* BUG FIXED: was `step Ctrl;`. The Java `Accelerate` is
+           `ifThenElse(timer_V>0, doTick(ref Accelerate), reference("Ctrl"))`; the
+           else is a *bare* controller reference, which is a same-tick jump
+           (`exec`), not a time-consuming `step`. `step Ctrl` inserted a spurious
+           idle round before Ctrl re-planned. Matches the identical model in the
+           pre-existing toll.stark/two_vehicles.stark, which correctly use
+           `exec Ctrl`. */
+        exec Ctrl;
       }
     }
-    aiState Decelerate {
+    state Decelerate {
       if (timer_V > 0) {
         step Decelerate;
       } else {
-        step Ctrl;
+        /* BUG FIXED: was `step Ctrl;` — same fix as Accelerate above (Java else
+           branch is a bare `reference("Ctrl")` = same-tick `exec`). */
+        exec Ctrl;
       }
     }
-    aiState Stop {
+    state Stop {
       if (timer_V > 0) {
         step Stop;
       } else {
@@ -111,10 +120,10 @@ environment {
   }
 }
 
-penalty rho_100 = p_distance / INIT_DISTANCE;
+penalty rho_100 = p_distance / INIT_DISTANCE
 
-penalty rho_200 = p_distance / 7000;
+penalty rho_200 = p_distance / 7000
 
-penalty rho_275 = p_distance / 2500;
+penalty rho_275 = p_distance / 2500
 
-penalty rho_350 = p_distance / 10;
+penalty rho_350 = p_distance / 10

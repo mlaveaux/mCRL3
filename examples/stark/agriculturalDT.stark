@@ -98,7 +98,7 @@ global variables {
 component Tractor {
   variables { }
   controller {
-    aiState Ctrl {
+    state Ctrl {
       if (dist_to_target > DIST_EPS || diffAngle > DIR_EPS) {
         speed' = eval_speed_zero(posX, posY, dirAngle, dist_to_target);
         steerAngle' = eval_steer_zero(posX, posY, dirAngle, dist_to_target);
@@ -111,14 +111,21 @@ component Tractor {
         step Stop;
       }
     }
-    aiState Idle {
+    state Idle {
       if (timer > 0) {
         step Idle;
       } else {
-        step Ctrl;
+        /* BUG FIXED: was `step Ctrl;`. The Java `Idle` is
+           `ifThenElse(timer>0, doTick(ref Idle), reference("Ctrl"))`; the else is
+           a *bare* `reference("Ctrl")`, i.e. a same-tick jump (`exec`), not a
+           time-consuming `step`. As written, `step Ctrl` doubled the effective
+           control period (Ctrl ran every other round instead of resuming
+           immediately when the timer expired). Corrected to `exec Ctrl`, matching
+           the pre-existing toll.stark/two_vehicles.stark timer idiom. */
+        exec Ctrl;
       }
     }
-    aiState Stop {
+    state Stop {
       if (timer > 0) {
         step Stop;
       } else {

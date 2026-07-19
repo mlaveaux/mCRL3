@@ -1,0 +1,226 @@
+/*
+ * Ported from ~/STARK/examples/engine/src/main/java/engine/Main.java: a more
+ * elaborate variant of `engine.stark` (which came from `Engine.jspec`) —
+ * same P1..P6/stress/temp/cool/speed model, plus a false-negative/false-positive
+ * tracker (`fn`/`fp`) and richer ROBTL formulas (implication via De Morgan's
+ * law — this grammar has no `->` operator — and an until-distance property).
+ *
+ * `fn`/`fp` are ported exactly as the original computes them
+ * (`(counter*fn + max(0, stress-ch_wrn))/(counter+1)`, etc.), even though
+ * `ch_wrn` is one of the enum values OK=5/HOT=6 while `stress` ranges over
+ * [0,1] — subtracting a small [0,1] value from 5 or 6 makes `fn` always 0
+ * and `fp` always ~5-6, which doesn't read as a meaningful false-negative
+ * rate. This looks like a latent bug in the original (perhaps meant to
+ * compare against a HOT/not-HOT indicator), but since — unlike the
+ * `accel`/`acc` mixups fixed elsewhere in these examples — there's no
+ * unambiguous evidence of what was intended, it's ported as written rather
+ * than "corrected" on a guess.
+ *
+ * `Controller.doAction`/`doTick` are STARK's time-consuming `step`; a bare
+ * controller reference (`registry.reference(...)`) with no action is an
+ * immediate `exec` (matches how `engine.stark` already treats the same
+ * `Ctrl -> Check` transition). The original's `AfterPerturbation(100,
+ * IterativePerturbation(N, ...))` (wait N steps, then iterate) is
+ * approximated as `[...]@100 ; ...` iterated `^N` — this grammar's
+ * `@time` already means "at this future time", so `@100` folds the two
+ * together. `perturbation_cool`'s conditional update
+ * (`if (temp >= threshold) leave cool unchanged else set cool <- OFF`) has
+ * no `when`-guarded perturbation assignment in this grammar, so it's
+ * expressed as an unconditional assignment to a ternary that only changes
+ * `cool` when the condition holds. The `Phi_003`..`Phi_006` threshold-sweep
+ * (same formula shape, four ETA values) and the three `sequence_pert_*`
+ * CSV/bootstrap sampling routines are omitted as pure parameter-sweep
+ * duplication of the `phi1_1_2_*` shape already ported below.
+ */
+
+param ON = 0;
+param OFF = 1;
+param SLOW = 2;
+param HALF = 3;
+param FULL = 4;
+param OK = 5;
+param HOT = 6;
+param LOW = 7;
+
+param MIN_TEMP = 0;
+param MAX_TEMP = 150;
+param STRESS_INCR = 0.1;
+
+param INITIAL_TEMP_VALUE = 95.0;
+param N = 100;
+param TAU = 100;
+param K = TAU + N + 10;
+param H = 1000;
+param TEMP_OFFSET_1 = -1.0;
+param TEMP_OFFSET_15 = -1.5;
+param TEMP_OFFSET_2 = -2.0;
+param COOL_OFFSET = 1.8;
+param ETA1 = 0.0;
+param ETA2 = 0.02;
+param ETA3 = 0.05;
+param ETA4 = 0.3;
+
+function is_stressing(real p1, real p2, real p3, real p4, real p5, real p6) {
+  return ((p1 >= 100 ? 1 : 0) + (p2 >= 100 ? 1 : 0) + (p3 >= 100 ? 1 : 0)
+        + (p4 >= 100 ? 1 : 0) + (p5 >= 100 ? 1 : 0) + (p6 >= 100 ? 1 : 0)) > 3;
+}
+
+function next_temp(real temp, real variation) {
+  return max(MIN_TEMP, min(MAX_TEMP, temp + variation));
+}
+
+function temp_variation(real cool, real ch_speed) {
+  if (cool == ON) {
+    return -1.2 + R[0,1] * 0.4;
+  } else {
+    if (ch_speed == SLOW) {
+      return 0.1 + R[0,1] * 0.2;
+    } else {
+      if (ch_speed == HALF) {
+        return 0.3 + R[0,1] * 0.4;
+      } else {
+        return 0.7 + R[0,1] * 0.5;
+      }
+    }
+  }
+}
+
+global variables {
+  real p1 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real p2 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real p3 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real p4 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real p5 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real p6 range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real stress range [0,1] = 0.0;
+  real temp range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  real ch_temp range [MIN_TEMP, MAX_TEMP] = INITIAL_TEMP_VALUE;
+  int cool = OFF;
+  int ch_speed = HALF;
+  int ch_wrn = OK;
+  int ch_in = HALF;
+  int ch_out = HALF;
+  real fn = 0.0;
+  real fp = 0.0;
+  real counter = 0.0;
+}
+
+component Engine {
+  variables { }
+  controller {
+    state Ctrl {
+      if (ch_temp >= 99.8) {
+        cool' = ON;
+        step Cooling;
+      } else {
+        exec Check;
+      }
+    }
+    state Cooling {
+      4#step Check;
+    }
+    state Check {
+      if (ch_speed == SLOW) {
+        ch_speed' = SLOW;
+        cool' = OFF;
+        step Ctrl;
+      } else {
+        ch_speed' = ch_in;
+        cool' = OFF;
+        step Ctrl;
+      }
+    }
+    state IDS {
+      if (temp > 101.0 && cool == OFF) {
+        ch_wrn' = HOT;
+        ch_speed' = LOW;
+        ch_out' = FULL;
+        step IDS;
+      } else {
+        ch_wrn' = OK;
+        ch_speed' = HALF;
+        ch_out' = HALF;
+        step IDS;
+      }
+    }
+  }
+  init Ctrl || IDS
+}
+
+environment {
+  let
+    newTemp = next_temp(temp, temp_variation(cool, ch_speed))
+  in {
+    p1' = temp;
+    p2' = p1;
+    p3' = p2;
+    p4' = p3;
+    p5' = p4;
+    p6' = p5;
+    if (is_stressing(p1,p2,p3,p4,p5,p6)) {
+      stress' = max(0.0, min(1.0, stress + STRESS_INCR));
+    }
+    temp' = newTemp;
+    ch_temp' = newTemp;
+    fn' = (counter*fn + max(0.0, stress - ch_wrn)) / (counter+1);
+    fp' = (counter*fp + max(0.0, ch_wrn - stress)) / (counter+1);
+    counter' = counter + 1;
+  }
+}
+
+penalty rho_temp_atomic = abs(temp - ch_temp) / abs(MAX_TEMP - MIN_TEMP)
+penalty rho_warning = (ch_wrn == HOT ? 1.0 : 0.0)
+penalty rho_stress = stress
+penalty rho_fn = fn
+
+distance temp_atomic = < rho_temp_atomic;
+distance warning_atomic = < rho_warning;
+distance stress_atomic = < rho_stress;
+distance false_negative = < rho_fn;
+
+distance temp_eventually = \F[TAU,TAU+N] temp_atomic;
+distance temp_always = \G[TAU,TAU+N] temp_atomic;
+distance warning_always = \G[TAU,TAU+N] warning_atomic;
+distance stress_always = \G[TAU,TAU+N] stress_atomic;
+distance until_distance = (stress_atomic < 0.3) \U[0,K] (warning_atomic > 0.1);
+
+perturbation p_temp_1 = ([ch_temp <- temp + R[0,1] * TEMP_OFFSET_1]@100)^N;
+perturbation p_temp_15 = ([ch_temp <- temp + R[0,1] * TEMP_OFFSET_15]@100)^N;
+perturbation p_temp_2 = ([ch_temp <- temp + R[0,1] * TEMP_OFFSET_2]@100)^N;
+perturbation p_cool = ([cool <- (temp < 99.8 - COOL_OFFSET ? OFF : cool)]@0)^N;
+
+/* ROBTL formulas here (matching the original ANTLR grammar) have no
+ * parenthesized-grouping form, so `A && B` / `!A || B`-style composition is
+ * built by naming each sub-formula rather than parenthesizing inline
+ * (following `engine.stark`'s own `phi_5`/`phi_6`/`phi_7` convention). */
+
+formula phi1_1_1_1 = \D[temp_eventually, p_temp_1] >= ETA1;
+formula phi1_1_2_1 = \D[temp_always, p_temp_1] <= ETA2;
+formula phi1_2_1_1 = \D[warning_always, p_temp_1] <= ETA3;
+formula phi1_2_2_1 = \D[stress_always, p_temp_1] > ETA4;
+formula phi1_1_lhs = phi1_1_1_1 && phi1_1_2_1;
+formula phi1_1_rhs = phi1_2_1_1 && phi1_2_2_1;
+formula phi1_1_impl = !phi1_1_lhs || phi1_1_rhs;
+formula phi1_1 = \F[0,H] phi1_1_impl;
+
+formula phi1_1_1_15 = \D[temp_eventually, p_temp_15] >= ETA1;
+formula phi1_1_2_15 = \D[temp_always, p_temp_15] <= ETA2;
+formula phi1_2_1_15 = \D[warning_always, p_temp_15] <= ETA3;
+formula phi1_2_2_15 = \D[stress_always, p_temp_15] > ETA4;
+formula phi1_15_lhs = phi1_1_1_15 && phi1_1_2_15;
+formula phi1_15_rhs = phi1_2_1_15 && phi1_2_2_15;
+formula phi1_15_impl = !phi1_15_lhs || phi1_15_rhs;
+formula phi1_15 = \F[0,H] phi1_15_impl;
+
+formula phi1_1_1_2 = \D[temp_eventually, p_temp_2] >= ETA1;
+formula phi1_1_2_2 = \D[temp_always, p_temp_2] <= ETA2;
+formula phi1_2_1_2 = \D[warning_always, p_temp_2] <= ETA3;
+formula phi1_2_2_2 = \D[stress_always, p_temp_2] > ETA4;
+formula phi1_2_lhs = phi1_1_1_2 && phi1_1_2_2;
+formula phi1_2_rhs = phi1_2_1_2 && phi1_2_2_2;
+formula phi1_2_impl = !phi1_2_lhs || phi1_2_rhs;
+formula phi1_2 = \F[0,H] phi1_2_impl;
+
+formula phi2 = \D[until_distance, p_cool] < 1.0;
+formula phi3_rhs = \D[false_negative, p_cool] <= ETA3;
+formula phi3 = phi2 \U[0,K] phi3_rhs;

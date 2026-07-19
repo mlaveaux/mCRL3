@@ -1,0 +1,197 @@
+/*
+ * Ported from ~/STARK/examples/ABZ2025/src/main/java/Scenarios/OneLaneThreeCars.java:
+ * the same RSS car-following idea as `abz2025_single_lane_two_cars.stark`,
+ * generalised from 2 to 3 chained cars in one lane — car 1 (the middle car)
+ * is controlled, cars 0 (behind) and 2 (in front) always accelerate at
+ * roughly `MAX_ACCELERATION` (the original's commented-out alternative
+ * "paper controller proposal" for the uncontrolled cars is dead code, not
+ * ported, matching the active code path only). The controller now compares
+ * *both* the front gap (`distance1`/`safety_gap1`, between cars 1 and 2)
+ * and the back gap (`distance0`/`safety_gap0`, between cars 0 and 1) before
+ * deciding FASTER/SLOWER/IDLE.
+ *
+ * The original's `includePhysicsUpdates` has a latent bug ported as-written
+ * (not fixed, matching this session's convention for ambiguous-but-plausible
+ * quirks — see e.g. `polistil.stark`'s `out'` note): its loop reassigns
+ * `currentAccelBack = currentAccelFront` between iterations but never the
+ * corresponding `currentSpeedBack`, so the *second* iteration's "distance
+ * travelled by the back car" term uses car 0's old speed instead of car 1's.
+ * Concretely: `new_distance1` below uses `accel1/2 + speed0` (car 0's old
+ * speed) where `accel1/2 + speed1` (car 1's) would be correct. The
+ * corresponding safety-gap update (`new_gap1`) is unaffected — it's driven by
+ * a separate, correctly-updated variable in the original.
+ *
+ * `getCrashFormula`/`getSafetyGapViolationFormula` are defined in the
+ * original but never actually invoked from its constructor (only the raw
+ * penalty function is used there, for per-step CSV diagnostics) — ported
+ * anyway as genuine `formula` declarations, matching the shape of
+ * `abz2025_single_lane_two_cars.stark`'s formulas, since they're
+ * well-defined ROBTL queries the original just never wired up to its
+ * demo `main`.
+ */
+
+param RESPONSE_TIME = 1.0;
+param VEHICLE_LENGTH = 5.0;
+
+param MAX_SPEED = 40.0;
+param MAX_ACCELERATION = 5.0;
+param MAX_ACCEL_OFFSET = 1.0;
+param MAX_BRAKE = 5.0;
+param MIN_BRAKE = 3.0;
+param IDLE_DELTA = 1.0;
+
+param INIT_SPEED0 = 0.0;
+param INIT_SPEED1 = 0.0;
+param INIT_SPEED2 = 0.0;
+param INIT_ACCEL0 = 1.0;
+param INIT_ACCEL1 = 1.0;
+param INIT_ACCEL2 = 1.0;
+param INIT_DISTANCE0 = 300.0;
+param INIT_DISTANCE1 = 300.0;
+
+param STARTING_STEP = 0;
+param FREQUENCY = 2;
+param TIMES_TO_APPLY = 100;
+
+param DRUNK_DRIVER_CHANCE = 0.2;
+param BRAKE_CHECK_CHANCE = 0.2;
+
+param ETA_CRASH = 0.01;
+param ETA_SAFETY_GAP_VIOLATION = 0.5;
+
+param FASTER = 1.0;
+param SLOWER = -1.0;
+param IDLE = 0.0;
+
+param INIT_GAP0 =
+  max(0, RESPONSE_TIME*INIT_SPEED0 + 0.5*MAX_ACCELERATION*RESPONSE_TIME^2
+         + (INIT_SPEED0+RESPONSE_TIME*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+         - (INIT_SPEED1*INIT_SPEED1)/(2*MAX_BRAKE))
+  + VEHICLE_LENGTH;
+param INIT_GAP1 =
+  max(0, RESPONSE_TIME*INIT_SPEED1 + 0.5*MAX_ACCELERATION*RESPONSE_TIME^2
+         + (INIT_SPEED1+RESPONSE_TIME*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+         - (INIT_SPEED2*INIT_SPEED2)/(2*MAX_BRAKE))
+  + VEHICLE_LENGTH;
+
+global variables {
+  real speed0 = INIT_SPEED0;
+  real speed1 = INIT_SPEED1;
+  real speed2 = INIT_SPEED2;
+  real accel0 = INIT_ACCEL0;
+  real accel1 = INIT_ACCEL1;
+  real accel2 = INIT_ACCEL2;
+  real gap_distance0 = INIT_DISTANCE0;
+  real gap_distance1 = INIT_DISTANCE1;
+  real safety_gap0 = INIT_GAP0;
+  real safety_gap1 = INIT_GAP1;
+  real intention = IDLE;
+}
+
+component Vehicle1 {
+  variables { }
+  controller {
+    state Control {
+      if (gap_distance0 == safety_gap0 && gap_distance1 == safety_gap1) {
+        intention' = IDLE;
+        step Control;
+      } else {
+        if (gap_distance1 < safety_gap1 && gap_distance0 < safety_gap0) {
+          if (gap_distance1 > gap_distance0) {
+            intention' = SLOWER;
+          } else {
+            intention' = FASTER;
+          }
+          step Control;
+        } else {
+          if (gap_distance1 < safety_gap1) {
+            intention' = SLOWER;
+          } else {
+            intention' = FASTER;
+          }
+          step Control;
+        }
+      }
+    }
+  }
+  init Control
+}
+
+environment {
+  let
+    offset = R[0,1] * MAX_ACCEL_OFFSET
+  and
+    slower_accel = R[0,1] * (MAX_BRAKE - MIN_BRAKE) + MIN_BRAKE
+  and
+    idle_accel = R[0,1] * (2*IDLE_DELTA) - IDLE_DELTA
+  and
+    new_accel1 = (intention == FASTER ? MAX_ACCELERATION - offset : (intention == SLOWER ? -slower_accel : idle_accel))
+  and
+    new_accel0 = MAX_ACCELERATION - R[0,1]*MAX_ACCEL_OFFSET
+  and
+    new_accel2 = MAX_ACCELERATION - R[0,1]*MAX_ACCEL_OFFSET
+  and
+    new_speed0 = min(MAX_SPEED, max(0, speed0 + accel0))
+  and
+    new_speed1 = min(MAX_SPEED, max(0, speed1 + accel1))
+  and
+    new_speed2 = min(MAX_SPEED, max(0, speed2 + accel2))
+  and
+    travel0 = accel0/2 + speed0
+  and
+    travel1 = accel1/2 + speed1
+  and
+    travel2 = accel2/2 + speed2
+  and
+    new_distance0 = gap_distance0 + travel1 - travel0
+  /* see file header: original bug uses accel1/2 + speed0 (car 0's old
+     speed), not accel1/2 + speed1, for this term */
+  and
+    new_distance1 = gap_distance1 + travel2 - (accel1/2 + speed0)
+  and
+    new_gap0 =
+      max(0, RESPONSE_TIME*new_speed0 + 0.5*MAX_ACCELERATION*RESPONSE_TIME^2
+             + (new_speed0+RESPONSE_TIME*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+             - (new_speed1*new_speed1)/(2*MAX_BRAKE))
+      + VEHICLE_LENGTH
+  and
+    new_gap1 =
+      max(0, RESPONSE_TIME*new_speed1 + 0.5*MAX_ACCELERATION*RESPONSE_TIME^2
+             + (new_speed1+RESPONSE_TIME*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+             - (new_speed2*new_speed2)/(2*MAX_BRAKE))
+      + VEHICLE_LENGTH
+  in {
+    accel0' = new_accel0;
+    accel1' = new_accel1;
+    accel2' = new_accel2;
+    speed0' = new_speed0;
+    speed1' = new_speed1;
+    speed2' = new_speed2;
+    gap_distance0' = new_distance0;
+    gap_distance1' = new_distance1;
+    safety_gap0' = new_gap0;
+    safety_gap1' = new_gap1;
+  }
+}
+
+penalty rho_crash = (gap_distance1 > 0.0 || gap_distance0 > 0.0 ? 0.0 : 1.0)
+penalty rho_gap_violation = (gap_distance1 > safety_gap1 && gap_distance0 > safety_gap0 ? 0.0 : 1.0)
+
+distance dist_crash = < rho_crash;
+distance dist_crash_interval = \G[STARTING_STEP, STARTING_STEP + TIMES_TO_APPLY*FREQUENCY] dist_crash;
+distance dist_gap_violation = < rho_gap_violation;
+distance dist_gap_violation_interval = \G[STARTING_STEP, STARTING_STEP + TIMES_TO_APPLY*FREQUENCY] dist_gap_violation;
+
+/* Each uncontrolled car (0 and 2) independently has a DRUNK_DRIVER_CHANCE
+   chance of getting a random acceleration each time the perturbation fires. */
+perturbation p_drunk_driver =
+  ([accel0 <- (R[0,1] < DRUNK_DRIVER_CHANCE ? R[-MAX_BRAKE, MAX_ACCELERATION] : accel0),
+    accel2 <- (R[0,1] < DRUNK_DRIVER_CHANCE ? R[-MAX_BRAKE, MAX_ACCELERATION] : accel2)]@FREQUENCY)^TIMES_TO_APPLY;
+
+/* Only the front uncontrolled car (2) brake-checks. */
+perturbation p_brake_check = ([accel2 <- (R[0,1] < BRAKE_CHECK_CHANCE ? -MAX_BRAKE : accel2)]@FREQUENCY)^TIMES_TO_APPLY;
+
+formula crash_drunk_driver = \D[dist_crash_interval, p_drunk_driver] <= ETA_CRASH;
+formula crash_brake_check = \D[dist_crash_interval, p_brake_check] <= ETA_CRASH;
+formula gap_violation_drunk_driver = \D[dist_gap_violation_interval, p_drunk_driver] <= ETA_SAFETY_GAP_VIOLATION;
+formula gap_violation_brake_check = \D[dist_gap_violation_interval, p_brake_check] <= ETA_SAFETY_GAP_VIOLATION;

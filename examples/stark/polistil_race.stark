@@ -1,0 +1,434 @@
+/*
+ * Ported from ~/STARK/examples/polistil/src/main/java/polistil/Main.java's
+ * `EnvironmentRace`/`getCar_1`/`getCar_2` (the "race" scenario): the same
+ * curved-track car from `polistil.stark`, run as two structurally identical,
+ * fully independent cars side by side (`my_*`/car 1 and `your_*`/car 2, the
+ * second shifted by `SHIFT_X` along the track) — there is no actual
+ * car-to-car interaction anywhere in `EnvironmentRace` despite the "race"
+ * name, so this really is the "just a bigger copy" case, unlike
+ * `abz2025_one_lane_three_cars.stark`'s genuine 3-way chained interaction.
+ *
+ * `EnvironmentRace` is *not* byte-for-byte identical to `EnvironmentSingle`
+ * (the function ported as `polistil.stark`), though: it checks `out`/`back`
+ * *first* and skips all physics entirely while a car is recovering (in
+ * `EnvironmentSingle`, the car keeps moving even while `out == 1`, since the
+ * physics block runs unconditionally and the `out'`/`back'` reset only
+ * happens at the very end) — and, when a car is going too fast at a
+ * quadrant boundary, `EnvironmentRace` freezes it at the track wall (or in
+ * place, for the two non-corner quadrants) rather than still computing the
+ * smooth curve-entry position alongside setting `out' = 1`. This actually
+ * *resolves* the ambiguity `polistil.stark`'s header flags for
+ * `EnvironmentSingle` (which assignment wins when both `out' <- 1` and a
+ * moved position are set in the same step) — `EnvironmentRace` picks
+ * "freeze, don't move" — but that's independent, later-written code in the
+ * original, not a fix applied to `EnvironmentSingle` itself, so
+ * `polistil.stark` is left as-is; this file follows `EnvironmentRace`'s own
+ * (different, but internally consistent) behaviour.
+ *
+ * The "siblings" scenario (`sib_1`/`sib_2`, reusing `EnvironmentRace`) is a
+ * genuinely different controller, not a scale variant: it replaces the
+ * random `U[2.7,2.8,2.9]` curve speed with a fixed deterministic `CURVE`
+ * speed. It isn't ported here.
+ */
+
+param PI = 3.141592653589793;
+param FULL = 4.0;
+param CURVE = 3.0;
+param MINIMAL = 2.0;
+param NEUTRAL = 0.0;
+param TIMER = 0.5*PI/(9*CURVE);
+param BACK_ON_TRACK = 5;
+param INIT_X = 0.0;
+param INIT_Y = 0.0;
+param INIT_THETA = (3.0/4)*PI;
+param CX = 0.0;
+param CY = sqrt(2.0);
+param RAD = 180/PI;
+param SHIFT_X = 0.3;
+param SHIFT_Y = 0.0;
+param H = 500;
+
+global variables {
+  real my_x = INIT_X;
+  real my_y = INIT_Y;
+  real my_theta = INIT_THETA;
+  real my_speed = NEUTRAL;
+  real curve_theta = (5.0/4)*PI;
+  int wp_i = 0;
+  real out = 0.0;
+  real back = 0.0;
+
+  real your_x = INIT_X + SHIFT_X;
+  real your_y = INIT_Y + SHIFT_Y;
+  real your_theta = INIT_THETA;
+  real your_speed = NEUTRAL;
+  real your_curve_theta = (5.0/4)*PI;
+  int wp_j = 0;
+  real you_out = 0.0;
+  real you_back = 0.0;
+}
+
+component Car1 {
+  variables { }
+  controller {
+    state Ctrl {
+      if (out == 1.0) {
+        my_speed' = NEUTRAL;
+        back' = BACK_ON_TRACK;
+        step Stop;
+      } else {
+        if (wp_i % 4 == 0 || wp_i % 4 == 2) {
+          my_speed' = max(MINIMAL, min(FULL, (CY/2 - abs(my_x)) / (TIMER * abs(cos(my_theta)))));
+          step Ctrl;
+        } else {
+          my_speed' = U[2.7, 2.8, 2.9];
+          step Ctrl;
+        }
+      }
+    }
+    state Stop {
+      if (back > 0.0) {
+        step Stop;
+      } else {
+        /* BUG FIXED: was `step Ctrl;`. Java `getCar_1`'s `Stop` is
+           `ifThenElse(back>0, doTick(ref Stop), reference("Ctrl"))`; the else is
+           a bare same-tick `exec`, not a time-consuming `step`. */
+        exec Ctrl;
+      }
+    }
+  }
+  init Ctrl
+}
+
+component Car2 {
+  variables { }
+  controller {
+    state Ctrl2 {
+      if (you_out == 1.0) {
+        your_speed' = NEUTRAL;
+        you_back' = BACK_ON_TRACK;
+        step Stop2;
+      } else {
+        if (wp_j % 4 == 0 || wp_j % 4 == 2) {
+          your_speed' = max(MINIMAL, min(FULL, (CY/2 - SHIFT_X - abs(your_x)) / (TIMER * abs(cos(your_theta)))));
+          step Ctrl2;
+        } else {
+          your_speed' = U[2.7, 2.8, 2.9];
+          step Ctrl2;
+        }
+      }
+    }
+    state Stop2 {
+      if (you_back > 0.0) {
+        step Stop2;
+      } else {
+        /* BUG FIXED: was `step Ctrl2;`. Java `getCar_2`'s `Stop2` else is a bare
+           `reference("Ctrl2")` = same-tick `exec`, not a `step`. */
+        exec Ctrl2;
+      }
+    }
+  }
+  init Ctrl2
+}
+
+environment {
+  if (out == 1.0) {
+    if (back - 1 == 0) {
+      out' = 0.0;
+    }
+    back' = back - 1;
+  } else {
+    let
+      speed = (my_speed == FULL || my_speed == NEUTRAL) ? my_speed : max(0.0, min(FULL, my_speed + R[0,1]*0.1 - 0.05))
+    in {
+      my_speed' = speed;
+      if (wp_i % 4 == 0) {
+        let
+          partial_x = my_x + speed*TIMER*cos(my_theta)
+        and
+          partial_y = my_y + speed*TIMER*sin(my_theta)
+        in {
+          if (partial_x < -CY/2) {
+            if (speed > CURVE) {
+              my_x' = -CY/2;
+              my_y' = CY/2;
+              wp_i' = wp_i + 1;
+              my_theta' = (5.0/4)*PI;
+              out' = 1.0;
+            } else {
+              let
+                extra = abs(partial_x) - CY/2
+              and
+                new_timer = abs(extra / (speed * cos(my_theta)))
+              and
+                extra_theta = speed * new_timer
+              and
+                new_theta = curve_theta - extra_theta
+              in {
+                my_x' = cos(new_theta) + CX;
+                my_y' = sin(new_theta) + CY;
+                curve_theta' = new_theta;
+                wp_i' = wp_i + 1;
+                my_theta' = (5.0/4)*PI;
+              }
+            }
+          } else {
+            my_x' = partial_x;
+            my_y' = partial_y;
+          }
+        }
+      } else {
+        if (wp_i % 4 == 2) {
+          let
+            partial_x = my_x + speed*TIMER*cos(my_theta)
+          and
+            partial_y = my_y + speed*TIMER*sin(my_theta)
+          in {
+            if (partial_x < -CY/2) {
+              if (speed > CURVE) {
+                my_x' = -CY/2;
+                my_y' = -CY/2;
+                wp_i' = wp_i + 1;
+                my_theta' = (3.0/4)*PI;
+                out' = 1.0;
+              } else {
+                let
+                  extra = abs(partial_x) - CY/2
+                and
+                  new_timer = abs(extra / (speed * cos(my_theta)))
+                and
+                  extra_theta = speed * new_timer
+                and
+                  new_theta = curve_theta + extra_theta
+                in {
+                  my_x' = cos(new_theta) + CX;
+                  my_y' = sin(new_theta) - CY;
+                  curve_theta' = new_theta;
+                  wp_i' = wp_i + 1;
+                  my_theta' = (3.0/4)*PI;
+                }
+              }
+            } else {
+              my_x' = partial_x;
+              my_y' = partial_y;
+            }
+          }
+        } else {
+          if (wp_i % 4 == 1) {
+            if (speed > CURVE) {
+              out' = 1.0;
+            } else {
+              let
+                partial_theta = curve_theta - speed*TIMER
+              and
+                partial_x = cos(partial_theta) + CX
+              and
+                partial_y = sin(partial_theta) + CY
+              in {
+                if (partial_x >= 0.0 && partial_x < CY/2 && partial_y < CY/2) {
+                  let
+                    extra_theta = abs(partial_theta) - PI/4
+                  and
+                    new_timer = extra_theta / (speed * RAD)
+                  and
+                    done_theta = curve_theta - speed*TIMER + extra_theta
+                  in {
+                    my_x' = cos(done_theta) + CX + speed*new_timer*cos(my_theta);
+                    my_y' = sin(done_theta) + CY + speed*new_timer*sin(my_theta);
+                    curve_theta' = (3.0/4)*PI;
+                    wp_i' = wp_i + 1;
+                  }
+                } else {
+                  my_x' = partial_x;
+                  my_y' = partial_y;
+                  curve_theta' = partial_theta;
+                }
+              }
+            }
+          } else {
+            if (speed > CURVE) {
+              out' = 1.0;
+            } else {
+              let
+                partial_theta = curve_theta + speed*TIMER
+              and
+                partial_x = cos(partial_theta) + CX
+              and
+                partial_y = sin(partial_theta) - CY
+              in {
+                if (partial_x >= 0.0 && partial_x < CY/2 && partial_y > -CY/2) {
+                  let
+                    extra_theta = abs(PI/4 - partial_theta)
+                  and
+                    new_timer = extra_theta / (speed * RAD)
+                  and
+                    done_theta = curve_theta + speed*TIMER - extra_theta
+                  in {
+                    my_x' = cos(done_theta) + CX + speed*new_timer*cos(my_theta);
+                    my_y' = sin(done_theta) - CY + speed*new_timer*sin(my_theta);
+                    curve_theta' = (5.0/4)*PI;
+                    wp_i' = wp_i + 1;
+                  }
+                } else {
+                  my_x' = partial_x;
+                  my_y' = partial_y;
+                  curve_theta' = partial_theta;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (you_out == 1.0) {
+    if (you_back - 1 == 0) {
+      you_out' = 0.0;
+    }
+    you_back' = you_back - 1;
+  } else {
+    let
+      y_speed = (your_speed == FULL || your_speed == NEUTRAL) ? your_speed : max(0.0, min(FULL, your_speed + R[0,1]*0.1 - 0.05))
+    in {
+      your_speed' = y_speed;
+      if (wp_j % 4 == 0) {
+        let
+          partial_x = your_x + y_speed*TIMER*cos(your_theta)
+        and
+          partial_y = your_y + y_speed*TIMER*sin(your_theta)
+        in {
+          if (partial_x < -CY/2 + SHIFT_X) {
+            if (y_speed > CURVE) {
+              your_x' = -CY/2 + SHIFT_X;
+              your_y' = CY/2 + SHIFT_Y;
+              wp_j' = wp_j + 1;
+              your_theta' = (5.0/4)*PI;
+              you_out' = 1.0;
+            } else {
+              let
+                extra = abs(partial_x) - CY/2 + SHIFT_X
+              and
+                new_timer = abs(extra / (y_speed * cos(your_theta)))
+              and
+                extra_theta = y_speed * new_timer
+              and
+                new_theta = your_curve_theta - extra_theta
+              in {
+                your_x' = cos(new_theta) + CX + SHIFT_X;
+                your_y' = sin(new_theta) + CY + SHIFT_Y;
+                your_curve_theta' = new_theta;
+                wp_j' = wp_j + 1;
+                your_theta' = (5.0/4)*PI;
+              }
+            }
+          } else {
+            your_x' = partial_x;
+            your_y' = partial_y;
+          }
+        }
+      } else {
+        if (wp_j % 4 == 2) {
+          let
+            partial_x = your_x + y_speed*TIMER*cos(your_theta)
+          and
+            partial_y = your_y + y_speed*TIMER*sin(your_theta)
+          in {
+            if (partial_x < -CY/2 + SHIFT_X) {
+              if (y_speed > CURVE) {
+                your_x' = -CY/2 + SHIFT_X;
+                your_y' = -CY/2 + SHIFT_Y;
+                wp_j' = wp_j + 1;
+                your_theta' = (3.0/4)*PI;
+                you_out' = 1.0;
+              } else {
+                let
+                  extra = abs(partial_x) - CY/2 + SHIFT_X
+                and
+                  new_timer = abs(extra / (y_speed * cos(your_theta)))
+                and
+                  extra_theta = y_speed * new_timer
+                and
+                  new_theta = your_curve_theta + extra_theta
+                in {
+                  your_x' = cos(new_theta) + CX + SHIFT_X;
+                  your_y' = sin(new_theta) - CY + SHIFT_Y;
+                  your_curve_theta' = new_theta;
+                  wp_j' = wp_j + 1;
+                  your_theta' = (3.0/4)*PI;
+                }
+              }
+            } else {
+              your_x' = partial_x;
+              your_y' = partial_y;
+            }
+          }
+        } else {
+          if (wp_j % 4 == 1) {
+            if (y_speed > CURVE) {
+              you_out' = 1.0;
+            } else {
+              let
+                partial_theta = your_curve_theta - y_speed*TIMER
+              and
+                partial_x = cos(partial_theta) + CX + SHIFT_X
+              and
+                partial_y = sin(partial_theta) + CY + SHIFT_Y
+              in {
+                if (partial_x >= 0.0 + SHIFT_X && partial_x < CY/2 + SHIFT_X && partial_y < CY/2 + SHIFT_Y) {
+                  let
+                    extra_theta = abs(partial_theta) - PI/4
+                  and
+                    new_timer = extra_theta / (y_speed * RAD)
+                  and
+                    done_theta = your_curve_theta - y_speed*TIMER + extra_theta
+                  in {
+                    your_x' = cos(done_theta) + CX + SHIFT_X + y_speed*new_timer*cos(your_theta);
+                    your_y' = sin(done_theta) + CY + SHIFT_Y + y_speed*new_timer*sin(your_theta);
+                    your_curve_theta' = (3.0/4)*PI;
+                    wp_j' = wp_j + 1;
+                  }
+                } else {
+                  your_x' = partial_x;
+                  your_y' = partial_y;
+                  your_curve_theta' = partial_theta;
+                }
+              }
+            }
+          } else {
+            if (y_speed > CURVE) {
+              you_out' = 1.0;
+            } else {
+              let
+                partial_theta = your_curve_theta + y_speed*TIMER
+              and
+                partial_x = cos(partial_theta) + CX + SHIFT_X
+              and
+                partial_y = sin(partial_theta) - CY + SHIFT_Y
+              in {
+                if (partial_x >= 0.0 + SHIFT_X && partial_x < CY/2 + SHIFT_X && partial_y > -CY/2 + SHIFT_Y) {
+                  let
+                    extra_theta = abs(PI/4 - partial_theta)
+                  and
+                    new_timer = extra_theta / (y_speed * RAD)
+                  and
+                    done_theta = your_curve_theta + y_speed*TIMER - extra_theta
+                  in {
+                    your_x' = cos(done_theta) + CX + SHIFT_X + y_speed*new_timer*cos(your_theta);
+                    your_y' = sin(done_theta) - CY + SHIFT_Y + y_speed*new_timer*sin(your_theta);
+                    your_curve_theta' = (5.0/4)*PI;
+                    wp_j' = wp_j + 1;
+                  }
+                } else {
+                  your_x' = partial_x;
+                  your_y' = partial_y;
+                  your_curve_theta' = partial_theta;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

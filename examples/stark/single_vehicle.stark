@@ -74,7 +74,7 @@ component Vehicle {
     int warning = OK;
   }
   controller {
-    aiState Ctrl {
+    state Ctrl {
       if (s_speed > 0) {
         if (gap > 0) {
           accel' = A;
@@ -91,21 +91,21 @@ component Vehicle {
         step Stop;
       }
     }
-    aiState Accelerate {
+    state Accelerate {
       if (counter > 0) {
         step Accelerate;
       } else {
         exec Ctrl;
       }
     }
-    aiState Decelerate {
+    state Decelerate {
       if (counter > 0) {
         step Decelerate;
       } else {
         exec Ctrl;
       }
     }
-    aiState Stop {
+    state Stop {
       if (counter > 0) {
         step Stop;
       } else {
@@ -119,7 +119,7 @@ component Vehicle {
         }
       }
     }
-    aiState IDS {
+    state IDS {
       if (IDS_guard(p_distance <= 2*TIMER*SAFETY_DISTANCE, accel == A, accel == V, p_speed > 0.0)) {
         warning' = DANGER;
         step IDS;

@@ -41,7 +41,7 @@ component vehicle {
     int timer_V range [0,TIMER] = 0;
   }
   controller {
-    aiState Ctrl {
+    state Ctrl {
       if (s_speed > 0) {
         if (gap > 0) {
           accel' = A;
@@ -64,21 +64,21 @@ component vehicle {
         }
       }
     }
-    aiState Accelerate {
+    state Accelerate {
       if (timer_V > 0) {
         step Accelerate;
       } else {
         exec Ctrl;
       }
     }
-    aiState Decelerate {
+    state Decelerate {
       if (timer_V > 0) {
         step Decelerate;
       } else {
         exec Ctrl;
       }
     }
-    aiState Stop {
+    state Stop {
       if (timer_V > 0) {
         step Stop;
       } else {

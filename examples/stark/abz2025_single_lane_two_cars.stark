@@ -1,0 +1,178 @@
+/*
+ * Ported from ~/STARK/examples/ABZ2025/src/main/java/Scenarios/SingleLaneTwoCars.java:
+ * two cars on a single lane, V1 behind V2, where V1's controller picks
+ * FASTER/SLOWER/IDLE based on whether the gap to V2 matches a
+ * Responsibility-Sensitive-Safety (RSS) safety distance (Shalev-Shwartz,
+ * Shammah, Shashua, "On a formal model of safe and scalable self-driving
+ * cars", 2017) — the same car-following shape as `toll.stark`/
+ * `two_vehicles.stark`/`vehicle_full.stark`, but using the RSS formula for
+ * the safety gap instead of a fixed braking-distance estimate, and adding
+ * genuine crash/safety-gap-violation robustness queries under two
+ * perturbations (drunk driving, brake-checking).
+ *
+ * `OneLaneThreeCars` is the same RSS car-following mechanic generalised
+ * from 2 to 3 chained cars in one lane (arrays instead of named variables,
+ * otherwise identical rules), so it isn't ported separately, matching the
+ * `turtle.stark`/`repressilator.stark` precedent.
+ *
+ * `TwoLanesTwoCars` is *not* a mere scale-up: it adds a second lane, 2D
+ * (x,y) positions, an explicit lane-change manoeuvre with its own timer,
+ * and three selectable scenario configurations (1276 lines). That is
+ * genuinely new mechanics beyond car-following, not covered by this file —
+ * it's deliberately not ported, unlike every other "near-duplicate" this
+ * session has skipped, given the scope of this porting effort.
+ *
+ * `AISingleLane`/`AIMultipleLanes` depend on an external AI server (a live
+ * HTTP/socket connection to `highway-env-ai-server`) for V1's controller
+ * instead of computing it from this specification, so they have no
+ * textual-STARK equivalent at all — a different kind of gap from the
+ * DisTL/feedback exclusions already documented in
+ * `MISSING_GRAMMAR_FEATURES.md`, but the same conclusion: not portable.
+ *
+ * `includePhysicsUpdates` reads `accelV1`/`accelV2` *before* this round's
+ * `intention`-based reassignment applies (the controller decides this
+ * round's acceleration from this round's gap, but that acceleration only
+ * affects speed/distance *next* round) — ported faithfully via this
+ * grammar's `let` bindings reading the current, not-yet-overwritten
+ * `accelV1`/`accelV2` for `new_speed_v1`/`travel_v1`/etc., while
+ * `new_accel_v1` (assigned to `accelV1'`) only takes effect starting next
+ * round, exactly as in the original.
+ *
+ * The perturbations only set `accelV2` (letting the following environment
+ * step recompute speed/distance/safety-gap from it), rather than
+ * replicating the original's `includePhysicsUpdates` call *inside* the
+ * perturbation itself — matching every other perturbation ported in this
+ * session (e.g. `turtle.stark`'s `p_slower`), since this grammar's
+ * perturbations only set individual variables, not full derived physics.
+ * The brake-check perturbation's `BRAKE_CHECK_CHANCE`-guarded choice is
+ * ported as a single `R[0,1]` comparison inside one ternary, since there is
+ * only one variable (`accelV2`) it needs to guard — no shared-draw gap here.
+ */
+
+param RESPONSE_TIME = 1.0;
+param VEHICLE_LENGTH = 5.0;
+
+param MAX_SPEED = 40.0;
+param MAX_ACCELERATION = 5.0;
+param MAX_ACCEL_OFFSET = 5.0;
+param MAX_BRAKE = 5.0;
+param MIN_BRAKE = 3.0;
+param IDLE_DELTA = 1.0;
+
+param INIT_SPEED_V1 = 0.0;
+param INIT_DISTANCE_V1_V2 = 100.0;
+param INIT_ACCEL_V1 = 0.0;
+
+param INIT_SPEED_V2 = 0.0;
+param INIT_ACCEL_V2 = 1.0;
+
+param STARTING_STEP = 4;
+param FREQUENCY = 2;
+param TIMES_TO_APPLY = 20;
+
+param BRAKE_CHECK_CHANCE = 0.8;
+
+param ETA_CRASH = 0.3;
+param ETA_SAFETY_GAP_VIOLATION = 0.2;
+
+param FASTER = 1.0;
+param SLOWER = -1.0;
+param IDLE = 0.0;
+
+/* RSS safety distance at the initial (zero) speeds, plus the vehicle length
+   (the RSS model treats vehicles as points; this adds back the distance
+   from each vehicle's centre to its front/rear bumper). */
+param INIT_SAFETY_GAP =
+  max(0, RESPONSE_TIME*INIT_SPEED_V1 + 0.5*MAX_ACCELERATION*RESPONSE_TIME^2
+         + (INIT_SPEED_V1+RESPONSE_TIME*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+         - (INIT_SPEED_V2*INIT_SPEED_V2)/(2*MAX_BRAKE))
+  + VEHICLE_LENGTH;
+
+global variables {
+  real speedV1 = INIT_SPEED_V1;
+  real safetyGap = INIT_SAFETY_GAP;
+  real accelV1 = INIT_ACCEL_V1;
+  real gap_distance = INIT_DISTANCE_V1_V2;
+  real speedV2 = INIT_SPEED_V2;
+  real accelV2 = INIT_ACCEL_V2;
+  real intention = IDLE;
+  real perturbationApplied = 0.0;
+}
+
+component Vehicle1 {
+  variables { }
+  controller {
+    state Control {
+      if (gap_distance == safetyGap) {
+        intention' = IDLE;
+        step Control;
+      } else {
+        if (gap_distance > safetyGap) {
+          intention' = FASTER;
+          step Control;
+        } else {
+          intention' = SLOWER;
+          step Control;
+        }
+      }
+    }
+  }
+  init Control
+}
+
+environment {
+  let
+    offset = R[0,1] * MAX_ACCEL_OFFSET
+  and
+    slower_accel = R[0,1] * (MAX_BRAKE - MIN_BRAKE) + MIN_BRAKE
+  and
+    idle_accel = R[0,1] * (2*IDLE_DELTA) - IDLE_DELTA
+  and
+    new_accel_v1 = (intention == FASTER ? MAX_ACCELERATION - offset : (intention == SLOWER ? -slower_accel : idle_accel))
+  and
+    new_speed_v1 = min(MAX_SPEED, max(0, speedV1 + accelV1))
+  and
+    new_speed_v2 = min(MAX_SPEED, max(0, speedV2 + accelV2))
+  and
+    travel_v1 = accelV1/2 + speedV1
+  and
+    travel_v2 = accelV2/2 + speedV2
+  and
+    new_distance = gap_distance - travel_v1 + travel_v2
+  and
+    new_safety_gap =
+      max(0, RESPONSE_TIME*speedV1 + 0.5*MAX_ACCELERATION*RESPONSE_TIME^2
+             + (speedV1+RESPONSE_TIME*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+             - (speedV2*speedV2)/(2*MAX_BRAKE))
+      + VEHICLE_LENGTH
+  in {
+    accelV1' = new_accel_v1;
+    accelV2' = INIT_ACCEL_V2;
+    speedV1' = new_speed_v1;
+    speedV2' = new_speed_v2;
+    gap_distance' = new_distance;
+    safetyGap' = new_safety_gap;
+    perturbationApplied' = 0;
+  }
+}
+
+penalty rho_crash = (gap_distance > 0.0 ? 0.0 : 1.0)
+penalty rho_gap_violation = (gap_distance > safetyGap ? 0.0 : 1.0)
+
+distance dist_crash = < rho_crash;
+distance dist_crash_interval = \G[STARTING_STEP, STARTING_STEP + TIMES_TO_APPLY*FREQUENCY] dist_crash;
+distance dist_gap_violation = < rho_gap_violation;
+distance dist_gap_violation_interval = \G[STARTING_STEP, STARTING_STEP + TIMES_TO_APPLY*FREQUENCY] dist_gap_violation;
+
+/* Drunk driving: V2's acceleration becomes uniformly random each time the
+   perturbation fires. */
+perturbation p_drunk_driver = ([accelV2 <- R[-MAX_BRAKE, MAX_ACCELERATION]]@FREQUENCY)^TIMES_TO_APPLY;
+
+/* Brake-checking: with probability BRAKE_CHECK_CHANCE, V2 slams on the
+   brakes; otherwise it keeps accelerating at its nominal rate. */
+perturbation p_brake_check = ([accelV2 <- (R[0,1] < BRAKE_CHECK_CHANCE ? -MAX_BRAKE : INIT_ACCEL_V2)]@FREQUENCY)^TIMES_TO_APPLY;
+
+formula crash_drunk_driver = \D[dist_crash_interval, p_drunk_driver] <= ETA_CRASH;
+formula crash_brake_check = \D[dist_crash_interval, p_brake_check] <= ETA_CRASH;
+formula gap_violation_drunk_driver = \D[dist_gap_violation_interval, p_drunk_driver] <= ETA_SAFETY_GAP_VIOLATION;
+formula gap_violation_brake_check = \D[dist_gap_violation_interval, p_brake_check] <= ETA_SAFETY_GAP_VIOLATION;

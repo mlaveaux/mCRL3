@@ -1,0 +1,130 @@
+/*
+ * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/Main2N.java:
+ * a reaction-system model of synaptic signalling between two neurons
+ * (calcium influx, calcium-ligand binding, vesicle exocytosis,
+ * neurotransmitter release/decay over a 3-step delay line, neuroreceptor
+ * opening/closing), again under the "no permanency" principle established
+ * in `reactionsystems_running.stark`/`reactionsystems_lacoperon.stark`.
+ *
+ * `Main.java` in the same directory models the identical mechanism scaled
+ * up to 3 neurons (28 variables instead of this file's 21, with an extra
+ * neuroreceptor pair for the second incoming synapse on neuron 3), so it
+ * isn't ported separately — same precedent as `turtle.stark`/
+ * `repressilator.stark` porting one representative scale.
+ *
+ * The system has no controller (`NilController` in the original, like
+ * `isocitrate.stark`/`envzompr.stark`/`lotka.stark`): `e2` (neuron 2's
+ * neuroreceptor effectiveness) is never written by the reactions
+ * themselves, only read, so it simply isn't assigned in `environment` and
+ * keeps its initial value forever, matching "an unassigned variable keeps
+ * its previous value" exactly as the original's `state.get(e2)` does
+ * without ever appearing on the left of a `DataStateUpdate`.
+ *
+ * `c2`'s and `o20`/`o21`/`o22`'s updates share one random draw
+ * (`w2 = rg.nextDouble() < e2`) within the same reaction step — unlike the
+ * "no `let` inside perturbations" gap documented for `vehicle_full.stark`/
+ * `turtle.stark`, this shared draw lives in the regular `environment` block
+ * (not a perturbation), where a `let` binding is available, so it's ported
+ * exactly rather than approximated.
+ *
+ * The perturbation reduces `e2` for `w1` steps then restores it, repeated
+ * `replica` times — the same "bump then revert, iterated" pattern as
+ * `repressilator.stark`'s `p_transl_rate`. As there, only one representative
+ * threshold is ported for the robustness formula (the original sweeps ten),
+ * and the two `Ca1`/`Ca2` normalisation constants are the original's fixed
+ * `/20` (not empirically derived, so no placeholder-constant caveat is
+ * needed here, unlike the other Gillespie-style ports).
+ */
+
+param ED = 0.01;
+
+global variables {
+  /* first neuron */
+  real Ca1 = 1.0;
+  real X1 = 10.0;
+  real XStar1 = 0.0;
+  real Ve1 = 5.0;
+  real VeStar1 = 0.0;
+  real T10 = 0.0;
+  real T11 = 0.0;
+  real T12 = 0.0;
+  real c1 = 1.0;
+  real o1 = 0.0;
+
+  /* second neuron */
+  real Ca2 = 0.0;
+  real X2 = 10.0;
+  real XStar2 = 0.0;
+  real Ve2 = 5.0;
+  real VeStar2 = 0.0;
+  real T2 = 0.0;
+  real c2 = 1.0;
+  real o20 = 0.0;
+  real o21 = 0.0;
+  real o22 = 0.0;
+
+  /* effectiveness of neuron 2's neuroreceptor (from neuron 1), in [0,1] */
+  real e2 = 1.0;
+}
+
+environment {
+  let
+    w2 = (R[0,1] < e2)
+  in {
+    /* Ca1: postsynaptic activity (receptor open) sets it to 1; otherwise
+       presynaptic activity doubles it until the threshold 10, then it decays. */
+    Ca1' = (o1 == 1 ? 1 : (Ca1 > 0 && Ca1 < 10 ? Ca1 * 2 : 0));
+    Ca2' = (o20 == 1 && T10 == 1 && Ca2 > 0 ? Ca2 + 3
+             : (o20 == 1 && T10 == 1 && Ca2 == 0 ? 1
+                : (Ca2 > 0 && Ca2 < 10 ? Ca2 * 2 : 0)));
+
+    /* calcium ligand: persists once bound, until enough calcium forms the complex */
+    X1' = (XStar1 == 10 && Ve1 > 0 ? 10 : (X1 > 0 && XStar1 == 0 ? X1 : 0));
+    X2' = (XStar2 == 10 && Ve2 > 0 ? 10 : (X2 > 0 && XStar2 == 0 ? X2 : 0));
+
+    /* vesicles before exocytosis: persist, or are replenished once emptied */
+    Ve1' = (Ve1 > 0 && VeStar1 == 0 ? Ve1 : (VeStar1 > 0 ? VeStar1 : 0));
+    Ve2' = (Ve2 > 0 && VeStar2 == 0 ? Ve2 : (VeStar2 > 0 ? VeStar2 : 0));
+
+    /* calcium-ligand complex forms once enough calcium and ligand are present */
+    XStar1' = (Ca1 >= 10 && X1 >= 10 ? X1 : 0);
+    XStar2' = (Ca2 >= 10 && X2 >= 10 ? X2 : 0);
+
+    /* vesicles release their neurotransmitter once the complex has formed */
+    VeStar1' = (XStar1 == 10 && Ve1 > 0 ? Ve1 : 0);
+    VeStar2' = (XStar2 == 10 && Ve2 > 0 ? Ve2 : 0);
+
+    /* neurotransmitter from neuron 1, available immediately and for the next
+       two steps (a 3-step delay line); neuron 2's has no delay. */
+    T12' = (VeStar1 > 0 ? 1 : 0);
+    T11' = (VeStar1 > 0 ? 1 : (T12 == 1 ? 1 : 0));
+    T10' = (VeStar1 > 0 ? 1 : (T11 == 1 ? 1 : 0));
+    T2' = (VeStar2 > 0 ? 1 : 0);
+
+    /* neuroreceptor of neuron 1: opens when neuron 2's neurotransmitter is
+       present, closes otherwise or once open. */
+    c1' = ((c1 > 0 && T2 == 0) || o1 > 0 ? 1 : 0);
+    o1' = (T2 > 0 ? 1 : 0);
+
+    /* neuroreceptor of neuron 2: opens (with probability e2, via the shared
+       draw w2) when neuron 1's delayed neurotransmitter T12 is present, then
+       stays open for two more steps (o22 -> o21 -> o20) like T1's delay line. */
+    c2' = ((c2 > 0 && T10 == 0) || (c2 > 0 && T10 == 1 && !w2) || (o20 > 0 && o21 == 0 && o22 == 0) ? 1 : 0);
+    o22' = (T12 > 0 && w2 ? 1 : 0);
+    o21' = (T12 > 0 && w2 ? 1 : (o22 == 1 ? 1 : 0));
+    o20' = (T12 > 0 && w2 ? 1 : (o21 == 1 ? 1 : 0));
+  }
+}
+
+penalty rho_ca1 = Ca1 / 20
+penalty rho_ca2 = Ca2 / 20
+
+distance atomic_ca1 = < rho_ca1;
+distance atomic_ca2 = < rho_ca2;
+distance max_ca12 = max(atomic_ca1, atomic_ca2);
+distance max_interval_ca12 = \G[0,1000] max_ca12;
+
+/* Reduces e2 by ED for 50 steps, then restores it for 50 steps, repeated 5 times. */
+perturbation p_e2 = ([e2 <- max(0.0, e2 - ED)]@50 ; [e2 <- max(0.0, e2 + ED)]@50)^5;
+
+formula robust_synapse = \D[max_interval_ca12, p_e2] <= 0.10;

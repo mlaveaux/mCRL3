@@ -1,0 +1,144 @@
+/*
+ * Ported from ~/STARK/examples/mutliScler/src/main/java/ms/Main.java: an
+ * ODE-based model (explicit Euler integration, step size `delta_t`) of
+ * effector/regulatory T-cell dynamics in multiple sclerosis, with a
+ * controller that injects resting regulatory T cells when the
+ * effector/regulatory ratio exceeds 10.
+ *
+ * The original's every `DisTLFormula`/monitor-based robustness analysis
+ * (everything past `writeRunsToCSV` in `main`) is already commented out in
+ * the source itself — dead code, not just untranslatable — so nothing
+ * working is being left out by omitting it here.
+ *
+ * The original runs three variants (healthy `alphaR=alphaRH`, sick
+ * `alphaR=alphaRS` with the controller active, and sick with a
+ * `NilController` for comparison); only the controlled "sick" variant
+ * (`systemS5`, `var=5`) is ported, since it's the one that actually
+ * exercises the controller logic.
+ *
+ * `(rg.nextDouble()*var*2 - var)` (uniform noise in `[-var, var]`) is
+ * simplified to the equivalent `R[-VAR, VAR]` rather than spelling out the
+ * scaling from `R[0,1]`.
+ */
+
+param ETA = 0.01;
+param DELTA = 1.0;
+param BETA = 0.01;
+param ALPHA_E = 2.0;
+param ALPHA_R_HEALTHY = 1.0;
+param ALPHA_R_SICK = 0.25;
+param GAMMA_E = 0.2;
+param GAMMA_R = 0.2;
+param K_E = 1000.0;
+param K_R = 200.0;
+param D1 = 1.0;
+param D2 = 0.02;
+param RECOVERY = 0.1;
+param A = 22800.0;
+param E_INIT = 1000.0;
+param R_INIT = 200.0;
+param HILL = 5.0;
+param DELTA_T = 0.0001;
+param VAR = 5;
+
+global variables {
+  real E = E_INIT;
+  real Er = 0.0;
+  /* Named `Ra` (active Treg), not `R` — `R` is this grammar's random-value
+     keyword and can't be used as an identifier. */
+  real Ra = R_INIT;
+  real Rr = 0.0;
+  real Ea = (E_INIT / A)^2;
+  real l = 0.0;
+  real L = 0.0;
+  real ratioER = E_INIT / R_INIT;
+  real v_eta = ETA;
+  real v_delta = DELTA;
+  real v_beta = BETA;
+  real v_gammaE = GAMMA_E;
+  real v_gammaR = GAMMA_R;
+  real v_d1 = D1;
+  real v_d2 = D2;
+  real v_r = RECOVERY;
+  real alphaR = ALPHA_R_SICK;
+  real timer = 0.0;
+  real uncertainty = 1.0;
+  real flag = 0.0;
+  real flag2 = 0.0;
+  real Rgen = 0.0;
+  real wait_month = 0.0;
+  real wait_week = 0.0;
+}
+
+component MS {
+  variables { }
+  controller {
+    state Ctrl {
+      /* GAP (approximation, not a grammar limitation): in the Java `getController`
+         each branch sets `wait_month=1` / `wait_week=1`, and `selectTime` reads
+         those flags to call `ds.setCtrlGranularity(30)` (a month after an
+         injection) or `ds.setCtrlGranularity(7)` (a week otherwise), i.e. the
+         controller re-evaluates every 30 vs 7 environment time-units depending
+         on the branch taken. That adaptive controller granularity is expressible
+         in this grammar via the `Expression # step` form (`30 # step Ctrl;` /
+         `7 # step Ctrl;`) but was NOT ported: both branches use a plain
+         `step Ctrl` (granularity 1). Consequently the `wait_month'`/`wait_week'`
+         assignments below set variables that nothing ever reads (dead), and the
+         nominal spec injects/steps the controller far more often than the Java. */
+      if (ratioER > 10) {
+        Rr' = Rr + 1000 + R[-10,10];
+        flag' = flag + 1;
+        flag2' = flag2 + 1;
+        wait_month' = 1;
+        step Ctrl;
+      } else {
+        flag2' = flag2 + 1;
+        wait_week' = 1;
+        step Ctrl;
+      }
+    }
+  }
+  init Ctrl
+}
+
+environment {
+  let
+    ie = (R[0,1] < 100*DELTA_T/365.0 ? 100.0/DELTA_T : 0.0)
+  and
+    ir = (R[0,1] < 100*DELTA_T/365.0 ? 100.0/DELTA_T : 0.0)
+  and
+    new_Er = Er + (ie - Er*v_delta - Er*v_beta + E*v_eta) * DELTA_T
+  and
+    new_Rr = Rr + (ir - Rr*v_delta - Rr*v_beta + Ra*v_eta) * DELTA_T
+  and
+    new_E = E + (Er*v_delta - E*v_eta + E*(ALPHA_E*K_R^HILL - v_gammaE*Ra^HILL)/(K_R^HILL+Ra^HILL)) * DELTA_T
+  and
+    new_R = Ra + (Rr*v_delta - Ra*v_eta + Ra*alphaR*E^HILL/(K_E^HILL+E^HILL) - Ra*v_gammaR) * DELTA_T
+  and
+    new_Ea = (E/A)^2
+  and
+    new_l = l + (new_Ea*v_d1 - l*v_r - l*v_d2) * DELTA_T
+  and
+    new_L = L + l*v_d2*DELTA_T
+  in {
+    Er' = new_Er;
+    Rr' = new_Rr;
+    E' = new_E;
+    Ra' = new_R;
+    Ea' = new_Ea;
+    l' = new_l;
+    L' = new_L;
+    ratioER' = new_E / new_R;
+    if (timer >= 1) {
+      timer' = 0.0;
+      v_eta' = v_eta + R[-VAR,VAR]*v_eta/100.0;
+      v_delta' = v_delta + R[-VAR,VAR]*v_delta/100.0;
+      v_beta' = v_beta + R[-VAR,VAR]*v_beta/100.0;
+      v_d1' = v_d1 + R[-VAR,VAR]*v_d1/100.0;
+      v_d2' = v_d2 + R[-VAR,VAR]*v_d2/100.0;
+      v_r' = v_r + R[-VAR,VAR]*v_r/100.0;
+    } else {
+      timer' = timer + DELTA_T;
+    }
+  }
+}

@@ -1,0 +1,73 @@
+/*
+ * Ported from ~/STARK/examples/lotka/src/main/java/lotka/Main.java: the
+ * classic Lotka autocatalytic reactions (same Gillespie-SSA pattern as
+ * `isocitrate.stark`/`envzompr.stark` — see `isocitrate.stark`'s header for
+ * the general approach):
+ *   X + Y1  --c1--> 2Y1
+ *   Y1 + Y2 --c2--> 2Y2
+ *   Y2      --c3--> Z
+ * X's count never actually changes (net stoichiometry 0 in the only
+ * reaction it takes part in) — matching the original's comment that X's
+ * depletion is treated as insignificant — so `X` needs no update at all in
+ * the environment block.
+ *
+ * The original computes raw distance *values* for plotting, without ever
+ * declaring an actual `AtomicRobustnessFormula`/threshold, so there's no
+ * formula to port either — just the reaction network, one representative
+ * perturbation (`pertY1`, halving Y1's population partway through), and the
+ * two atomic distances it measures (again with a placeholder normalisation
+ * constant in place of the original's empirically-sampled one).
+ */
+
+param N = 300;
+
+/* Placeholder: the original computes these as max(sampled Y1/Y2)*1.1 after
+   running the simulation; there's no static equivalent here. */
+param NORMALISATION_Y1 = 1200.0;
+param NORMALISATION_Y2 = 1200.0;
+
+global variables {
+  real X = 1000.0;
+  real Y1 = 1000.0;
+  real Y2 = 1000.0;
+  real Z = 0.0;
+}
+
+environment {
+  let
+    w1 = 0.01 * X * Y1
+  and
+    w2 = 0.01 * Y1 * Y2
+  and
+    w3 = 10.0 * Y2
+  and
+    total = w1 + w2 + w3
+  and
+    threshold = R[0,1] * total
+  in {
+    if (total > 0) {
+      if (threshold <= w1) {
+        /* r1: X + Y1 -> 2Y1 (X's count is unchanged) */
+        Y1' = Y1 + 1;
+      } else {
+        if (threshold <= w1 + w2) {
+          /* r2: Y1 + Y2 -> 2Y2 */
+          Y1' = Y1 - 1;
+          Y2' = Y2 + 1;
+        } else {
+          /* r3: Y2 -> Z */
+          Y2' = Y2 - 1;
+          Z' = Z + 1;
+        }
+      }
+    }
+  }
+}
+
+penalty rho_Y1 = Y1 / NORMALISATION_Y1
+penalty rho_Y2 = Y2 / NORMALISATION_Y2
+
+distance atomic_Y1 = < rho_Y1;
+distance atomic_Y2 = < rho_Y2;
+
+perturbation p_cut_Y1 = [Y1 <- Y1 * 0.5]@(N/2);

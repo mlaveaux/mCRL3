@@ -1,0 +1,358 @@
+/*
+ * Ported from ~/STARK/examples/ABZ2025/src/main/java/Scenarios/TwoLanesTwoCars.java
+ * (Scenario 1 of 3 — see below): unlike `abz2025_single_lane_two_cars.stark`/
+ * `abz2025_one_lane_three_cars.stark`, this is genuinely new mechanics, not
+ * a scale variant — two cars on a two-lane highway with explicit (x,y)
+ * positions, and "my car" (the controlled one) can change lanes
+ * (`Moving_left`/`Moving_right` controller states) to overtake or make way,
+ * not just speed up/slow down.
+ *
+ * `SCENARIO` (1/2/3 in the original, selected by an `int` field, `main()`
+ * always runs with `SCENARIO = 1`) only changes the two cars' initial
+ * positions/lanes and, correspondingly, which side of `getEnvironmentUpdates_N`'s
+ * near-mirror-image lane-change logic actually engages first — confirmed by
+ * diffing `getEnvironmentUpdates_1`/`_2`/`_3` directly: scenario 2 is
+ * scenario 1 with the "other" car's lane-change branches mirrored (starts in
+ * the left lane and tends back right instead of starting right and tending
+ * left), and scenario 3 shares scenario 1's environment function entirely,
+ * only the initial (x,y) differ. So this file ports Scenario 1 as the
+ * representative case (same precedent as `polistil_race.stark`'s "race" vs
+ * "siblings"), not all three.
+ *
+ * The controller's lane-change decision compares `dist`/`safety_gap`
+ * against `my_position` (`1` if my car is ahead on the x-axis, `-1`
+ * otherwise) and `other_lane`/`my_lane`, mirroring the RSS car-following
+ * logic from the single-lane files but choosing a lane change
+ * (`Moving_left`/`Moving_right`, a 2-step manoeuvre gated by `my_timer`)
+ * instead of just braking when the lane is unsafe to stay in.
+ *
+ * `reckless_driver`'s perturbation is simplified relative to the original's
+ * `AtomicPerturbation`, which recomputes `other_move`/`other_speed`/
+ * `other_x`/`other_y`/`other_lane`/`dist`/`my_position`/`safety_gap` all at
+ * once from one shared random draw: as with every other perturbation ported
+ * this session (e.g. `abz2025_single_lane_two_cars.stark`'s
+ * `p_drunk_driver`), this grammar's perturbations only set the
+ * directly-manipulated variables (`other_move`/`other_acc`), letting the
+ * following environment step recompute `dist`/`safety_gap`/`my_position`/
+ * `crash` from them — so the perturbation's effect propagates one round
+ * later than in the original. The original's 40%-chance "just nudge `dist`
+ * a little instead" fallback branch and its `AfterPerturbation(5, ...)`
+ * initial 5-step delay (no such delay combinator exists in this grammar,
+ * only the atomic block's own `@time`) are both dropped rather than
+ * approximated further, since neither has a natural encoding here.
+ *
+ * Of the five robustness formulas the original builds (`phi_SAF` — no
+ * crash, combining a speed-difference-at-crash penalty with a plain crash
+ * flag; `phi_R2L`/`phi_KIR`/`phi_SO` — lane-discipline/overtake-safety
+ * monitors using penalty functions not otherwise part of this model), only
+ * `phi_SAF` (renamed `phi_safe` below) is ported, matching the
+ * `isocitrate.stark` precedent of picking one representative formula rather
+ * than porting every diagnostic query.
+ */
+
+param PI = 3.141592653589793;
+param VEHICLE_LENGTH = 5.0;
+param VEHICLE_WIDTH = 2.0;
+param TIMER = 2.0;
+
+param MAX_SPEED = 40.0;
+param MAX_ACCELERATION = 5.0;
+param FAST_OFFSET = 2.0;
+param MAX_BRAKE = 5.0;
+param MIN_BRAKE = 3.0;
+param SLOW_OFFSET = 2.0;
+param IDLE_OFFSET = 0.4;
+param H = 300;
+
+param MY_INIT_SPEED = 15.0;
+param OTHER_INIT_SPEED = 15.0;
+param MY_INIT_X = 0.0;
+param MY_INIT_Y = 2.0;
+param OTHER_INIT_X = 150.0;
+param OTHER_INIT_Y = 2.0;
+
+param FASTER = 1.0;
+param SLOWER = -1.0;
+param IDLE = 0.0;
+param LANE_RIGHT = -1.0;
+param LANE_LEFT = 1.0;
+
+param ETA = 0.01;
+
+function rss_gap(real rear, real front) {
+  return max(0, TIMER*rear + 0.5*MAX_ACCELERATION*TIMER^2
+                + (rear+TIMER*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+                - (front*front)/(2*MAX_BRAKE))
+         + VEHICLE_LENGTH;
+}
+
+param INIT_MY_LANE = (MY_INIT_Y <= 4 ? 0.0 : 1.0);
+param INIT_OTHER_LANE = (OTHER_INIT_Y <= 4 ? 0.0 : 1.0);
+param INIT_MY_POSITION = (MY_INIT_X <= OTHER_INIT_X ? -1.0 : 1.0);
+param INIT_DIST = sqrt((OTHER_INIT_X-MY_INIT_X)^2 + (OTHER_INIT_Y-MY_INIT_Y)^2);
+/* param initializers can't call functions (see MISSING_GRAMMAR_FEATURES.md),
+   so rss_gap's formula is inlined here for the two possible orderings. */
+param INIT_SAFETY_GAP =
+  (MY_INIT_X <= OTHER_INIT_X
+    ? max(0, TIMER*MY_INIT_SPEED + 0.5*MAX_ACCELERATION*TIMER^2
+             + (MY_INIT_SPEED+TIMER*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+             - (OTHER_INIT_SPEED*OTHER_INIT_SPEED)/(2*MAX_BRAKE)) + VEHICLE_LENGTH
+    : max(0, TIMER*OTHER_INIT_SPEED + 0.5*MAX_ACCELERATION*TIMER^2
+             + (OTHER_INIT_SPEED+TIMER*MAX_ACCELERATION)^2/(2*MIN_BRAKE)
+             - (MY_INIT_SPEED*MY_INIT_SPEED)/(2*MAX_BRAKE)) + VEHICLE_LENGTH);
+
+global variables {
+  real my_x = MY_INIT_X;
+  real my_y = MY_INIT_Y;
+  real my_speed = MY_INIT_SPEED;
+  real intention = IDLE;
+  real my_acc = IDLE;
+  real my_lane = INIT_MY_LANE;
+  real my_move = 0.0;
+  real my_timer = 0.0;
+  real my_position = INIT_MY_POSITION;
+
+  real other_x = OTHER_INIT_X;
+  real other_y = OTHER_INIT_Y;
+  real other_speed = OTHER_INIT_SPEED;
+  real other_acc = IDLE;
+  real other_lane = INIT_OTHER_LANE;
+  real other_move = 0.0;
+  real other_timer = TIMER - 1;
+
+  real dist = INIT_DIST;
+  real safety_gap = INIT_SAFETY_GAP;
+  real crash = 0.0;
+}
+
+component Vehicle1 {
+  variables { }
+  controller {
+    state Control {
+      if (my_timer > 0) {
+        exec Control;
+      } else {
+        if (my_lane == 1) {
+          if (dist > safety_gap) {
+            intention' = IDLE;
+            my_move' = LANE_RIGHT;
+            my_timer' = TIMER;
+            step Moving_right;
+          } else {
+            if (my_position == 1) {
+              if (other_lane == 1) {
+                intention' = IDLE;
+                my_move' = LANE_RIGHT;
+                my_timer' = TIMER;
+                step Moving_right;
+              } else {
+                intention' = FASTER;
+                my_timer' = TIMER;
+                step Idling;
+              }
+            } else {
+              if (other_lane == 1) {
+                if (dist == safety_gap) {
+                  intention' = IDLE;
+                  my_timer' = TIMER;
+                  step Idling;
+                } else {
+                  intention' = SLOWER;
+                  my_timer' = TIMER;
+                  step Idling;
+                }
+              } else {
+                intention' = FASTER;
+                my_timer' = TIMER;
+                step Idling;
+              }
+            }
+          }
+        } else {
+          if (dist > safety_gap || my_position == 1) {
+            intention' = FASTER;
+            my_timer' = TIMER;
+            step Idling;
+          } else {
+            if (other_lane == 0) {
+              if (dist > safety_gap*0.8) {
+                intention' = IDLE;
+                my_move' = LANE_LEFT;
+                my_timer' = TIMER;
+                step Moving_left;
+              } else {
+                intention' = SLOWER;
+                my_timer' = TIMER;
+                step Idling;
+              }
+            } else {
+              intention' = IDLE;
+              my_timer' = TIMER;
+              step Idling;
+            }
+          }
+        }
+      }
+    }
+
+    state Idling {
+      if (my_timer > 0) { exec Idling; } else { exec Control; }
+    }
+
+    state Moving_right {
+      if (my_timer > 0) {
+        exec Moving_right;
+      } else {
+        if (my_position == 1 || dist > safety_gap) {
+          intention' = FASTER;
+          my_move' = 0;
+          my_lane' = 0;
+          my_timer' = TIMER;
+          step Idling;
+        } else {
+          if (dist == safety_gap) {
+            intention' = IDLE;
+            my_move' = 0;
+            my_lane' = 0;
+            my_timer' = TIMER;
+            step Idling;
+          } else {
+            intention' = SLOWER;
+            my_move' = 0;
+            my_lane' = 0;
+            my_timer' = TIMER;
+            step Idling;
+          }
+        }
+      }
+    }
+
+    state Moving_left {
+      if (my_timer > 0) {
+        exec Moving_left;
+      } else {
+        if (other_lane == 0 && my_position == -1) {
+          intention' = FASTER;
+          my_move' = 0;
+          my_lane' = 1;
+          my_timer' = TIMER;
+          step Idling;
+        } else {
+          intention' = SLOWER;
+          my_move' = 0;
+          my_lane' = 1;
+          my_timer' = TIMER;
+          step Idling;
+        }
+      }
+    }
+  }
+  init Control
+}
+
+environment {
+  let
+    my_new_acc =
+      (intention == FASTER ? MAX_ACCELERATION - R[0,1]*FAST_OFFSET
+       : (intention == SLOWER ? -min(MAX_BRAKE, max(MIN_BRAKE, MAX_BRAKE - R[0,1]*SLOW_OFFSET))
+          : R[0,1]*(2*IDLE_OFFSET) - IDLE_OFFSET))
+  and
+    my_travel_x = (my_new_acc/2 + my_speed) * cos((PI/9)*my_move)
+  and
+    my_new_x = my_x + my_travel_x
+  and
+    my_new_y = min(8, max(0, my_y + (4/TIMER)*my_move))
+  and
+    my_new_lane = (my_new_y >= 4 ? 1 : 0)
+  and
+    my_new_speed = min(max(0, my_speed + my_new_acc), MAX_SPEED)
+  and
+    token = R[0,1]
+  and
+    /* the reaction the "other" car takes if it decides this round (other_timer == 0) */
+    other_decided_acc =
+      (other_lane == 1
+        ? (dist > safety_gap || my_position == -1
+           ? R[0,1]*(2*IDLE_OFFSET) - IDLE_OFFSET
+           : (dist > safety_gap
+              ? (token >= 0.50 ? MAX_ACCELERATION - R[0,1]*FAST_OFFSET
+                 : (token >= 0.20 ? R[0,1]*(2*IDLE_OFFSET) - IDLE_OFFSET
+                    : -(R[0,1]*(MAX_BRAKE-MIN_BRAKE)+MIN_BRAKE)))
+              : (my_position == 1 ? -(R[0,1]*(MAX_BRAKE-MIN_BRAKE)+MIN_BRAKE) : MAX_ACCELERATION - R[0,1]*FAST_OFFSET)))
+        : (dist > safety_gap
+           ? (token >= 0.50 ? MAX_ACCELERATION - R[0,1]*FAST_OFFSET
+              : (token >= 0.20 ? R[0,1]*(2*IDLE_OFFSET) - IDLE_OFFSET
+                 : -(R[0,1]*(MAX_BRAKE-MIN_BRAKE)+MIN_BRAKE)))
+           : (my_position == 1 ? -(R[0,1]*(MAX_BRAKE-MIN_BRAKE)+MIN_BRAKE) : MAX_ACCELERATION - R[0,1]*FAST_OFFSET)))
+  and
+    other_decided_move = (other_lane == 1 && (dist > safety_gap || my_position == -1) ? LANE_RIGHT : 0)
+  and
+    new_other_acc = (other_timer == 0 ? other_decided_acc : other_acc)
+  and
+    new_other_move =
+      (other_timer == 0
+        ? other_decided_move
+        : ((other_y >= 6 && other_move == LANE_LEFT) || (other_y <= 2 && other_move == LANE_RIGHT) ? 0 : other_move))
+  and
+    new_other_timer = (other_timer == 0 ? TIMER - 1 : other_timer - 1)
+  and
+    other_new_speed = min(max(0, other_speed + new_other_acc), MAX_SPEED - 5)
+  and
+    other_travel_x = (new_other_acc/2 + other_new_speed) * cos((PI/9)*new_other_move)
+  and
+    other_new_x = other_x + other_travel_x
+  and
+    other_new_y = min(8, max(0, other_y + (4/TIMER)*new_other_move))
+  and
+    other_new_lane = (other_new_y >= 4 ? 1 : 0)
+  and
+    new_dist = sqrt((other_new_x-my_new_x)^2 + (other_new_y-my_new_y)^2)
+  and
+    new_my_position = (my_new_x >= other_new_x ? 1 : -1)
+  and
+    new_safety_gap = (new_my_position == -1 ? rss_gap(my_new_speed, other_new_speed) : rss_gap(other_new_speed, my_new_speed))
+  and
+    new_crash =
+      ((my_new_lane == other_new_lane && abs(my_new_x-other_new_x) <= VEHICLE_LENGTH)
+       || (!(my_new_lane == other_new_lane) && abs(my_new_x-other_new_x) <= VEHICLE_LENGTH && abs(my_new_y-other_new_y) <= VEHICLE_WIDTH)
+       ? 1 : crash)
+  in {
+    my_acc' = my_new_acc;
+    my_speed' = my_new_speed;
+    my_x' = my_new_x;
+    my_y' = my_new_y;
+    my_lane' = my_new_lane;
+    other_acc' = new_other_acc;
+    other_timer' = new_other_timer;
+    other_move' = new_other_move;
+    other_speed' = other_new_speed;
+    other_x' = other_new_x;
+    other_y' = other_new_y;
+    other_lane' = other_new_lane;
+    dist' = new_dist;
+    my_position' = new_my_position;
+    safety_gap' = new_safety_gap;
+    my_timer' = my_timer - 1;
+    crash' = new_crash;
+  }
+}
+
+penalty rho_si = (crash == 1 ? 0.5*sqrt(my_speed*my_speed + other_speed*other_speed - 2*my_speed*other_speed)/MAX_SPEED : 0.0)
+penalty rho_crash = crash
+
+distance atomic_si = < rho_si;
+distance max_si = \G[0,H] atomic_si;
+distance atomic_crash = < rho_crash;
+distance max_crash = \G[0,H] atomic_crash;
+
+/* Only the directly-manipulated variables are perturbed; see file header
+   for why `other_speed`/`other_x`/`other_y`/`other_lane`/`dist`/
+   `safety_gap`/`crash` are left to the following environment step. */
+perturbation p_reckless_driver =
+  ([other_move <- (R[0,1] > 0.4 ? (other_lane == 0 ? LANE_LEFT : LANE_RIGHT) : other_move),
+    other_acc <- (R[0,1] > 0.4 ? R[-IDLE_OFFSET, IDLE_OFFSET] : other_acc)]@2)^50;
+
+formula phi_si = \D[max_si, p_reckless_driver] <= ETA;
+formula phi_crash = \D[max_crash, p_reckless_driver] <= ETA;
+formula phi_combined = phi_si && phi_crash;
+formula phi_safe = \G[0,100] phi_combined;

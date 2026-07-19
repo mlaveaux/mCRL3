@@ -1,0 +1,156 @@
+/*
+ * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/MainLO.java:
+ * the lac operon gene-regulatory network, modeled as a reaction system per
+ * Corolli, Maja, Marini, Besozzi, Mauri, "An excursion in reaction systems:
+ * From computer science to biology" (2012) — ten boolean-valued reactions
+ * (r1..r10) under the same "no permanency" principle as
+ * `reactionsystems_running.stark`, driven by a context controller that (a)
+ * keeps the "always present" genomic elements/proteins (`lac`, `lacI`, `I`,
+ * `cya`, `cAMP`, `crp`, `CAP`) supplied every round, and (b) cycles through a
+ * fixed 40-step schedule of glucose/lactose availability (`glucose_N`/
+ * `lactose_N`), matching this grammar's controller-then-environment
+ * per-round order (context supplies entities, then the reactions read them
+ * that same round).
+ *
+ * The original's `ParallelController(DefaultCondition, Glucose5-chain)` maps
+ * directly to this grammar's `init A || B` parallel-state-composition
+ * syntax — one `component` whose controller has both the always-on
+ * `DefaultCondition` self-loop and the 40-state context cycle running side
+ * by side. `Start` and the standalone `Tick` state are dead code in the
+ * original (defined but never targeted by any transition), so they aren't
+ * ported.
+ *
+ * `r4` (`IOP`) and `r9` (`cAMPCAP`) read `lactose`/`glucose`, not
+ * `lactose_N`/`glucose_N` directly — since only the environment (never the
+ * controller) writes `lactose`/`glucose` (via the last two reactions
+ * below), and this grammar's `let`-block reads are simultaneous against the
+ * round's starting values, this reproduces the original's one-round lag
+ * exactly: context supplies `lactose_N`/`glucose_N` this round, the
+ * reaction system converts that to `lactose`/`glucose` this round, and
+ * `IOP`/`cAMPCAP` next round see the round-old `lactose`/`glucose` — matching
+ * `state.get(lactose)` reading the pre-call `state` in the original's
+ * `applyReactions`, exactly as ported.
+ *
+ * The original's robustness queries are all `stark.distl` (`TargetDisTLFormula`/
+ * `ImplicationDisTLFormula`/`EventuallyDisTLFormula`/`AlwaysDisTLFormula`) —
+ * the same untranslatable online-monitoring formalism already documented in
+ * `monitoring.stark`/`MISSING_GRAMMAR_FEATURES.md` — so only the reaction
+ * system and its context controller are ported, no `distance`/`formula`.
+ */
+
+global variables {
+  int lac = 1;
+  int Z = 0;
+  int Y = 0;
+  int A = 0;
+  int lacI = 1;
+  int I = 1;
+  int IOP = 0;
+  int cya = 1;
+  int cAMP = 1;
+  int crp = 1;
+  int CAP = 1;
+  int cAMPCAP = 0;
+  int lactose = 0;
+  int glucose = 0;
+  int lactose_N = 0;
+  int glucose_N = 0;
+}
+
+component Context {
+  variables { }
+  controller {
+    state DefaultCondition {
+      lac' = 1; lacI' = 1; I' = 1; cya' = 1; cAMP' = 1; crp' = 1; CAP' = 1;
+      step DefaultCondition;
+    }
+
+    state Glucose5 { glucose_N' = 1; lactose_N' = 0; step Glucose4; }
+    state Glucose4 { glucose_N' = 1; lactose_N' = 0; step Glucose3; }
+    state Glucose3 { glucose_N' = 1; lactose_N' = 0; step Glucose2; }
+    state Glucose2 { glucose_N' = 1; lactose_N' = 0; step Glucose1; }
+    state Glucose1 { glucose_N' = 1; lactose_N' = 0; step GlucoseLactose5; }
+
+    state GlucoseLactose5 { glucose_N' = 1; lactose_N' = 1; step GlucoseLactose4; }
+    state GlucoseLactose4 { glucose_N' = 1; lactose_N' = 1; step GlucoseLactose3; }
+    state GlucoseLactose3 { glucose_N' = 1; lactose_N' = 1; step GlucoseLactose2; }
+    state GlucoseLactose2 { glucose_N' = 1; lactose_N' = 1; step GlucoseLactose1; }
+    state GlucoseLactose1 { glucose_N' = 1; lactose_N' = 1; step Lactose5; }
+
+    state Lactose5 { glucose_N' = 0; lactose_N' = 1; step Lactose4; }
+    state Lactose4 { glucose_N' = 0; lactose_N' = 1; step Lactose3; }
+    state Lactose3 { glucose_N' = 0; lactose_N' = 1; step Lactose2; }
+    state Lactose2 { glucose_N' = 0; lactose_N' = 1; step Lactose1; }
+    state Lactose1 { glucose_N' = 0; lactose_N' = 1; step Tick5; }
+
+    state Tick5 { glucose_N' = 0; lactose_N' = 0; step Tick4; }
+    state Tick4 { glucose_N' = 0; lactose_N' = 0; step Tick3; }
+    state Tick3 { glucose_N' = 0; lactose_N' = 0; step Tick2; }
+    state Tick2 { glucose_N' = 0; lactose_N' = 0; step Tick1; }
+    state Tick1 { glucose_N' = 0; lactose_N' = 0; step Lact5; }
+
+    state Lact5 { glucose_N' = 0; lactose_N' = 1; step Lact4; }
+    state Lact4 { glucose_N' = 0; lactose_N' = 1; step Lact3; }
+    state Lact3 { glucose_N' = 0; lactose_N' = 1; step Lact2; }
+    state Lact2 { glucose_N' = 0; lactose_N' = 1; step Lact1; }
+    state Lact1 { glucose_N' = 0; lactose_N' = 1; step GlucLact5; }
+
+    state GlucLact5 { glucose_N' = 1; lactose_N' = 1; step GlucLact4; }
+    state GlucLact4 { glucose_N' = 1; lactose_N' = 1; step GlucLact3; }
+    state GlucLact3 { glucose_N' = 1; lactose_N' = 1; step GlucLact2; }
+    state GlucLact2 { glucose_N' = 1; lactose_N' = 1; step GlucLact1; }
+    state GlucLact1 { glucose_N' = 1; lactose_N' = 1; step Lac5; }
+
+    state Lac5 { glucose_N' = 0; lactose_N' = 1; step Lac4; }
+    state Lac4 { glucose_N' = 0; lactose_N' = 1; step Lac3; }
+    state Lac3 { glucose_N' = 0; lactose_N' = 1; step Lac2; }
+    state Lac2 { glucose_N' = 0; lactose_N' = 1; step Lac1; }
+    state Lac1 { glucose_N' = 0; lactose_N' = 1; step Glu5; }
+
+    state Glu5 { glucose_N' = 1; lactose_N' = 0; step Glu4; }
+    state Glu4 { glucose_N' = 1; lactose_N' = 0; step Glu3; }
+    state Glu3 { glucose_N' = 1; lactose_N' = 0; step Glu2; }
+    state Glu2 { glucose_N' = 1; lactose_N' = 0; step Glu1; }
+    state Glu1 { glucose_N' = 1; lactose_N' = 0; step Glucose5; }
+  }
+  init DefaultCondition || Glucose5
+}
+
+environment {
+  let
+    r1 = (lac == 1)
+  and
+    r2 = (lacI == 1)
+  and
+    r3 = (lacI == 1)
+  and
+    r4 = (I == 1 && lactose == 0)
+  and
+    r5 = (cya == 1)
+  and
+    r6 = (cya == 1)
+  and
+    r7 = (crp == 1)
+  and
+    r8 = (crp == 1)
+  and
+    r9 = (cAMP == 1 && CAP == 1 && glucose == 0)
+  and
+    r10 = (cAMPCAP == 1 && lac == 1 && IOP == 0)
+  in {
+    lac' = (r1 ? 1 : 0);
+    lacI' = (r2 ? 1 : 0);
+    I' = (r3 ? 1 : 0);
+    IOP' = (r4 ? 1 : 0);
+    cya' = (r5 ? 1 : 0);
+    cAMP' = (r6 ? 1 : 0);
+    crp' = (r7 ? 1 : 0);
+    CAP' = (r8 ? 1 : 0);
+    cAMPCAP' = (r9 ? 1 : 0);
+    Z' = (r10 ? 1 : 0);
+    Y' = (r10 ? 1 : 0);
+    A' = (r10 ? 1 : 0);
+    lactose' = lactose_N;
+    glucose' = glucose_N;
+  }
+}

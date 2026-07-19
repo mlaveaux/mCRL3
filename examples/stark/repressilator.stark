@@ -1,0 +1,292 @@
+/*
+ * Ported from ~/STARK/examples/repressilator/src/main/java/repressilator/Main.java:
+ * the classic repressilator, a synthetic 3-gene cyclic negative-feedback
+ * oscillator (gene 3 represses gene 1, gene 1 represses gene 2, gene 2
+ * represses gene 3), simulated as a "two-state model" chemical reaction
+ * network with 18 reactions via Gillespie's stochastic simulation algorithm
+ * (SSA) — same `NilController`/no-`component` shape and cumulative-weight
+ * `if`/`else` reaction-selection pattern established in
+ * `isocitrate.stark`/`envzompr.stark`/`lotka.stark`.
+ *
+ * `Main_Skorokhod.java` simulates the identical model with a different
+ * (Skorokhod-representation) numerical integration scheme, so it isn't
+ * ported separately, matching the `turtle.stark` precedent of porting one
+ * representative scenario rather than every alternate implementation.
+ *
+ * Each gene `i` has 4 species: `Gi`/`AGi` (inactive/active promoter, always
+ * `Gi+AGi = 1`), `Xi` (mRNA count), `Zi` (protein count), and 6 reactions:
+ * activation (`Gi --koni--> AGi`), deactivation (`AGi --koffi--> Gi`),
+ * transcription (`AGi --s0i--> AGi+Xi`), translation (`Xi --s1i--> Xi+Zi`),
+ * mRNA degradation (`Xi --d0i-->`), protein degradation (`Zi --d1i-->`).
+ *
+ * The novel part beyond the by-now-familiar SSA template: after *every*
+ * reaction (not just the ones that touch protein levels), `kon1`/`kon2`/
+ * `kon3` — the burst-frequency/activation-rate variables, not fixed
+ * constants — are recomputed from the protein levels via a Hill/sigmoid
+ * response curve (`kon_rate` below) and a fixed interaction matrix
+ * `THETAij` (gene `j`'s influence on gene `i`'s activation), which is what
+ * encodes the repressive topology. The original's `selectAndApplyReaction`
+ * computes this recompute *once*, unconditionally, from `state.get(Z1)`/
+ * `state.get(Z2)`/`state.get(Z3)` — i.e. the *pre-reaction* protein levels,
+ * regardless of which reaction (if any) just changed a `Zi` — so a single
+ * `kon1'`/`kon2'`/`kon3'` computed from the current, not-yet-updated
+ * `Z1`/`Z2`/`Z3` before the reaction-selection `if`/`else` chain is exactly
+ * right for every branch; no branch needs (or should use) an adjusted
+ * `Zi + 1`/`Zi - 1`. (An earlier version of this file *did* recompute
+ * `kon1'`/`kon2'`/`kon3'` from the post-reaction `Zi` in the six branches
+ * that change one — cross-checked and confirmed wrong against both
+ * `Main.java` and `Main_Skorokhod.java`, which read the identical
+ * `state.get(Zi)`; fixed here by dropping those six redundant, incorrect
+ * recomputes.)
+ *
+ * The original evaluates 20 thresholds (for plotting a robustness curve);
+ * only one representative threshold is ported here, matching the
+ * `isocitrate.stark`/`envzompr.stark` precedent of not guessing at
+ * empirically-swept values. The normalisation constants are likewise
+ * placeholders: the original computes them as
+ * `max(sampled Zi value across both traces) * 1.1` after actually running
+ * the simulation, which has no static equivalent here.
+ */
+
+param K01 = 0.0;
+param K11 = 2.0;
+param BETA1 = 5.0;
+param K02 = 0.0;
+param K12 = 2.0;
+param BETA2 = 5.0;
+param K03 = 0.0;
+param K13 = 2.0;
+param BETA3 = 5.0;
+
+/* THETAij: interaction weight of gene j's protein on gene i's activation. */
+param THETA11 = 0.0;
+param THETA21 = 0.0;
+param THETA31 = -10.0;
+param THETA12 = -10.0;
+param THETA22 = 0.0;
+param THETA32 = 0.0;
+param THETA13 = 0.0;
+param THETA23 = -10.0;
+param THETA33 = 0.0;
+
+/* Initial burst frequencies, evaluated at Z1 = Z2 = Z3 = 0. */
+param INIT_KON1 = (K01 + K11 * exp(BETA1)) / (1 + exp(BETA1));
+param INIT_KON2 = (K02 + K12 * exp(BETA2)) / (1 + exp(BETA2));
+param INIT_KON3 = (K03 + K13 * exp(BETA3)) / (1 + exp(BETA3));
+
+function kon_rate(real k0, real k1, real beta, real z1, real theta1, real z2, real theta2, real z3, real theta3) {
+  let e = exp(beta + theta1*z1 + theta2*z2 + theta3*z3) in
+  return (k0 + k1*e) / (1 + e);
+}
+
+global variables {
+  /* the system starts with all promoters inactive, no mRNA and no protein */
+  real G1 = 1.0;
+  real AG1 = 0.0;
+  real X1 = 0.0;
+  real Z1 = 0.0;
+
+  real G2 = 1.0;
+  real AG2 = 0.0;
+  real X2 = 0.0;
+  real Z2 = 0.0;
+
+  real G3 = 1.0;
+  real AG3 = 0.0;
+  real X3 = 0.0;
+  real Z3 = 0.0;
+
+  real kon1 = INIT_KON1;
+  real koff1 = 5.0;
+  real s01 = 250.0;
+  real s11 = 7.0;
+  real d01 = 1.0;
+  real d11 = 0.1;
+
+  real kon2 = INIT_KON2;
+  real koff2 = 5.0;
+  real s02 = 250.0;
+  real s12 = 7.0;
+  real d02 = 1.0;
+  real d12 = 0.1;
+
+  real kon3 = INIT_KON3;
+  real koff3 = 5.0;
+  real s03 = 250.0;
+  real s13 = 7.0;
+  real d03 = 1.0;
+  real d13 = 0.1;
+}
+
+environment {
+  let
+    w1 = kon1 * G1
+  and
+    w2 = koff1 * AG1
+  and
+    w3 = s01 * AG1
+  and
+    w4 = s11 * X1
+  and
+    w5 = d01 * X1
+  and
+    w6 = d11 * Z1
+  and
+    w7 = kon2 * G2
+  and
+    w8 = koff2 * AG2
+  and
+    w9 = s02 * AG2
+  and
+    w10 = s12 * X2
+  and
+    w11 = d02 * X2
+  and
+    w12 = d12 * Z2
+  and
+    w13 = kon3 * G3
+  and
+    w14 = koff3 * AG3
+  and
+    w15 = s03 * AG3
+  and
+    w16 = s13 * X3
+  and
+    w17 = d03 * X3
+  and
+    w18 = d13 * Z3
+  and
+    c1 = w1
+  and
+    c2 = c1 + w2
+  and
+    c3 = c2 + w3
+  and
+    c4 = c3 + w4
+  and
+    c5 = c4 + w5
+  and
+    c6 = c5 + w6
+  and
+    c7 = c6 + w7
+  and
+    c8 = c7 + w8
+  and
+    c9 = c8 + w9
+  and
+    c10 = c9 + w10
+  and
+    c11 = c10 + w11
+  and
+    c12 = c11 + w12
+  and
+    c13 = c12 + w13
+  and
+    c14 = c13 + w14
+  and
+    c15 = c14 + w15
+  and
+    c16 = c15 + w16
+  and
+    c17 = c16 + w17
+  and
+    c18 = c17 + w18
+  and
+    threshold = R[0,1] * c18
+  in {
+    /* default: recompute kon1/kon2/kon3 from the current (unchanged)
+       protein levels; overridden below in the branches that change one. */
+    kon1' = kon_rate(K01, K11, BETA1, Z1, THETA11, Z2, THETA21, Z3, THETA31);
+    kon2' = kon_rate(K02, K12, BETA2, Z1, THETA12, Z2, THETA22, Z3, THETA32);
+    kon3' = kon_rate(K03, K13, BETA3, Z1, THETA13, Z2, THETA23, Z3, THETA33);
+    if (c18 > 0) {
+      if (threshold <= c1) {
+        /* r1: G1 -[kon1]-> AG1 */
+        G1' = G1 - 1;
+        AG1' = AG1 + 1;
+      } else { if (threshold <= c2) {
+        /* r2: AG1 -[koff1]-> G1 */
+        AG1' = AG1 - 1;
+        G1' = G1 + 1;
+      } else { if (threshold <= c3) {
+        /* r3: AG1 -[s01]-> AG1 + X1 */
+        X1' = X1 + 1;
+      } else { if (threshold <= c4) {
+        /* r4: X1 -[s11]-> X1 + Z1 */
+        Z1' = Z1 + 1;
+      } else { if (threshold <= c5) {
+        /* r5: X1 -[d01]-> nil */
+        X1' = X1 - 1;
+      } else { if (threshold <= c6) {
+        /* r6: Z1 -[d11]-> nil */
+        Z1' = Z1 - 1;
+      } else { if (threshold <= c7) {
+        /* r7: G2 -[kon2]-> AG2 */
+        G2' = G2 - 1;
+        AG2' = AG2 + 1;
+      } else { if (threshold <= c8) {
+        /* r8: AG2 -[koff2]-> G2 */
+        AG2' = AG2 - 1;
+        G2' = G2 + 1;
+      } else { if (threshold <= c9) {
+        /* r9: AG2 -[s02]-> AG2 + X2 */
+        X2' = X2 + 1;
+      } else { if (threshold <= c10) {
+        /* r10: X2 -[s12]-> X2 + Z2 */
+        Z2' = Z2 + 1;
+      } else { if (threshold <= c11) {
+        /* r11: X2 -[d02]-> nil */
+        X2' = X2 - 1;
+      } else { if (threshold <= c12) {
+        /* r12: Z2 -[d12]-> nil */
+        Z2' = Z2 - 1;
+      } else { if (threshold <= c13) {
+        /* r13: G3 -[kon3]-> AG3 */
+        G3' = G3 - 1;
+        AG3' = AG3 + 1;
+      } else { if (threshold <= c14) {
+        /* r14: AG3 -[koff3]-> G3 */
+        AG3' = AG3 - 1;
+        G3' = G3 + 1;
+      } else { if (threshold <= c15) {
+        /* r15: AG3 -[s03]-> AG3 + X3 */
+        X3' = X3 + 1;
+      } else { if (threshold <= c16) {
+        /* r16: X3 -[s13]-> X3 + Z3 */
+        Z3' = Z3 + 1;
+      } else { if (threshold <= c17) {
+        /* r17: X3 -[d03]-> nil */
+        X3' = X3 - 1;
+      } else {
+        /* r18: Z3 -[d13]-> nil */
+        Z3' = Z3 - 1;
+      }}}}}}}}}}}}}}}}}
+    }
+  }
+}
+
+/* Placeholder: the original computes these as max(sampled Zi value across
+   both the unperturbed and perturbed traces) * 1.1 after running the
+   simulation; there's no static equivalent here. */
+param NORMALISATION_Z1 = 100.0;
+param NORMALISATION_Z2 = 100.0;
+param NORMALISATION_Z3 = 100.0;
+/* x: increment applied to gene 1's translation rate s11 by the perturbation. */
+param PERT_X = -3.0;
+
+penalty rho_z1 = Z1 / NORMALISATION_Z1
+penalty rho_z2 = Z2 / NORMALISATION_Z2
+penalty rho_z3 = Z3 / NORMALISATION_Z3
+
+distance atomic_z1 = < rho_z1;
+distance atomic_z2 = < rho_z2;
+distance atomic_z3 = < rho_z3;
+distance max_z1_z2 = max(atomic_z1, atomic_z2);
+distance max_z1_z2_z3 = max(max_z1_z2, atomic_z3);
+distance max_interval_z1_z2_z3 = \G[800,900] max_z1_z2_z3;
+
+/* Bumps s11 (gene 1's translation rate) by PERT_X for 50 steps, then reverts
+   it for the next 50 steps, repeated 5 times. */
+perturbation p_transl_rate = ([s11 <- max(0.0, s11 + PERT_X)]@50 ; [s11 <- max(0.0, s11 - PERT_X)]@50)^5;
+
+formula robust_repr = \D[max_interval_z1_z2_z3, p_transl_rate] <= 0.10;

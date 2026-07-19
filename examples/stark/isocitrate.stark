@@ -1,0 +1,122 @@
+/*
+ * Ported from ~/STARK/examples/Isocitrate/src/main/java/isocitrate/Main.java:
+ * the isocitrate dehydrogenase regulatory network (IDHKPIDH) of E. Coli,
+ * simulated as a chemical reaction network via the Gillespie stochastic
+ * simulation algorithm (SSA), asking whether species I is robust to
+ * perturbing the initial amounts of E and Ip.
+ *
+ * The original's `TimedSystem` uses a `NilController` (no decision-making
+ * controller at all) and tracks continuous reaction time
+ * (`selectReactionTime`, via `ds.getTimeDelta()`/`getTimeReal()`); this
+ * grammar has no continuous-time/`NilController` concept, only a discrete
+ * step per `environment` block, so each step here is one Gillespie reaction
+ * event and the real-valued time-between-reactions is not tracked — this
+ * matches `random_walk.stark`'s pattern of a spec with no `component` at
+ * all, just `variables` + `environment`.
+ *
+ * Gillespie's weighted reaction choice (pick reaction `j` with probability
+ * proportional to its propensity `lambda[j]`) has no direct STARK construct,
+ * so it's built from cumulative-weight thresholds compared against one
+ * `R[0,1]` draw — nested `if`/`else` narrowing down which reaction fired,
+ * each branch applying only that reaction's net stoichiometry change (an
+ * unassigned variable keeps its previous value, exactly as an unlisted
+ * `DataStateUpdate` does in the original).
+ *
+ * The original draws each species' initial amount randomly
+ * (`ceil(100*rand.nextDouble())`); ported as fixed values since variable
+ * initializers can't be random here either.
+ *
+ * The original evaluates six perturbations (`pertEandIp` with six different
+ * (x,y) pairs), each against its own empirically-derived normalisation
+ * constant (`max(sampled I values) * 1.1`, computed by actually running the
+ * simulation first) — there is no static equivalent for "run a simulation
+ * and observe its max" without an evaluator, so only one representative
+ * perturbation/distance/formula is ported, with a placeholder normalisation
+ * constant, rather than guessing at five more empirical constants.
+ */
+
+param THRESHOLD = 0.03;
+param LEFT_BOUND = 400;
+param RIGHT_BOUND = 1000;
+/* Placeholder: the original computes this as max(sampled I values) * 1.1
+   after running the simulation; there's no static equivalent here. */
+param NORMALISATION = 100.0;
+
+global variables {
+  real E = 50.0;
+  real I = 50.0;
+  real Ip = 50.0;
+  real EIp = 50.0;
+  real EIpI = 50.0;
+}
+
+environment {
+  let
+    w1 = 0.02 * E * Ip
+  and
+    w2 = 0.5 * EIp
+  and
+    w3 = 0.5 * EIp
+  and
+    w4 = 0.02 * I * EIp
+  and
+    w5 = 0.5 * EIpI
+  and
+    w6 = 0.1 * EIpI
+  and
+    total = w1 + w2 + w3 + w4 + w5 + w6
+  and
+    threshold = R[0,1] * total
+  in {
+    if (total > 0) {
+      if (threshold <= w1) {
+        /* r1: E + Ip -> EIp */
+        E' = E - 1;
+        Ip' = Ip - 1;
+        EIp' = EIp + 1;
+      } else {
+        if (threshold <= w1 + w2) {
+          /* r2: EIp -> E + Ip */
+          EIp' = EIp - 1;
+          E' = E + 1;
+          Ip' = Ip + 1;
+        } else {
+          if (threshold <= w1 + w2 + w3) {
+            /* r3: EIp -> E + I */
+            EIp' = EIp - 1;
+            E' = E + 1;
+            I' = I + 1;
+          } else {
+            if (threshold <= w1 + w2 + w3 + w4) {
+              /* r4: I + EIp -> EIpI */
+              I' = I - 1;
+              EIp' = EIp - 1;
+              EIpI' = EIpI + 1;
+            } else {
+              if (threshold <= w1 + w2 + w3 + w4 + w5) {
+                /* r5: EIpI -> I + EIp */
+                EIpI' = EIpI - 1;
+                I' = I + 1;
+                EIp' = EIp + 1;
+              } else {
+                /* r6: EIpI -> Ip + EIp */
+                EIpI' = EIpI - 1;
+                Ip' = Ip + 1;
+                EIp' = EIp + 1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+penalty rho_I = I / NORMALISATION
+
+distance atomic_I = < rho_I;
+distance distance_I = \G[LEFT_BOUND, RIGHT_BOUND] atomic_I;
+
+perturbation p_E_Ip = [E <- 0.001, Ip <- 100]@0;
+
+formula rob_E_Ip = \D[distance_I, p_E_Ip] <= THRESHOLD;

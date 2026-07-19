@@ -89,7 +89,7 @@ component Engine{
         int ch_in = HALF;
     }
     controller {
-        aiState Ctrl {
+        state Ctrl {
             if (ch_temp >= 99.8) {
                 cool' = true;
                 step Cooling;
@@ -97,7 +97,7 @@ component Engine{
             exec Check;
             }
         }
-        aiState Check {
+        state Check {
             if (ch_speed == LOW) {
                 speed' = LOW;
                 cool' = false;
@@ -108,10 +108,10 @@ component Engine{
                 step Ctrl;
             }
         }
-        aiState Cooling {
+        state Cooling {
             4#step Check;
         }
-        aiState IDS {
+        state IDS {
             if (temp>101.0 & !cool) {
                 ch_wrn' = HOT;
                 ch_speed' = LOW;

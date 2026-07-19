@@ -1,0 +1,150 @@
+/*
+ * Ported from ~/STARK/examples/envzompr/src/main/java/envzompr/Main.java: an
+ * 11-reaction, 8-species chemical reaction network (same Gillespie-SSA /
+ * `NilController` / no-`component` pattern as `isocitrate.stark` — see that
+ * file's header for the general approach: cumulative-weight thresholds
+ * against one `R[0,1]` draw standing in for Gillespie's weighted reaction
+ * choice, continuous reaction time not tracked).
+ *
+ * The original's extra `if (state.get(i) < r_input[j][i]) weight = 0`
+ * safeguard (don't let a reaction fire without enough reactant) is provably
+ * redundant here and so isn't ported: every reaction's stoichiometric input
+ * is 0 or 1, so a depleted reactant (count 0) already zeroes that reaction's
+ * weight through ordinary multiplication.
+ *
+ * As in `isocitrate.stark`, the six `addXY`/distance/robustness-formula
+ * variants differ only in perturbation parameters and an empirically-derived
+ * normalisation constant (`max/min of sampled YP` from an actual simulation
+ * run, which has no static equivalent) — only one representative
+ * perturbation/distance/formula is ported.
+ */
+
+param H = 600;
+param ETA = 0.15;
+/* Placeholder: the original computes this as
+   max(sampled YP)*1.1 - min(sampled YP)*0.9 after running the simulation;
+   there's no static equivalent here. */
+param NORMALISATION = 50.0;
+
+global variables {
+  real X = 25.0;
+  real Y = 150.0;
+  real XT = 0.0;
+  real XP = 0.0;
+  real XPY = 0.0;
+  real YP = 10.0;
+  real XDYP = 0.0;
+  real XD = 50.0;
+}
+
+environment {
+  let
+    w1 = 0.5 * XD
+  and
+    w2 = 0.5 * X
+  and
+    w3 = 0.5 * XT
+  and
+    w4 = 0.5 * X
+  and
+    w5 = 0.1 * XT
+  and
+    w6 = 0.02 * Y * XP
+  and
+    w7 = 0.5 * XPY
+  and
+    w8 = 0.5 * XPY
+  and
+    w9 = 0.02 * YP * XD
+  and
+    w10 = 0.5 * XDYP
+  and
+    w11 = 0.1 * XDYP
+  and
+    total = w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11
+  and
+    threshold = R[0,1] * total
+  in {
+    if (total > 0) {
+      if (threshold <= w1) {
+        /* r1: XD -> X */
+        XD' = XD - 1;
+        X' = X + 1;
+      } else {
+        if (threshold <= w1+w2) {
+          /* r2: X -> XD */
+          X' = X - 1;
+          XD' = XD + 1;
+        } else {
+          if (threshold <= w1+w2+w3) {
+            /* r3: XT -> X */
+            XT' = XT - 1;
+            X' = X + 1;
+          } else {
+            if (threshold <= w1+w2+w3+w4) {
+              /* r4: X -> XT */
+              X' = X - 1;
+              XT' = XT + 1;
+            } else {
+              if (threshold <= w1+w2+w3+w4+w5) {
+                /* r5: XT -> XP */
+                XT' = XT - 1;
+                XP' = XP + 1;
+              } else {
+                if (threshold <= w1+w2+w3+w4+w5+w6) {
+                  /* r6: Y + XP -> XPY */
+                  Y' = Y - 1;
+                  XP' = XP - 1;
+                  XPY' = XPY + 1;
+                } else {
+                  if (threshold <= w1+w2+w3+w4+w5+w6+w7) {
+                    /* r7: XPY -> Y + XP */
+                    XPY' = XPY - 1;
+                    Y' = Y + 1;
+                    XP' = XP + 1;
+                  } else {
+                    if (threshold <= w1+w2+w3+w4+w5+w6+w7+w8) {
+                      /* r8: XPY -> X + YP */
+                      XPY' = XPY - 1;
+                      X' = X + 1;
+                      YP' = YP + 1;
+                    } else {
+                      if (threshold <= w1+w2+w3+w4+w5+w6+w7+w8+w9) {
+                        /* r9: YP + XD -> XDYP */
+                        YP' = YP - 1;
+                        XD' = XD - 1;
+                        XDYP' = XDYP + 1;
+                      } else {
+                        if (threshold <= w1+w2+w3+w4+w5+w6+w7+w8+w9+w10) {
+                          /* r10: XDYP -> YP + XD */
+                          XDYP' = XDYP - 1;
+                          YP' = YP + 1;
+                          XD' = XD + 1;
+                        } else {
+                          /* r11: XDYP -> Y + XD */
+                          XDYP' = XDYP - 1;
+                          Y' = Y + 1;
+                          XD' = XD + 1;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+penalty rho_yp = YP / NORMALISATION
+
+distance atomic_yp = < rho_yp;
+distance distance_yp = \G[200, 600] atomic_yp;
+
+perturbation p_XY = [X <- 10, Y <- 50]@0;
+
+formula robustness = \D[distance_yp, p_XY] <= ETA;
+formula always_robustness = \G[0,300] robustness;

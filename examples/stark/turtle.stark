@@ -1,0 +1,199 @@
+/*
+ * Ported from ~/STARK/examples/turtle/src/main/java/turtle/Industrial_plant.java:
+ * a robot navigating a sequence of waypoints, with a speed/acceleration
+ * controller cycle (`SetDir` picks a heading, `Ctrl`/`Accelerate`/
+ * `Decelerate`/`Stop` manage speed) essentially identical to
+ * `toll.stark`/`vehicle_full.stark`'s vehicle-following cycle, applied here
+ * to waypoint tracking instead of gap-keeping.
+ *
+ * `turtle`'s second scenario, `Smart_hospital.java`, is the same
+ * waypoint-following-robot mechanic (same controller shape, same feedback
+ * system) applied to a different environment/waypoint list, so it isn't
+ * ported separately.
+ *
+ * STARK has no array type, so the original's `WPx`/`WPy` waypoint arrays
+ * become `wp_x`/`wp_y` functions doing the lookup via nested ternaries (7
+ * waypoints, so 7-way nested `?:`) — the natural STARK equivalent of a fixed
+ * lookup table.
+ *
+ * The original also builds a `FeedbackSystem`/`PersistentFeedback`
+ * (comparing the running system against the mean of its own nominal
+ * evolution sequence, correcting speed/waypoint drift): `stark.feedback` is
+ * a Java-only extension with no textual-STARK construct at all, so it isn't
+ * ported, same as the DisTL monitoring gap in `monitoring.stark`.
+ *
+ * The original's perturbation is a `PersistentPerturbation` (applied at
+ * *every* step, indefinitely); approximated here with a large but finite
+ * iteration count (`^300`), since this grammar's `^` always takes a
+ * concrete count. As in `vehicle_full.stark`, the perturbation draws its own
+ * `R[0,1]` for each assignment that needs the same random offset
+ * (`s_speed`/`gap` both depend on one `fake_speed` in the original), which
+ * is a known fidelity gap — see `MISSING_GRAMMAR_FEATURES.md`.
+ */
+
+param PI = 3.141592653589793;
+param ACCELERATION = 0.05;
+param BRAKE = 0.40;
+param NEUTRAL = 0.0;
+param TIMER = 1;
+param INIT_SPEED = 0.0;
+param MAX_SPEED = 3.0;
+param MAX_SPEED_OFFSET = 0.15;
+param INIT_X = 0.0;
+param INIT_Y = 0.0;
+param INIT_THETA = PI/2;
+param FINAL_X = 35.0;
+param FINAL_Y = 30.0;
+param INIT_DISTANCE = sqrt((1.0-INIT_X)^2 + (3.0-INIT_Y)^2);
+param LAST_WAYPOINT = 6;
+
+function wp_x(int i) {
+  return (i==0 ? 1.0 : (i==1 ? 13.0 : (i==2 ? 7.0 : (i==3 ? 23.0 : (i==4 ? 20.0 : (i==5 ? 32.0 : FINAL_X))))));
+}
+
+function wp_y(int i) {
+  return (i==0 ? 3.0 : (i==1 ? 3.0 : (i==2 ? 7.0 : (i==3 ? 14.0 : (i==4 ? 31.0 : (i==5 ? 40.0 : FINAL_Y))))));
+}
+
+function heading_to(int wp, real x, real y) {
+  /* BUG FIXED: the Java computes
+       (WPx[wp]==x) ? 0 : ((WPx[wp]<x)?PI:0) + atan((WPy[wp]-y)/(WPx[wp]-x))
+     and Java's ternary `?:` binds *looser* than `+`, so the `+ atan(...)` is
+     part of the ELSE branch: when WPx[wp]==x (vertical alignment that would
+     divide by zero) the heading is just 0. The original port wrote
+       (wp_x(wp)==x ? 0.0 : (wp_x(wp)<x ? PI : 0.0)) + atan(...)
+     with `+ atan(...)` OUTSIDE the ternary, so the wp_x(wp)==x case became
+     0 + atan(.../0) = +/-pi/2 instead of Java's 0 — defeating the guard that
+     exists precisely to avoid that division by zero. Re-parenthesised to match
+     Java. (Only observably differs on exact wp_x==x float equality, essentially
+     never reached in a run, but the port now matches the source semantics.) */
+  return (wp_x(wp) == x ? 0.0 : (wp_x(wp) < x ? PI : 0.0) + atan((wp_y(wp) - y) / (wp_x(wp) - x)));
+}
+
+function braking_distance(real speed) {
+  return (speed^2 + (ACCELERATION+BRAKE)*(ACCELERATION*TIMER^2 + 2*speed*TIMER)) / (2*BRAKE);
+}
+
+global variables {
+  real x = INIT_X;
+  real y = INIT_Y;
+  real theta = INIT_THETA;
+  real p_speed = INIT_SPEED;
+  real s_speed = INIT_SPEED;
+  real p_distance = INIT_DISTANCE;
+  real accel = NEUTRAL;
+  int timer_V = 0;
+  real gap = INIT_DISTANCE - braking_distance(INIT_SPEED);
+  int currentWP = 0;
+}
+
+component Robot {
+  variables { }
+  controller {
+    state SetDir {
+      if (gap > 0) {
+        theta' = heading_to(currentWP, x, y);
+        step Ctrl;
+      } else {
+        if (currentWP == LAST_WAYPOINT) {
+          timer_V' = TIMER;
+          step Stop;
+        } else {
+          currentWP' = currentWP + 1;
+          theta' = heading_to(currentWP + 1, x, y);
+          step Ctrl;
+        }
+      }
+    }
+    state Ctrl {
+      if (s_speed > 0) {
+        if (gap > 0) {
+          accel' = ACCELERATION;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = -BRAKE;
+          timer_V' = TIMER;
+          step Decelerate;
+        }
+      } else {
+        if (gap > 0) {
+          accel' = ACCELERATION;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = NEUTRAL;
+          timer_V' = TIMER;
+          step SetDir;
+        }
+      }
+    }
+    state Accelerate {
+      if (timer_V > 0) {
+        step Accelerate;
+      } else {
+        /* BUG FIXED: was `step Ctrl;`. Java `Accelerate` is
+           `ifThenElse(timer_V>0, doTick(ref Accelerate), reference("Ctrl"))`; the
+           else is a bare same-tick `exec`, not a time-consuming `step`. */
+        exec Ctrl;
+      }
+    }
+    state Decelerate {
+      if (timer_V > 0) {
+        step Decelerate;
+      } else {
+        /* BUG FIXED: was `step Ctrl;` — same as Accelerate (Java else is a bare
+           `reference("Ctrl")` = same-tick `exec`). */
+        exec Ctrl;
+      }
+    }
+    state Stop {
+      if (timer_V > 0) {
+        step Stop;
+      } else {
+        timer_V' = TIMER;
+        step Stop;
+      }
+    }
+  }
+  init SetDir
+}
+
+environment {
+  let
+    new_p_speed = (accel == NEUTRAL ? max(0.0, p_speed - ACCELERATION) : min(MAX_SPEED, max(0.0, p_speed + accel)))
+  and
+    newX = x + cos(theta) * new_p_speed
+  and
+    newY = y + sin(theta) * new_p_speed
+  and
+    new_p_distance = sqrt((wp_x(currentWP) - newX)^2 + (wp_y(currentWP) - newY)^2)
+  and
+    new_gap = new_p_distance - braking_distance(new_p_speed)
+  in {
+    x' = newX;
+    y' = newY;
+    timer_V' = timer_V - 1;
+    p_speed' = new_p_speed;
+    p_distance' = new_p_distance;
+    s_speed' = new_p_speed;
+    gap' = new_gap;
+  }
+}
+
+/* Placeholder: the original computes this as max(sampled Euclidean
+   distance-to-waypoint) after running the simulation; there's no static
+   equivalent here. */
+param NORMALISATION = 40.0;
+
+penalty rho_p2p = sqrt((x - wp_x(currentWP))^2 + (y - wp_y(currentWP))^2) / NORMALISATION
+
+distance dist_p2p = < rho_p2p;
+distance max_dist_p2p = \G[0,200] dist_p2p;
+
+perturbation p_slower = ([
+  s_speed <- max(0.0, p_speed - R[0,1]*MAX_SPEED_OFFSET),
+  gap <- p_distance - braking_distance(max(0.0, p_speed - R[0,1]*MAX_SPEED_OFFSET))
+]@0)^300;
+
+formula robust_p2p = \D[max_dist_p2p, p_slower] <= 0.3;

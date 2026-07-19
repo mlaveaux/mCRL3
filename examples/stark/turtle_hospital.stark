@@ -1,0 +1,211 @@
+/*
+ * Ported from ~/STARK/examples/turtle/src/main/java/turtle/Smart_hospital.java:
+ * the same waypoint-following robot controller/environment shape as
+ * `turtle.stark` (`Industrial_plant.java`) — `SetDir`/`Ctrl`/`Accelerate`/
+ * `Decelerate`/`Stop`, gap-vs-braking-distance speed control — but *not*
+ * just a different waypoint list: this scenario adds a medicine-delivery
+ * task layered on top (`get_medicine`: 0 not carrying, 1 carrying, -1
+ * dropped; `fail`: delivery failed) that genuinely changes the environment
+ * logic, so it's ported as its own file rather than folded into
+ * `turtle.stark`.
+ *
+ * Medicine is picked up at waypoint 2, delivered at waypoint 8, and dropped
+ * if the robot turns more than PI/9 while carrying it above
+ * `MAX_SPEED_WITH_MED` — delivery also fails if the robot reaches waypoint 7
+ * without carrying the medicine, or waypoint 11 without having delivered it.
+ * All four conditions read the *same* pre-round state in the original
+ * (`state.get(get_medicine)` never reflects an update queued earlier in the
+ * same call), and the "drop" check is written *after* the delivery check in
+ * `getEnvironmentUpdates`, so it takes priority when both could fire in the
+ * same round (reaching waypoint 8 while also over-turning) — ported by
+ * checking the drop condition first in `new_get_medicine`'s ternary chain,
+ * matching this grammar's "later assignment overrides" semantics used
+ * throughout this session (e.g. `polistil.stark`).
+ *
+ * The original's `FeedbackSystem`/`PersistentFeedback` (comparing the
+ * running system to the mean of its own nominal evolution, correcting
+ * heading/waypoint drift) is the same `stark.feedback` Java-only extension
+ * already documented as untranslatable in `turtle.stark`'s header — not
+ * ported here either.
+ *
+ * The `ChangeDir` perturbation has *two* parts: an unconditional heading
+ * jitter (`theta <- theta + R[-0.05,0.05]`, ported below) applied every
+ * step, and a periodic speed boost gated on `state.getStep() % k == 0` — the
+ * absolute simulation-step counter has no equivalent expression in this
+ * grammar (there is no `step`/"current round index" primitive available to
+ * `Expression`), so the speed-boost half of the perturbation cannot be
+ * expressed at all. This is a new, previously undocumented gap; see
+ * `MISSING_GRAMMAR_FEATURES.md`. As in `turtle.stark`, `PersistentPerturbation`
+ * (applied at *every* step, forever) is approximated with a large but finite
+ * iteration count (`^300`).
+ *
+ * The original sweeps thresholds `eta` in [0.05, 0.15] across three `off`
+ * values (1.25, 1.5, 1.75) for its `\G[0,14] \D[...] <= eta` robustness
+ * query; only one representative combination (`off = 1.5`, `eta = 0.10`) is
+ * ported, matching the `isocitrate.stark`/`envzompr.stark` precedent of not
+ * guessing at every swept value.
+ */
+
+param PI = 3.141592653589793;
+param ACCELERATION = 0.05;
+param BRAKE = 0.1;
+param NEUTRAL = 0.0;
+param TIMER = 1;
+param INIT_SPEED = 0.0;
+param MAX_SPEED = 1.0;
+param MAX_SPEED_WITH_MED = 0.5;
+param MAX_THETA_OFFSET = 0.1;
+param INIT_X = 15.0;
+param INIT_Y = 6.0;
+param INIT_THETA = PI/2;
+param FINAL_X = 15.0;
+param FINAL_Y = 6.0;
+param INIT_DISTANCE = sqrt((13.0-INIT_X)^2 + (6.0-INIT_Y)^2);
+param LAST_WAYPOINT = 11;
+
+function wp_x(int i) {
+  return (i==0 ? 13.0 : (i==1 ? 13.0 : (i==2 ? 13.0 : (i==3 ? 6.0 : (i==4 ? 6.0 : (i==5 ? 2.0 :
+         (i==6 ? 6.0 : (i==7 ? 6.0 : (i==8 ? 2.0 : (i==9 ? 6.0 : (i==10 ? 6.0 : FINAL_X)))))))))));
+}
+
+function wp_y(int i) {
+  return (i==0 ? 6.0 : (i==1 ? 1.0 : (i==2 ? 6.0 : (i==3 ? 6.0 : (i==4 ? 2.0 : (i==5 ? 2.0 :
+         (i==6 ? 2.0 : (i==7 ? 7.0 : (i==8 ? 7.0 : (i==9 ? 7.0 : (i==10 ? 6.0 : FINAL_Y)))))))))));
+}
+
+function heading_to(int wp, real x, real y) {
+  return (wp_x(wp) == x ? 0.0 : (wp_x(wp) < x ? PI : 0.0)) + atan((wp_y(wp) - y) / (wp_x(wp) - x));
+}
+
+function braking_distance(real speed) {
+  return (speed^2 + (ACCELERATION+BRAKE)*(ACCELERATION*TIMER^2 + 2*speed*TIMER)) / (2*BRAKE);
+}
+
+global variables {
+  real x = INIT_X;
+  real y = INIT_Y;
+  real theta = INIT_THETA;
+  real p_speed = INIT_SPEED;
+  real s_speed = INIT_SPEED;
+  real p_distance = INIT_DISTANCE;
+  real accel = NEUTRAL;
+  int timer_V = 0;
+  real gap = INIT_DISTANCE - braking_distance(INIT_SPEED);
+  int currentWP = 0;
+  real previous_theta = INIT_THETA;
+  real get_medicine = 0.0;
+  real fail = 0.0;
+  real flag = 0.0;
+}
+
+component Robot {
+  variables { }
+  controller {
+    state SetDir {
+      if (gap > 0) {
+        previous_theta' = theta;
+        theta' = heading_to(currentWP, x, y);
+        step Ctrl;
+      } else {
+        if (currentWP == LAST_WAYPOINT) {
+          timer_V' = TIMER;
+          step Stop;
+        } else {
+          previous_theta' = theta;
+          currentWP' = currentWP + 1;
+          theta' = heading_to(currentWP + 1, x, y);
+          step Ctrl;
+        }
+      }
+    }
+    state Ctrl {
+      if (s_speed > 0) {
+        if (gap > 0) {
+          accel' = ACCELERATION;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = -BRAKE;
+          timer_V' = TIMER;
+          step Decelerate;
+        }
+      } else {
+        if (gap > 0) {
+          accel' = ACCELERATION;
+          timer_V' = TIMER;
+          step Accelerate;
+        } else {
+          accel' = NEUTRAL;
+          timer_V' = TIMER;
+          step SetDir;
+        }
+      }
+    }
+    state Accelerate {
+      if (timer_V > 0) {
+        step Accelerate;
+      } else {
+        step Ctrl;
+      }
+    }
+    state Decelerate {
+      if (timer_V > 0) {
+        step Decelerate;
+      } else {
+        step Ctrl;
+      }
+    }
+    state Stop {
+      if (timer_V > 0) {
+        step Stop;
+      } else {
+        timer_V' = TIMER;
+        step Stop;
+      }
+    }
+  }
+  init SetDir
+}
+
+environment {
+  let
+    new_p_speed = (accel == NEUTRAL ? max(0.0, p_speed - ACCELERATION) : min(MAX_SPEED, max(0.0, p_speed + accel)))
+  and
+    newX = x + cos(theta) * new_p_speed
+  and
+    newY = y + sin(theta) * new_p_speed
+  and
+    new_p_distance = sqrt((wp_x(currentWP) - newX)^2 + (wp_y(currentWP) - newY)^2)
+  and
+    new_gap = new_p_distance - braking_distance(new_p_speed)
+  and
+    dropped = (abs(theta - previous_theta) > PI/9 && get_medicine == 1 && new_p_speed > MAX_SPEED_WITH_MED)
+  and
+    delivered = (currentWP == 8 && get_medicine == 1)
+  and
+    picked_up = (currentWP == 2 && get_medicine == 0)
+  in {
+    x' = newX;
+    y' = newY;
+    timer_V' = timer_V - 1;
+    p_speed' = new_p_speed;
+    p_distance' = new_p_distance;
+    s_speed' = new_p_speed;
+    gap' = new_gap;
+    get_medicine' = (dropped ? -1 : (delivered ? 0 : (picked_up ? 1 : get_medicine)));
+    fail' = (dropped || (currentWP == 7 && !(get_medicine == 1)) || (currentWP == 11 && !(get_medicine == 0)) ? 1 : fail);
+    flag' = (get_medicine == 1 && flag == 0 ? 1 : flag);
+    previous_theta' = theta;
+  }
+}
+
+penalty rho_fail = fail
+
+distance atomic_fail = < rho_fail;
+distance fail_interval = \G[31,236] atomic_fail;
+
+/* Only the unconditional heading jitter is portable — see file header for
+   the periodic speed-boost gap. */
+perturbation p_changedir = ([theta <- theta + R[-0.05,0.05]]@0)^300;
+
+formula phi_fail = \G[0,14] \D[fail_interval, p_changedir] <= 0.10;

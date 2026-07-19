@@ -1,0 +1,332 @@
+/*
+ * Ported from ~/STARK/examples/vehicle/src/main/java/vehicle/Main.java: a
+ * richer two-vehicle model than `two_vehicles.stark`/`toll.stark` — V1
+ * follows a fixed obstacle, V2 follows V1, each with its own IDS
+ * (intrusion-detection-style warning) state, brake lights, and crash flags.
+ *
+ * Perturbation assignments have no `let`, so a computation shared across
+ * several assignments in the same `[...]@time` block (the original computes
+ * one random `offset` and reuses it for a fake speed, a fake required
+ * distance, and a fake safety gap) can't be drawn once and shared — each
+ * assignment below draws its own `R[0,1]`, so the three "sensor" values are
+ * no longer derived from exactly the same sample. This is a real fidelity
+ * gap, not a stylistic choice — see `MISSING_GRAMMAR_FEATURES.md`.
+ *
+ * The original's `AfterPerturbation(1, ...)` (wait one step before the
+ * repeating perturbation starts) is dropped — folding it into the atomic
+ * perturbation's own `@time` would only shift the start by one tick and
+ * doesn't change the perturbation strategy under test.
+ * `getIteratedCombinedPerturbation` (three "faster" applications sequenced
+ * with three "slower" ones, that pair repeated 20 times) maps directly to
+ * this grammar's `;` (sequence) and `^` (iteration) perturbation operators.
+ */
+
+param ACCELERATION = 1.0;
+param BRAKE = 2.0;
+param NEUTRAL = 0.0;
+param TIMER_INIT = 5;
+param DANGER = 1;
+param OK = 0;
+param MAX_SPEED_OFFSET = 0.3;
+param INIT_SPEED_V1 = 25.0;
+param INIT_SPEED_V2 = 25.0;
+param MAX_SPEED = 40.0;
+param INIT_DISTANCE_OBS_V1 = 10000.0;
+param INIT_DISTANCE_V1_V2 = 5000.0;
+param SAFETY_DISTANCE = 200.0;
+param ETA_comb = 0.1;
+param ETA_fast = 0.05;
+param ETA_slow = 0.1;
+param H = 450;
+param MAX_DISTANCE_OFFSET = 1.0;
+param ETA_CRASH_SPEED = 0.05;
+
+function required_distance(real speed) {
+  return (speed*speed + (ACCELERATION+BRAKE)*(ACCELERATION*TIMER_INIT*TIMER_INIT + 2*speed*TIMER_INIT))/(2*BRAKE) + SAFETY_DISTANCE;
+}
+
+function faster_speed(real speed, real token) {
+  return min(MAX_SPEED, speed + speed * token * MAX_SPEED_OFFSET);
+}
+
+function slower_speed(real speed, real token) {
+  return max(0.0, speed - speed * token * MAX_SPEED_OFFSET);
+}
+
+global variables {
+  real p_speed_V1 = INIT_SPEED_V1;
+  real s_speed_V1 = INIT_SPEED_V1;
+  real p_distance_V1 = INIT_DISTANCE_OBS_V1;
+  real s_distance_V1 = INIT_DISTANCE_OBS_V1;
+  real accel_V1 = NEUTRAL;
+  int timer_V1 = 0;
+  int warning_V1 = OK;
+  real braking_distance_V1 = required_distance(INIT_SPEED_V1) - SAFETY_DISTANCE;
+  real required_distance_V1 = required_distance(INIT_SPEED_V1);
+  real safety_gap_V1 = INIT_DISTANCE_OBS_V1 - required_distance(INIT_SPEED_V1);
+  int brake_light_V1 = 0;
+
+  real p_speed_V2 = INIT_SPEED_V2;
+  real s_speed_V2 = INIT_SPEED_V2;
+  real p_distance_V2 = INIT_DISTANCE_V1_V2 + INIT_DISTANCE_OBS_V1;
+  real s_distance_V2 = INIT_DISTANCE_V1_V2 + INIT_DISTANCE_OBS_V1;
+  real p_distance_V1_V2 = INIT_DISTANCE_V1_V2;
+  real s_distance_V1_V2 = INIT_DISTANCE_V1_V2;
+  real accel_V2 = NEUTRAL;
+  int timer_V2 = 0;
+  int warning_V2 = OK;
+  real braking_distance_V2 = required_distance(INIT_SPEED_V2) - SAFETY_DISTANCE;
+  real required_distance_V2 = required_distance(INIT_SPEED_V2);
+  real safety_gap_V1_V2 = INIT_DISTANCE_V1_V2 - required_distance(INIT_SPEED_V2);
+  real safety_gap_V2 = INIT_DISTANCE_V1_V2 + INIT_DISTANCE_OBS_V1 - required_distance(INIT_SPEED_V2);
+  int brake_light_V2 = 0;
+
+  int crashed_V1 = 0;
+  int crashed_V2 = 0;
+}
+
+component Vehicle1 {
+  variables { }
+  controller {
+    state Ctrl_V1 {
+      if (s_speed_V1 > 0) {
+        if (safety_gap_V1 > 0) {
+          accel_V1' = ACCELERATION;
+          timer_V1' = TIMER_INIT;
+          brake_light_V1' = 0;
+          step Accelerate_V1;
+        } else {
+          accel_V1' = -BRAKE;
+          timer_V1' = TIMER_INIT;
+          brake_light_V1' = 1;
+          step Decelerate_V1;
+        }
+      } else {
+        accel_V1' = NEUTRAL;
+        timer_V1' = TIMER_INIT;
+        step Stop_V1;
+      }
+    }
+    state Accelerate_V1 {
+      if (timer_V1 > 0) {
+        step Accelerate_V1;
+      } else {
+        /* BUG FIXED: was `step Ctrl_V1;`. Java `Accelerate_V1` is
+           `ifThenElse(timer_V1>0, doTick(ref Accelerate_V1), reference("Ctrl_V1"))`;
+           the else is a bare reference = same-tick `exec`, not a time-consuming
+           `step` (which added a spurious idle round before Ctrl re-planned).
+           Matches the toll.stark/two_vehicles.stark timer idiom. */
+        exec Ctrl_V1;
+      }
+    }
+    state Decelerate_V1 {
+      if (timer_V1 > 0) {
+        step Decelerate_V1;
+      } else {
+        /* BUG FIXED: was `step Ctrl_V1;` — same as Accelerate_V1 (bare reference
+           in Java else = same-tick `exec`). */
+        exec Ctrl_V1;
+      }
+    }
+    state Stop_V1 {
+      if (timer_V1 > 0) {
+        step Stop_V1;
+      } else {
+        if (warning_V1 == DANGER) {
+          accel_V1' = -BRAKE;
+          timer_V1' = TIMER_INIT;
+          brake_light_V1' = 1;
+          step Decelerate_V1;
+        } else {
+          timer_V1' = TIMER_INIT;
+          step Stop_V1;
+        }
+      }
+    }
+    state IDS_V1 {
+      if (p_distance_V1 <= 2*TIMER_INIT*SAFETY_DISTANCE && (accel_V1 == ACCELERATION || (accel_V1 == NEUTRAL && p_speed_V1 > 0.0))) {
+        warning_V1' = DANGER;
+        step IDS_V1;
+      } else {
+        warning_V1' = OK;
+        step IDS_V1;
+      }
+    }
+  }
+  init Ctrl_V1 || IDS_V1
+}
+
+component Vehicle2 {
+  variables { }
+  controller {
+    state Ctrl_V2 {
+      if (s_speed_V2 > 0) {
+        if (safety_gap_V1_V2 > 0 && (brake_light_V1 == 0 || s_distance_V1_V2 >= 300) && safety_gap_V2 > 0) {
+          accel_V2' = ACCELERATION;
+          timer_V2' = TIMER_INIT;
+          brake_light_V2' = 0;
+          step Accelerate_V2;
+        } else {
+          accel_V2' = -BRAKE;
+          timer_V2' = TIMER_INIT;
+          brake_light_V2' = 1;
+          step Decelerate_V2;
+        }
+      } else {
+        accel_V2' = NEUTRAL;
+        timer_V2' = TIMER_INIT;
+        step Stop_V2;
+      }
+    }
+    state Accelerate_V2 {
+      if (timer_V2 > 0) {
+        step Accelerate_V2;
+      } else {
+        /* BUG FIXED: was `step Ctrl_V2;` — Java else is a bare
+           `reference("Ctrl_V2")` = same-tick `exec`, not a `step`. */
+        exec Ctrl_V2;
+      }
+    }
+    state Decelerate_V2 {
+      if (timer_V2 > 0) {
+        step Decelerate_V2;
+      } else {
+        /* BUG FIXED: was `step Ctrl_V2;` — same as Accelerate_V2. */
+        exec Ctrl_V2;
+      }
+    }
+    state Stop_V2 {
+      if (timer_V2 > 0) {
+        step Stop_V2;
+      } else {
+        if (warning_V2 == DANGER) {
+          accel_V2' = -BRAKE;
+          timer_V2' = TIMER_INIT;
+          brake_light_V2' = 1;
+          step Decelerate_V2;
+        } else {
+          timer_V2' = TIMER_INIT;
+          step Stop_V2;
+        }
+      }
+    }
+    state IDS_V2 {
+      if (p_distance_V2 <= 2*TIMER_INIT*SAFETY_DISTANCE && (accel_V2 == ACCELERATION || (accel_V2 == NEUTRAL && p_speed_V2 > 0.0))) {
+        warning_V2' = DANGER;
+        step IDS_V2;
+      } else {
+        warning_V2' = OK;
+        step IDS_V2;
+      }
+    }
+  }
+  init Ctrl_V2 || IDS_V2
+}
+
+environment {
+  let
+    travel_V1 = accel_V1/2 + p_speed_V1
+  and
+    new_timer_V1 = timer_V1 - 1
+  and
+    new_p_speed_V1 = min(MAX_SPEED, max(0.0, p_speed_V1 + accel_V1))
+  and
+    new_p_distance_V1 = p_distance_V1 - travel_V1
+  and
+    travel_V2 = accel_V2/2 + p_speed_V2
+  and
+    new_timer_V2 = timer_V2 - 1
+  and
+    new_p_speed_V2 = min(MAX_SPEED, max(0.0, p_speed_V2 + accel_V2))
+  and
+    new_p_distance_V1_V2 = p_distance_V1_V2 - travel_V2 + travel_V1
+  and
+    new_p_distance_V2 = p_distance_V2 - travel_V2
+  in {
+    timer_V1' = new_timer_V1;
+    p_speed_V1' = new_p_speed_V1;
+    p_distance_V1' = new_p_distance_V1;
+    timer_V2' = new_timer_V2;
+    p_speed_V2' = new_p_speed_V2;
+    p_distance_V2' = new_p_distance_V2;
+    p_distance_V1_V2' = new_p_distance_V1_V2;
+    if (new_timer_V1 == 0) {
+      let
+        new_bd_V1 = (new_p_speed_V1*new_p_speed_V1 + (ACCELERATION+BRAKE)*(ACCELERATION*TIMER_INIT*TIMER_INIT + 2*new_p_speed_V1*TIMER_INIT))/(2*BRAKE)
+      and
+        new_rd_V1 = new_bd_V1 + SAFETY_DISTANCE
+      and
+        new_sg_V1 = new_p_distance_V1 - new_rd_V1
+      in {
+        s_speed_V1' = new_p_speed_V1;
+        braking_distance_V1' = new_bd_V1;
+        required_distance_V1' = new_rd_V1;
+        safety_gap_V1' = new_sg_V1;
+        s_distance_V1' = new_p_distance_V1;
+      }
+    }
+    if (new_timer_V2 == 0) {
+      let
+        new_bd_V2 = (new_p_speed_V2*new_p_speed_V2 + (ACCELERATION+BRAKE)*(ACCELERATION*TIMER_INIT*TIMER_INIT + 2*new_p_speed_V2*TIMER_INIT))/(2*BRAKE)
+      and
+        new_rd_V2 = new_bd_V2 + SAFETY_DISTANCE
+      and
+        new_sg_V1_V2 = new_p_distance_V1_V2 - new_rd_V2
+      and
+        new_sg_V2 = new_p_distance_V2 - new_rd_V2
+      in {
+        s_speed_V2' = new_p_speed_V2;
+        braking_distance_V2' = new_bd_V2;
+        required_distance_V2' = new_rd_V2;
+        safety_gap_V1_V2' = new_sg_V1_V2;
+        safety_gap_V2' = new_sg_V2;
+        s_distance_V2' = new_p_distance_V2;
+        s_distance_V1_V2' = new_p_distance_V1_V2;
+      }
+    }
+    if (p_distance_V2 <= 0 || p_distance_V1_V2 <= 0) {
+      crashed_V2' = 1;
+    }
+    if (p_distance_V1 <= 0) {
+      crashed_V1' = 1;
+    }
+  }
+}
+
+penalty rho_crash_probability = (p_distance_V1_V2 > 0 ? 0.0 : 1.0)
+penalty rho_crash_speed = ((crashed_V2 == 0 && (p_distance_V2 <= 0 || p_distance_V1_V2 <= 0)) ? p_speed_V2 / MAX_SPEED : 0.0)
+
+distance crash_probability = < rho_crash_probability;
+distance crash_dist = \G[350,450] crash_probability;
+
+distance crash_speed = < rho_crash_speed;
+distance crash_speed_dist = \G[10,400] crash_speed;
+
+perturbation p_faster = ([
+  s_speed_V1 <- faster_speed(p_speed_V1, R[0,1]),
+  required_distance_V1 <- required_distance(faster_speed(p_speed_V1, R[0,1])),
+  safety_gap_V1 <- p_distance_V1 - required_distance(faster_speed(p_speed_V1, R[0,1]))
+]@(TIMER_INIT - 1))^3;
+
+perturbation p_slower = ([
+  s_speed_V2 <- slower_speed(p_speed_V2, R[0,1]),
+  required_distance_V2 <- required_distance(slower_speed(p_speed_V2, R[0,1])),
+  safety_gap_V1_V2 <- p_distance_V1_V2 - required_distance(slower_speed(p_speed_V2, R[0,1]))
+]@(TIMER_INIT - 1))^3;
+
+perturbation p_combined = (p_faster ; p_slower)^20;
+
+perturbation p_distance_sensors = ([
+  safety_gap_V1_V2 <- p_distance_V1_V2 * (1 + R[0,1] * MAX_DISTANCE_OFFSET) - required_distance_V2,
+  safety_gap_V2 <- p_distance_V1 * (1 + R[0,1] * MAX_DISTANCE_OFFSET) - required_distance_V2,
+  s_distance_V1_V2 <- p_distance_V1_V2 * (1 + R[0,1] * MAX_DISTANCE_OFFSET),
+  s_distance_V2 <- p_distance_V1 * (1 + R[0,1] * MAX_DISTANCE_OFFSET)
+]@(TIMER_INIT - 1))^100;
+
+formula phi_fast = \G[0,H] \D[crash_dist, p_faster] <= ETA_fast;
+formula phi_slow = \G[0,H] \D[crash_dist, p_slower] <= ETA_slow;
+formula phi_comb = \G[0,H] \D[crash_dist, p_combined] <= ETA_comb;
+formula phi_crash_lhs = phi_fast && phi_slow;
+formula phi_crash = !phi_crash_lhs || phi_comb;
+
+formula phi_crash_speed = \G[0,H] \D[crash_speed_dist, p_distance_sensors] <= ETA_CRASH_SPEED;
