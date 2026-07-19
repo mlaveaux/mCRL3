@@ -130,7 +130,11 @@ component Vehicle1 {
   controller {
     state Control {
       if (my_timer > 0) {
-        exec Control;
+        /* BUG FIXED: was `exec Control;`. Java `Control` is
+           `ifThenElse(my_timer>0, doTick(ref Control), ...)`; `doTick` is
+           tick-consuming (== `step`), and a same-round `exec Control` self-loop
+           would never terminate. Corrected to `step Control`. */
+        step Control;
       } else {
         if (my_lane == 1) {
           if (dist > safety_gap) {
@@ -196,12 +200,20 @@ component Vehicle1 {
     }
 
     state Idling {
-      if (my_timer > 0) { exec Idling; } else { exec Control; }
+      /* Java `Idling` = `ifThenElse(my_timer>0, doTick(ref Idling), reference("Control"))`.
+         BUG FIXED: the then-branch `doTick(ref Idling)` is tick-consuming, so
+         `exec Idling` (was) -> `step Idling`. The else is a *bare*
+         `reference("Control")`, i.e. a same-round jump, so `exec Control` is
+         correct and kept. */
+      if (my_timer > 0) { step Idling; } else { exec Control; }
     }
 
     state Moving_right {
       if (my_timer > 0) {
-        exec Moving_right;
+        /* BUG FIXED: was `exec Moving_right;`. Java then-branch is
+           `doTick(ref Moving_right)` (tick-consuming == `step`); a same-round
+           `exec` self-loop would not terminate. */
+        step Moving_right;
       } else {
         if (my_position == 1 || dist > safety_gap) {
           intention' = FASTER;
@@ -229,7 +241,10 @@ component Vehicle1 {
 
     state Moving_left {
       if (my_timer > 0) {
-        exec Moving_left;
+        /* BUG FIXED: was `exec Moving_left;`. Java then-branch is
+           `doTick(ref Moving_left)` (tick-consuming == `step`); a same-round
+           `exec` self-loop would not terminate. */
+        step Moving_left;
       } else {
         if (other_lane == 0 && my_position == -1) {
           intention' = FASTER;

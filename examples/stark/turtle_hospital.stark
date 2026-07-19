@@ -74,7 +74,13 @@ function wp_y(int i) {
 }
 
 function heading_to(int wp, real x, real y) {
-  return (wp_x(wp) == x ? 0.0 : (wp_x(wp) < x ? PI : 0.0)) + atan((wp_y(wp) - y) / (wp_x(wp) - x));
+  /* BUG FIXED: Java's ternary `?:` binds looser than `+`, so in
+       (WPx[wp]==x) ? 0 : ((WPx[wp]<x)?PI:0) + atan((WPy[wp]-y)/(WPx[wp]-x))
+     the `+ atan(...)` is part of the ELSE branch (WPx[wp]==x yields heading 0,
+     avoiding the division by zero). The original port put `+ atan(...)` OUTSIDE
+     the ternary, changing the wp_x==x case to 0 + atan(.../0) = +/-pi/2.
+     Re-parenthesised to match Java (same fix as turtle.stark). */
+  return (wp_x(wp) == x ? 0.0 : (wp_x(wp) < x ? PI : 0.0) + atan((wp_y(wp) - y) / (wp_x(wp) - x)));
 }
 
 function braking_distance(real speed) {
@@ -145,14 +151,20 @@ component Robot {
       if (timer_V > 0) {
         step Accelerate;
       } else {
-        step Ctrl;
+        /* BUG FIXED: was `step Ctrl;`. Java Smart_hospital `Accelerate` is
+           `ifThenElse(timer_V>0, doTick(ref Accelerate), reference("Ctrl"))`; the
+           else is a bare same-tick `exec`, not a time-consuming `step` (same as
+           turtle.stark). */
+        exec Ctrl;
       }
     }
     state Decelerate {
       if (timer_V > 0) {
         step Decelerate;
       } else {
-        step Ctrl;
+        /* BUG FIXED: was `step Ctrl;` — same as Accelerate (bare `reference("Ctrl")`
+           in Java else = same-tick `exec`). */
+        exec Ctrl;
       }
     }
     state Stop {

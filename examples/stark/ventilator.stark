@@ -33,17 +33,53 @@
  * `Perturbation` queries near the top of `main()` are (see the bottom of
  * this file).
  *
- * `ControllerRegistry`'s `Controller.doTick` (advance one round with no
- * variable change) maps to this grammar's `exec`; `Controller.doAction`
- * (assign, then transition) maps to a `step`-terminated block whose body is
- * the assignments; nested `Controller.ifThenElse` maps directly to nested
- * `if`/`else`. `P_Alarms_final`'s self-transition references
+ * Both `Controller.doAction(assignments, next)` and `Controller.doTick(next)`
+ * construct the *same* underlying class (`ActionController` — `doTick` is
+ * literally `doAction` with a trivial no-op update function, see
+ * `stark.controller.Controller`/`ActionController`), and `ActionController
+ * .next()` *always* returns `EffectStep(updates, next)` unconditionally —
+ * i.e. it always consumes exactly one simulation round (one call from
+ * `ControlledSystem.sampleNext`, with a full environment step in between),
+ * with `next` becoming "the controller" for the round after. So every
+ * `doAction`/`doTick` is ported as `assignments; step next;` — `step` is
+ * used *regardless* of whether `next` is a bare `registry.reference(...)` or
+ * an inline node, and regardless of whether there's an accompanying
+ * assignment. `Controller.ifThenElse`, by contrast
+ * (`IfThenElseController.next()`), recurses into whichever branch
+ * immediately, in the *same* call — it never consumes a round on its own,
+ * so a chain of nested `ifThenElse`s (as most states below have) collapses
+ * into one `if`/`else` in a single STARK state with no round cost. The one
+ * place this grammar's `exec X;` is the right translation is when an
+ * `ifThenElse` branch is a *bare* `registry.reference(X)` with no
+ * `doAction`/`doTick` wrapping it at all — that branch, taken, recurses
+ * directly into `X`'s own `.next()` in the same call (confirmed against
+ * `StarkControllerStateGenerator.visitControllerExecAction`, which does
+ * exactly this): no state in this file's controller happens to have that
+ * shape, so `exec` doesn't appear here (every leaf below is reached via a
+ * `doAction`/`doTick`, hence `step`). (An earlier version of this file had
+ * the `step`/`exec` distinction backwards; every controller state has been
+ * corrected.)
+ *
+ * A `doAction`/`doTick` whose `next` is itself a fresh, *inline*
+ * `Controller.ifThenElse(...)` (not a bare `registry.reference`) needs an
+ * **extra STARK state**, not just a `step`, to be faithful: the assignment
+ * consumes its own round before that inline branch is even reached, so the
+ * branch's condition is evaluated one round (and one environment step)
+ * later than a flattened single-state translation would imply. Three states
+ * have exactly this shape and are split into two STARK states each below —
+ * `P_start_up`/`P_start_up_check_sensors`, `P_self_test`/
+ * `P_self_test_check`, `P_VentOff`/`P_VentOff_check` — every other
+ * controller state in this file was checked against the Java source
+ * line-by-line and confirmed to only ever wrap `doAction`/`doTick` around a
+ * *bare* reference (never an inline branch), so no further splits are
+ * needed. `P_Alarms_final`'s self-transition references
  * `registry.reference("P_alarms_final")` (lower-case `a`) instead of the
  * actually-registered `"P_Alarms_final"` — a latent typo in the original
  * (an unregistered name would fail to resolve at runtime) — ported as the
- * evidently-intended self-loop (`step P_Alarms_final;`), matching this
- * session's precedent of fixing clear original typos (e.g. `toll.stark`'s
- * `pen_stress`/`accel==N` fixes) rather than reproducing them.
+ * evidently-intended self-loop (`step P_Alarms_final;`, since the original
+ * wraps it in `Controller.doTick`), matching this session's precedent of
+ * fixing clear original typos (e.g. `toll.stark`'s `pen_stress`/`accel==N`
+ * fixes) rather than reproducing them.
  */
 
 param PRM = 20.0;
@@ -358,21 +394,21 @@ component Ventilator {
         b_powerOn' = 0;
         step P_checkcond;
       } else {
-        exec P;
+        step P;
       }
     }
 
     state P_checkcond {
-      if (conn_breathing == 1) { exec P_checkcond1; } else { exec P_RepNotConnBreath; }
+      if (conn_breathing == 1) { step P_checkcond1; } else { step P_RepNotConnBreath; }
     }
     state P_checkcond1 {
-      if (conn_air_supply == 1) { exec P_checkcond2; } else { exec P_RepNotConnAir; }
+      if (conn_air_supply == 1) { step P_checkcond2; } else { step P_RepNotConnAir; }
     }
     state P_checkcond2 {
-      if (conn_power_source == 1) { exec P_checkcond3; } else { exec P_RepNotConnPower; }
+      if (conn_power_source == 1) { step P_checkcond3; } else { step P_RepNotConnPower; }
     }
     state P_checkcond3 {
-      if (conn_patient == 0) { exec P_start_up; } else { exec P_RepConnPatient; }
+      if (conn_patient == 0) { step P_start_up; } else { step P_RepConnPatient; }
     }
 
     state P_RepNotConnBreath { conn_failToPowerOn' = 1; step P; }
@@ -383,18 +419,28 @@ component Ventilator {
     /* renamed from "P_start-up" (hyphens are not valid identifiers here) */
     state P_start_up {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
+        /* BUG FIXED: the original wraps this assignment's `next` in a fresh
+           inline `Controller.ifThenElse(...)`, not a bare `registry.reference`,
+           so it's a SECOND round (its own `ActionController.next()` call,
+           with a full environment step in between) before
+           `comm_sens_valves_ok` is even read — not the same round. Split
+           into `P_start_up`/`P_start_up_check_sensors` to match. */
         rr_pcv' = RR_PCV;
         ie_pcv' = IE_PCV;
         p_insp_pcv' = P_INSP_PCV;
-        if (comm_sens_valves_ok == 1) {
-          nr_of_retries' = 0;
-          step P_start_up1;
-        } else {
-          nr_of_retries' = 1 + nr_of_retries;
-          step P_retrySensor;
-        }
+        step P_start_up_check_sensors;
+      }
+    }
+
+    state P_start_up_check_sensors {
+      if (comm_sens_valves_ok == 1) {
+        nr_of_retries' = 0;
+        step P_start_up1;
+      } else {
+        nr_of_retries' = 1 + nr_of_retries;
+        step P_retrySensor;
       }
     }
 
@@ -403,13 +449,13 @@ component Ventilator {
         nr_of_retries' = 0;
         step P_failSafe;
       } else {
-        exec P_start_up;
+        step P_start_up;
       }
     }
 
     state P_start_up1 {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (conn_power_source == 1) {
           nr_of_retries_p' = 0;
@@ -426,19 +472,19 @@ component Ventilator {
         nr_of_retries_p' = 0;
         step P_failSafe;
       } else {
-        exec P_start_up1;
+        step P_start_up1;
       }
     }
 
     state P_start_up2 {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (comm_memory == 1 && comm_cont_gui_ok == 1) {
           init_succ' = 1;
           step P_self_test;
         } else {
-          exec P_start_upFail;
+          step P_start_upFail;
         }
       }
     }
@@ -453,15 +499,24 @@ component Ventilator {
 
     /* Self-test mode */
     state P_self_test {
+      /* BUG FIXED: the original wraps this assignment's `next` in a fresh
+         inline `Controller.ifThenElse(...)`, not a bare `registry.reference`,
+         so `b_powerOff` etc. are read a full round later (with an
+         environment step in between), not the same round. Split into
+         `P_self_test`/`P_self_test_check` to match. */
       init_succ' = 0;
       Status' = 4;
+      step P_self_test_check;
+    }
+
+    state P_self_test_check {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if ((gui_req_res_ven == 1 ||
               (power_switch_ok == 1 && no_leaks_breathing_circuit == 1 && out_valve_ok == 1 && alarms_ok == 1))
             && !(fs == 1)) {
-          exec P_VentOff;
+          step P_VentOff;
         } else {
           selfTest_fail' = 1;
           sys_out_of_service' = 1;
@@ -472,14 +527,22 @@ component Ventilator {
 
     /* Ventilation off mode */
     state P_VentOff {
+      /* BUG FIXED: same pattern as `P_start_up`/`P_self_test` above — the
+         original wraps this assignment's `next` in a fresh inline
+         `Controller.ifThenElse(...)`, so `b_powerOff` etc. are read a full
+         round later. Split into `P_VentOff`/`P_VentOff_check` to match. */
       a_IN_valve' = 0;
       a_OUT_valve' = 1;
       Status' = 5;
       phase' = 0;
       timer_insp' = 0;
       timer_exp' = 0;
+      step P_VentOff_check;
+    }
+
+    state P_VentOff_check {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -491,9 +554,9 @@ component Ventilator {
             step P_VentOff;
           } else {
             if (gui_req_change_mode_PCV == 1) {
-              exec P_PCV;
+              step P_PCV;
             } else {
-              if (gui_req_change_mode_PSV == 1) { exec P_PSV; } else { exec P_VentOff; }
+              if (gui_req_change_mode_PSV == 1) { step P_PSV; } else { step P_VentOff; }
             }
           }
         }
@@ -583,7 +646,7 @@ component Ventilator {
 
     state P_IP_PCV {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -623,7 +686,7 @@ component Ventilator {
 
     state P_RM {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -663,7 +726,7 @@ component Ventilator {
 
     state P_PCV_exp0 {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -684,7 +747,7 @@ component Ventilator {
 
     state P_PCV_exp {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -748,7 +811,7 @@ component Ventilator {
 
     state P_EP_PCV {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -850,7 +913,7 @@ component Ventilator {
 
     state P_IP_PSV {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -876,7 +939,7 @@ component Ventilator {
 
     state P_RM_PSV {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -902,7 +965,7 @@ component Ventilator {
 
     state P_PSV_exp0 {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -924,7 +987,7 @@ component Ventilator {
 
     state P_PSV_exp {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -994,7 +1057,7 @@ component Ventilator {
 
     state P_EP_PSV {
       if (b_powerOff == 1) {
-        exec P_final;
+        step P_final;
       } else {
         if (fs == 1) {
           a_IN_valve' = 0;
@@ -1045,7 +1108,7 @@ component Ventilator {
     }
 
     state P_failSafeI {
-      if (b_powerOff == 1) { exec P_final; } else { exec P_failSafeI; }
+      if (b_powerOff == 1) { step P_final; } else { step P_failSafeI; }
     }
   }
   init P
@@ -1090,7 +1153,7 @@ component Alarm {
                     a_LED' = 1;
                     step P_alarms;
                   } else {
-                    exec P_alarms;
+                    step P_alarms;
                   }
                 } else {
                   if (s_PS_ins_pressure < (MIN_P_INSP/100*P_INSP_PSV) || comm_sens_valves_ok == 0
@@ -1101,7 +1164,7 @@ component Alarm {
                     a_LED' = 1;
                     step P_alarms;
                   } else {
-                    exec P_alarms;
+                    step P_alarms;
                   }
                 }
               } else {
@@ -1112,7 +1175,7 @@ component Alarm {
                     a_LED' = 1;
                     step P_alarms;
                   } else {
-                    exec P_alarms;
+                    step P_alarms;
                   }
                 } else {
                   if (s_PS_ins_pressure < (MIN_P_INSP/100*P_INSP_PSV) || comm_sens_valves_ok == 0
@@ -1121,7 +1184,7 @@ component Alarm {
                     a_LED' = 1;
                     step P_alarms;
                   } else {
-                    exec P_alarms;
+                    step P_alarms;
                   }
                 }
               }
@@ -1152,7 +1215,7 @@ component Alarm {
                 a_LED' = 1;
                 step P_alarms;
               } else {
-                exec P_alarms;
+                step P_alarms;
               }
             }
           }
@@ -1161,7 +1224,7 @@ component Alarm {
     }
 
     state Idle_Alarms {
-      if (b_powerOff == 1) { exec P_Alarms_final; } else { exec Idle_Alarms; }
+      if (b_powerOff == 1) { step P_Alarms_final; } else { step Idle_Alarms; }
     }
 
     state P_Alarms_final {
