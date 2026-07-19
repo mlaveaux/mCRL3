@@ -147,7 +147,6 @@ impl ExprList {
 ///
 /// Deliberate simplifications made while lowering (see `IR_LOWERING_PLAN.md`
 /// Step 2 for the full rationale):
-/// - `Expression::UnaryPlus` disappears (it is the identity).
 /// - `Ty` / custom type names disappear; only [StarkType] and slot indices
 ///   survive (in [IrProgram::expr_types] / [IrProgram::slots]).
 /// - `Expression::Reference` (to a constant, parameter or variable) and
@@ -165,7 +164,23 @@ pub enum ExprNode {
     /// resolution already did gets baked into the node.
     Load(SlotId),
     Not(ExprRef),
+    /// Arithmetic negation (`-x`). **Always widens to `Real`, even for an
+    /// integer operand** — matching Java's `StarkExpressionEvaluator`, which
+    /// routes unary `-`/`+` through the *same* always-widening
+    /// `DoubleUnaryOperator` mechanism as the math functions
+    /// (`unaryOperators` map, `StarkInteger.apply(DoubleUnaryOperator)` ->
+    /// `StarkReal`), not a dedicated integer-preserving path. So `-a + 2` is
+    /// `real`, not `int`, when `a` is an `int` — surprising for a spec
+    /// author writing `-a` expecting an int to stay one; matched here for
+    /// fidelity with the reference tool, but worth reconsidering if that
+    /// surprises users badly enough in practice.
     Negate(ExprRef),
+    /// `+x`. Unlike most unary-plus operators this is *not* the identity at
+    /// the type level: Java widens it exactly like `Negate` (same
+    /// `unaryOperators` map, same mechanism — see [ExprNode::Negate]'s doc
+    /// comment), so `+a` for an integer `a` is `real`, not `a` unchanged.
+    /// The *value* is unchanged; only the representation widens.
+    Widen(ExprRef),
     Binary(BinaryOp, ExprRef, ExprRef),
     MathUnary(MathUnaryFunction, ExprRef),
     MathBinary(MathBinaryFunction, ExprRef, ExprRef),
@@ -440,6 +455,25 @@ impl IrProgram {
         &self.slots[id.value() as usize]
     }
 
+    /// The number of `[0, n_variables)` slots — the simulation state prefix.
+    /// Equal to `self.variables.len()`, since every variable gets exactly one
+    /// slot and slot allocation lays this range out first (see
+    /// `IR_LOWERING_PLAN.md`'s slot layout table).
+    pub fn n_variables(&self) -> u32 {
+        self.variables.len() as u32
+    }
+
+    /// The number of `[0, n_globals)` slots — variables plus `const`/`param`
+    /// globals. Equal to `n_variables() + self.globals.len()`.
+    pub fn n_globals(&self) -> u32 {
+        self.n_variables() + self.globals.len() as u32
+    }
+
+    /// The total number of slots the evaluator's store must hold.
+    pub fn n_slots(&self) -> u32 {
+        self.slots.len() as u32
+    }
+
     pub fn variables(&self) -> &[VariableInfo] {
         &self.variables
     }
@@ -525,7 +559,9 @@ impl IrProgram {
             match *node {
                 ExprNode::Literal(_) | ExprNode::SampleUnit => {}
                 ExprNode::Load(slot) => check_slot(slot)?,
-                ExprNode::Not(inner) | ExprNode::Negate(inner) | ExprNode::MathUnary(_, inner) => check_expr(inner)?,
+                ExprNode::Not(inner) | ExprNode::Negate(inner) | ExprNode::Widen(inner) | ExprNode::MathUnary(_, inner) => {
+                    check_expr(inner)?
+                }
                 ExprNode::Binary(_, left, right) | ExprNode::MathBinary(_, left, right) => {
                     check_expr(left)?;
                     check_expr(right)?;
@@ -879,6 +915,7 @@ impl IrProgram {
             ExprNode::Load(slot) => format!("load #{}:{}", slot.value(), self.slot(slot).name),
             ExprNode::Not(inner) => format!("!{}", self.display_expr(inner)),
             ExprNode::Negate(inner) => format!("-{}", self.display_expr(inner)),
+            ExprNode::Widen(inner) => format!("+{}", self.display_expr(inner)),
             ExprNode::Binary(op, left, right) => {
                 format!(
                     "({} {} {})",

@@ -581,6 +581,17 @@ impl Checker<'_> {
         }
     }
 
+    /// [Self::combine_to_real]'s single-operand counterpart, for unary `+`/`-`.
+    fn combine_to_real_unary(&mut self, inner: &Expression, random_allowed: bool) -> StarkType {
+        let ty = self.check_expression(inner, random_allowed);
+        let ty = self.expect_numerical(ty, &inner.span);
+        if ty.is_random() {
+            StarkType::random(StarkType::Real)
+        } else {
+            StarkType::Real
+        }
+    }
+
     fn check_expression(&mut self, expr: &Expression, random_allowed: bool) -> StarkType {
         match &expr.node {
             ExpressionKind::False | ExpressionKind::True => StarkType::Boolean,
@@ -659,8 +670,18 @@ impl Checker<'_> {
                 self.expect(&StarkType::Boolean, ty, &inner.span)
             }
             ExpressionKind::UnaryPlus(inner) | ExpressionKind::UnaryMinus(inner) => {
-                let ty = self.check_expression(inner, random_allowed);
-                self.expect_numerical(ty, &inner.span)
+                // Matches Java: `StarkExpressionEvaluator`'s `unaryOperators`
+                // map routes `+`/`-` through the *same* always-widening
+                // `DoubleUnaryOperator` mechanism as `abs`/`sqrt`/etc.
+                // (`StarkInteger.apply(DoubleUnaryOperator)` -> `StarkReal`),
+                // so unary +/- on an `int` widens the result to `real`, and
+                // so does everything built on top of it (`-a + 2` is `real`,
+                // not `int`, when `a` is an `int`). Surprising for a spec
+                // author writing `-a` expecting an int to stay one; matched
+                // here for fidelity with the reference tool, but worth
+                // reconsidering if that surprises users badly enough in
+                // practice.
+                self.combine_to_real_unary(inner, random_allowed)
             }
             ExpressionKind::Binary(op, left, right) => self.check_binary(*op, left, right, random_allowed),
             ExpressionKind::Ternary {

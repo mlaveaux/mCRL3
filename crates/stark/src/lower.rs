@@ -797,12 +797,16 @@ impl<'a> Lowerer<'a> {
                 let ty = self.expr_type(inner);
                 self.push_expr(ExprNode::Not(inner), span, ty)
             }
-            // The identity: lowers straight through to its operand, pushing
-            // no node of its own.
-            ExpressionKind::UnaryPlus(inner) => self.lower_expression(inner),
+            // Both widen to `real`, matching Java's `unaryOperators["+"/"-"]`
+            // — see `ExprNode::Negate`/`ExprNode::Widen`'s doc comments.
+            ExpressionKind::UnaryPlus(inner) => {
+                let inner = self.lower_expression(inner);
+                let ty = self.combine_to_real_unary(inner);
+                self.push_expr(ExprNode::Widen(inner), span, ty)
+            }
             ExpressionKind::UnaryMinus(inner) => {
                 let inner = self.lower_expression(inner);
-                let ty = self.expr_type(inner);
+                let ty = self.combine_to_real_unary(inner);
                 self.push_expr(ExprNode::Negate(inner), span, ty)
             }
             ExpressionKind::Binary(op, left, right) => self.lower_binary(*op, left, right, span),
@@ -865,6 +869,17 @@ impl<'a> Lowerer<'a> {
     /// already type-checked, so there is nothing left to reject here.
     fn combine_to_real(&self, left: ExprRef, right: ExprRef) -> StarkType {
         if self.expr_type(left).is_random() || self.expr_type(right).is_random() {
+            StarkType::random(StarkType::Real)
+        } else {
+            StarkType::Real
+        }
+    }
+
+    /// [Self::combine_to_real]'s single-operand counterpart, for unary `+`/
+    /// `-` (see `ExprNode::Negate`/`ExprNode::Widen`'s doc comments on why
+    /// those widen too, not just the math functions).
+    fn combine_to_real_unary(&self, inner: ExprRef) -> StarkType {
+        if self.expr_type(inner).is_random() {
             StarkType::random(StarkType::Real)
         } else {
             StarkType::Real
@@ -1187,13 +1202,18 @@ mod tests {
     }
 
     #[test]
-    fn unary_plus_disappears() {
+    fn unary_plus_widens_to_real_like_unary_minus() {
+        // Matches Java: `unaryOperators["+"]`/`["-"]` both route through the
+        // same always-widening `DoubleUnaryOperator` mechanism as the math
+        // functions, so neither is integer-preserving — see
+        // `ExprNode::Widen`/`ExprNode::Negate`'s doc comments.
         let program = lower_source("const c = +1;");
         let global = &program.globals()[0];
         assert!(matches!(
             program.expr(global.value),
-            ExprNode::Literal(Value::Integer(1))
+            ExprNode::Widen(inner) if matches!(program.expr(*inner), ExprNode::Literal(Value::Integer(1)))
         ));
+        assert_eq!(*program.expr_type(global.value), StarkType::Real);
     }
 
     #[test]
