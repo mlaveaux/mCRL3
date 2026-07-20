@@ -6,19 +6,26 @@ use itertools::Itertools;
 use merc_data::BasicSort;
 use merc_data::DataExpression;
 use merc_data::DataFunctionSymbol;
+use merc_data::MachineWordOp;
 use merc_data::Mcrl2DataSpecification;
 use merc_data::SortExpression;
 
-/// A rewrite specification is a set of rewrite rules, given by [Rule].
+/// A rewrite specification is a set of rewrite rules, given by [Rule], plus
+/// the machine-word (`@word`) operations available natively.
 #[derive(Debug, Default, Clone)]
 pub struct RewriteSpecification {
     rewrite_rules: Vec<Rule>,
+    native_symbols: Vec<(DataFunctionSymbol, MachineWordOp)>,
 }
 
 impl RewriteSpecification {
-    /// Create a new rewrite specification from the given rewrite rules.
+    /// Create a new rewrite specification from the given rewrite rules, with
+    /// no native machine-word operations available.
     pub fn new(rewrite_rules: Vec<Rule>) -> RewriteSpecification {
-        RewriteSpecification { rewrite_rules }
+        RewriteSpecification {
+            rewrite_rules,
+            native_symbols: Vec::new(),
+        }
     }
 
     /// Builds a rewrite specification from the equations of a fully typed
@@ -29,6 +36,12 @@ impl RewriteSpecification {
     /// single condition that the (rewritten) condition equals the `Bool`
     /// literal `true`, matching how the mCRL2 rewriter treats equation
     /// conditions.
+    ///
+    /// The machine-word operations among `spec.constructors()` (`@zero_word`,
+    /// `@succ_word`) and `spec.mappings()` (the rest) are carried along as
+    /// [`RewriteSpecification::native_symbols`] — they have no equations of
+    /// their own (they are `defined_by_code`), so they would otherwise be
+    /// invisible to a rewrite engine built from this specification.
     pub fn from_data_specification(spec: &Mcrl2DataSpecification) -> RewriteSpecification {
         let true_literal: DataExpression =
             DataFunctionSymbol::with_sort("true", SortExpression::from(BasicSort::new("Bool")).copy()).into();
@@ -46,12 +59,32 @@ impl RewriteSpecification {
             })
             .collect();
 
-        RewriteSpecification::new(rewrite_rules)
+        // Resolving a name to a `MachineWordOp` happens exactly once per native
+        // symbol, here — every downstream consumer (the `SetAutomaton`, built
+        // per state, per symbol) looks the operation up by the symbol's
+        // identity instead of ever re-parsing its name.
+        let native_symbols = spec
+            .constructors()
+            .iter()
+            .chain(spec.mappings())
+            .filter_map(|symbol| MachineWordOp::from_name(symbol.name().value()).map(|op| (symbol.clone(), op)))
+            .collect();
+
+        RewriteSpecification {
+            rewrite_rules,
+            native_symbols,
+        }
     }
 
     /// Returns the rewrite rules of this specification.
     pub fn rewrite_rules(&self) -> &[Rule] {
         &self.rewrite_rules
+    }
+
+    /// Returns the native machine-word operations available to this
+    /// specification, paired with their correctly-sorted function symbols.
+    pub fn native_symbols(&self) -> &[(DataFunctionSymbol, MachineWordOp)] {
+        &self.native_symbols
     }
 }
 
