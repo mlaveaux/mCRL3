@@ -12,6 +12,7 @@ use merc_aterm::Term;
 use merc_data::DataExpression;
 use merc_data::DataExpressionRef;
 use merc_data::DataFunctionSymbol;
+use merc_data::MachineWordOp;
 use merc_data::is_data_application;
 use merc_data::is_data_function_symbol;
 use merc_data::is_data_machine_number;
@@ -52,6 +53,20 @@ pub struct Transition<T> {
     pub symbol: DataFunctionSymbol,
     pub announcements: SmallVec<[(MatchAnnouncement, T); 1]>,
     pub destinations: SmallVec<[(DataPosition, usize); 1]>,
+
+    /// Set when `symbol` is a machine-word operation, which is evaluated
+    /// natively instead of being governed by rewrite rules.
+    pub native: Option<MachineWordOp>,
+}
+
+/// The result of walking the automaton to find a match for a term, shared by
+/// every rewrite engine's `find_match`.
+pub enum MatchResult<'a, T> {
+    /// An ordinary rewrite rule matched at the term's root.
+    Rule(&'a MatchAnnouncement, &'a T),
+    /// The term's head symbol is a machine-word operation, and it evaluated
+    /// (all its arguments were concrete) to this result.
+    Native(DataExpression),
 }
 
 /// Represents a match obligation in the [SetAutomaton].
@@ -118,8 +133,31 @@ impl<M> SetAutomaton<M> {
                 }
             }
 
+            // The term being rewritten may contain machine numbers even when no
+            // rule mentions one, so the stand-in symbol always needs a transition
+            // for matching to be able to step over such a position.
+            add_symbol(machine_number_symbol(), 0, &mut symbols);
+
+            // Machine-word operations have no rules of their own — they are
+            // `defined_by_code` — so without this they would have no transition
+            // at all and could never be recognised as native ops.
+            for (symbol, op) in spec.native_symbols() {
+                add_symbol(symbol.clone(), op.arity(), &mut symbols);
+            }
+
             symbols
         };
+
+        // Resolves a symbol to its native operation by identity (its hash-consed
+        // pool index), not by re-parsing its name. `spec.native_symbols()`
+        // already paired each symbol with its operation exactly once; this
+        // table lets the state × symbol loop below look that up for every
+        // state without ever touching a string again.
+        let native_ops: FxHashMap<usize, MachineWordOp> = spec
+            .native_symbols()
+            .iter()
+            .map(|(symbol, op)| (symbol.operation_id(), *op))
+            .collect();
 
         for (index, (symbol, arity)) in symbols.iter().enumerate() {
             trace!("{index}: {symbol} {arity}");
@@ -220,6 +258,7 @@ impl<M> SetAutomaton<M> {
                         symbol: symbol.clone(),
                         announcements,
                         destinations,
+                        native: native_ops.get(&symbol.operation_id()).copied(),
                     },
                 );
             }
@@ -553,6 +592,24 @@ impl State {
     }
 }
 
+/// The stand-in function symbol under which every machine number is matched.
+///
+/// The automaton keys its transitions by function symbol, but a machine number
+/// is a value that carries none. Without a symbol to branch on, a position
+/// holding a machine number could not be distinguished from one holding a
+/// function symbol a pattern expects there, and matching would have to give up
+/// at that position — losing every rule that has a variable there, such as
+/// `@most_significant_digitNat(w1) + @most_significant_digitNat(w2)`.
+///
+/// All machine numbers share this one symbol, so the automaton only
+/// discriminates *that* a position holds a machine number, not *which* one. The
+/// bundled specifications never put a machine-number literal in a left-hand
+/// side (they use `@zero_word` and friends, which are ordinary function
+/// symbols), so nothing currently relies on telling two values apart here.
+pub(crate) fn machine_number_symbol() -> DataFunctionSymbol {
+    DataFunctionSymbol::new("@machine_number@")
+}
+
 /// Adds the given function symbol to the indexed symbols. Errors when a
 /// function symbol is overloaded with different arities.
 fn add_symbol(function_symbol: DataFunctionSymbol, arity: usize, symbols: &mut HashMap<DataFunctionSymbol, usize>) {
@@ -610,7 +667,9 @@ fn find_symbols(t: &DataExpressionRef<'_>, symbols: &mut HashMap<DataFunctionSym
             find_symbols(&arg, symbols);
         }
     } else if is_data_machine_number(t) {
-        // Ignore machine numbers during matching?
+        // A machine number has no function symbol of its own, so it is
+        // represented by the shared stand-in symbol; see [machine_number_symbol].
+        add_symbol(machine_number_symbol(), 0, symbols);
     } else if !is_data_variable(t) {
         panic!("Unexpected term {t:?}");
     }

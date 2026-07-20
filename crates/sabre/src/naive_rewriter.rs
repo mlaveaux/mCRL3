@@ -7,10 +7,10 @@ use merc_data::DataExpressionRef;
 use merc_utilities::debug_trace;
 
 use crate::AnnouncementInnermost;
-use crate::MatchAnnouncement;
 use crate::RewriteEngine;
 use crate::RewriteSpecification;
 use crate::RewritingStatistics;
+use crate::set_automaton::MatchResult;
 use crate::set_automaton::SetAutomaton;
 use crate::utilities::DataPositionIndexed;
 
@@ -64,7 +64,11 @@ impl NaiveRewriter {
 
         match NaiveRewriter::find_match(automaton, &nf, stats) {
             None => nf,
-            Some((_announcement, ema)) => {
+            Some(MatchResult::Native(result)) => {
+                debug_trace!("native rewrote {} to {}", nf, result);
+                result
+            }
+            Some(MatchResult::Rule(_announcement, ema)) => {
                 let result = ema.rhs_stack.evaluate(&nf);
                 debug_trace!("rewrote {} to {} using rule {}", nf, result, _announcement.rule);
                 NaiveRewriter::rewrite_aux(automaton, result.copy(), stats)
@@ -72,12 +76,14 @@ impl NaiveRewriter {
         }
     }
 
-    /// Use the APMA to find a match for the given term.
+    /// Use the APMA to find a match for the given term: either a rewrite
+    /// rule, or — when the term's head symbol is a machine-word operation —
+    /// the natively-evaluated result.
     fn find_match<'a>(
         automaton: &'a SetAutomaton<AnnouncementInnermost>,
         t: &DataExpression,
         stats: &mut RewritingStatistics,
-    ) -> Option<(&'a MatchAnnouncement, &'a AnnouncementInnermost)> {
+    ) -> Option<MatchResult<'a, AnnouncementInnermost>> {
         // Start at the initial state
         let mut state_index = 0;
         loop {
@@ -90,6 +96,15 @@ impl NaiveRewriter {
             // Get the transition for the label and check if there is a pattern match
             {
                 let transition = automaton.get_transition(state_index, symbol.operation_id())?;
+
+                // See InnermostRewriter::find_match: only the very first transition
+                // observes the term's own head symbol at position ε.
+                if state_index == 0
+                    && let Some(op) = transition.native
+                {
+                    return op.evaluate(t.data_arguments()).map(MatchResult::Native);
+                }
+
                 for (announcement, ema) in &transition.announcements {
                     let mut conditions_hold = true;
 
@@ -117,7 +132,7 @@ impl NaiveRewriter {
 
                     if conditions_hold {
                         // We found a matching pattern
-                        return Some((announcement, ema));
+                        return Some(MatchResult::Rule(announcement, ema));
                     }
                 }
 

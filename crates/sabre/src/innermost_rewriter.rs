@@ -5,6 +5,7 @@ use merc_aterm::storage::ThreadTermPool;
 use merc_data::DataApplication;
 use merc_data::DataExpression;
 use merc_data::DataExpressionRef;
+use merc_data::is_data_machine_number;
 
 use crate::RewriteEngine;
 use crate::RewriteSpecification;
@@ -15,8 +16,9 @@ use crate::matching::conditions::extend_conditions;
 use crate::matching::nonlinear::EquivalenceClass;
 use crate::matching::nonlinear::check_equivalence_classes;
 use crate::matching::nonlinear::derive_equivalence_classes;
-use crate::set_automaton::MatchAnnouncement;
+use crate::set_automaton::MatchResult;
 use crate::set_automaton::SetAutomaton;
+use crate::set_automaton::machine_number_symbol;
 use crate::utilities::Config;
 use crate::utilities::DataPositionIndexed;
 use crate::utilities::InnermostStack;
@@ -105,6 +107,15 @@ impl InnermostRewriter {
                         let mut write_terms = stack.terms.write();
                         let term = write_terms.pop().unwrap().unwrap();
 
+                        // A machine number is a value in normal form; it has no head function
+                        // symbol to decompose, so place it directly at the result index.
+                        if is_data_machine_number(&term) {
+                            // Safety: term is stored in the container on the same line.
+                            write_terms[result] = Some(unsafe { write_terms.protect(&term) }.into());
+                            drop(write_configs);
+                            continue;
+                        }
+
                         let symbol = term.data_function_symbol();
                         let arguments = term.data_arguments();
 
@@ -146,7 +157,15 @@ impl InnermostRewriter {
                         drop(write_configs);
 
                         match InnermostRewriter::find_match(tp, stack, builder, stats, automaton, &term.copy()) {
-                            Some((_announcement, annotation)) => {
+                            Some(MatchResult::Native(result)) => {
+                                debug_trace!("native rewrite {} => {}", term, result);
+
+                                let mut write_terms = stack.terms.write();
+                                // Safety: result is stored in the container on the same line.
+                                write_terms[index] = Some(unsafe { write_terms.protect(&result) }.into());
+                                stats.rewrite_steps += 1;
+                            }
+                            Some(MatchResult::Rule(_announcement, annotation)) => {
                                 debug_trace!(
                                     "rewrite {} => {} using rule {}",
                                     term,
@@ -174,8 +193,14 @@ impl InnermostRewriter {
                             }
                         }
                     }
-                    Config::Term(_, _) => {
-                        unreachable!("This case should not happen");
+                    Config::Term(term, index) => {
+                        // A constant carried by a right-hand side (a machine number)
+                        // is already in normal form: place it at its index directly.
+                        let mut write_terms = stack.terms.write();
+                        // Safety: term is stored in the container on the same line.
+                        write_terms[index] = Some(unsafe { write_terms.protect(&term) }.into());
+                        drop(write_terms);
+                        drop(write_configs);
                     }
                     Config::Return() => {
                         let mut write_terms = stack.terms.write();
@@ -210,7 +235,9 @@ impl InnermostRewriter {
         }
     }
 
-    /// Use the APMA to find a match for the given term.
+    /// Use the APMA to find a match for the given term: either a rewrite rule,
+    /// or — when the term's head symbol is a machine-word operation — the
+    /// natively-evaluated result.
     fn find_match<'a>(
         tp: &ThreadTermPool,
         stack: &mut InnermostStack,
@@ -218,7 +245,7 @@ impl InnermostRewriter {
         stats: &mut RewritingStatistics,
         automaton: &'a SetAutomaton<AnnouncementInnermost>,
         t: &DataExpressionRef<'_>,
-    ) -> Option<(&'a MatchAnnouncement, &'a AnnouncementInnermost)> {
+    ) -> Option<MatchResult<'a, AnnouncementInnermost>> {
         // Start at the initial state
         let mut state_index = 0;
         loop {
@@ -227,17 +254,36 @@ impl InnermostRewriter {
             // Get the symbol at the position state.label
             stats.symbol_comparisons += 1;
             let pos = t.get_data_position(state.label());
-            let symbol = pos.data_function_symbol();
+
+            // A machine number carries no function symbol, so it is matched under
+            // the shared stand-in symbol the automaton reserves for them.
+            let operation_id = if is_data_machine_number(&pos) {
+                machine_number_symbol().operation_id()
+            } else {
+                pos.data_function_symbol().operation_id()
+            };
 
             // Get the transition for the label and check if there is a pattern match
             {
-                let transition = automaton.get_transition(state_index, symbol.operation_id())?;
+                let transition = automaton.get_transition(state_index, operation_id)?;
+
+                // The very first transition observes the term's own head symbol
+                // (state 0's label is always the root position ε). That is the
+                // only point at which `native` refers to the term being matched
+                // as a whole, rather than to some other subterm the automaton
+                // happens to inspect while narrowing down candidate rules.
+                if state_index == 0
+                    && let Some(op) = transition.native
+                {
+                    return op.evaluate(t.data_arguments()).map(MatchResult::Native);
+                }
+
                 for (announcement, annotation) in &transition.announcements {
                     if check_equivalence_classes(t, &annotation.equivalence_classes)
                         && InnermostRewriter::check_conditions(tp, stack, builder, stats, automaton, annotation, t)
                     {
                         // We found a matching pattern
-                        return Some((announcement, annotation));
+                        return Some(MatchResult::Rule(announcement, annotation));
                     }
                 }
 

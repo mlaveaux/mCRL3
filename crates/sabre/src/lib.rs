@@ -11,7 +11,6 @@ pub mod test_utility;
 pub mod utilities;
 
 pub(crate) use sabre_rewriter::*;
-pub(crate) use set_automaton::*;
 
 pub use innermost_rewriter::AnnouncementInnermost;
 pub use innermost_rewriter::InnermostRewriter;

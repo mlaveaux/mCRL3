@@ -52,10 +52,16 @@ impl InnermostStack {
                         InnermostStack::add_result(write_configs, symbol.copy(), *arity, top_of_stack + offset - 1);
                     }
                 }
-                Config::Term(term, index) => {
+                Config::Term(term, offset) => {
                     // Safety: term is pushed into the container on the next line.
                     let term = unsafe { write_configs.protect(term) };
-                    write_configs.push(Config::Term(term.into(), *index));
+                    // The offsets are relative to the right-hand side's own stack,
+                    // so they are rebased onto this stack exactly like `Construct`.
+                    if first {
+                        write_configs.push(Config::Term(term.into(), result_index));
+                    } else {
+                        write_configs.push(Config::Term(term.into(), top_of_stack + offset - 1));
+                    }
                 }
                 Config::Rewrite(_) => {
                     unreachable!("This case should not happen");

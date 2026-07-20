@@ -33,6 +33,7 @@ pub use data_terms::is_data_machine_number;
 pub use data_terms::is_data_variable;
 pub use data_terms::is_data_where_clause;
 pub use data_terms::is_function_sort;
+pub use machine_word_evaluation::MachineWordOp;
 pub use machine_word_evaluation::try_evaluate_machine_word;
 pub use mcrl2_data_specification::Mcrl2DataSpecification;
 pub use sort_terms::BasicSort;
