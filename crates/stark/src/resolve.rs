@@ -1,23 +1,17 @@
 //! Name resolution: assigns every declaration a stable [DefId]/[StateId]/
 //! [LocalId] and rewrites every reference in place to point at the
-//! declaration it names, mirroring `parsing/SymbolTable.java`.
+//! declaration it names.
 //!
-//! STARK has no forward references: a name is only visible to expressions
-//! that come *after* its declaration in source order (this is what
-//! `SpecificationLanguageValidator`'s single top-down visitor pass implies,
-//! and nothing in the example specs relies on forward references either —
-//! including function self-recursion, which this resolver also rejects: a
-//! function's own name is registered only *after* its body has been
-//! resolved). Concretely, this means one linear walk over the declarations
-//! is sufficient: by the time a name is used, everything it could legally
-//! refer to has already been registered.
+//! STARK has no forward references: a name is only visible to expressions that
+//! come *after* its declaration in source order. Concretely, this means one
+//! linear walk over the declarations is sufficient: by the time a name is used,
+//! everything it could legally refer to has already been registered.
 //!
 //! There are two exceptions, both handled by registering names in a first
 //! pass before any body is resolved:
 //!
 //! * Controller states: `step`/`exec` inside a state may target a *later*
-//!   state in the same component (state machines are naturally mutually
-//!   recursive), so each component's states are registered up front.
+//!   state in the same component, so each component's states are registered up front.
 //! * State variables: every `variables`/`global variables` block and every
 //!   component's variable block is declared before anything else in the
 //!   specification, so a function body, environment block or component may

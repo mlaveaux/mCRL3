@@ -1,15 +1,18 @@
-//! The evaluation IR that `lower.rs` produces: a flat arena of small, `Copy`
-//! nodes rather than a closure tree, so evaluation walks an array instead of
-//! chasing pointers. See `IR_LOWERING_PLAN.md` for the design rationale.
+//! The evaluation IR that `lower.rs` produces: a flat arena of small, mostly
+//! `Copy` nodes rather than a closure tree, so evaluation walks an array
+//! instead of chasing pointers. See `IR_LOWERING_PLAN.md` for the design
+//! rationale.
 //!
-//! Currently populated by lowering: constants/parameters (as [GlobalInit]),
-//! variables (as [VariableInfo]), functions (as [FunctionIr]), penalties (as
+//! Populated by lowering: constants/parameters (as [GlobalInit]), variables
+//! (as [VariableInfo]), functions (as [FunctionIr]), penalties (as
 //! [PenaltyIr]), components/controller states (as [ComponentIr]/[StateIr])
 //! and the environment block, together with the shared expression/statement/
-//! command arenas they're built from. Perturbations, distances and formulas
-//! are not lowered yet (`lower.rs` reports them as
-//! [crate::diagnostics::DiagnosticKind::NotYetSupported]) and so have no IR
-//! representation here yet either — see the plan's Step 5.
+//! command arenas they're built from, plus perturbations, distances and
+//! ROBTL formulas ([PerturbationIr]/
+//! [DistanceIr]/[FormulaIr], each its own small `Box`-free arena analogous to
+//! the expression one, with [PerturbationDecl]/[DistanceDecl]/[FormulaDecl]
+//! marking which arena entries are named top-level declarations rather than
+//! sub-nodes only reachable through one).
 
 use std::fmt;
 
@@ -67,6 +70,24 @@ pub type IrStateId = TagIndex<u32, IrStateTag>;
 pub struct ComponentTag;
 /// An index into [IrProgram]'s lowered components.
 pub type ComponentId = TagIndex<u32, ComponentTag>;
+
+pub struct PerturbationTag;
+/// An index into [IrProgram]'s perturbation-expression arena
+/// ([IrProgram::perturbations]). Both the root node of a top-level
+/// `perturbation name = ..;` declaration (see [PerturbationDecl]) and every
+/// sub-node reached from it (a `Sequence`'s operands, an `Iteration`'s
+/// argument) share this one index space, mirroring [ExprRef].
+pub type PerturbationId = TagIndex<u32, PerturbationTag>;
+
+pub struct DistanceTag;
+/// An index into [IrProgram]'s distance-expression arena
+/// ([IrProgram::distances]) — same shape as [PerturbationId].
+pub type DistanceId = TagIndex<u32, DistanceTag>;
+
+pub struct FormulaTag;
+/// An index into [IrProgram]'s ROBTL-formula arena ([IrProgram::formulas]) —
+/// same shape as [PerturbationId].
+pub type FormulaId = TagIndex<u32, FormulaTag>;
 
 // ---------------------------------------------------------------------------
 // Expressions
@@ -146,7 +167,7 @@ impl ExprList {
 /// One node of the expression arena.
 ///
 /// Deliberate simplifications made while lowering (see `IR_LOWERING_PLAN.md`
-/// Step 2 for the full rationale):
+/// for the full rationale):
 /// - `Ty` / custom type names disappear; only [StarkType] and slot indices
 ///   survive (in [IrProgram::expr_types] / [IrProgram::slots]).
 /// - `Expression::Reference` (to a constant, parameter or variable) and
@@ -160,6 +181,15 @@ impl ExprList {
 #[derive(Clone, Copy, Debug)]
 pub enum ExprNode {
     Literal(Value),
+    /// An expression that cannot be evaluated, carrying a `&'static str`
+    /// naming why. Lowering emits this only for AST shapes that no grammar
+    /// production can currently produce (`ExpressionKind::Iterator`, which
+    /// needs an aggregate/lambda context — see `MISSING_GRAMMAR_FEATURES.md`),
+    /// so reaching one at run time means lowering has a bug; `eval` reports it
+    /// as [crate::value::EvalError::Unreachable] rather than inventing a
+    /// value. Before errors became a `Result`, this was a `Literal` holding
+    /// the old absorbing `Value::Error`.
+    Unreachable(&'static str),
     /// A read of `store[slot]` — the whole point of this IR: every name
     /// resolution already did gets baked into the node.
     Load(SlotId),
@@ -286,9 +316,14 @@ pub struct FunctionIr {
     pub body: StmtRef,
 }
 
-/// A lowered `penalty name = expr;`.
-#[derive(Clone, Copy, Debug)]
+/// A lowered `penalty name = expr;`. Carries its `name` (unlike the rest of
+/// this section, which didn't need one before [DistanceIr::AtomicLeft]/
+/// [DistanceIr::AtomicRight] started referencing a penalty by [PenaltyId] —
+/// printing `< #3` in [IrProgram]'s `Display` impl would otherwise be
+/// unreadable).
+#[derive(Clone, Debug)]
 pub struct PenaltyIr {
+    pub name: String,
     pub value: ExprRef,
 }
 
@@ -312,7 +347,7 @@ pub struct Update {
 /// One node of the command arena: a controller state's body or the
 /// environment block, both lowered to the same node type since the only
 /// difference between them is that an environment never contains a `Step`/
-/// `Exec` (see `IR_LOWERING_PLAN.md`'s Step 4).
+/// `Exec` (see `IR_LOWERING_PLAN.md`).
 ///
 /// A `Vec<ast::ControllerCommand>`/`Vec<ast::EnvironmentCommand>` — a
 /// `{ .. }` block — lowers to a left-associated chain of `Sequence(prior,
@@ -324,7 +359,8 @@ pub struct Update {
 /// `Assign` reached during a step into a list and apply them all at the end,
 /// so `x' = y; y' = x;` reads *both* sides from the pre-step state (the
 /// classic swap). Lowering only has to preserve the structure faithfully;
-/// see Step 4's `IR_LOWERING_PLAN.md` note and the `buffered_swap_*` tests.
+/// see `IR_LOWERING_PLAN.md`'s "Semantics that are easy to get silently
+/// wrong" and the `buffered_swap_*` tests.
 ///
 /// **Where control-flow termination lives**: this arena does not itself
 /// enforce that every path through a controller state reaches a `Step`/
@@ -381,6 +417,171 @@ pub struct ComponentIr {
 }
 
 // ---------------------------------------------------------------------------
+// Robustness sub-languages: perturbation / distance / ROBTL formula
+// ---------------------------------------------------------------------------
+//
+// These three mirror the shape of `ast.rs`'s `PerturbationExpression`/
+// `DistanceExpression`/`RobtlFormula`, each collapsed the same way the
+// expression arena is: `Reference(DefRef)` (a reference to another named
+// declaration of the same kind) resolves at lowering time to the referent's
+// `*Id`, no name lookups survive into the IR. A top-level `perturbation`/
+// `distance`/`formula name = ..;` declaration lowers to one *root* node,
+// pushed last (post-order, same as expressions); its `Sequence`/`Iteration`/
+// `Eventually`/etc. operands are themselves `*Id`s into the very same arena,
+// so a declaration and everything it's built from share one flat, `Box`-free
+// index space. [PerturbationDecl]/[DistanceDecl]/[FormulaDecl] separately
+// record which arena entries are those named roots (as opposed to
+// intermediate sub-nodes only reachable *through* a root) — the same
+// distinction [IrProgram::variables] draws from [IrProgram::exprs].
+
+/// A comparison operator, used by [DistanceIr::Threshold] and
+/// [FormulaIr::Distance]. Kept as its own type (mirroring `ast::ComparisonOp`)
+/// so `ir.rs` doesn't need to depend on `ast`, the same reason [BinaryOp]
+/// doesn't reuse `ast::BinaryOp` directly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ComparisonOp {
+    Less,
+    Leq,
+    Eq,
+    Geq,
+    Greater,
+}
+
+/// An unguarded `target <- value` inside a perturbation's atomic block —
+/// like [Update] but with no `guard` field, matching
+/// `ast::PerturbationAssignment` (a perturbation assignment can never be
+/// guarded; see `MISSING_GRAMMAR_FEATURES.md`).
+#[derive(Clone, Copy, Debug)]
+pub struct PerturbationAssignment {
+    pub target: SlotId,
+    pub value: ExprRef,
+}
+
+/// One node of [IrProgram]'s perturbation arena.
+#[derive(Clone, Debug)]
+pub enum PerturbationIr {
+    /// The empty perturbation — leaves every trajectory unperturbed.
+    Nil,
+    /// A reference to another named `perturbation` declaration.
+    Reference(PerturbationId),
+    /// `[ v1 <- e1, v2 <- e2, .. ] @ time`.
+    Atomic {
+        assignments: Vec<PerturbationAssignment>,
+        time: ExprRef,
+    },
+    /// `left ; right`.
+    Sequence(PerturbationId, PerturbationId),
+    /// `argument ^ iterations`.
+    Iteration {
+        argument: PerturbationId,
+        iterations: ExprRef,
+    },
+}
+
+/// A top-level `perturbation name = ..;` declaration: `name` plus the
+/// [PerturbationId] of its root node in [IrProgram::perturbations].
+#[derive(Clone, Debug)]
+pub struct PerturbationDecl {
+    pub name: String,
+    pub root: PerturbationId,
+}
+
+/// One node of [IrProgram]'s distance arena — same shape as [PerturbationIr].
+#[derive(Clone, Debug)]
+pub enum DistanceIr {
+    /// A reference to another named `distance` declaration.
+    Reference(DistanceId),
+    /// `< penalty`.
+    AtomicLeft(PenaltyId),
+    /// `> penalty`.
+    AtomicRight(PenaltyId),
+    /// `\F[from,to] argument`.
+    Eventually {
+        from: ExprRef,
+        to: ExprRef,
+        argument: DistanceId,
+    },
+    /// `\G[from,to] argument`.
+    Globally {
+        from: ExprRef,
+        to: ExprRef,
+        argument: DistanceId,
+    },
+    /// `left \U[from,to] right`.
+    Until {
+        from: ExprRef,
+        to: ExprRef,
+        left: DistanceId,
+        right: DistanceId,
+    },
+    /// `left op threshold`.
+    Threshold {
+        op: ComparisonOp,
+        left: DistanceId,
+        threshold: ExprRef,
+    },
+    Min(DistanceId, DistanceId),
+    Max(DistanceId, DistanceId),
+    /// `w1 * d1 + w2 * d2 + ...`.
+    LinearCombination(Vec<(ExprRef, DistanceId)>),
+}
+
+/// A top-level `distance name = ..;` declaration: `name` plus the
+/// [DistanceId] of its root node in [IrProgram::distances].
+#[derive(Clone, Debug)]
+pub struct DistanceDecl {
+    pub name: String,
+    pub root: DistanceId,
+}
+
+/// One node of [IrProgram]'s ROBTL-formula arena — same shape as
+/// [PerturbationIr].
+#[derive(Clone, Debug)]
+pub enum FormulaIr {
+    True,
+    False,
+    /// A reference to another named `formula` declaration.
+    Reference(FormulaId),
+    /// `\D[distance, perturbation] op value`.
+    Distance {
+        distance: DistanceId,
+        perturbation: PerturbationId,
+        op: ComparisonOp,
+        value: ExprRef,
+    },
+    Not(FormulaId),
+    /// `\G[from,to] argument`.
+    Globally {
+        from: ExprRef,
+        to: ExprRef,
+        argument: FormulaId,
+    },
+    /// `\F[from,to] argument`.
+    Eventually {
+        from: ExprRef,
+        to: ExprRef,
+        argument: FormulaId,
+    },
+    And(FormulaId, FormulaId),
+    Or(FormulaId, FormulaId),
+    /// `left \U[from,to] right`.
+    Until {
+        from: ExprRef,
+        to: ExprRef,
+        left: FormulaId,
+        right: FormulaId,
+    },
+}
+
+/// A top-level `formula name = ..;` declaration: `name` plus the [FormulaId]
+/// of its root node in [IrProgram::formulas].
+#[derive(Clone, Debug)]
+pub struct FormulaDecl {
+    pub name: String,
+    pub root: FormulaId,
+}
+
+// ---------------------------------------------------------------------------
 // The program
 // ---------------------------------------------------------------------------
 
@@ -407,6 +608,13 @@ pub struct IrProgram {
     /// The environment block, if the specification has one. `None` if it is
     /// absent, or present but empty — both mean "nothing runs".
     pub(crate) environment: Option<CommandRef>,
+
+    pub(crate) perturbations: Vec<PerturbationIr>,
+    pub(crate) perturbation_decls: Vec<PerturbationDecl>,
+    pub(crate) distances: Vec<DistanceIr>,
+    pub(crate) distance_decls: Vec<DistanceDecl>,
+    pub(crate) formulas: Vec<FormulaIr>,
+    pub(crate) formula_decls: Vec<FormulaDecl>,
 }
 
 impl IrProgram {
@@ -498,14 +706,55 @@ impl IrProgram {
         &self.penalties[id.value() as usize]
     }
 
+    /// The raw perturbation-expression arena: both the named roots (see
+    /// [Self::perturbation_decls]) and every sub-node reachable from them.
+    pub fn perturbations(&self) -> &[PerturbationIr] {
+        &self.perturbations
+    }
+
+    pub fn perturbation(&self, id: PerturbationId) -> &PerturbationIr {
+        &self.perturbations[id.value() as usize]
+    }
+
+    /// The top-level `perturbation name = ..;` declarations, in source order.
+    pub fn perturbation_decls(&self) -> &[PerturbationDecl] {
+        &self.perturbation_decls
+    }
+
+    /// The raw distance-expression arena — see [Self::perturbations].
+    pub fn distances(&self) -> &[DistanceIr] {
+        &self.distances
+    }
+
+    pub fn distance(&self, id: DistanceId) -> &DistanceIr {
+        &self.distances[id.value() as usize]
+    }
+
+    /// The top-level `distance name = ..;` declarations, in source order.
+    pub fn distance_decls(&self) -> &[DistanceDecl] {
+        &self.distance_decls
+    }
+
+    /// The raw ROBTL-formula arena — see [Self::perturbations].
+    pub fn formulas(&self) -> &[FormulaIr] {
+        &self.formulas
+    }
+
+    pub fn formula(&self, id: FormulaId) -> &FormulaIr {
+        &self.formulas[id.value() as usize]
+    }
+
+    /// The top-level `formula name = ..;` declarations, in source order.
+    pub fn formula_decls(&self) -> &[FormulaDecl] {
+        &self.formula_decls
+    }
+
     /// Independently re-checks the arena's internal consistency: every
-    /// `ExprRef`/`StmtRef`/`CommandRef`/`SlotId`/`FunctionId`/`IrStateId`
-    /// reachable from a top-level entry (globals, variables, functions,
-    /// penalties, components, the environment) is in bounds, and every list
-    /// slice lies within `expr_lists`. This is a partial version of the full
-    /// check `IR_LOWERING_PLAN.md`'s Step 7 describes — it does not yet
-    /// cover perturbations/distances/formulas, since those aren't lowered
-    /// yet.
+    /// `ExprRef`/`StmtRef`/`CommandRef`/`SlotId`/`FunctionId`/`IrStateId`/
+    /// `PenaltyId`/`PerturbationId`/`DistanceId`/`FormulaId` reachable from a
+    /// top-level entry (globals, variables, functions, penalties, components,
+    /// the environment, perturbation/distance/formula declarations) is in
+    /// bounds, and every list slice lies within `expr_lists`.
     pub fn validate(&self) -> Result<(), String> {
         let check_expr = |id: ExprRef| -> Result<(), String> {
             if (id.value() as usize) < self.exprs.len() {
@@ -545,6 +794,46 @@ impl IrProgram {
                 Err(format!("{id:?} out of bounds for {} state(s)", self.states.len()))
             }
         };
+        let check_penalty = |id: PenaltyId| -> Result<(), String> {
+            if (id.value() as usize) < self.penalties.len() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{id:?} out of bounds for {} penalty/-ies",
+                    self.penalties.len()
+                ))
+            }
+        };
+        let check_perturbation = |id: PerturbationId| -> Result<(), String> {
+            if (id.value() as usize) < self.perturbations.len() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{id:?} out of bounds for {} perturbation node(s)",
+                    self.perturbations.len()
+                ))
+            }
+        };
+        let check_distance = |id: DistanceId| -> Result<(), String> {
+            if (id.value() as usize) < self.distances.len() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{id:?} out of bounds for {} distance node(s)",
+                    self.distances.len()
+                ))
+            }
+        };
+        let check_formula = |id: FormulaId| -> Result<(), String> {
+            if (id.value() as usize) < self.formulas.len() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{id:?} out of bounds for {} formula node(s)",
+                    self.formulas.len()
+                ))
+            }
+        };
 
         if self.exprs.len() != self.expr_spans.len() || self.exprs.len() != self.expr_types.len() {
             return Err(format!(
@@ -557,11 +846,12 @@ impl IrProgram {
 
         for (index, node) in self.exprs.iter().enumerate() {
             match *node {
-                ExprNode::Literal(_) | ExprNode::SampleUnit => {}
+                ExprNode::Literal(_) | ExprNode::Unreachable(_) | ExprNode::SampleUnit => {}
                 ExprNode::Load(slot) => check_slot(slot)?,
-                ExprNode::Not(inner) | ExprNode::Negate(inner) | ExprNode::Widen(inner) | ExprNode::MathUnary(_, inner) => {
-                    check_expr(inner)?
-                }
+                ExprNode::Not(inner)
+                | ExprNode::Negate(inner)
+                | ExprNode::Widen(inner)
+                | ExprNode::MathUnary(_, inner) => check_expr(inner)?,
                 ExprNode::Binary(_, left, right) | ExprNode::MathBinary(_, left, right) => {
                     check_expr(left)?;
                     check_expr(right)?;
@@ -624,8 +914,47 @@ impl IrProgram {
             }
         }
 
+        // The slot partition itself: `[0, n_variables)` variables, then
+        // `[n_variables, n_globals)` globals, then locals. `n_variables()` /
+        // `n_globals()` derive these boundaries from `variables.len()` /
+        // `globals.len()` rather than by scanning `slots`, and the evaluator
+        // takes the state prefix as a contiguous slice on that basis — so the
+        // layout has to actually hold, not merely be intended.
+        let n_variables = self.n_variables() as usize;
+        let n_globals = self.n_globals() as usize;
+        if n_globals > self.slots.len() {
+            return Err(format!(
+                "slot partition overflows: {n_variables} variable(s) + {} global(s) exceeds {} slot(s)",
+                self.globals.len(),
+                self.slots.len()
+            ));
+        }
+        for (index, slot) in self.slots.iter().enumerate() {
+            let expected = if index < n_variables {
+                SlotKind::Variable
+            } else if index < n_globals {
+                SlotKind::Global
+            } else {
+                SlotKind::Local
+            };
+            if slot.kind != expected {
+                return Err(format!(
+                    "slot #{index} (`{}`) is {:?}, but the partition \
+                     ([0,{n_variables}) variables, [{n_variables},{n_globals}) globals) requires {expected:?}",
+                    slot.name, slot.kind
+                ));
+            }
+        }
+
         for variable in &self.variables {
             check_slot(variable.slot)?;
+            if (variable.slot.value() as usize) >= n_variables {
+                return Err(format!(
+                    "{:?} (`{}`) is a variable but lies outside the [0,{n_variables}) state prefix",
+                    variable.slot,
+                    self.slot(variable.slot).name
+                ));
+            }
             check_expr(variable.initial_value)?;
             if let Some((min, max)) = variable.range {
                 check_expr(min)?;
@@ -634,11 +963,26 @@ impl IrProgram {
         }
         for global in &self.globals {
             check_slot(global.slot)?;
+            let slot = global.slot.value() as usize;
+            if slot < n_variables || slot >= n_globals {
+                return Err(format!(
+                    "{:?} (`{}`) is a global but lies outside [{n_variables},{n_globals})",
+                    global.slot,
+                    self.slot(global.slot).name
+                ));
+            }
             check_expr(global.value)?;
         }
         for function in &self.functions {
             for &argument in &function.arguments {
                 check_slot(argument)?;
+                if (argument.value() as usize) < n_globals {
+                    return Err(format!(
+                        "{argument:?} (`{}`) is a function argument but lies inside the \
+                         [0,{n_globals}) variable/global range",
+                        self.slot(argument).name
+                    ));
+                }
             }
             check_stmt(function.body)?;
         }
@@ -711,6 +1055,102 @@ impl IrProgram {
         }
         if let Some(environment) = self.environment {
             check_command(environment)?;
+        }
+
+        for node in &self.perturbations {
+            match node {
+                PerturbationIr::Nil => {}
+                PerturbationIr::Reference(target) => check_perturbation(*target)?,
+                PerturbationIr::Atomic { assignments, time } => {
+                    for assignment in assignments {
+                        check_slot(assignment.target)?;
+                        check_expr(assignment.value)?;
+                    }
+                    check_expr(*time)?;
+                }
+                PerturbationIr::Sequence(left, right) => {
+                    check_perturbation(*left)?;
+                    check_perturbation(*right)?;
+                }
+                PerturbationIr::Iteration { argument, iterations } => {
+                    check_perturbation(*argument)?;
+                    check_expr(*iterations)?;
+                }
+            }
+        }
+        for decl in &self.perturbation_decls {
+            check_perturbation(decl.root)?;
+        }
+
+        for node in &self.distances {
+            match node {
+                DistanceIr::Reference(target) => check_distance(*target)?,
+                DistanceIr::AtomicLeft(penalty) | DistanceIr::AtomicRight(penalty) => check_penalty(*penalty)?,
+                DistanceIr::Eventually { from, to, argument } | DistanceIr::Globally { from, to, argument } => {
+                    check_expr(*from)?;
+                    check_expr(*to)?;
+                    check_distance(*argument)?;
+                }
+                DistanceIr::Until { from, to, left, right } => {
+                    check_expr(*from)?;
+                    check_expr(*to)?;
+                    check_distance(*left)?;
+                    check_distance(*right)?;
+                }
+                DistanceIr::Threshold { left, threshold, .. } => {
+                    check_distance(*left)?;
+                    check_expr(*threshold)?;
+                }
+                DistanceIr::Min(left, right) | DistanceIr::Max(left, right) => {
+                    check_distance(*left)?;
+                    check_distance(*right)?;
+                }
+                DistanceIr::LinearCombination(terms) => {
+                    for &(weight, distance) in terms {
+                        check_expr(weight)?;
+                        check_distance(distance)?;
+                    }
+                }
+            }
+        }
+        for decl in &self.distance_decls {
+            check_distance(decl.root)?;
+        }
+
+        for node in &self.formulas {
+            match node {
+                FormulaIr::True | FormulaIr::False => {}
+                FormulaIr::Reference(target) => check_formula(*target)?,
+                FormulaIr::Distance {
+                    distance,
+                    perturbation,
+                    value,
+                    ..
+                } => {
+                    check_distance(*distance)?;
+                    check_perturbation(*perturbation)?;
+                    check_expr(*value)?;
+                }
+                FormulaIr::Not(inner) => check_formula(*inner)?,
+                FormulaIr::Globally { from, to, argument } | FormulaIr::Eventually { from, to, argument } => {
+                    check_expr(*from)?;
+                    check_expr(*to)?;
+                    check_formula(*argument)?;
+                }
+                FormulaIr::And(left, right) | FormulaIr::Or(left, right) => {
+                    check_formula(*left)?;
+                    check_formula(*right)?;
+                }
+                FormulaIr::Until { from, to, left, right } => {
+                    check_expr(*from)?;
+                    check_expr(*to)?;
+                    check_formula(*left)?;
+                    check_formula(*right)?;
+                }
+            }
+        }
+        for decl in &self.formula_decls {
+            check_formula(decl.root)?;
         }
 
         Ok(())
@@ -814,6 +1254,37 @@ impl fmt::Display for IrProgram {
             writeln!(f, "environment {{")?;
             self.display_command(f, environment, 1)?;
             writeln!(f, "}}")?;
+            writeln!(f)?;
+        }
+
+        for penalty in &self.penalties {
+            writeln!(f, "penalty {} = {};", penalty.name, self.display_expr(penalty.value))?;
+        }
+        if !self.penalties.is_empty() {
+            writeln!(f)?;
+        }
+
+        for decl in &self.perturbation_decls {
+            writeln!(
+                f,
+                "perturbation {} = {};",
+                decl.name,
+                self.display_perturbation(decl.root)
+            )?;
+        }
+        if !self.perturbation_decls.is_empty() {
+            writeln!(f)?;
+        }
+
+        for decl in &self.distance_decls {
+            writeln!(f, "distance {} = {};", decl.name, self.display_distance(decl.root))?;
+        }
+        if !self.distance_decls.is_empty() {
+            writeln!(f)?;
+        }
+
+        for decl in &self.formula_decls {
+            writeln!(f, "formula {} = {};", decl.name, self.display_formula(decl.root))?;
         }
 
         Ok(())
@@ -912,6 +1383,7 @@ impl IrProgram {
     fn display_expr(&self, id: ExprRef) -> String {
         match *self.expr(id) {
             ExprNode::Literal(value) => value.to_string(),
+            ExprNode::Unreachable(what) => format!("<unreachable: {what}>"),
             ExprNode::Load(slot) => format!("load #{}:{}", slot.value(), self.slot(slot).name),
             ExprNode::Not(inner) => format!("!{}", self.display_expr(inner)),
             ExprNode::Negate(inner) => format!("-{}", self.display_expr(inner)),
@@ -971,6 +1443,168 @@ impl IrProgram {
             }
         }
     }
+
+    /// The name of the top-level `perturbation name = ..;` declaration whose
+    /// root is `id` — a linear search over [Self::perturbation_decls], fine
+    /// for `Display` (debug/test use only, never a hot path). Every
+    /// `PerturbationIr::Reference` is built from a resolved `DefRef` at
+    /// lowering time (see `lower.rs`), so it always names a real root; the
+    /// fallback only matters if the arena were hand-corrupted, as
+    /// `validate_rejects_a_corrupted_arena`-style tests do.
+    fn perturbation_decl_name(&self, id: PerturbationId) -> &str {
+        self.perturbation_decls
+            .iter()
+            .find(|decl| decl.root == id)
+            .map(|decl| decl.name.as_str())
+            .unwrap_or("<perturbation>")
+    }
+
+    fn distance_decl_name(&self, id: DistanceId) -> &str {
+        self.distance_decls
+            .iter()
+            .find(|decl| decl.root == id)
+            .map(|decl| decl.name.as_str())
+            .unwrap_or("<distance>")
+    }
+
+    fn formula_decl_name(&self, id: FormulaId) -> &str {
+        self.formula_decls
+            .iter()
+            .find(|decl| decl.root == id)
+            .map(|decl| decl.name.as_str())
+            .unwrap_or("<formula>")
+    }
+
+    fn display_perturbation(&self, id: PerturbationId) -> String {
+        match self.perturbation(id) {
+            PerturbationIr::Nil => "nil".to_string(),
+            PerturbationIr::Reference(target) => self.perturbation_decl_name(*target).to_string(),
+            PerturbationIr::Atomic { assignments, time } => {
+                let assignments = assignments
+                    .iter()
+                    .map(|assignment| {
+                        format!(
+                            "{} <- {}",
+                            self.slot(assignment.target).name,
+                            self.display_expr(assignment.value)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{assignments}] @ {}", self.display_expr(*time))
+            }
+            PerturbationIr::Sequence(left, right) => {
+                format!(
+                    "{} ; {}",
+                    self.display_perturbation(*left),
+                    self.display_perturbation(*right)
+                )
+            }
+            PerturbationIr::Iteration { argument, iterations } => {
+                format!(
+                    "({})^{}",
+                    self.display_perturbation(*argument),
+                    self.display_expr(*iterations)
+                )
+            }
+        }
+    }
+
+    fn display_distance(&self, id: DistanceId) -> String {
+        match self.distance(id) {
+            DistanceIr::Reference(target) => self.distance_decl_name(*target).to_string(),
+            DistanceIr::AtomicLeft(penalty) => format!("< {}", self.penalty(*penalty).name),
+            DistanceIr::AtomicRight(penalty) => format!("> {}", self.penalty(*penalty).name),
+            DistanceIr::Eventually { from, to, argument } => format!(
+                "\\F[{}, {}] {}",
+                self.display_expr(*from),
+                self.display_expr(*to),
+                self.display_distance(*argument)
+            ),
+            DistanceIr::Globally { from, to, argument } => format!(
+                "\\G[{}, {}] {}",
+                self.display_expr(*from),
+                self.display_expr(*to),
+                self.display_distance(*argument)
+            ),
+            DistanceIr::Until { from, to, left, right } => format!(
+                "{} \\U[{}, {}] {}",
+                self.display_distance(*left),
+                self.display_expr(*from),
+                self.display_expr(*to),
+                self.display_distance(*right)
+            ),
+            DistanceIr::Threshold { op, left, threshold } => format!(
+                "{} {} {}",
+                self.display_distance(*left),
+                display_comparison_op(*op),
+                self.display_expr(*threshold)
+            ),
+            DistanceIr::Min(left, right) => format!(
+                "min({}, {})",
+                self.display_distance(*left),
+                self.display_distance(*right)
+            ),
+            DistanceIr::Max(left, right) => format!(
+                "max({}, {})",
+                self.display_distance(*left),
+                self.display_distance(*right)
+            ),
+            DistanceIr::LinearCombination(terms) => terms
+                .iter()
+                .map(|&(weight, distance)| {
+                    format!("{} * {}", self.display_expr(weight), self.display_distance(distance))
+                })
+                .collect::<Vec<_>>()
+                .join(" + "),
+        }
+    }
+
+    fn display_formula(&self, id: FormulaId) -> String {
+        match self.formula(id) {
+            FormulaIr::True => "true".to_string(),
+            FormulaIr::False => "false".to_string(),
+            FormulaIr::Reference(target) => self.formula_decl_name(*target).to_string(),
+            FormulaIr::Distance {
+                distance,
+                perturbation,
+                op,
+                value,
+            } => format!(
+                "\\D[{}, {}] {} {}",
+                self.distance_decl_name(*distance),
+                self.perturbation_decl_name(*perturbation),
+                display_comparison_op(*op),
+                self.display_expr(*value)
+            ),
+            FormulaIr::Not(inner) => format!("!{}", self.display_formula(*inner)),
+            FormulaIr::Globally { from, to, argument } => format!(
+                "\\G[{}, {}] {}",
+                self.display_expr(*from),
+                self.display_expr(*to),
+                self.display_formula(*argument)
+            ),
+            FormulaIr::Eventually { from, to, argument } => format!(
+                "\\F[{}, {}] {}",
+                self.display_expr(*from),
+                self.display_expr(*to),
+                self.display_formula(*argument)
+            ),
+            FormulaIr::And(left, right) => {
+                format!("({} && {})", self.display_formula(*left), self.display_formula(*right))
+            }
+            FormulaIr::Or(left, right) => {
+                format!("({} || {})", self.display_formula(*left), self.display_formula(*right))
+            }
+            FormulaIr::Until { from, to, left, right } => format!(
+                "{} \\U[{}, {}] {}",
+                self.display_formula(*left),
+                self.display_expr(*from),
+                self.display_expr(*to),
+                self.display_formula(*right)
+            ),
+        }
+    }
 }
 
 fn display_binary_op(op: BinaryOp) -> &'static str {
@@ -1024,5 +1658,15 @@ fn display_math_binary(function: MathBinaryFunction) -> &'static str {
         MathBinaryFunction::Max => "max",
         MathBinaryFunction::Min => "min",
         MathBinaryFunction::Pow => "pow",
+    }
+}
+
+fn display_comparison_op(op: ComparisonOp) -> &'static str {
+    match op {
+        ComparisonOp::Less => "<",
+        ComparisonOp::Leq => "<=",
+        ComparisonOp::Eq => "==",
+        ComparisonOp::Geq => ">=",
+        ComparisonOp::Greater => ">",
     }
 }
