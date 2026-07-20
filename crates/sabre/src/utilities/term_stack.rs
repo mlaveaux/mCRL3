@@ -57,29 +57,34 @@ pub enum Config<'a> {
 
 impl Markable for Config<'_> {
     fn mark(&self, marker: &mut Marker<'_>) {
-        if let Config::Construct(t, _, _) = self {
-            t.mark(marker);
+        match self {
+            Config::Construct(t, _, _) => t.mark(marker),
+            Config::Term(t, _) => t.mark(marker),
+            Config::Rewrite(_) | Config::Return() => {}
         }
     }
 
     fn contains_term(&self, term: &ATermRef<'_>) -> bool {
-        if let Config::Construct(t, _, _) = self {
-            t.contains_term(term)
-        } else {
-            false
+        match self {
+            Config::Construct(t, _, _) => t.contains_term(term),
+            Config::Term(t, _) => t.contains_term(term),
+            Config::Rewrite(_) | Config::Return() => false,
         }
     }
 
     fn contains_symbol(&self, symbol: &SymbolRef<'_>) -> bool {
-        if let Config::Construct(t, _, _) = self {
-            t.contains_symbol(symbol)
-        } else {
-            false
+        match self {
+            Config::Construct(t, _, _) => t.contains_symbol(symbol),
+            Config::Term(t, _) => t.contains_symbol(symbol),
+            Config::Rewrite(_) | Config::Return() => false,
         }
     }
 
     fn len(&self) -> usize {
-        if let Config::Construct(_, _, _) = self { 1 } else { 0 }
+        match self {
+            Config::Construct(_, _, _) | Config::Term(_, _) => 1,
+            Config::Rewrite(_) | Config::Return() => 0,
+        }
     }
 }
 
@@ -143,7 +148,16 @@ impl TermStack {
                 ));
                 stack_size += 1;
             } else if is_data_machine_number(&term) {
-                // Skip SortId(@NoValue) and OpId
+                // A machine number is a constant with no head function symbol to
+                // construct from, so it gets its own slot that is filled with the
+                // literal term. Right-hand sides contain them whenever numeric
+                // literals are lowered with `NumberEncoding::MachineWord`, where a
+                // number is a chain of `@word` digits.
+                let mut write = innermost_stack.write();
+                // Safety: term is pushed into the container on the next line.
+                let t = unsafe { write.protect(&term) };
+                write.push(Config::Term(t.into(), stack_size));
+                stack_size += 1;
             } else {
                 let arity = term.data_arguments().len();
                 let mut write = innermost_stack.write();
