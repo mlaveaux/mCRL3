@@ -21,7 +21,7 @@
 //! tree actually threads through `next()`). Walking a state's body is one
 //! flat recursion over [CommandNode] instead of a tree of controller
 //! objects, since lowering already collapsed the controller AST into that
-//! arena (see `IR_LOWERING_PLAN.md`'s Step 4).
+//! arena (see `IR_LOWERING_PLAN.md`).
 
 use rand::Rng;
 
@@ -30,6 +30,7 @@ use crate::ir::CommandRef;
 use crate::ir::IrProgram;
 use crate::ir::IrStateId;
 use crate::ir::SlotId;
+use crate::value::EvalError;
 use crate::value::Value;
 
 use super::expr::eval;
@@ -76,25 +77,36 @@ enum Walk {
 /// every cursor has run, matching `ParallelController`'s "both effects
 /// concatenated before the single `apply`"), then the environment runs
 /// against the post-controller state.
-pub(crate) fn macro_step<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng: &mut R, cursors: &mut [Cursor]) {
+///
+/// A failing evaluation anywhere in the step aborts the whole step with that
+/// [EvalError] — the buffered updates from the failed phase are dropped rather
+/// than half-applied, so `store` is left holding the last state that was
+/// computed successfully.
+pub(crate) fn macro_step<R: Rng + ?Sized>(
+    program: &IrProgram,
+    store: &mut Store,
+    rng: &mut R,
+    cursors: &mut [Cursor],
+) -> Result<(), EvalError> {
     let budget = total_states(program);
     let mut updates = Vec::new();
     for cursor in cursors.iter_mut() {
         let mut exec_budget = budget;
-        *cursor = run_component(program, store, rng, &mut updates, &mut exec_budget, *cursor);
+        *cursor = run_component(program, store, rng, &mut updates, &mut exec_budget, *cursor)?;
     }
     apply_updates(store, &updates);
 
     if let Some(environment) = program.environment() {
         let mut env_updates = Vec::new();
-        // The environment never contains `Step`/`Exec` (`IR_LOWERING_PLAN.md`
-        // Step 4), so no budget should ever be spent; 0 is a defensive
+        // The environment never contains `Step`/`Exec` (see `CommandNode`'s
+        // doc comment), so no budget should ever be spent; 0 is a defensive
         // fallback that still can't panic or loop if that invariant is ever
         // violated by a malformed IR.
         let mut exec_budget = 0;
-        run_command(program, store, rng, &mut env_updates, &mut exec_budget, environment);
+        run_command(program, store, rng, &mut env_updates, &mut exec_budget, environment)?;
         apply_updates(store, &env_updates);
     }
+    Ok(())
 }
 
 fn apply_updates(store: &mut Store, updates: &[PendingUpdate]) {
@@ -124,25 +136,25 @@ fn run_component<R: Rng + ?Sized>(
     updates: &mut Vec<PendingUpdate>,
     exec_budget: &mut u32,
     cursor: Cursor,
-) -> Cursor {
+) -> Result<Cursor, EvalError> {
     match cursor {
-        Cursor::Nil => Cursor::Nil,
+        Cursor::Nil => Ok(Cursor::Nil),
         Cursor::Idle { remaining, target } => {
             if remaining <= 1 {
-                Cursor::Run(target)
+                Ok(Cursor::Run(target))
             } else {
-                Cursor::Idle {
+                Ok(Cursor::Idle {
                     remaining: remaining - 1,
                     target,
-                }
+                })
             }
         }
         Cursor::Run(state) => match program.state(state).body {
-            Some(body) => match run_command(program, store, rng, updates, exec_budget, body) {
-                Walk::FellThrough => Cursor::Nil,
-                Walk::Transitioned(next) => next,
+            Some(body) => match run_command(program, store, rng, updates, exec_budget, body)? {
+                Walk::FellThrough => Ok(Cursor::Nil),
+                Walk::Transitioned(next) => Ok(next),
             },
-            None => Cursor::Nil,
+            None => Ok(Cursor::Nil),
         },
     }
 }
@@ -154,51 +166,52 @@ fn run_command<R: Rng + ?Sized>(
     updates: &mut Vec<PendingUpdate>,
     exec_budget: &mut u32,
     id: CommandRef,
-) -> Walk {
+) -> Result<Walk, EvalError> {
     match *program.command(id) {
         CommandNode::Assign(update) => {
-            // `StarkValue.isTrue` semantics: a missing guard is
-            // unconditionally true; a non-boolean guard is false, not an
-            // error (see `Value::truthy`'s doc comment).
+            // A missing guard is unconditionally true. A *non-boolean* guard
+            // is now an error: `StarkValue.isTrue` mapped it (and a failed
+            // evaluation) to `false`, so an assignment whose guard divided by
+            // zero silently didn't happen — see `Value::as_boolean`.
             let guarded = match update.guard {
-                Some(guard) => eval(program, store, rng, guard).truthy(),
+                Some(guard) => eval(program, store, rng, guard)?.as_boolean("the guard of an assignment")?,
                 None => true,
             };
             if guarded {
-                let value = eval(program, store, rng, update.value);
+                let value = eval(program, store, rng, update.value)?;
                 updates.push(PendingUpdate {
                     target: update.target,
                     value,
                 });
             }
-            Walk::FellThrough
+            Ok(Walk::FellThrough)
         }
         CommandNode::IfThenElse {
             guard,
             then_branch,
             else_branch,
         } => {
-            let branch = if eval(program, store, rng, guard).truthy() {
+            let branch = if eval(program, store, rng, guard)?.as_boolean("the condition of an `if` command")? {
                 then_branch
             } else {
                 else_branch
             };
             match branch {
                 Some(branch) => run_command(program, store, rng, updates, exec_budget, branch),
-                None => Walk::FellThrough,
+                None => Ok(Walk::FellThrough),
             }
         }
         CommandNode::Let { slot, value, body } => {
-            let value = eval(program, store, rng, value);
+            let value = eval(program, store, rng, value)?;
             store.set(slot, value);
             match body {
                 Some(body) => run_command(program, store, rng, updates, exec_budget, body),
-                None => Walk::FellThrough,
+                None => Ok(Walk::FellThrough),
             }
         }
-        CommandNode::Sequence(left, right) => match run_command(program, store, rng, updates, exec_budget, left) {
+        CommandNode::Sequence(left, right) => match run_command(program, store, rng, updates, exec_budget, left)? {
             Walk::FellThrough => run_command(program, store, rng, updates, exec_budget, right),
-            transitioned => transitioned,
+            transitioned => Ok(transitioned),
         },
         CommandNode::Step { steps, target } => {
             // `StepController`: `k <= 0` behaves like an immediate
@@ -206,14 +219,11 @@ fn run_command<R: Rng + ?Sized>(
             // this tick simply ends here); `k > 0` idles `k` further ticks
             // first.
             let k = match steps {
-                Some(steps) => match eval(program, store, rng, steps) {
-                    Value::Integer(v) => v,
-                    // A non-integer step count can't arise from a checked
-                    // program (`typecheck.rs` requires it numeric and
-                    // lowering never produces a non-integer step count);
-                    // treat it as "no delay" rather than panicking.
-                    _ => 0,
-                },
+                // A non-integer step count can't arise from a checked program
+                // (`typecheck.rs` requires it numeric and lowering never
+                // produces a non-integer step count), so this reports a
+                // compiler bug rather than silently meaning "no delay".
+                Some(steps) => eval(program, store, rng, steps)?.as_integer("a `step` count")?,
                 None => 0,
             };
             let cursor = if k <= 0 {
@@ -224,7 +234,7 @@ fn run_command<R: Rng + ?Sized>(
                     target,
                 }
             };
-            Walk::Transitioned(cursor)
+            Ok(Walk::Transitioned(cursor))
         }
         CommandNode::Exec(target) => {
             // Same-tick tail jump: `ExecController.next` immediately
@@ -235,12 +245,12 @@ fn run_command<R: Rng + ?Sized>(
                     "`exec` chain exceeded the total state budget while entering {target:?} — likely an `exec` \
                      cycle with no intervening `step`; ending this component's tick instead of looping forever"
                 );
-                return Walk::Transitioned(Cursor::Nil);
+                return Ok(Walk::Transitioned(Cursor::Nil));
             }
             *exec_budget -= 1;
             match program.state(target).body {
                 Some(body) => run_command(program, store, rng, updates, exec_budget, body),
-                None => Walk::Transitioned(Cursor::Nil),
+                None => Ok(Walk::Transitioned(Cursor::Nil)),
             }
         }
     }
@@ -279,10 +289,53 @@ mod tests {
             ",
         );
         let mut rng = StdRng::seed_from_u64(0);
-        let mut store = Store::new(&program, &mut rng);
+        let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors = Vec::new();
-        macro_step(&program, &mut store, &mut rng, &mut cursors);
+        macro_step(&program, &mut store, &mut rng, &mut cursors).expect("should step");
         assert_eq!(store.state_prefix(&program), &[Value::Integer(2), Value::Integer(1)]);
+    }
+
+    #[test]
+    fn a_failing_guard_aborts_the_step_instead_of_reading_as_false() {
+        // The regression this whole `Result` change exists for. Under
+        // `StarkValue.isTrue` the guard `1 / zero > 0` evaluated to
+        // `ERROR_VALUE`, which mapped to `false`, so the assignment silently
+        // didn't happen and the run continued with `x` unchanged — an
+        // arithmetic failure indistinguishable from a guard that was
+        // legitimately not satisfied.
+        let program = build(
+            r"
+            global variables {
+              int zero = 0;
+              int x = 0;
+            }
+            environment {
+              when 1 / zero > 0 x' = 1;
+            }
+            ",
+        );
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut store = Store::new(&program, &mut rng).expect("should initialise");
+        let mut cursors = Vec::new();
+
+        assert_eq!(
+            macro_step(&program, &mut store, &mut rng, &mut cursors),
+            Err(EvalError::DivisionByZero)
+        );
+    }
+
+    #[test]
+    fn a_non_boolean_guard_aborts_the_step() {
+        // `typecheck.rs` rejects a non-boolean guard, so this is built
+        // straight against the IR: `Value::as_boolean` must report it rather
+        // than answering `false` the way `StarkValue.isTrue` did.
+        assert_eq!(
+            Value::Integer(1).as_boolean("the guard of an assignment"),
+            Err(EvalError::ExpectedBoolean {
+                context: "the guard of an assignment",
+                found: crate::value::ValueKind::Integer,
+            })
+        );
     }
 
     #[test]
@@ -309,7 +362,7 @@ mod tests {
             ",
         );
         let mut rng = StdRng::seed_from_u64(0);
-        let mut store = Store::new(&program, &mut rng);
+        let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors: Vec<Cursor> = program
             .components()
             .iter()
@@ -317,10 +370,10 @@ mod tests {
             .map(|&state| Cursor::Run(state))
             .collect();
 
-        macro_step(&program, &mut store, &mut rng, &mut cursors);
+        macro_step(&program, &mut store, &mut rng, &mut cursors).expect("should step");
         assert_eq!(store.state_prefix(&program), &[Value::Integer(1)]);
 
-        macro_step(&program, &mut store, &mut rng, &mut cursors);
+        macro_step(&program, &mut store, &mut rng, &mut cursors).expect("should step");
         assert_eq!(store.state_prefix(&program), &[Value::Integer(101)]);
     }
 
@@ -347,7 +400,7 @@ mod tests {
             ",
         );
         let mut rng = StdRng::seed_from_u64(0);
-        let mut store = Store::new(&program, &mut rng);
+        let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors: Vec<Cursor> = program
             .components()
             .iter()
@@ -355,7 +408,7 @@ mod tests {
             .map(|&state| Cursor::Run(state))
             .collect();
 
-        macro_step(&program, &mut store, &mut rng, &mut cursors);
+        macro_step(&program, &mut store, &mut rng, &mut cursors).expect("should step");
         assert_eq!(store.state_prefix(&program), &[Value::Integer(1)]);
     }
 
@@ -383,7 +436,7 @@ mod tests {
             ",
         );
         let mut rng = StdRng::seed_from_u64(0);
-        let mut store = Store::new(&program, &mut rng);
+        let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors: Vec<Cursor> = program
             .components()
             .iter()
@@ -391,7 +444,7 @@ mod tests {
             .map(|&state| Cursor::Run(state))
             .collect();
 
-        macro_step(&program, &mut store, &mut rng, &mut cursors);
+        macro_step(&program, &mut store, &mut rng, &mut cursors).expect("should step");
         // The environment reads `x` *after* the controller's `x' = 5` was
         // applied, so `seen` should be `5`, not the pre-step `0`.
         assert_eq!(store.state_prefix(&program), &[Value::Integer(5), Value::Integer(5)]);
@@ -428,7 +481,7 @@ mod tests {
             ",
         );
         let mut rng = StdRng::seed_from_u64(0);
-        let mut store = Store::new(&program, &mut rng);
+        let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors: Vec<Cursor> = program
             .components()
             .iter()
@@ -436,7 +489,7 @@ mod tests {
             .map(|&state| Cursor::Run(state))
             .collect();
 
-        macro_step(&program, &mut store, &mut rng, &mut cursors);
+        macro_step(&program, &mut store, &mut rng, &mut cursors).expect("should step");
         // Both read x=1, y=1 from the *same* pre-step state, not one
         // another's freshly-buffered update.
         assert_eq!(store.state_prefix(&program), &[Value::Integer(11), Value::Integer(11)]);

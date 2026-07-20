@@ -7,6 +7,7 @@ use rand::Rng;
 
 use crate::ir::IrProgram;
 use crate::ir::SlotId;
+use crate::value::EvalError;
 use crate::value::Value;
 
 use super::expr::eval;
@@ -30,19 +31,27 @@ impl Store {
     /// to sample internally (`random_allowed: true` for function bodies), so
     /// [eval] needs an `Rng` regardless of whether this particular call
     /// tree happens to use it.
-    pub(crate) fn new<R: Rng + ?Sized>(program: &IrProgram, rng: &mut R) -> Store {
+    /// Every slot starts as `Integer(0)` rather than a dedicated "unset"
+    /// marker. `Value::Error` used to serve as that marker, which conflated
+    /// "not written yet" with "an operation failed" (see `value.rs`); with
+    /// errors moved to `Result`, no marker is needed, because no slot is ever
+    /// read before it is written: globals and variables are initialised here
+    /// in dependency order, and lowering guarantees a function's argument and
+    /// `let` slots are written at the call/binding before its body can load
+    /// them (`IR_LOWERING_PLAN.md`, "Why one flat slot space works").
+    pub(crate) fn new<R: Rng + ?Sized>(program: &IrProgram, rng: &mut R) -> Result<Store, EvalError> {
         let mut store = Store {
-            slots: vec![Value::Error; program.n_slots() as usize],
+            slots: vec![Value::Integer(0); program.n_slots() as usize],
         };
         for global in program.globals() {
-            let value = eval(program, &mut store, rng, global.value);
+            let value = eval(program, &mut store, rng, global.value)?;
             store.set(global.slot, value);
         }
         for variable in program.variables() {
-            let value = eval(program, &mut store, rng, variable.initial_value);
+            let value = eval(program, &mut store, rng, variable.initial_value)?;
             store.set(variable.slot, value);
         }
-        store
+        Ok(store)
     }
 
     pub(crate) fn load(&self, slot: SlotId) -> Value {
@@ -90,7 +99,7 @@ mod tests {
             ",
         );
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        let store = Store::new(&program, &mut rng);
+        let store = Store::new(&program, &mut rng).expect("should initialise");
 
         let state = store.state_prefix(&program);
         assert_eq!(state, &[Value::Integer(7)]);
