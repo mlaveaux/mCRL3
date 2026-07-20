@@ -4,10 +4,13 @@
 //! `Supplier`/lambda closures, since lowering already collapsed the AST into
 //! that arena (see `IR_LOWERING_PLAN.md`).
 //!
-//! Every function here returns a [Value] and never panics: a malformed
-//! runtime state (which shouldn't arise against a checked + lowered
-//! [IrProgram]) yields [Value::Error], mirroring `StarkValue.ERROR_VALUE` —
-//! see `EVALUATOR_PLAN.md`'s "the one contract to preserve".
+//! Every function here returns a `Result<Value, EvalError>` and never panics.
+//! A malformed runtime state (which shouldn't arise against a checked +
+//! lowered [IrProgram]) is an `Err` naming what went wrong, rather than the
+//! absorbing `StarkValue.ERROR_VALUE` the Java reference propagates — see
+//! `value.rs`'s "Errors are a `Result`, not a value" and `EVALUATOR_PLAN.md`'s
+//! "the one contract to preserve", which the `Result` honours more strictly
+//! (the error cannot be silently dropped).
 
 use rand::Rng;
 use rand::RngExt;
@@ -20,34 +23,43 @@ use crate::ir::MathBinaryFunction;
 use crate::ir::MathUnaryFunction;
 use crate::ir::StmtNode;
 use crate::ir::StmtRef;
+use crate::value::EvalError;
 use crate::value::Value;
 
 use super::store::Store;
 
 /// Evaluates one expression against `store`, sampling from `rng` wherever
 /// the expression does.
-pub(crate) fn eval<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng: &mut R, id: ExprRef) -> Value {
+pub(crate) fn eval<R: Rng + ?Sized>(
+    program: &IrProgram,
+    store: &mut Store,
+    rng: &mut R,
+    id: ExprRef,
+) -> Result<Value, EvalError> {
     match *program.expr(id) {
-        ExprNode::Literal(value) => value,
-        ExprNode::Load(slot) => store.load(slot),
-        ExprNode::Not(inner) => !eval(program, store, rng, inner),
+        ExprNode::Literal(value) => Ok(value),
+        ExprNode::Unreachable(what) => Err(EvalError::Unreachable(what)),
+        ExprNode::Load(slot) => Ok(store.load(slot)),
+        ExprNode::Not(inner) => Ok(Value::Boolean((!eval(program, store, rng, inner)?)?)),
         // Both always widen to `Real`, matching Java — see `ExprNode::Negate`
         // and `ExprNode::Widen`'s doc comments in `ir.rs`.
-        ExprNode::Negate(inner) => eval(program, store, rng, inner).apply_unary(|x| -x),
-        ExprNode::Widen(inner) => eval(program, store, rng, inner).apply_unary(|x| x),
+        ExprNode::Negate(inner) => eval(program, store, rng, inner)?.apply_unary("-", |x| -x),
+        ExprNode::Widen(inner) => eval(program, store, rng, inner)?.apply_unary("+", |x| x),
         ExprNode::Binary(op, left, right) => {
-            let left = eval(program, store, rng, left);
-            let right = eval(program, store, rng, right);
+            let left = eval(program, store, rng, left)?;
+            let right = eval(program, store, rng, right)?;
             apply_binary_op(op, left, right)
         }
         ExprNode::MathUnary(function, inner) => {
-            let value = eval(program, store, rng, inner);
-            value.apply_unary(math_unary_fn(function))
+            let value = eval(program, store, rng, inner)?;
+            let (name, f) = math_unary_fn(function);
+            value.apply_unary(name, f)
         }
         ExprNode::MathBinary(function, left, right) => {
-            let left = eval(program, store, rng, left);
-            let right = eval(program, store, rng, right);
-            left.apply_binary(right, math_binary_fn(function))
+            let left = eval(program, store, rng, left)?;
+            let right = eval(program, store, rng, right)?;
+            let (name, f) = math_binary_fn(function);
+            left.apply_binary(right, name, f)
         }
         ExprNode::Select {
             guard,
@@ -58,10 +70,10 @@ pub(crate) fn eval<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng:
             // laziness in the Java reference: only the taken branch is
             // evaluated, since the untaken one may sample (advancing `rng`)
             // or divide by zero.
-            match eval(program, store, rng, guard) {
-                Value::Boolean(true) => eval(program, store, rng, then_branch),
-                Value::Boolean(false) => eval(program, store, rng, else_branch),
-                _ => Value::Error,
+            if eval(program, store, rng, guard)?.as_boolean("the condition of a `?:` expression")? {
+                eval(program, store, rng, then_branch)
+            } else {
+                eval(program, store, rng, else_branch)
             }
         }
         ExprNode::Call { function, arguments } => {
@@ -69,7 +81,7 @@ pub(crate) fn eval<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng:
             // Evaluate every argument against the *caller's* slots first...
             let mut values = Vec::with_capacity(function_ir.arguments.len());
             for &argument in program.expr_list(arguments) {
-                values.push(eval(program, store, rng, argument));
+                values.push(eval(program, store, rng, argument)?);
             }
             // ...then write them into the callee's fixed argument slots.
             // No frame save/restore: `resolve.rs` forbids recursion, so
@@ -81,15 +93,15 @@ pub(crate) fn eval<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng:
             }
             eval_stmt(program, store, rng, function_ir.body)
         }
-        ExprNode::SampleUnit => Value::Real(rng.random::<f64>()),
+        ExprNode::SampleUnit => Ok(Value::Real(rng.random::<f64>())),
         ExprNode::SampleRange { min, max } => {
-            let min = eval(program, store, rng, min);
-            let max = eval(program, store, rng, max);
+            let min = eval(program, store, rng, min)?;
+            let max = eval(program, store, rng, max)?;
             sample_range(rng, min, max)
         }
         ExprNode::SampleNormal { mean, variance } => {
-            let mean = eval(program, store, rng, mean);
-            let variance = eval(program, store, rng, variance);
+            let mean = eval(program, store, rng, mean)?;
+            let variance = eval(program, store, rng, variance)?;
             sample_normal(rng, mean, variance)
         }
         ExprNode::SampleChoice(list) => {
@@ -104,36 +116,43 @@ pub(crate) fn eval<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng:
 
 /// Evaluates a function body statement, returning the value of whichever
 /// `Return` is reached.
-pub(crate) fn eval_stmt<R: Rng + ?Sized>(program: &IrProgram, store: &mut Store, rng: &mut R, id: StmtRef) -> Value {
+pub(crate) fn eval_stmt<R: Rng + ?Sized>(
+    program: &IrProgram,
+    store: &mut Store,
+    rng: &mut R,
+    id: StmtRef,
+) -> Result<Value, EvalError> {
     match *program.stmt(id) {
         StmtNode::Return(value) => eval(program, store, rng, value),
         StmtNode::IfThenElse {
             guard,
             then_branch,
             else_branch,
-        } => match eval(program, store, rng, guard) {
-            Value::Boolean(true) => eval_stmt(program, store, rng, then_branch),
-            Value::Boolean(false) => match else_branch {
-                Some(else_branch) => eval_stmt(program, store, rng, else_branch),
-                // `typecheck.rs` requires a function to return on every
-                // path, so a false guard with no `else` is unreachable
-                // against a checked program.
-                None => {
-                    debug_assert!(false, "function body has no return on this path");
-                    Value::Error
+        } => {
+            if eval(program, store, rng, guard)?.as_boolean("the condition of an `if` statement")? {
+                eval_stmt(program, store, rng, then_branch)
+            } else {
+                match else_branch {
+                    Some(else_branch) => eval_stmt(program, store, rng, else_branch),
+                    // `typecheck.rs` requires a function to return on every
+                    // path, so a false guard with no `else` is unreachable
+                    // against a checked program.
+                    None => Err(EvalError::MissingReturn),
                 }
-            },
-            _ => Value::Error,
-        },
+            }
+        }
         StmtNode::Let { slot, value, body } => {
-            let value = eval(program, store, rng, value);
+            let value = eval(program, store, rng, value)?;
             store.set(slot, value);
             eval_stmt(program, store, rng, body)
         }
     }
 }
 
-fn apply_binary_op(op: BinaryOp, left: Value, right: Value) -> Value {
+fn apply_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, EvalError> {
+    // The comparisons and the boolean connectives return a bare `bool` (see
+    // `Value::is_less_than`); an `ExprNode::Binary` is an expression, so they
+    // are wrapped back into a `Value` here.
     match op {
         BinaryOp::Add => left.sum(right),
         BinaryOp::Subtract => left.subtraction(right),
@@ -141,49 +160,53 @@ fn apply_binary_op(op: BinaryOp, left: Value, right: Value) -> Value {
         BinaryOp::Div => left.division(right),
         BinaryOp::IntDiv => left.int_div(right),
         BinaryOp::Mod => left.modulo(right),
-        BinaryOp::Less => left.is_less_than(right),
-        BinaryOp::Leq => left.is_less_or_equal_than(right),
-        BinaryOp::Eq => left.is_equal_to(right),
-        BinaryOp::Geq => left.is_greater_or_equal_than(right),
-        BinaryOp::Greater => left.is_greater_than(right),
+        BinaryOp::Less => left.is_less_than(right).map(Value::Boolean),
+        BinaryOp::Leq => left.is_less_or_equal_than(right).map(Value::Boolean),
+        BinaryOp::Eq => left.is_equal_to(right).map(Value::Boolean),
+        BinaryOp::Geq => left.is_greater_or_equal_than(right).map(Value::Boolean),
+        BinaryOp::Greater => left.is_greater_than(right).map(Value::Boolean),
         // `&&`/`&` and `||`/`|` are one operation each, two spellings — see
         // `Value::and`/`Value::or`'s doc comments.
-        BinaryOp::And | BinaryOp::BitAnd => left.and(right),
-        BinaryOp::Or | BinaryOp::BitOr => left.or(right),
+        BinaryOp::And | BinaryOp::BitAnd => left.and(right).map(Value::Boolean),
+        BinaryOp::Or | BinaryOp::BitOr => left.or(right).map(Value::Boolean),
     }
 }
 
-fn math_unary_fn(function: MathUnaryFunction) -> fn(f64) -> f64 {
+/// The `f64` implementation of each unary math function, paired with its
+/// source-level name so a non-numeric argument can be reported against the
+/// name the user actually wrote.
+fn math_unary_fn(function: MathUnaryFunction) -> (&'static str, fn(f64) -> f64) {
     match function {
-        MathUnaryFunction::Abs => f64::abs,
-        MathUnaryFunction::Acos => f64::acos,
-        MathUnaryFunction::Asin => f64::asin,
-        MathUnaryFunction::Atan => f64::atan,
-        MathUnaryFunction::Cbrt => f64::cbrt,
-        MathUnaryFunction::Ceil => f64::ceil,
-        MathUnaryFunction::Cos => f64::cos,
-        MathUnaryFunction::Cosh => f64::cosh,
-        MathUnaryFunction::Exp => f64::exp,
-        MathUnaryFunction::Expm1 => f64::exp_m1,
-        MathUnaryFunction::Floor => f64::floor,
-        MathUnaryFunction::Log => f64::ln,
-        MathUnaryFunction::Log10 => f64::log10,
-        MathUnaryFunction::Log1p => f64::ln_1p,
-        MathUnaryFunction::Signum => java_signum,
-        MathUnaryFunction::Sin => f64::sin,
-        MathUnaryFunction::Sinh => f64::sinh,
-        MathUnaryFunction::Sqrt => f64::sqrt,
-        MathUnaryFunction::Tan => f64::tan,
+        MathUnaryFunction::Abs => ("abs", f64::abs),
+        MathUnaryFunction::Acos => ("acos", f64::acos),
+        MathUnaryFunction::Asin => ("asin", f64::asin),
+        MathUnaryFunction::Atan => ("atan", f64::atan),
+        MathUnaryFunction::Cbrt => ("cbrt", f64::cbrt),
+        MathUnaryFunction::Ceil => ("ceil", f64::ceil),
+        MathUnaryFunction::Cos => ("cos", f64::cos),
+        MathUnaryFunction::Cosh => ("cosh", f64::cosh),
+        MathUnaryFunction::Exp => ("exp", f64::exp),
+        MathUnaryFunction::Expm1 => ("expm1", f64::exp_m1),
+        MathUnaryFunction::Floor => ("floor", f64::floor),
+        MathUnaryFunction::Log => ("log", f64::ln),
+        MathUnaryFunction::Log10 => ("log10", f64::log10),
+        MathUnaryFunction::Log1p => ("log1p", f64::ln_1p),
+        MathUnaryFunction::Signum => ("signum", java_signum),
+        MathUnaryFunction::Sin => ("sin", f64::sin),
+        MathUnaryFunction::Sinh => ("sinh", f64::sinh),
+        MathUnaryFunction::Sqrt => ("sqrt", f64::sqrt),
+        MathUnaryFunction::Tan => ("tan", f64::tan),
     }
 }
 
-fn math_binary_fn(function: MathBinaryFunction) -> fn(f64, f64) -> f64 {
+/// The binary counterpart of [math_unary_fn].
+fn math_binary_fn(function: MathBinaryFunction) -> (&'static str, fn(f64, f64) -> f64) {
     match function {
-        MathBinaryFunction::Atan2 => f64::atan2,
-        MathBinaryFunction::Hypot => f64::hypot,
-        MathBinaryFunction::Max => java_max,
-        MathBinaryFunction::Min => java_min,
-        MathBinaryFunction::Pow => f64::powf,
+        MathBinaryFunction::Atan2 => ("atan2", f64::atan2),
+        MathBinaryFunction::Hypot => ("hypot", f64::hypot),
+        MathBinaryFunction::Max => ("max", java_max),
+        MathBinaryFunction::Min => ("min", java_min),
+        MathBinaryFunction::Pow => ("pow", f64::powf),
     }
 }
 
@@ -206,11 +229,10 @@ fn java_min(a: f64, b: f64) -> f64 {
 }
 
 /// `StarkValue.sample`: `from + rng.nextDouble() * (to - from)`.
-fn sample_range<R: Rng + ?Sized>(rng: &mut R, min: Value, max: Value) -> Value {
-    match (double_of(min), double_of(max)) {
-        (Some(from), Some(to)) => Value::Real(from + rng.random::<f64>() * (to - from)),
-        _ => Value::Error,
-    }
+fn sample_range<R: Rng + ?Sized>(rng: &mut R, min: Value, max: Value) -> Result<Value, EvalError> {
+    let from = min.as_number("the lower bound of an `R[a,b]` sample")?;
+    let to = max.as_number("the upper bound of an `R[a,b]` sample")?;
+    Ok(Value::Real(from + rng.random::<f64>() * (to - from)))
 }
 
 /// `StarkValue.sampleNormal`. **Not actually Gaussian** — despite the name
@@ -220,24 +242,13 @@ fn sample_range<R: Rng + ?Sized>(rng: &mut R, min: Value, max: Value) -> Value {
 /// "fixed", so behaviour matches the reference tool; it reads as a bug in
 /// `StarkValue.sampleNormal`, but is not this port's place to silently
 /// correct.
-fn sample_normal<R: Rng + ?Sized>(rng: &mut R, mean: Value, variance: Value) -> Value {
-    match (double_of(mean), double_of(variance)) {
-        (Some(mean), Some(variance)) => Value::Real(rng.random::<f64>() * mean + variance),
-        _ => Value::Error,
-    }
-}
-
-/// `StarkValue.doubleOf`, except a non-numeric value maps to `None` (evaluated
-/// as [Value::Error] at the call site) rather than `Double.NaN` — every call
-/// site here is already guaranteed numeric by `typecheck.rs` (`R[a,b]`'s
-/// bounds and `N[m,v]`'s mean/variance are both checked against `real`), so
-/// this only matters for an otherwise-unreachable malformed IR.
-fn double_of(value: Value) -> Option<f64> {
-    match value {
-        Value::Integer(v) => Some(v as f64),
-        Value::Real(v) => Some(v),
-        _ => None,
-    }
+fn sample_normal<R: Rng + ?Sized>(rng: &mut R, mean: Value, variance: Value) -> Result<Value, EvalError> {
+    // Both bounds are already guaranteed numeric by `typecheck.rs` (`R[a,b]`'s
+    // bounds and `N[m,v]`'s mean/variance are all checked against `real`), so
+    // these errors only fire against an otherwise-unreachable malformed IR.
+    let mean = mean.as_number("the mean of an `N[m,v]` sample")?;
+    let variance = variance.as_number("the variance of an `N[m,v]` sample")?;
+    Ok(Value::Real(rng.random::<f64>() * mean + variance))
 }
 
 #[cfg(test)]
@@ -259,7 +270,7 @@ mod tests {
             .expect("should check");
         let program = lower(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
-        let store = Store::new(&program, &mut rng);
+        let store = Store::new(&program, &mut rng).expect("should initialise");
         store.load(program.globals()[0].slot)
     }
 
@@ -283,7 +294,9 @@ mod tests {
     #[test]
     fn select_only_evaluates_the_taken_branch() {
         // The untaken branch divides by zero; if `Select` weren't lazy this
-        // would produce `Value::Error` instead of `Value::Integer(1)`.
+        // would fail with `EvalError::DivisionByZero` (and, before errors
+        // became a `Result`, would have silently yielded `Value::Error`)
+        // instead of `Value::Integer(1)`.
         assert_eq!(eval_expression("true ? 1 : 1/0"), Value::Integer(1));
         assert_eq!(eval_expression("false ? 1/0 : 1"), Value::Integer(1));
     }
@@ -307,7 +320,7 @@ mod tests {
             .expect("should check");
         let program = lower(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
-        let store = Store::new(&program, &mut rng);
+        let store = Store::new(&program, &mut rng).expect("should initialise");
         let result_slot = program.variables()[0].slot;
         assert_eq!(store.load(result_slot), Value::Integer(7));
     }
@@ -329,7 +342,7 @@ mod tests {
             .expect("should check");
         let program = lower(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
-        let store = Store::new(&program, &mut rng);
+        let store = Store::new(&program, &mut rng).expect("should initialise");
         assert_eq!(store.load(program.variables()[0].slot), Value::Integer(3));
     }
 
@@ -348,7 +361,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(7);
         for _ in 0..100 {
             match sample_range(&mut rng, Value::Real(2.0), Value::Real(5.0)) {
-                Value::Real(v) => assert!((2.0..5.0).contains(&v)),
+                Ok(Value::Real(v)) => assert!((2.0..5.0).contains(&v)),
                 other => panic!("expected a Real, got {other:?}"),
             }
         }
@@ -361,7 +374,7 @@ mod tests {
         let uniform = rng.random::<f64>();
         let mut rng = StdRng::seed_from_u64(3);
         let sampled = sample_normal(&mut rng, Value::Real(10.0), Value::Real(1.0));
-        assert_eq!(sampled, Value::Real(uniform * 10.0 + 1.0));
+        assert_eq!(sampled, Ok(Value::Real(uniform * 10.0 + 1.0)));
     }
 
     #[test]
