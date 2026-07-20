@@ -2,6 +2,7 @@
 name = "merc_stark"
 license = "APACHE-2.0"
 version = "1.0.0"
+readme = "README.md"
 edition.workspace = true
 rust-version.workspace = true
 
@@ -11,6 +12,7 @@ merc_utilities.workspace = true
 log.workspace = true
 pest.workspace = true
 pest_derive.workspace = true
+rand.workspace = true
 thiserror.workspace = true
 merc_pest_consume.workspace = true
 
