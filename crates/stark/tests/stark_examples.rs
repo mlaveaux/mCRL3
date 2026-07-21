@@ -1,13 +1,9 @@
-//! Lowers every `.stark` file under `examples/stark/` end-to-end (parse ->
-//! check -> [lower]) and asserts the resulting [IrProgram] is internally
-//! consistent. Mirrors `tests/examples.rs`'s `checks_example_specification`
-//! (same file list, one step further down the pipeline) — this is the
-//! `lowers_every_example_specification` test `IR_LOWERING_PLAN.md` calls
-//! for. Every example lowers, including the ones using perturbations,
-//! distances and formulas.
+//! Parses and checks every `.stark` file under `examples/stark/`.
+//!
+//! Each file is exercised end-to-end: parse into an [UntypedStarkSpecification],
+//! then [UntypedStarkSpecification::check] (name resolution + type checking).
 
 use merc_stark::UntypedStarkSpecification;
-use merc_stark::lower;
 use test_case::test_case;
 
 #[test_case(include_str!("../../../examples/stark/engine.stark") ; "engine.stark")]
@@ -37,11 +33,14 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/stark/abz2025_two_lanes_two_cars.stark") ; "abz2025_two_lanes_two_cars.stark")]
 #[test_case(include_str!("../../../examples/stark/polistil_race.stark") ; "polistil_race.stark")]
 #[test_case(include_str!("../../../examples/stark/ventilator.stark") ; "ventilator.stark")]
-fn lowers_every_example_specification(source: &str) {
-    let spec = UntypedStarkSpecification::parse(source)
-        .unwrap_or_else(|e| panic!("failed to parse: {e}"))
-        .check()
-        .unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
+fn checks_example_specification(source: &str) {
+    let spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("failed to parse: {e}"));
+
+    if let Err(diagnostics) = spec.check() {
+        panic!("failed to check:\n{}", diagnostics.render(source));
+    }
+    
+    let spec = spec.check().unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
     let program = lower(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)));
 
     program

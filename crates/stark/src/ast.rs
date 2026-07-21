@@ -1,7 +1,7 @@
 //! Abstract syntax tree for the STARK specification language.
 //!
 //! This mirrors the structure of the original STARK ANTLR grammar
-//! (`StarkSpecificationLanguage.g4`). The tree is produced by `consume.rs`
+//! grammar. The tree is produced by `consume.rs`
 //! (structural declarations) together with the Pratt parsers in `precedence.rs`
 //! (expressions and the perturbation / distance / ROBTL sub-languages).
 //!

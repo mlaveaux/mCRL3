@@ -13,15 +13,15 @@
 //!    |       compares a distance against a threshold
 //! distance  < rho, \F, \G, \U, min, max, weights       (super::distance)
 //!    |       lifts a penalty to a pair of distributions
-//! sequence  SampleSet per step, perturbed copies       (super::sequence)
+//! sequence  a sample set per step, perturbed copies    (super::sequence)
 //! ```
 //!
 //! # Why the sequence is a separate argument
 //!
 //! Every check takes the [EvolutionSequence] it runs against as an explicit
 //! `&mut` parameter rather than [Analysis] owning it. That mirrors the
-//! reference (`RobustnessFunction.eval(sampleSize, step, sequence)`), and it
-//! is what lets one analysis — one RNG stream, one set of options — be reused
+//! original, which passes the sequence into each check, and it is what lets
+//! one analysis — one RNG stream, one set of options — be reused
 //! across several sequences, and lets a sequence be reused across several
 //! formulas without regenerating it. Generation is the expensive part, so
 //! keeping it out of the analysis object is deliberate: checking five
@@ -33,7 +33,7 @@
 //! and the bootstrap resampling — draws from the single RNG this object
 //! owns, so a whole analysis is reproducible from its seed. As with
 //! [Simulation](super::Simulation), the stream is **not** bit-compatible with
-//! the Java reference's Mersenne Twister; only the distributions match.
+//! the original's; only the distributions match.
 
 use rand::Rng;
 use rand::SeedableRng;
@@ -46,18 +46,16 @@ use crate::value::EvalError;
 use super::sequence::EvolutionSequence;
 use super::store::Store;
 
-/// The statistical knobs of an analysis. The defaults are the reference's:
-/// `ThreeValuedSemanticsVisitor()`'s no-argument constructor uses `m = 50`
-/// bootstrap replicas at `z = 1.96` (a 95% normal interval).
+/// The statistical knobs of an analysis. The defaults are the original's:
+/// 50 bootstrap replicas at a quantile of 1.96 (a 95% normal interval).
 #[derive(Clone, Copy, Debug)]
 pub struct AnalysisOptions {
     /// Samples per step in the reference evolution sequence — how finely the
     /// state distribution is approximated. Larger is more accurate and
     /// linearly more expensive.
     pub sample_size: usize,
-    /// How many perturbed samples are drawn per reference sample
-    /// (`sampleSize` in the reference's `RobustnessFunction`). The perturbed
-    /// sequence therefore holds `sample_size * scale` samples, and each
+    /// How many perturbed samples are drawn per reference sample. The
+    /// perturbed sequence therefore holds `sample_size * scale` samples, and each
     /// reference sample is compared against the `scale` perturbed samples
     /// descended from it.
     pub scale: usize,
@@ -93,7 +91,7 @@ pub struct Analysis<'a, R: Rng> {
     /// A store used only for program-level constants. Its `[0, n_variables)`
     /// prefix is never stepped, so reading a *variable* through it would be
     /// meaningless — but no interval bound, threshold or weight can refer to
-    /// one, since those are all evaluated outside any state in the reference
+    /// one, since those are all evaluated outside any state in the original
     /// too.
     pub(crate) globals: Store,
     pub(crate) rng: R,
@@ -142,8 +140,7 @@ impl<'a, R: Rng> Analysis<'a, R> {
         self.distance(sequence, &mut perturbed, step, distance)
     }
 
-    /// Builds the perturbed counterpart of `sequence` —
-    /// `EvolutionSequence.apply(perturbation, step, scale)`.
+    /// Builds the perturbed counterpart of `sequence`.
     pub(crate) fn perturb(
         &mut self,
         sequence: &mut EvolutionSequence,

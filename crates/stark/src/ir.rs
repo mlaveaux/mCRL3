@@ -1,7 +1,6 @@
 //! The evaluation IR that `lower.rs` produces: a flat arena of small, mostly
 //! `Copy` nodes rather than a closure tree, so evaluation walks an array
-//! instead of chasing pointers. See `IR_LOWERING_PLAN.md` for the design
-//! rationale.
+//! instead of chasing pointers.
 //!
 //! Populated by lowering: constants/parameters (as [GlobalInit]), variables
 //! (as [VariableInfo]), functions (as [FunctionIr]), penalties (as
@@ -13,6 +12,29 @@
 //! the expression one, with [PerturbationDecl]/[DistanceDecl]/[FormulaDecl]
 //! marking which arena entries are named top-level declarations rather than
 //! sub-nodes only reachable through one).
+//!
+//! # Index types
+//!
+//! Every arena is addressed by its own index type, all backed by `u32` rather
+//! than `usize` so the nodes holding them stay small. Each carries its own tag
+//! so that, say, an [ExprRef] can never be mixed up with a [SlotId] at a call
+//! site even though both are "just a `u32`" underneath.
+//!
+//! # Robustness sub-languages
+//!
+//! [PerturbationIr], [DistanceIr] and [FormulaIr] mirror the shape of
+//! `ast.rs`'s perturbation, distance and formula expressions, each collapsed
+//! the same way the expression arena is: a `Reference(DefRef)` (a reference to
+//! another named declaration of the same kind) resolves at lowering time to
+//! the referent's `*Id`, so no name lookups survive into the IR. A top-level
+//! `perturbation`/`distance`/`formula name = ..;` declaration lowers to one
+//! *root* node, pushed last (post-order, same as expressions); its
+//! `Sequence`/`Iteration`/`Eventually`/etc. operands are themselves `*Id`s
+//! into the very same arena, so a declaration and everything it is built from
+//! share one flat, `Box`-free index space. [PerturbationDecl]/[DistanceDecl]/
+//! [FormulaDecl] separately record which arena entries are those named roots
+//! (as opposed to intermediate sub-nodes only reachable *through* a root) —
+//! the same distinction [IrProgram::variables] draws from [IrProgram::exprs].
 
 use std::fmt;
 
@@ -23,12 +45,8 @@ use crate::types::StarkType;
 use crate::value::Value;
 
 // ---------------------------------------------------------------------------
-// Index types
+// Index types (see the module documentation)
 // ---------------------------------------------------------------------------
-//
-// All backed by `u32`, not `usize`: nodes that hold these stay small. Each
-// has its own tag so, say, an `ExprRef` can never be mixed up with a
-// `SlotId` at a call site even though both are "just a `u32`" underneath.
 
 pub struct ExprTag;
 /// An index into [IrProgram]'s expression arena.
@@ -39,8 +57,8 @@ pub struct StmtTag;
 pub type StmtRef = TagIndex<u32, StmtTag>;
 
 pub struct SlotTag;
-/// An index into the flat value store the (future) evaluator maintains —
-/// see "Slot layout" in `IR_LOWERING_PLAN.md`.
+/// An index into the flat value store the evaluator maintains — see
+/// [IrProgram::n_variables] for the layout of that store.
 pub type SlotId = TagIndex<u32, SlotTag>;
 
 pub struct FunctionTag;
@@ -166,8 +184,7 @@ impl ExprList {
 
 /// One node of the expression arena.
 ///
-/// Deliberate simplifications made while lowering (see `IR_LOWERING_PLAN.md`
-/// for the full rationale):
+/// Deliberate simplifications made while lowering:
 /// - `Ty` / custom type names disappear; only [StarkType] and slot indices
 ///   survive (in [IrProgram::expr_types] / [IrProgram::slots]).
 /// - `Expression::Reference` (to a constant, parameter or variable) and
@@ -184,7 +201,7 @@ pub enum ExprNode {
     /// An expression that cannot be evaluated, carrying a `&'static str`
     /// naming why. Lowering emits this only for AST shapes that no grammar
     /// production can currently produce (`ExpressionKind::Iterator`, which
-    /// needs an aggregate/lambda context — see `MISSING_GRAMMAR_FEATURES.md`),
+    /// needs an aggregate/lambda context — see `plan.md`),
     /// so reaching one at run time means lowering has a bug; `eval` reports it
     /// as [crate::value::EvalError::Unreachable] rather than inventing a
     /// value. Before errors became a `Result`, this was a `Literal` holding
@@ -195,20 +212,18 @@ pub enum ExprNode {
     Load(SlotId),
     Not(ExprRef),
     /// Arithmetic negation (`-x`). **Always widens to `Real`, even for an
-    /// integer operand** — matching Java's `StarkExpressionEvaluator`, which
-    /// routes unary `-`/`+` through the *same* always-widening
-    /// `DoubleUnaryOperator` mechanism as the math functions
-    /// (`unaryOperators` map, `StarkInteger.apply(DoubleUnaryOperator)` ->
-    /// `StarkReal`), not a dedicated integer-preserving path. So `-a + 2` is
-    /// `real`, not `int`, when `a` is an `int` — surprising for a spec
-    /// author writing `-a` expecting an int to stay one; matched here for
-    /// fidelity with the reference tool, but worth reconsidering if that
-    /// surprises users badly enough in practice.
+    /// integer operand** — matching the original, which routes unary `-`/`+`
+    /// through the *same* always-widening double-valued mechanism as the
+    /// math functions rather than through a dedicated integer-preserving
+    /// path. So `-a + 2` is `real`, not `int`, when `a` is an `int` —
+    /// surprising for a spec author writing `-a` expecting an int to stay
+    /// one; matched here for fidelity with the original tool, but worth
+    /// reconsidering if it surprises users badly enough in practice.
     Negate(ExprRef),
     /// `+x`. Unlike most unary-plus operators this is *not* the identity at
-    /// the type level: Java widens it exactly like `Negate` (same
-    /// `unaryOperators` map, same mechanism — see [ExprNode::Negate]'s doc
-    /// comment), so `+a` for an integer `a` is `real`, not `a` unchanged.
+    /// the type level: it widens exactly like `Negate`, through the same
+    /// mechanism (see [ExprNode::Negate]'s doc comment), so `+a` for an
+    /// integer `a` is `real`, not `a` unchanged.
     /// The *value* is unchanged; only the representation widens.
     Widen(ExprRef),
     Binary(BinaryOp, ExprRef, ExprRef),
@@ -347,7 +362,7 @@ pub struct Update {
 /// One node of the command arena: a controller state's body or the
 /// environment block, both lowered to the same node type since the only
 /// difference between them is that an environment never contains a `Step`/
-/// `Exec` (see `IR_LOWERING_PLAN.md`).
+/// `Exec`.
 ///
 /// A `Vec<ast::ControllerCommand>`/`Vec<ast::EnvironmentCommand>` — a
 /// `{ .. }` block — lowers to a left-associated chain of `Sequence(prior,
@@ -359,8 +374,7 @@ pub struct Update {
 /// `Assign` reached during a step into a list and apply them all at the end,
 /// so `x' = y; y' = x;` reads *both* sides from the pre-step state (the
 /// classic swap). Lowering only has to preserve the structure faithfully;
-/// see `IR_LOWERING_PLAN.md`'s "Semantics that are easy to get silently
-/// wrong" and the `buffered_swap_*` tests.
+/// see the `buffered_swap_*` tests in `lower.rs`.
 ///
 /// **Where control-flow termination lives**: this arena does not itself
 /// enforce that every path through a controller state reaches a `Step`/
@@ -386,7 +400,7 @@ pub enum CommandNode {
     /// Runs its left node, then its right node.
     Sequence(CommandRef, CommandRef),
     /// `[steps #] step target;` — controller-only. `steps` (if present) is
-    /// evaluated once per step, matching Java's `Controller.doTick(k-1, ..)`.
+    /// evaluated once per step.
     Step {
         steps: Option<ExprRef>,
         target: IrStateId,
@@ -418,21 +432,8 @@ pub struct ComponentIr {
 
 // ---------------------------------------------------------------------------
 // Robustness sub-languages: perturbation / distance / ROBTL formula
+// (see the module documentation)
 // ---------------------------------------------------------------------------
-//
-// These three mirror the shape of `ast.rs`'s `PerturbationExpression`/
-// `DistanceExpression`/`RobtlFormula`, each collapsed the same way the
-// expression arena is: `Reference(DefRef)` (a reference to another named
-// declaration of the same kind) resolves at lowering time to the referent's
-// `*Id`, no name lookups survive into the IR. A top-level `perturbation`/
-// `distance`/`formula name = ..;` declaration lowers to one *root* node,
-// pushed last (post-order, same as expressions); its `Sequence`/`Iteration`/
-// `Eventually`/etc. operands are themselves `*Id`s into the very same arena,
-// so a declaration and everything it's built from share one flat, `Box`-free
-// index space. [PerturbationDecl]/[DistanceDecl]/[FormulaDecl] separately
-// record which arena entries are those named roots (as opposed to
-// intermediate sub-nodes only reachable *through* a root) — the same
-// distinction [IrProgram::variables] draws from [IrProgram::exprs].
 
 /// A comparison operator, used by [DistanceIr::Threshold] and
 /// [FormulaIr::Distance]. Kept as its own type (mirroring `ast::ComparisonOp`)
@@ -450,7 +451,7 @@ pub enum ComparisonOp {
 /// An unguarded `target <- value` inside a perturbation's atomic block —
 /// like [Update] but with no `guard` field, matching
 /// `ast::PerturbationAssignment` (a perturbation assignment can never be
-/// guarded; see `MISSING_GRAMMAR_FEATURES.md`).
+/// guarded; see `plan.md`).
 #[derive(Clone, Copy, Debug)]
 pub struct PerturbationAssignment {
     pub target: SlotId,
@@ -665,8 +666,10 @@ impl IrProgram {
 
     /// The number of `[0, n_variables)` slots — the simulation state prefix.
     /// Equal to `self.variables.len()`, since every variable gets exactly one
-    /// slot and slot allocation lays this range out first (see
-    /// `IR_LOWERING_PLAN.md`'s slot layout table).
+    /// slot and slot allocation lays this range out first: variables occupy
+    /// `[0, n_variables)`, `const`/`param` occupy
+    /// `[n_variables, n_globals)`, and function arguments and `let` bindings
+    /// occupy `[n_globals, n_slots)`.
     pub fn n_variables(&self) -> u32 {
         self.variables.len() as u32
     }

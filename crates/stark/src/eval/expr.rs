@@ -1,16 +1,13 @@
-//! Expression and function-body evaluation over [IrProgram]'s arena, ported
-//! from `StarkExpressionEvaluator.java`'s case analysis — but as a straight
-//! post-order walk of `ExprRef`/`StmtRef` indices instead of a tree of
-//! `Supplier`/lambda closures, since lowering already collapsed the AST into
-//! that arena (see `IR_LOWERING_PLAN.md`).
+//! Expression and function-body evaluation over [IrProgram]'s arena: a
+//! straight post-order walk of `ExprRef`/`StmtRef` indices rather than the
+//! original's tree of lambda closures, since lowering already collapsed the
+//! AST into that arena.
 //!
 //! Every function here returns a `Result<Value, EvalError>` and never panics.
 //! A malformed runtime state (which shouldn't arise against a checked +
 //! lowered [IrProgram]) is an `Err` naming what went wrong, rather than the
-//! absorbing `StarkValue.ERROR_VALUE` the Java reference propagates — see
-//! `value.rs`'s "Errors are a `Result`, not a value" and `EVALUATOR_PLAN.md`'s
-//! "the one contract to preserve", which the `Result` honours more strictly
-//! (the error cannot be silently dropped).
+//! absorbing error *value* the original propagates. The `Result` honours the
+//! same contract more strictly, since the error cannot be silently dropped.
 
 use rand::Rng;
 use rand::RngExt;
@@ -24,13 +21,31 @@ use crate::ir::MathUnaryFunction;
 use crate::ir::StmtNode;
 use crate::ir::StmtRef;
 use crate::value::EvalError;
+use crate::value::EvalErrorKind;
 use crate::value::Value;
 
 use super::store::Store;
 
 /// Evaluates one expression against `store`, sampling from `rng` wherever
 /// the expression does.
+///
+/// This is a thin wrapper over [eval_inner] that pins the offending source
+/// location: on failure it attaches `id`'s [crate::ir::Span] to the error
+/// unless a more specific inner one was already recorded (see
+/// [EvalError::or_span]). Because every recursive sub-evaluation goes through
+/// this wrapper too, the span that survives is the innermost failing
+/// expression's — so `1 / 0` deep inside a larger expression is reported
+/// against `1 / 0`, not the whole expression.
 pub(crate) fn eval<R: Rng + ?Sized>(
+    program: &IrProgram,
+    store: &mut Store,
+    rng: &mut R,
+    id: ExprRef,
+) -> Result<Value, EvalError> {
+    eval_inner(program, store, rng, id).map_err(|error| error.or_span(program.expr_span(id)))
+}
+
+fn eval_inner<R: Rng + ?Sized>(
     program: &IrProgram,
     store: &mut Store,
     rng: &mut R,
@@ -38,38 +53,40 @@ pub(crate) fn eval<R: Rng + ?Sized>(
 ) -> Result<Value, EvalError> {
     match *program.expr(id) {
         ExprNode::Literal(value) => Ok(value),
-        ExprNode::Unreachable(what) => Err(EvalError::Unreachable(what)),
+        ExprNode::Unreachable(what) => Err(EvalErrorKind::Unreachable(what).into()),
         ExprNode::Load(slot) => Ok(store.load(slot)),
         ExprNode::Not(inner) => Ok(Value::Boolean((!eval(program, store, rng, inner)?)?)),
-        // Both always widen to `Real`, matching Java — see `ExprNode::Negate`
-        // and `ExprNode::Widen`'s doc comments in `ir.rs`.
-        ExprNode::Negate(inner) => eval(program, store, rng, inner)?.apply_unary("-", |x| -x),
-        ExprNode::Widen(inner) => eval(program, store, rng, inner)?.apply_unary("+", |x| x),
+        // Both always widen to `Real`, matching the original — see
+        // `ExprNode::Negate` and `ExprNode::Widen`'s doc comments in `ir.rs`.
+        // The `Value` operations produce a bare [EvalErrorKind] (they have no
+        // [crate::ir::Span] to give); `EvalError::from` lifts it, and the
+        // outer `eval` wrapper then anchors it to this node's span.
+        ExprNode::Negate(inner) => eval(program, store, rng, inner)?.apply_unary("-", |x| -x).map_err(EvalError::from),
+        ExprNode::Widen(inner) => eval(program, store, rng, inner)?.apply_unary("+", |x| x).map_err(EvalError::from),
         ExprNode::Binary(op, left, right) => {
             let left = eval(program, store, rng, left)?;
             let right = eval(program, store, rng, right)?;
-            apply_binary_op(op, left, right)
+            apply_binary_op(op, left, right).map_err(EvalError::from)
         }
         ExprNode::MathUnary(function, inner) => {
             let value = eval(program, store, rng, inner)?;
             let (name, f) = math_unary_fn(function);
-            value.apply_unary(name, f)
+            value.apply_unary(name, f).map_err(EvalError::from)
         }
         ExprNode::MathBinary(function, left, right) => {
             let left = eval(program, store, rng, left)?;
             let right = eval(program, store, rng, right)?;
             let (name, f) = math_binary_fn(function);
-            left.apply_binary(right, name, f)
+            left.apply_binary(right, name, f).map_err(EvalError::from)
         }
         ExprNode::Select {
             guard,
             then_branch,
             else_branch,
         } => {
-            // Lazy, matching `StarkValue.ifThenElse`'s `Supplier`-based
-            // laziness in the Java reference: only the taken branch is
-            // evaluated, since the untaken one may sample (advancing `rng`)
-            // or divide by zero.
+            // Lazy, as in the original: only the taken branch is evaluated,
+            // since the untaken one may sample (advancing `rng`) or divide
+            // by zero.
             if eval(program, store, rng, guard)?.as_boolean("the condition of a `?:` expression")? {
                 eval(program, store, rng, then_branch)
             } else {
@@ -86,8 +103,7 @@ pub(crate) fn eval<R: Rng + ?Sized>(
             // ...then write them into the callee's fixed argument slots.
             // No frame save/restore: `resolve.rs` forbids recursion, so
             // every function's argument/`let` slots are disjoint from every
-            // other function's and no function is ever live twice at once
-            // (see `IR_LOWERING_PLAN.md`, "Why one flat slot space works").
+            // other function's and no function is ever live twice at once.
             for (&slot, value) in function_ir.arguments.iter().zip(values) {
                 store.set(slot, value);
             }
@@ -106,8 +122,8 @@ pub(crate) fn eval<R: Rng + ?Sized>(
         }
         ExprNode::SampleChoice(list) => {
             let elements = program.expr_list(list);
-            // Lazy like `Select`: `visitUniformExpression` indexes
-            // `elements[selected]` and evaluates only that one element.
+            // Lazy like `Select`: the original picks an index and evaluates
+            // only that one element.
             let selected = rng.random_range(0..elements.len());
             eval(program, store, rng, elements[selected])
         }
@@ -137,7 +153,7 @@ pub(crate) fn eval_stmt<R: Rng + ?Sized>(
                     // `typecheck.rs` requires a function to return on every
                     // path, so a false guard with no `else` is unreachable
                     // against a checked program.
-                    None => Err(EvalError::MissingReturn),
+                    None => Err(EvalErrorKind::MissingReturn.into()),
                 }
             }
         }
@@ -149,7 +165,7 @@ pub(crate) fn eval_stmt<R: Rng + ?Sized>(
     }
 }
 
-fn apply_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, EvalError> {
+fn apply_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, EvalErrorKind> {
     // The comparisons and the boolean connectives return a bare `bool` (see
     // `Value::is_less_than`); an `ExprNode::Binary` is an expression, so they
     // are wrapped back into a `Value` here.
@@ -191,7 +207,7 @@ fn math_unary_fn(function: MathUnaryFunction) -> (&'static str, fn(f64) -> f64) 
         MathUnaryFunction::Log => ("log", f64::ln),
         MathUnaryFunction::Log10 => ("log10", f64::log10),
         MathUnaryFunction::Log1p => ("log1p", f64::ln_1p),
-        MathUnaryFunction::Signum => ("signum", java_signum),
+        MathUnaryFunction::Signum => ("signum", signum),
         MathUnaryFunction::Sin => ("sin", f64::sin),
         MathUnaryFunction::Sinh => ("sinh", f64::sinh),
         MathUnaryFunction::Sqrt => ("sqrt", f64::sqrt),
@@ -204,50 +220,50 @@ fn math_binary_fn(function: MathBinaryFunction) -> (&'static str, fn(f64, f64) -
     match function {
         MathBinaryFunction::Atan2 => ("atan2", f64::atan2),
         MathBinaryFunction::Hypot => ("hypot", f64::hypot),
-        MathBinaryFunction::Max => ("max", java_max),
-        MathBinaryFunction::Min => ("min", java_min),
+        MathBinaryFunction::Max => ("max", nan_max),
+        MathBinaryFunction::Min => ("min", nan_min),
         MathBinaryFunction::Pow => ("pow", f64::powf),
     }
 }
 
-/// `Math.signum`: unlike [f64::signum] (which returns `±1.0` for `±0.0` and
-/// never `0.0`), Java's version returns the zero itself (`0.0` or `-0.0`)
-/// unchanged, and propagates `NaN`.
-fn java_signum(x: f64) -> f64 {
+/// `signum` as the language defines it: unlike [f64::signum] (which returns
+/// `±1.0` for `±0.0` and never `0.0`), this returns the zero itself (`0.0` or
+/// `-0.0`) unchanged, and propagates `NaN`.
+fn signum(x: f64) -> f64 {
     if x == 0.0 || x.is_nan() { x } else { x.signum() }
 }
 
-/// `Math.max`: propagates `NaN` if *either* argument is `NaN`. [f64::max]
-/// instead returns the non-`NaN` argument, so it can't be used directly.
-fn java_max(a: f64, b: f64) -> f64 {
+/// `max` as the language defines it: propagates `NaN` if *either* argument
+/// is `NaN`. [f64::max] instead returns the non-`NaN` argument, so it can't
+/// be used directly.
+fn nan_max(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() { f64::NAN } else { a.max(b) }
 }
 
-/// `Math.min`, see [java_max].
-fn java_min(a: f64, b: f64) -> f64 {
+/// `min`, see [nan_max].
+fn nan_min(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() { f64::NAN } else { a.min(b) }
 }
 
-/// `StarkValue.sample`: `from + rng.nextDouble() * (to - from)`.
+/// `R[a,b]`: a uniform sample, `from + u * (to - from)` for `u` in `[0, 1)`.
 fn sample_range<R: Rng + ?Sized>(rng: &mut R, min: Value, max: Value) -> Result<Value, EvalError> {
-    let from = min.as_number("the lower bound of an `R[a,b]` sample")?;
-    let to = max.as_number("the upper bound of an `R[a,b]` sample")?;
+    let from = min.as_f64("the lower bound of an `R[a,b]` sample")?;
+    let to = max.as_f64("the upper bound of an `R[a,b]` sample")?;
     Ok(Value::Real(from + rng.random::<f64>() * (to - from)))
 }
 
-/// `StarkValue.sampleNormal`. **Not actually Gaussian** — despite the name
-/// and the `N[mean, variance]` syntax, the Java reference computes
-/// `rng.nextDouble() * mean + variance` (a scaled-and-shifted uniform
-/// sample), not a normal distribution. This is ported *exactly*, not
-/// "fixed", so behaviour matches the reference tool; it reads as a bug in
-/// `StarkValue.sampleNormal`, but is not this port's place to silently
-/// correct.
+/// `N[mean, variance]`. **Not actually Gaussian** — despite the name and the
+/// syntax, the original computes `u * mean + variance` for `u` in `[0, 1)`,
+/// a scaled-and-shifted uniform sample rather than a normal distribution.
+/// This is ported *exactly*, not "fixed", so behaviour matches the original
+/// tool: it reads as a bug there, but silently correcting it is not this
+/// port's place.
 fn sample_normal<R: Rng + ?Sized>(rng: &mut R, mean: Value, variance: Value) -> Result<Value, EvalError> {
     // Both bounds are already guaranteed numeric by `typecheck.rs` (`R[a,b]`'s
     // bounds and `N[m,v]`'s mean/variance are all checked against `real`), so
     // these errors only fire against an otherwise-unreachable malformed IR.
-    let mean = mean.as_number("the mean of an `N[m,v]` sample")?;
-    let variance = variance.as_number("the variance of an `N[m,v]` sample")?;
+    let mean = mean.as_f64("the mean of an `N[m,v]` sample")?;
+    let variance = variance.as_f64("the variance of an `N[m,v]` sample")?;
     Ok(Value::Real(rng.random::<f64>() * mean + variance))
 }
 
@@ -289,6 +305,36 @@ mod tests {
     #[test_case("2 < 3 ? 10 : 20", Value::Integer(10) ; "select ternary")]
     fn evaluates_literal_expressions(source: &str, expected: Value) {
         assert_eq!(eval_expression(source), expected);
+    }
+
+    #[test]
+    fn a_runtime_error_is_anchored_to_the_innermost_offending_expression() {
+        // The `1 / 0` is nested inside `4 + …`; the reported span must
+        // underline the division that actually failed, not the whole
+        // initializer — this is what `EvalError::or_span`'s innermost-wins
+        // rule buys, and what makes the message read as "division by zero at
+        // <the division>".
+        let source = "const result = 4 + 1 / 0;";
+        let spec = UntypedStarkSpecification::parse(source)
+            .expect("should parse")
+            .check()
+            .expect("should check");
+        let program = lower(&spec).expect("should lower");
+        let mut rng = StdRng::seed_from_u64(0);
+
+        let error = Store::new(&program, &mut rng).expect_err("initialisation divides by zero");
+        assert_eq!(error.kind, EvalErrorKind::DivisionByZero);
+
+        let span = error.span.clone().expect("the failure carries a source span");
+        let underlined = &source[span.start..span.end];
+        assert!(
+            underlined.contains('/') && !underlined.contains('4'),
+            "expected the span to point at the inner division, got {underlined:?}"
+        );
+        // And it renders in the shared `-->`/`^^^` diagnostic style.
+        let rendered = error.render(source);
+        assert!(rendered.starts_with("error: division by zero"), "got: {rendered}");
+        assert!(rendered.contains("--> 1:"), "got: {rendered}");
     }
 
     #[test]
@@ -368,8 +414,8 @@ mod tests {
     }
 
     #[test]
-    fn sample_normal_matches_the_non_gaussian_java_quirk() {
-        // Pin the `rng.nextDouble() * mean + variance` quirk exactly.
+    fn sample_normal_matches_the_non_gaussian_quirk() {
+        // Pin the `u * mean + variance` quirk exactly.
         let mut rng = StdRng::seed_from_u64(3);
         let uniform = rng.random::<f64>();
         let mut rng = StdRng::seed_from_u64(3);

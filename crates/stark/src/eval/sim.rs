@@ -1,18 +1,15 @@
 //! The public entry point for running a specification. [Simulation] owns the
 //! store and every component's controller cursor and steps the whole system
-//! one macro-step at a time, matching `ControlledSystem`'s role in the Java
-//! reference (see `eval::step`'s doc comment for the exact per-step
-//! ordering).
+//! one macro-step at a time (see `eval::step`'s doc comment for the exact
+//! per-step ordering).
 //!
 //! Deliberately **push-based**: [Simulation::run] takes an [Observer] and
 //! calls it after every step, rather than building an eager
 //! `Vec<Vec<Value>>` trajectory. A caller can stop early, aggregate on the
-//! fly, or (later) drive an ensemble of independently-seeded [Simulation]s
-//! to build the `SampleSet`-style evolution sequence `EvolutionSequence.java`
-//! models — `SampleSet<SystemState>`, sampled and regenerated lazily via
-//! `generateUpTo` — without [Simulation] itself needing to change: an
-//! ensemble driver is just "N `Simulation`s, one `Observer` that collects
-//! across them," built on top of this, not into it.
+//! fly, or drive an ensemble of independently-seeded [Simulation]s without
+//! [Simulation] itself needing to change: an ensemble driver is just "N
+//! `Simulation`s, one `Observer` that collects across them", built on top of
+//! this rather than into it.
 
 use rand::Rng;
 use rand::SeedableRng;
@@ -28,8 +25,7 @@ use super::system::SystemState;
 pub trait Observer {
     /// `step` is the number of macro-steps taken so far (`1` after the
     /// first); `state` is the `[0, n_variables)` state prefix — exactly what
-    /// `EvolutionSequence`/`SampleSet` would checkpoint in the Java
-    /// reference.
+    /// an evolution sequence checkpoints per sample.
     fn on_step(&mut self, step: u64, state: &[Value]);
 }
 
@@ -49,9 +45,9 @@ impl Observer for RecordingObserver {
 }
 
 /// A running instance of a checked, lowered specification: the store, every
-/// component's controller cursor, the step counter, and the RNG stream.
-/// Mirrors `ControlledSystem`, minus the `Controller`/`DataStateFunction`
-/// indirection lowering already collapsed into `program`.
+/// component's controller cursor, the step counter, and the RNG stream —
+/// minus the controller/environment indirection that lowering already
+/// collapsed into `program`.
 pub struct Simulation<'a, R: Rng> {
     program: &'a IrProgram,
     state: SystemState,
@@ -61,12 +57,11 @@ pub struct Simulation<'a, R: Rng> {
 
 impl<'a> Simulation<'a, StdRng> {
     /// Builds a simulation seeded from a `u64`, for reproducibility.
-    /// **Not** bit-compatible with the Java reference's Mersenne-Twister
-    /// stream — a different PRNG makes that infeasible, so only the
-    /// *distributions* match; this port's own stream is reproducible from
-    /// this seed, which is what matters for regression tests and for
-    /// building an ensemble from independent substreams later. See
-    /// `EVALUATOR_PLAN.md`'s "Deliberate deviations".
+    /// **Not** bit-compatible with the original's random stream — a
+    /// different PRNG makes that infeasible, so only the *distributions*
+    /// match. This port's own stream is reproducible from this seed, which
+    /// is what matters for regression tests and for building an ensemble
+    /// from independent substreams later.
     pub fn new(program: &'a IrProgram, seed: u64) -> Result<Simulation<'a, StdRng>, EvalError> {
         Simulation::with_rng(program, StdRng::seed_from_u64(seed))
     }

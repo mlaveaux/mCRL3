@@ -16,8 +16,8 @@
 //!   component's variable block is declared before anything else in the
 //!   specification, so a function body, environment block or component may
 //!   read a state variable regardless of where it is declared. This mirrors
-//!   the original Java implementation, whose `StarkGlobalVariableCollector`
-//!   pass collects exactly these names ahead of `StarkModelGenerator`.
+//!   the original, which has a dedicated pass collecting exactly these names
+//!   ahead of everything else.
 //!
 //! Caveat: [UntypedStarkSpecification] buckets declarations by kind (all
 //! constants, then all parameters, then all variables, …) rather than
@@ -42,9 +42,9 @@
 //! initializer, including a self-reference like `real X = X;`. Resolution
 //! order no longer rules those out, so a post-pass
 //! ([Resolver::check_static_expressions]) rejects them explicitly, including
-//! reads reached indirectly through a function call. The original Java
-//! implementation accepts all of these and evaluates them to `ERROR_VALUE`
-//! at runtime with no diagnostic.
+//! reads reached indirectly through a function call. The original accepts
+//! all of these and evaluates them to its absorbing error value at runtime
+//! with no diagnostic.
 //!
 //! This pass only binds names — it does not compute or check types (see
 //! `typecheck.rs`). A reference that fails to resolve is left with its `id`
@@ -85,11 +85,7 @@ pub enum DefKind {
 }
 
 impl DefKind {
-    /// Whether a plain `ExpressionKind::Reference` may resolve to this kind:
-    /// whether it names a *value*, as opposed to a function, penalty,
-    /// component, perturbation, distance, formula or type, each of which is
-    /// only referenceable from its own dedicated syntax (a call, a `\D[...]`,
-    /// …), never from a bare name in an ordinary expression.
+    /// Whether a plain `ExpressionKind::Reference` may resolve to this kind.
     fn is_referenceable_value(&self) -> bool {
         matches!(
             self,
@@ -507,8 +503,8 @@ impl Resolver {
     /// at load time, before any variable store exists. Pre-declaring
     /// variables makes those names resolve everywhere, so this is what keeps
     /// `const a = X;` and `real X = X;` from being silently accepted — the
-    /// original Java implementation has this hole, evaluating such reads to
-    /// `ERROR_VALUE` at runtime with no diagnostic.
+    /// original has this hole, evaluating such reads to its absorbing error
+    /// value at runtime with no diagnostic.
     ///
     /// Runs as a post-pass so every function is resolved and its
     /// [Self::function_reads_variable] entry is known.

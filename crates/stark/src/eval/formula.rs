@@ -1,25 +1,22 @@
 //! ROBTL formulas: the top of the verification stack. A formula is checked
 //! against *one* evolution sequence — the reference behaviour — and each
 //! atomic proposition compares that sequence against a perturbed copy of
-//! itself. Ported from `lib/.../robtl/`.
+//! itself.
 //!
-//! Two semantics, both from the reference:
+//! Two semantics, both from the original:
 //!
-//! - [Analysis::check] — the **three-valued** semantics
-//!   (`ThreeValuedSemanticsVisitor`), the one the tool uses by default. A
-//!   verdict may be [TruthValue::Unknown] when the sample size is too small
-//!   to place the true distance on one side of the threshold; this is
-//!   statistical honesty, not a modelling gap, and it is the reason the
-//!   distance layer computes confidence intervals at all.
-//! - [Analysis::check_boolean] — the **two-valued** semantics
-//!   (`BooleanSemanticsVisitor`), which compares point estimates only. It is
-//!   cheaper (no bootstrap) and is what you want when you have already
-//!   decided the sample is large enough.
+//! - [Analysis::check] — the **three-valued** semantics, the one the tool
+//!   uses by default. A verdict may be [TruthValue::Unknown] when the sample
+//!   size is too small to place the true distance on one side of the
+//!   threshold; this is statistical honesty, not a modelling gap, and it is
+//!   the reason the distance layer computes confidence intervals at all.
+//! - [Analysis::check_boolean] — the **two-valued** semantics, which compares
+//!   point estimates only. It is cheaper (no bootstrap) and is what you want
+//!   when you have already decided the sample is large enough.
 //!
 //! Note the interval convention differs from [super::distance]'s: a formula's
-//! `[from, to]` **includes** `to` (the reference iterates `to + step + 1`),
-//! whereas a distance's excludes it. Preserved as-is; see the distance module
-//! doc.
+//! `[from, to]` **includes** `to`, whereas a distance's excludes it.
+//! Preserved as-is; see the distance module doc.
 
 use rand::Rng;
 
@@ -30,7 +27,7 @@ use crate::value::EvalError;
 use super::robust::Analysis;
 use super::sequence::EvolutionSequence;
 
-/// A three-valued verdict — `TruthValues`. [TruthValue::Unknown] means the
+/// A three-valued verdict. [TruthValue::Unknown] means the
 /// samples were not conclusive, not that the formula is undefined.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TruthValue {
@@ -59,7 +56,10 @@ impl TruthValue {
         }
     }
 
-    /// Kleene negation: `Unknown` is its own negation.
+    /// Kleene negation: `Unknown` is its own negation. Named to complete the
+    /// `and`/`or`/`not` trio rather than to mirror `std::ops::Not`, which
+    /// would force a `Not` impl for one call site.
+    #[expect(clippy::should_implement_trait, reason = "reads as the Kleene-logic trio and/or/not")]
     pub fn not(self) -> TruthValue {
         match self {
             TruthValue::True => TruthValue::False,
@@ -68,8 +68,7 @@ impl TruthValue {
         }
     }
 
-    /// `TruthValues.valueOf`: `1.0`/`0.0`/`-1.0`, for callers that want a
-    /// numeric verdict.
+    /// `1.0`/`0.0`/`-1.0`, for callers that want a numeric verdict.
     pub fn as_f64(self) -> f64 {
         match self {
             TruthValue::True => 1.0,
@@ -87,7 +86,7 @@ impl From<bool> for TruthValue {
 
 impl<R: Rng> Analysis<'_, R> {
     /// Checks a formula against `sequence` at time `step`, under the
-    /// three-valued semantics — `ThreeValuedSemanticsVisitor`.
+    /// three-valued semantics.
     pub fn check(
         &mut self,
         sequence: &mut EvolutionSequence,
@@ -130,7 +129,7 @@ impl<R: Rng> Analysis<'_, R> {
                 for i in from..=to {
                     value = value.and(self.check(sequence, i, argument)?);
                     // `false` is absorbing, so nothing later can change the
-                    // verdict — the reference short-circuits here too.
+                    // verdict — the original short-circuits here too.
                     if value == TruthValue::False {
                         break;
                     }
@@ -160,8 +159,8 @@ impl<R: Rng> Analysis<'_, R> {
             }
             FormulaIr::Until { from, to, left, right } => {
                 let (from, to) = self.interval(from, to, step)?;
-                // `UntilRobustnessFormula`: walk forward while the left side
-                // still holds, looking for a point where the right side does.
+                // Walk forward while the left side still holds, looking for
+                // a point where the right side does.
                 // `left_value` accumulates the conjunction of the left side
                 // over everything seen so far.
                 let mut value = TruthValue::False;
@@ -180,9 +179,9 @@ impl<R: Rng> Analysis<'_, R> {
         }
     }
 
-    /// Checks a formula under the two-valued semantics —
-    /// `BooleanSemanticsVisitor`. Compares point estimates, so it never needs
-    /// the bootstrap and never answers "unknown".
+    /// Checks a formula under the two-valued semantics. Compares point
+    /// estimates, so it never needs the bootstrap and never answers
+    /// "unknown".
     pub fn check_boolean(
         &mut self,
         sequence: &mut EvolutionSequence,
@@ -224,7 +223,7 @@ impl<R: Rng> Analysis<'_, R> {
                 Ok(false)
             }
             FormulaIr::And(left, right) => {
-                // Short-circuiting, matching Java's `&&`.
+                // Short-circuiting, as in the original.
                 Ok(self.check_boolean(sequence, step, left)? && self.check_boolean(sequence, step, right)?)
             }
             FormulaIr::Or(left, right) => {

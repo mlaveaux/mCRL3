@@ -1,28 +1,27 @@
-//! Type checking, ported from `types/ExpressionTypeInference.java` and
-//! `types/StarkFunctionStatementTypeInference.java`.
+//! Type checking: expression type inference, plus the function-body
+//! inference that gives an unannotated function its return type.
 //!
 //! Runs after `resolve.rs`: every reference/call already carries a resolved
 //! [DefId]/[LocalId], so this pass never re-derives "is this name defined" /
 //! "is this the right kind of name" — `resolve.rs` already decided that.
 //! Because `resolve.rs` assigns [LocalId]s uniquely across the whole spec
 //! (never reused between scopes), a flat `Vec<Option<StarkType>>` indexed by
-//! `LocalId` stands in for what the Java `TypeEvaluationContext`/
-//! `LocalTypeContext` stack of scopes did — no scope stack is needed here,
-//! only "has this local's type been computed yet".
+//! `LocalId` stands in for the original's stack of nested type-evaluation
+//! scopes — no scope stack is needed here, only "has this local's type been
+//! computed yet".
 //!
 //! A `None` binding/id (left by `resolve.rs` for something that failed to
 //! resolve) is treated as already-erred: this pass returns
 //! [StarkType::Error] for it without recording a second diagnostic for the
 //! same spot.
 //!
-//! Two spots deliberately diverge from the Java reference:
-//! `visitAndExpression`/`visitOrExpression` never propagate a `Random`
-//! result there (`visitOrExpression` even computes an `isRandom` local and
-//! then never uses it — reading as an unfinished path, not a deliberate
-//! choice, since the very next case, `visitRelationExpression`, does
-//! propagate), and `visitUnaryMathCallExpression` never propagates
-//! randomness either, while the binary math-call path does. This port
-//! propagates randomness in both cases, for consistency with every other
+//! Two spots deliberately diverge from the original: `&&`/`||` never
+//! propagate a `random[..]` result there (the disjunction case even computes
+//! whether either operand is random and then never uses it — reading as an
+//! unfinished path, not a deliberate choice, since the relational case right
+//! next to it does propagate), and neither does the *unary* math-call path,
+//! while the binary one does. This port propagates randomness in both cases,
+//! for consistency with every other
 //! boolean/real-producing operator. No case in the ported
 //! `ExpressionTypeInferenceTest` exercises either edge case, so this
 //! doesn't contradict anything being ported.
@@ -347,8 +346,8 @@ impl Checker<'_> {
     }
 
     /// Returns the type of every `return` reachable from `statement`, merged
-    /// together (mirrors `StarkFunctionStatementTypeInference`: a function
-    /// has no return-type annotation, so its type is inferred from its body).
+    /// together: a function has no return-type annotation, so its type is
+    /// inferred from its body.
     fn check_function_statement(&mut self, statement: &FunctionStatement, random_allowed: bool) -> StarkType {
         match statement {
             FunctionStatement::Return(value) => self.check_expression(value, random_allowed),
@@ -566,9 +565,8 @@ impl Checker<'_> {
 
     // -- Expressions ------------------------------------------------------
 
-    /// `combineToRealType` in the Java source: always widens to `real`
-    /// (`2 ^ 3` and `atan2(1,2)` are both `real`, never `int`), propagating
-    /// randomness from either operand.
+    /// Always widens to `real` (`2 ^ 3` and `atan2(1,2)` are both `real`,
+    /// never `int`), propagating randomness from either operand.
     fn combine_to_real(&mut self, left: &Expression, right: &Expression, random_allowed: bool) -> StarkType {
         let left_ty = self.check_expression(left, random_allowed);
         let left_ty = self.expect_numerical(left_ty, &left.span);
@@ -670,17 +668,15 @@ impl Checker<'_> {
                 self.expect(&StarkType::Boolean, ty, &inner.span)
             }
             ExpressionKind::UnaryPlus(inner) | ExpressionKind::UnaryMinus(inner) => {
-                // Matches Java: `StarkExpressionEvaluator`'s `unaryOperators`
-                // map routes `+`/`-` through the *same* always-widening
-                // `DoubleUnaryOperator` mechanism as `abs`/`sqrt`/etc.
-                // (`StarkInteger.apply(DoubleUnaryOperator)` -> `StarkReal`),
-                // so unary +/- on an `int` widens the result to `real`, and
-                // so does everything built on top of it (`-a + 2` is `real`,
-                // not `int`, when `a` is an `int`). Surprising for a spec
-                // author writing `-a` expecting an int to stay one; matched
-                // here for fidelity with the reference tool, but worth
-                // reconsidering if that surprises users badly enough in
-                // practice.
+                // Matches the original, which routes `+`/`-` through the
+                // *same* always-widening double-valued mechanism as
+                // `abs`/`sqrt`/etc., so unary +/- on an `int` widens the
+                // result to `real`, and so does everything built on top of
+                // it (`-a + 2` is `real`, not `int`, when `a` is an `int`).
+                // Surprising for a spec author writing `-a` expecting an int
+                // to stay one; matched here for fidelity with the original
+                // tool, but worth reconsidering if it surprises users badly
+                // enough in practice.
                 self.combine_to_real_unary(inner, random_allowed)
             }
             ExpressionKind::Binary(op, left, right) => self.check_binary(*op, left, right, random_allowed),
@@ -962,12 +958,11 @@ mod tests {
         }
     }
 
-    /// Ported from
-    /// `~/STARK/speclang/src/test/java/stark/speclang/types/ExpressionTypeInferenceTest.java`.
+    /// The original tool's own expression-type-inference test cases, ported.
     ///
-    /// The original tests a bare expression directly against
-    /// `ExpressionTypeInference`, with `randomExpressionAllowed` as an
-    /// explicit parameter. There's no equivalent "just an expression, no
+    /// The original tests a bare expression directly against its inference
+    /// pass, with "is a random expression allowed here" as an explicit
+    /// parameter. There's no equivalent "just an expression, no
     /// spec" entry point here, so each case is hosted inside the smallest
     /// construct that gives it the right `random_allowed` context: a
     /// zero-argument function body (`random_allowed = true`, matching the

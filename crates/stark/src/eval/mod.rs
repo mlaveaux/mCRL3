@@ -1,6 +1,5 @@
 //! The evaluator: executes a checked, lowered [crate::ir::IrProgram] —
 //! expression evaluation, function calls, sampling, and simulation stepping.
-//! See `EVALUATOR_PLAN.md` for the full design.
 //!
 //! ```text
 //! parse -> resolve -> typecheck -> lower -> IrProgram -> [ evaluate ]
@@ -14,16 +13,14 @@
 //! There are two entry points, one per thing you can ask of a specification:
 //!
 //! - [Simulation] — *run* it. One trajectory, stepped on demand, states
-//!   pushed to an [Observer]. This is Milestone B of `EVALUATOR_PLAN.md`.
+//!   pushed to an [Observer].
 //! - [Analysis] — *verify* it. Checks the specification's `formula` and
 //!   `distance` declarations by comparing an ensemble of trajectories against
 //!   a perturbed copy of itself, yielding a [TruthValue] (or a raw distance).
-//!   This is Milestone C.
 //!
 //! Every entry point is fallible: evaluation returns `Result<_, EvalError>`
-//! rather than propagating an absorbing error *value* the way the Java
-//! reference's `StarkValue.ERROR_VALUE` does — see `value.rs`'s "Errors are a
-//! `Result`, not a value" for why.
+//! rather than propagating an absorbing error *value* the way the original
+//! does — see `value.rs` for why.
 
 mod distance;
 mod expr;
@@ -37,6 +34,7 @@ mod store;
 mod system;
 
 pub use crate::value::EvalError;
+pub use crate::value::EvalErrorKind;
 pub use distance::Ci;
 pub use formula::TruthValue;
 pub use robust::Analysis;

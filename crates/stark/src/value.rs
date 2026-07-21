@@ -1,14 +1,16 @@
 use std::fmt;
 
+use merc_utilities::Span;
 use thiserror::Error;
 
 use crate::ast::DefId;
 use crate::resolve::SymbolTable;
 use crate::types::StarkType;
 
-/// Error when evaluating an expression.
+/// The *class* of an evaluation failure, without a source location for runtime
+/// errors.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
-pub enum EvalError {
+pub enum EvalErrorKind {
     /// Integer `/`, `//` or `%` with a zero divisor, or the `i64::MIN / -1`
     /// overflow. The only variant reachable from a well-typed program.
     #[error("division by zero")]
@@ -40,11 +42,7 @@ pub enum EvalError {
     #[error("evaluated an expression that should be unreachable: {0}")]
     Unreachable(&'static str),
     /// A distance was computed between two sample sets whose sizes aren't a
-    /// multiple of one another — `SampleSet.distance` throws
-    /// `IllegalArgumentException("Incompatible size of data sets!")` here.
-    /// Only reachable by asking for a perturbed sequence with a zero
-    /// `scale`, since a perturbed sequence is otherwise `scale` replicas of
-    /// the reference one.
+    /// multiple of one another, for example a zero scale.
     #[error("cannot compare sample sets of size {reference} and {perturbed}: the latter must be a multiple of the former")]
     IncompatibleSampleSizes { reference: usize, perturbed: usize },
     /// A robustness analysis was asked for with a zero sample size, so there
@@ -53,7 +51,50 @@ pub enum EvalError {
     EmptySampleSet,
 }
 
-/// Which [Value] case a value was, without its payload.
+/// An evaluation failure, anchored to the source [Span] of the offending
+/// expression when one is known.
+///
+/// Equality compares both the kind and the span
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[error("{kind}")]
+pub struct EvalError {
+    #[source]
+    pub kind: EvalErrorKind,
+    pub span: Option<Span>,
+}
+
+impl EvalError {
+    /// An error with no known source location.
+    pub fn new(kind: EvalErrorKind) -> EvalError {
+        EvalError { kind, span: None }
+    }
+
+    /// Attaches `span` unless a (more specific, inner span was already
+    /// recorded.
+    pub fn or_span(mut self, span: &Span) -> EvalError {
+        if self.span.is_none() {
+            self.span = Some(span.clone());
+        }
+        self
+    }
+
+    /// Renders this error against its `source` text. Falls back to the bare
+    /// message when no span is known.
+    pub fn render(&self, source: &str) -> String {
+        match &self.span {
+            Some(span) => format!("error: {}\n{}", self.kind, span.render(source)),
+            None => format!("error: {}", self.kind),
+        }
+    }
+}
+
+impl From<EvalErrorKind> for EvalError {
+    fn from(kind: EvalErrorKind) -> EvalError {
+        EvalError::new(kind)
+    }
+}
+
+/// The kind of a [Value].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueKind {
     Integer,
@@ -92,8 +133,10 @@ pub enum Value {
 }
 
 impl Value {
-    /// This value's [StarkType]. `symbols` resolves a [CustomValue]'s
-    /// `type_id` back to the type's declared name.
+    /// This type of a value.
+    /// 
+    /// The `symbols` resolves a [CustomValue]'s `type_id` back to the type's
+    /// declared name.
     pub fn type_of(&self, symbols: &SymbolTable) -> StarkType {
         match self {
             Value::Integer(_) => StarkType::Integer,
@@ -114,10 +157,10 @@ impl Value {
     }
 
     /// Reads this value as a boolean.
-    pub fn as_boolean(self, context: &'static str) -> Result<bool, EvalError> {
+    pub fn as_boolean(self, context: &'static str) -> Result<bool, EvalErrorKind> {
         match self {
             Value::Boolean(value) => Ok(value),
-            other => Err(EvalError::ExpectedBoolean {
+            other => Err(EvalErrorKind::ExpectedBoolean {
                 context,
                 found: other.kind(),
             }),
@@ -125,10 +168,10 @@ impl Value {
     }
 
     /// Reads this value as an integer.
-    pub fn as_integer(self, context: &'static str) -> Result<i64, EvalError> {
+    pub fn as_integer(self, context: &'static str) -> Result<i64, EvalErrorKind> {
         match self {
             Value::Integer(value) => Ok(value),
-            other => Err(EvalError::ExpectedInteger {
+            other => Err(EvalErrorKind::ExpectedInteger {
                 context,
                 found: other.kind(),
             }),
@@ -136,11 +179,11 @@ impl Value {
     }
 
     /// Widens either numeric case to `f64`. Errors on a non-numeric values..
-    pub fn as_number(self, context: &'static str) -> Result<f64, EvalError> {
+    pub fn as_f64(self, context: &'static str) -> Result<f64, EvalErrorKind> {
         match self {
             Value::Integer(value) => Ok(value as f64),
             Value::Real(value) => Ok(value),
-            other => Err(EvalError::ExpectedNumber {
+            other => Err(EvalErrorKind::ExpectedNumber {
                 context,
                 found: other.kind(),
             }),
@@ -148,25 +191,25 @@ impl Value {
     }
 
     /// Integer overflow wraps rather than panicking.
-    pub fn sum(self, other: Value) -> Result<Value, EvalError> {
+    pub fn sum(self, other: Value) -> Result<Value, EvalErrorKind> {
         numeric_op("+", self, other, i64::wrapping_add, |a, b| a + b)
     }
 
-    pub fn product(self, other: Value) -> Result<Value, EvalError> {
+    pub fn product(self, other: Value) -> Result<Value, EvalErrorKind> {
         numeric_op("*", self, other, i64::wrapping_mul, |a, b| a * b)
     }
 
-    pub fn subtraction(self, other: Value) -> Result<Value, EvalError> {
+    pub fn subtraction(self, other: Value) -> Result<Value, EvalErrorKind> {
         numeric_op("-", self, other, i64::wrapping_sub, |a, b| a - b)
     }
 
-    /// `StarkValue.division`. Integer division by zero (and the
-    /// `i64::MIN / -1` overflow) is [EvalError::DivisionByZero]; real division
-    /// keeps `f64`'s `±inf`/`NaN` behaviour — see the module doc comment.
-    pub fn division(self, other: Value) -> Result<Value, EvalError> {
+    /// Integer division by zero (and the `i64::MIN / -1` overflow) is
+    /// [EvalErrorKind::DivisionByZero]; real division keeps `f64`'s
+    /// behaviour.
+    pub fn division(self, other: Value) -> Result<Value, EvalErrorKind> {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => {
-                a.checked_div(b).map(Value::Integer).ok_or(EvalError::DivisionByZero)
+                a.checked_div(b).map(Value::Integer).ok_or(EvalErrorKind::DivisionByZero)
             }
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 / b)),
             (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a / b as f64)),
@@ -175,11 +218,11 @@ impl Value {
         }
     }
 
-    /// `StarkValue.modulo`. Same zero/overflow guard as [Value::division].
-    pub fn modulo(self, other: Value) -> Result<Value, EvalError> {
+    /// Same zero/overflow guard as [Value::division].
+    pub fn modulo(self, other: Value) -> Result<Value, EvalErrorKind> {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => {
-                a.checked_rem(b).map(Value::Integer).ok_or(EvalError::DivisionByZero)
+                a.checked_rem(b).map(Value::Integer).ok_or(EvalErrorKind::DivisionByZero)
             }
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 % b)),
             (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a % b as f64)),
@@ -188,24 +231,11 @@ impl Value {
         }
     }
 
-    /// Truncating integer division (`//`, `ir::BinaryOp::IntDiv`).
-    ///
-    /// **Not a port of Java behaviour — there isn't any to port.** The `.g4`
-    /// grammar parses `//` (`mulDivExpression` accepts `'*'|'/'|'//'`), but
-    /// `StarkExpressionEvaluator`'s `binaryOperators` map only registers
-    /// `"+" "*" "-" "/" "%"` plus the math functions; `getBinaryOperator`
-    /// falls back to `(x,y) -> ERROR_VALUE` for anything else, so every use
-    /// of `//` in the Java reference evaluates to `ERROR_VALUE` unconditionally
-    /// — the operator parses but was never implemented. Rather than replicate
-    /// that gap, this implements the operator its syntax promises: truncating
-    /// division that always yields an integral quotient — `Integer` for
-    /// `int // int` (same zero/overflow guard as [Value::division]), and the
-    /// real quotient truncated toward zero, as a `Real`, whenever either side
-    /// is real.
-    pub fn int_div(self, other: Value) -> Result<Value, EvalError> {
+    /// Truncating integer division.
+    pub fn int_div(self, other: Value) -> Result<Value, EvalErrorKind> {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => {
-                a.checked_div(b).map(Value::Integer).ok_or(EvalError::DivisionByZero)
+                a.checked_div(b).map(Value::Integer).ok_or(EvalErrorKind::DivisionByZero)
             }
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real((a as f64 / b).trunc())),
             (Value::Real(a), Value::Integer(b)) => Ok(Value::Real((a / b as f64).trunc())),
@@ -214,89 +244,71 @@ impl Value {
         }
     }
 
-    /// `StarkValue.isLessThan`. Returns a bare `bool` rather than a
-    /// [Value::Boolean]: now that the failure case is an `Err`, the success
-    /// case is known to be a boolean, and saying so in the type keeps a caller
-    /// from having to re-inspect it. `eval::expr` wraps it back into a [Value].
-    pub fn is_less_than(self, other: Value) -> Result<bool, EvalError> {
+    /// Returns a bare `bool` rather than a [Value::Boolean], so that the result
+    /// does not have be matched.
+    pub fn is_less_than(self, other: Value) -> Result<bool, EvalErrorKind> {
         comparison_op("<", self, other, |a, b| a < b, |a, b| a < b)
     }
 
-    /// `StarkValue.isLessOrEqualThan`.
-    pub fn is_less_or_equal_than(self, other: Value) -> Result<bool, EvalError> {
+    /// See [Value::is_less_than].
+    pub fn is_less_or_equal_than(self, other: Value) -> Result<bool, EvalErrorKind> {
         comparison_op("<=", self, other, |a, b| a <= b, |a, b| a <= b)
     }
 
-    /// `StarkValue.isGreaterOrEqualThan`.
-    pub fn is_greater_or_equal_than(self, other: Value) -> Result<bool, EvalError> {
+    /// See [Value::is_less_than].
+    pub fn is_greater_or_equal_than(self, other: Value) -> Result<bool, EvalErrorKind> {
         comparison_op(">=", self, other, |a, b| a >= b, |a, b| a >= b)
     }
 
-    /// `StarkValue.isGreaterThan`.
-    pub fn is_greater_than(self, other: Value) -> Result<bool, EvalError> {
+    /// See [Value::is_less_than].
+    pub fn is_greater_than(self, other: Value) -> Result<bool, EvalErrorKind> {
         comparison_op(">", self, other, |a, b| a > b, |a, b| a > b)
     }
 
-    /// `StarkValue.isEqualTo`, **extended**: Java's version dispatches only
-    /// on `StarkInteger`/`StarkReal` and returns `ERROR_VALUE` for every other
-    /// pairing — including two equal `StarkBoolean`s or two equal
-    /// `StarkCustomValue`s, since neither class overrides it. That reads as
-    /// an oversight (`.equals()` is defined and correct on both; `isEqualTo`
-    /// just never calls it) rather than an intended "booleans/custom values
-    /// aren't comparable" semantics, especially since `typecheck.rs` already
-    /// accepts `==` between two booleans or two same-typed custom values. So
-    /// this covers those cases too, numeric comparison still widening.
-    pub fn is_equal_to(self, other: Value) -> Result<bool, EvalError> {
+    /// See [Value::is_less_than].
+    pub fn is_equal_to(self, other: Value) -> Result<bool, EvalErrorKind> {
         match (self, other) {
             (Value::Boolean(a), Value::Boolean(b)) => Ok(a == b),
             (Value::Custom(a), Value::Custom(b)) => Ok(a == b),
             // Exact integer comparison when both sides are `Integer` (not
-            // widened through `f64`, which loses precision above 2^53) —
-            // matches `StarkInteger.isEqualTo`'s own `instanceof StarkInteger`
-            // fast path.
+            // widened through `f64`, which loses precision above 2^53),
+            // matching the original's own integer fast path.
             _ => comparison_op("==", self, other, |a, b| a == b, |a, b| a == b),
         }
     }
 
-    /// `StarkValue.and` (`StarkBoolean.and`). Boolean-only, like Java: both
-    /// `&&` and `&` (`ir::BinaryOp::And`/`BitAnd`) lower to this — the two
-    /// spellings are one grammar rule split across two precedence levels in
-    /// both the Java `.g4` and `stark_grammar.pest`, not two operations (see
-    /// `visitAndExpression`, which ignores `ctx.op.getText()` entirely).
-    pub fn and(self, other: Value) -> Result<bool, EvalError> {
+    /// Computes the boolean and of two boolean values.
+    pub fn and(self, other: Value) -> Result<bool, EvalErrorKind> {
         match (self, other) {
             (Value::Boolean(a), Value::Boolean(b)) => Ok(a && b),
             (left, right) => Err(unsupported("&&", left, right)),
         }
     }
 
-    /// `StarkValue.or` (`StarkBoolean.or`). See [Value::and]'s doc comment —
-    /// `||` and `|` (`Or`/`BitOr`) are likewise one operation, two spellings.
-    pub fn or(self, other: Value) -> Result<bool, EvalError> {
+    /// See [Value::and].
+    pub fn or(self, other: Value) -> Result<bool, EvalErrorKind> {
         match (self, other) {
             (Value::Boolean(a), Value::Boolean(b)) => Ok(a || b),
             (left, right) => Err(unsupported("||", left, right)),
         }
     }
 
-    /// `StarkValue.apply(DoubleUnaryOperator, ..)`: always widens to `Real`,
-    /// even for an integer argument — `max(1, 2)` is `Real(2.0)`, not
-    /// `Integer(2)`. Used for every `MathUnaryFunction`. `op` names the
-    /// operation for the error message.
-    pub fn apply_unary(self, op: &'static str, f: impl Fn(f64) -> f64) -> Result<Value, EvalError> {
+    /// Always widens to `Real` even for integer values, matching the original
+    /// behaviour.
+    pub fn apply_unary(self, op: &'static str, f: impl Fn(f64) -> f64) -> Result<Value, EvalErrorKind> {
         match self {
             Value::Integer(v) => Ok(Value::Real(f(v as f64))),
             Value::Real(v) => Ok(Value::Real(f(v))),
-            operand => Err(EvalError::UnsupportedUnaryOperand {
+            operand => Err(EvalErrorKind::UnsupportedUnaryOperand {
                 op,
                 operand: operand.kind(),
             }),
         }
     }
 
-    /// `StarkValue.apply(DoubleBinaryOperator, ..)`: the binary counterpart
-    /// of [Value::apply_unary], used for every `MathBinaryFunction`.
-    pub fn apply_binary(self, other: Value, op: &'static str, f: impl Fn(f64, f64) -> f64) -> Result<Value, EvalError> {
+    /// The binary counterpart of [Value::apply_unary], used for every
+    /// `MathBinaryFunction`.
+    pub fn apply_binary(self, other: Value, op: &'static str, f: impl Fn(f64, f64) -> f64) -> Result<Value, EvalErrorKind> {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Real(f(a as f64, b as f64))),
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(f(a as f64, b))),
@@ -307,26 +319,25 @@ impl Value {
     }
 }
 
-/// The [EvalError::UnsupportedBinaryOperands] for a binary `op` — the
+/// The [EvalErrorKind::UnsupportedBinaryOperands] for a binary `op` — the
 /// fallthrough every operation below shares.
-fn unsupported(op: &'static str, left: Value, right: Value) -> EvalError {
-    EvalError::UnsupportedBinaryOperands {
+fn unsupported(op: &'static str, left: Value, right: Value) -> EvalErrorKind {
+    EvalErrorKind::UnsupportedBinaryOperands {
         op,
         left: left.kind(),
         right: right.kind(),
     }
 }
 
-/// The shared "int-preserving-then-widening" promotion used by `+`, `*`, `-`:
-/// `int op int -> Integer`; anything touching a `Real` -> `Real`; anything with
-/// a non-numeric operand is an error.
+/// Applies the operation to the two numeric operands, widening to `Real` if
+/// either is a `Real`.
 fn numeric_op(
     op: &'static str,
     lhs: Value,
     rhs: Value,
     int_op: impl Fn(i64, i64) -> i64,
     real_op: impl Fn(f64, f64) -> f64,
-) -> Result<Value, EvalError> {
+) -> Result<Value, EvalErrorKind> {
     match (lhs, rhs) {
         (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(int_op(a, b))),
         (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(real_op(a as f64, b))),
@@ -336,18 +347,14 @@ fn numeric_op(
     }
 }
 
-/// The comparison shared by `<`, `<=`, `>=`, `>`, `==`: `int_op` compares two
-/// `Integer`s exactly (matching `StarkInteger`'s own `instanceof StarkInteger`
-/// fast path — not widened through `f64`, which loses precision above 2^53);
-/// any pairing touching a `Real` widens through `real_op` instead. Anything
-/// else (including a mismatched non-numeric pairing) is an error.
+/// The same as [numeric_op] but returning a bare `bool` directly.
 fn comparison_op(
     op: &'static str,
     lhs: Value,
     rhs: Value,
     int_op: impl Fn(i64, i64) -> bool,
     real_op: impl Fn(f64, f64) -> bool,
-) -> Result<bool, EvalError> {
+) -> Result<bool, EvalErrorKind> {
     match (lhs, rhs) {
         (Value::Integer(a), Value::Integer(b)) => Ok(int_op(a, b)),
         (Value::Integer(a), Value::Real(b)) => Ok(real_op(a as f64, b)),
@@ -357,17 +364,14 @@ fn comparison_op(
     }
 }
 
-/// Boolean negation (`!x`), `StarkValue.negate`. Still an `impl` of the
-/// standard trait rather than an inherent method so `!value` reads naturally
-/// at call sites; the `Output` is a `Result<bool, _>` like every other
-/// operation here, so a call site spells it `(!value)?`.
+/// Boolean negation (`!x`).
 impl std::ops::Not for Value {
-    type Output = Result<bool, EvalError>;
+    type Output = Result<bool, EvalErrorKind>;
 
-    fn not(self) -> Result<bool, EvalError> {
+    fn not(self) -> Result<bool, EvalErrorKind> {
         match self {
             Value::Boolean(v) => Ok(!v),
-            operand => Err(EvalError::UnsupportedUnaryOperand {
+            operand => Err(EvalErrorKind::UnsupportedUnaryOperand {
                 op: "!",
                 operand: operand.kind(),
             }),
@@ -417,7 +421,7 @@ mod tests {
     fn arithmetic_on_a_non_numeric_operand_names_both_sides() {
         assert_eq!(
             Value::Boolean(true).sum(Value::Integer(1)),
-            Err(EvalError::UnsupportedBinaryOperands {
+            Err(EvalErrorKind::UnsupportedBinaryOperands {
                 op: "+",
                 left: ValueKind::Boolean,
                 right: ValueKind::Integer,
@@ -441,20 +445,20 @@ mod tests {
     fn integer_division_and_modulo_by_zero_error_instead_of_panicking() {
         assert_eq!(
             Value::Integer(1).division(Value::Integer(0)),
-            Err(EvalError::DivisionByZero)
+            Err(EvalErrorKind::DivisionByZero)
         );
         assert_eq!(
             Value::Integer(1).modulo(Value::Integer(0)),
-            Err(EvalError::DivisionByZero)
+            Err(EvalErrorKind::DivisionByZero)
         );
         assert_eq!(
             Value::Integer(1).int_div(Value::Integer(0)),
-            Err(EvalError::DivisionByZero)
+            Err(EvalErrorKind::DivisionByZero)
         );
         // The i64::MIN / -1 overflow is likewise caught, not a panic.
         assert_eq!(
             Value::Integer(i64::MIN).division(Value::Integer(-1)),
-            Err(EvalError::DivisionByZero)
+            Err(EvalErrorKind::DivisionByZero)
         );
     }
 
@@ -542,10 +546,10 @@ mod tests {
 
     #[test]
     fn arithmetic_negate_and_widen_always_widen_to_real() {
-        // `-x`/`+x` are *not* integer-preserving, matching Java's
-        // `unaryOperators` map, which routes both through the same
-        // always-widening `DoubleUnaryOperator` mechanism as the math
-        // functions — see `ExprNode::Negate`'s doc comment.
+        // `-x`/`+x` are *not* integer-preserving, matching the original,
+        // which routes both through the same always-widening double-valued
+        // mechanism as the math functions — see `ExprNode::Negate`'s doc
+        // comment.
         assert_eq!(Value::Integer(3).apply_unary("-", |x| -x), Ok(Value::Real(-3.0)));
         assert_eq!(Value::Real(3.0).apply_unary("-", |x| -x), Ok(Value::Real(-3.0)));
         assert!(Value::Boolean(true).apply_unary("-", |x| -x).is_err());
@@ -554,9 +558,9 @@ mod tests {
 
     #[test]
     fn math_functions_always_widen_to_real() {
-        // The pinning test from `EVALUATOR_PLAN.md`: `max(1, 2)` is `Real(2.0)`,
-        // not `Integer(2)`, since `StarkInteger.apply(DoubleBinaryOperator)`
-        // always returns a `StarkReal`.
+        // Pins the original's widening rule: `max(1, 2)` is `Real(2.0)`, not
+        // `Integer(2)`, because applying a double-valued operation to an
+        // integer always yields a real.
         assert_eq!(
             Value::Integer(1).apply_binary(Value::Integer(2), "max", f64::max),
             Ok(Value::Real(2.0))
@@ -566,13 +570,13 @@ mod tests {
 
     #[test]
     fn as_boolean_errors_on_a_non_boolean_guard() {
-        // The behaviour change from `StarkValue.isTrue`, which silently
-        // answered `false` here — see the module doc comment.
+        // A deliberate behaviour change: the original silently answered
+        // `false` for a non-boolean guard.
         assert_eq!(Value::Boolean(true).as_boolean("a guard"), Ok(true));
         assert_eq!(Value::Boolean(false).as_boolean("a guard"), Ok(false));
         assert_eq!(
             Value::Integer(1).as_boolean("a guard"),
-            Err(EvalError::ExpectedBoolean {
+            Err(EvalErrorKind::ExpectedBoolean {
                 context: "a guard",
                 found: ValueKind::Integer,
             })
@@ -581,8 +585,8 @@ mod tests {
 
     #[test]
     fn as_number_widens_either_numeric_case() {
-        assert_eq!(Value::Integer(3).as_number("a bound"), Ok(3.0));
-        assert_eq!(Value::Real(3.5).as_number("a bound"), Ok(3.5));
-        assert!(Value::Boolean(true).as_number("a bound").is_err());
+        assert_eq!(Value::Integer(3).as_f64("a bound"), Ok(3.0));
+        assert_eq!(Value::Real(3.5).as_f64("a bound"), Ok(3.5));
+        assert!(Value::Boolean(true).as_f64("a bound").is_err());
     }
 }

@@ -2,19 +2,17 @@
 //! [super::sim]'s single trajectory, and what every distance and ROBTL
 //! formula is actually evaluated over.
 //!
-//! Ported from `EvolutionSequence.java` + `SampleSet.java`. Because the
-//! language is stochastic, "the state at time `t`" is not one state but a
-//! *distribution*, approximated by `size` independently sampled
-//! [SystemState]s — a `SampleSet`. An [EvolutionSequence] is the sequence of
-//! those sample sets, generated lazily:
-//! [EvolutionSequence::generate_up_to] extends it on demand, matching
-//! `generateUpTo`.
+//! Because the language is stochastic, "the state at time `t`" is not one
+//! state but a *distribution*, approximated by `size` independently sampled
+//! [SystemState]s — a *sample set*. An [EvolutionSequence] is the sequence of
+//! those sample sets, generated lazily: [EvolutionSequence::generate_up_to]
+//! extends it on demand.
 //!
 //! Two sequences (a reference one and a perturbed one) are compared by
 //! lifting a *penalty function* — a `real`-valued expression over a state —
 //! to distributions. The lifting is the Wasserstein distance between the two
 //! sampled distributions of penalty values, computed from the sorted arrays
-//! by [wasserstein] exactly as `SampleSet.computeDistance` does.
+//! by [wasserstein].
 
 use rand::Rng;
 
@@ -22,6 +20,7 @@ use crate::ir::IrProgram;
 use crate::ir::PenaltyId;
 use crate::ir::PerturbationId;
 use crate::value::EvalError;
+use crate::value::EvalErrorKind;
 use crate::value::Value;
 
 use super::expr::eval;
@@ -33,10 +32,9 @@ use super::system::SystemState;
 /// A sequence of sample sets, one per time step, extended on demand.
 ///
 /// A *perturbed* sequence additionally carries the [PerturbationState] it is
-/// being rewritten by — `PerturbedEvolutionSequence` in the reference, which
-/// is the same class plus a perturbation that advances alongside generation.
-/// Modelling it as a field rather than a subclass keeps one generation path
-/// (see [EvolutionSequence::generate_next]).
+/// being rewritten by. The original models this as a subclass; keeping it as
+/// an `Option` field instead means there is only one generation path (see
+/// [EvolutionSequence::generate_next]).
 #[derive(Clone, Debug)]
 pub struct EvolutionSequence {
     /// `steps[t]` is the sample set at time `t`; always non-empty (`steps[0]`
@@ -47,14 +45,14 @@ pub struct EvolutionSequence {
 }
 
 impl EvolutionSequence {
-    /// Samples `size` independent initial states — `SampleSet.generate`.
+    /// Samples `size` independent initial states.
     pub(crate) fn generate<R: Rng + ?Sized>(
         program: &IrProgram,
         rng: &mut R,
         size: usize,
     ) -> Result<EvolutionSequence, EvalError> {
         if size == 0 {
-            return Err(EvalError::EmptySampleSet);
+            return Err(EvalErrorKind::EmptySampleSet.into());
         }
         let mut initial = Vec::with_capacity(size);
         for _ in 0..size {
@@ -67,8 +65,8 @@ impl EvolutionSequence {
         })
     }
 
-    /// The number of samples in the initial sample set — `size` in the
-    /// reference. A perturbed sequence's sample sets are `scale` times larger
+    /// The number of samples in the initial sample set. A perturbed
+    /// sequence's sample sets are `scale` times larger
     /// *from the perturbed step onwards*, but its shared history (including
     /// step 0, which this reads) keeps the original size.
     pub fn size(&self) -> usize {
@@ -89,12 +87,12 @@ impl EvolutionSequence {
         Ok(self.steps[t].iter().map(|state| state.variables(program)).collect())
     }
 
-    /// The last time step generated so far — `getLastGeneratedStep`.
+    /// The last time step generated so far.
     fn last_generated_step(&self) -> usize {
         self.steps.len() - 1
     }
 
-    /// Extends the sequence so that step `n` exists — `generateUpTo`.
+    /// Extends the sequence so that step `n` exists.
     pub(crate) fn generate_up_to<R: Rng + ?Sized>(
         &mut self,
         program: &IrProgram,
@@ -108,10 +106,9 @@ impl EvolutionSequence {
         Ok(())
     }
 
-    /// One step of every sample — `generateNextStep`, including
-    /// `PerturbedEvolutionSequence`'s override, which advances the
-    /// perturbation *before* generating and applies the resulting effect
-    /// *after*.
+    /// One step of every sample. For a perturbed sequence the perturbation
+    /// advances *before* generating and its resulting effect is applied
+    /// *after*, as in the original.
     fn generate_next<R: Rng + ?Sized>(
         &mut self,
         program: &IrProgram,
@@ -129,8 +126,8 @@ impl EvolutionSequence {
         Ok(next)
     }
 
-    /// `PerturbedEvolutionSequence.doApply`: rewrites every sample with the
-    /// perturbation's current effect, if it has one this tick.
+    /// Rewrites every sample with the perturbation's current effect, if it
+    /// has one this tick.
     fn apply_perturbation_effect<R: Rng + ?Sized>(
         &self,
         program: &IrProgram,
@@ -146,11 +143,11 @@ impl EvolutionSequence {
         Ok(())
     }
 
-    /// The sequence obtained by perturbing this one from step `step` onwards
-    /// — `EvolutionSequence.apply(perturbation, perturbedStep, scale)`.
+    /// The sequence obtained by perturbing this one from step `step`
+    /// onwards.
     ///
     /// The result **shares this sequence's history** up to `step - 1` (a copy
-    /// here, where Java shares immutable `SampleSet` objects) and re-samples
+    /// here, where the original shares immutable sample sets) and re-samples
     /// from there: at `step` itself it holds this sequence's sample set
     /// replicated `scale` times, already perturbed. Replication is what makes
     /// the perturbed distribution `scale` times finer-grained than the
@@ -168,8 +165,8 @@ impl EvolutionSequence {
         self.generate_up_to(program, rng, step)?;
         let perturbation = PerturbationState::build(program, globals, rng, id)?;
 
-        // `select(perturbedStep - 1)` — the history strictly before the
-        // perturbed step, empty when `step == 0`.
+        // The history strictly before the perturbed step, empty when
+        // `step == 0`.
         let mut steps: Vec<Vec<SystemState>> = self.steps[0..step].to_vec();
 
         let mut perturbed = EvolutionSequence {
@@ -191,7 +188,7 @@ impl EvolutionSequence {
     }
 
     /// Evaluates a penalty function on every sample at step `t`, returning
-    /// the values **sorted ascending** — `SampleSet.evalPenaltyFunction`.
+    /// the values **sorted ascending**.
     /// The sort is what makes the two arrays comparable index-by-index in
     /// [wasserstein]: pairing the `i`-th smallest with the `i`-th smallest is
     /// the optimal transport plan on the real line.
@@ -209,7 +206,7 @@ impl EvolutionSequence {
             // `eval` takes the store mutably because a call or a `let` writes
             // its scratch slots; those are outside the `[0, n_variables)`
             // state prefix, so evaluating a penalty cannot disturb the sample.
-            values.push(eval(program, &mut state.store, rng, expression)?.as_number("a penalty function")?);
+            values.push(eval(program, &mut state.store, rng, expression)?.as_f64("a penalty function")?);
         }
         values.sort_by(f64::total_cmp);
         Ok(values)
@@ -217,7 +214,7 @@ impl EvolutionSequence {
 }
 
 /// The Wasserstein lifting of a ground distance on reals to the two sampled
-/// distributions `reference` and `perturbed` — `SampleSet.computeDistance`.
+/// distributions `reference` and `perturbed`.
 ///
 /// Both arrays must be sorted, and `perturbed.len()` must be a multiple `k`
 /// of `reference.len()` (it is `k = scale` replicas, by construction in
@@ -229,11 +226,12 @@ pub(crate) fn wasserstein(
     reference: &[f64],
     perturbed: &[f64],
 ) -> Result<f64, EvalError> {
-    if reference.is_empty() || perturbed.len() % reference.len() != 0 {
-        return Err(EvalError::IncompatibleSampleSizes {
+    if reference.is_empty() || !perturbed.len().is_multiple_of(reference.len()) {
+        return Err(EvalErrorKind::IncompatibleSampleSizes {
             reference: reference.len(),
             perturbed: perturbed.len(),
-        });
+        }
+        .into());
     }
     let k = perturbed.len() / reference.len();
     let mut total = 0.0;
@@ -245,7 +243,7 @@ pub(crate) fn wasserstein(
     Ok(total / perturbed.len() as f64)
 }
 
-/// The ground distance behind `distanceLeq` — asymmetric, penalising only
+/// The ground distance behind `< penalty` — asymmetric, penalising only
 /// the perturbed value being *larger*. This is what `< penalty` (an
 /// [crate::ir::DistanceIr::AtomicLeft]) asks for: "how much does perturbing
 /// push the penalty up".
@@ -253,7 +251,7 @@ pub(crate) fn ground_leq(reference: f64, perturbed: f64) -> f64 {
     (perturbed - reference).max(0.0)
 }
 
-/// The mirror of [ground_leq], behind `distanceGeq` / `> penalty`.
+/// The mirror of [ground_leq], behind `> penalty`.
 pub(crate) fn ground_geq(reference: f64, perturbed: f64) -> f64 {
     (reference - perturbed).max(0.0)
 }
@@ -347,10 +345,11 @@ mod tests {
     fn wasserstein_rejects_incommensurable_sample_sizes() {
         assert_eq!(
             wasserstein(|a, b| (b - a).abs(), &[1.0, 2.0], &[3.0, 4.0, 5.0]),
-            Err(EvalError::IncompatibleSampleSizes {
+            Err(EvalErrorKind::IncompatibleSampleSizes {
                 reference: 2,
                 perturbed: 3
-            })
+            }
+            .into())
         );
     }
 

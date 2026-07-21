@@ -1,6 +1,5 @@
 //! Runs a robustness analysis end to end over an example specification —
-//! `EVALUATOR_PLAN.md`'s Milestone C, the counterpart of `simulation.rs`'s
-//! Milestone B smoke test.
+//! the counterpart of `simulation.rs`'s single-trajectory smoke test.
 //!
 //! The point of these tests is that the whole stack *runs and agrees with
 //! itself*, not that any particular verdict is the "right" one: a verdict

@@ -1,7 +1,7 @@
 //! The flat evaluator store: one `Vec<Value>` indexed directly by [SlotId],
-//! matching `IR_LOWERING_PLAN.md`'s slot layout (`[0, n_variables)` state,
+//! matching the IR's slot layout (`[0, n_variables)` state,
 //! `[n_variables, n_globals)` `const`/`param`, `[n_globals, n_slots)` scratch)
-//! instead of `StarkStore.java`'s `variable -> value` closure/map.
+//! instead of the original's `variable -> value` map.
 
 use rand::Rng;
 
@@ -38,7 +38,8 @@ impl Store {
     /// read before it is written: globals and variables are initialised here
     /// in dependency order, and lowering guarantees a function's argument and
     /// `let` slots are written at the call/binding before its body can load
-    /// them (`IR_LOWERING_PLAN.md`, "Why one flat slot space works").
+    /// them (the language forbids recursion, so no function is ever live on
+    /// the stack twice and every binding can have its own static slot).
     pub(crate) fn new<R: Rng + ?Sized>(program: &IrProgram, rng: &mut R) -> Result<Store, EvalError> {
         let mut store = Store {
             slots: vec![Value::Integer(0); program.n_slots() as usize],
@@ -63,8 +64,7 @@ impl Store {
     }
 
     /// The `[0, n_variables)` prefix that a simulation checkpoints — exactly
-    /// what `EvolutionSequence`/`SampleSet` would sample in the Java
-    /// reference (see `EVALUATOR_PLAN.md`'s Step 5).
+    /// what an evolution sequence samples per step.
     pub(crate) fn state_prefix(&self, program: &IrProgram) -> &[Value] {
         &self.slots[0..program.n_variables() as usize]
     }

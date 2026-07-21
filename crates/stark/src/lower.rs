@@ -1,8 +1,6 @@
-//! Lowers a checked [StarkSpecification] to an [IrProgram]. See
-//! `IR_LOWERING_PLAN.md` for the full design, which this implements in
-//! full: expression/function/global/variable/penalty lowering,
-//! controller/environment lowering, and perturbation/distance/formula
-//! lowering.
+//! Lowers a checked [StarkSpecification] to an [IrProgram]: expression,
+//! function, global, variable and penalty lowering, controller and
+//! environment lowering, and perturbation, distance and formula lowering.
 //!
 //! [lower]'s `Result` return type is kept even though every construct in the
 //! grammar now lowers successfully (nothing in this pass currently produces
@@ -363,7 +361,7 @@ impl<'a> Lowerer<'a> {
     // -- Slot allocation ----------------------------------------------------
 
     /// Allocates `[0, n_variables)`: the global `variables { .. }` block,
-    /// then every component's local one, matching `StarkGlobalVariableCollector`.
+    /// then every component's local one.
     fn allocate_variable_slots(&mut self) {
         for variable in &self.spec.ast().variables {
             self.allocate_variable_slot(variable);
@@ -1100,9 +1098,9 @@ impl<'a> Lowerer<'a> {
             }
             ExpressionKind::Iterator => {
                 // Only reachable from aggregate/lambda contexts, none of
-                // which exist in the current grammar (see `ast.rs` /
-                // `MISSING_GRAMMAR_FEATURES.md`) — `typecheck.rs` types this
-                // `Error` without diagnosing it for the same reason.
+                // which exist in the current grammar (see `ast.rs` and
+                // `plan.md`) — `typecheck.rs` types this `Error` without
+                // diagnosing it for the same reason.
                 debug_assert!(
                     false,
                     "ExpressionKind::Iterator is unreachable: no aggregate context exists in the current grammar"
@@ -1163,8 +1161,8 @@ impl<'a> Lowerer<'a> {
                 let ty = self.expr_type(inner);
                 self.push_expr(ExprNode::Not(inner), span, ty)
             }
-            // Both widen to `real`, matching Java's `unaryOperators["+"/"-"]`
-            // — see `ExprNode::Negate`/`ExprNode::Widen`'s doc comments.
+            // Both widen to `real`, matching the original — see
+            // `ExprNode::Negate`/`ExprNode::Widen`'s doc comments.
             ExpressionKind::UnaryPlus(inner) => {
                 let inner = self.lower_expression(inner);
                 let ty = self.combine_to_real_unary(inner);
@@ -1229,8 +1227,8 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// `combineToRealType` in the Java source: always widens to `real`,
-    /// propagating randomness from either operand. Mirrors
+    /// Always widens to `real`, propagating randomness from either operand
+    /// — the original's rule for the same operators. Mirrors
     /// `typecheck.rs`'s `combine_to_real`, minus the diagnostics — `spec`
     /// already type-checked, so there is nothing left to reject here.
     fn combine_to_real(&self, left: ExprRef, right: ExprRef) -> StarkType {
@@ -1516,7 +1514,7 @@ mod tests {
         // Constants/parameters resolve before variables (`resolve.rs`'s
         // fixed kind order), but slot *numbers* must still put variables
         // first — this is the one place source/resolve order and slot order
-        // deliberately diverge (see `IR_LOWERING_PLAN.md`'s "Slot layout").
+        // deliberately diverge.
         let program = lower_source("const c = 1;\nparam p = 2;\nvariables { int x = 0; }");
         let variable_slot = program.variables()[0].slot;
         let global_slots: Vec<_> = program.globals().iter().map(|g| g.slot).collect();
@@ -1593,10 +1591,9 @@ mod tests {
 
     #[test]
     fn unary_plus_widens_to_real_like_unary_minus() {
-        // Matches Java: `unaryOperators["+"]`/`["-"]` both route through the
-        // same always-widening `DoubleUnaryOperator` mechanism as the math
-        // functions, so neither is integer-preserving — see
-        // `ExprNode::Widen`/`ExprNode::Negate`'s doc comments.
+        // Both `+` and `-` route through the same always-widening
+        // mechanism as the math functions, so neither is integer-preserving
+        // — see `ExprNode::Widen`/`ExprNode::Negate`'s doc comments.
         let program = lower_source("const c = +1;");
         let global = &program.globals()[0];
         assert!(matches!(
@@ -1612,8 +1609,7 @@ mod tests {
         // swap happened — this doesn't exercise controller/environment
         // lowering (not implemented yet), but confirms the same principle
         // holds for an ordinary function-local `let`, which the buffered
-        // controller/environment update semantics (`IR_LOWERING_PLAN.md`'s
-        // "Semantics that are easy to get silently wrong") will build on.
+        // controller/environment update semantics will build on.
         let program = lower_source("function f(int a, int b) { let t = a in return b + t; }");
         let function = &program.functions()[0];
         let (a_slot, b_slot) = (function.arguments[0], function.arguments[1]);
@@ -1699,10 +1695,9 @@ mod tests {
         // The classic swap, this time through real environment lowering
         // (rather than a function-local `let` standing in for it, as
         // `buffered_swap_reads_pre_state_slots` above does): both
-        // assignments must read the *pre*-step value, matching Java's
+        // assignments must read the *pre*-step value, matching the
         // "collect updates, apply them all at the end of the step"
-        // semantics (`IR_LOWERING_PLAN.md`'s "Semantics that are easy to
-        // get silently wrong").
+        // semantics.
         let program = lower_source("global variables { int x = 1; int y = 2; }\nenvironment { x' = y; y' = x; }");
         let environment = program.environment().expect("environment block lowered");
         let CommandNode::Sequence(first, second) = program.command(environment) else {

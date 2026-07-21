@@ -1,23 +1,21 @@
 //! The perturbation coroutine: a value that, tick by tick, decides whether
-//! the state it is attached to gets rewritten and how. Ported from
-//! `lib/.../perturbation/` — `Perturbation`'s three-method interface
-//! (`effect()`, `step()`, `isDone()`) carries over verbatim, since the whole
-//! semantics of a perturbation is "what does it do *now*, and what is it
-//! *next*".
+//! the state it is attached to gets rewritten and how. The original's
+//! three-method interface — "what is your effect *now*", "what are you
+//! *next*", "are you done" — carries over verbatim, since that is the whole
+//! semantics of a perturbation.
 //!
-//! Like [super::step]'s [Cursor](super::step::Cursor) replacing Java's
-//! recursive `Controller` tree, [PerturbationState] replaces the reference's
-//! `AtomicPerturbation`/`SequentialPerturbation`/`IterativePerturbation`/
-//! `NonePerturbation` object graph with one plain enum: an atomic
-//! perturbation's *static* part (which slots, which value expressions) stays
-//! in the [PerturbationIr] arena and is referenced by [PerturbationId], so
-//! this value only carries what actually changes over time — the countdowns.
+//! Like [super::step]'s [Cursor](super::step::Cursor) replacing a recursive
+//! tree of controller objects, [PerturbationState] replaces an object graph
+//! of atomic, sequential, iterative and empty perturbations with one plain
+//! enum: an atomic perturbation's *static* part (which slots, which value
+//! expressions) stays in the [PerturbationIr] arena and is referenced by
+//! [PerturbationId], so this value only carries what actually changes over
+//! time — the countdowns.
 //!
-//! Two of Java's cases have no counterpart here because the grammar cannot
-//! produce them: `AfterPerturbation` and `PersistentPerturbation` are
-//! unreachable from `StarkPerturbationGenerator`, which only ever builds
-//! `NONE`, `Atomic`, `Sequential` and `Iterative`. `PerturbationIr` matches
-//! that reachable subset exactly.
+//! The original has two further cases, a delay wrapping a whole
+//! sub-perturbation and an indefinitely repeating one, which the grammar
+//! cannot produce; [PerturbationIr] matches the reachable subset exactly.
+//! See `plan.md`.
 
 use rand::Rng;
 
@@ -25,24 +23,25 @@ use crate::ir::IrProgram;
 use crate::ir::PerturbationId;
 use crate::ir::PerturbationIr;
 use crate::value::EvalError;
+use crate::value::EvalErrorKind;
 
 use super::expr::eval;
 use super::store::Store;
 
 /// A perturbation's remaining schedule. Immutable: [PerturbationState::step]
-/// returns the successor rather than mutating, matching `Perturbation.step()`.
+/// returns the successor rather than mutating, as in the original.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PerturbationState {
-    /// `NonePerturbation`: no effect, self-loop, already done.
+    /// `nil`: no effect, self-loop, already done.
     None,
-    /// `AtomicPerturbation`: fires `node`'s assignments once `after_steps`
-    /// ticks have elapsed. `node` is always a [PerturbationIr::Atomic].
+    /// `[..]@time`: fires `node`'s assignments once `after_steps` ticks have
+    /// elapsed. `node` is always a [PerturbationIr::Atomic].
     Atomic { after_steps: i64, node: PerturbationId },
-    /// `SequentialPerturbation`: `first` runs until it is done, then `second`.
+    /// `a ; b`: `first` runs until it is done, then `second`.
     Sequence(Box<PerturbationState>, Box<PerturbationState>),
-    /// `IterativePerturbation`: `body`, repeated `replica` times. `body` is
-    /// kept *pristine* (never stepped), because `IterativePerturbation.step`
-    /// re-uses the original body to seed each repetition.
+    /// `a ^ n`: `body`, repeated `replica` times. `body` is kept *pristine*
+    /// (never stepped), because each repetition is seeded from the original
+    /// body rather than from the previous repetition's remainder.
     Iterative {
         replica: i64,
         body: Box<PerturbationState>,
@@ -54,11 +53,10 @@ impl PerturbationState {
     ///
     /// The `@time` and `^iterations` counts are [crate::ir::ExprRef]s in the
     /// IR rather than folded constants, so they are evaluated here, once, at
-    /// construction — the same point `StarkPerturbationGenerator` evaluates
-    /// them (`StarkValue.intValue(evalToValue(context, registry, ctx.time))`)
-    /// while building the `Perturbation` object. `globals` is the store
-    /// holding the program's `const`/`param` slots, which is all such a bound
-    /// can legally refer to.
+    /// construction — the same point the original evaluates them while
+    /// building the perturbation. `globals` is the store holding the
+    /// program's `const`/`param` slots, which is all such a bound can legally
+    /// refer to.
     pub(crate) fn build<R: Rng + ?Sized>(
         program: &IrProgram,
         globals: &mut Store,
@@ -68,10 +66,10 @@ impl PerturbationState {
         Ok(match program.perturbation(id) {
             PerturbationIr::Nil => PerturbationState::None,
             // A `Reference` is already resolved to the referent's root node,
-            // so following it is a plain recursion. Java shares one
-            // `Perturbation` object between every reference to a declaration;
+            // so following it is a plain recursion. The original shares one
+            // perturbation object between every reference to a declaration;
             // building a fresh (equal) value per reference is equivalent,
-            // because a `Perturbation` is immutable — `step()` returns a new
+            // because a perturbation is immutable — stepping it returns a new
             // one rather than mutating the shared instance.
             PerturbationIr::Reference(target) => PerturbationState::build(program, globals, rng, *target)?,
             PerturbationIr::Atomic { time, .. } => PerturbationState::Atomic {
@@ -155,10 +153,9 @@ impl PerturbationState {
         }
     }
 
-    /// Whether this schedule can still produce an effect —
-    /// `Perturbation.isDone()`. Note an `Atomic` is *never* done in the Java
-    /// reference, even once it has fired; only `step()` retires it (to
-    /// `None`), and only a `Sequence` ever asks.
+    /// Whether this schedule can still produce an effect. Note an `Atomic`
+    /// is *never* done in the original, even once it has fired: only
+    /// stepping retires it (to `None`), and only a `Sequence` ever asks.
     pub(crate) fn is_done(&self) -> bool {
         match self {
             PerturbationState::None => true,
@@ -173,9 +170,8 @@ impl PerturbationState {
 ///
 /// **Buffered**, like a controller assignment: every right-hand side is
 /// evaluated against the pre-perturbation store before any of them is
-/// written, matching `StarkPerturbationGenerator.getAssignment`'s
-/// `ds.apply(updates.stream().map(..).toList())` — the list is fully
-/// materialised against the original `StarkStore` first.
+/// written, matching the original, which materialises the whole update list
+/// against the pre-perturbation state before applying it.
 pub(crate) fn apply_effect<R: Rng + ?Sized>(
     program: &IrProgram,
     store: &mut Store,
@@ -184,7 +180,7 @@ pub(crate) fn apply_effect<R: Rng + ?Sized>(
 ) -> Result<(), EvalError> {
     let PerturbationIr::Atomic { assignments, .. } = program.perturbation(node) else {
         // `effect()` only ever returns the id of an `Atomic` node.
-        return Err(EvalError::Unreachable("a non-atomic perturbation produced an effect"));
+        return Err(EvalErrorKind::Unreachable("a non-atomic perturbation produced an effect").into());
     };
     let mut values = Vec::with_capacity(assignments.len());
     for assignment in assignments {
@@ -254,8 +250,8 @@ mod tests {
     #[test]
     fn an_iteration_repeats_the_body_once_per_tick() {
         // `[x <- 1]@0` fires immediately, so iterating it `3` times fires on
-        // three consecutive ticks — `IterativePerturbation.step` queues each
-        // repetition behind the previous one's `step()`.
+        // three consecutive ticks — each repetition is queued behind the
+        // previous one's remainder.
         let (_, state) = build(&format!("{PREAMBLE} perturbation p = ([x <- 1]@0)^3;"));
         assert_eq!(firing_ticks(state, 8), vec![0, 1, 2]);
     }

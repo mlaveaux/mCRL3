@@ -1,9 +1,10 @@
 //! Diagnostics collected during name resolution and type checking.
 //!
-//! Ported from `parsing/ParseErrorCollector.java`: rather than failing at the
-//! first problem, `resolve.rs` and `typecheck.rs` record every diagnostic
-//! they find into one [Diagnostics] and only fail at the end, so a single
-//! `UntypedStarkSpecification` check reports everything wrong with it in one pass.
+//! Collecting rather than failing fast: instead of stopping at the first
+//! problem, `resolve.rs` and `typecheck.rs` record every diagnostic they find
+//! into one [Diagnostics] and only fail at the end, so a single
+//! `UntypedStarkSpecification` check reports everything wrong with it in one
+//! pass.
 //!
 //! Every diagnostic is a concrete [DiagnosticKind] variant rather than a
 //! pre-formatted string, so the message is written once (in the `#[error]`
@@ -120,9 +121,9 @@ pub enum DiagnosticKind {
 
     // -- Lowering (`lower.rs`) -------------------------------------------
     /// A construct that resolves and type-checks but has no IR
-    /// representation yet (see `MISSING_GRAMMAR_FEATURES.md`). Reported
-    /// rather than panicked on, so a partially-supported spec fails
-    /// gracefully instead of crashing lowering.
+    /// representation yet (see `plan.md`). Reported rather than panicked on,
+    /// so a partially-supported spec fails gracefully instead of crashing
+    /// lowering.
     #[error("{construct} is not yet supported by lowering")]
     NotYetSupported { construct: &'static str },
 }
@@ -259,8 +260,8 @@ impl fmt::Display for Diagnostics {
     }
 }
 
-// Letting `Diagnostics` implement `std::error::Error` means it converts into
-// `MercError` for free via that type's blanket `From` impl.
+/// Implemented so that a [Diagnostics] converts into `MercError` for free, via
+/// that type's blanket `From` impl.
 impl Error for Diagnostics {}
 
 #[cfg(test)]

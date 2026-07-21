@@ -1,20 +1,6 @@
-//! The STARK type lattice, ported from `speclang/…/types/StarkType.java` and
-//! its concrete subclasses (`StarkIntegerType`, `StarkRealType`,
-//! `StarkBooleanType`, `StarkCustomType`, `StarkRandomType`, `StarkErrorType`).
-//!
-//! The original models each case as a class implementing a shared interface
-//! with double-dispatch `merge`/`isCompatibleWith`/`canBeMergedWith` methods.
-//! Here the same case analysis is expressed as free functions matching on a
-//! single enum, which turns out to be exactly equivalent (verified against
-//! every branch of the original) and avoids re-deriving the case analysis at
-//! every call site.
-
 use std::fmt;
 
-/// A STARK type. `Random(_)` never wraps another `Random(_)` or `Error` —
-/// that invariant is enforced by [StarkType::random] rather than by
-/// construction, mirroring the defensive unwrap in `StarkRandomType`'s
-/// original Java constructor.
+/// A STARK type.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StarkType {
     Integer,
@@ -22,18 +8,17 @@ pub enum StarkType {
     Boolean,
     /// A user-defined type, identified by name.
     Custom(String),
-    /// A statically-known-to-be-random value of the wrapped (always
-    /// non-random, non-error) type, e.g. the result of `R[0,1]` (`Random(Real)`).
+    /// A statically declared random value of the inner type.
     Random(Box<StarkType>),
-    /// The result of a type error; absorbs into further checks so a single
-    /// mistake doesn't cascade into a wall of unrelated diagnostics.
+    /// The result of a type error.
     Error,
 }
 
 impl StarkType {
-    /// Wraps `inner` as a random value of that type. Flattens
-    /// `random(Random(t))` to `Random(t)` rather than nesting, matching the
-    /// original `StarkRandomType` constructor.
+    /// Wraps `inner` as a random value of that type. 
+    /// 
+    /// Flattens `random(Random(t))` to `Random(t)` rather than nesting,
+    /// matching the original.
     pub fn random(inner: StarkType) -> StarkType {
         match inner {
             StarkType::Random(content) => StarkType::Random(content),
@@ -55,14 +40,12 @@ impl StarkType {
         matches!(self.deterministic(), StarkType::Integer | StarkType::Real)
     }
 
-    /// Whether this is `Random(_)` at the top level.
+    /// Whether this is random at the top level.
     pub fn is_random(&self) -> bool {
         matches!(self, StarkType::Random(_))
     }
 
-    /// Whether this is exactly the error type. `Random` never wraps `Error`
-    /// in practice (every constructor here checks first), so this only ever
-    /// needs to look at the top level.
+    /// Whether this is exactly the error type.
     pub fn is_error(&self) -> bool {
         matches!(self, StarkType::Error)
     }
@@ -87,7 +70,7 @@ impl StarkType {
     /// expected type) is required. Ignores randomness on both sides (a
     /// `Random(int)` fits wherever a plain `int` is expected, since it is
     /// resolved to a concrete value before use) — the original
-    /// `StarkRandomType.isCompatibleWith` delegates straight through to its
+    /// A `random[..]` type delegates straight through to its
     /// content type for the same reason.
     ///
     /// Integer widens to real but not vice versa: `real x = 1;` is fine,
@@ -125,7 +108,7 @@ impl StarkType {
     /// Combines `self` and `other` into their common type (`int` (+) `real`
     /// -> `real`; identical types merge to themselves), propagating a
     /// `Random` wrapper if either side carries one. Returns `Error` if the
-    /// two types have nothing in common — mirrors `StarkType.merge`.
+    /// two types have nothing in common.
     pub fn merge(&self, other: &StarkType) -> StarkType {
         if self.is_error() || other.is_error() {
             return StarkType::Error;
@@ -266,7 +249,7 @@ mod tests {
         assert_eq!(StarkType::Custom("Color".into()).to_string(), "Color");
     }
 
-    /// Ported from `~/STARK/speclang/src/test/java/stark/speclang/types/StarkTypeTest.java`.
+    /// The original tool's own type-lattice test cases, ported.
     /// Table-driven, kept close to the original's structure (rows of
     /// `[a, b, expected_merge]` / `[expected, actual]`) so it's easy to
     /// cross-reference; the hand-written tests above already cover the

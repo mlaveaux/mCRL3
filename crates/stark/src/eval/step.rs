@@ -1,27 +1,16 @@
 //! One macro-step for the whole system: every component's controller cursor
 //! advances, its buffered updates are applied, then the environment runs
 //! against the post-controller state and its own updates are applied.
-//! Mirrors `ControlledSystem.sampleNext`:
+//! That ordering — controller, then apply, then environment, then apply — is
+//! the original's, and the two apply points are what make assignments read
+//! the pre-phase state (see [PendingUpdate]).
 //!
-//! ```java
-//! public SystemState sampleNext(RandomGenerator rg) {
-//!     EffectStep<Controller> step = controller.next(rg, state);
-//!     int c_step = state.getStep();
-//!     DataState newState = environment.apply(rg, state.apply(step.effect()));
-//!     newState.setStep(c_step+1);
-//!     return new ControlledSystem(step.next(), environment, newState);
-//! }
-//! ```
-//!
-//! [Cursor] replaces Java's recursive `Controller` object tree
-//! (`StepController`/`ExecController`/`AssignmentController`/`NilController`/
-//! `ParallelController`) with a plain value: a controller's entire "next
-//! state" is exactly "which named state, and how many ticks left before it's
-//! live" (`StepController`'s idle count is the only state Java's controller
-//! tree actually threads through `next()`). Walking a state's body is one
-//! flat recursion over [CommandNode] instead of a tree of controller
-//! objects, since lowering already collapsed the controller AST into that
-//! arena (see `IR_LOWERING_PLAN.md`).
+//! [Cursor] replaces the original's recursive tree of controller objects with
+//! a plain value: a controller's entire "next state" is exactly "which named
+//! state, and how many ticks left before it's live", the idle count being the
+//! only thing that tree actually threads from one tick to the next. Walking a
+//! state's body is one flat recursion over [CommandNode], since lowering
+//! already collapsed the controller AST into that arena.
 
 use rand::Rng;
 
@@ -39,8 +28,8 @@ use super::store::Store;
 /// One component's continuation between macro-steps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Cursor {
-    /// The component ran off the end of a body with no `step`/`exec` —
-    /// `NilController`: no effect, self-loop, forever.
+    /// The component ran off the end of a body with no `step`/`exec`: no
+    /// effect, self-loop, forever.
     Nil,
     /// Live in `state` this tick; walk its body now.
     Run(IrStateId),
@@ -52,10 +41,9 @@ pub(crate) enum Cursor {
 }
 
 /// A buffered `target' = value` reached while walking a command tree.
-/// Mirrors Java's `DataStateUpdate`: pushed into a list during the walk,
-/// applied only once the whole step (controller or environment) has run —
-/// see [CommandNode]'s doc comment on why updates must not write through
-/// immediately.
+/// Pushed into a list during the walk and applied only once the whole step
+/// (controller or environment) has run — see [CommandNode]'s doc comment on
+/// why updates must not write through immediately.
 #[derive(Clone, Copy, Debug)]
 struct PendingUpdate {
     target: SlotId,
@@ -74,9 +62,9 @@ enum Walk {
 
 /// Runs one macro-step: every component's cursor advances (all reading the
 /// same pre-step state — their updates are buffered and only applied once
-/// every cursor has run, matching `ParallelController`'s "both effects
-/// concatenated before the single `apply`"), then the environment runs
-/// against the post-controller state.
+/// every cursor has run, matching the original's parallel composition, which
+/// concatenates both sides' effects before the single apply), then the
+/// environment runs against the post-controller state.
 ///
 /// A failing evaluation anywhere in the step aborts the whole step with that
 /// [EvalError] — the buffered updates from the failed phase are dropped rather
@@ -170,7 +158,7 @@ fn run_command<R: Rng + ?Sized>(
     match *program.command(id) {
         CommandNode::Assign(update) => {
             // A missing guard is unconditionally true. A *non-boolean* guard
-            // is now an error: `StarkValue.isTrue` mapped it (and a failed
+            // is now an error: the original mapped it (and a failed
             // evaluation) to `false`, so an assignment whose guard divided by
             // zero silently didn't happen — see `Value::as_boolean`.
             let guarded = match update.guard {
@@ -214,10 +202,9 @@ fn run_command<R: Rng + ?Sized>(
             transitioned => Ok(transitioned),
         },
         CommandNode::Step { steps, target } => {
-            // `StepController`: `k <= 0` behaves like an immediate
-            // transition to `target` *starting next tick* (not this one —
-            // this tick simply ends here); `k > 0` idles `k` further ticks
-            // first.
+            // `k <= 0` behaves like an immediate transition to `target`
+            // *starting next tick* (not this one — this tick simply ends
+            // here); `k > 0` idles `k` further ticks first.
             let k = match steps {
                 // A non-integer step count can't arise from a checked program
                 // (`typecheck.rs` requires it numeric and lowering never
@@ -237,9 +224,8 @@ fn run_command<R: Rng + ?Sized>(
             Ok(Walk::Transitioned(cursor))
         }
         CommandNode::Exec(target) => {
-            // Same-tick tail jump: `ExecController.next` immediately
-            // delegates to `target`'s controller within the same call, so
-            // its effects land in this tick too.
+            // Same-tick tail jump: `exec` delegates to `target`'s body
+            // within the same tick, so its effects land in this tick too.
             if *exec_budget == 0 {
                 log::error!(
                     "`exec` chain exceeded the total state budget while entering {target:?} — likely an `exec` \
@@ -265,6 +251,7 @@ mod tests {
     use super::*;
     use crate::UntypedStarkSpecification;
     use crate::lower;
+    use crate::value::EvalErrorKind;
 
     fn build(source: &str) -> IrProgram {
         let spec = UntypedStarkSpecification::parse(source)
@@ -297,12 +284,11 @@ mod tests {
 
     #[test]
     fn a_failing_guard_aborts_the_step_instead_of_reading_as_false() {
-        // The regression this whole `Result` change exists for. Under
-        // `StarkValue.isTrue` the guard `1 / zero > 0` evaluated to
-        // `ERROR_VALUE`, which mapped to `false`, so the assignment silently
-        // didn't happen and the run continued with `x` unchanged — an
-        // arithmetic failure indistinguishable from a guard that was
-        // legitimately not satisfied.
+        // The regression this whole `Result` change exists for. Originally
+        // the guard `1 / zero > 0` evaluated to the absorbing error value,
+        // which read as `false`, so the assignment silently didn't happen and
+        // the run continued with `x` unchanged — an arithmetic failure
+        // indistinguishable from a guard that was legitimately not satisfied.
         let program = build(
             r"
             global variables {
@@ -318,20 +304,21 @@ mod tests {
         let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors = Vec::new();
 
-        assert_eq!(
-            macro_step(&program, &mut store, &mut rng, &mut cursors),
-            Err(EvalError::DivisionByZero)
-        );
+        let error = macro_step(&program, &mut store, &mut rng, &mut cursors).expect_err("the `1 / zero` guard divides by zero");
+        assert_eq!(error.kind, EvalErrorKind::DivisionByZero);
+        // The failure is anchored to the offending `1 / zero`, not reported
+        // as a bare class of error.
+        assert!(error.span.is_some(), "a division by zero should carry its source span");
     }
 
     #[test]
     fn a_non_boolean_guard_aborts_the_step() {
         // `typecheck.rs` rejects a non-boolean guard, so this is built
         // straight against the IR: `Value::as_boolean` must report it rather
-        // than answering `false` the way `StarkValue.isTrue` did.
+        // than answering `false` the way the original did.
         assert_eq!(
             Value::Integer(1).as_boolean("the guard of an assignment"),
-            Err(EvalError::ExpectedBoolean {
+            Err(EvalErrorKind::ExpectedBoolean {
                 context: "the guard of an assignment",
                 found: crate::value::ValueKind::Integer,
             })

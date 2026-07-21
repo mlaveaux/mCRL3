@@ -1,5 +1,5 @@
 //! Distance expressions: how far apart two evolution sequences are, as a
-//! single `f64` per time step. Ported from `lib/.../distance/`.
+//! single `f64` per time step.
 //!
 //! Every node reduces, eventually, to an *atomic* distance — a penalty
 //! function lifted to the two sampled distributions by [wasserstein] — with
@@ -7,24 +7,20 @@
 //! thresholds, convex combinations) combining those pointwise values over an
 //! interval.
 //!
-//! Two things about the reference implementation are preserved deliberately
-//! and are easy to get wrong:
+//! Two things about the original semantics are preserved deliberately and
+//! are easy to get wrong:
 //!
 //! - **`\F` is a minimum and `\G` is a maximum.** A distance measures
 //!   *dissimilarity*, so "eventually close" is the best (smallest) distance
 //!   over the interval and "always close" is the worst (largest) one. This
 //!   inverts the intuition from the formula layer, where `\F` is a
-//!   disjunction; `StarkDistanceGenerator` builds a
-//!   `MinIntervalDistanceExpression` for `\F` and a
-//!   `MaxIntervalDistanceExpression` for `\G`.
-//! - **A distance interval `[from, to]` excludes `to`.** The reference
-//!   iterates `IntStream.range(from+step, to+step)`. The *formula* layer
-//!   (see [super::formula]) iterates `to+step+1` and so includes it. That
-//!   inconsistency is the reference's, not this port's, and is preserved so
-//!   results match.
+//!   disjunction.
+//! - **A distance interval `[from, to]` excludes `to`**, whereas the
+//!   *formula* layer (see [super::formula]) includes it. That inconsistency
+//!   is the original's, not this port's, and is preserved so results match.
 //!
-//! An empty interval yields `NaN`, matching `.orElse(Double.NaN)` on the
-//! reference's empty streams, rather than being an error.
+//! An empty interval yields `NaN` rather than being an error, again matching
+//! the original.
 //!
 //! # Confidence intervals
 //!
@@ -52,8 +48,8 @@ use super::sequence::ground_leq;
 use super::sequence::wasserstein;
 
 /// A distance value together with the empirical-bootstrap confidence
-/// interval around it — the reference's `double[3]` (`{value, lower,
-/// upper}`), named.
+/// interval around it — the original's bare `{value, lower, upper}` triple,
+/// named.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Ci {
     pub value: f64,
@@ -62,11 +58,10 @@ pub struct Ci {
 }
 
 impl Ci {
-    /// Combines two intervals component-wise, as `MinDistanceExpression`/
-    /// `MaxDistanceExpression`/`MaxIntervalDistanceExpression` all do — the
-    /// reference applies the same operator to the value and to both bounds
-    /// independently rather than propagating the bounds of whichever operand
-    /// won.
+    /// Combines two intervals component-wise, as every `min`/`max` node
+    /// does: the same operator is applied to the value and to both bounds
+    /// independently, rather than propagating the bounds of whichever
+    /// operand won.
     fn zip(self, other: Ci, combine: fn(f64, f64) -> f64) -> Ci {
         Ci {
             value: combine(self.value, other.value),
@@ -86,7 +81,7 @@ impl Ci {
 }
 
 impl ComparisonOp {
-    /// `RelationOperator.eval`.
+    /// Applies this operator to two distance values.
     pub(crate) fn compare(self, left: f64, right: f64) -> bool {
         match self {
             ComparisonOp::Less => left < right,
@@ -98,21 +93,21 @@ impl ComparisonOp {
     }
 }
 
-/// `Math.min`/`Math.max` propagate `NaN`, unlike [f64::min]/[f64::max] which
-/// return the non-`NaN` operand. An empty interval produces `NaN`, and it
-/// must stay `NaN` through the enclosing operators rather than being silently
-/// absorbed.
-fn java_min(a: f64, b: f64) -> f64 {
+/// `NaN`-propagating `min`/`max`, unlike [f64::min]/[f64::max], which return
+/// the non-`NaN` operand. An empty interval produces `NaN`, and it must stay
+/// `NaN` through the enclosing operators rather than being silently absorbed
+/// — which is also what the original does.
+fn nan_min(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() { f64::NAN } else { a.min(b) }
 }
 
-fn java_max(a: f64, b: f64) -> f64 {
+fn nan_max(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() { f64::NAN } else { a.max(b) }
 }
 
 impl<R: Rng> Analysis<'_, R> {
     /// Evaluates a distance expression between `reference` and `perturbed` at
-    /// time `step` — `DistanceExpression.compute`.
+    /// time `step`.
     pub(crate) fn distance(
         &mut self,
         reference: &mut EvolutionSequence,
@@ -132,27 +127,26 @@ impl<R: Rng> Analysis<'_, R> {
             }
             // `\F` is the *minimum* over the interval; see the module doc.
             DistanceIr::Eventually { from, to, argument } => {
-                self.fold_interval(reference, perturbed, step, from, to, argument, java_min)
+                self.fold_interval(reference, perturbed, step, from, to, argument, nan_min)
             }
             DistanceIr::Globally { from, to, argument } => {
-                self.fold_interval(reference, perturbed, step, from, to, argument, java_max)
+                self.fold_interval(reference, perturbed, step, from, to, argument, nan_max)
             }
             DistanceIr::Until { from, to, left, right } => {
                 let (from, to) = self.interval(from, to, step)?;
-                // `UntilDistanceExpression.compute`: for each `i`, the worse
-                // of "the right expression at `i`" and "the worst the left
-                // expression has been strictly before `i`"; then the best
-                // such `i`. `running_left` accumulates across iterations —
-                // it is declared outside the loop in the reference, which is
-                // equivalent to recomputing the running maximum each time.
+                // For each `i`, the worse of "the right expression at `i`"
+                // and "the worst the left expression has been strictly
+                // before `i`"; then the best such `i`. `running_left`
+                // accumulates across iterations, which is equivalent to
+                // recomputing the running maximum each time.
                 let mut result = 1.0;
                 let mut running_left = 0.0;
                 for i in from..to {
                     let right_value = self.distance(reference, perturbed, i, right)?;
                     for j in from..i {
-                        running_left = java_max(running_left, self.distance(reference, perturbed, j, left)?);
+                        running_left = nan_max(running_left, self.distance(reference, perturbed, j, left)?);
                     }
-                    result = java_min(result, java_max(right_value, running_left));
+                    result = nan_min(result, nan_max(right_value, running_left));
                 }
                 Ok(result)
             }
@@ -166,12 +160,12 @@ impl<R: Rng> Analysis<'_, R> {
             DistanceIr::Min(left, right) => {
                 let left = self.distance(reference, perturbed, step, left)?;
                 let right = self.distance(reference, perturbed, step, right)?;
-                Ok(java_min(left, right))
+                Ok(nan_min(left, right))
             }
             DistanceIr::Max(left, right) => {
                 let left = self.distance(reference, perturbed, step, left)?;
                 let right = self.distance(reference, perturbed, step, right)?;
-                Ok(java_max(left, right))
+                Ok(nan_max(left, right))
             }
             DistanceIr::LinearCombination(terms) => {
                 let mut total = 0.0;
@@ -183,8 +177,7 @@ impl<R: Rng> Analysis<'_, R> {
         }
     }
 
-    /// [Analysis::distance], plus a bootstrap confidence interval around it —
-    /// `DistanceExpression.evalCI`.
+    /// [Analysis::distance], plus a bootstrap confidence interval around it.
     pub(crate) fn distance_ci(
         &mut self,
         reference: &mut EvolutionSequence,
@@ -197,25 +190,25 @@ impl<R: Rng> Analysis<'_, R> {
             DistanceIr::AtomicLeft(penalty) => self.atomic_ci(reference, perturbed, step, penalty, ground_leq),
             DistanceIr::AtomicRight(penalty) => self.atomic_ci(reference, perturbed, step, penalty, ground_geq),
             DistanceIr::Eventually { from, to, argument } => {
-                self.fold_interval_ci(reference, perturbed, step, from, to, argument, java_min)
+                self.fold_interval_ci(reference, perturbed, step, from, to, argument, nan_min)
             }
             DistanceIr::Globally { from, to, argument } => {
-                self.fold_interval_ci(reference, perturbed, step, from, to, argument, java_max)
+                self.fold_interval_ci(reference, perturbed, step, from, to, argument, nan_max)
             }
             DistanceIr::Until { from, to, left, right } => {
                 let (from, to) = self.interval(from, to, step)?;
                 let mut result = Ci::exact(1.0);
                 for i in from..to {
                     let right_value = self.distance_ci(reference, perturbed, i, right)?;
-                    // Unlike `compute`, the reference re-seeds the running
-                    // left maximum from the left expression *at `i`* on every
-                    // iteration before folding in `[from, i)`. Preserved as
-                    // written.
+                    // Unlike the plain evaluation above, the original
+                    // re-seeds the running left maximum from the left
+                    // expression *at `i`* on every iteration before folding
+                    // in `[from, i)`. Preserved as written; see `plan.md`.
                     let mut running_left = self.distance_ci(reference, perturbed, i, left)?;
                     for j in from..i {
-                        running_left = running_left.zip(self.distance_ci(reference, perturbed, j, left)?, java_max);
+                        running_left = running_left.zip(self.distance_ci(reference, perturbed, j, left)?, nan_max);
                     }
-                    result = result.zip(right_value.zip(running_left, java_max), java_min);
+                    result = result.zip(right_value.zip(running_left, nan_max), nan_min);
                 }
                 Ok(result)
             }
@@ -241,12 +234,12 @@ impl<R: Rng> Analysis<'_, R> {
             DistanceIr::Min(left, right) => {
                 let left = self.distance_ci(reference, perturbed, step, left)?;
                 let right = self.distance_ci(reference, perturbed, step, right)?;
-                Ok(left.zip(right, java_min))
+                Ok(left.zip(right, nan_min))
             }
             DistanceIr::Max(left, right) => {
                 let left = self.distance_ci(reference, perturbed, step, left)?;
                 let right = self.distance_ci(reference, perturbed, step, right)?;
-                Ok(left.zip(right, java_max))
+                Ok(left.zip(right, nan_max))
             }
             DistanceIr::LinearCombination(terms) => {
                 let mut total = Ci::exact(0.0);
@@ -277,8 +270,7 @@ impl<R: Rng> Analysis<'_, R> {
         Ok((left, right))
     }
 
-    /// An atomic distance with its bootstrap interval —
-    /// `SampleSet.bootstrapDistance{Leq,Geq}`.
+    /// An atomic distance with its bootstrap interval.
     fn atomic_ci(
         &mut self,
         reference: &mut EvolutionSequence,
@@ -295,9 +287,9 @@ impl<R: Rng> Analysis<'_, R> {
 
     /// The empirical bootstrap: resample both distributions with replacement
     /// `m` times, and take a `z`-quantile normal interval around the mean of
-    /// the resulting distances — `SampleSet.bootstrapDistance`.
+    /// the resulting distances.
     ///
-    /// The interval is clamped to `[0, 1]` exactly as the reference clamps
+    /// The interval is clamped to `[0, 1]` exactly as the original clamps
     /// it, which assumes penalty values are normalised to that range.
     fn bootstrap(&mut self, left: &[f64], right: &[f64], ground: fn(f64, f64) -> f64) -> Result<(f64, f64), EvalError> {
         let m = self.options.bootstrap_replicas;
@@ -333,8 +325,8 @@ impl<R: Rng> Analysis<'_, R> {
         sample
     }
 
-    /// `MinIntervalDistanceExpression`/`MaxIntervalDistanceExpression`: fold
-    /// `argument` over `[from + step, to + step)`, `NaN` if empty.
+    /// The `\F`/`\G` fold: `argument` over `[from + step, to + step)`, `NaN`
+    /// if empty.
     #[expect(clippy::too_many_arguments, reason = "one argument per IR field, plus the fold")]
     fn fold_interval(
         &mut self,
@@ -358,8 +350,8 @@ impl<R: Rng> Analysis<'_, R> {
         Ok(folded.unwrap_or(f64::NAN))
     }
 
-    /// [Analysis::fold_interval] for confidence intervals: the reference
-    /// folds the value and both bounds independently.
+    /// [Analysis::fold_interval] for confidence intervals: the value and
+    /// both bounds are folded independently.
     #[expect(clippy::too_many_arguments, reason = "one argument per IR field, plus the fold")]
     fn fold_interval_ci(
         &mut self,
@@ -389,10 +381,9 @@ impl<R: Rng> Analysis<'_, R> {
     /// evaluator, against the program's `const`/`param` slots.
     ///
     /// A negative bound, or `to <= from`, gives an empty range rather than
-    /// the reference's `IllegalArgumentException` — bounds are only checked
-    /// at construction time there, which this port has no equivalent of
-    /// (they are evaluated on demand), and the never-panic contract rules
-    /// out throwing.
+    /// an error. The original rejects such bounds at construction time,
+    /// which this port has no equivalent of since bounds are evaluated on
+    /// demand, and the never-panic contract rules out failing here.
     pub(crate) fn interval(&mut self, from: ExprRef, to: ExprRef, step: usize) -> Result<(usize, usize), EvalError> {
         let from = self.constant_integer(from, "the lower bound of an interval")?;
         let to = self.constant_integer(to, "the upper bound of an interval")?;
@@ -405,10 +396,14 @@ impl<R: Rng> Analysis<'_, R> {
     /// threshold, a combination weight. These may only refer to `const`/
     /// `param` slots, which is what [Analysis::globals] holds.
     pub(crate) fn constant(&mut self, id: ExprRef) -> Result<f64, EvalError> {
-        eval(self.program, &mut self.globals, &mut self.rng, id)?.as_number("a distance or formula constant")
+        eval(self.program, &mut self.globals, &mut self.rng, id)?
+            .as_f64("a distance or formula constant")
+            .map_err(|kind| EvalError::from(kind).or_span(self.program.expr_span(id)))
     }
 
     fn constant_integer(&mut self, id: ExprRef, context: &'static str) -> Result<i64, EvalError> {
-        eval(self.program, &mut self.globals, &mut self.rng, id)?.as_integer(context)
+        eval(self.program, &mut self.globals, &mut self.rng, id)?
+            .as_integer(context)
+            .map_err(|kind| EvalError::from(kind).or_span(self.program.expr_span(id)))
     }
 }

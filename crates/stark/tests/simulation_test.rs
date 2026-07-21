@@ -1,7 +1,6 @@
 //! Runs the evaluator end-to-end over a sample of example specifications for
 //! a fixed number of steps under a fixed seed, and asserts every step
-//! succeeds — a smoke test for `EVALUATOR_PLAN.md`'s Milestone B
-//! (simulation).
+//! succeeds — a smoke test for single-trajectory simulation.
 //!
 //! This used to assert only that no step produced an all-`Value::Error`
 //! state, which was the strongest check available while a failed evaluation

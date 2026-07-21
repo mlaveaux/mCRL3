@@ -1,3 +1,12 @@
+//! The parser entry point: derives [StarkParser] from `stark_grammar.pest` and
+//! wraps it as [UntypedStarkSpecification::parse].
+//!
+//! This module is only the `pest` frontend — it produces a parse tree of
+//! [Rule]s and hands it straight to `consume.rs`, which builds the AST, and to
+//! the Pratt parsers in `precedence.rs` for the expression sub-languages. The
+//! grammar itself is the single source of truth for the concrete syntax; see
+//! `src/stark_grammar.pest`.
+
 use pest::Parser;
 use pest_derive::Parser;
 
