@@ -1,7 +1,7 @@
 /*
- * Ported from ~/STARK/examples/turtle/src/main/java/turtle/Smart_hospital.java:
+ * Ported from the original `turtle` example's smart-hospital scenario:
  * the same waypoint-following robot controller/environment shape as
- * `turtle.stark` (`Industrial_plant.java`) — `SetDir`/`Ctrl`/`Accelerate`/
+ * `turtle.stark` (the industrial plant) — `SetDir`/`Ctrl`/`Accelerate`/
  * `Decelerate`/`Stop`, gap-vs-braking-distance speed control — but *not*
  * just a different waypoint list: this scenario adds a medicine-delivery
  * task layered on top (`get_medicine`: 0 not carrying, 1 carrying, -1
@@ -24,7 +24,7 @@
  *
  * The original's `FeedbackSystem`/`PersistentFeedback` (comparing the
  * running system to the mean of its own nominal evolution, correcting
- * heading/waypoint drift) is the same `stark.feedback` Java-only extension
+ * heading/waypoint drift) is the same feedback extension, available only
  * already documented as untranslatable in `turtle.stark`'s header — not
  * ported here either.
  *
@@ -35,9 +35,9 @@
  * grammar (there is no `step`/"current round index" primitive available to
  * `Expression`), so the speed-boost half of the perturbation cannot be
  * expressed at all. This is a new, previously undocumented gap; see
- * `MISSING_GRAMMAR_FEATURES.md`. As in `turtle.stark`, `PersistentPerturbation`
- * (applied at *every* step, forever) is approximated with a large but finite
- * iteration count (`^300`).
+ * `crates/stark/plan.md`. As in `turtle.stark`, the original's persistent
+ * perturbation (applied at *every* step, forever) is approximated with a
+ * large but finite iteration count (`^300`).
  *
  * The original sweeps thresholds `eta` in [0.05, 0.15] across three `off`
  * values (1.25, 1.5, 1.75) for its `\G[0,14] \D[...] <= eta` robustness
@@ -74,12 +74,12 @@ function wp_y(int i) {
 }
 
 function heading_to(int wp, real x, real y) {
-  /* BUG FIXED: Java's ternary `?:` binds looser than `+`, so in
+  /* BUG FIXED: the original's ternary `?:` binds looser than `+`, so in
        (WPx[wp]==x) ? 0 : ((WPx[wp]<x)?PI:0) + atan((WPy[wp]-y)/(WPx[wp]-x))
      the `+ atan(...)` is part of the ELSE branch (WPx[wp]==x yields heading 0,
      avoiding the division by zero). The original port put `+ atan(...)` OUTSIDE
      the ternary, changing the wp_x==x case to 0 + atan(.../0) = +/-pi/2.
-     Re-parenthesised to match Java (same fix as turtle.stark). */
+     Re-parenthesised to match the original (same fix as turtle.stark). */
   return (wp_x(wp) == x ? 0.0 : (wp_x(wp) < x ? PI : 0.0) + atan((wp_y(wp) - y) / (wp_x(wp) - x)));
 }
 
@@ -151,10 +151,11 @@ component Robot {
       if (timer_V > 0) {
         step Accelerate;
       } else {
-        /* BUG FIXED: was `step Ctrl;`. Java Smart_hospital `Accelerate` is
-           `ifThenElse(timer_V>0, doTick(ref Accelerate), reference("Ctrl"))`; the
-           else is a bare same-tick `exec`, not a time-consuming `step` (same as
-           turtle.stark). */
+        /* BUG FIXED: was `step Ctrl;`. the original's `Accelerate` is
+           conditional: while `timer_V > 0` it idles back into `Accelerate`,
+           otherwise it continues into `Ctrl`. That else branch is a bare
+           reference — a same-tick `exec`, not a time-consuming `step` (same
+           as turtle.stark). */
         exec Ctrl;
       }
     }
@@ -163,7 +164,7 @@ component Robot {
         step Decelerate;
       } else {
         /* BUG FIXED: was `step Ctrl;` — same as Accelerate (bare `reference("Ctrl")`
-           in Java else = same-tick `exec`). */
+           in the original, else = same-tick `exec`). */
         exec Ctrl;
       }
     }

@@ -1,27 +1,27 @@
 /*
- * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/Main2N.java:
+ * Ported from the original `reactionsystems` example's two-neuron model:
  * a reaction-system model of synaptic signalling between two neurons
  * (calcium influx, calcium-ligand binding, vesicle exocytosis,
  * neurotransmitter release/decay over a 3-step delay line, neuroreceptor
  * opening/closing), again under the "no permanency" principle established
  * in `reactionsystems_running.stark`/`reactionsystems_lacoperon.stark`.
  *
- * `Main.java` in the same directory models the identical mechanism scaled
- * up to 3 neurons (28 variables instead of this file's 21, with an extra
+ * The same example's three-neuron model scales the identical mechanism
+ * up (28 variables instead of this file's 21, with an extra
  * neuroreceptor pair for the second incoming synapse on neuron 3), so it
  * isn't ported separately — same precedent as `turtle.stark`/
  * `repressilator.stark` porting one representative scale.
  *
- * The system has no controller (`NilController` in the original, like
+ * The system has no controller (none in the original either, like
  * `isocitrate.stark`/`envzompr.stark`/`lotka.stark`): `e2` (neuron 2's
  * neuroreceptor effectiveness) is never written by the reactions
  * themselves, only read, so it simply isn't assigned in `environment` and
  * keeps its initial value forever, matching "an unassigned variable keeps
- * its previous value" exactly as the original's `state.get(e2)` does
- * without ever appearing on the left of a `DataStateUpdate`.
+ * its previous value" exactly as the original does by reading `e2` without
+ * ever assigning it.
  *
  * `c2`'s and `o20`/`o21`/`o22`'s updates share one random draw
- * (`w2 = rg.nextDouble() < e2`) within the same reaction step — unlike the
+ * (one uniform draw compared against `e2`) within the same reaction step — unlike the
  * "no `let` inside perturbations" gap documented for `vehicle_full.stark`/
  * `turtle.stark`, this shared draw lives in the regular `environment` block
  * (not a perturbation), where a `let` binding is available, so it's ported

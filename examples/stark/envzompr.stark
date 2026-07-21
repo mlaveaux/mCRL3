@@ -1,7 +1,7 @@
 /*
- * Ported from ~/STARK/examples/envzompr/src/main/java/envzompr/Main.java: an
+ * Ported from the original `envzompr` example: an
  * 11-reaction, 8-species chemical reaction network (same Gillespie-SSA /
- * `NilController` / no-`component` pattern as `isocitrate.stark` — see that
+ * no-`component` pattern as `isocitrate.stark` — see that
  * file's header for the general approach: cumulative-weight thresholds
  * against one `R[0,1]` draw standing in for Gillespie's weighted reaction
  * choice, continuous reaction time not tracked).

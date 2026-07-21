@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/tollbooth/src/main/java/tollbooth/Main.java.
+ * Ported from the original `tollbooth` example.
  *
  * The vehicle dynamics here (variables, controller states, environment
  * update) are the same model already ported in `toll.stark`/`two_vehicles.stark`
@@ -10,10 +10,9 @@
  * What's specific to this example are the four `penalty` declarations
  * (`rho_100`..`rho_350`, each just `p_distance` scaled by a different
  * constant) — those map directly to this grammar's `penalty` declarations.
- * What's built on top of them (`IterativePenalty`/`SequentialPenalty` from
- * `stark.penalty`, and the `AlwaysDisTLFormula`/`EventuallyDisTLFormula`/
- * `TargetDisTLFormula` robustness properties from `stark.distl`) is the same
- * online-monitoring formalism discussed in `monitoring.stark` — a different
+ * What's built on top of them (the original's compositional penalties, and
+ * the online-monitoring robustness properties over them) is the same
+ * formalism discussed in `monitoring.stark` — a different
  * verification approach from this grammar's `distance`/`perturbation`/
  * `formula` (ROBTL) declarations, with no textual-STARK equivalent, so it
  * isn't ported.
@@ -68,10 +67,11 @@ component Vehicle {
       if (timer_V > 0) {
         step Accelerate;
       } else {
-        /* BUG FIXED: was `step Ctrl;`. The Java `Accelerate` is
-           `ifThenElse(timer_V>0, doTick(ref Accelerate), reference("Ctrl"))`; the
-           else is a *bare* controller reference, which is a same-tick jump
-           (`exec`), not a time-consuming `step`. `step Ctrl` inserted a spurious
+        /* BUG FIXED: was `step Ctrl;`. The original's `Accelerate` is
+           conditional: while `timer_V > 0` it idles back into `Accelerate`,
+           otherwise it continues into `Ctrl`. That else branch is a *bare*
+           controller reference, which is a same-tick jump (`exec`), not a
+           time-consuming `step`. `step Ctrl` inserted a spurious
            idle round before Ctrl re-planned. Matches the identical model in the
            pre-existing toll.stark/two_vehicles.stark, which correctly use
            `exec Ctrl`. */
@@ -82,7 +82,7 @@ component Vehicle {
       if (timer_V > 0) {
         step Decelerate;
       } else {
-        /* BUG FIXED: was `step Ctrl;` — same fix as Accelerate above (Java else
+        /* BUG FIXED: was `step Ctrl;` — same fix as Accelerate above (the original's else
            branch is a bare `reference("Ctrl")` = same-tick `exec`). */
         exec Ctrl;
       }

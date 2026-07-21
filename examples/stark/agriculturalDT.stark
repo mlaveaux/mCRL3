@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/agriculturalDT/src/main/java/agriculturalDT/Main.java:
+ * Ported from the original `agriculturalDT` example:
  * a tractor driving toward a fixed waypoint (FINAL_POSX, FINAL_POSY) under a
  * heading/speed control law, sensing its own speed with noise.
  *
@@ -7,8 +7,8 @@
  * updates as a two-element array (computed together); STARK functions return
  * a single value, so it's split into `eval_speed_zero`/`eval_steer_zero`
  * below, each recomputing the shared terms — mirroring how the original
- * itself calls `evaluateDeltaZero(...)` twice (once per `DataStateUpdate`)
- * rather than reusing one computed array.
+ * itself evaluates the shared control law twice, once per update, rather
+ * than reusing one computed array.
  *
  * `dirAngleNoise`/`steerAngleNoise`/`speedNoise` are declared as state slots
  * in the original but never read or assigned anywhere, so they're omitted
@@ -115,10 +115,11 @@ component Tractor {
       if (timer > 0) {
         step Idle;
       } else {
-        /* BUG FIXED: was `step Ctrl;`. The Java `Idle` is
-           `ifThenElse(timer>0, doTick(ref Idle), reference("Ctrl"))`; the else is
-           a *bare* `reference("Ctrl")`, i.e. a same-tick jump (`exec`), not a
-           time-consuming `step`. As written, `step Ctrl` doubled the effective
+        /* BUG FIXED: was `step Ctrl;`. The original's `Idle` is
+           conditional: while `timer > 0` it idles back into `Idle`,
+           otherwise it continues into `Ctrl`. That else branch is a *bare*
+           reference, i.e. a same-tick jump (`exec`), not a time-consuming
+           `step`. As written, `step Ctrl` doubled the effective
            control period (Ctrl ran every other round instead of resuming
            immediately when the timer expired). Corrected to `exec Ctrl`, matching
            the pre-existing toll.stark/two_vehicles.stark timer idiom. */

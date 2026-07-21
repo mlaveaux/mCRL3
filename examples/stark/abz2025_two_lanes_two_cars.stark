@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/ABZ2025/src/main/java/Scenarios/TwoLanesTwoCars.java
+ * Ported from the original `ABZ2025` example's `TwoLanesTwoCars` scenario
  * (Scenario 1 of 3 — see below): unlike `abz2025_single_lane_two_cars.stark`/
  * `abz2025_one_lane_three_cars.stark`, this is genuinely new mechanics, not
  * a scale variant — two cars on a two-lane highway with explicit (x,y)
@@ -36,7 +36,7 @@
  * following environment step recompute `dist`/`safety_gap`/`my_position`/
  * `crash` from them — so the perturbation's effect propagates one round
  * later than in the original. The original's 40%-chance "just nudge `dist`
- * a little instead" fallback branch and its `AfterPerturbation(5, ...)`
+ * a little instead" fallback branch and its five-step delayed
  * initial 5-step delay (no such delay combinator exists in this grammar,
  * only the atomic block's own `@time`) are both dropped rather than
  * approximated further, since neither has a natural encoding here.
@@ -90,7 +90,7 @@ param INIT_MY_LANE = (MY_INIT_Y <= 4 ? 0.0 : 1.0);
 param INIT_OTHER_LANE = (OTHER_INIT_Y <= 4 ? 0.0 : 1.0);
 param INIT_MY_POSITION = (MY_INIT_X <= OTHER_INIT_X ? -1.0 : 1.0);
 param INIT_DIST = sqrt((OTHER_INIT_X-MY_INIT_X)^2 + (OTHER_INIT_Y-MY_INIT_Y)^2);
-/* param initializers can't call functions (see MISSING_GRAMMAR_FEATURES.md),
+/* param initializers can't call functions (see crates/stark/plan.md),
    so rss_gap's formula is inlined here for the two possible orderings. */
 param INIT_SAFETY_GAP =
   (MY_INIT_X <= OTHER_INIT_X
@@ -130,8 +130,9 @@ component Vehicle1 {
   controller {
     state Control {
       if (my_timer > 0) {
-        /* BUG FIXED: was `exec Control;`. Java `Control` is
-           `ifThenElse(my_timer>0, doTick(ref Control), ...)`; `doTick` is
+        /* BUG FIXED: was `exec Control;`. the original's `Control` is
+           conditional that idles back into `Control` while `my_timer > 0`;
+           idling is
            tick-consuming (== `step`), and a same-round `exec Control` self-loop
            would never terminate. Corrected to `step Control`. */
         step Control;
@@ -200,8 +201,10 @@ component Vehicle1 {
     }
 
     state Idling {
-      /* Java `Idling` = `ifThenElse(my_timer>0, doTick(ref Idling), reference("Control"))`.
-         BUG FIXED: the then-branch `doTick(ref Idling)` is tick-consuming, so
+      /* The original's `Idling` idles one tick while `my_timer > 0`, and
+         otherwise hands over to `Control`.
+         BUG FIXED: the then-branch idles back into `Idling`, which is
+         tick-consuming, so
          `exec Idling` (was) -> `step Idling`. The else is a *bare*
          `reference("Control")`, i.e. a same-round jump, so `exec Control` is
          correct and kept. */
@@ -210,8 +213,8 @@ component Vehicle1 {
 
     state Moving_right {
       if (my_timer > 0) {
-        /* BUG FIXED: was `exec Moving_right;`. Java then-branch is
-           `doTick(ref Moving_right)` (tick-consuming == `step`); a same-round
+        /* BUG FIXED: was `exec Moving_right;`. the original's then-branch is
+           idles into `Moving_right` (tick-consuming == `step`); a same-round
            `exec` self-loop would not terminate. */
         step Moving_right;
       } else {
@@ -241,8 +244,8 @@ component Vehicle1 {
 
     state Moving_left {
       if (my_timer > 0) {
-        /* BUG FIXED: was `exec Moving_left;`. Java then-branch is
-           `doTick(ref Moving_left)` (tick-consuming == `step`); a same-round
+        /* BUG FIXED: was `exec Moving_left;`. the original's then-branch is
+           idles into `Moving_left` (tick-consuming == `step`); a same-round
            `exec` self-loop would not terminate. */
         step Moving_left;
       } else {

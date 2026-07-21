@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/Main.java:
+ * Ported from the original `reactionsystems` example's three-neuron model:
  * the same synaptic-signalling reaction system as
  * `reactionsystems_synapse.stark` (calcium influx, calcium-ligand binding,
  * vesicle exocytosis, neuroreceptor opening/closing), scaled from 2 to 3

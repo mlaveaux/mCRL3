@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/MainLO.java:
+ * Ported from the original `reactionsystems` example's lac-operon model:
  * the lac operon gene-regulatory network, modeled as a reaction system per
  * Corolli, Maja, Marini, Besozzi, Mauri, "An excursion in reaction systems:
  * From computer science to biology" (2012) — ten boolean-valued reactions
@@ -12,9 +12,10 @@
  * per-round order (context supplies entities, then the reactions read them
  * that same round).
  *
- * The original's `ParallelController(DefaultCondition, Glucose5-chain)` maps
- * directly to this grammar's `init A || B` parallel-state-composition
- * syntax — one `component` whose controller has both the always-on
+ * The original runs `DefaultCondition` and the `Glucose5` chain in
+ * parallel, which maps directly to this grammar's `init A || B`
+ * parallel-state-composition syntax — one `component` whose controller has
+ * both the always-on
  * `DefaultCondition` self-loop and the 40-state context cycle running side
  * by side. `Start` and the standalone `Tick` state are dead code in the
  * original (defined but never targeted by any transition), so they aren't
@@ -31,10 +32,9 @@
  * `state.get(lactose)` reading the pre-call `state` in the original's
  * `applyReactions`, exactly as ported.
  *
- * The original's robustness queries are all `stark.distl` (`TargetDisTLFormula`/
- * `ImplicationDisTLFormula`/`EventuallyDisTLFormula`/`AlwaysDisTLFormula`) —
- * the same untranslatable online-monitoring formalism already documented in
- * `monitoring.stark`/`MISSING_GRAMMAR_FEATURES.md` — so only the reaction
+ * The original's robustness queries are all online-monitoring ones —
+ * the same untranslatable formalism already documented in
+ * `monitoring.stark`/`crates/stark/plan.md` — so only the reaction
  * system and its context controller are ported, no `distance`/`formula`.
  */
 

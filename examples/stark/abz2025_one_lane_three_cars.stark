@@ -1,11 +1,8 @@
 /*
- * Ported from ~/STARK/examples/ABZ2025/src/main/java/Scenarios/OneLaneThreeCars.java:
- * the same RSS car-following idea as `abz2025_single_lane_two_cars.stark`,
+ * The same RSS car-following idea as `abz2025_single_lane_two_cars.stark`,
  * generalised from 2 to 3 chained cars in one lane — car 1 (the middle car)
  * is controlled, cars 0 (behind) and 2 (in front) always accelerate at
- * roughly `MAX_ACCELERATION` (the original's commented-out alternative
- * "paper controller proposal" for the uncontrolled cars is dead code, not
- * ported, matching the active code path only). The controller now compares
+ * roughly `MAX_ACCELERATION`. The controller now compares
  * *both* the front gap (`distance1`/`safety_gap1`, between cars 1 and 2)
  * and the back gap (`distance0`/`safety_gap0`, between cars 0 and 1) before
  * deciding FASTER/SLOWER/IDLE.
@@ -20,14 +17,6 @@
  * speed) where `accel1/2 + speed1` (car 1's) would be correct. The
  * corresponding safety-gap update (`new_gap1`) is unaffected — it's driven by
  * a separate, correctly-updated variable in the original.
- *
- * `getCrashFormula`/`getSafetyGapViolationFormula` are defined in the
- * original but never actually invoked from its constructor (only the raw
- * penalty function is used there, for per-step CSV diagnostics) — ported
- * anyway as genuine `formula` declarations, matching the shape of
- * `abz2025_single_lane_two_cars.stark`'s formulas, since they're
- * well-defined ROBTL queries the original just never wired up to its
- * demo `main`.
  */
 
 param RESPONSE_TIME = 1.0;

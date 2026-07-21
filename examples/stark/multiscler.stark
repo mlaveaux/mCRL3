@@ -1,22 +1,22 @@
 /*
- * Ported from ~/STARK/examples/mutliScler/src/main/java/ms/Main.java: an
+ * Ported from the original `multiScler` example: an
  * ODE-based model (explicit Euler integration, step size `delta_t`) of
  * effector/regulatory T-cell dynamics in multiple sclerosis, with a
  * controller that injects resting regulatory T cells when the
  * effector/regulatory ratio exceeds 10.
  *
- * The original's every `DisTLFormula`/monitor-based robustness analysis
- * (everything past `writeRunsToCSV` in `main`) is already commented out in
- * the source itself — dead code, not just untranslatable — so nothing
- * working is being left out by omitting it here.
+ * The original's monitor-based robustness analysis (everything past the
+ * CSV export in its entry point) is already commented out upstream — dead
+ * code, not just untranslatable — so nothing working is being left out by
+ * omitting it here.
  *
  * The original runs three variants (healthy `alphaR=alphaRH`, sick
- * `alphaR=alphaRS` with the controller active, and sick with a
- * `NilController` for comparison); only the controlled "sick" variant
+ * `alphaR=alphaRS` with the controller active, and sick with no controller
+ * for comparison); only the controlled "sick" variant
  * (`systemS5`, `var=5`) is ported, since it's the one that actually
  * exercises the controller logic.
  *
- * `(rg.nextDouble()*var*2 - var)` (uniform noise in `[-var, var]`) is
+ * uniform noise in `[-var, var]` is
  * simplified to the equivalent `R[-VAR, VAR]` rather than spelling out the
  * scaling from `R[0,1]`.
  */
@@ -74,7 +74,7 @@ component MS {
   variables { }
   controller {
     state Ctrl {
-      /* GAP (approximation, not a grammar limitation): in the Java `getController`
+      /* GAP (approximation, not a grammar limitation): in the original's controller
          each branch sets `wait_month=1` / `wait_week=1`, and `selectTime` reads
          those flags to call `ds.setCtrlGranularity(30)` (a month after an
          injection) or `ds.setCtrlGranularity(7)` (a week otherwise), i.e. the
@@ -84,7 +84,8 @@ component MS {
          `7 # step Ctrl;`) but was NOT ported: both branches use a plain
          `step Ctrl` (granularity 1). Consequently the `wait_month'`/`wait_week'`
          assignments below set variables that nothing ever reads (dead), and the
-         nominal spec injects/steps the controller far more often than the Java. */
+         nominal spec injects/steps the controller far more often than the
+         original does. */
       if (ratioER > 10) {
         Rr' = Rr + 1000 + R[-10,10];
         flag' = flag + 1;

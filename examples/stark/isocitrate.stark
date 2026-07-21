@@ -1,14 +1,14 @@
 /*
- * Ported from ~/STARK/examples/Isocitrate/src/main/java/isocitrate/Main.java:
+ * Ported from the original `Isocitrate` example:
  * the isocitrate dehydrogenase regulatory network (IDHKPIDH) of E. Coli,
  * simulated as a chemical reaction network via the Gillespie stochastic
  * simulation algorithm (SSA), asking whether species I is robust to
  * perturbing the initial amounts of E and Ip.
  *
- * The original's `TimedSystem` uses a `NilController` (no decision-making
- * controller at all) and tracks continuous reaction time
- * (`selectReactionTime`, via `ds.getTimeDelta()`/`getTimeReal()`); this
- * grammar has no continuous-time/`NilController` concept, only a discrete
+ * The original is a timed system with no decision-making controller at
+ * all, tracking continuous reaction time between events; this grammar has
+ * no continuous-time concept and no way to omit a controller, only a
+ * discrete
  * step per `environment` block, so each step here is one Gillespie reaction
  * event and the real-valued time-between-reactions is not tracked — this
  * matches `random_walk.stark`'s pattern of a spec with no `component` at
@@ -19,11 +19,11 @@
  * so it's built from cumulative-weight thresholds compared against one
  * `R[0,1]` draw — nested `if`/`else` narrowing down which reaction fired,
  * each branch applying only that reaction's net stoichiometry change (an
- * unassigned variable keeps its previous value, exactly as an unlisted
- * `DataStateUpdate` does in the original).
+ * unassigned variable keeps its previous value, exactly as a variable the
+ * original leaves out of a step's update list does).
  *
  * The original draws each species' initial amount randomly
- * (`ceil(100*rand.nextDouble())`); ported as fixed values since variable
+ * (a uniform draw scaled to 100); ported as fixed values since variable
  * initializers can't be random here either.
  *
  * The original evaluates six perturbations (`pertEandIp` with six different

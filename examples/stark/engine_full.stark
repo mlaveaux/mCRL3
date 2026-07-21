@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/engine/src/main/java/engine/Main.java: a more
+ * Ported from the original `engine` example: a more
  * elaborate variant of `engine.stark` (which came from `Engine.jspec`) —
  * same P1..P6/stress/temp/cool/speed model, plus a false-negative/false-positive
  * tracker (`fn`/`fp`) and richer ROBTL formulas (implication via De Morgan's
@@ -16,11 +16,11 @@
  * unambiguous evidence of what was intended, it's ported as written rather
  * than "corrected" on a guess.
  *
- * `Controller.doAction`/`doTick` are STARK's time-consuming `step`; a bare
- * controller reference (`registry.reference(...)`) with no action is an
- * immediate `exec` (matches how `engine.stark` already treats the same
- * `Ctrl -> Check` transition). The original's `AfterPerturbation(100,
- * IterativePerturbation(N, ...))` (wait N steps, then iterate) is
+ * The original's "assign, then continue" and "idle, then continue" forms
+ * are both STARK's time-consuming `step`; a bare controller reference with
+ * no action is an immediate `exec` (matching how `engine.stark` already
+ * treats the same `Ctrl -> Check` transition). The original's delayed,
+ * repeated perturbation (wait 100 steps, then iterate N times) is
  * approximated as `[...]@100 ; ...` iterated `^N` — this grammar's
  * `@time` already means "at this future time", so `@100` folds the two
  * together. `perturbation_cool`'s conditional update

@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/vehicle/src/main/java/vehicle/Main.java: a
+ * Ported from the original `vehicle` example: a
  * richer two-vehicle model than `two_vehicles.stark`/`toll.stark` — V1
  * follows a fixed obstacle, V2 follows V1, each with its own IDS
  * (intrusion-detection-style warning) state, brake lights, and crash flags.
@@ -10,9 +10,9 @@
  * distance, and a fake safety gap) can't be drawn once and shared — each
  * assignment below draws its own `R[0,1]`, so the three "sensor" values are
  * no longer derived from exactly the same sample. This is a real fidelity
- * gap, not a stylistic choice — see `MISSING_GRAMMAR_FEATURES.md`.
+ * gap, not a stylistic choice — see `crates/stark/plan.md`.
  *
- * The original's `AfterPerturbation(1, ...)` (wait one step before the
+ * The original's one-step-delayed perturbation (wait one step before the
  * repeating perturbation starts) is dropped — folding it into the atomic
  * perturbation's own `@time` would only shift the start by one tick and
  * doesn't change the perturbation strategy under test.
@@ -111,10 +111,12 @@ component Vehicle1 {
       if (timer_V1 > 0) {
         step Accelerate_V1;
       } else {
-        /* BUG FIXED: was `step Ctrl_V1;`. Java `Accelerate_V1` is
-           `ifThenElse(timer_V1>0, doTick(ref Accelerate_V1), reference("Ctrl_V1"))`;
-           the else is a bare reference = same-tick `exec`, not a time-consuming
-           `step` (which added a spurious idle round before Ctrl re-planned).
+        /* BUG FIXED: was `step Ctrl_V1;`. the original's `Accelerate_V1` is
+           conditional: while `timer_V1 > 0` it idles back into
+           `Accelerate_V1`, otherwise it continues into `Ctrl_V1`. That else
+           branch is a bare reference — a same-tick `exec`, not a
+           time-consuming `step` (which added a spurious idle round before
+           Ctrl re-planned).
            Matches the toll.stark/two_vehicles.stark timer idiom. */
         exec Ctrl_V1;
       }
@@ -124,7 +126,7 @@ component Vehicle1 {
         step Decelerate_V1;
       } else {
         /* BUG FIXED: was `step Ctrl_V1;` — same as Accelerate_V1 (bare reference
-           in Java else = same-tick `exec`). */
+           in the original, else = same-tick `exec`). */
         exec Ctrl_V1;
       }
     }
@@ -182,7 +184,7 @@ component Vehicle2 {
       if (timer_V2 > 0) {
         step Accelerate_V2;
       } else {
-        /* BUG FIXED: was `step Ctrl_V2;` — Java else is a bare
+        /* BUG FIXED: was `step Ctrl_V2;` — the original's else is a bare
            `reference("Ctrl_V2")` = same-tick `exec`, not a `step`. */
         exec Ctrl_V2;
       }

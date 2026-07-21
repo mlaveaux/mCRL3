@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/polistil/src/main/java/polistil/Main.java: a
+ * Ported from the original `polistil` example: a
  * car navigating a curved figure-eight-style track by waypoint quadrant
  * (`wp_i % 4`), choosing a random speed when not braking into a turn, with
  * a "gone off-track, wait, then recover" state.
@@ -12,16 +12,16 @@
  * ported, to avoid mechanically duplicating ~150 lines of quadrant branching
  * a second time for the same mechanic.
  *
- * `GenerativeChoiceController(1/3, A, GenerativeChoiceController(1/2, B, C))`
- * picks A with probability 1/3, else B or C with probability 1/2 of the
- * remaining 2/3 each — i.e. a uniform choice among three options — so it
- * maps directly to `U[2.7, 2.8, 2.9]` rather than needing nested
- * probabilistic-controller combinators.
+ * The original's nested probabilistic choice picks A with probability 1/3,
+ * else B or C with probability 1/2 of the remaining 2/3 each — i.e. a
+ * uniform choice among three options — so it maps directly to
+ * `U[2.7, 2.8, 2.9]` rather than needing probabilistic-choice combinators
+ * this grammar doesn't have.
  *
- * The DisTL-based robustness analysis at the end of the original (`phi_out_1`,
- * `phi_out_2`, `phi_speed_1`, `phi_speed_2`, all `stark.distl` formulas) is
- * the same untranslatable online-monitoring formalism discussed in
- * `monitoring.stark` and is not ported.
+ * The robustness analysis at the end of the original (`phi_out_1`,
+ * `phi_out_2`, `phi_speed_1`, `phi_speed_2`) is the same untranslatable
+ * online-monitoring formalism discussed in `monitoring.stark`, and is not
+ * ported.
  *
  * The original sets `out' <- 1.0` inside the quadrant branch when the car is
  * going too fast into a turn, but *also* unconditionally sets `out' <- 0.0`
@@ -81,11 +81,11 @@ component Car {
       if (back > 0.0) {
         step Stop;
       } else {
-        /* BUG FIXED: was `step Ctrl;`. Java `Stop` is
-           `ifThenElse(back>0, doTick(ref Stop), reference("Ctrl"))`; the else is
-           a bare `reference("Ctrl")` = same-tick `exec`, not a `step` (which
-           added a spurious idle round before the car resumed control once it was
-           back on track). */
+        /* BUG FIXED: was `step Ctrl;`. the original's `Stop` is
+           conditional: while `back > 0` it idles back into `Stop`, otherwise
+           it continues into `Ctrl`. That else branch is a bare reference — a
+           same-tick `exec`, not a `step` (which added a spurious idle round
+           before the car resumed control once it was back on track). */
         exec Ctrl;
       }
     }

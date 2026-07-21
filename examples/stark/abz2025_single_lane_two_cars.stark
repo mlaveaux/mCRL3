@@ -1,6 +1,5 @@
 /*
- * Ported from ~/STARK/examples/ABZ2025/src/main/java/Scenarios/SingleLaneTwoCars.java:
- * two cars on a single lane, V1 behind V2, where V1's controller picks
+ * Two cars on a single lane, V1 behind V2, where V1's controller picks
  * FASTER/SLOWER/IDLE based on whether the gap to V2 matches a
  * Responsibility-Sensitive-Safety (RSS) safety distance (Shalev-Shwartz,
  * Shammah, Shashua, "On a formal model of safe and scalable self-driving
@@ -9,11 +8,6 @@
  * the safety gap instead of a fixed braking-distance estimate, and adding
  * genuine crash/safety-gap-violation robustness queries under two
  * perturbations (drunk driving, brake-checking).
- *
- * `OneLaneThreeCars` is the same RSS car-following mechanic generalised
- * from 2 to 3 chained cars in one lane (arrays instead of named variables,
- * otherwise identical rules), so it isn't ported separately, matching the
- * `turtle.stark`/`repressilator.stark` precedent.
  *
  * `TwoLanesTwoCars` is *not* a mere scale-up: it adds a second lane, 2D
  * (x,y) positions, an explicit lane-change manoeuvre with its own timer,
@@ -26,8 +20,8 @@
  * HTTP/socket connection to `highway-env-ai-server`) for V1's controller
  * instead of computing it from this specification, so they have no
  * textual-STARK equivalent at all — a different kind of gap from the
- * DisTL/feedback exclusions already documented in
- * `MISSING_GRAMMAR_FEATURES.md`, but the same conclusion: not portable.
+ * online-monitoring and feedback exclusions already documented in
+ * `crates/stark/plan.md`, but the same conclusion: not portable.
  *
  * `includePhysicsUpdates` reads `accelV1`/`accelV2` *before* this round's
  * `intention`-based reassignment applies (the controller decides this

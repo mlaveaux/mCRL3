@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/polistil/src/main/java/polistil/Main.java's
+ * Ported from the original `polistil` example's
  * `EnvironmentRace`/`getCar_1`/`getCar_2` (the "race" scenario): the same
  * curved-track car from `polistil.stark`, run as two structurally identical,
  * fully independent cars side by side (`my_*`/car 1 and `your_*`/car 2, the
@@ -90,9 +90,10 @@ component Car1 {
       if (back > 0.0) {
         step Stop;
       } else {
-        /* BUG FIXED: was `step Ctrl;`. Java `getCar_1`'s `Stop` is
-           `ifThenElse(back>0, doTick(ref Stop), reference("Ctrl"))`; the else is
-           a bare same-tick `exec`, not a time-consuming `step`. */
+        /* BUG FIXED: was `step Ctrl;`. the original's first car `Stop` is
+           conditional: while `back > 0` it idles back into `Stop`, otherwise
+           it continues into `Ctrl`. That else branch is a bare reference — a
+           same-tick `exec`, not a time-consuming `step`. */
         exec Ctrl;
       }
     }
@@ -122,7 +123,7 @@ component Car2 {
       if (you_back > 0.0) {
         step Stop2;
       } else {
-        /* BUG FIXED: was `step Ctrl2;`. Java `getCar_2`'s `Stop2` else is a bare
+        /* BUG FIXED: was `step Ctrl2;`. the original's second car `Stop2` else is a bare
            `reference("Ctrl2")` = same-tick `exec`, not a `step`. */
         exec Ctrl2;
       }

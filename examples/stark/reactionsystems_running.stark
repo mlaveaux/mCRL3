@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/reactionsystems/src/main/java/reacsys/runningEx.java:
+ * Ported from the original `reactionsystems` example's running example:
  * the "running example" reaction system from the reaction-systems literature
  * — four boolean-valued entities (`a`,`b`,`c`,`d`) governed by two reaction
  * rules under the "no permanency" principle (an entity reverts to absent
@@ -9,7 +9,7 @@
  * round — exactly matching this grammar's controller-then-environment
  * per-round order.
  *
- * The original's "plain" scenario (a `NilController` with a different fixed
+ * The original's "plain" scenario (no controller at all and a different fixed
  * initial state, showing the two reaction rules oscillate on their own with
  * no context) exercises the same environment block with no controller at
  * all, so it isn't ported as a separate file, matching the
@@ -22,9 +22,9 @@
  * not an approximation on this end.
  *
  * The original's context/perturbation sequence (`p_cont_seq`) is a chain of
- * zero-delay atomic perturbations (`AtomicPerturbation(0, ...)`) composed
+ * zero-delay atomic perturbations composed
  * with `SequentialPerturbation`, plus one step of `NonePerturbation` (a
- * no-op) and one `IterativePerturbation(1, p5)` (apply once, same as `p5`
+ * no-op) and one single-iteration repeat of `p5` (apply once, same as `p5`
  * alone) — ported directly via this grammar's `;` sequencing and `nil`
  * primary.
  *
@@ -63,16 +63,16 @@ component Context {
       step Ag4;
     }
     state Ag4 {
-      /* BUG FIXED: was `exec Ag5;`. In the Java `getContextSequence`, Ag4 is
-         `Controller.doTick(reference("Ag5"))`. `doTick` is time-consuming (it
-         returns `EffectStep([], Ag5)`, i.e. an empty-context round, then Ag5
-         next round), which the textual language spells `step` — not `exec`
-         (which is StarkControllerStateGenerator's same-tick, transparent jump
-         into the target's block). The original `exec Ag5` collapsed the
+      /* BUG FIXED: was `exec Ag5;`. In the original's context sequence, Ag4
+         idles into `Ag5`, which is time-consuming: an empty-context round,
+         then `Ag5` the round after. The textual language spells that `step`
+         — not `exec`, which is a same-tick, transparent jump into the
+         target's block. The original `exec Ag5` collapsed the
          empty-context round the reaction-systems "running example" has at
          position 4, desynchronising the whole context sequence by one round.
          Corrected to `step Ag5;` per this port's own documented convention
-         (doAction/doTick -> step; bare reference -> exec, see engine_full.stark). */
+         (assign-or-idle-then-continue -> step; bare reference -> exec, see
+         engine_full.stark). */
       step Ag5;
     }
     state Ag5 {
@@ -88,8 +88,9 @@ component Context {
         c5_count' = c5_count - 1;
         step Ag5rep;
       } else {
-        /* BUG FIXED: was `step Ag7;`. In the Java `Ag5rep` is
-           `ifThenElse(C5_count>0, doAction(..., ref Ag5rep), reference("Ag7"))`.
+        /* BUG FIXED: was `step Ag7;`. In the original, `Ag5rep` is
+           conditional: while `C5_count > 0` it assigns and continues into
+           `Ag5rep`, otherwise it continues into `Ag7`.
            The else branch is a *bare* `reference("Ag7")` returned by the
            if-then-else, so Ag7 runs in the SAME round (transparent), which the
            textual language spells `exec`. `step Ag7` wrongly inserted an extra

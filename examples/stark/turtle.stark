@@ -1,12 +1,12 @@
 /*
- * Ported from ~/STARK/examples/turtle/src/main/java/turtle/Industrial_plant.java:
+ * Ported from the original `turtle` example's industrial-plant scenario:
  * a robot navigating a sequence of waypoints, with a speed/acceleration
  * controller cycle (`SetDir` picks a heading, `Ctrl`/`Accelerate`/
  * `Decelerate`/`Stop` manage speed) essentially identical to
  * `toll.stark`/`vehicle_full.stark`'s vehicle-following cycle, applied here
  * to waypoint tracking instead of gap-keeping.
  *
- * `turtle`'s second scenario, `Smart_hospital.java`, is the same
+ * `turtle`'s second scenario, the smart hospital, is the same
  * waypoint-following-robot mechanic (same controller shape, same feedback
  * system) applied to a different environment/waypoint list, so it isn't
  * ported separately.
@@ -18,17 +18,18 @@
  *
  * The original also builds a `FeedbackSystem`/`PersistentFeedback`
  * (comparing the running system against the mean of its own nominal
- * evolution sequence, correcting speed/waypoint drift): `stark.feedback` is
- * a Java-only extension with no textual-STARK construct at all, so it isn't
- * ported, same as the DisTL monitoring gap in `monitoring.stark`.
+ * evolution sequence, correcting speed/waypoint drift): the feedback
+ * framework is available only from the original library, with no
+ * textual-STARK construct at all, so it isn't ported — same as the
+ * online-monitoring gap in `monitoring.stark`.
  *
- * The original's perturbation is a `PersistentPerturbation` (applied at
+ * The original's perturbation is a persistent one (applied at
  * *every* step, indefinitely); approximated here with a large but finite
  * iteration count (`^300`), since this grammar's `^` always takes a
  * concrete count. As in `vehicle_full.stark`, the perturbation draws its own
  * `R[0,1]` for each assignment that needs the same random offset
  * (`s_speed`/`gap` both depend on one `fake_speed` in the original), which
- * is a known fidelity gap — see `MISSING_GRAMMAR_FEATURES.md`.
+ * is a known fidelity gap — see `crates/stark/plan.md`.
  */
 
 param PI = 3.141592653589793;
@@ -56,16 +57,16 @@ function wp_y(int i) {
 }
 
 function heading_to(int wp, real x, real y) {
-  /* BUG FIXED: the Java computes
+  /* BUG FIXED: the original computes
        (WPx[wp]==x) ? 0 : ((WPx[wp]<x)?PI:0) + atan((WPy[wp]-y)/(WPx[wp]-x))
-     and Java's ternary `?:` binds *looser* than `+`, so the `+ atan(...)` is
+     and its ternary `?:` binds *looser* than `+`, so the `+ atan(...)` is
      part of the ELSE branch: when WPx[wp]==x (vertical alignment that would
      divide by zero) the heading is just 0. The original port wrote
        (wp_x(wp)==x ? 0.0 : (wp_x(wp)<x ? PI : 0.0)) + atan(...)
      with `+ atan(...)` OUTSIDE the ternary, so the wp_x(wp)==x case became
-     0 + atan(.../0) = +/-pi/2 instead of Java's 0 — defeating the guard that
+     0 + atan(.../0) = +/-pi/2 instead of the original's 0 — defeating the guard that
      exists precisely to avoid that division by zero. Re-parenthesised to match
-     Java. (Only observably differs on exact wp_x==x float equality, essentially
+     the original. (Only observably differs on exact wp_x==x float equality, essentially
      never reached in a run, but the port now matches the source semantics.) */
   return (wp_x(wp) == x ? 0.0 : (wp_x(wp) < x ? PI : 0.0) + atan((wp_y(wp) - y) / (wp_x(wp) - x)));
 }
@@ -132,9 +133,10 @@ component Robot {
       if (timer_V > 0) {
         step Accelerate;
       } else {
-        /* BUG FIXED: was `step Ctrl;`. Java `Accelerate` is
-           `ifThenElse(timer_V>0, doTick(ref Accelerate), reference("Ctrl"))`; the
-           else is a bare same-tick `exec`, not a time-consuming `step`. */
+        /* BUG FIXED: was `step Ctrl;`. the original's `Accelerate` is
+           conditional: while `timer_V > 0` it idles back into `Accelerate`,
+           otherwise it continues into `Ctrl`. That else branch is a bare
+           reference — a same-tick `exec`, not a time-consuming `step`. */
         exec Ctrl;
       }
     }
@@ -142,7 +144,7 @@ component Robot {
       if (timer_V > 0) {
         step Decelerate;
       } else {
-        /* BUG FIXED: was `step Ctrl;` — same as Accelerate (Java else is a bare
+        /* BUG FIXED: was `step Ctrl;` — same as Accelerate (the original's else is a bare
            `reference("Ctrl")` = same-tick `exec`). */
         exec Ctrl;
       }

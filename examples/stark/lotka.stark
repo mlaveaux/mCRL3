@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/lotka/src/main/java/lotka/Main.java: the
+ * Ported from the original `lotka` example: the
  * classic Lotka autocatalytic reactions (same Gillespie-SSA pattern as
  * `isocitrate.stark`/`envzompr.stark` — see `isocitrate.stark`'s header for
  * the general approach):
@@ -12,7 +12,7 @@
  * the environment block.
  *
  * The original computes raw distance *values* for plotting, without ever
- * declaring an actual `AtomicRobustnessFormula`/threshold, so there's no
+ * declaring an actual formula or threshold, so there's no
  * formula to port either — just the reaction network, one representative
  * perturbation (`pertY1`, halving Y1's population partway through), and the
  * two atomic distances it measures (again with a placeholder normalisation

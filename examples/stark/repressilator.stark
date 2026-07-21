@@ -1,14 +1,14 @@
 /*
- * Ported from ~/STARK/examples/repressilator/src/main/java/repressilator/Main.java:
+ * Ported from the original `repressilator` example:
  * the classic repressilator, a synthetic 3-gene cyclic negative-feedback
  * oscillator (gene 3 represses gene 1, gene 1 represses gene 2, gene 2
  * represses gene 3), simulated as a "two-state model" chemical reaction
  * network with 18 reactions via Gillespie's stochastic simulation algorithm
- * (SSA) — same `NilController`/no-`component` shape and cumulative-weight
+ * (SSA) — same no-`component` shape and cumulative-weight
  * `if`/`else` reaction-selection pattern established in
  * `isocitrate.stark`/`envzompr.stark`/`lotka.stark`.
  *
- * `Main_Skorokhod.java` simulates the identical model with a different
+ * The same example also simulates the identical model with a different
  * (Skorokhod-representation) numerical integration scheme, so it isn't
  * ported separately, matching the `turtle.stark` precedent of porting one
  * representative scenario rather than every alternate implementation.
@@ -35,7 +35,7 @@
  * `Zi + 1`/`Zi - 1`. (An earlier version of this file *did* recompute
  * `kon1'`/`kon2'`/`kon3'` from the post-reaction `Zi` in the six branches
  * that change one — cross-checked and confirmed wrong against both
- * `Main.java` and `Main_Skorokhod.java`, which read the identical
+ * of the original's two variants, which read the identical
  * `state.get(Zi)`; fixed here by dropping those six redundant, incorrect
  * recomputes.)
  *

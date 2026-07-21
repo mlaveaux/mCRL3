@@ -1,14 +1,14 @@
 /*
- * Ported from ~/STARK/examples/monitoring/basic/src/main/java/monitoring/Main.java.
+ * Ported from the original `monitoring` example.
  *
  * The original demonstrates STARK's *online monitoring* framework (the
- * `stark.udistl`/`stark.distl`/`stark.monitors` Java packages): it builds a
- * uDisTL formula ("eventually the observed x gets within 0 of a moving
+ * online-monitoring framework of the original library): it builds a
+ * unbounded-until monitoring formula ("eventually the observed x gets within 0 of a moving
  * target") and evaluates it directly against sampled observations of a
  * single running system. That is a different verification approach from
  * this grammar's `formula`/`distance`/`perturbation` (ROBTL) declarations,
  * which compare a *nominal* evolution sequence against a *perturbed* one via
- * a distance metric — there is no textual-STARK equivalent for a uDisTL
+ * a distance metric — there is no textual-STARK equivalent for such a
  * monitor, so only the underlying stochastic process model is ported here.
  *
  * The original also draws x's initial value randomly

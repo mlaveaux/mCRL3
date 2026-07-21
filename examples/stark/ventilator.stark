@@ -1,5 +1,5 @@
 /*
- * Ported from ~/STARK/examples/mechanicallungventilator/src/main/java/mechanicallungventilator/Main.java
+ * Ported from the original `mechanicallungventilator` example
  * (5167 lines): a mechanical lung ventilator, modelled as three parallel
  * components — the main ventilation-mode controller (`Ventilator`, states
  * `P`..`P_failSafeI`: power-on self-test, PCV/PSV breathing cycles with
@@ -11,8 +11,8 @@
  * sensor noise, battery drain, and the physical pressure/flow response.
  *
  * This is by far the largest model ported this session; every declaration
- * below is a direct, line-by-line translation of the corresponding Java
- * (`ds.get(x)` -> `x`, `DataStateUpdate(x, v)` -> `x' = v`), not a
+ * below is a direct, line-by-line translation of the corresponding original
+ * (a state read becomes `x`, an update becomes `x' = v`), not a
  * re-derivation, so the header notes below focus on *how* constructs that
  * don't exist verbatim in this grammar were encoded, not on the ventilator
  * domain itself.
@@ -23,63 +23,54 @@
  * expressions, and this grammar's `int`/`real` type lattice is asymmetric
  * (an `int` doesn't freely combine with a `real`), so `real` throughout
  * avoids a combinatorial type-mismatch problem for no loss of fidelity —
- * the original's `DataState` storage is `double` for every variable anyway.
+ * the original stores every variable as a double anyway.
  *
- * ~1600 lines of the original `main()` build `stark.distl` (`DisTLFormula`/
- * `TargetDisTLFormula`/`AlwaysDisTLFormula`/...) online-monitoring queries —
- * the same untranslatable formalism already documented in
- * `monitoring.stark`/`MISSING_GRAMMAR_FEATURES.md` — so none of those are
- * ported; only the genuinely-ROBTL `RobustnessFormula`/`DistanceExpression`/
- * `Perturbation` queries near the top of `main()` are (see the bottom of
- * this file).
+ * Some ~1600 lines of the original's entry point build online-monitoring
+ * queries — the same untranslatable formalism already documented in
+ * `monitoring.stark`/`crates/stark/plan.md` — so none of those are ported;
+ * only the genuinely-ROBTL formula, distance and perturbation queries near
+ * the top of it are (see the bottom of this file).
  *
- * Both `Controller.doAction(assignments, next)` and `Controller.doTick(next)`
- * construct the *same* underlying class (`ActionController` — `doTick` is
- * literally `doAction` with a trivial no-op update function, see
- * `stark.controller.Controller`/`ActionController`), and `ActionController
- * .next()` *always* returns `EffectStep(updates, next)` unconditionally —
- * i.e. it always consumes exactly one simulation round (one call from
- * `ControlledSystem.sampleNext`, with a full environment step in between),
- * with `next` becoming "the controller" for the round after. So every
- * `doAction`/`doTick` is ported as `assignments; step next;` — `step` is
- * used *regardless* of whether `next` is a bare `registry.reference(...)` or
- * an inline node, and regardless of whether there's an accompanying
- * assignment. `Controller.ifThenElse`, by contrast
- * (`IfThenElseController.next()`), recurses into whichever branch
- * immediately, in the *same* call — it never consumes a round on its own,
- * so a chain of nested `ifThenElse`s (as most states below have) collapses
- * into one `if`/`else` in a single STARK state with no round cost. The one
- * place this grammar's `exec X;` is the right translation is when an
- * `ifThenElse` branch is a *bare* `registry.reference(X)` with no
- * `doAction`/`doTick` wrapping it at all — that branch, taken, recurses
- * directly into `X`'s own `.next()` in the same call (confirmed against
- * `StarkControllerStateGenerator.visitControllerExecAction`, which does
- * exactly this): no state in this file's controller happens to have that
- * shape, so `exec` doesn't appear here (every leaf below is reached via a
- * `doAction`/`doTick`, hence `step`). (An earlier version of this file had
- * the `step`/`exec` distinction backwards; every controller state has been
- * corrected.)
+ * In the original, "perform these assignments, then continue as `next`" and
+ * "idle a round, then continue as `next`" are the *same* underlying
+ * construct — idling is just the assignment form with a no-op update — and
+ * it *always* consumes exactly one simulation round, with a full
+ * environment step in between, `next` becoming the behaviour for the round
+ * after. So every one of them is ported as `assignments; step next;`, with
+ * `step` used regardless of whether `next` is a bare reference or an inline
+ * node, and regardless of whether there is an accompanying assignment.
  *
- * A `doAction`/`doTick` whose `next` is itself a fresh, *inline*
- * `Controller.ifThenElse(...)` (not a bare `registry.reference`) needs an
- * **extra STARK state**, not just a `step`, to be faithful: the assignment
- * consumes its own round before that inline branch is even reached, so the
- * branch's condition is evaluated one round (and one environment step)
- * later than a flattened single-state translation would imply. Three states
- * have exactly this shape and are split into two STARK states each below —
- * `P_start_up`/`P_start_up_check_sensors`, `P_self_test`/
- * `P_self_test_check`, `P_VentOff`/`P_VentOff_check` — every other
- * controller state in this file was checked against the Java source
- * line-by-line and confirmed to only ever wrap `doAction`/`doTick` around a
- * *bare* reference (never an inline branch), so no further splits are
- * needed. `P_Alarms_final`'s self-transition references
- * `registry.reference("P_alarms_final")` (lower-case `a`) instead of the
- * actually-registered `"P_Alarms_final"` — a latent typo in the original
- * (an unregistered name would fail to resolve at runtime) — ported as the
- * evidently-intended self-loop (`step P_Alarms_final;`, since the original
- * wraps it in `Controller.doTick`), matching this session's precedent of
- * fixing clear original typos (e.g. `toll.stark`'s `pen_stress`/`accel==N`
- * fixes) rather than reproducing them.
+ * An if-then-else, by contrast, recurses into whichever branch immediately,
+ * within the *same* round — it never consumes a round on its own, so a
+ * chain of nested conditionals (as most states below have) collapses into
+ * one `if`/`else` in a single STARK state at no round cost. The one place
+ * this grammar's `exec X;` is the right translation is a conditional branch
+ * that is a *bare* reference to `X`, with no assignment or idle wrapping
+ * it: that branch, taken, continues into `X` in the same round. No state in
+ * this file has that shape, so `exec` doesn't appear here — every leaf
+ * below is reached through an assignment or an idle, hence `step`. (An
+ * earlier version of this file had the `step`/`exec` distinction backwards;
+ * every controller state has been corrected.)
+ *
+ * An assignment whose `next` is itself a fresh, *inline* conditional (not a
+ * bare reference) needs an **extra STARK state**, not just a `step`, to be
+ * faithful: the assignment consumes its own round before that inline branch
+ * is even reached, so the branch's condition is evaluated one round (and one
+ * environment step) later than a flattened single-state translation would
+ * imply. Three states have exactly this shape and are split into two STARK
+ * states each below — `P_start_up`/`P_start_up_check_sensors`,
+ * `P_self_test`/`P_self_test_check`, `P_VentOff`/`P_VentOff_check`. Every
+ * other controller state in this file was checked against the original
+ * line-by-line and confirmed to only ever wrap a *bare* reference, never an
+ * inline branch, so no further splits are needed.
+ *
+ * `P_Alarms_final`'s self-transition references `P_alarms_final` (lower-case
+ * `a`) instead of the actually-registered `P_Alarms_final` — a latent typo
+ * upstream, since an unregistered name would fail to resolve at runtime.
+ * It is ported as the evidently-intended self-loop (`step P_Alarms_final;`,
+ * since the original idles into it), matching the precedent of fixing clear
+ * upstream typos (e.g. `toll.stark`'s `pen_stress`/`accel==N` fixes) rather
+ * than reproducing them.
  */
 
 param PRM = 20.0;
@@ -421,10 +412,9 @@ component Ventilator {
       if (b_powerOff == 1) {
         step P_final;
       } else {
-        /* BUG FIXED: the original wraps this assignment's `next` in a fresh
-           inline `Controller.ifThenElse(...)`, not a bare `registry.reference`,
-           so it's a SECOND round (its own `ActionController.next()` call,
-           with a full environment step in between) before
+        /* BUG FIXED: the original wraps this assignment's continuation in a
+           fresh inline conditional rather than a bare reference, so it is a
+           SECOND round (with a full environment step in between) before
            `comm_sens_valves_ok` is even read — not the same round. Split
            into `P_start_up`/`P_start_up_check_sensors` to match. */
         rr_pcv' = RR_PCV;
@@ -499,10 +489,10 @@ component Ventilator {
 
     /* Self-test mode */
     state P_self_test {
-      /* BUG FIXED: the original wraps this assignment's `next` in a fresh
-         inline `Controller.ifThenElse(...)`, not a bare `registry.reference`,
-         so `b_powerOff` etc. are read a full round later (with an
-         environment step in between), not the same round. Split into
+      /* BUG FIXED: the original wraps this assignment's continuation in a
+         fresh inline conditional rather than a bare reference, so
+         `b_powerOff` etc. are read a full round later (with an environment
+         step in between), not the same round. Split into
          `P_self_test`/`P_self_test_check` to match. */
       init_succ' = 0;
       Status' = 4;
@@ -528,9 +518,9 @@ component Ventilator {
     /* Ventilation off mode */
     state P_VentOff {
       /* BUG FIXED: same pattern as `P_start_up`/`P_self_test` above — the
-         original wraps this assignment's `next` in a fresh inline
-         `Controller.ifThenElse(...)`, so `b_powerOff` etc. are read a full
-         round later. Split into `P_VentOff`/`P_VentOff_check` to match. */
+         original wraps this assignment's continuation in a fresh inline
+         conditional, so `b_powerOff` etc. are read a full round later. Split
+         into `P_VentOff`/`P_VentOff_check` to match. */
       a_IN_valve' = 0;
       a_OUT_valve' = 1;
       Status' = 5;
@@ -1267,9 +1257,9 @@ component Switch {
 }
 
 /* Robustness queries. The original evaluates 7 of these (out of ~70 more
-   built on the untranslatable stark.distl formalism, not ported — see the
-   file header); eta_sav_6/eta_sav_16 are the original's local `main()`
-   doubles, ported as params. */
+   built on the untranslatable online-monitoring formalism, not ported —
+   see the file header); eta_sav_6/eta_sav_16 are the original's local
+   entry-point constants, ported as params. */
 param ETA_SAV_6 = 0.1;
 param ETA_SAV_16 = 0.1;
 
