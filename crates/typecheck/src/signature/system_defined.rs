@@ -32,11 +32,10 @@ use crate::standard_sort;
 ///
 /// The result is deliberately left unresolved: it uses the built-in `Simple`
 /// sorts and the Appendix-B operator names, and is not re-checked against the
-/// user-oriented well-typedness rules — debug builds instead verify its basic
-/// hygiene via `check_system_specification`.
+/// user-oriented well-typedness rules.
 ///
 /// `basics` is the [basic_sort_data_specification], passed in because the
-/// caller also needs it separately (for the system signature).
+/// caller also needs it separately for the system signature.
 pub(crate) fn build_system_defined_specification(
     spec: &UntypedDataSpecification,
     basics: UntypedDataSpecification,
@@ -68,11 +67,7 @@ pub(crate) fn build_system_defined_specification(
 }
 
 /// Any user `cons`/`map` declaration whose name collides with a system-defined
-/// function is rejected, regardless of the user's declared sort: the
-/// always-present basic-sort operators (`basics`), the polymorphic
-/// container operations (`POLYMORPHIC_SIGNATURE`), and the built-in
-/// comparison/`if` schemes. This is a pure name comparison — it does not
-/// need sort resolution — so it can run as soon as `basics` is available.
+/// function is rejected, regardless of the user's declared sort.
 pub(crate) fn check_no_system_function_redeclaration(
     spec: &UntypedDataSpecification,
     basics: &UntypedDataSpecification,

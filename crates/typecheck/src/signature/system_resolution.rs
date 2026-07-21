@@ -16,11 +16,7 @@ use crate::push_overload;
 use crate::query_sort_of_def;
 
 /// Resolves the constructor and mapping declarations of the *basic-sort* part
-/// of the system-defined specification onto the interned sort lattice, giving
-/// Phase-3 inference the overload sets of the built-in operators (`&&`, `+`,
-/// …). Stores [TypeckContext::system_signature] and
-/// [TypeckContext::system_sort_names] (the fresh ids minted for the
-/// system-internal sorts, e.g. `@NatPair`).
+/// of the system-defined specification onto the interned sort lattice.
 ///
 /// `system` must be the *basic-sort* specification ([basic_sort_data_specification]),
 /// not the full system-defined specification `build_system_defined_specification`

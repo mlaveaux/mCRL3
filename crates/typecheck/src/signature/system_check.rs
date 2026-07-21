@@ -18,10 +18,7 @@ use crate::check_products_within_domains;
 const BUILTIN_SCHEMES: [&str; 7] = ["==", "!=", "<", "<=", ">", ">=", "if"];
 
 /// Verifies that the generated system-defined specification is internally
-/// well-formed. The system specification is generated content — instantiated
-/// Appendix-B templates and desugared-struct equations — so a defect here is a
-/// bug in a template or generator, not a user error; `from_untyped` runs this
-/// in debug builds instead of trusting the generators.
+/// well-formed.
 ///
 /// Checked, for every declaration and equation of `system`:
 ///
@@ -29,12 +26,12 @@ const BUILTIN_SCHEMES: [&str; 7] = ["==", "!=", "<", "<=", ">", ">=", "if"];
 ///   uninstantiated template variables like `S`, and every `Resolved` sort
 ///   indexes a user sort declaration;
 /// - product sorts occur only as function domains, and no structured sort
-///   survives (desugaring replaces them all);
+///   survives.
 /// - no `var` block declares a variable twice;
 /// - every name in an equation resolves: to a binder or equation variable, a
 ///   constructor or mapping of `system` or `user_spec`, or a builtin scheme;
-/// - the free variables of an equation's condition and right-hand side occur
-///   in its left-hand side, so every rule is executable by rewriting.
+/// - the free variables of an equation's condition and right-hand side occur in
+///   its left-hand side, so every rule is executable by rewriting.
 ///
 /// Full sort inference over the system equations is not run.
 pub(crate) fn check_system_specification(
@@ -266,9 +263,7 @@ mod tests {
     use crate::check_system_specification;
 
     /// Runs the checker on the system specification generated for `text`,
-    /// verifying the real templates rather than trusting them. The explicit
-    /// call keeps this covered in release builds, where `from_untyped` skips
-    /// the check.
+    /// verifying the real templates rather than trusting them.
     fn check_generated(text: &str) {
         let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse(text).unwrap()).unwrap();
         check_system_specification(spec.data_specification(), spec.system_defined_specification())

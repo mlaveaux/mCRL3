@@ -163,10 +163,7 @@ impl<Id> IdDecl<Id> {
         }
     }
 
-    /// Reinterprets this declaration under a different id type, discarding its
-    /// `id` (an id from one declaration list, e.g. sorts, is meaningless in
-    /// another, e.g. constructors). Used where the grammar parses a shared
-    /// "name: sort" shape into a list with its own id namespace.
+    /// Reinterprets this declaration under a different id type.
     pub fn retag<NewId>(self) -> IdDecl<NewId> {
         IdDecl {
             identifier: self.identifier,
@@ -177,9 +174,7 @@ impl<Id> IdDecl<Id> {
     }
 }
 
-/// The kind of a [SortExpression] node, without its source span. Every
-/// recursive child is a [SortExpression], so each node
-/// carries its own location.
+/// The kind of a [SortExpression] node.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum SortExpressionKind {
     /// Product of two sorts (A # B)
@@ -210,9 +205,7 @@ pub enum SortExpressionKind {
     },
 }
 
-/// A sort expression: a [SortExpressionKind] paired with the source [Span] it
-/// was parsed from. Synthetic expressions built by later passes use
-/// [Span::default].
+/// A sort expression paired with the source [Span] it was parsed from.
 pub type SortExpression = Spanned<SortExpressionKind>;
 
 impl SortExpressionKind {
@@ -223,8 +216,7 @@ impl SortExpressionKind {
 }
 
 impl From<SortExpressionKind> for SortExpression {
-    /// Wraps a kind into a [SortExpression] with a default (empty) span, for
-    /// synthetic expressions that have no source location.
+    /// For synthetic expressions that have no source location.
     fn from(kind: SortExpressionKind) -> Self {
         Spanned::new(kind, Span::default())
     }
@@ -351,9 +343,7 @@ pub enum DataExprBinaryOp {
     At,
 }
 
-/// The kind of a [DataExpr] node, without its source span. Every recursive
-/// child is a [DataExpr] (a [Spanned] wrapper), so each node carries its own
-/// location.
+/// The kind of a [DataExpr] node.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum DataExprKind {
     Id(String),
@@ -401,21 +391,19 @@ pub enum DataExprKind {
     },
 }
 
-/// A data expression: a [DataExprKind] paired with the source [Span] it was
-/// parsed from. Synthetic expressions built by later passes use
-/// [Span::default].
+/// A data expression paired with the source [Span] it was
+/// parsed from.
 pub type DataExpr = Spanned<DataExprKind>;
 
 impl DataExprKind {
-    /// Wraps this kind together with a source `span` into a [DataExpr].
+    /// Wraps this kind together with a source `span`.
     pub fn spanned(self, span: Span) -> DataExpr {
         Spanned::new(self, span)
     }
 }
 
 impl From<DataExprKind> for DataExpr {
-    /// Wraps a kind into a [DataExpr] with a default (empty) span, for
-    /// synthetic expressions that have no source location.
+    /// For synthetic expressions that have no source location.
     fn from(kind: DataExprKind) -> Self {
         Spanned::new(kind, Span::default())
     }
