@@ -1,17 +1,5 @@
 //! Native implementations of the machine-word (`@word`) operations declared in
 //! `crates/syntax/spec/machine_word.mcrl2`.
-//!
-//! A `@word` is a 64-bit machine number; every operation here mirrors the
-//! `defined_by_code` C++ implementation from mCRL2
-//! (`mcrl2/data/detail/machine_word.h` and `source/machine_word.cpp`) so that
-//! rewriting machine numbers produces identical results.
-//!
-//! The "digit base" of the positional representation is `2^64`; the multi-word
-//! operations interpret their arguments as the most- to least-significant
-//! digits of a wider number. Operations that need more than 64 bits use
-//! [`u128`], and the ones that exceed 128 bits (triple/quadruple word division
-//! and square roots) use [`num::BigUint`]. Word-valued results are truncated to
-//! the low 64 bits, matching the C++ `static_cast<std::size_t>`.
 
 use num::BigUint;
 use num::integer::Roots;
@@ -19,8 +7,7 @@ use num::integer::Roots;
 /// Number of bits in a machine word; also the shift amount for one digit.
 const WORD_BITS: u32 = 64;
 
-/// Extracts the least-significant 64 bits of a [`BigUint`], matching the C++
-/// `static_cast<std::size_t>` truncation.
+/// Extracts the least-significant 64 bits of a [`BigUint`].
 fn truncate_u64(value: &BigUint) -> u64 {
     value.iter_u64_digits().next().unwrap_or(0)
 }
@@ -40,7 +27,7 @@ fn big_from_digits(digits: &[u64]) -> BigUint {
     result
 }
 
-// === Word constants ===
+// Word constants
 
 pub fn zero_word() -> u64 {
     0
@@ -61,7 +48,7 @@ pub fn max_word() -> u64 {
     u64::MAX
 }
 
-// === Predicates ===
+// Predicates
 
 pub fn equals_zero_word(n: u64) -> bool {
     n == 0
@@ -109,7 +96,7 @@ pub fn rightmost_bit(n: u64) -> bool {
     (n & 1) == 1
 }
 
-// === Word-valued arithmetic (wrapping modulo 2^64) ===
+// Word-valued arithmetic (wrapping modulo 2^64)
 
 pub fn succ_word(n: u64) -> u64 {
     n.wrapping_add(1)
@@ -174,7 +161,7 @@ pub fn shift_right(bit: bool, n: u64) -> u64 {
     }
 }
 
-// === Double / triple / quadruple word operations (base = 2^64) ===
+// Double / triple / quadruple word operations (base = 2^64)
 
 /// `(2^64 * n1 + n2) div n3`.
 pub fn div_doubleword(n1: u64, n2: u64, n3: u64) -> u64 {
@@ -329,16 +316,10 @@ mod tests {
         );
     }
 
-    // === Randomised cross-checks against the binary number encoding ===
+    // Randomised cross-checks against the binary number encoding
     //
     // Every machine-word operation is checked against the same computation on
-    // [`num::BigUint`], an arbitrary-precision *binary* big-integer. Since the
-    // BigUint result never overflows, it is the ground truth the fixed-width word
-    // operations must agree with (after the base-`2^64` positional decomposition
-    // and the low-64-bit truncation the C++ code performs). These mirror the
-    // identities exercised by mCRL2's `rewrite_large_numbers_test.cpp`
-    // (`div`/`mod` reconstruction and the integer square-root bounds) at the
-    // level of the native word operations that implement them.
+    // [`num::BigUint`], an arbitrary-precision *binary* big-integer.
 
     /// The single machine word `value` as a binary big-integer.
     fn big(value: u64) -> BigUint {
@@ -464,9 +445,7 @@ mod tests {
     #[test]
     fn test_random_square_root_bounds() {
         // For the integer square root `r` of `n`, the defining property is
-        // `r*r <= n < (r+1)*(r+1)`; this is exactly the identity checked by
-        // mCRL2's `square_root_test`. We also assert equality with the binary
-        // big-integer square root.
+        // `r*r <= n < (r+1)*(r+1)`.
         let check_bounds = |root: &BigUint, n: &BigUint| {
             let next = root + &one();
             assert!(root * root <= *n, "root too large: {root}^2 > {n}");

@@ -57,18 +57,15 @@ pub struct DataSpecification {
 
 impl DataSpecification {
     /// Create a completed well-typed data specification from an untyped data
-    /// specification, using the default ([`NumberEncoding::Binary`]) number
-    /// encoding.
+    /// specification, using the default number encoding.
     pub fn from_untyped(spec: UntypedDataSpecification) -> Result<Self, WellTypedError> {
         Self::from_untyped_with(spec, NumberEncoding::default())
     }
 
     /// Create a completed well-typed data specification from an untyped data
-    /// specification, representing `Pos`/`Nat`/`Int`/`Real` with `encoding`.
+    /// specification.
     ///
-    /// The encoding selects both the system specification pulled in for the
-    /// basic and container sorts and the form numeric literals are lowered to by
-    /// [`Self::lower_data_specification`]; see [`NumberEncoding`].
+    /// For the encoding see [`NumberEncoding`].
     pub fn from_untyped_with(
         mut spec: UntypedDataSpecification,
         encoding: NumberEncoding,
@@ -111,10 +108,8 @@ impl DataSpecification {
         })?;
 
         // Desugar structured sorts into abstract sorts plus their constructors,
-        // recognisers and projections. This runs after the alias checks so those
-        // still see the `struct` form (a struct may recurse illegally through a
-        // function sort), and before the checks below so the constructors it
-        // introduces participate in them.
+        // recognisers and projections. Alias checks still need to see the
+        // structured sorts.
         let structs = desugar_structured_sorts(&mut spec);
         debug!(
             "typecheck: desugared {} structured sort(s) into {} constructor(s)",
@@ -122,41 +117,34 @@ impl DataSpecification {
             structs.iter().map(Vec::len).sum::<usize>()
         );
 
-        // Assign ids to the constructor, map and equation declarations, now
-        // that desugaring has appended every constructor/map it generates.
+        // Assign ids to desugared declarations.
         assign_declaration_ids(&mut spec);
 
         // Compute the (S, C, M) signature and run the signature-layer checks of
-        // 15.1.7. This runs before alias expansion so the errors refer to sorts
-        // as the user wrote them; the semantic facts come from the interned
-        // sort lattice, which expands alias indirection lazily.
+        // definition 15.1.7. This runs before alias expansion so the errors refer to sorts
+        // as the user wrote them.
         let mut context = TypeckContext::new();
         build_signature(&mut context, &spec)?;
         debug!("typecheck: signature checks passed");
 
         // Expand aliases to a canonical form now that they are known to be
-        // acyclic, so the well-typedness check and the stored spec see sorts
-        // without alias indirection.
+        // acyclic.
         normalize_sorts(&mut spec);
         debug!("typecheck: normalized alias indirection");
 
-        // Safety net over the normalized spec: it repeats the constructor
-        // target and symbol-disjointness checks syntactically, and additionally
-        // covers equation-variable sorts and the sort-emptiness check, which
-        // the signature query does not.
+        // Safety net over the normalized spec:.
         is_well_typed(&spec)?;
         debug!("typecheck: well-typedness checks passed");
 
         // Lower the built-in operator nodes in the user equations to named
-        // applications, so Phase-3 inference only sees a single application
-        // form. The sort passes above never touch data expressions, so after
-        // this point the stored spec is both normalized and fully lowered.
+        // applications.
         lower_data_expressions(&mut spec);
         debug!("typecheck: lowered the user equations");
 
         // Collect the Appendix-B definitions for the basic and container sorts
-        // that the specification uses. The basic-sort part is kept aside: it
-        // is also the input of the system signature below.
+        // that the specification uses. The container sorts are deliberately
+        // excluded such that type checking can be done on their polymorphic
+        // definitions.
         let basics = basic_sort_data_specification(encoding);
         check_no_system_function_redeclaration(&spec, &basics)?;
         debug!("typecheck: no user declaration redeclares a system function");
@@ -164,21 +152,16 @@ impl DataSpecification {
         let mut system = build_system_defined_specification(&spec, basics.clone(), encoding);
 
         // The defining equations of each structured sort (Appendix B.10) join
-        // the system-defined part: they use the `==`/`<`/`<=` operators that
-        // only exist there, so they are checked below alongside the rest of
-        // the generated system content (`check_system_specification`).
+        // the system-defined part.
         for constructors in &structs {
             system.merge(&structured_sort_equations(constructors).map_err(WellTypedError::Custom)?);
         }
 
-        // The system equations parse with the same operator nodes (`b && true`,
-        // `d |> s`), so they are lowered like the user equations.
+        // The system equations parse with the same operator nodes, so they are
+        // lowered like the user equations.
         lower_data_expressions(&mut system);
 
-        // The system-defined content is generated (instantiated templates and
-        // desugared-struct equations), so a defect in it is a bug in a
-        // template or generator rather than a user error: debug builds verify
-        // it instead of trusting the generators.
+        // Perform some basic sanity checks on the system-defined specification.
         if cfg!(debug_assertions)
             && let Err(error) = check_system_specification(&spec, &system)
         {
@@ -193,25 +176,17 @@ impl DataSpecification {
 
         // Resolve the system-defined declarations of the *basic* sorts onto
         // the same lattice, so Phase-3 inference sees the overload sets of the
-        // built-in operators. The container operations are looked up
-        // polymorphically instead (`POLYMORPHIC_SIGNATURE`) — they exist for
-        // every element sort — so their per-sort instantiations (part of
-        // `system`, for the equations) are deliberately not resolved into the
-        // signature: listing an operation both ways would misreport ambiguity.
+        // built-in operators.
         resolve_system_signature(&mut context, &spec, &basics)?;
         debug!("typecheck: resolved the system signature");
 
-        // Phase-3 core inference over every user equation; an equation binding
+        // Inference over every user equation; an equation binding
         // a variable through an invalid sort (a bare product) is rejected here.
-        // Declaration-level sorts (constructors, maps, equation variables) are
-        // resolved lazily on first use via the query caches in `context`.
         let equation_typings = check_equations(&mut context, &spec)?;
         debug!("typecheck: inference finished; the specification is well-typed");
 
         // Warm the constructor and map sort caches eagerly so that callers can
-        // access `sort_of_constructor` / `sort_of_map` (and later
-        // `lower_data_specification`) without needing a `&mut TypeckContext`.
-        // `assign_declaration_ids` already ran, so every `id` is `Some`.
+        // access sorts without needing a `&mut TypeckContext`.
         for decl in &spec.constructor_declarations {
             if let Some(id) = decl.id {
                 crate::query_sort_of_constructor(&mut context, &spec, id);
@@ -238,17 +213,13 @@ impl DataSpecification {
         self.encoding
     }
 
-    /// The resolved data specification. Every sort — on `sort`, `cons`, `map`
-    /// declarations, equation variable lists, and the binders inside equation
-    /// bodies (`forall`/`exists`/`lambda`/comprehensions) — has its names
-    /// resolved to a [`DefId`]. All equation expressions are lowered: built-in
-    /// operators appear as named applications (`==(x, y)`).
+    /// The resolved data specification.
     pub fn data_specification(&self) -> &UntypedDataSpecification {
         &self.spec
     }
 
     /// Maps each declared sort name to the [`DefId`] assigned during name
-    /// resolution (`sorts().index(name)` yields the index behind that `DefId`).
+    /// resolution.
     pub fn sorts(&self) -> &IndexedSet<String> {
         &self.sorts
     }

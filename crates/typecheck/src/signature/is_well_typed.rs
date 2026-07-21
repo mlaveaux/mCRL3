@@ -14,20 +14,16 @@ use crate::InferenceError;
 use crate::nonempty_sorts;
 use crate::target_sort;
 
-/// Checks if a signature is well-typed, i.e. it satisfies the conditions of 15.1.7.
+/// Checks if a signature is well-typed, i.e. it satisfies the conditions of
+/// 15.1.7.
 ///
 /// Runs on the normalized specification as a syntactic safety net behind
-/// `query_signature` (which checks before alias expansion, for error messages
-/// in the user's terms); equation-variable sorts and the sort-emptiness check
-/// are covered only here.
+/// `query_signature`. Additionally checks equation-variable sorts and the
+/// sort-emptiness check.
 pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellTypedError> {
     are_constructors_and_mappings_disjoint(spec)?;
 
-    // A product sort only has meaning as the domain of a function sort, but the
-    // grammar cannot enforce that (`#` and `->` share the sort-expression
-    // syntax), so `map f: Pos -> (Pos # Pos);` parses and must be rejected
-    // here. Sorts on binders inside equation bodies are checked later, as part
-    // of data-expression type checking.
+    // A product sort only has meaning as the domain of a function sort.
     for sort in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
         check_products_within_domains(sort)?;
     }

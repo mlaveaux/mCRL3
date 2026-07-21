@@ -123,8 +123,7 @@ fn container_templates(encoding: NumberEncoding) -> &'static ContainerTemplates 
 /// alone applies it in 91 equations — so the machine-word encoding cannot
 /// rewrite at all without them.
 ///
-/// Only the generic cases are generated here; the sort-specific cases (such as
-/// `@c0 == @cNat(p) = false`) come from the templates themselves.
+/// Only the generic cases are generated here.
 pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification {
     // The variable names are qualified by sort so that merging the blocks of
     // several sorts cannot collide, here or with a user declaration.
@@ -138,6 +137,31 @@ pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification
             x_{sort} >= y_{sort} = y_{sort} <= x_{sort};
             if(true, x_{sort}, y_{sort}) = x_{sort};
             if(false, x_{sort}, y_{sort}) = y_{sort};
+    "})
+}
+
+/// Generate a data specification for any sort based on the rules in Appendix `B`.
+///
+/// Reserved for wiring the comparison/`if` operators of each sort.
+#[allow(dead_code)]
+pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
+    UntypedDataSpecification::parse(&formatdoc! {"
+        map ==, !=, <, <=, >=, >: {sort} # {sort} -> Bool;
+            if: Bool # {sort} # {sort} -> {sort};
+
+        var x, y: {sort};
+            b: Bool;
+
+        eqn x == x = true;
+            x != y = !(x == y);
+            if(true, x, y)  = x;
+            if(false, x, y) = y;
+            if(b, x, y)      = if (b, x, y);
+            if(x == y, x, y) = y;
+            x < x  = false;
+            x <= x = true;
+            x > y  = y < x;
+            x >= y = y <= x;
     "})
 }
 
@@ -214,31 +238,6 @@ fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort:
         Ok(None)
     })
     .unwrap()
-}
-
-/// Generate a data specification for any sort based on the rules in Appendix `B`.
-///
-/// Reserved for wiring the comparison/`if` operators of each sort.
-#[allow(dead_code)]
-pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
-    UntypedDataSpecification::parse(&formatdoc! {"
-        map ==, !=, <, <=, >=, >: {sort} # {sort} -> Bool;
-            if: Bool # {sort} # {sort} -> {sort};
-
-        var x, y: {sort};
-            b: Bool;
-
-        eqn x == x = true;
-            x != y = !(x == y);
-            if(true, x, y)  = x;
-            if(false, x, y) = y;
-            if(b, x, y)      = if (b, x, y);
-            if(x == y, x, y) = y;
-            x < x  = false;
-            x <= x = true;
-            x > y  = y < x;
-            x >= y = y <= x;
-    "})
 }
 
 /// Generates the defining equations of a structured sort, following Appendix `B.10`.
