@@ -8,7 +8,7 @@ use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::ResolvedSortId;
-use crate::TypeckContext;
+use crate::TypeCheckContext;
 
 /// Returns the resolved sort of the constructor with the given [ConstructorId],
 /// memoized on [TypeckContext::sort_of_constructor]. Requires
@@ -17,7 +17,7 @@ use crate::TypeckContext;
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content.
 pub(crate) fn query_sort_of_constructor(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     id: ConstructorId,
 ) -> ResolvedSortId {
@@ -40,7 +40,7 @@ pub(crate) fn query_sort_of_constructor(
 ///
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content.
-pub(crate) fn query_sort_of_map(ctx: &mut TypeckContext, spec: &UntypedDataSpecification, id: MapId) -> ResolvedSortId {
+pub(crate) fn query_sort_of_map(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification, id: MapId) -> ResolvedSortId {
     match ctx
         .sort_of_map
         .get_or_lock(id)
@@ -62,7 +62,7 @@ pub(crate) fn query_sort_of_map(ctx: &mut TypeckContext, spec: &UntypedDataSpeci
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content.
 pub(crate) fn query_sort_of_equation_var(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     eqn_spec_id: EqnSpecId,
     var_id: EqnVarId,
@@ -92,7 +92,7 @@ pub(crate) fn query_sort_of_equation_var(
 /// higher-order sort still appears as `Function` with a `Product` domain spine;
 /// both forms resolve to the same interned function sort.
 pub(crate) fn resolve_sort(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     sort: &SortExpression,
 ) -> ResolvedSortId {
@@ -127,7 +127,7 @@ pub(crate) fn resolve_sort(
 /// Resolves the leaves of a `Product` domain spine in declaration order, the
 /// resolution counterpart of `flatten_function_domain_rec`.
 fn resolve_function_domain(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     sort: &SortExpression,
     domain: &mut Vec<ResolvedSortId>,
@@ -149,7 +149,7 @@ fn resolve_function_domain(
 /// `sort_declarations`. Cyclic aliases were rejected by `check_aliases`, so the
 /// query cannot re-enter itself, whether alias bodies are normalized or not.
 pub(crate) fn query_sort_of_def(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     def: DefId,
 ) -> ResolvedSortId {
@@ -188,7 +188,7 @@ mod tests {
     use crate::DataSpecification;
     use crate::ResolvedSort;
     use crate::ResolvedSortId;
-    use crate::TypeckContext;
+    use crate::TypeCheckContext;
     use crate::query_sort_of_def;
 
     /// Type checks `text`; the returned specification carries the resolved
@@ -283,7 +283,7 @@ mod tests {
         let spec = typecheck("sort D = List(Nat); map f: D;");
         let def = DefId::new(*spec.sorts().index("D").expect("D should be declared"));
 
-        let mut ctx = TypeckContext::new();
+        let mut ctx = TypeCheckContext::new();
         let first = query_sort_of_def(&mut ctx, spec.data_specification(), def);
         assert_eq!(first, mapping(&spec, 0));
         assert_eq!(ctx.sort_of_def.get_or_lock(def), Ok(Some(&first)));

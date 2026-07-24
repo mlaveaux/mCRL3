@@ -10,7 +10,7 @@ use merc_syntax::UntypedDataSpecification;
 use crate::CONTAINER_TEMPLATES;
 use crate::ResolvedSortId;
 use crate::Signature;
-use crate::TypeckContext;
+use crate::TypeCheckContext;
 use crate::WellTypedError;
 use crate::push_overload;
 use crate::query_sort_of_def;
@@ -32,7 +32,7 @@ use crate::query_sort_of_def;
 /// specification's own well-formedness is instead verified separately and
 /// extensively by `check_system_specification` (debug builds).
 pub(crate) fn resolve_system_signature(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     user_spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
 ) -> Result<(), WellTypedError> {
@@ -58,8 +58,6 @@ pub(crate) fn resolve_system_signature(
         let def = DefId::new(user_spec.sort_declarations.len() + decl_index);
         sort_ids.insert(decl.identifier.clone(), ctx.sorts.def(def));
     }
-
-    ctx.system_sort_decls = system.sort_declarations.iter().map(|d| d.identifier.clone()).collect();
 
     let mut signature = Signature {
         constructors: HashMap::new(),
@@ -127,7 +125,7 @@ pub(crate) static POLYMORPHIC_SIGNATURE: LazyLock<PolymorphicSignature> = LazyLo
 /// are a clean error rather than a panic, so a template mistake in a
 /// `spec/*.mcrl2` file cannot crash the checker.
 fn resolve_system_sort(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     user_spec: &UntypedDataSpecification,
     sort_ids: &HashMap<String, ResolvedSortId>,
     sort: &SortExpression,
@@ -172,7 +170,7 @@ fn resolve_system_sort(
 
 /// Resolves the leaves of a `Product` domain spine in declaration order.
 fn resolve_system_function_domain(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     user_spec: &UntypedDataSpecification,
     sort_ids: &HashMap<String, ResolvedSortId>,
     sort: &SortExpression,
@@ -198,16 +196,16 @@ mod tests {
     use crate::DataSpecification;
     use crate::NumberEncoding;
     use crate::ResolvedSort;
-    use crate::TypeckContext;
+    use crate::TypeCheckContext;
     use crate::WellTypedError;
     use crate::basic_sort_data_specification;
     use crate::resolve_system_signature;
 
     /// Type checks `text` and resolves the basic-sort system signature in a
     /// fresh context, as `DataSpecification::from_untyped` does.
-    fn resolve(text: &str) -> (DataSpecification, TypeckContext) {
+    fn resolve(text: &str) -> (DataSpecification, TypeCheckContext) {
         let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse(text).unwrap()).unwrap();
-        let mut ctx = TypeckContext::new();
+        let mut ctx = TypeCheckContext::new();
         let basics = basic_sort_data_specification(NumberEncoding::Binary);
         resolve_system_signature(&mut ctx, spec.data_specification(), &basics).unwrap();
         (spec, ctx)
@@ -251,7 +249,7 @@ mod tests {
             UntypedDataSpecification::parse("sort D = struct s; map f: List(D);").unwrap(),
         )
         .unwrap();
-        let mut ctx = TypeckContext::new();
+        let mut ctx = TypeCheckContext::new();
         resolve_system_signature(&mut ctx, spec.data_specification(), spec.system_defined_specification()).unwrap();
 
         let def = DefId::new(*spec.sorts().index("D").unwrap());
@@ -291,7 +289,7 @@ mod tests {
         let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
         let broken = UntypedDataSpecification::parse("map f: Unknown;").unwrap();
 
-        let mut ctx = TypeckContext::new();
+        let mut ctx = TypeCheckContext::new();
         match resolve_system_signature(&mut ctx, spec.data_specification(), &broken) {
             Err(WellTypedError::Custom(err)) => assert!(err.to_string().contains("Unknown")),
             other => panic!("expected a custom error, got {other:?}"),

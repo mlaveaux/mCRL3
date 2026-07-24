@@ -25,7 +25,7 @@ use crate::ResolvedSort;
 use crate::ResolvedSortId;
 use crate::Signature;
 use crate::SortInterner;
-use crate::TypeckContext;
+use crate::TypeCheckContext;
 use crate::Unifier;
 use crate::display_sort;
 use crate::is_lowered;
@@ -129,7 +129,7 @@ impl InferenceError {
 /// [assign_declaration_ids](crate::assign_declaration_ids)). Memoized on
 /// [TypeckContext::equation_typing].
 pub(crate) fn query_equation_typing(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     key: (EqnSpecId, EquationId),
 ) -> Result<Rc<EquationTyping>, InferenceError> {
@@ -171,7 +171,7 @@ pub(crate) fn query_equation_typing(
 /// intentional trust boundary, and needs a real fix (extend structural
 /// lowering, or run Phase-3 over the system spec too).
 pub(crate) fn check_equations(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
 ) -> Result<Vec<Vec<Rc<EquationTyping>>>, InferenceError> {
     let mut typings = Vec::with_capacity(spec.equation_declarations.len());
@@ -195,7 +195,7 @@ pub(crate) fn check_equations(
 /// side may be upcast, e.g. `eqn f = 1;` with `f: Nat`), so each side gets a
 /// `Sub` constraint against a shared fresh variable.
 fn infer_equation(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     eqn_spec_id: EqnSpecId,
     equation_id: EquationId,
@@ -570,7 +570,7 @@ enum GenFailure {
 struct ConstraintGenerator<'a> {
     /// Mutable so a comprehension's binder sort can be resolved (interned)
     /// mid-walk; the signatures below are `Rc` clones out of this same context.
-    ctx: &'a mut TypeckContext,
+    ctx: &'a mut TypeCheckContext,
     spec: &'a UntypedDataSpecification,
     signature: Rc<Signature>,
     system_signature: Rc<Signature>,
