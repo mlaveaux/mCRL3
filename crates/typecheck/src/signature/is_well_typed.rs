@@ -12,31 +12,23 @@ use merc_utilities::MercError;
 
 use crate::InferenceError;
 use crate::nonempty_sorts;
-use crate::target_sort;
 
-/// Checks if a signature is well-typed, i.e. it satisfies the conditions of
-/// 15.1.7.
+/// The post-normalization well-typedness checks of 15.1.7 that `build_signature`
+/// does not already cover.
 ///
-/// Runs on the normalized specification as a syntactic safety net behind
-/// `query_signature`. Additionally checks equation-variable sorts and the
-/// sort-emptiness check.
+/// `build_signature` runs *before* this and rejects — in a stronger,
+/// alias-aware form — every signature-level condition the two once shared
+/// (constructor/mapping disjointness, products outside a function domain, and
+/// constructors for basic or function sorts), so only two genuinely separate
+/// checks remain here:
+///
+/// * equation-variable well-formedness (no duplicate variable in a `var` block,
+///   no bare product sort on one), which is not a signature concern; and
+/// * sort non-emptiness, which must run on the *normalized* specification —
+///   `nonempty_sorts` unifies a sort with its aliases only once alias
+///   indirection is expanded, so a sort inhabited only through an alias would
+///   otherwise be misreported as empty.
 pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellTypedError> {
-    are_constructors_and_mappings_disjoint(spec)?;
-
-    // A product sort only has meaning as the domain of a function sort.
-    for sort in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
-        check_products_within_domains(sort)?;
-    }
-
-    for sort in spec
-        .constructor_declarations
-        .iter()
-        .map(|decl| &decl.sort)
-        .chain(spec.map_declarations.iter().map(|decl| &decl.sort))
-    {
-        check_products_within_domains(sort)?;
-    }
-    
     for equation in &spec.equation_declarations {
         // Inference resolves a variable by name, so a duplicate would silently
         // shadow the earlier declaration; mCRL2 rejects the block outright.
@@ -47,33 +39,8 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
                     variable: var.identifier.clone(),
                 });
             }
+            // A product sort only has meaning as the domain of a function sort.
             check_products_within_domains(&var.sort)?;
-        }
-    }
-
-    // Check that there are no constructors defined for the basic sorts.
-    for constructor in &spec.constructor_declarations {
-        let sort = target_sort(&constructor.sort);
-
-        // There are not more constructors for basic sorts.
-        if is_basic_sort(sort) {
-            return Err(WellTypedError::ConstructorForBasicSort {
-                constructor: constructor.identifier.clone(),
-                sort: sort.to_string(),
-            });
-        }
-
-        // Function sorts are not constructor sorts. Both forms are matched
-        // because flattening rewrites `Function` into `FlattenedFunction`, so
-        // after the pipeline's early passes only the latter occurs here.
-        if matches!(
-            sort.node,
-            SortExpressionKind::Function { .. } | SortExpressionKind::FlattenedFunction { .. }
-        ) {
-            return Err(WellTypedError::ConstructorForFunctionSort {
-                constructor: constructor.identifier.clone(),
-                sort: sort.to_string(),
-            });
         }
     }
 
@@ -171,35 +138,6 @@ impl WellTypedError {
             None => self.to_string(),
         }
     }
-}
-
-/// Checks that no *symbol* — an identifier together with its sort — is declared
-/// as both a constructor and a mapping.
-///
-/// A name may still be overloaded across a constructor and a mapping when their
-/// sorts differ (for example a `struct` constructor `area: … -> Area` alongside
-/// a mapping `area: Instruction -> Area`); disambiguating such overloads is the
-/// job of overload resolution.
-fn are_constructors_and_mappings_disjoint(spec: &UntypedDataSpecification) -> Result<(), WellTypedError> {
-    for constructor in &spec.constructor_declarations {
-        if let Some(map) = spec
-            .map_declarations
-            .iter()
-            .find(|map| map.identifier == constructor.identifier && map.sort == constructor.sort)
-        {
-            return Err(WellTypedError::ConstructorAndMappingConflict {
-                constructor: constructor.identifier.clone(),
-                map: map.identifier.clone(),
-            });
-        }
-    }
-
-    Ok(())
-}
-
-/// The set of basic sorts `BS` are exactly the sorts Bool, Pos, Int, Nat, and Real. Definition 15.1.2.
-fn is_basic_sort(sort: &SortExpression) -> bool {
-    matches!(sort.node, SortExpressionKind::Simple(_))
 }
 
 /// Checks that every product sort occurs as (part of the spine of) a function
