@@ -19,7 +19,7 @@ use crate::AliasError;
 use crate::EquationTyping;
 use crate::NumberEncoding;
 use crate::Signature;
-use crate::TypeckContext;
+use crate::TypeCheckContext;
 use crate::WellTypedError;
 use crate::apply_sorts_in_spec;
 use crate::assign_declaration_ids;
@@ -50,7 +50,7 @@ pub struct DataSpecification {
     spec: UntypedDataSpecification,
     sorts: IndexedSet<String>,
     system: UntypedDataSpecification,
-    context: TypeckContext,
+    context: TypeCheckContext,
     equation_typings: Vec<Vec<Rc<EquationTyping>>>,
     encoding: NumberEncoding,
 }
@@ -123,7 +123,7 @@ impl DataSpecification {
         // Compute the (S, C, M) signature and run the signature-layer checks of
         // definition 15.1.7. This runs before alias expansion so the errors refer to sorts
         // as the user wrote them.
-        let mut context = TypeckContext::new();
+        let mut context = TypeCheckContext::new();
         build_signature(&mut context, &spec)?;
         debug!("typecheck: signature checks passed");
 
@@ -167,6 +167,7 @@ impl DataSpecification {
         {
             panic!("the generated system-defined specification is malformed: {error}");
         }
+        
         debug!(
             "typecheck: built the system-defined specification with {} sort, {} map and {} equation declaration(s)",
             system.sort_declarations.len(),
@@ -184,19 +185,6 @@ impl DataSpecification {
         // a variable through an invalid sort (a bare product) is rejected here.
         let equation_typings = check_equations(&mut context, &spec)?;
         debug!("typecheck: inference finished; the specification is well-typed");
-
-        // Warm the constructor and map sort caches eagerly so that callers can
-        // access sorts without needing a `&mut TypeckContext`.
-        for decl in &spec.constructor_declarations {
-            if let Some(id) = decl.id {
-                crate::query_sort_of_constructor(&mut context, &spec, id);
-            }
-        }
-        for decl in &spec.map_declarations {
-            if let Some(id) = decl.id {
-                crate::query_sort_of_map(&mut context, &spec, id);
-            }
-        }
 
         Ok(Self {
             spec,
@@ -239,7 +227,7 @@ impl DataSpecification {
     /// [`crate::query_sort_of_map`], [`crate::query_sort_of_equation_var`]).
     // Currently exercised by tests only.
     #[allow(dead_code)]
-    pub(crate) fn context(&self) -> &TypeckContext {
+    pub(crate) fn context(&self) -> &TypeCheckContext {
         &self.context
     }
 

@@ -19,13 +19,12 @@ use crate::SortInterner;
 
 /// The context shared by all type-checking queries.
 ///
-/// It owns the [SortInterner] and one [QueryCache] per query, following the
-/// rustc query model: each semantic fact is a memoized function on this
-/// context, so passes pull their dependencies lazily and results are shared.
-/// The fields are `pub(crate)` so a query can borrow its own cache and the
-/// interner disjointly.
-pub(crate) struct TypeckContext {
+/// It owns the [SortInterner] and one [QueryCache] per query. Each semantic
+/// fact is a memoized function on this context, so passes pull their
+/// dependencies lazily and results are shared.
+pub(crate) struct TypeCheckContext {
     pub(crate) sorts: SortInterner,
+
     pub(crate) sort_of_def: QueryCache<DefId, ResolvedSortId>,
     /// The memoized resolved sort of each constructor declaration, keyed by
     /// [ConstructorId]. Populated lazily by `query_sort_of_constructor`.
@@ -37,28 +36,21 @@ pub(crate) struct TypeckContext {
     /// `(EqnSpecId, EqnVarId)`. Populated lazily by
     /// `query_sort_of_equation_var`.
     pub(crate) sort_of_equation_var: QueryCache<(EqnSpecId, EqnVarId), ResolvedSortId>,
-    /// The signature of the specification, populated by `build_signature`. An
-    /// [Option] because the context is created before the signature is built;
-    /// behind an [Rc] so inference can hold a reference to the signature while
-    /// mutating the rest of the context (e.g. interning binder sorts mid-walk).
+
+    /// The signature of the specification.
     pub(crate) signature: Option<Rc<Signature>>,
-    /// The resolved signature of the system-defined specification, computed by
-    /// `resolve_system_signature` under the same regime as
-    /// [TypeckContext::signature].
+    /// The resolved signature of the system-defined specification.
     pub(crate) system_signature: Option<Rc<Signature>>,
-    /// The sort identifiers from the system specification's `sort_declarations`,
-    /// in declaration order. Use [TypeckContext::sort_name] to look a name up;
-    /// the index arithmetic that maps a [DefId] into this vector lives there.
-    pub(crate) system_sort_decls: Vec<String>,
+
     /// The memoized results of `query_equation_typing`, keyed by the id of the
     /// enclosing equation specification block and the equation's own id
-    /// within it. Failures are stored too, as the cache contract requires.
+    /// within it.
     pub(crate) equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Rc<EquationTyping>, InferenceError>>,
 }
 
-impl TypeckContext {
+impl TypeCheckContext {
     pub(crate) fn new() -> Self {
-        TypeckContext {
+        TypeCheckContext {
             sorts: SortInterner::new(),
             sort_of_def: QueryCache::new(),
             sort_of_constructor: QueryCache::new(),
@@ -66,32 +58,32 @@ impl TypeckContext {
             sort_of_equation_var: QueryCache::new(),
             signature: None,
             system_signature: None,
-            system_sort_decls: Vec::new(),
             equation_typing: QueryCache::new(),
         }
     }
 }
 
-impl TypeckContext {
+impl TypeCheckContext {
     /// The declared name of the sort that [DefId] `def` resolves to, whether a
-    /// user sort or a system-internal one (`@NatPair`, …), or `None` when it is
-    /// out of range of both.
+    /// user sort or a system-internal one, or `None` when it is out of range of
+    /// both.
     ///
     /// This is the single place aware that a system-internal `DefId` indexes
     /// [system_sort_decls](Self::system_sort_decls) offset by the user sort
-    /// count — the layout `resolve_system_signature` establishes.
+    /// count, the layout `resolve_system_signature` establishes.
     pub(crate) fn sort_name<'a>(&'a self, spec: &'a UntypedDataSpecification, def: DefId) -> Option<&'a str> {
         if let Some(decl) = spec.sort_declarations.get(*def) {
             return Some(&decl.identifier);
         }
+
         let system_index = (*def).checked_sub(spec.sort_declarations.len())?;
         self.system_sort_decls.get(system_index).map(String::as_str)
     }
 }
 
-impl Default for TypeckContext {
+impl Default for TypeCheckContext {
     fn default() -> Self {
-        TypeckContext::new()
+        TypeCheckContext::new()
     }
 }
 

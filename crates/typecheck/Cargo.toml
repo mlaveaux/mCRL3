@@ -1,5 +1,6 @@
 [package]
 name = "merc_typecheck"
+readme = "README.md"
 
 edition.workspace = true
 homepage.workspace = true
