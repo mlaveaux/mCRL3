@@ -112,12 +112,47 @@ fn container_templates(encoding: NumberEncoding) -> &'static ContainerTemplates 
     }
 }
 
+/// The polymorphic built-in operators that exist for *every* sort: the
+/// comparison operators and the conditional `if`. Their sort variable `S`
+/// remains an unresolved `Reference` node, instantiated with fresh unification
+/// variables per occurrence, exactly like the container operations — they feed
+/// [`POLYMORPHIC_SIGNATURE`](crate::POLYMORPHIC_SIGNATURE) alongside the
+/// containers, so inference resolves `==` and `|>` through one mechanism.
+///
+/// Unlike the container templates this is written inline rather than bundled as
+/// a `spec/*.mcrl2` file: these operators are built in and never declared, and
+/// this static is deliberately *not* part of [`CONTAINER_TEMPLATES`], so no
+/// per-sort instantiation of `==`/`if` leaks into the system-defined
+/// specification. It is also the single source of the built-in scheme *names*
+/// (see [`builtin_scheme_names`]).
+pub(crate) static BUILTIN_SCHEME_TEMPLATE: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
+    parse_template(
+        "map ==: S # S -> Bool; !=: S # S -> Bool; \
+             <: S # S -> Bool; <=: S # S -> Bool; >: S # S -> Bool; >=: S # S -> Bool; \
+             if: Bool # S # S -> S;",
+    )
+});
+
+/// The names of the polymorphic built-in schemes (`==`, `!=`, `<`, `<=`, `>`,
+/// `>=`, `if`), derived from [`BUILTIN_SCHEME_TEMPLATE`] so the list has a
+/// single definition. These names are usable without a declaration, so the
+/// well-formedness and reserved-name checks admit them.
+pub(crate) fn builtin_scheme_names() -> impl Iterator<Item = &'static str> {
+    BUILTIN_SCHEME_TEMPLATE
+        .map_declarations
+        .iter()
+        .map(|decl| decl.identifier.as_str())
+}
+
 /// The Appendix-B equations of the built-in operator *schemes* at `sort`: the
 /// conditional `if`, and the reflexive/derived cases of the comparison
 /// operators.
-/// 
-/// Note that the mappings are omitted, as they are declared in the basic sort
-/// templates.
+///
+/// Only equations are emitted; the `map` signatures are omitted deliberately.
+/// The comparison operators and `if` exist for *every* sort, so inference types
+/// them as polymorphic schemes instantiated per occurrence (their signatures
+/// live in [`BUILTIN_SCHEME_TEMPLATE`], resolved through `POLYMORPHIC_SIGNATURE`
+/// like the container operations) rather than declaring one overload per sort.
 pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification {
     // The variable names are qualified by sort so that merging the blocks of
     // several sorts cannot collide, here or with a user declaration.
@@ -131,31 +166,6 @@ pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification
             x_{sort} >= y_{sort} = y_{sort} <= x_{sort};
             if(true, x_{sort}, y_{sort}) = x_{sort};
             if(false, x_{sort}, y_{sort}) = y_{sort};
-    "})
-}
-
-/// Generate a data specification for any sort based on the rules in Appendix `B`.
-///
-/// Reserved for wiring the comparison/`if` operators of each sort.
-#[allow(dead_code)]
-pub(crate) fn basic_spec(sort: &str) -> Result<UntypedDataSpecification, MercError> {
-    UntypedDataSpecification::parse(&formatdoc! {"
-        map ==, !=, <, <=, >=, >: {sort} # {sort} -> Bool;
-            if: Bool # {sort} # {sort} -> {sort};
-
-        var x, y: {sort};
-            b: Bool;
-
-        eqn x == x = true;
-            x != y = !(x == y);
-            if(true, x, y)  = x;
-            if(false, x, y) = y;
-            if(b, x, y)      = if (b, x, y);
-            if(x == y, x, y) = y;
-            x < x  = false;
-            x <= x = true;
-            x > y  = y < x;
-            x >= y = y <= x;
     "})
 }
 
@@ -194,9 +204,133 @@ pub(crate) fn standard_sort(sort: &SortExpression, encoding: NumberEncoding) -> 
         // In the specification we define the function S -> T.
         let spec = replace_sort(&templates.function_update, "S", domain);
         replace_sort(&spec, "T", range)
+    } else if let SortExpressionKind::FlattenedFunction { domain, range } = &sort.node {
+        // A multi-argument function sort: the bundled template's single index
+        // variable `S` cannot stand for a product, so its equations are built
+        // directly instead of substituted into the template.
+        multi_argument_function_update(domain, range)
     } else {
         unreachable!("The given sort {} is not a standard sort", sort);
     }
+}
+
+/// Generates the function-update operators (`@func_update`,
+/// `@func_update_stable`, `@is_not_an_update`, `@if_always_else`, Appendix
+/// B.11 / `function_update.mcrl2`) for a function sort of arity
+/// `domain.len() > 1`, generalizing the bundled single-argument template to
+/// the flattened domain `D_0 # ... # D_{n-1} -> T`.
+///
+/// The single index variable `x`/`y` of the unary template becomes a tuple
+/// `x0, ..., x{n-1}`: two tuples are compared componentwise for equality
+/// (`&&` of `==`) and ordered lexicographically (`<`) wherever the template
+/// orders or compares a single index — `<` canonicalizes the order nested
+/// `@func_update_stable` chains normalize to, so rewriting stays confluent
+/// regardless of the syntactic nesting order of `f[a -> b][c -> d]`-style
+/// updates. This mirrors [structured_sort_equations]'s `lexicographic` helper,
+/// which solves the same problem for a constructor's argument tuple.
+pub(crate) fn multi_argument_function_update(domain: &[SortExpression], range: &SortExpression) -> UntypedDataSpecification {
+    debug_assert!(
+        domain.len() > 1,
+        "single-argument function updates are generated from the bundled template"
+    );
+
+    let function_sort: SortExpression = SortExpressionKind::FlattenedFunction {
+        domain: domain.to_vec(),
+        range: Box::new(range.clone()),
+    }
+    .into();
+    let domain_sorts = domain.iter().map(SortExpression::to_string).collect::<Vec<_>>().join(" # ");
+
+    let xs: Vec<String> = (0..domain.len()).map(|i| format!("x{i}")).collect();
+    let ys: Vec<String> = (0..domain.len()).map(|i| format!("y{i}")).collect();
+    let x_args = xs.join(", ");
+    let y_args = ys.join(", ");
+
+    let equal = |a: &[String], b: &[String]| -> String {
+        a.iter()
+            .zip(b)
+            .map(|(l, r)| format!("{l} == {r}"))
+            .collect::<Vec<_>>()
+            .join(" && ")
+    };
+    // Lexicographic order over the index tuple, exactly as `structured_sort_equations`'s
+    // `lexicographic` closure builds it for constructor arguments.
+    let less = |a: &[String], b: &[String]| -> String {
+        let last = a.len() - 1;
+        let mut expr = format!("{} < {}", a[last], b[last]);
+        for i in (0..last).rev() {
+            expr = format!("{} < {} || ({} == {} && ({expr}))", a[i], b[i], a[i], b[i]);
+        }
+        expr
+    };
+
+    let x_eq_y = equal(&xs, &ys);
+    let x_neq_y = format!("!({x_eq_y})");
+    let y_lt_x = less(&ys, &xs);
+    let x_lt_y = less(&xs, &ys);
+
+    let mut spec = String::new();
+    writeln!(spec, "map @func_update: {function_sort} # {domain_sorts} # {range} -> {function_sort};").unwrap();
+    writeln!(
+        spec,
+        "    @func_update_stable: {function_sort} # {domain_sorts} # {range} -> {function_sort};"
+    )
+    .unwrap();
+    writeln!(spec, "    @is_not_an_update: {function_sort} -> Bool;").unwrap();
+    writeln!(
+        spec,
+        "    @if_always_else: Bool # {function_sort} # {function_sort} -> {function_sort};"
+    )
+    .unwrap();
+
+    writeln!(spec, "var").unwrap();
+    for (i, argument_sort) in domain.iter().enumerate() {
+        writeln!(spec, "    x{i}, y{i}: {argument_sort};").unwrap();
+    }
+    writeln!(spec, "    v, w: {range};").unwrap();
+    writeln!(spec, "    f: {domain_sorts} -> {range};").unwrap();
+
+    writeln!(
+        spec,
+        "eqn @is_not_an_update(f) -> @func_update(f,{x_args},v) = \
+         @if_always_else(f({x_args}) == v,f,@func_update_stable(f,{x_args},v));"
+    )
+    .unwrap();
+    writeln!(
+        spec,
+        "    @func_update(@func_update_stable(f,{x_args},w),{x_args},v) = \
+         @if_always_else(f({x_args}) == v,f,@func_update_stable(f,{x_args},v));"
+    )
+    .unwrap();
+    writeln!(
+        spec,
+        "    {y_lt_x} -> @func_update(@func_update_stable(f,{y_args},w), {x_args},v) = \
+         @func_update_stable(@func_update(f,{x_args},v),{y_args},w);"
+    )
+    .unwrap();
+    writeln!(
+        spec,
+        "    {x_lt_y} -> @func_update(@func_update_stable(f,{y_args},w), {x_args},v) = \
+         @if_always_else(f({x_args}) == v, \
+         @func_update_stable(f,{y_args},w), \
+         @func_update_stable(@func_update_stable(f,{y_args},w), {x_args},v));"
+    )
+    .unwrap();
+    writeln!(
+        spec,
+        "    {x_neq_y} -> @func_update_stable(f,{x_args},v)({y_args}) = f({y_args});"
+    )
+    .unwrap();
+    writeln!(spec, "    @func_update_stable(f,{x_args},v)({x_args}) = v;").unwrap();
+    writeln!(
+        spec,
+        "    @func_update(f,{x_args},v)({y_args}) = if({x_eq_y},v,f({y_args}));"
+    )
+    .unwrap();
+
+    UntypedDataSpecification::parse(&spec).unwrap_or_else(|err| {
+        panic!("the generated multi-argument function update for '{domain_sorts} -> {range}' does not parse: {err}\n{spec}")
+    })
 }
 
 /// Replaces the given identifier by the given sort expression in the given data
@@ -393,7 +527,73 @@ mod tests {
     use super::UntypedDataSpecification;
     use super::standard_sort;
     use super::structured_sort_equations;
+    use crate::DataSpecification;
     use crate::NumberEncoding;
+
+    #[test]
+    fn test_multi_argument_function_gets_generalized_update_operators() {
+        // `from_untyped` flattens `Nat # Bool -> Nat` before generating the
+        // system-defined specification, so `standard_sort` sees a
+        // `FlattenedFunction` domain of length two and takes the
+        // multi-argument branch instead of the bundled single-argument
+        // template.
+        let checked =
+            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Nat # Bool -> Nat;").unwrap())
+                .unwrap();
+        let sort = &checked.data_specification().map_declarations[0].sort;
+        let SortExpressionKind::FlattenedFunction { domain, .. } = &sort.node else {
+            panic!("expected a flattened function sort: {sort}");
+        };
+        assert_eq!(domain.len(), 2);
+
+        let generated = standard_sort(sort, NumberEncoding::Binary);
+        assert!(
+            generated.map_declarations.iter().any(|map| map.identifier == "@func_update"),
+            "the multi-argument function sort should still declare @func_update"
+        );
+
+        let equations: Vec<String> = generated
+            .equation_declarations
+            .iter()
+            .flat_map(|eqn_spec| &eqn_spec.equations)
+            .map(|eqn| eqn.to_string())
+            .collect();
+
+        // Both `f` and `@func_update` are applied with the full two-argument
+        // index tuple, not the single index the bundled template uses.
+        assert!(
+            equations.iter().any(|eqn| eqn.contains("f(x0, x1)")),
+            "expected a two-argument application of f: {equations:#?}"
+        );
+        assert!(
+            equations.iter().any(|eqn| eqn.contains("@func_update(f, x0, x1, v)")),
+            "expected @func_update applied with both index arguments: {equations:#?}"
+        );
+    }
+
+    #[test]
+    fn test_multi_argument_function_update_generalizes_to_higher_arities() {
+        // The same construction must not be hard-coded to arity two.
+        let checked = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("map f: Nat # Bool # Nat -> Bool;").unwrap(),
+        )
+        .unwrap();
+        let sort = &checked.data_specification().map_declarations[0].sort;
+
+        let generated = standard_sort(sort, NumberEncoding::Binary);
+        let equations: Vec<String> = generated
+            .equation_declarations
+            .iter()
+            .flat_map(|eqn_spec| &eqn_spec.equations)
+            .map(|eqn| eqn.to_string())
+            .collect();
+        assert!(
+            equations
+                .iter()
+                .any(|eqn| eqn.contains("@func_update(f, x0, x1, x2, v)")),
+            "expected @func_update applied with all three index arguments: {equations:#?}"
+        );
+    }
 
     #[test]
     fn test_standard_sort_substitutes_binder_sorts() {

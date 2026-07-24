@@ -177,7 +177,7 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                         let source = std::fs::read_to_string(&args.specification)?;
                         let untyped_spec = UntypedDataSpecification::parse(&source)?;
 
-                        let mut data_spec = match DataSpecification::from_untyped(untyped_spec) {
+                        let data_spec = match DataSpecification::from_untyped(untyped_spec) {
                             Ok(data_spec) => data_spec,
                             Err(err) => return Err(err.render(&source).into()),
                         };
@@ -216,7 +216,7 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                     println!("{untyped_spec}");
                 }
 
-                let mut data_spec = match DataSpecification::from_untyped(untyped_spec) {
+                let data_spec = match DataSpecification::from_untyped(untyped_spec) {
                     Ok(data_spec) => data_spec,
                     Err(err) => return Err(err.render(&source).into()),
                 };

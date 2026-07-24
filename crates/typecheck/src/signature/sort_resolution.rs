@@ -40,7 +40,11 @@ pub(crate) fn query_sort_of_constructor(
 ///
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content.
-pub(crate) fn query_sort_of_map(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification, id: MapId) -> ResolvedSortId {
+pub(crate) fn query_sort_of_map(
+    ctx: &mut TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    id: MapId,
+) -> ResolvedSortId {
     match ctx
         .sort_of_map
         .get_or_lock(id)
@@ -107,7 +111,7 @@ pub(crate) fn resolve_sort(
             let range = resolve_sort(ctx, spec, range);
             ctx.sorts.function(domain, range)
         }
-        // Kkept so the resolver accepts any well-formed sort expression, such
+        // Kept so the resolver accepts any well-formed sort expression, such
         // as binder sorts built during inference.
         SortExpressionKind::Function { domain, range } => {
             let mut resolved_domain = Vec::new();

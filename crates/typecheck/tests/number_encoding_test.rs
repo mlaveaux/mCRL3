@@ -18,7 +18,7 @@ fn typed(text: &str, encoding: NumberEncoding) -> DataSpecification {
 #[track_caller]
 fn lowered_rhs(expr: &str, sort: &str, encoding: NumberEncoding) -> String {
     let text = format!("map q: {sort};\neqn q = {expr};");
-    let mut spec = typed(&text, encoding);
+    let spec = typed(&text, encoding);
     let lowered = spec.lower_data_specification();
     lowered
         .equations()
@@ -60,7 +60,7 @@ fn test_both_encodings_type_check_the_standard_sorts() {
 
     for text in specifications {
         for encoding in [NumberEncoding::Binary, NumberEncoding::MachineWord] {
-            let mut spec = typed(text, encoding);
+            let spec = typed(text, encoding);
             // Lowering must succeed too — the system equations of the selected
             // templates are lowered alongside the user's.
             assert!(
