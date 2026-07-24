@@ -135,11 +135,9 @@ impl PropVarInst {
 
 /// A declaration of an identifier with its sort.
 ///
-/// Reused for every "name: sort" binding in the grammar (constructor and map
-/// declarations, equation/global/quantifier/lambda variables, ...), so the
-/// declaration-id type is generic: it defaults to [DefId] for the binder-like
-/// uses that never assign one, and is instantiated with [ConstructorId] or
-/// [MapId] for the two lists that do.
+/// Reused for every "name: sort" binding in the grammar. It defaults to [DefId]
+/// for the binder-like uses that never assign one, and is instantiated with
+/// [ConstructorId] or [MapId] where appropriate.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct IdDecl<Id = DefId> {
     /// Identifier being declared

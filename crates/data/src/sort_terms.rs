@@ -53,7 +53,18 @@ mod inner {
 
     impl fmt::Display for SortExpression {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.name())
+            // `name()` only makes sense for a basic sort: it reads `arg(0)` as
+            // an identifier, which for a `SortArrow`/`SortCons` term is really
+            // the domain list/container-kind tag, not a name.
+            if is_basic_sort(&self.term) {
+                write!(f, "{}", self.name())
+            } else if is_function_sort(&self.term) {
+                write!(f, "{}", SortArrowRef::from(self.term.copy()))
+            } else if is_container_sort(&self.term) {
+                write!(f, "{}", SortConsRef::from(self.term.copy()))
+            } else {
+                write!(f, "{}", self.term)
+            }
         }
     }
 
