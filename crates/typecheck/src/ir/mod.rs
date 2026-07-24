@@ -1,7 +1,7 @@
 mod desugar;
 mod lower;
-mod lowering;
+mod mcrl2_lowering;
 
 pub(crate) use desugar::*;
 pub(crate) use lower::*;
-pub(crate) use lowering::*;
+pub(crate) use mcrl2_lowering::*;

@@ -66,9 +66,11 @@ pub(crate) fn assign_declaration_ids(spec: &mut UntypedDataSpecification) {
     for (i, decl) in spec.constructor_declarations.iter_mut().enumerate() {
         decl.id = Some(ConstructorId::new(i));
     }
+
     for (i, decl) in spec.map_declarations.iter_mut().enumerate() {
         decl.id = Some(MapId::new(i));
     }
+
     for (i, eqn_spec) in spec.equation_declarations.iter_mut().enumerate() {
         eqn_spec.id = Some(EqnSpecId::new(i));
         for (j, variable) in eqn_spec.variables.iter_mut().enumerate() {
@@ -106,6 +108,7 @@ where
         for var in &mut equation.variables {
             var.sort = f(&var.sort)?;
         }
+        
         for eqn in &mut equation.equations {
             if let Some(condition) = &mut eqn.condition {
                 apply_sorts_in_data_expr(condition, &mut f)?;
