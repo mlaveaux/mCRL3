@@ -1,3 +1,5 @@
+use std::fmt;
+
 use merc_aterm::ATerm;
 use merc_aterm::ATermRead;
 use merc_aterm::ATermStreamable;
@@ -108,6 +110,62 @@ impl ATermStreamable for Mcrl2DataSpecification {
             mappings,
             equations,
         })
+    }
+}
+
+impl fmt::Display for Mcrl2DataSpecification {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.sorts().is_empty() {
+            writeln!(f, "sort")?;
+            for sort in self.sorts() {
+                writeln!(f, "    {sort};")?;
+            }
+            writeln!(f)?;
+        }
+
+        if !self.aliases().is_empty() {
+            writeln!(f, "sort")?;
+            for alias in self.aliases() {
+                writeln!(f, "    {alias};")?;
+            }
+            writeln!(f)?;
+        }
+
+        if !self.constructors().is_empty() {
+            writeln!(f, "cons")?;
+            for cons in self.constructors() {
+                writeln!(f, "    {}: {};", cons.name(), cons.sort())?;
+            }
+            writeln!(f)?;
+        }
+
+        if !self.mappings().is_empty() {
+            writeln!(f, "map")?;
+            for map in self.mappings() {
+                writeln!(f, "    {}: {};", map.name(), map.sort())?;
+            }
+
+            writeln!(f)?;
+        }
+
+        if !self.equations().is_empty() {
+            writeln!(f, "eqn")?;
+            for eqn in self.equations() {
+                let variables = eqn.variables();
+                if !variables.is_empty() {
+                    let vars = variables
+                        .iter()
+                        .map(|v| format!("{}: {}", v.name(), v.sort()))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    writeln!(f, "    % var {vars}")?;
+                }
+
+                writeln!(f, "    {eqn};")?;
+            }
+        }
+
+        Ok(())
     }
 }
 
